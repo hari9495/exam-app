@@ -44,7 +44,7 @@
 
 ### Key architecture decisions (already agreed)
 
-1. **Multi-tenancy:** Shared database, row-level isolation via `organization_id` + Postgres Row-Level Security, with region-sharded deployments (e.g., separate EU/US clusters) to satisfy data residency — not database-per-tenant.
+1. **Multi-tenancy:** Shared database, row-level isolation via `organization_id` + SQL Server Row-Level Security (native Security Policies), with region-sharded deployments (e.g., separate EU/US clusters) to satisfy data residency — not database-per-tenant.
 2. **AI Proctoring:** Integrate a specialized third-party proctoring provider behind an internal pluggable interface, rather than building proctoring ML in-house or going record-only.
 3. **Real-time scale:** Event-driven architecture — WebSockets/SSE for candidate timer sync and auto-save, message broker (Redis Streams/Kafka) fanning out events to the live-monitoring dashboard — not polling-based.
 
@@ -422,7 +422,9 @@ flowchart TD
 
 ## 10. Database Design
 
-**Engine:** PostgreSQL. **Tenancy:** every tenant-scoped table carries `organization_id` (UUID) with Row-Level Security policies enforcing `organization_id = current_setting('app.current_org')`. All primary keys are UUIDs (avoids sequential-ID enumeration across tenants, works cleanly with region-sharded clusters).
+**Engine:** SQL Server (2019+). **Tenancy:** every tenant-scoped table carries `organization_id` (UNIQUEIDENTIFIER) with a native Row-Level Security policy — a security predicate function checking `organization_id = CAST(SESSION_CONTEXT(N'app_current_org') AS UNIQUEIDENTIFIER)`, applied via `CREATE SECURITY POLICY`. All primary keys are UNIQUEIDENTIFIER/GUID (avoids sequential-ID enumeration across tenants, works cleanly with region-sharded instances).
+
+**Note on JSON columns:** SQL Server has no native JSON column type (unlike Postgres `jsonb`). All `*_json` fields below (`branding_json`, `settings_json`, `metadata_json`, etc.) are `NVARCHAR(MAX)` validated with `ISJSON()` and queried via `JSON_VALUE`/`JSON_QUERY` — functionally equivalent, slightly more verbose in queries, no loss of capability for this schema's needs (nothing here relies on Postgres-specific GIN/JSONB indexing).
 
 ### Core entity relationships (simplified)
 
@@ -671,7 +673,7 @@ All list endpoints support `limit`/`cursor` pagination (not offset — offset pa
 |---|---|---|
 | **Frontend** | Next.js (React) + TypeScript, Tailwind CSS + Radix UI primitives, TanStack Query, Zustand (exam runtime state) | Next.js middleware can resolve tenant from the request `Host` header — essential for custom-domain white-label routing. SSR for dashboards, lean CSR for the exam-taking screen. |
 | **Backend** | Node.js + NestJS, TypeScript | Modular, DI-based structure maps naturally to RBAC guards and per-request tenant context; same language as frontend reduces context-switching for the team; mature ecosystem for everything else in this stack (queues, WebSockets, validation). |
-| **Database** | PostgreSQL (primary), read replicas per region | Row-Level Security gives real, enforced multi-tenant isolation (not just app-layer discipline); native support for the region-sharded residency model. |
+| **Database** | SQL Server (primary), Always On read replicas per region | Native Row-Level Security (Security Policies) gives real, enforced multi-tenant isolation (not just app-layer discipline); each region runs its own independent, highly-available instance, which fits the region-sharded residency model without needing cross-region replication. |
 | **Cache / Realtime bus** | Redis (cache + Redis Streams for event fan-out) | Backs sessions, rate limiting, hot exam-config cache, and the proctoring/monitoring event stream. Simpler to operate than Kafka; upgrade path to Kafka exists if event volume/durability needs grow past what Streams comfortably handles. |
 | **Object storage** | S3-compatible (AWS S3) | Question images, exported reports, proctoring snapshots — with per-tenant path isolation, KMS encryption, and lifecycle/retention policies (needed for GDPR deletion). |
 | **Auth (staff SSO)** | Self-issued JWT sessions, but **enterprise SAML/OIDC SSO delegated to WorkOS or Auth0** | Building SAML metadata handling and per-IdP quirks in-house is a high-effort, high-liability side quest — same "buy the specialized hard problem" logic as AI proctoring. We still own session issuance and RBAC. |
@@ -707,7 +709,7 @@ flowchart LR
     end
 
     subgraph Data
-        PG[(PostgreSQL\nregion-sharded, RLS)]
+        SQLSRV[(SQL Server\nregion-sharded, RLS)]
         Redis[(Redis\ncache + streams)]
         S3[(S3\nimages, exports, snapshots)]
     end
@@ -724,13 +726,13 @@ flowchart LR
     FE --> ExamRuntime
     FE <-. WebSocket .-> RealtimeSvc
 
-    CoreAPI --> PG
+    CoreAPI --> SQLSRV
     CoreAPI --> Redis
     CoreAPI --> S3
     CoreAPI --> SSO
     CoreAPI --> Workers
 
-    ExamRuntime --> PG
+    ExamRuntime --> SQLSRV
     ExamRuntime --> Redis
     ExamRuntime -. proctoring events .-> Proctor
     ExamRuntime -- publishes events --> Redis
@@ -739,14 +741,14 @@ flowchart LR
     Workers --> LLM
     Workers --> EmailSvc
     Workers --> S3
-    Workers --> PG
+    Workers --> SQLSRV
 ```
 
 **Why this split earns its keep:** if the Core API (dashboards, reports, admin) has a slow query or a traffic spike from an Org Admin generating a huge export, it must not be able to degrade the exam-taking experience for 10,000 candidates mid-exam. Separating the deployable services means they scale and fail independently. All three backend services still share the same codebase/repo (modular monolith deployed as separate processes) — this is not a distributed-microservices-from-day-one decision, just a load-isolation one.
 
 ### Region sharding for data residency
 
-Each region (e.g., `eu`, `us`) is a fully independent deployment of the same stack (its own Postgres cluster, Redis, S3 bucket, worker fleet). An organization is pinned to one region at creation time (`organizations.region`), and that pin determines which cluster all of that tenant's data lives in. Cross-region aggregate reporting (for Super Admin's platform dashboard) is done via a read-only rollup pipeline (aggregated metrics only, not raw candidate/PII data crossing regions) — this keeps GDPR data-residency guarantees structurally true rather than policy-enforced.
+Each region (e.g., `eu`, `us`) is a fully independent deployment of the same stack (its own SQL Server instance, Redis, S3 bucket, worker fleet). An organization is pinned to one region at creation time (`organizations.region`), and that pin determines which cluster all of that tenant's data lives in. Cross-region aggregate reporting (for Super Admin's platform dashboard) is done via a read-only rollup pipeline (aggregated metrics only, not raw candidate/PII data crossing regions) — this keeps GDPR data-residency guarantees structurally true rather than policy-enforced.
 
 ---
 
@@ -761,7 +763,7 @@ Each region (e.g., `eu`, `us`) is a fully independent deployment of the same sta
 
 **Authorization**
 - RBAC via the `roles`/`permissions`/`role_permissions` tables from the schema — every API route declares required permission(s), checked centrally in a NestJS guard, not scattered through business logic
-- Tenant isolation enforced at **two layers**: application-layer (every query scoped by `organization_id` from the authenticated context, never from client input) and database-layer (Postgres RLS as the backstop if application logic ever has a bug) — defense in depth on the single most damaging failure mode for a multi-tenant platform (cross-tenant data leakage)
+- Tenant isolation enforced at **two layers**: application-layer (every query scoped by `organization_id` from the authenticated context, never from client input) and database-layer (SQL Server RLS Security Policy as the backstop if application logic ever has a bug) — defense in depth on the single most damaging failure mode for a multi-tenant platform (cross-tenant data leakage)
 
 **Data protection**
 - Encryption in transit: TLS 1.2+ everywhere, HSTS enforced
@@ -846,7 +848,7 @@ Each region (e.g., `eu`, `us`) is a fully independent deployment of the same sta
 Phased so each milestone ships something demonstrably usable, in an order that de-risks the hardest architectural bets (multi-tenancy, scale, proctoring integration) early rather than last.
 
 ### Phase 0 — Foundation (P0)
-**Features:** Repo/infra scaffolding, Postgres schema + RLS multi-tenancy, org/user auth (email+password, JWT), basic RBAC, CI/CD pipeline, Terraform base infra (one region)
+**Features:** Repo/infra scaffolding, SQL Server schema + RLS multi-tenancy, org/user auth (email+password, JWT), basic RBAC, CI/CD pipeline, Terraform base infra (one region)
 **Effort:** ~3-4 weeks
 **Dependencies:** None
 **Deliverable:** An empty but real multi-tenant skeleton — can create an org, create a staff user, log in, nothing exam-related yet
