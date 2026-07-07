@@ -27,6 +27,8 @@ export class ExamsService {
           organizationId: context.organizationId as string,
           title: dto.title,
           instructions: dto.instructions,
+          durationMinutes: dto.durationMinutes,
+          passCriteriaPercent: dto.passCriteriaPercent,
           createdBy: userId,
         },
       }),
@@ -76,7 +78,12 @@ export class ExamsService {
       }
       return tx.exam.update({
         where: { id },
-        data: { title: dto.title, instructions: dto.instructions },
+        data: {
+          title: dto.title,
+          instructions: dto.instructions,
+          ...(dto.durationMinutes !== undefined ? { durationMinutes: dto.durationMinutes } : {}),
+          ...(dto.passCriteriaPercent !== undefined ? { passCriteriaPercent: dto.passCriteriaPercent } : {}),
+        },
       });
     });
   }

@@ -112,6 +112,7 @@ model Question {
   createdAt      DateTime              @default(now()) @map("created_at")
   options        QuestionOption[]
   examLinks      ExamSectionQuestion[]
+  answers        Answer[]
 
   @@index([organizationId, topic, difficulty])
   @@map("questions")
@@ -130,15 +131,17 @@ model QuestionOption {
 }
 
 model Exam {
-  id             String        @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String        @map("organization_id") @db.UniqueIdentifier
-  title          String
-  instructions   String?       @db.NVarChar(Max)
-  status         String        @default("draft")
-  createdBy      String        @map("created_by") @db.UniqueIdentifier
-  createdAt      DateTime      @default(now()) @map("created_at")
-  sections       ExamSection[]
-  invitations    Invitation[]
+  id                  String        @id @default(uuid()) @db.UniqueIdentifier
+  organizationId      String        @map("organization_id") @db.UniqueIdentifier
+  title               String
+  instructions        String?       @db.NVarChar(Max)
+  status              String        @default("draft")
+  durationMinutes     Int           @default(60) @map("duration_minutes")
+  passCriteriaPercent Int           @default(40) @map("pass_criteria_percent")
+  createdBy           String        @map("created_by") @db.UniqueIdentifier
+  createdAt           DateTime      @default(now()) @map("created_at")
+  sections            ExamSection[]
+  invitations         Invitation[]
 
   @@index([organizationId, status])
   @@map("exams")
@@ -181,17 +184,19 @@ model Candidate {
 }
 
 model Invitation {
-  id            String         @id @default(uuid()) @db.UniqueIdentifier
-  examId        String         @map("exam_id") @db.UniqueIdentifier
-  candidateId   String         @map("candidate_id") @db.UniqueIdentifier
-  token         String         @unique
-  status        String         @default("invited")
-  invitedAt     DateTime       @default(now()) @map("invited_at")
-  expiresAt     DateTime       @map("expires_at")
-  revokedAt     DateTime?      @map("revoked_at")
-  exam          Exam           @relation(fields: [examId], references: [id], onDelete: Cascade)
-  candidate     Candidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  notifications Notification[]
+  id                     String                  @id @default(uuid()) @db.UniqueIdentifier
+  examId                 String                  @map("exam_id") @db.UniqueIdentifier
+  candidateId            String                  @map("candidate_id") @db.UniqueIdentifier
+  token                  String                  @unique
+  status                 String                  @default("invited")
+  invitedAt              DateTime                @default(now()) @map("invited_at")
+  expiresAt              DateTime                @map("expires_at")
+  revokedAt              DateTime?               @map("revoked_at")
+  exam                   Exam                    @relation(fields: [examId], references: [id], onDelete: Cascade)
+  candidate              Candidate               @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  notifications          Notification[]
+  attempt                Attempt?
+  candidateRefreshTokens CandidateRefreshToken[]
 
   @@index([examId, status])
   @@map("invitations")
@@ -208,4 +213,64 @@ model Notification {
 
   @@index([invitationId])
   @@map("notifications")
+}
+
+model Attempt {
+  id                String     @id @default(uuid()) @db.UniqueIdentifier
+  invitationId      String     @unique @map("invitation_id") @db.UniqueIdentifier
+  candidateId       String     @map("candidate_id") @db.UniqueIdentifier
+  examId            String     @map("exam_id") @db.UniqueIdentifier
+  status            String     @default("in_progress")
+  questionOrderJson String     @map("question_order_json") @db.NVarChar(Max)
+  startedAt         DateTime   @default(now()) @map("started_at")
+  submittedAt       DateTime?  @map("submitted_at")
+  invitation        Invitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  answers           Answer[]
+  result            Result?
+
+  @@index([examId, status])
+  @@map("attempts")
+}
+
+model Answer {
+  id                    String   @id @default(uuid()) @db.UniqueIdentifier
+  attemptId             String   @map("attempt_id") @db.UniqueIdentifier
+  questionId            String   @map("question_id") @db.UniqueIdentifier
+  selectedOptionIdsJson String   @map("selected_option_ids_json") @db.NVarChar(Max)
+  isMarkedForReview     Boolean  @default(false) @map("is_marked_for_review")
+  answeredAt            DateTime @default(now()) @map("answered_at")
+  isCorrect             Boolean? @map("is_correct")
+  marksAwarded          Int?     @map("marks_awarded")
+  attempt               Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question              Question @relation(fields: [questionId], references: [id])
+
+  @@unique([attemptId, questionId])
+  @@map("answers")
+}
+
+model Result {
+  id         String   @id @default(uuid()) @db.UniqueIdentifier
+  attemptId  String   @unique @map("attempt_id") @db.UniqueIdentifier
+  score      Int
+  maxScore   Int      @map("max_score")
+  percentage Float
+  passFail   String   @map("pass_fail")
+  computedAt DateTime @default(now()) @map("computed_at")
+  attempt    Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@map("results")
+}
+
+model CandidateRefreshToken {
+  id           String     @id @default(uuid()) @db.UniqueIdentifier
+  invitationId String     @map("invitation_id") @db.UniqueIdentifier
+  tokenHash    String     @map("token_hash")
+  familyId     String     @map("family_id")
+  expiresAt    DateTime   @map("expires_at")
+  revokedAt    DateTime?  @map("revoked_at")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  invitation   Invitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+
+  @@index([invitationId])
+  @@map("candidate_refresh_tokens")
 }

@@ -26,6 +26,42 @@ describe('ExamsService', () => {
     expect(tenantPrisma.forTenant).toHaveBeenCalledWith(context, expect.any(Function));
   });
 
+  it('passes durationMinutes and passCriteriaPercent through to the created exam when provided', async () => {
+    const tx = { exam: { create: jest.fn().mockResolvedValue({ id: 'exam-1' }) } };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.create(context, 'user-1', { title: 'Backend Round', durationMinutes: 45, passCriteriaPercent: 60 });
+
+    expect(tx.exam.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: 'org-1',
+        title: 'Backend Round',
+        instructions: undefined,
+        durationMinutes: 45,
+        passCriteriaPercent: 60,
+        createdBy: 'user-1',
+      },
+    });
+  });
+
+  it('lets the database default apply to durationMinutes/passCriteriaPercent when omitted', async () => {
+    const tx = { exam: { create: jest.fn().mockResolvedValue({ id: 'exam-1' }) } };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.create(context, 'user-1', { title: 'Backend Round' });
+
+    expect(tx.exam.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: 'org-1',
+        title: 'Backend Round',
+        instructions: undefined,
+        durationMinutes: undefined,
+        passCriteriaPercent: undefined,
+        createdBy: 'user-1',
+      },
+    });
+  });
+
   it("lists exams scoped to the caller's organization, excluding archived by default", async () => {
     const tx = { exam: { findMany: jest.fn().mockResolvedValue([{ id: 'exam-1', status: 'draft' }]) } };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
