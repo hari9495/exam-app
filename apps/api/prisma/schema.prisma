@@ -98,19 +98,20 @@ model AuditLog {
 }
 
 model Question {
-  id             String           @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String           @map("organization_id") @db.UniqueIdentifier
+  id             String                @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String                @map("organization_id") @db.UniqueIdentifier
   type           String
-  text           String           @db.NVarChar(Max)
+  text           String                @db.NVarChar(Max)
   topic          String?
   category       String?
   difficulty     String
   marks          Int
-  negativeMarks  Int              @default(0) @map("negative_marks")
-  status         String           @default("active")
-  createdBy      String           @map("created_by") @db.UniqueIdentifier
-  createdAt      DateTime         @default(now()) @map("created_at")
+  negativeMarks  Int                   @default(0) @map("negative_marks")
+  status         String                @default("active")
+  createdBy      String                @map("created_by") @db.UniqueIdentifier
+  createdAt      DateTime              @default(now()) @map("created_at")
   options        QuestionOption[]
+  examLinks      ExamSectionQuestion[]
 
   @@index([organizationId, topic, difficulty])
   @@map("questions")
@@ -126,4 +127,41 @@ model QuestionOption {
 
   @@index([questionId])
   @@map("question_options")
+}
+
+model Exam {
+  id             String        @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String        @map("organization_id") @db.UniqueIdentifier
+  title          String
+  instructions   String?       @db.NVarChar(Max)
+  status         String        @default("active")
+  createdBy      String        @map("created_by") @db.UniqueIdentifier
+  createdAt      DateTime      @default(now()) @map("created_at")
+  sections       ExamSection[]
+
+  @@index([organizationId, status])
+  @@map("exams")
+}
+
+model ExamSection {
+  id         String                @id @default(uuid()) @db.UniqueIdentifier
+  examId     String                @map("exam_id") @db.UniqueIdentifier
+  title      String
+  orderIndex Int                   @map("order_index")
+  exam       Exam                  @relation(fields: [examId], references: [id], onDelete: Cascade)
+  questions  ExamSectionQuestion[]
+
+  @@index([examId])
+  @@map("exam_sections")
+}
+
+model ExamSectionQuestion {
+  sectionId  String      @map("section_id") @db.UniqueIdentifier
+  questionId String      @map("question_id") @db.UniqueIdentifier
+  orderIndex Int         @map("order_index")
+  section    ExamSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  question   Question    @relation(fields: [questionId], references: [id])
+
+  @@id([sectionId, questionId])
+  @@map("exam_section_questions")
 }
