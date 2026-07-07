@@ -2,7 +2,7 @@
 
 **Purpose of this file:** if you are a new Claude session (or a different account/machine) picking this project up, read this file first. It tells you what this project is, exactly what has been built so far, every decision and deviation made along the way, where the detailed docs live, and what to do next. After reading this, you should be able to continue the work without re-deriving anything from scratch.
 
-**Last updated:** 2026-07-07, after Phase 0 was completed, merged to `main`, and closed out in Azure DevOps.
+**Last updated:** 2026-07-07, after Phase 1a (Question Bank) was completed, committed to `main`, and closed out in Azure DevOps.
 
 ---
 
@@ -20,9 +20,11 @@ Key facts from that spec worth knowing immediately:
 
 ---
 
-## 2. Current Status: Phase 0 Complete and Merged
+## 2. Current Status: Phase 0 + Phase 1a Complete
 
-**Phase 0 ("Foundation / App Skeleton")** is done, reviewed, merged to `main` (commit `dcc4248`), and fully closed out in Azure DevOps. This is the ONLY phase built so far — no exam/question/candidate features exist yet.
+**Phase 0 ("Foundation / App Skeleton")** is done, reviewed, merged to `main` (commit `dcc4248`), and fully closed out in Azure DevOps.
+
+**Phase 1a ("Question Bank")** — the first sub-phase of the decomposed Phase 1 (Core Exam MVP) — is also done, reviewed, committed to `main` (commits `15b6fb0`..`14ba842`, see Section 5a), and fully closed out in Azure DevOps. No exam-taking/candidate-facing features exist yet — Phase 1a is backend-only CRUD for the question bank that Phase 1b (exam assembly) will build on.
 
 **What Phase 0 actually delivers:** a working multi-tenant backend + minimal frontend where:
 1. A Super Admin can create a client organization.
@@ -31,11 +33,19 @@ Key facts from that spec worth knowing immediately:
 4. Every sensitive action is restricted by role-based permissions (RBAC) and recorded in an audit trail.
 5. All of this is provably tenant-isolated — one company's data can never leak into another's view — enforced at the database level, not just in application code.
 
-**Full implementation plan with every task, every deviation, and every piece of code:**
+**What Phase 1a additionally delivers:** a Recruiter can create, list, view, update, and archive MCQ questions (single-correct, multiple-correct, true/false) in their organization's question bank via a tested HTTP API, with:
+1. A new `Question`/`QuestionOption` schema, tenant-isolated by the same SQL Server Row-Level Security mechanism Phase 0 established (extended to a new table, not a new mechanism).
+2. Type-specific validation (option counts, correct-answer counts, marks/negativeMarks bounds) enforced before any database write.
+3. Access gated by a new `question_bank:manage` permission, granted only to the `recruiter` role.
+4. Soft-delete only (archive) — no hard `DELETE` on questions.
+5. Full automated coverage: unit tests per layer + one e2e suite proving the full HTTP flow, tenant isolation, and RBAC denial together against a real server and real database.
 
-**`docs/superpowers/plans/2026-07-07-phase-0-foundation.md`** — read this for full technical detail on exactly how each piece was built, including every deviation from the original plan (search for "Deviation" in that file) and why.
+**Full implementation plans with every task, every deviation, and every piece of code:**
 
-**Verification:** 13 unit tests + 6 e2e tests passing on `main`. The full login → dashboard flow was verified in a real browser (not just automated tests) against the real backend and real SQL Server database.
+- **`docs/superpowers/plans/2026-07-07-phase-0-foundation.md`** — Phase 0, full technical detail (search for "Deviation" for what changed from the original plan and why).
+- **`docs/superpowers/plans/2026-07-07-phase-1a-question-bank.md`** — Phase 1a, same level of detail. Design spec: `docs/superpowers/specs/2026-07-07-phase-1a-question-bank-design.md`.
+
+**Verification:** Phase 0: 13 unit tests + 6 e2e tests. Phase 1a: 32 unit tests + 11 e2e tests (cumulative totals on `main` as of Phase 1a's close — includes Phase 0's suites, no regressions). The full Phase 0 login → dashboard flow was verified in a real browser; Phase 1a is backend-only, verified via its e2e suite against the real backend and real SQL Server database (no frontend UI built for it in this sub-phase).
 
 ---
 
@@ -70,6 +80,8 @@ These are specific to how this project's dev environment actually ended up confi
 - **JWT auth:** access tokens 15 min TTL, refresh tokens 30 days with rotation + reuse detection (using a used-up refresh token revokes the entire token family). Frontend keeps the access token only in React state (never `localStorage`), refresh token in an httpOnly cookie.
 - **RBAC:** a `@RequirePermissions(...)` decorator + `PermissionsGuard` checks the caller's role against a data-driven `role_permissions` table (seeded in `seed.ts`) — not hardcoded logic.
 - **Audit logging:** insert-only (`AuditService`, no update/delete method exists), records `login.success` and `user.created` events.
+- **`created_at` defaults must use `GETUTCDATE()`, never `CURRENT_TIMESTAMP`/`GETDATE()`.** `CURRENT_TIMESTAMP` in SQL Server is OS-local time, not UTC — using it silently breaks cross-table timestamp comparisons on any host whose OS clock isn't UTC. This exact bug was introduced twice: once in Phase 1a's own new migration, and once (discovered while fixing the first) as a pre-existing regression in Phase 0's `20260707110003_uuid_columns` migration, affecting `audit_logs`, `organizations`, `plans`, `refresh_tokens`, and `users`. Both are fixed on `main` now (see Section 5a), but the underlying lesson is: **any future migration that drops and re-adds a `created_at` default constraint (e.g. as a side effect of an `ALTER COLUMN`) must re-add it with `GETUTCDATE()`, and always via a NEW migration file — never by editing an already-applied migration's SQL text in place** (a second lesson from the same incident: editing applied migrations breaks checksum integrity for any environment that already ran them; always add a corrective migration instead, even to fix a migration written earlier in the same session).
+- **`Question.organizationId` is non-nullable, unlike `User.organizationId` (nullable).** `TenantContext.organizationId` is typed `string | null` codebase-wide (to support super-admin cross-tenant calls with no single org). `QuestionsService` therefore casts it `as string` at every Prisma call site — verified safe because RLS enforcement happens independently via `forTenant`'s session context, not via this cast, and `question_bank:manage` is only ever granted to org-scoped roles (`recruiter`), never `super_admin`. If a future permission grant gives `super_admin` (or any org-less role) access to `QuestionsService`, this cast would silently pass `null` into a `NOT NULL` column path — worth a guard at that point, not before.
 
 ---
 
@@ -91,6 +103,23 @@ Each task below has full commit history, review findings, and fixes documented a
 12. **E2E smoke test + README** — proves the whole Phase 0 flow end-to-end. Found and fixed the connection-pooling leak a 3rd time (in test cleanup logic, in two separate test files) — this time root-caused properly with before/after row-count verification across two consecutive test runs.
 
 **Final whole-branch review** (after all 12 tasks): independently swept the entire codebase for a 4th instance of the connection-pooling bug (none found), fixed 2 real issues before merge — a broken setup instruction in the README (`migrate dev` instead of `migrate deploy`) and missing database indexes on the auth hot path (`refresh_tokens.user_id`, `role_permissions.permission_id`) — plus 3 small cleanup items (dead code, Node version pin).
+
+---
+
+## 5a. Task-by-Task Summary (all 6 Phase 1a tasks)
+
+Built with `superpowers:subagent-driven-development`, directly on `main` (no feature branch — matches Phase 0's precedent; user explicitly confirmed this at the start of the session). Every task got a fresh implementer subagent + an independent task-scoped reviewer subagent; full commit history and review findings are in the ADO Task comments (Section 6) and in `docs/superpowers/plans/2026-07-07-phase-1a-question-bank.md`.
+
+1. **Prisma schema + migration for `Question`/`QuestionOption`** (commit `15b6fb0`) — Approved on 2nd review pass. 1st pass caught an Important issue: the hand-written migration used `CURRENT_TIMESTAMP` instead of the codebase convention `GETUTCDATE()` for `created_at`. Fixed via a follow-up migration (`5dac260`) — see the `GETUTCDATE()` lesson in Section 4.
+2. **Row-Level Security on `questions`** (commit `bdd9102`) — Approved, no fix round. Extended the existing `TenantAccessPolicy`, no new policy/function. 2 isolation tests + full e2e regression check, all green.
+3. **Question payload validation logic** (commit `99f732a`) — Approved, no fix round. Pure function, 13/13 unit tests, no DB dependency.
+4. **`QuestionsService`** (commit `e6a51a3`) — Approved, no fix round. One reviewed-and-verified-sound deviation from the plan's literal code: 4 additional `context.organizationId as string` casts, required because `Question.organizationId` is non-nullable unlike `User.organizationId` (see Section 4).
+5. **`QuestionsController`, RBAC wiring, seed permission** (commit `e3edc2f`) — Approved, no fix round. New `question_bank:manage` permission granted to `recruiter`; full suite + `nest build` clean; `prisma db seed` re-run idempotently against the already-seeded DB.
+6. **End-to-end test: full CRUD, tenant isolation, RBAC denial** (commit `b8759fb`) — Approved, no fix round. Two sound toolchain-fix deviations from the brief's literal code (supertest default import; added a missing `refreshToken.deleteMany` cleanup step before deleting users in `afterAll`, mirroring the exact fix Phase 0 already applied in `auth-flow.e2e-spec.ts` at commit `be27e6d`), both verified against that precedent file.
+
+**Out-of-plan bug fixes done alongside** (found while fixing Task 1's review, not part of the 6 tasks): the same `CURRENT_TIMESTAMP`-vs-`GETUTCDATE()` bug was found pre-existing on 5 already-live Phase 0 tables (`audit_logs`, `organizations`, `plans`, `refresh_tokens`, `users`), reintroduced by Phase 0's own `20260707110003_uuid_columns` migration and never caught in Phase 0's review. Fixed via a new corrective migration (`93ea82e`), independently reviewed and approved. Logged as a comment on the Phase 0 Epic (#5745) for traceability.
+
+**Final whole-branch review** (after all 6 tasks, dispatched on the most capable model): verdict "Ready to merge, with fixes." No correctness bugs in the feature itself — tenant isolation, RBAC, and the check-then-mutate `forTenant` pattern all hold consistently across all 6 tasks combined, re-verified with fresh eyes on the whole diff. One Important, cross-task-only-visible finding: the two `GETUTCDATE()` bug-fix commits above (`5dac260`, `93ea82e`) had each edited an *already-applied* migration file's SQL text in place, in addition to adding a proper corrective migration — a checksum-drift risk for any future environment that already ran the pre-edit version. Fixed per user's choice: commit `0046319` reverted both in-place edits back to their originally-applied text, keeping the corrective migrations (`130001`/`130002`) as the sole fix mechanism. Verified clean (`migrate status`, live DB column defaults, full suite) after the revert. Minor, non-blocking notes recorded in the plan doc: `list()` returns a bare array despite advertising cursor pagination (fine for MVP); `POST /:id/archive` returns `201` (internally consistent, just a semantic nit); one corrective migration lacks the transaction wrapper its sibling has.
 
 ---
 
@@ -123,6 +152,24 @@ All work items are Closed. Structure:
 
 Every item's **Description** field has full what/why/acceptance-criteria (User Stories) or what/why/definition-of-done (Tasks). Every item's **Discussion/Comments** has the real engineering narrative: what was built, what review found, what was fixed, and why — not just "Closed" with no trace. Read the comments for the full story on any specific piece.
 
+**Phase 1a (Question Bank)** — same organization/project. All items Closed (one duplicate, #5767, created by an accidental double-invocation while setting this up — marked Removed, not deleted, since the API's delete lacked permission; #5766 is the real Epic):
+
+| ID | Type | Title | Parent |
+|---|---|---|---|
+| 5766 | Epic | Phase 1a - Question Bank | — |
+| 5768 | User Story | Recruiter's question bank data is stored with tenant-isolated schema | 5766 |
+| 5772 | Task | Prisma schema and migration for Question/QuestionOption | 5768 |
+| 5773 | Task | Row-Level Security on the questions table | 5768 |
+| 5769 | User Story | Recruiter's question submissions are validated by question type | 5766 |
+| 5774 | Task | Question payload validation logic | 5769 |
+| 5775 | Task | QuestionsService: tenant-scoped CRUD | 5769 |
+| 5770 | User Story | Recruiter can manage the question bank through a secure API | 5766 |
+| 5776 | Task | QuestionsController, RBAC wiring, and seed permission | 5770 |
+| 5771 | User Story | Question bank CRUD flow is proven end-to-end before Phase 1b builds on it | 5766 |
+| 5777 | Task | End-to-end test: full CRUD flow, tenant isolation, RBAC denial | 5771 |
+
+Same Description/Discussion completeness standard as Phase 0. Note: unlike Phase 0, the 4 User Stories here were initially closed with a bare state change and no narrative comment — caught and fixed after the fact (each got its closing-summary comment added referencing its child Task(s) and outcome). **If you create ADO items for a future phase, add the closing narrative comment to User Stories at the same time you close them, not as a follow-up cleanup pass.**
+
 ---
 
 ## 7. Known, Deliberately Deferred Items (not bugs — documented tradeoffs)
@@ -131,6 +178,7 @@ Every item's **Description** field has full what/why/acceptance-criteria (User S
 - **Auditor/Compliance read-only role** — mentioned in the original design spec, explicitly deferred to keep Phase 0 scope tight.
 - **Candidate-facing result release toggle, certificates, SSO, 2FA, OTP login** — all future-phase features per the design spec, not built yet.
 - A handful of Minor code-quality notes (non-atomic refresh-token rotation, no standalone index on `users.email`, TOCTOU race in org slug-uniqueness check, etc.) — all reviewed, judged low-risk, and recorded in `.superpowers/sdd/progress.md`-style detail inside the plan doc and ADO comments. None block Phase 1.
+- **Phase 1a scope, deliberately deferred per its design spec:** rich text/images/math equations in question content, bulk import/export, AI-assisted question generation, a reusable tag system. No frontend UI was built for the question bank (backend-only sub-phase, same as most of Phase 0). `list()` returns a bare array rather than a `{ data, nextCursor }` envelope despite supporting cursor pagination server-side — acceptable for MVP, a client can still paginate via the last row's `id`, but worth revisiting if a real frontend consumes this API.
 
 ---
 
@@ -138,7 +186,8 @@ Every item's **Description** field has full what/why/acceptance-criteria (User S
 
 1. **Read this file first** (you just did).
 2. For product/feature questions → read `docs/superpowers/specs/2026-07-07-online-mcq-exam-platform-design.md`.
-3. For "how was X actually built" → read `docs/superpowers/plans/2026-07-07-phase-0-foundation.md` (search for the relevant Task number).
+3. For "how was X actually built" → read `docs/superpowers/plans/2026-07-07-phase-0-foundation.md` (Phase 0) or `docs/superpowers/plans/2026-07-07-phase-1a-question-bank.md` (Phase 1a), searching for the relevant Task number.
 4. To run the app locally → follow `README.md` at repo root.
-5. **Before starting Phase 1** (or any new work): this project follows a structured process — brainstorm/design first (superpowers:brainstorming), write an implementation plan (superpowers:writing-plans), then execute task-by-task with a fresh subagent per task + independent review + fix loops (superpowers:subagent-driven-development), working in an isolated git worktree, never directly on `main`. Azure DevOps work items should be created for the new phase (Epic → User Stories → Tasks) mirroring the Phase 0 structure, and kept updated with real engineering narrative as work progresses — not just state changes with no comment.
-6. **Remember the #1 lesson from Phase 0** (Section 4): any new code touching `users` or `audit_logs` (or any future RLS-protected table) MUST go through `TenantPrismaService.forTenant()`, and any code that needs a session-context bypass must keep the context-setting call and the dependent query inside the same `forTenant`/`$transaction` call.
+5. **Before starting Phase 1b** (exam assembly — next up per the roadmap) or any new work: this project follows a structured process — brainstorm/design first (`superpowers:brainstorming`), write an implementation plan (`superpowers:writing-plans`), then execute task-by-task with a fresh subagent per task + independent review + fix loops (`superpowers:subagent-driven-development`). **Note the actual precedent set by both phases so far: work happens directly on `main`, not an isolated worktree/feature branch** — this deviates from the skill's own stated default, but matches how this specific project has always been run; confirm with the user if picking this up in a context where that might have changed. Azure DevOps work items should be created for the new phase (Epic → User Stories → Tasks) mirroring the Phase 0/1a structure, and kept updated with real engineering narrative **on every item, including User Stories** as work progresses — Phase 1a initially missed narrative comments on its User Stories and had to backfill them (Section 6).
+6. **Remember the #1 lesson from Phase 0** (Section 4): any new code touching `users` or `audit_logs` (or any future RLS-protected table, e.g. `questions` as of Phase 1a) MUST go through `TenantPrismaService.forTenant()`, and any code that needs a session-context bypass must keep the context-setting call and the dependent query inside the same `forTenant`/`$transaction` call.
+7. **Remember the Phase 1a lesson** (Section 4): any `created_at`-style default must use `GETUTCDATE()`, and any migration fix must be a NEW migration — never edit an already-applied migration file's SQL text in place, even within the same session that wrote it.
