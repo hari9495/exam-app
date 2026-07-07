@@ -8,7 +8,7 @@ generator client {
 }
 
 model Plan {
-  id                     String         @id @default(uuid())
+  id                     String         @id @default(uuid()) @db.UniqueIdentifier
   name                   String
   candidateLimit         Int            @map("candidate_limit")
   aiCreditLimit          Int            @map("ai_credit_limit")
@@ -20,12 +20,12 @@ model Plan {
 }
 
 model Organization {
-  id        String     @id @default(uuid())
+  id        String     @id @default(uuid()) @db.UniqueIdentifier
   name      String
   slug      String     @unique
   region    String     @default("us")
   status    String     @default("active")
-  planId    String     @map("plan_id")
+  planId    String     @map("plan_id") @db.UniqueIdentifier
   plan      Plan       @relation(fields: [planId], references: [id])
   createdAt DateTime   @default(now()) @map("created_at")
   users     User[]
@@ -35,8 +35,8 @@ model Organization {
 }
 
 model User {
-  id             String         @id @default(uuid())
-  organizationId String?        @map("organization_id")
+  id             String         @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String?        @map("organization_id") @db.UniqueIdentifier
   organization   Organization?  @relation(fields: [organizationId], references: [id])
   email          String
   passwordHash   String         @map("password_hash")
@@ -51,7 +51,7 @@ model User {
 }
 
 model Permission {
-  id              String           @id @default(uuid())
+  id              String           @id @default(uuid()) @db.UniqueIdentifier
   key             String           @unique
   description     String
   rolePermissions RolePermission[]
@@ -61,7 +61,7 @@ model Permission {
 
 model RolePermission {
   role         String
-  permissionId String     @map("permission_id")
+  permissionId String     @map("permission_id") @db.UniqueIdentifier
   permission   Permission @relation(fields: [permissionId], references: [id])
 
   @@id([role, permissionId])
@@ -69,8 +69,8 @@ model RolePermission {
 }
 
 model RefreshToken {
-  id        String    @id @default(uuid())
-  userId    String    @map("user_id")
+  id        String    @id @default(uuid()) @db.UniqueIdentifier
+  userId    String    @map("user_id") @db.UniqueIdentifier
   user      User      @relation(fields: [userId], references: [id])
   tokenHash String    @map("token_hash")
   familyId  String    @map("family_id")
@@ -82,10 +82,10 @@ model RefreshToken {
 }
 
 model AuditLog {
-  id             String        @id @default(uuid())
-  organizationId String?       @map("organization_id")
+  id             String        @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String?       @map("organization_id") @db.UniqueIdentifier
   organization   Organization? @relation(fields: [organizationId], references: [id])
-  actorUserId    String?       @map("actor_user_id")
+  actorUserId    String?       @map("actor_user_id") @db.UniqueIdentifier
   action         String
   entityType     String        @map("entity_type")
   entityId       String?       @map("entity_id")
