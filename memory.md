@@ -2,7 +2,7 @@
 
 **Purpose of this file:** if you are a new Claude session (or a different account/machine) picking this project up, read this file first. It tells you what this project is, exactly what has been built so far, every decision and deviation made along the way, where the detailed docs live, and what to do next. After reading this, you should be able to continue the work without re-deriving anything from scratch.
 
-**Last updated:** 2026-07-07, after Phase 1a (Question Bank) was completed, committed to `main`, and closed out in Azure DevOps.
+**Last updated:** 2026-07-07, after Phase 1b (Exam Builder) was completed, committed to `main`, and closed out in Azure DevOps.
 
 ---
 
@@ -20,11 +20,13 @@ Key facts from that spec worth knowing immediately:
 
 ---
 
-## 2. Current Status: Phase 0 + Phase 1a Complete
+## 2. Current Status: Phase 0 + Phase 1a + Phase 1b Complete
 
 **Phase 0 ("Foundation / App Skeleton")** is done, reviewed, merged to `main` (commit `dcc4248`), and fully closed out in Azure DevOps.
 
-**Phase 1a ("Question Bank")** — the first sub-phase of the decomposed Phase 1 (Core Exam MVP) — is also done, reviewed, committed to `main` (commits `15b6fb0`..`14ba842`, see Section 5a), and fully closed out in Azure DevOps. No exam-taking/candidate-facing features exist yet — Phase 1a is backend-only CRUD for the question bank that Phase 1b (exam assembly) will build on.
+**Phase 1a ("Question Bank")** — the first sub-phase of the decomposed Phase 1 (Core Exam MVP) — is also done, reviewed, committed to `main` (commits `15b6fb0`..`14ba842`, see Section 5a), and fully closed out in Azure DevOps.
+
+**Phase 1b ("Exam Builder")** — the second sub-phase — is also done, reviewed, committed to `main` (commits `2d63b29`..`05e288a`, see Section 5b), and fully closed out in Azure DevOps. No exam-taking/candidate-facing features exist yet — Phase 1b lets a Recruiter assemble an exam from Phase 1a's question bank; Phase 1c (candidates & invitations) is next.
 
 **What Phase 0 actually delivers:** a working multi-tenant backend + minimal frontend where:
 1. A Super Admin can create a client organization.
@@ -40,12 +42,20 @@ Key facts from that spec worth knowing immediately:
 4. Soft-delete only (archive) — no hard `DELETE` on questions.
 5. Full automated coverage: unit tests per layer + one e2e suite proving the full HTTP flow, tenant isolation, and RBAC denial together against a real server and real database.
 
+**What Phase 1b additionally delivers:** a Recruiter can create an exam, organize it into sections, and assign questions to each section — either a fixed ordered list of specific questions, or a random-pool rule (draw N questions matching a topic/difficulty at exam time) — via a tested HTTP API, with:
+1. A new `Exam`/`ExamSection`/`ExamSectionQuestion` schema, tenant-isolated by the same RLS mechanism (extended to `exams` only — `exam_sections`/`exam_section_questions` have no RLS of their own, ownership is checked in the service layer via the parent exam's `organization_id`, same pattern as `question_options` having no RLS of its own).
+2. Section-question replacement validation: no duplicate question IDs within a section, and a section can retain an already-archived question (so archiving a question never silently breaks an exam that already references it) but cannot newly add an archived question to a section.
+3. Access gated by a new `exam:manage` permission, granted only to the `recruiter` role.
+4. Bulk-replace semantics for a section's question list (PUT-style full replace, not incremental add/remove) — mirrors Phase 1a's "update replaces the whole set" simplification.
+5. Full automated coverage: unit tests per layer + one e2e suite proving the full build flow (create exam → add sections → assign questions, both fixed and pool modes), tenant isolation, and RBAC denial together.
+
 **Full implementation plans with every task, every deviation, and every piece of code:**
 
 - **`docs/superpowers/plans/2026-07-07-phase-0-foundation.md`** — Phase 0, full technical detail (search for "Deviation" for what changed from the original plan and why).
 - **`docs/superpowers/plans/2026-07-07-phase-1a-question-bank.md`** — Phase 1a, same level of detail. Design spec: `docs/superpowers/specs/2026-07-07-phase-1a-question-bank-design.md`.
+- **`docs/superpowers/plans/2026-07-07-phase-1b-exam-builder.md`** — Phase 1b, same level of detail. Design spec: `docs/superpowers/specs/2026-07-07-phase-1b-exam-builder-design.md`.
 
-**Verification:** Phase 0: 13 unit tests + 6 e2e tests. Phase 1a: 32 unit tests + 11 e2e tests (cumulative totals on `main` as of Phase 1a's close — includes Phase 0's suites, no regressions). The full Phase 0 login → dashboard flow was verified in a real browser; Phase 1a is backend-only, verified via its e2e suite against the real backend and real SQL Server database (no frontend UI built for it in this sub-phase).
+**Verification:** Phase 0: 13 unit tests + 6 e2e tests. Phase 1a: 32 unit tests + 11 e2e tests. Phase 1b: 53 unit tests + 15 e2e tests (cumulative totals on `main` as of Phase 1b's close — includes Phase 0/1a's suites, no regressions; independently re-verified green before writing this update). The full Phase 0 login → dashboard flow was verified in a real browser; Phase 1a and 1b are backend-only, verified via e2e suites against the real backend and real SQL Server database (no frontend UI built for either sub-phase yet).
 
 ---
 
@@ -81,7 +91,8 @@ These are specific to how this project's dev environment actually ended up confi
 - **RBAC:** a `@RequirePermissions(...)` decorator + `PermissionsGuard` checks the caller's role against a data-driven `role_permissions` table (seeded in `seed.ts`) — not hardcoded logic.
 - **Audit logging:** insert-only (`AuditService`, no update/delete method exists), records `login.success` and `user.created` events.
 - **`created_at` defaults must use `GETUTCDATE()`, never `CURRENT_TIMESTAMP`/`GETDATE()`.** `CURRENT_TIMESTAMP` in SQL Server is OS-local time, not UTC — using it silently breaks cross-table timestamp comparisons on any host whose OS clock isn't UTC. This exact bug was introduced twice: once in Phase 1a's own new migration, and once (discovered while fixing the first) as a pre-existing regression in Phase 0's `20260707110003_uuid_columns` migration, affecting `audit_logs`, `organizations`, `plans`, `refresh_tokens`, and `users`. Both are fixed on `main` now (see Section 5a), but the underlying lesson is: **any future migration that drops and re-adds a `created_at` default constraint (e.g. as a side effect of an `ALTER COLUMN`) must re-add it with `GETUTCDATE()`, and always via a NEW migration file — never by editing an already-applied migration's SQL text in place** (a second lesson from the same incident: editing applied migrations breaks checksum integrity for any environment that already ran them; always add a corrective migration instead, even to fix a migration written earlier in the same session).
-- **`Question.organizationId` is non-nullable, unlike `User.organizationId` (nullable).** `TenantContext.organizationId` is typed `string | null` codebase-wide (to support super-admin cross-tenant calls with no single org). `QuestionsService` therefore casts it `as string` at every Prisma call site — verified safe because RLS enforcement happens independently via `forTenant`'s session context, not via this cast, and `question_bank:manage` is only ever granted to org-scoped roles (`recruiter`), never `super_admin`. If a future permission grant gives `super_admin` (or any org-less role) access to `QuestionsService`, this cast would silently pass `null` into a `NOT NULL` column path — worth a guard at that point, not before.
+- **`Question.organizationId` is non-nullable, unlike `User.organizationId` (nullable).** `TenantContext.organizationId` is typed `string | null` codebase-wide (to support super-admin cross-tenant calls with no single org). `QuestionsService` therefore casts it `as string` at every Prisma call site — verified safe because RLS enforcement happens independently via `forTenant`'s session context, not via this cast, and `question_bank:manage` is only ever granted to org-scoped roles (`recruiter`), never `super_admin`. If a future permission grant gives `super_admin` (or any org-less role) access to `QuestionsService`, this cast would silently pass `null` into a `NOT NULL` column path — worth a guard at that point, not before. **The same reasoning and the same cast pattern were reused for `ExamsService` in Phase 1b.**
+- **Child tables of an RLS-protected parent don't need their own RLS policy — established with `question_options` (Phase 1a), reused for `exam_sections`/`exam_section_questions` (Phase 1b).** Only `exams` itself has an RLS policy. Ownership of a section or a section-question link is verified in the service layer by checking the parent `exam`'s `organization_id` (which IS RLS-protected) before ever touching the child rows — there's no direct query path that reaches a section/section-question without first resolving through its parent exam. This keeps the RLS surface area to exactly the tables that need it (a query pattern, not a blanket "RLS everything" reflex).
 
 ---
 
@@ -120,6 +131,21 @@ Built with `superpowers:subagent-driven-development`, directly on `main` (no fea
 **Out-of-plan bug fixes done alongside** (found while fixing Task 1's review, not part of the 6 tasks): the same `CURRENT_TIMESTAMP`-vs-`GETUTCDATE()` bug was found pre-existing on 5 already-live Phase 0 tables (`audit_logs`, `organizations`, `plans`, `refresh_tokens`, `users`), reintroduced by Phase 0's own `20260707110003_uuid_columns` migration and never caught in Phase 0's review. Fixed via a new corrective migration (`93ea82e`), independently reviewed and approved. Logged as a comment on the Phase 0 Epic (#5745) for traceability.
 
 **Final whole-branch review** (after all 6 tasks, dispatched on the most capable model): verdict "Ready to merge, with fixes." No correctness bugs in the feature itself — tenant isolation, RBAC, and the check-then-mutate `forTenant` pattern all hold consistently across all 6 tasks combined, re-verified with fresh eyes on the whole diff. One Important, cross-task-only-visible finding: the two `GETUTCDATE()` bug-fix commits above (`5dac260`, `93ea82e`) had each edited an *already-applied* migration file's SQL text in place, in addition to adding a proper corrective migration — a checksum-drift risk for any future environment that already ran the pre-edit version. Fixed per user's choice: commit `0046319` reverted both in-place edits back to their originally-applied text, keeping the corrective migrations (`130001`/`130002`) as the sole fix mechanism. Verified clean (`migrate status`, live DB column defaults, full suite) after the revert. Minor, non-blocking notes recorded in the plan doc: `list()` returns a bare array despite advertising cursor pagination (fine for MVP); `POST /:id/archive` returns `201` (internally consistent, just a semantic nit); one corrective migration lacks the transaction wrapper its sibling has.
+
+---
+
+## 5b. Task-by-Task Summary (all 6 Phase 1b tasks)
+
+Same process as 1a: `superpowers:subagent-driven-development`, directly on `main` (no feature branch — continuing the established precedent). Fresh implementer subagent + independent task-scoped reviewer subagent per task; full commit history and review findings are in the ADO Task comments (Section 6) and in `docs/superpowers/plans/2026-07-07-phase-1b-exam-builder.md`.
+
+1. **Prisma schema + migration for `Exam`/`ExamSection`/`ExamSectionQuestion`** (commit `2d63b29`) — Approved, no fix round. `created_at` correctly used `GETUTCDATE()` from the start this time (Phase 1a's lesson applied proactively).
+2. **Row-Level Security on `exams`** (commit `65b392d`) — Approved, no fix round. Extended the existing `TenantAccessPolicy` to `exams` only (not the child tables — see Section 4's child-table note); independently re-verified live against the database.
+3. **Section-question replace validation logic** (commit `74b6b64`) — Approved, no fix round. Pure function, 7/7 unit tests: rejects duplicate question IDs within a section, allows retaining an already-archived question already assigned to a section, rejects newly adding an archived question.
+4. **`ExamsService`** (commit `0978fa2`) — Approved, no fix round. 14/14 unit tests, 53/53 full suite. All 4 parent-exam-ownership-check constraints (the pattern from Section 4's child-table note) independently verified line-by-line by the reviewer, since `exam_sections`/`exam_section_questions` have no RLS of their own.
+5. **`ExamsController`, RBAC wiring, seed permission** (commit `397b473`) — Approved, no fix round. New `exam:manage` permission granted to `recruiter`; the plan's `DELETE` semantics map to the existing `archive()` soft-delete pattern (verified, not a new hard-delete path); full suite + `nest build` clean.
+6. **End-to-end test: full build flow, tenant isolation, RBAC denial** (commit `05e288a`) — Approved, no fix round. e2e 5/5 suites, 15/15 tests; unit 9/9 suites, 53/53 tests. Proves both directions of the archived-question retention rule (Task 3) end-to-end via real HTTP calls, not just the unit-level validation function. Two minor plan-inherited nits noted (not fixed, logged only): `refreshToken.deleteMany` in this test's `afterAll` isn't wrapped in `.catch()` unlike `question-bank.e2e-spec.ts`'s pattern; a minor `organizationId` vs `null` inconsistency in one `isSuperAdmin` delete call. Neither blocking.
+
+**Final whole-branch review** (after all 6 tasks, most capable model): verdict "Ready to merge, Yes" — no Critical or Important findings. The two minor nits from Task 6 were re-assessed at the whole-branch level and confirmed low-risk, not requiring a fix. Independently re-verified before closing: full suite green (53/53 unit across 9 suites, 15/15 e2e across 5 suites) on `main`.
 
 ---
 
@@ -172,7 +198,26 @@ Every item's **Description** field has full what/why/acceptance-criteria (User S
 
 Same Description/Discussion completeness standard as Phase 0. Note: unlike Phase 0, the 4 User Stories here were initially closed with a bare state change and no narrative comment — caught and fixed after the fact (each got its closing-summary comment added referencing its child Task(s) and outcome). **If you create ADO items for a future phase, add the closing narrative comment to User Stories at the same time you close them, not as a follow-up cleanup pass.**
 
-**⚠️ Two independent ADO hierarchies were created for Phase 1a in parallel, by two separate concurrent sessions working on this repo at the same time (see Section 3/8 note on multi-session risk).** A separate session created **Epic #5764 "Phase 1 - Core Exam MVP"** (the correct overarching Epic for all of Phase 1, sub-phases 1a-1e) with one consolidated child User Story, **#5765 "Recruiter can build and maintain an MCQ question bank"** — 34 minutes before this session created its own Epic #5766. Both described the identical Phase 1a scope. Reconciled after the fact: #5765 closed (superseded, with a comment pointing to #5766's detailed breakdown), #5764 ↔ #5766 linked as Related, #5764 itself left `New`/Active since it correctly tracks all of Phase 1 (only sub-phase 1a — under #5766 — is done; 1b-1e are not started). **#5764 is the canonical Phase 1 Epic going forward. This ADO project's process template supports a `Feature` work item type (confirmed via `az devops invoke --area wit --resource workitemtypes`) that sits between Epic and User Story — for 1b/1c/1d/1e, create each sub-phase as a `Feature` with #5764 as its parent, then User Stories/Tasks under that Feature, instead of a disconnected new Epic like this session accidentally did.** More importantly: **if two Claude Code sessions may be working on this repo concurrently, check for freshly-created ADO items (query by `System.CreatedDate` descending, or just ask the user) before creating a new Epic — this exact collision is easy to avoid with one query.**
+**⚠️ Two independent ADO hierarchies were created for Phase 1a in parallel, by two separate concurrent sessions working on this repo at the same time (see Section 3/8 note on multi-session risk).** A separate session created **Epic #5764 "Phase 1 - Core Exam MVP"** (the correct overarching Epic for all of Phase 1, sub-phases 1a-1e) with one consolidated child User Story, **#5765 "Recruiter can build and maintain an MCQ question bank"** — 34 minutes before this session created its own Epic #5766. Both described the identical Phase 1a scope. Reconciled after the fact: #5765 closed (superseded, with a comment pointing to #5766's detailed breakdown), #5764 ↔ #5766 linked as Related. **#5764 is the canonical Phase 1 Epic going forward** (kept `New` while only 1a was done, since it correctly tracks all of Phase 1, not just one sub-phase).
+
+**Phase 1b (Exam Builder)** — created correctly this time, as a `Feature` work item type under Epic #5764 (the pattern the Phase 1a reconciliation note above recommended), avoiding a repeat of the duplicate-Epic collision:
+
+| ID | Type | Title | Parent |
+|---|---|---|---|
+| 5764 | Epic | Phase 1 - Core Exam MVP (deliberately left `New` — parent for all of Phase 1; only closes once 1c-1e also land) | — |
+| 5778 | Feature | Phase 1b - Exam Builder | 5764 |
+| 5779 | User Story | Exam data is stored with tenant-isolated schema | 5778 |
+| 5783 | Task | Prisma schema and migration for Exam/ExamSection/ExamSectionQuestion | 5779 |
+| 5784 | Task | Row-Level Security on the exams table | 5779 |
+| 5780 | User Story | Recruiter's section-question assignments respect duplicate and archived-question rules | 5778 |
+| 5785 | Task | Section-question replace validation logic | 5780 |
+| 5781 | User Story | Recruiter can build exams and sections through a secure API | 5778 |
+| 5786 | Task | ExamsService: tenant-scoped CRUD and section-question bulk replace | 5781 |
+| 5787 | Task | ExamsController, RBAC wiring, and seed permission | 5781 |
+| 5782 | User Story | Exam build flow is proven end-to-end before Phase 1c builds on it | 5778 |
+| 5788 | Task | End-to-end test: exam build flow, tenant isolation, RBAC denial | 5782 |
+
+All Phase 1b items Closed with full narrative comments from the start (the User-Story-comment-backfill mistake from Phase 1a was not repeated).
 
 ---
 
@@ -183,6 +228,7 @@ Same Description/Discussion completeness standard as Phase 0. Note: unlike Phase
 - **Candidate-facing result release toggle, certificates, SSO, 2FA, OTP login** — all future-phase features per the design spec, not built yet.
 - A handful of Minor code-quality notes (non-atomic refresh-token rotation, no standalone index on `users.email`, TOCTOU race in org slug-uniqueness check, etc.) — all reviewed, judged low-risk, and recorded in `.superpowers/sdd/progress.md`-style detail inside the plan doc and ADO comments. None block Phase 1.
 - **Phase 1a scope, deliberately deferred per its design spec:** rich text/images/math equations in question content, bulk import/export, AI-assisted question generation, a reusable tag system. No frontend UI was built for the question bank (backend-only sub-phase, same as most of Phase 0). `list()` returns a bare array rather than a `{ data, nextCursor }` envelope despite supporting cursor pagination server-side — acceptable for MVP, a client can still paginate via the last row's `id`, but worth revisiting if a real frontend consumes this API.
+- **Phase 1b scope, deliberately deferred per its design spec:** random-pool question selection (`section_pool_criteria` — waits for a dedicated later "Randomization" phase per the roadmap); `duration_minutes`, `pass_criteria_percent`, `negative_marking_default`, `schedule_start`/`schedule_end`, `proctoring_level` (added as small additive migrations only once 1c/1d/Phase 2 actually consume them); publish/draft lifecycle, clone, and preview endpoints (publish specifically waits on 1c's invitations); section reordering and individual attach/detach of a single question (bulk-replace is sufficient with no frontend UI yet to benefit from finer granularity). **Blocking question archival when it's in use by an exam is an explicit product decision, not an oversight** — archiving a question never breaks an exam that already references it. No frontend UI built for exam building yet, same as 1a.
 
 ---
 
@@ -190,8 +236,9 @@ Same Description/Discussion completeness standard as Phase 0. Note: unlike Phase
 
 1. **Read this file first** (you just did).
 2. For product/feature questions → read `docs/superpowers/specs/2026-07-07-online-mcq-exam-platform-design.md`.
-3. For "how was X actually built" → read `docs/superpowers/plans/2026-07-07-phase-0-foundation.md` (Phase 0) or `docs/superpowers/plans/2026-07-07-phase-1a-question-bank.md` (Phase 1a), searching for the relevant Task number.
+3. For "how was X actually built" → read `docs/superpowers/plans/2026-07-07-phase-0-foundation.md` (Phase 0), `docs/superpowers/plans/2026-07-07-phase-1a-question-bank.md` (Phase 1a), or `docs/superpowers/plans/2026-07-07-phase-1b-exam-builder.md` (Phase 1b), searching for the relevant Task number.
 4. To run the app locally → follow `README.md` at repo root.
-5. **Before starting Phase 1b** (exam assembly — next up per the roadmap) or any new work: this project follows a structured process — brainstorm/design first (`superpowers:brainstorming`), write an implementation plan (`superpowers:writing-plans`), then execute task-by-task with a fresh subagent per task + independent review + fix loops (`superpowers:subagent-driven-development`). **Note the actual precedent set by both phases so far: work happens directly on `main`, not an isolated worktree/feature branch** — this deviates from the skill's own stated default, but matches how this specific project has always been run; confirm with the user if picking this up in a context where that might have changed. Azure DevOps work items should be created for the new phase (Epic → User Stories → Tasks) mirroring the Phase 0/1a structure, and kept updated with real engineering narrative **on every item, including User Stories** as work progresses — Phase 1a initially missed narrative comments on its User Stories and had to backfill them (Section 6).
-6. **Remember the #1 lesson from Phase 0** (Section 4): any new code touching `users` or `audit_logs` (or any future RLS-protected table, e.g. `questions` as of Phase 1a) MUST go through `TenantPrismaService.forTenant()`, and any code that needs a session-context bypass must keep the context-setting call and the dependent query inside the same `forTenant`/`$transaction` call.
+5. **Phase 1c (Candidates & Invitations) is next** per the Phase 1 decomposition (Section 6). Before starting it or any new work: this project follows a structured process — brainstorm/design first (`superpowers:brainstorming`), write an implementation plan (`superpowers:writing-plans`), then execute task-by-task with a fresh subagent per task + independent review + fix loops (`superpowers:subagent-driven-development`). **Note the actual precedent set by all phases so far: work happens directly on `main`, not an isolated worktree/feature branch** — this deviates from the skill's own stated default, but matches how this specific project has always been run; confirm with the user if picking this up in a context where that might have changed. Create the new sub-phase as a `Feature` work item under Epic #5764 (not a new Epic — see the Phase 1a duplicate-Epic lesson in Section 6), with User Stories/Tasks under that Feature, and **add the narrative comment to every item — including User Stories — at the same time you close it, not as a follow-up cleanup pass** (Phase 1a's mistake, already fixed once).
+6. **Remember the #1 lesson from Phase 0** (Section 4): any new code touching `users` or `audit_logs` (or any RLS-protected table, e.g. `questions`/`exams` as of Phase 1a/1b) MUST go through `TenantPrismaService.forTenant()`, and any code that needs a session-context bypass must keep the context-setting call and the dependent query inside the same `forTenant`/`$transaction` call.
 7. **Remember the Phase 1a lesson** (Section 4): any `created_at`-style default must use `GETUTCDATE()`, and any migration fix must be a NEW migration — never edit an already-applied migration file's SQL text in place, even within the same session that wrote it.
+8. **Remember the Phase 1b pattern** (Section 4): a child table of an RLS-protected parent (e.g. a future `invitations`-adjacent table under `exams`/`candidates`) doesn't automatically need its own RLS policy — check ownership through the RLS-protected parent in the service layer instead, and only add a new RLS policy to a table that's queried directly without going through a parent first.
