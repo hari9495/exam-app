@@ -85,7 +85,7 @@ export class InvitationsService {
     return { created: createdWithCandidate.map((c) => c.invitation), skipped };
   }
 
-  async list(context: TenantContext, examId: string): Promise<Invitation[]> {
+  async list(context: TenantContext, examId: string): Promise<(Omit<Invitation, 'token'> & { candidate: Candidate })[]> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({ where: { id: examId, organizationId: context.organizationId as string } });
       if (!exam) {
@@ -94,6 +94,7 @@ export class InvitationsService {
       return tx.invitation.findMany({
         where: { examId },
         include: { candidate: true },
+        omit: { token: true },
         orderBy: [{ invitedAt: 'desc' }, { id: 'desc' }],
       });
     });

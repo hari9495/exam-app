@@ -261,8 +261,11 @@ describe('Candidates & Invitations HTTP flow', () => {
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
     expect(listInvitationsResponse.body).toHaveLength(5);
+    listInvitationsResponse.body.forEach((inv: Record<string, unknown>) => expect(inv).not.toHaveProperty('token'));
     const firstInvitation = listInvitationsResponse.body[0];
-    const originalToken = firstInvitation.token;
+    const originalToken = inviteResponse.body.created.find(
+      (inv: { id: string; token: string }) => inv.id === firstInvitation.id,
+    ).token;
 
     const resendResponse = await request(app.getHttpServer())
       .post(`/api/v1/invitations/${firstInvitation.id}/resend`)
