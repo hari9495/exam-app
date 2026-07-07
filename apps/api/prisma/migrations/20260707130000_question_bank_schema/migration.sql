@@ -11,7 +11,7 @@ CREATE TABLE [dbo].[questions] (
     [negative_marks] INT NOT NULL CONSTRAINT [questions_negative_marks_df] DEFAULT 0,
     [status] NVARCHAR(1000) NOT NULL CONSTRAINT [questions_status_df] DEFAULT 'active',
     [created_by] UNIQUEIDENTIFIER NOT NULL,
-    [created_at] DATETIME2 NOT NULL CONSTRAINT [questions_created_at_df] DEFAULT GETUTCDATE(),
+    [created_at] DATETIME2 NOT NULL CONSTRAINT [questions_created_at_df] DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT [questions_pkey] PRIMARY KEY CLUSTERED ([id])
 );
 
