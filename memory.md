@@ -156,7 +156,9 @@ Every item's **Description** field has full what/why/acceptance-criteria (User S
 
 | ID | Type | Title | Parent |
 |---|---|---|---|
-| 5766 | Epic | Phase 1a - Question Bank | — |
+| 5764 | Epic | Phase 1 - Core Exam MVP (canonical parent for all of Phase 1, sub-phases 1a-1e) | — |
+| 5765 | User Story | Recruiter can build and maintain an MCQ question bank (Closed — superseded, see below) | 5764 |
+| 5766 | Epic | Phase 1a - Question Bank (linked Related to #5764) | — |
 | 5768 | User Story | Recruiter's question bank data is stored with tenant-isolated schema | 5766 |
 | 5772 | Task | Prisma schema and migration for Question/QuestionOption | 5768 |
 | 5773 | Task | Row-Level Security on the questions table | 5768 |
@@ -169,6 +171,8 @@ Every item's **Description** field has full what/why/acceptance-criteria (User S
 | 5777 | Task | End-to-end test: full CRUD flow, tenant isolation, RBAC denial | 5771 |
 
 Same Description/Discussion completeness standard as Phase 0. Note: unlike Phase 0, the 4 User Stories here were initially closed with a bare state change and no narrative comment — caught and fixed after the fact (each got its closing-summary comment added referencing its child Task(s) and outcome). **If you create ADO items for a future phase, add the closing narrative comment to User Stories at the same time you close them, not as a follow-up cleanup pass.**
+
+**⚠️ Two independent ADO hierarchies were created for Phase 1a in parallel, by two separate concurrent sessions working on this repo at the same time (see Section 3/8 note on multi-session risk).** A separate session created **Epic #5764 "Phase 1 - Core Exam MVP"** (the correct overarching Epic for all of Phase 1, sub-phases 1a-1e) with one consolidated child User Story, **#5765 "Recruiter can build and maintain an MCQ question bank"** — 34 minutes before this session created its own Epic #5766. Both described the identical Phase 1a scope. Reconciled after the fact: #5765 closed (superseded, with a comment pointing to #5766's detailed breakdown), #5764 ↔ #5766 linked as Related, #5764 itself left `New`/Active since it correctly tracks all of Phase 1 (only sub-phase 1a — under #5766 — is done; 1b-1e are not started). **#5764 is the canonical Phase 1 Epic going forward. This ADO project's process template supports a `Feature` work item type (confirmed via `az devops invoke --area wit --resource workitemtypes`) that sits between Epic and User Story — for 1b/1c/1d/1e, create each sub-phase as a `Feature` with #5764 as its parent, then User Stories/Tasks under that Feature, instead of a disconnected new Epic like this session accidentally did.** More importantly: **if two Claude Code sessions may be working on this repo concurrently, check for freshly-created ADO items (query by `System.CreatedDate` descending, or just ask the user) before creating a new Epic — this exact collision is easy to avoid with one query.**
 
 ---
 
