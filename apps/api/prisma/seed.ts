@@ -8,12 +8,13 @@ const PERMISSIONS = [
   { key: 'org:manage_users', description: 'Invite and manage users within an organization' },
   { key: 'org:manage_settings', description: 'Edit organization branding/domain/security settings' },
   { key: 'org:view', description: 'View organization dashboard and data' },
+  { key: 'question_bank:manage', description: 'Create, edit, and archive questions in the organization\'s question bank' },
 ];
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
   super_admin: ['platform:manage_organizations', 'org:manage_users', 'org:manage_settings', 'org:view'],
   org_admin: ['org:manage_users', 'org:manage_settings', 'org:view'],
-  recruiter: ['org:view'],
+  recruiter: ['org:view', 'question_bank:manage'],
   panel: ['org:view'],
 };
 
