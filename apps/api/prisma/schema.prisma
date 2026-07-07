@@ -134,10 +134,11 @@ model Exam {
   organizationId String        @map("organization_id") @db.UniqueIdentifier
   title          String
   instructions   String?       @db.NVarChar(Max)
-  status         String        @default("active")
+  status         String        @default("draft")
   createdBy      String        @map("created_by") @db.UniqueIdentifier
   createdAt      DateTime      @default(now()) @map("created_at")
   sections       ExamSection[]
+  invitations    Invitation[]
 
   @@index([organizationId, status])
   @@map("exams")
@@ -164,4 +165,47 @@ model ExamSectionQuestion {
 
   @@id([sectionId, questionId])
   @@map("exam_section_questions")
+}
+
+model Candidate {
+  id             String       @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String       @map("organization_id") @db.UniqueIdentifier
+  email          String
+  name           String
+  phone          String?
+  createdAt      DateTime     @default(now()) @map("created_at")
+  invitations    Invitation[]
+
+  @@unique([organizationId, email])
+  @@map("candidates")
+}
+
+model Invitation {
+  id            String         @id @default(uuid()) @db.UniqueIdentifier
+  examId        String         @map("exam_id") @db.UniqueIdentifier
+  candidateId   String         @map("candidate_id") @db.UniqueIdentifier
+  token         String         @unique
+  status        String         @default("invited")
+  invitedAt     DateTime       @default(now()) @map("invited_at")
+  expiresAt     DateTime       @map("expires_at")
+  revokedAt     DateTime?      @map("revoked_at")
+  exam          Exam           @relation(fields: [examId], references: [id], onDelete: Cascade)
+  candidate     Candidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  notifications Notification[]
+
+  @@index([examId, status])
+  @@map("invitations")
+}
+
+model Notification {
+  id           String     @id @default(uuid()) @db.UniqueIdentifier
+  invitationId String     @map("invitation_id") @db.UniqueIdentifier
+  channel      String     @default("email")
+  status       String
+  sentAt       DateTime?  @map("sent_at")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  invitation   Invitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+
+  @@index([invitationId])
+  @@map("notifications")
 }
