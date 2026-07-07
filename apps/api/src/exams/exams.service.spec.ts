@@ -27,12 +27,27 @@ describe('ExamsService', () => {
   });
 
   it("lists exams scoped to the caller's organization, excluding archived by default", async () => {
-    tenantPrisma.forTenant.mockResolvedValue([{ id: 'exam-1', status: 'draft' }]);
+    const tx = { exam: { findMany: jest.fn().mockResolvedValue([{ id: 'exam-1', status: 'draft' }]) } };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
     const result = await service.list(context, {});
 
     expect(result).toHaveLength(1);
-    expect(tenantPrisma.forTenant).toHaveBeenCalledWith(context, expect.any(Function));
+    expect(tx.exam.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ status: { not: 'archived' } }) }),
+    );
+  });
+
+  it('lists exams filtered by an explicit status', async () => {
+    const tx = { exam: { findMany: jest.fn().mockResolvedValue([{ id: 'exam-1', status: 'published' }]) } };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    const result = await service.list(context, { status: 'published' });
+
+    expect(result).toHaveLength(1);
+    expect(tx.exam.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ status: 'published' }) }),
+    );
   });
 
   it('throws NotFoundException when findOne cannot find the exam', async () => {
