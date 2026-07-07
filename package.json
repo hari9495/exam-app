@@ -1,6 +1,9 @@
 {
   "name": "exam-platform",
   "private": true,
+  "engines": {
+    "node": ">=20 <21"
+  },
   "workspaces": ["apps/*"],
   "scripts": {
     "dev:api": "npm run start:dev --workspace=apps/api",

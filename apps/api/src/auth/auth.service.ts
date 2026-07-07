@@ -63,7 +63,6 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    const tokenHash = await argon2.hash(refreshToken);
     const stored = await this.prisma.refreshToken.findFirst({
       where: { userId: payload.sub, familyId: payload.familyId, revokedAt: null },
       orderBy: { createdAt: 'desc' },
