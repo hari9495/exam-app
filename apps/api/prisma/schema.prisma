@@ -96,3 +96,34 @@ model AuditLog {
 
   @@map("audit_logs")
 }
+
+model Question {
+  id             String           @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String           @map("organization_id") @db.UniqueIdentifier
+  type           String
+  text           String           @db.NVarChar(Max)
+  topic          String?
+  category       String?
+  difficulty     String
+  marks          Int
+  negativeMarks  Int              @default(0) @map("negative_marks")
+  status         String           @default("active")
+  createdBy      String           @map("created_by") @db.UniqueIdentifier
+  createdAt      DateTime         @default(now()) @map("created_at")
+  options        QuestionOption[]
+
+  @@index([organizationId, topic, difficulty])
+  @@map("questions")
+}
+
+model QuestionOption {
+  id         String   @id @default(uuid()) @db.UniqueIdentifier
+  questionId String   @map("question_id") @db.UniqueIdentifier
+  text       String
+  isCorrect  Boolean  @map("is_correct")
+  orderIndex Int      @map("order_index")
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+  @@map("question_options")
+}
