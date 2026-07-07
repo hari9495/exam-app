@@ -2,15 +2,22 @@ import { Test } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { TenantPrismaService } from '../prisma/tenant-prisma.service';
+import { AuditService } from '../audit/audit.service';
 
 describe('UsersService', () => {
   let service: UsersService;
   let tenantPrisma: { forTenant: jest.Mock };
+  let audit: { record: jest.Mock };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
+    audit = { record: jest.fn() };
     const moduleRef = await Test.createTestingModule({
-      providers: [UsersService, { provide: TenantPrismaService, useValue: tenantPrisma }],
+      providers: [
+        UsersService,
+        { provide: TenantPrismaService, useValue: tenantPrisma },
+        { provide: AuditService, useValue: audit },
+      ],
     }).compile();
     service = moduleRef.get(UsersService);
   });

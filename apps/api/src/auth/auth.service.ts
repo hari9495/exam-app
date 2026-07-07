@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantPrismaService } from '../prisma/tenant-prisma.service';
 import { LoginDto } from './dto/login.dto';
+import { AuditService } from '../audit/audit.service';
 
 interface TokenPair {
   accessToken: string;
@@ -17,6 +18,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly jwt: JwtService,
+    private readonly audit: AuditService,
   ) {}
 
   async login(dto: LoginDto): Promise<TokenPair> {
@@ -45,7 +47,12 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    return this.issueTokenPair(user.id, user.organizationId, user.role);
+    const tokens = await this.issueTokenPair(user.id, user.organizationId, user.role);
+    await this.audit.record(
+      { organizationId: user.organizationId, isSuperAdmin: user.role === 'super_admin' },
+      { actorUserId: user.id, action: 'login.success', entityType: 'user', entityId: user.id },
+    );
+    return tokens;
   }
 
   async refresh(refreshToken: string): Promise<TokenPair> {

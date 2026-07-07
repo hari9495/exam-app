@@ -5,11 +5,13 @@ import * as argon2 from 'argon2';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantPrismaService } from '../prisma/tenant-prisma.service';
+import { AuditService } from '../audit/audit.service';
 
 describe('AuthService', () => {
   let service: AuthService;
   let prisma: { organization: { findUnique: jest.Mock }; refreshToken: { create: jest.Mock } };
   let tenantPrisma: { forTenant: jest.Mock };
+  let audit: { record: jest.Mock };
   let jwt: JwtService;
 
   beforeEach(async () => {
@@ -18,12 +20,14 @@ describe('AuthService', () => {
       refreshToken: { create: jest.fn() },
     };
     tenantPrisma = { forTenant: jest.fn() };
+    audit = { record: jest.fn() };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
         AuthService,
         { provide: PrismaService, useValue: prisma },
         { provide: TenantPrismaService, useValue: tenantPrisma },
+        { provide: AuditService, useValue: audit },
         JwtService,
       ],
     }).compile();
