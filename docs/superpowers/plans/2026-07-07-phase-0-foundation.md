@@ -365,6 +365,10 @@ git commit -m "chore: add local SQL Server via docker-compose"
 
 ### Task 3: Prisma schema (Phase 0 models) & initial migration
 
+**Deviation from original plan:** the `examapp_dev` login (see Task 2) has `db_owner` on the `examapp` database only — it deliberately lacks server-level `CREATE DATABASE` permission. Prisma's `prisma migrate dev` apply step needs a "shadow database" (created and dropped on the fly) to detect schema drift, and creating that shadow database requires `CREATE DATABASE`. Since that permission isn't available (by design — least-privilege login, not `sa`), **`npx prisma migrate deploy` must be used instead of `npx prisma migrate dev` whenever *applying* migrations in this project, going forward.** `migrate deploy` applies existing migration files in order and does not require a shadow database — it's the tool Prisma designed for exactly this kind of environment (production/CI-style, minimal-permission DB login). `migrate dev --create-only` is unaffected and still the right tool for *generating* a new migration's SQL (it also doesn't need a shadow database when `--create-only` is passed). This same substitution applies to Task 4's apply step below.
+
+An earlier pass at this task ran plain `prisma db push` as a workaround, which pushed the 7 tables directly to `examapp` without creating the `_prisma_migrations` history table. That was corrected: the database was reset to empty and `init_schema` was applied properly via `migrate deploy`, producing both the 7 tables and a `_prisma_migrations` row recording the migration as applied. See `.superpowers/sdd/task-3-report.md` for the fix log.
+
 **Files:**
 - Create: `apps/api/prisma/schema.prisma`
 - Create: `apps/api/.env` (copied from root `.env.example`, gitignored)
@@ -474,10 +478,12 @@ model AuditLog {
 }
 ```
 
-- [ ] **Step 2: Copy env and generate the migration**
+- [ ] **Step 2: Copy env, generate the migration, then apply it**
 
 Run: `cp .env.example apps/api/.env` then, from `apps/api/`: `npx prisma migrate dev --name init_schema --create-only`
 Expected: a new folder `apps/api/prisma/migrations/<timestamp>_init_schema/migration.sql` is created containing `CREATE TABLE` statements for all 7 tables. Do not apply yet — Task 4 appends RLS objects to this same file before it's run.
+
+When it's time to actually apply the migration (i.e. after Task 4 has finished appending its RLS SQL to this file), run `npx prisma migrate deploy` — **not** `npx prisma migrate dev` — for the reason explained in this task's deviation note above (no `CREATE DATABASE` permission for a shadow database).
 
 - [ ] **Step 3: Commit**
 
@@ -539,8 +545,8 @@ Note: `organizations` intentionally has no row-filter policy — resolving an or
 
 - [ ] **Step 2: Apply the migration**
 
-Run: `npx prisma migrate dev` (from `apps/api/`)
-Expected: migration applies cleanly, `npx prisma generate` runs automatically, `@prisma/client` types now include all 7 models.
+Run: `npx prisma migrate deploy` (from `apps/api/`) — not `npx prisma migrate dev`; see Task 3's note on why `migrate deploy` is used instead of `migrate dev` in this project (the `examapp_dev` login lacks `CREATE DATABASE` permission for Prisma's shadow database).
+Expected: migration applies cleanly. Run `npx prisma generate` afterward (this is a separate step with `migrate deploy`, unlike `migrate dev` which runs it automatically) so `@prisma/client` types now include all 7 models.
 
 - [ ] **Step 3: Write the Prisma service and tenant context type**
 
