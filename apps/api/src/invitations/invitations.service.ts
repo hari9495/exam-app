@@ -93,8 +93,16 @@ export class InvitationsService {
       }
       return tx.invitation.findMany({
         where: { examId },
-        include: { candidate: true },
-        omit: { token: true },
+        select: {
+          id: true,
+          examId: true,
+          candidateId: true,
+          status: true,
+          invitedAt: true,
+          expiresAt: true,
+          revokedAt: true,
+          candidate: true,
+        },
         orderBy: [{ invitedAt: 'desc' }, { id: 'desc' }],
       });
     });

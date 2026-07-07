@@ -103,8 +103,12 @@ describe('InvitationsService', () => {
 
     expect(result).toHaveLength(1);
     expect(tx.invitation.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ omit: { token: true } }),
+      expect.objectContaining({
+        select: expect.objectContaining({ candidate: true }),
+      }),
     );
+    const selectArg = tx.invitation.findMany.mock.calls[0][0].select;
+    expect(selectArg).not.toHaveProperty('token');
   });
 
   it('throws NotFoundException when listing invitations for an exam that does not exist', async () => {
