@@ -43,7 +43,26 @@ describe('Tenant Row-Level Security', () => {
   });
 
   afterAll(async () => {
-    await prisma.organization.deleteMany({ where: { id: { in: [orgAId, orgBId] } } });
+    // Deleting an Organization cascades to an implicit `UPDATE users SET organization_id = NULL`
+    // for its attached users (ON DELETE SET NULL), which is itself gated by the RLS block
+    // predicate on dbo.users. That predicate requires app_is_super_admin = 1 in
+    // SESSION_CONTEXT, so the delete must go through tenantPrisma.forTenant with
+    // isSuperAdmin: true — a plain prisma.organization.deleteMany() has no session context
+    // set and is rejected by the database, silently leaking orphaned rows.
+    //
+    // The cascade only nulls out organization_id on the users row — it does not delete the
+    // user. Left alone, these become permanent `(organization_id: NULL, email: ...)` rows.
+    // Since this suite's user emails are fixed strings (not randomized per run), a later run's
+    // own cleanup would then collide with this leftover on the
+    // `users_organization_id_email_key` unique index (organizationId, email) when its own
+    // cascade tries to null out the same email. So the users this suite created must be
+    // deleted explicitly, before the organizations are removed.
+    await tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
+      tx.user.deleteMany({ where: { organizationId: { in: [orgAId, orgBId] } } }),
+    );
+    await tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
+      tx.organization.deleteMany({ where: { id: { in: [orgAId, orgBId] } } }),
+    );
     await prisma.plan.delete({ where: { id: planId } });
     await prisma.$disconnect();
   });

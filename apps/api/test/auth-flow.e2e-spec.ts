@@ -31,8 +31,41 @@ describe('Full Phase 0 flow: create org -> create user -> login -> protected rou
   });
 
   afterAll(async () => {
+    // Deleting an Organization cascades to an implicit `UPDATE users SET organization_id = NULL`
+    // for its attached users (ON DELETE SET NULL), which is itself gated by the RLS block
+    // predicate on dbo.users. That predicate requires app_is_super_admin = 1 in
+    // SESSION_CONTEXT, so the delete must go through tenantPrisma.forTenant with
+    // isSuperAdmin: true — a plain prisma.organization.delete() has no session context set
+    // and is rejected by the database, silently leaking orphaned rows (previously masked by
+    // the .catch(() => undefined) below).
+    //
+    // The cascade only nulls out organization_id on the users row — it does not delete the
+    // user. Left alone, these become permanent `(organization_id: NULL, email: ...)` rows.
+    // Since this suite's org-admin/recruiter emails are fixed strings (not randomized per
+    // run), a later run's own cleanup would then collide with this leftover on the
+    // `users_organization_id_email_key` unique index (organizationId, email) when its own
+    // cascade tries to null out the same email. So the users created under this org must be
+    // deleted explicitly, before the organization is removed.
+    //
+    // refresh_tokens itself has no RLS policy, but it does have a plain FK (ON DELETE NO
+    // ACTION) to users, so any refresh tokens issued to this org's users during login must be
+    // deleted before the users themselves, or the user delete fails with a foreign key
+    // violation. The `user: { organizationId: orgId }` relation filter below joins through
+    // dbo.users, which IS covered by the RLS filter predicate — so even though refresh_tokens
+    // has no policy of its own, this query still needs a super-admin session context or it
+    // silently matches zero rows (same join-through-RLS-table gotcha as the user deletes).
     if (orgId) {
-      await prisma.organization.delete({ where: { id: orgId } }).catch(() => undefined);
+      await tenantPrisma
+        .forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
+          tx.refreshToken.deleteMany({ where: { user: { organizationId: orgId } } }),
+        )
+        .catch(() => undefined);
+      await tenantPrisma
+        .forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => tx.user.deleteMany({ where: { organizationId: orgId } }))
+        .catch(() => undefined);
+      await tenantPrisma
+        .forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => tx.organization.delete({ where: { id: orgId } }))
+        .catch(() => undefined);
     }
     await prisma.plan.delete({ where: { id: planId } }).catch(() => undefined);
     await app.close();
