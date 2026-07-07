@@ -304,15 +304,32 @@ git commit -m "chore: scaffold monorepo and NestJS API skeleton"
 
 ---
 
-### Task 2: Local SQL Server via Docker Compose
+### Task 2: Local SQL Server instance
+
+**Deviation from original plan:** this task originally specified a Dockerized SQL Server via `docker-compose.yml`. Docker Desktop's daemon would not start cleanly on the development machine and troubleshooting it was deprioritized in favor of unblocking the rest of Phase 0. Instead, this task was fulfilled using the SQL Server 2019 Express instance already installed on the machine (`localhost\SQLEXPRESS`), configured for TCP access. **This was done directly by the controller (not a dispatched implementer subagent)**, since it required Administrator-elevated changes (registry edits, service restart) that a sandboxed subagent cannot perform. Any other developer setting up this project on a machine without a pre-existing SQL Server instance should still use the Docker approach below, or install SQL Server Express/Developer Edition themselves — the `DATABASE_URL` contract is what matters, not which of the two hosts it.
 
 **Files:**
-- Create: `docker-compose.yml`
+- Modify: `.env.example` (username changed from `sa` to a dedicated least-privilege login, see below)
 
 **Interfaces:**
 - Produces: a SQL Server instance reachable at `localhost:1433`, matching `DATABASE_URL` in `.env.example`.
 
-- [ ] **Step 1: Write the compose file**
+**What was actually done (native SQL Server Express, requires an elevated/Administrator PowerShell):**
+1. Enabled the TCP/IP protocol for the SQLEXPRESS instance (`ServerNetworkProtocol` WMI class under `root\Microsoft\SqlServer\ComputerManagement15`, `SetEnable()`).
+2. Set a static TCP port of 1433 (cleared `TcpDynamicPorts`, set `TcpPort` under the instance's `SuperSocketNetLib\Tcp\IPAll` registry key) — SQL Express defaults to a dynamic port, which won't match a fixed `DATABASE_URL`.
+3. Enabled Mixed Mode authentication (`LoginMode = 2` under the instance's `MSSQLServer` registry key) — the instance defaulted to Windows-Authentication-only, but the app connects with a SQL login/password, not Windows auth.
+4. Restarted the `MSSQL$SQLEXPRESS` service for the above to take effect, and started `SQLBrowser`.
+5. Created a dedicated `examapp` database and a dedicated SQL login `examapp_dev` (password `DevPassw0rd!2026`, matching the plan's existing dev-password convention) granted `db_owner` on that database only — deliberately not using the built-in `sa` account, per this project's least-privilege posture.
+
+The full script used is preserved at `.superpowers/sdd/setup-sqlexpress.ps1` for reference (this file is gitignored scratch, not part of the committed codebase).
+
+**Resulting `.env.example` change:**
+```
+DATABASE_URL="sqlserver://localhost:1433;database=examapp;user=examapp_dev;password=DevPassw0rd!2026;trustServerCertificate=true"
+```
+(Only the `user` value changed, from `sa` to `examapp_dev` — database name, port, and password were already consistent with this task's original intent.)
+
+**Original Docker-based approach (for other developers / CI, where Docker is available):**
 
 `docker-compose.yml`:
 ```yaml
@@ -331,11 +348,11 @@ services:
 volumes:
   sqlserver-data:
 ```
-
-- [ ] **Step 2: Start it and verify connectivity**
-
 Run: `docker compose up -d` then `docker exec -it $(docker compose ps -q sqlserver) /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'DevPassw0rd!2026' -C -Q "SELECT 1"`
-Expected: query returns `1` — confirms the server is accepting connections with the credentials that match `.env.example`'s `DATABASE_URL`.
+Expected: query returns `1`. Note: with this approach, the `.env.example` `user` value would need to be `sa` again, or a dedicated login created inside the container the same way as above.
+
+**Verification performed (either approach):**
+`sqlcmd -S localhost,1433 -U examapp_dev -P 'DevPassw0rd!2026' -d examapp -Q "SELECT 1 AS connected" -C` → returned `1` — confirms the server is accepting TCP connections with the credentials that match `.env.example`'s `DATABASE_URL`.
 
 - [ ] **Step 3: Commit**
 
@@ -2303,7 +2320,7 @@ Expected: all e2e suites pass, including this one — proving the entire Phase 0
 
 ## Phase 0: local development setup
 
-1. `docker compose up -d` — starts SQL Server on `localhost:1433`.
+1. Get a SQL Server instance reachable at `localhost:1433`. Either `docker compose up -d` (if Docker is available), or a native SQL Server Express/Developer install configured for TCP on port 1433 with Mixed Mode auth — see Task 2's notes in `docs/superpowers/plans/2026-07-07-phase-0-foundation.md` for the exact native-install steps used on this project's original dev machine.
 2. `npm install` — installs all workspace dependencies.
 3. `cp .env.example apps/api/.env`
 4. `cd apps/api && npx prisma migrate dev && npx prisma db seed && cd ../..`
