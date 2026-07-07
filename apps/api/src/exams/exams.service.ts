@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Exam, ExamSection, ExamSectionQuestion, Question, QuestionOption } from '@prisma/client';
 import { TenantPrismaService } from '../prisma/tenant-prisma.service';
 import { TenantContext } from '../prisma/tenant-context';
@@ -38,7 +38,7 @@ export class ExamsService {
       tx.exam.findMany({
         where: {
           organizationId: context.organizationId as string,
-          status: filters.status ?? 'active',
+          ...(filters.status ? { status: filters.status } : { status: { not: 'archived' } }),
         },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       }),
@@ -88,6 +88,29 @@ export class ExamsService {
         throw new NotFoundException(`Exam ${id} not found`);
       }
       return tx.exam.update({ where: { id }, data: { status: 'archived' } });
+    });
+  }
+
+  async publish(context: TenantContext, id: string): Promise<Exam> {
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const exam = await tx.exam.findFirst({
+        where: { id, organizationId: context.organizationId as string },
+        include: { sections: { include: { questions: true } } },
+      });
+      if (!exam) {
+        throw new NotFoundException(`Exam ${id} not found`);
+      }
+      if (exam.status !== 'draft') {
+        throw new BadRequestException(`Exam ${id} cannot be published from status "${exam.status}"`);
+      }
+      if (exam.sections.length === 0) {
+        throw new BadRequestException('Exam must have at least one section before it can be published');
+      }
+      const emptySection = exam.sections.find((section) => section.questions.length === 0);
+      if (emptySection) {
+        throw new BadRequestException(`Section "${emptySection.title}" has no questions attached`);
+      }
+      return tx.exam.update({ where: { id }, data: { status: 'published' } });
     });
   }
 

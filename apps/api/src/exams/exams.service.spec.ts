@@ -26,8 +26,8 @@ describe('ExamsService', () => {
     expect(tenantPrisma.forTenant).toHaveBeenCalledWith(context, expect.any(Function));
   });
 
-  it("lists exams scoped to the caller's organization, defaulting to active status", async () => {
-    tenantPrisma.forTenant.mockResolvedValue([{ id: 'exam-1', status: 'active' }]);
+  it("lists exams scoped to the caller's organization, excluding archived by default", async () => {
+    tenantPrisma.forTenant.mockResolvedValue([{ id: 'exam-1', status: 'draft' }]);
 
     const result = await service.list(context, {});
 
@@ -200,5 +200,67 @@ describe('ExamsService', () => {
         { sectionId: 'section-1', questionId: 'q2', orderIndex: 1 },
       ],
     });
+  });
+
+  it('publishes a draft exam that has at least one section with at least one question in each', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'exam-1',
+          status: 'draft',
+          sections: [{ id: 'section-1', title: 'Section One', questions: [{ questionId: 'q1' }] }],
+        }),
+        update: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    const result = await service.publish(context, 'exam-1');
+
+    expect(result.status).toBe('published');
+    expect(tx.exam.update).toHaveBeenCalledWith({ where: { id: 'exam-1' }, data: { status: 'published' } });
+  });
+
+  it('throws NotFoundException when publishing an exam that does not exist', async () => {
+    const tx = { exam: { findFirst: jest.fn().mockResolvedValue(null) } };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.publish(context, 'missing-id')).rejects.toThrow(NotFoundException);
+  });
+
+  it('throws BadRequestException when publishing an exam that is not in draft status', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published', sections: [] }) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.publish(context, 'exam-1')).rejects.toThrow(BadRequestException);
+  });
+
+  it('throws BadRequestException when publishing an exam with no sections', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'draft', sections: [] }) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.publish(context, 'exam-1')).rejects.toThrow(BadRequestException);
+  });
+
+  it('throws BadRequestException when publishing an exam with a section that has no questions', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'exam-1',
+          status: 'draft',
+          sections: [
+            { id: 'section-1', title: 'Section One', questions: [{ questionId: 'q1' }] },
+            { id: 'section-2', title: 'Section Two', questions: [] },
+          ],
+        }),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.publish(context, 'exam-1')).rejects.toThrow(BadRequestException);
   });
 });

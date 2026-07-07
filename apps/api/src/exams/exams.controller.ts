@@ -47,6 +47,12 @@ export class ExamsController {
     return this.examsService.archive(tenant, id);
   }
 
+  @Post(':id/publish')
+  @RequirePermissions('exam:manage')
+  publish(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.examsService.publish(tenant, id);
+  }
+
   @Post(':id/sections')
   @RequirePermissions('exam:manage')
   createSection(@CurrentTenant() tenant: TenantContext, @Param('id') examId: string, @Body() dto: CreateExamSectionDto) {
