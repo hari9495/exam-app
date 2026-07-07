@@ -23,6 +23,7 @@ export function parseCandidateCsv(csvContent: string): ParsedCandidateCsv {
     columns: true,
     skip_empty_lines: true,
     trim: true,
+    relax_column_count: true,
   });
 
   const rows: CandidateCsvRow[] = [];

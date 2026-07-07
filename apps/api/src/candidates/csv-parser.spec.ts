@@ -49,4 +49,39 @@ describe('parseCandidateCsv', () => {
     expect(result.rows).toEqual([]);
     expect(result.errors).toEqual([]);
   });
+
+  it('tolerates a row with fewer columns than the header (missing trailing column)', () => {
+    const csv = 'email,name,phone\nalice@test.com,Alice,555-1234\nbob@test.com,Bob\ncarol@test.com,Carol,555-9999';
+    const result = parseCandidateCsv(csv);
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.rows).toEqual([
+      { email: 'alice@test.com', name: 'Alice', phone: '555-1234' },
+      { email: 'bob@test.com', name: 'Bob', phone: undefined },
+      { email: 'carol@test.com', name: 'Carol', phone: '555-9999' },
+    ]);
+  });
+
+  it('tolerates a row with more columns than the header and continues processing', () => {
+    const csv = 'email,name,phone\nalice@test.com,Alice,555-1234\nbob@test.com,Bob,555-5678,extra-field\ncarol@test.com,Carol,555-9999';
+    const result = parseCandidateCsv(csv);
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.rows).toEqual([
+      { email: 'alice@test.com', name: 'Alice', phone: '555-1234' },
+      { email: 'bob@test.com', name: 'Bob', phone: '555-5678' },
+      { email: 'carol@test.com', name: 'Carol', phone: '555-9999' },
+    ]);
+  });
+
+  it('reports ragged rows as errors when they lack required fields', () => {
+    const csv = 'email,name,phone\nalice@test.com,Alice,555-1234\nbob@test.com\ncarol@test.com,Carol,555-9999';
+    const result = parseCandidateCsv(csv);
+
+    expect(result.rows).toEqual([
+      { email: 'alice@test.com', name: 'Alice', phone: '555-1234' },
+      { email: 'carol@test.com', name: 'Carol', phone: '555-9999' },
+    ]);
+    expect(result.errors).toEqual([{ row: 2, reason: 'Missing name' }]);
+  });
 });
