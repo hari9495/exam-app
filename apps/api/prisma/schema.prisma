@@ -1,0 +1,96 @@
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Plan {
+  id                     String         @id @default(uuid())
+  name                   String
+  candidateLimit         Int            @map("candidate_limit")
+  aiCreditLimit          Int            @map("ai_credit_limit")
+  proctoringMinutesLimit Int            @map("proctoring_minutes_limit")
+  createdAt              DateTime       @default(now()) @map("created_at")
+  organizations          Organization[]
+
+  @@map("plans")
+}
+
+model Organization {
+  id        String     @id @default(uuid())
+  name      String
+  slug      String     @unique
+  region    String     @default("us")
+  status    String     @default("active")
+  planId    String     @map("plan_id")
+  plan      Plan       @relation(fields: [planId], references: [id])
+  createdAt DateTime   @default(now()) @map("created_at")
+  users     User[]
+  auditLogs AuditLog[]
+
+  @@map("organizations")
+}
+
+model User {
+  id             String         @id @default(uuid())
+  organizationId String?        @map("organization_id")
+  organization   Organization?  @relation(fields: [organizationId], references: [id])
+  email          String
+  passwordHash   String         @map("password_hash")
+  role           String
+  status         String         @default("active")
+  lastLoginAt    DateTime?      @map("last_login_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  refreshTokens  RefreshToken[]
+
+  @@unique([organizationId, email])
+  @@map("users")
+}
+
+model Permission {
+  id              String           @id @default(uuid())
+  key             String           @unique
+  description     String
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  role         String
+  permissionId String     @map("permission_id")
+  permission   Permission @relation(fields: [permissionId], references: [id])
+
+  @@id([role, permissionId])
+  @@map("role_permissions")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id])
+  tokenHash String    @map("token_hash")
+  familyId  String    @map("family_id")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@map("refresh_tokens")
+}
+
+model AuditLog {
+  id             String        @id @default(uuid())
+  organizationId String?       @map("organization_id")
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  actorUserId    String?       @map("actor_user_id")
+  action         String
+  entityType     String        @map("entity_type")
+  entityId       String?       @map("entity_id")
+  metadataJson   String?       @map("metadata_json") @db.NVarChar(Max)
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  @@map("audit_logs")
+}
