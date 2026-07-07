@@ -108,12 +108,27 @@ describe('CandidateAuthService', () => {
       prisma.candidateRefreshToken.findFirst.mockResolvedValue({ id: 'crt-1', tokenHash, revokedAt: null });
       prisma.candidateRefreshToken.update.mockResolvedValue({});
       prisma.candidateRefreshToken.create.mockResolvedValue({});
+      prisma.invitation.findUnique.mockResolvedValue({ id: 'inv-1', status: 'invited' });
 
       const result = await service.refresh(refreshToken);
 
       expect(result.accessToken).toEqual(expect.any(String));
       expect(prisma.candidateRefreshToken.update).toHaveBeenCalledWith({
         where: { id: 'crt-1' },
+        data: { revokedAt: expect.any(Date) },
+      });
+    });
+
+    it('revokes the token family and throws UnauthorizedException when the underlying invitation was revoked', async () => {
+      const refreshToken = jwt.sign({ sub: 'inv-1', familyId: 'family-1' }, { secret: process.env.CANDIDATE_JWT_REFRESH_SECRET });
+      const tokenHash = await argon2.hash(refreshToken);
+      prisma.candidateRefreshToken.findFirst.mockResolvedValue({ id: 'crt-1', tokenHash, revokedAt: null });
+      prisma.candidateRefreshToken.update.mockResolvedValue({});
+      prisma.invitation.findUnique.mockResolvedValue({ id: 'inv-1', status: 'revoked' });
+
+      await expect(service.refresh(refreshToken)).rejects.toThrow(UnauthorizedException);
+      expect(prisma.candidateRefreshToken.updateMany).toHaveBeenCalledWith({
+        where: { invitationId: 'inv-1', familyId: 'family-1' },
         data: { revokedAt: expect.any(Date) },
       });
     });

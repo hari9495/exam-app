@@ -63,6 +63,15 @@ export class CandidateAuthService {
 
     await this.prisma.candidateRefreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
 
+    const invitation = await this.prisma.invitation.findUnique({ where: { id: payload.sub } });
+    if (!invitation || invitation.status === 'revoked') {
+      await this.prisma.candidateRefreshToken.updateMany({
+        where: { invitationId: payload.sub, familyId: payload.familyId },
+        data: { revokedAt: new Date() },
+      });
+      throw new UnauthorizedException('This invitation was revoked');
+    }
+
     return this.issueTokenPair(payload.sub, payload.familyId);
   }
 
