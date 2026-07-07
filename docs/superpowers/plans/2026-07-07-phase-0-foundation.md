@@ -496,8 +496,14 @@ git commit -m "feat: add Phase 0 Prisma schema (orgs, users, RBAC tables, audit 
 
 ### Task 4: Row-Level Security enforcement + TenantPrismaService
 
+**Deviations from the original plan (both discovered and fixed during implementation):**
+
+1. **Migration split into two files, not one.** `prisma migrate deploy` sends each `migration.sql` file to SQL Server as a single batch, and `GO` is a `sqlcmd`/SSMS batch separator, not valid T-SQL — it isn't supported inside a single Prisma migration file. `CREATE FUNCTION` must also be the only statement in its batch. The fix: the RLS SQL below is split across two migration folders — `..._tenant_rls_function` (the `CREATE FUNCTION`) and `..._tenant_rls_policy` (the `CREATE SECURITY POLICY`) — applied in that order, each with no `GO` needed since each file is already a single batch.
+2. **`TenantPrismaService.forTenant` must reset session context before returning, not just set it.** `sp_set_session_context` is scoped to the physical database connection, not the transaction — it is not undone by commit or rollback. Prisma pools and reuses physical connections across unrelated calls. Without an explicit reset, a connection that just ran `forTenant({organizationId: orgA, ...})` gets returned to the pool still carrying org A's context, and a later plain `prisma.user.findMany()` call (bypassing `forTenant` entirely) that happens to reuse that same pooled connection would silently inherit org A's access — the exact opposite of the "fails closed by default" guarantee this task exists to build. This was caught by Step 5's own isolation test failing deterministically (3/4 passing, the "zero rows with no context set" assertion failing) during implementation, not discovered later. The fix, included in Step 3's code below: reset both session context keys to `NULL`/`0` in a `finally` block, inside the same transaction callback, before it returns — this runs on the same reserved connection, before Prisma commits and releases it back to the pool.
+
 **Files:**
-- Modify: `apps/api/prisma/migrations/<timestamp>_init_schema/migration.sql` (append RLS objects)
+- Create: `apps/api/prisma/migrations/<timestamp>_tenant_rls_function/migration.sql`
+- Create: `apps/api/prisma/migrations/<timestamp>_tenant_rls_policy/migration.sql`
 - Create: `apps/api/src/prisma/prisma.service.ts`
 - Create: `apps/api/src/prisma/prisma.module.ts`
 - Create: `apps/api/src/prisma/tenant-context.ts`
@@ -508,9 +514,9 @@ git commit -m "feat: add Phase 0 Prisma schema (orgs, users, RBAC tables, audit 
 - Consumes: Prisma models from Task 3.
 - Produces: `TenantContext` type `{ organizationId: string | null; isSuperAdmin: boolean }`; `TenantPrismaService.forTenant<T>(context: TenantContext, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T>` — every later task that queries `users` or `audit_logs` must go through this method.
 
-- [ ] **Step 1: Append RLS SQL to the generated migration**
+- [ ] **Step 1: Create the RLS migration files**
 
-Append to the end of `apps/api/prisma/migrations/<timestamp>_init_schema/migration.sql`:
+`apps/api/prisma/migrations/<timestamp>_tenant_rls_function/migration.sql`:
 ```sql
 -- Row-Level Security: tenant isolation backstop for users and audit_logs.
 -- Predicate returns true (row visible) when the session is flagged as
@@ -529,8 +535,10 @@ OR (
   @OrgId IS NOT NULL
   AND TRY_CONVERT(UNIQUEIDENTIFIER, SESSION_CONTEXT(N'app_current_org')) = @OrgId
 );
-GO
+```
 
+`apps/api/prisma/migrations/<timestamp>_tenant_rls_policy/migration.sql` (must apply after the function migration above):
+```sql
 CREATE SECURITY POLICY dbo.TenantAccessPolicy
 ADD FILTER PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.users,
 ADD BLOCK PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.users AFTER INSERT,
@@ -538,12 +546,11 @@ ADD BLOCK PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.users
 ADD FILTER PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.audit_logs,
 ADD BLOCK PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.audit_logs AFTER INSERT
 WITH (STATE = ON);
-GO
 ```
 
 Note: `organizations` intentionally has no row-filter policy — resolving an organization by slug is a legitimate pre-authentication lookup (Task 8 needs it to find which org a login belongs to before any tenant context exists). Org-level access control there is handled by an app-layer check instead (verified in Task 6).
 
-- [ ] **Step 2: Apply the migration**
+- [ ] **Step 2: Apply the migrations**
 
 Run: `npx prisma migrate deploy` (from `apps/api/`) — not `npx prisma migrate dev`; see Task 3's note on why `migrate deploy` is used instead of `migrate dev` in this project (the `examapp_dev` login lacks `CREATE DATABASE` permission for Prisma's shadow database).
 Expected: migration applies cleanly. Run `npx prisma generate` afterward (this is a separate step with `migrate deploy`, unlike `migrate dev` which runs it automatically) so `@prisma/client` types now include all 7 models.
@@ -593,7 +600,17 @@ export class TenantPrismaService {
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_current_org', @value = ${context.organizationId}`;
       await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_is_super_admin', @value = ${context.isSuperAdmin ? 1 : 0}`;
-      return fn(tx);
+      try {
+        return await fn(tx);
+      } finally {
+        // sp_set_session_context is scoped to the physical connection, not the
+        // transaction, and is not undone by rollback. Prisma returns this
+        // connection to its pool once this callback resolves, so without this
+        // reset a later query that bypasses forTenant on the same pooled
+        // connection would silently inherit this request's tenant context.
+        await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_current_org', @value = NULL`;
+        await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0`;
+      }
     });
   }
 }
