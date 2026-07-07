@@ -9,12 +9,13 @@ const PERMISSIONS = [
   { key: 'org:manage_settings', description: 'Edit organization branding/domain/security settings' },
   { key: 'org:view', description: 'View organization dashboard and data' },
   { key: 'question_bank:manage', description: 'Create, edit, and archive questions in the organization\'s question bank' },
+  { key: 'exam:manage', description: 'Create, edit, and archive exams and their sections in the organization' },
 ];
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
   super_admin: ['platform:manage_organizations', 'org:manage_users', 'org:manage_settings', 'org:view'],
   org_admin: ['org:manage_users', 'org:manage_settings', 'org:view'],
-  recruiter: ['org:view', 'question_bank:manage'],
+  recruiter: ['org:view', 'question_bank:manage', 'exam:manage'],
   panel: ['org:view'],
 };
 
