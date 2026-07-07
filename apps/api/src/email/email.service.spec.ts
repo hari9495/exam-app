@@ -106,4 +106,33 @@ describe('EmailService', () => {
     expect(nodemailer.createTestAccount).toHaveBeenCalledTimes(1);
     expect(sendMail).toHaveBeenCalledTimes(2);
   });
+
+  it('retries transporter creation after a rejected attempt instead of reusing the same failed promise', async () => {
+    const sendMail = jest.fn().mockResolvedValue({ messageId: 'success' });
+
+    // First call to createTestAccount rejects (e.g., transient network error)
+    (nodemailer.createTestAccount as jest.Mock).mockRejectedValueOnce(
+      new Error('Transient network error creating test account'),
+    );
+
+    // Second call succeeds
+    (nodemailer.createTestAccount as jest.Mock).mockResolvedValueOnce({
+      user: 'ethereal-user',
+      pass: 'ethereal-pass',
+      smtp: { host: 'smtp.ethereal.email', port: 587, secure: false },
+    });
+
+    (nodemailer.createTransport as jest.Mock).mockReturnValue({ sendMail });
+    (nodemailer.getTestMessageUrl as jest.Mock).mockReturnValue('https://ethereal.email/message/success');
+
+    // First send fails due to transporter creation error
+    const firstResult = await service.send({ to: 'a@test.com', subject: 'First', html: '<p>1</p>' });
+    expect(firstResult).toEqual({ success: false });
+    expect(nodemailer.createTestAccount).toHaveBeenCalledTimes(1);
+
+    // Second send should retry transporter creation and succeed
+    const secondResult = await service.send({ to: 'b@test.com', subject: 'Second', html: '<p>2</p>' });
+    expect(secondResult).toEqual({ success: true, previewUrl: 'https://ethereal.email/message/success' });
+    expect(nodemailer.createTestAccount).toHaveBeenCalledTimes(2);
+  });
 });

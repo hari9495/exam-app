@@ -40,7 +40,10 @@ export class EmailService {
 
   private async getTransporter(): Promise<Transporter> {
     if (!this.transporterPromise) {
-      this.transporterPromise = this.createTransporter();
+      this.transporterPromise = this.createTransporter().catch((error) => {
+        this.transporterPromise = null;
+        throw error;
+      });
     }
     return this.transporterPromise;
   }
