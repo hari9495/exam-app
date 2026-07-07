@@ -6,9 +6,9 @@ export class LoginDto {
   organizationSlug?: string;
 
   @IsEmail()
-  email: string;
+  email!: string;
 
   @IsString()
   @MinLength(1)
-  password: string;
+  password!: string;
 }

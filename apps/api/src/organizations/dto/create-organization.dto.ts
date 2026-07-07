@@ -3,15 +3,15 @@ import { IsIn, IsString, Matches, MinLength } from 'class-validator';
 export class CreateOrganizationDto {
   @IsString()
   @MinLength(2)
-  name: string;
+  name!: string;
 
   @IsString()
   @Matches(/^[a-z0-9-]+$/, { message: 'slug must be lowercase letters, numbers, and hyphens only' })
-  slug: string;
+  slug!: string;
 
   @IsIn(['us', 'eu'])
-  region: string;
+  region!: string;
 
   @IsString()
-  planId: string;
+  planId!: string;
 }

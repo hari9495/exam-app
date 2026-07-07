@@ -18,6 +18,7 @@
 - Audit logs are insert-only from application code — no update/delete methods are ever written against `audit_logs`.
 - No exam/candidate/question concepts in this phase — those start in Phase 1.
 - No cloud/Terraform/CI-CD work in this phase — local-only, `npm run dev` must be sufficient to run and test everything.
+- Every required (non-optional) `class-validator` DTO property must use a definite-assignment assertion (e.g. `email!: string;`), not a bare `email: string;`. The root `tsconfig.base.json`'s `strict: true` enables `strictPropertyInitialization`, which `ts-jest` (used by `npm run test:api`) does not enforce but `nest build`/`tsc --noEmit` does — a DTO written without `!` passes unit tests but fails the actual build with TS2564. Discovered after Tasks 6 and 8 both hit this identically; fixed retroactively for all DTOs existing at that point (commit — see Task 8's section below). Every later task's DTOs must use `!` from the start.
 
 ---
 
