@@ -22,7 +22,15 @@ describe('UsersService', () => {
   });
 
   it('creates a user scoped to the caller\'s organization', async () => {
-    tenantPrisma.forTenant.mockResolvedValue({ id: 'user-1', email: 'a@b.com', organizationId: 'org-1', role: 'recruiter' });
+    tenantPrisma.forTenant.mockResolvedValue({
+      id: 'user-1',
+      email: 'a@b.com',
+      organizationId: 'org-1',
+      role: 'recruiter',
+      status: 'active',
+      lastLoginAt: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
 
     const result = await service.create(
       { organizationId: 'org-1', isSuperAdmin: false },
@@ -34,5 +42,24 @@ describe('UsersService', () => {
       { organizationId: 'org-1', isSuperAdmin: false },
       expect.any(Function),
     );
+  });
+
+  it('never returns a passwordHash from create()', async () => {
+    tenantPrisma.forTenant.mockResolvedValue({
+      id: 'user-1',
+      email: 'a@b.com',
+      organizationId: 'org-1',
+      role: 'recruiter',
+      status: 'active',
+      lastLoginAt: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    const result = await service.create(
+      { organizationId: 'org-1', isSuperAdmin: false },
+      { email: 'a@b.com', password: 'password1', role: 'recruiter' },
+    );
+
+    expect(result).not.toHaveProperty('passwordHash');
   });
 });
