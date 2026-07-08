@@ -5,7 +5,7 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantPrismaService } from '../prisma/tenant-prisma.service';
 
-export interface CandidateTokenPair {
+interface CandidateTokenPair {
   accessToken: string;
   refreshToken: string;
 }

@@ -9,14 +9,16 @@ export class CandidateAuthController {
 
   @Post('redeem')
   @HttpCode(200)
-  redeem(@Body() dto: RedeemInvitationDto) {
-    return this.candidateAuthService.redeem(dto.token);
+  async redeem(@Body() dto: RedeemInvitationDto) {
+    const tokens = await this.candidateAuthService.redeem(dto.token);
+    return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
   }
 
   @Post('refresh')
   @HttpCode(200)
-  refresh(@Body() dto: RefreshDto) {
-    return this.candidateAuthService.refresh(dto.refreshToken);
+  async refresh(@Body() dto: RefreshDto) {
+    const tokens = await this.candidateAuthService.refresh(dto.refreshToken);
+    return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
   }
 
   @Post('logout')
