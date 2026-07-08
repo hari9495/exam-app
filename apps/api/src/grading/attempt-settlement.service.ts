@@ -30,7 +30,7 @@ export class AttemptSettlementService {
     tx: Prisma.TransactionClient,
     exam: SettlementExam,
     attempt: Attempt,
-    status: 'submitted' | 'auto_submitted',
+    status: 'submitted' | 'auto_submitted' | 'force_submitted',
   ): Promise<Attempt> {
     const existingResult = await tx.result.findUnique({ where: { attemptId: attempt.id } });
     if (existingResult) {
