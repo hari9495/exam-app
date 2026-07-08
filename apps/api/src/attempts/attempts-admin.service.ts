@@ -26,7 +26,7 @@ export class AttemptsAdminService {
   }
 
   async forceSubmit(context: TenantContext, attemptId: string, actorUserId: string): Promise<{ status: string }> {
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+    const finalized = await this.tenantPrisma.forTenant(context, async (tx) => {
       const attempt = await tx.attempt.findFirst({
         where: { id: attemptId, invitation: { exam: { organizationId: context.organizationId as string } } },
         include: { invitation: { include: { exam: true } } },
@@ -39,16 +39,16 @@ export class AttemptsAdminService {
       }
 
       const exam = attempt.invitation.exam;
-      const finalized = await this.attemptSettlement.finalize(tx, exam, attempt, 'force_submitted');
-
-      await this.audit.record(context, {
-        actorUserId,
-        action: 'attempt.force_submit',
-        entityType: 'attempt',
-        entityId: attemptId,
-      });
-
-      return { status: finalized.status };
+      return this.attemptSettlement.finalize(tx, exam, attempt, 'force_submitted');
     });
+
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'attempt.force_submit',
+      entityType: 'attempt',
+      entityId: attemptId,
+    });
+
+    return { status: finalized.status };
   }
 }
