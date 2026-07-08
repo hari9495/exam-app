@@ -403,11 +403,30 @@ apps/api/uploads/
 
 `apps/api/src/organizations/uploads-path.ts`:
 ```typescript
-import { join } from 'path';
+import { existsSync } from 'fs';
+import { dirname, join } from 'path';
 
-export const UPLOADS_ROOT = join(__dirname, '..', '..', 'uploads');
+// Walk up from this file's directory until we find `apps/api/package.json`. A fixed
+// number of `..` segments is fragile here: this repo's tsconfig has no `rootDir`, so
+// `nest build` compiles to `dist/src/organizations/uploads-path.js` (one level deeper
+// than `dist/organizations/uploads-path.js`), while ts-jest runs this file straight
+// from `src/organizations/uploads-path.ts`. Walking up to the package root resolves
+// correctly in both cases instead of guessing a depth that only holds for one of them.
+function findApiRoot(startDir: string): string {
+  let dir = startDir;
+  while (!existsSync(join(dir, 'package.json'))) {
+    const parent = dirname(dir);
+    if (parent === dir) {
+      return startDir;
+    }
+    dir = parent;
+  }
+  return dir;
+}
+
+export const UPLOADS_ROOT = join(findApiRoot(__dirname), 'uploads');
 ```
-(Resolves to `apps/api/uploads` at runtime, whether running from `src` via `ts-node` or from compiled `dist`. Both `OrganizationsService` — for writing — and `AppModule` — for serving — import this same constant so the write path and the serve path can never drift apart.)
+(Resolves to `apps/api/uploads` at runtime, whether running from `src` via `ts-jest`/`ts-node` or from compiled `dist/src`. Both `OrganizationsService` — for writing — and `AppModule` — for serving — import this same constant so the write path and the serve path can never drift apart. The directory walk depends only on `fs.existsSync`, never the mocked `fs/promises` module used elsewhere in this task's tests, so it behaves identically in and out of Jest.)
 
 - [ ] **Step 3: Write the failing tests**
 
@@ -430,8 +449,12 @@ Add this `describe` block after `updateBrandingColors`'s tests:
 
     beforeEach(() => {
       process.env.API_ORIGIN = 'http://localhost:3001';
-      (fs.mkdir as jest.Mock).mockResolvedValue(undefined);
-      (fs.writeFile as jest.Mock).mockResolvedValue(undefined);
+      // .mockReset() first: jest.mock('fs/promises', ...) above creates ONE mock function
+      // shared across every test in this file (unlike `prisma`, which is a fresh object per
+      // test) — without resetting call history here, an earlier test's fs.writeFile call
+      // would leak into a later test's `expect(fs.writeFile).not.toHaveBeenCalled()`.
+      (fs.mkdir as jest.Mock).mockReset().mockResolvedValue(undefined);
+      (fs.writeFile as jest.Mock).mockReset().mockResolvedValue(undefined);
     });
 
     it('writes the file to logos/{orgId}.png and updates logoPath', async () => {
