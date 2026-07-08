@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Attempt, Prisma } from '@prisma/client';
 import { gradeAnswer, computeResult, computeRemainingSeconds } from './grading';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
+import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
 
 export interface SettlementExam {
   id: string;
@@ -11,7 +12,12 @@ export interface SettlementExam {
 
 @Injectable()
 export class AttemptSettlementService {
-  constructor(private readonly monitoringGateway: MonitoringGateway) {}
+  private readonly logger = new Logger(AttemptSettlementService.name);
+
+  constructor(
+    private readonly monitoringGateway: MonitoringGateway,
+    private readonly attemptAnalysis: AttemptAnalysisService,
+  ) {}
 
   remainingSeconds(exam: Pick<SettlementExam, 'durationMinutes'>, attempt: { startedAt: Date }): number {
     return computeRemainingSeconds(exam.durationMinutes, attempt.startedAt);
@@ -75,6 +81,7 @@ export class AttemptSettlementService {
       candidateId: attempt.candidateId,
       status: finalized.status,
     });
+    void this.attemptAnalysis.analyze(finalized.id).catch((error) => this.logger.error('Proctoring analysis failed to start', error as Error));
     return finalized;
   }
 }
