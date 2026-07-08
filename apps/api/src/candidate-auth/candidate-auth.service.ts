@@ -37,7 +37,23 @@ export class CandidateAuthService {
       throw new BadRequestException('This exam is not currently available');
     }
 
-    return this.issueTokenPair(invitation.id);
+    if (invitation.activeSessionFamilyId) {
+      await this.prisma.candidateRefreshToken.updateMany({
+        where: { invitationId: invitation.id, familyId: invitation.activeSessionFamilyId },
+        data: { revokedAt: new Date() },
+      });
+      const existingAttempt = await this.prisma.attempt.findUnique({ where: { invitationId: invitation.id } });
+      if (existingAttempt) {
+        await this.prisma.proctoringEvent.create({
+          data: { attemptId: existingAttempt.id, eventType: 'multi_login', severity: 'high' },
+        });
+      }
+    }
+
+    const familyId = randomUUID();
+    const tokens = await this.issueTokenPair(invitation.id, familyId);
+    await this.prisma.invitation.update({ where: { id: invitation.id }, data: { activeSessionFamilyId: familyId } });
+    return tokens;
   }
 
   async refresh(refreshToken: string): Promise<CandidateTokenPair> {
@@ -90,7 +106,7 @@ export class CandidateAuthService {
 
   private async issueTokenPair(invitationId: string, familyId: string = randomUUID()): Promise<CandidateTokenPair> {
     const accessToken = this.jwt.sign(
-      { sub: invitationId, subjectType: 'candidate' },
+      { sub: invitationId, subjectType: 'candidate', familyId },
       { secret: process.env.CANDIDATE_JWT_ACCESS_SECRET, expiresIn: `${process.env.CANDIDATE_ACCESS_TOKEN_TTL_SECONDS ?? 14400}s` },
     );
     const refreshToken = this.jwt.sign(

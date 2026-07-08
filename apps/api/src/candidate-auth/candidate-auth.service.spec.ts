@@ -9,16 +9,20 @@ import { TenantPrismaService } from '../prisma/tenant-prisma.service';
 describe('CandidateAuthService', () => {
   let service: CandidateAuthService;
   let prisma: {
-    invitation: { findUnique: jest.Mock };
+    invitation: { findUnique: jest.Mock; update: jest.Mock };
     candidateRefreshToken: { findFirst: jest.Mock; create: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
+    attempt: { findUnique: jest.Mock };
+    proctoringEvent: { create: jest.Mock };
   };
   let tenantPrisma: { forTenant: jest.Mock };
   let jwt: JwtService;
 
   beforeEach(async () => {
     prisma = {
-      invitation: { findUnique: jest.fn() },
+      invitation: { findUnique: jest.fn(), update: jest.fn() },
       candidateRefreshToken: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
+      attempt: { findUnique: jest.fn() },
+      proctoringEvent: { create: jest.fn() },
     };
     tenantPrisma = { forTenant: jest.fn() };
 
@@ -83,6 +87,75 @@ describe('CandidateAuthService', () => {
       const decoded = jwt.decode(result.accessToken) as { sub: string; subjectType: string };
       expect(decoded.sub).toBe('inv-1');
       expect(decoded.subjectType).toBe('candidate');
+    });
+
+    it('sets activeSessionFamilyId on a first-ever redeem with nothing to revoke', async () => {
+      prisma.invitation.findUnique.mockResolvedValue({
+        id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1', activeSessionFamilyId: null,
+      });
+      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published' });
+      prisma.candidateRefreshToken.create.mockResolvedValue({});
+      prisma.invitation.update.mockResolvedValue({});
+
+      await service.redeem('token');
+
+      expect(prisma.candidateRefreshToken.updateMany).not.toHaveBeenCalled();
+      expect(prisma.proctoringEvent.create).not.toHaveBeenCalled();
+      expect(prisma.invitation.update).toHaveBeenCalledWith({
+        where: { id: 'inv-1' },
+        data: { activeSessionFamilyId: expect.any(String) },
+      });
+    });
+
+    it('revokes the prior active session family on a second redeem, without logging an event when no attempt exists yet', async () => {
+      prisma.invitation.findUnique.mockResolvedValue({
+        id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1', activeSessionFamilyId: 'old-family',
+      });
+      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published' });
+      prisma.candidateRefreshToken.updateMany.mockResolvedValue({});
+      prisma.attempt.findUnique.mockResolvedValue(null);
+      prisma.candidateRefreshToken.create.mockResolvedValue({});
+      prisma.invitation.update.mockResolvedValue({});
+
+      await service.redeem('token');
+
+      expect(prisma.candidateRefreshToken.updateMany).toHaveBeenCalledWith({
+        where: { invitationId: 'inv-1', familyId: 'old-family' },
+        data: { revokedAt: expect.any(Date) },
+      });
+      expect(prisma.proctoringEvent.create).not.toHaveBeenCalled();
+    });
+
+    it('logs a multi_login proctoring event when a prior session is kicked and an attempt already exists', async () => {
+      prisma.invitation.findUnique.mockResolvedValue({
+        id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1', activeSessionFamilyId: 'old-family',
+      });
+      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published' });
+      prisma.candidateRefreshToken.updateMany.mockResolvedValue({});
+      prisma.attempt.findUnique.mockResolvedValue({ id: 'attempt-1' });
+      prisma.proctoringEvent.create.mockResolvedValue({});
+      prisma.candidateRefreshToken.create.mockResolvedValue({});
+      prisma.invitation.update.mockResolvedValue({});
+
+      await service.redeem('token');
+
+      expect(prisma.proctoringEvent.create).toHaveBeenCalledWith({
+        data: { attemptId: 'attempt-1', eventType: 'multi_login', severity: 'high' },
+      });
+    });
+
+    it('includes a familyId claim in the issued access token', async () => {
+      prisma.invitation.findUnique.mockResolvedValue({
+        id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1', activeSessionFamilyId: null,
+      });
+      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published' });
+      prisma.candidateRefreshToken.create.mockResolvedValue({});
+      prisma.invitation.update.mockResolvedValue({});
+
+      const result = await service.redeem('token');
+
+      const decoded = jwt.decode(result.accessToken) as { familyId: string };
+      expect(decoded.familyId).toEqual(expect.any(String));
     });
   });
 
