@@ -1,10 +1,12 @@
-import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
+import { CallHandler, ExecutionContext, Injectable, Logger, NestInterceptor } from '@nestjs/common';
 import { Observable, tap } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { CandidateSession } from '../candidate-auth/current-candidate.decorator';
 
 @Injectable()
 export class LastSeenInterceptor implements NestInterceptor {
+  private readonly logger = new Logger(LastSeenInterceptor.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
@@ -16,10 +18,10 @@ export class LastSeenInterceptor implements NestInterceptor {
         if (!candidate?.invitationId) {
           return;
         }
-        void this.prisma.attempt.updateMany({
+        this.prisma.attempt.updateMany({
           where: { invitationId: candidate.invitationId },
           data: { lastSeenAt: new Date() },
-        });
+        }).catch((error) => this.logger.error('Failed to update Attempt.lastSeenAt', error as Error));
       }),
     );
   }
