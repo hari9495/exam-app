@@ -342,5 +342,23 @@ describe('AttemptService', () => {
 
       await expect(service.reportProctoringEvent(session, { eventType: 'tab_switch' })).rejects.toThrow(NotFoundException);
     });
+
+    it('resolves tenant context via an unscoped bootstrap lookup followed by a properly scoped call', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'tab_switch', severity: 'medium' }) } };
+      mockBootstrapThenScoped(tx);
+
+      await service.reportProctoringEvent(session, { eventType: 'tab_switch' });
+
+      expect(tenantPrisma.forTenant).toHaveBeenNthCalledWith(
+        1,
+        { organizationId: null, isSuperAdmin: true },
+        expect.any(Function),
+      );
+      expect(tenantPrisma.forTenant).toHaveBeenNthCalledWith(
+        2,
+        { organizationId: 'org-1', isSuperAdmin: false },
+        expect.any(Function),
+      );
+    });
   });
 });

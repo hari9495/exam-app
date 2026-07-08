@@ -1,9 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantPrismaService } from '../prisma/tenant-prisma.service';
+
+type PrismaClientOrTransaction = PrismaService | Prisma.TransactionClient;
 
 interface CandidateTokenPair {
   accessToken: string;
@@ -37,23 +40,26 @@ export class CandidateAuthService {
       throw new BadRequestException('This exam is not currently available');
     }
 
-    if (invitation.activeSessionFamilyId) {
-      await this.prisma.candidateRefreshToken.updateMany({
-        where: { invitationId: invitation.id, familyId: invitation.activeSessionFamilyId },
-        data: { revokedAt: new Date() },
-      });
-      const existingAttempt = await this.prisma.attempt.findUnique({ where: { invitationId: invitation.id } });
-      if (existingAttempt) {
-        await this.prisma.proctoringEvent.create({
-          data: { attemptId: existingAttempt.id, eventType: 'multi_login', severity: 'high' },
-        });
-      }
-    }
-
     const familyId = randomUUID();
-    const tokens = await this.issueTokenPair(invitation.id, familyId);
-    await this.prisma.invitation.update({ where: { id: invitation.id }, data: { activeSessionFamilyId: familyId } });
-    return tokens;
+
+    return this.prisma.$transaction(async (tx) => {
+      if (invitation.activeSessionFamilyId) {
+        await tx.candidateRefreshToken.updateMany({
+          where: { invitationId: invitation.id, familyId: invitation.activeSessionFamilyId },
+          data: { revokedAt: new Date() },
+        });
+        const existingAttempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
+        if (existingAttempt) {
+          await tx.proctoringEvent.create({
+            data: { attemptId: existingAttempt.id, eventType: 'multi_login', severity: 'high' },
+          });
+        }
+      }
+
+      const tokens = await this.issueTokenPair(invitation.id, familyId, tx);
+      await tx.invitation.update({ where: { id: invitation.id }, data: { activeSessionFamilyId: familyId } });
+      return tokens;
+    });
   }
 
   async refresh(refreshToken: string): Promise<CandidateTokenPair> {
@@ -104,7 +110,11 @@ export class CandidateAuthService {
     });
   }
 
-  private async issueTokenPair(invitationId: string, familyId: string = randomUUID()): Promise<CandidateTokenPair> {
+  private async issueTokenPair(
+    invitationId: string,
+    familyId: string = randomUUID(),
+    client: PrismaClientOrTransaction = this.prisma,
+  ): Promise<CandidateTokenPair> {
     const accessToken = this.jwt.sign(
       { sub: invitationId, subjectType: 'candidate', familyId },
       { secret: process.env.CANDIDATE_JWT_ACCESS_SECRET, expiresIn: `${process.env.CANDIDATE_ACCESS_TOKEN_TTL_SECONDS ?? 14400}s` },
@@ -117,7 +127,7 @@ export class CandidateAuthService {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + Number(process.env.CANDIDATE_REFRESH_TOKEN_TTL_DAYS ?? 1));
 
-    await this.prisma.candidateRefreshToken.create({ data: { invitationId, tokenHash, familyId, expiresAt } });
+    await client.candidateRefreshToken.create({ data: { invitationId, tokenHash, familyId, expiresAt } });
 
     return { accessToken, refreshToken };
   }

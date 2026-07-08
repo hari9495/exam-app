@@ -13,6 +13,7 @@ describe('CandidateAuthService', () => {
     candidateRefreshToken: { findFirst: jest.Mock; create: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
     attempt: { findUnique: jest.Mock };
     proctoringEvent: { create: jest.Mock };
+    $transaction: jest.Mock;
   };
   let tenantPrisma: { forTenant: jest.Mock };
   let jwt: JwtService;
@@ -23,7 +24,9 @@ describe('CandidateAuthService', () => {
       candidateRefreshToken: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
       attempt: { findUnique: jest.fn() },
       proctoringEvent: { create: jest.fn() },
+      $transaction: jest.fn(),
     };
+    prisma.$transaction.mockImplementation((callback: (tx: typeof prisma) => unknown) => callback(prisma));
     tenantPrisma = { forTenant: jest.fn() };
 
     const moduleRef = await Test.createTestingModule({
