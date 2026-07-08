@@ -83,6 +83,24 @@ describe('AttemptService', () => {
       });
       expect((result as any).sections[0].questions[0]).not.toHaveProperty('isCorrect');
     });
+
+    it('resolves tenant context via an unscoped bootstrap lookup followed by a properly scoped call', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) } };
+      mockBootstrapThenScoped(tx);
+
+      await service.getCurrent(session);
+
+      expect(tenantPrisma.forTenant).toHaveBeenNthCalledWith(
+        1,
+        { organizationId: null, isSuperAdmin: true },
+        expect.any(Function),
+      );
+      expect(tenantPrisma.forTenant).toHaveBeenNthCalledWith(
+        2,
+        { organizationId: 'org-1', isSuperAdmin: false },
+        expect.any(Function),
+      );
+    });
   });
 
   describe('start', () => {
