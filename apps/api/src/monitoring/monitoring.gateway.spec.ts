@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
-import { MonitoringGateway } from './monitoring.gateway';
+import { MonitoringGateway, PRESENCE_TICK_MS } from './monitoring.gateway';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantPrismaService } from '../prisma/tenant-prisma.service';
 import { MonitoringService } from './monitoring.service';
@@ -115,6 +115,33 @@ describe('MonitoringGateway', () => {
       expect(socket.join).toHaveBeenCalledWith('exam:exam-1');
       expect(socket.emit).toHaveBeenCalledWith('roster:snapshot', roster);
       expect(monitoring.getRosterSnapshot).toHaveBeenCalledWith({ organizationId: 'org-1', isSuperAdmin: false }, 'exam-1');
+    });
+  });
+
+  describe('presence-tick interval lifecycle', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('clears the presence-tick interval on module destroy so it does not keep firing', () => {
+      jest.useFakeTimers();
+      const clearIntervalSpy = jest.spyOn(global, 'clearInterval');
+
+      gateway.afterInit();
+      expect(jest.getTimerCount()).toBe(1);
+
+      gateway.onModuleDestroy();
+
+      expect(clearIntervalSpy).toHaveBeenCalled();
+      expect(jest.getTimerCount()).toBe(0);
+
+      // Advancing time after destroy must not trigger another tick.
+      jest.advanceTimersByTime(PRESENCE_TICK_MS * 2);
+      expect(monitoring.getRosterSnapshot).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op when called before afterInit ever ran', () => {
+      expect(() => gateway.onModuleDestroy()).not.toThrow();
     });
   });
 });

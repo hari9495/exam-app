@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { Logger, OnModuleDestroy } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import {
   ConnectedSocket,
@@ -24,12 +24,13 @@ export const PRESENCE_TICK_MS = 15_000;
 const EXAM_ROOM_PREFIX = 'exam:';
 
 @WebSocketGateway({ namespace: '/monitoring', cors: { origin: process.env.WEB_ORIGIN } })
-export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit {
+export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, OnModuleDestroy {
   @WebSocketServer()
   server!: Server;
 
   private readonly logger = new Logger(MonitoringGateway.name);
   private readonly lastPresence = new Map<string, boolean>();
+  private presenceInterval?: NodeJS.Timeout;
 
   constructor(
     private readonly jwt: JwtService,
@@ -39,9 +40,15 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit {
   ) {}
 
   afterInit(): void {
-    setInterval(() => {
+    this.presenceInterval = setInterval(() => {
       this.tickPresence().catch((error) => this.logger.error('Presence tick failed', error as Error));
     }, PRESENCE_TICK_MS);
+  }
+
+  onModuleDestroy(): void {
+    if (this.presenceInterval) {
+      clearInterval(this.presenceInterval);
+    }
   }
 
   handleConnection(client: Socket): void {
