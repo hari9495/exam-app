@@ -6,7 +6,7 @@ jest.mock('fs/promises', () => ({
 import * as fs from 'fs/promises';
 
 import { Test } from '@nestjs/testing';
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { sep } from 'path';
 import { OrganizationsService } from './organizations.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -121,6 +121,24 @@ describe('OrganizationsService', () => {
     it('throws BadRequestException when the caller has no organization context', async () => {
       await expect(service.uploadLogo({ organizationId: null, isSuperAdmin: true }, pngFile)).rejects.toThrow(BadRequestException);
       expect(fs.writeFile).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getPublicBrandingBySlug', () => {
+    it('returns branding for an existing slug, with no auth/tenant context required', async () => {
+      process.env.API_ORIGIN = 'http://localhost:3001';
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', logoPath: 'logos/org-1.png', primaryColor: '#1a73e8', accentColor: null });
+
+      const result = await service.getPublicBrandingBySlug('acme');
+
+      expect(prisma.organization.findUnique).toHaveBeenCalledWith({ where: { slug: 'acme' } });
+      expect(result).toEqual({ logoUrl: 'http://localhost:3001/uploads/logos/org-1.png', primaryColor: '#1a73e8', accentColor: null });
+    });
+
+    it('throws NotFoundException for an unknown slug', async () => {
+      prisma.organization.findUnique.mockResolvedValue(null);
+
+      await expect(service.getPublicBrandingBySlug('nope')).rejects.toThrow(NotFoundException);
     });
   });
 });

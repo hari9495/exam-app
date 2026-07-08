@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Organization } from '@prisma/client';
 import { dirname, join } from 'path';
 import * as fs from 'fs/promises';
@@ -67,6 +67,14 @@ export class OrganizationsService {
     await fs.writeFile(fullPath, file.buffer);
 
     const org = await this.prisma.organization.update({ where: { id: organizationId }, data: { logoPath } });
+    return this.toBrandingResponse(org);
+  }
+
+  async getPublicBrandingBySlug(slug: string): Promise<BrandingResponse> {
+    const org = await this.prisma.organization.findUnique({ where: { slug } });
+    if (!org) {
+      throw new NotFoundException(`Organization "${slug}" not found`);
+    }
     return this.toBrandingResponse(org);
   }
 
