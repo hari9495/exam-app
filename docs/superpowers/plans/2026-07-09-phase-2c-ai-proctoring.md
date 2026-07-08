@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - **`ProctoringAnalysisModule` must be a leaf module** — it imports nothing from `GradingModule`, `AttemptModule`, `CandidateAuthModule`, or `MonitoringModule`. `GradingModule` and `AttemptModule` import it (never the reverse), mirroring the exact discipline Phase 2b established for `MonitoringModule`.
-- **The LLM call must never run inside a Prisma transaction.** `AttemptSettlementService.finalize()` triggers `AttemptAnalysisService.analyze()` as `void ...analyze(...).catch(...)` — not awaited, so it cannot extend or block the settlement transaction. `analyze()` opens its own separate `forTenant` transactions internally.
+- **The LLM call must never run inside a Prisma transaction.** `TenantPrismaService.forTenant` wraps its callback in a real `$transaction` — calling `ClaudeProctoringClient.assessRisk` from inside a `forTenant` callback holds that transaction open for the duration of a slow external HTTP call, risking Prisma's 5s interactive-transaction timeout and breaking the failure-recording path along with it. `AttemptAnalysisService.analyze()` therefore uses three separate `forTenant` calls (bootstrap, read events, persist result) with the LLM call sitting fully outside all of them, in a plain `try/catch`. `AttemptSettlementService.finalize()` triggers `analyze()` as `void ...analyze(...).catch(...)` — not awaited, so it cannot extend or block the settlement transaction either.
 - **`analyze()` must never throw.** Every failure path (API error, timeout, malformed tool response, attempt not found) is caught internally and either persisted as `status: 'failed'` or logged — callers rely on this to safely fire-and-forget it.
 - **No PII, and no `ProctoringEvent.metadataJson`, is ever sent to the LLM.** Only `eventType`, `severity`, and elapsed-seconds-since-`startedAt` leave the process — never candidate name/email, exam content, or raw wall-clock timestamps.
 - **The LLM response must be structured, not parsed from free text.** Force Anthropic's tool-use with a single `report_risk_assessment` tool and `tool_choice` pinned to it; a response that doesn't produce a valid tool call is a failure, never guessed at.
@@ -411,13 +411,17 @@ describe('AttemptAnalysisService', () => {
   });
 
   it('skips the LLM call and records skipped_clean when there are no proctoring events', async () => {
-    const scopedTx = { proctoringEvent: { findMany: jest.fn().mockResolvedValue([]) }, proctoringAnalysis: { upsert: jest.fn() } };
-    tenantPrisma.forTenant.mockResolvedValueOnce(attemptWithExam).mockImplementationOnce((_ctx, fn) => fn(scopedTx));
+    const readTx = { proctoringEvent: { findMany: jest.fn().mockResolvedValue([]) } };
+    const persistTx = { proctoringAnalysis: { upsert: jest.fn() } };
+    tenantPrisma.forTenant
+      .mockResolvedValueOnce(attemptWithExam)
+      .mockImplementationOnce((_ctx, fn) => fn(readTx))
+      .mockImplementationOnce((_ctx, fn) => fn(persistTx));
 
     await service.analyze('attempt-1');
 
     expect(claudeClient.assessRisk).not.toHaveBeenCalled();
-    expect(scopedTx.proctoringAnalysis.upsert).toHaveBeenCalledWith({
+    expect(persistTx.proctoringAnalysis.upsert).toHaveBeenCalledWith({
       where: { attemptId: 'attempt-1' },
       create: { attemptId: 'attempt-1', status: 'skipped_clean', riskLevel: 'low', summary: 'No proctoring events were recorded during this attempt.' },
       update: { status: 'skipped_clean', riskLevel: 'low', summary: 'No proctoring events were recorded during this attempt.', analyzedAt: expect.any(Date) },
@@ -426,17 +430,18 @@ describe('AttemptAnalysisService', () => {
 
   it('calls the LLM with elapsed-second timestamps and persists a completed analysis', async () => {
     const events = [{ eventType: 'tab_switch', severity: 'medium', occurredAt: new Date('2026-07-09T10:02:00Z') }];
-    const scopedTx = {
-      proctoringEvent: { findMany: jest.fn().mockResolvedValue(events) },
-      proctoringAnalysis: { upsert: jest.fn() },
-    };
-    tenantPrisma.forTenant.mockResolvedValueOnce(attemptWithExam).mockImplementationOnce((_ctx, fn) => fn(scopedTx));
+    const readTx = { proctoringEvent: { findMany: jest.fn().mockResolvedValue(events) } };
+    const persistTx = { proctoringAnalysis: { upsert: jest.fn() } };
+    tenantPrisma.forTenant
+      .mockResolvedValueOnce(attemptWithExam)
+      .mockImplementationOnce((_ctx, fn) => fn(readTx))
+      .mockImplementationOnce((_ctx, fn) => fn(persistTx));
     claudeClient.assessRisk.mockResolvedValue({ riskLevel: 'medium', summary: 'One tab switch.' });
 
     await service.analyze('attempt-1');
 
     expect(claudeClient.assessRisk).toHaveBeenCalledWith([{ eventType: 'tab_switch', severity: 'medium', elapsedSeconds: 120 }]);
-    expect(scopedTx.proctoringAnalysis.upsert).toHaveBeenCalledWith({
+    expect(persistTx.proctoringAnalysis.upsert).toHaveBeenCalledWith({
       where: { attemptId: 'attempt-1' },
       create: { attemptId: 'attempt-1', status: 'completed', riskLevel: 'medium', summary: 'One tab switch.' },
       update: { status: 'completed', riskLevel: 'medium', summary: 'One tab switch.', analyzedAt: expect.any(Date) },
@@ -445,16 +450,17 @@ describe('AttemptAnalysisService', () => {
 
   it('persists a failed analysis when the LLM client throws, and does not re-throw', async () => {
     const events = [{ eventType: 'tab_switch', severity: 'medium', occurredAt: new Date('2026-07-09T10:02:00Z') }];
-    const scopedTx = {
-      proctoringEvent: { findMany: jest.fn().mockResolvedValue(events) },
-      proctoringAnalysis: { upsert: jest.fn() },
-    };
-    tenantPrisma.forTenant.mockResolvedValueOnce(attemptWithExam).mockImplementationOnce((_ctx, fn) => fn(scopedTx));
+    const readTx = { proctoringEvent: { findMany: jest.fn().mockResolvedValue(events) } };
+    const persistTx = { proctoringAnalysis: { upsert: jest.fn() } };
+    tenantPrisma.forTenant
+      .mockResolvedValueOnce(attemptWithExam)
+      .mockImplementationOnce((_ctx, fn) => fn(readTx))
+      .mockImplementationOnce((_ctx, fn) => fn(persistTx));
     claudeClient.assessRisk.mockRejectedValue(new Error('rate limited'));
 
     await expect(service.analyze('attempt-1')).resolves.toBeUndefined();
 
-    expect(scopedTx.proctoringAnalysis.upsert).toHaveBeenCalledWith({
+    expect(persistTx.proctoringAnalysis.upsert).toHaveBeenCalledWith({
       where: { attemptId: 'attempt-1' },
       create: { attemptId: 'attempt-1', status: 'failed', riskLevel: null, summary: null },
       update: { status: 'failed', riskLevel: null, summary: null, analyzedAt: expect.any(Date) },
@@ -507,18 +513,14 @@ export class AttemptAnalysisService {
       }
 
       const organizationId = attempt.invitation.exam.organizationId;
-      await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
-        const events = await tx.proctoringEvent.findMany({ where: { attemptId }, orderBy: { occurredAt: 'asc' } });
+      const events = await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
+        tx.proctoringEvent.findMany({ where: { attemptId }, orderBy: { occurredAt: 'asc' } }),
+      );
 
-        if (events.length === 0) {
-          await tx.proctoringAnalysis.upsert({
-            where: { attemptId },
-            create: { attemptId, status: 'skipped_clean', riskLevel: 'low', summary: CLEAN_SUMMARY },
-            update: { status: 'skipped_clean', riskLevel: 'low', summary: CLEAN_SUMMARY, analyzedAt: new Date() },
-          });
-          return;
-        }
-
+      let result: { status: string; riskLevel: string | null; summary: string | null };
+      if (events.length === 0) {
+        result = { status: 'skipped_clean', riskLevel: 'low', summary: CLEAN_SUMMARY };
+      } else {
         const timeline = events.map((event) => ({
           eventType: event.eventType,
           severity: event.severity,
@@ -527,20 +529,20 @@ export class AttemptAnalysisService {
 
         try {
           const assessment = await this.claudeProctoringClient.assessRisk(timeline);
-          await tx.proctoringAnalysis.upsert({
-            where: { attemptId },
-            create: { attemptId, status: 'completed', riskLevel: assessment.riskLevel, summary: assessment.summary },
-            update: { status: 'completed', riskLevel: assessment.riskLevel, summary: assessment.summary, analyzedAt: new Date() },
-          });
+          result = { status: 'completed', riskLevel: assessment.riskLevel, summary: assessment.summary };
         } catch (error) {
           this.logger.error(`Proctoring analysis failed for attempt ${attemptId}`, error as Error);
-          await tx.proctoringAnalysis.upsert({
-            where: { attemptId },
-            create: { attemptId, status: 'failed', riskLevel: null, summary: null },
-            update: { status: 'failed', riskLevel: null, summary: null, analyzedAt: new Date() },
-          });
+          result = { status: 'failed', riskLevel: null, summary: null };
         }
-      });
+      }
+
+      await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
+        tx.proctoringAnalysis.upsert({
+          where: { attemptId },
+          create: { attemptId, ...result },
+          update: { ...result, analyzedAt: new Date() },
+        }),
+      );
     } catch (error) {
       this.logger.error(`Proctoring analysis could not run for attempt ${attemptId}`, error as Error);
     }
@@ -548,7 +550,7 @@ export class AttemptAnalysisService {
 }
 ```
 
-The outer `try/catch` covers the bootstrap lookup and the entire scoped transaction (e.g. a `forTenant` connection failure); the inner `try/catch` covers only the LLM call and its own persistence, so a bootstrap-level failure never leaves a half-written row and an LLM-level failure is always recorded as `'failed'` rather than merely logged.
+**Why three separate `forTenant` calls, not one wrapping everything:** `TenantPrismaService.forTenant` wraps its callback in a real `$transaction`. The LLM call must never run inside that transaction — Prisma's default interactive-transaction timeout is 5 seconds, a normal Claude API round-trip can exceed that, and if it did while the LLM call sat inside the transaction, the failure-recording `upsert` would run against an already-aborted transaction and fail too, silently defeating the whole point of the `'failed'` status. So: call 1 (bootstrap) resolves the organization; call 2 reads the events and returns; the LLM call (if any) happens in a plain `try/catch` with no transaction open at all; call 3 persists whatever `result` was decided. The outer `try/catch` covers all of this (a `forTenant` connection failure at any step is logged, never thrown); the inner `try/catch` covers only the LLM call itself.
 
 - [ ] **Step 4: Write the module**
 
