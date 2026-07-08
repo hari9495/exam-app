@@ -33,3 +33,8 @@ export function computeResult(
   const passFail: 'pass' | 'fail' = percentage >= passCriteriaPercent ? 'pass' : 'fail';
   return { score, maxScore, percentage, passFail };
 }
+
+export function computeRemainingSeconds(durationMinutes: number, startedAt: Date): number {
+  const deadline = new Date(startedAt).getTime() + durationMinutes * 60_000;
+  return Math.max(0, Math.round((deadline - Date.now()) / 1000));
+}

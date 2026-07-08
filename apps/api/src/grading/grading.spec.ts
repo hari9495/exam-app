@@ -1,4 +1,4 @@
-import { gradeAnswer, computeResult } from './grading';
+import { gradeAnswer, computeResult, computeRemainingSeconds } from './grading';
 
 describe('gradeAnswer', () => {
   it('awards full marks for an exact single-option match', () => {
@@ -51,5 +51,19 @@ describe('computeResult', () => {
   it('returns a zero percentage instead of dividing by zero when there are no questions', () => {
     const summary = computeResult([], [], 40);
     expect(summary).toEqual({ score: 0, maxScore: 0, percentage: 0, passFail: 'fail' });
+  });
+});
+
+describe('computeRemainingSeconds', () => {
+  it('returns a positive value before the exam duration has elapsed', () => {
+    const startedAt = new Date(Date.now() - 5 * 60_000);
+    const seconds = computeRemainingSeconds(30, startedAt);
+    expect(seconds).toBeGreaterThan(0);
+    expect(seconds).toBeLessThanOrEqual(25 * 60);
+  });
+
+  it('returns zero (not negative) once the duration has elapsed', () => {
+    const startedAt = new Date(Date.now() - 60 * 60_000);
+    expect(computeRemainingSeconds(30, startedAt)).toBe(0);
   });
 });

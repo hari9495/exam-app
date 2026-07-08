@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Attempt, Prisma } from '@prisma/client';
-import { gradeAnswer, computeResult } from './grading';
+import { gradeAnswer, computeResult, computeRemainingSeconds } from './grading';
 
 export interface SettlementExam {
   id: string;
@@ -11,8 +11,7 @@ export interface SettlementExam {
 @Injectable()
 export class AttemptSettlementService {
   remainingSeconds(exam: Pick<SettlementExam, 'durationMinutes'>, attempt: { startedAt: Date }): number {
-    const deadline = new Date(attempt.startedAt).getTime() + exam.durationMinutes * 60_000;
-    return Math.max(0, Math.round((deadline - Date.now()) / 1000));
+    return computeRemainingSeconds(exam.durationMinutes, attempt.startedAt);
   }
 
   private isExpired(exam: Pick<SettlementExam, 'durationMinutes'>, attempt: { startedAt: Date }): boolean {
