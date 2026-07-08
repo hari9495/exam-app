@@ -192,6 +192,7 @@ model Invitation {
   invitedAt              DateTime                @default(now()) @map("invited_at")
   expiresAt              DateTime                @map("expires_at")
   revokedAt              DateTime?               @map("revoked_at")
+  activeSessionFamilyId  String?                 @map("active_session_family_id")
   exam                   Exam                    @relation(fields: [examId], references: [id], onDelete: Cascade)
   candidate              Candidate               @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   notifications          Notification[]
@@ -224,9 +225,11 @@ model Attempt {
   questionOrderJson String     @map("question_order_json") @db.NVarChar(Max)
   startedAt         DateTime   @default(now()) @map("started_at")
   submittedAt       DateTime?  @map("submitted_at")
+  deviceFingerprint String?    @map("device_fingerprint")
   invitation        Invitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
   answers           Answer[]
   result            Result?
+  proctoringEvents  ProctoringEvent[]
 
   @@index([examId, status])
   @@map("attempts")
@@ -273,4 +276,17 @@ model CandidateRefreshToken {
 
   @@index([invitationId])
   @@map("candidate_refresh_tokens")
+}
+
+model ProctoringEvent {
+  id           String   @id @default(uuid()) @db.UniqueIdentifier
+  attemptId    String   @map("attempt_id") @db.UniqueIdentifier
+  eventType    String   @map("event_type")
+  severity     String
+  occurredAt   DateTime @default(now()) @map("occurred_at")
+  metadataJson String?  @map("metadata_json") @db.NVarChar(Max)
+  attempt      Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@index([attemptId, occurredAt])
+  @@map("proctoring_events")
 }
