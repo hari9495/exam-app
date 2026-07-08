@@ -1,12 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { ServeStaticModule } from '@nestjs/serve-static';
 import { PrismaModule } from './prisma/prisma.module';
 import { RbacModule } from './rbac/rbac.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { OrganizationsModule } from './organizations/organizations.module';
-import { UPLOADS_ROOT } from './organizations/uploads-path';
+import { StaticUploadsModule } from './organizations/static-uploads.module';
 import { UsersModule } from './users/users.module';
 import { QuestionsModule } from './questions/questions.module';
 import { ExamsModule } from './exams/exams.module';
@@ -18,7 +17,7 @@ import { AttemptModule } from './attempts/attempt.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    ServeStaticModule.forRoot({ rootPath: UPLOADS_ROOT, serveRoot: '/uploads' }),
+    StaticUploadsModule,
     PrismaModule,
     RbacModule,
     AuditModule,
