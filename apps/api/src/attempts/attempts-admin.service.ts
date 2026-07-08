@@ -44,12 +44,6 @@ export class AttemptsAdminService {
       return this.attemptSettlement.finalize(tx, exam, attempt, 'force_submitted');
     });
 
-    this.monitoringGateway.emitAttemptStatus(finalized.examId, {
-      attemptId: finalized.id,
-      candidateId: finalized.candidateId,
-      status: finalized.status,
-    });
-
     await this.audit.record(context, {
       actorUserId,
       action: 'attempt.force_submit',

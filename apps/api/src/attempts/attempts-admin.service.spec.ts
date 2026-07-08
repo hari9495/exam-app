@@ -83,9 +83,6 @@ describe('AttemptsAdminService', () => {
         entityType: 'attempt',
         entityId: 'attempt-1',
       });
-      expect(monitoringGateway.emitAttemptStatus).toHaveBeenCalledWith('exam-1', {
-        attemptId: 'attempt-1', candidateId: attempt.candidateId, status: 'force_submitted',
-      });
     });
 
     it('throws BadRequestException when the attempt is not in_progress', async () => {

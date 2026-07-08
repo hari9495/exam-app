@@ -189,7 +189,7 @@ describe('Live Monitoring WebSocket flow', () => {
     socket.disconnect();
   });
 
-  it('force-submits an attempt, pushing attempt:status to the room', async () => {
+  it('force-submits an attempt, pushing attempt:status to the room exactly once', async () => {
     const token = await inviteAndGetToken('carol@ci-monitoring.test', 'Carol');
     const accessToken = (await request(app.getHttpServer()).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
     const attemptId = (await request(app.getHttpServer()).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({}).expect(201)).body.id;
@@ -199,13 +199,26 @@ describe('Live Monitoring WebSocket flow', () => {
     socket.emit('join-exam', { examId });
     await waitForEvent(socket, 'roster:snapshot');
 
-    const attemptStatusPromise = waitForEvent<any>(socket, 'attempt:status');
+    // Collect every attempt:status event (rather than resolving on the first with .once()) so
+    // we can assert there is exactly one — a regression guard against force-submit emitting the
+    // event itself in addition to the emit already performed inside AttemptSettlementService.finalize().
+    const attemptStatusEvents: any[] = [];
+    socket.on('attempt:status', (payload) => attemptStatusEvents.push(payload));
+
     await request(app.getHttpServer())
       .post(`/api/v1/attempts/${attemptId}/force-submit`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(201);
-    const attemptStatus = await attemptStatusPromise;
-    expect(attemptStatus).toEqual({ attemptId, candidateId: expect.any(String), status: 'force_submitted' });
+
+    // Round-trip another HTTP call through the same server/socket stack so any second,
+    // asynchronously-delivered copy of the event would have had time to arrive before we assert.
+    await request(app.getHttpServer())
+      .get(`/api/v1/attempts/${attemptId}/messages`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(200);
+
+    expect(attemptStatusEvents).toHaveLength(1);
+    expect(attemptStatusEvents[0]).toEqual({ attemptId, candidateId: expect.any(String), status: 'force_submitted' });
 
     socket.disconnect();
   });
