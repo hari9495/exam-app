@@ -123,6 +123,31 @@ describe('AttemptService', () => {
       });
     });
 
+    it('resolves tenant context via an unscoped bootstrap lookup followed by a properly scoped call', async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
+        examSection: {
+          findMany: jest.fn().mockResolvedValue([
+            { questions: [{ questionId: 'q1' }, { questionId: 'q2' }] },
+          ]),
+        },
+      };
+      mockBootstrapThenScoped(tx);
+
+      await service.start(session);
+
+      expect(tenantPrisma.forTenant).toHaveBeenNthCalledWith(
+        1,
+        { organizationId: null, isSuperAdmin: true },
+        expect.any(Function),
+      );
+      expect(tenantPrisma.forTenant).toHaveBeenNthCalledWith(
+        2,
+        { organizationId: 'org-1', isSuperAdmin: false },
+        expect.any(Function),
+      );
+    });
+
     it('returns the existing attempt unchanged when one already exists (idempotent)', async () => {
       const existing = { id: 'attempt-1', status: 'in_progress' };
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(existing), create: jest.fn() } };
@@ -192,6 +217,29 @@ describe('AttemptService', () => {
 
       await expect(service.answer(session, { questionId: 'q1', selectedOptionIds: ['opt-a'] })).rejects.toThrow(NotFoundException);
     });
+
+    it('resolves tenant context via an unscoped bootstrap lookup followed by a properly scoped call', async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        question: { findFirstOrThrow: jest.fn().mockResolvedValue(question) },
+        answer: { upsert: jest.fn().mockResolvedValue({}) },
+      };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      mockBootstrapThenScoped(tx);
+
+      await service.answer(session, { questionId: 'q1', selectedOptionIds: ['opt-a'] });
+
+      expect(tenantPrisma.forTenant).toHaveBeenNthCalledWith(
+        1,
+        { organizationId: null, isSuperAdmin: true },
+        expect.any(Function),
+      );
+      expect(tenantPrisma.forTenant).toHaveBeenNthCalledWith(
+        2,
+        { organizationId: 'org-1', isSuperAdmin: false },
+        expect.any(Function),
+      );
+    });
   });
 
   describe('submit', () => {
@@ -225,6 +273,27 @@ describe('AttemptService', () => {
       mockBootstrapThenScoped(tx);
 
       await expect(service.submit(session)).rejects.toThrow(NotFoundException);
+    });
+
+    it('resolves tenant context via an unscoped bootstrap lookup followed by a properly scoped call', async () => {
+      const attempt = { id: 'attempt-1', status: 'in_progress', startedAt: new Date(), questionOrderJson: '[]' };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      settlement.finalize.mockResolvedValue({ id: 'attempt-1', status: 'submitted' });
+      mockBootstrapThenScoped(tx);
+
+      await service.submit(session);
+
+      expect(tenantPrisma.forTenant).toHaveBeenNthCalledWith(
+        1,
+        { organizationId: null, isSuperAdmin: true },
+        expect.any(Function),
+      );
+      expect(tenantPrisma.forTenant).toHaveBeenNthCalledWith(
+        2,
+        { organizationId: 'org-1', isSuperAdmin: false },
+        expect.any(Function),
+      );
     });
   });
 });

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 
@@ -18,6 +18,9 @@ export class CandidateJwtStrategy extends PassportStrategy(Strategy, 'candidate-
   }
 
   validate(payload: CandidateJwtPayload) {
+    if (payload.subjectType !== 'candidate') {
+      throw new UnauthorizedException('Invalid token subject type');
+    }
     return { invitationId: payload.sub };
   }
 }

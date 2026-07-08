@@ -75,7 +75,7 @@ describe('AttemptSettlementService', () => {
           ]),
           update: jest.fn(),
         },
-        result: { create: jest.fn() },
+        result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
         attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'auto_submitted' }) },
       };
 
@@ -99,7 +99,7 @@ describe('AttemptSettlementService', () => {
       const tx = {
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, options: [{ id: 'opt-a', isCorrect: true }] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
-        result: { create: jest.fn() },
+        result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
         attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
       };
 
@@ -113,6 +113,32 @@ describe('AttemptSettlementService', () => {
         where: { id: 'attempt-1' },
         data: { status: 'submitted', submittedAt: expect.any(Date) },
       });
+    });
+
+    it('is idempotent against a concurrent settlement race: skips grading/create if a Result already exists', async () => {
+      const attempt = { id: 'attempt-1', questionOrderJson: JSON.stringify(['q1']) };
+      const alreadyFinalized = { id: 'attempt-1', status: 'auto_submitted' };
+      const tx = {
+        question: { findMany: jest.fn() },
+        answer: { findMany: jest.fn(), update: jest.fn() },
+        result: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'result-1', attemptId: 'attempt-1' }),
+          create: jest.fn(),
+        },
+        attempt: {
+          update: jest.fn(),
+          findUniqueOrThrow: jest.fn().mockResolvedValue(alreadyFinalized),
+        },
+      };
+
+      const result = await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
+
+      expect(tx.result.findUnique).toHaveBeenCalledWith({ where: { attemptId: 'attempt-1' } });
+      expect(tx.question.findMany).not.toHaveBeenCalled();
+      expect(tx.result.create).not.toHaveBeenCalled();
+      expect(tx.attempt.update).not.toHaveBeenCalled();
+      expect(tx.attempt.findUniqueOrThrow).toHaveBeenCalledWith({ where: { id: 'attempt-1' } });
+      expect(result).toBe(alreadyFinalized);
     });
   });
 });

@@ -32,6 +32,13 @@ export class AttemptSettlementService {
     attempt: Attempt,
     status: 'submitted' | 'auto_submitted',
   ): Promise<Attempt> {
+    const existingResult = await tx.result.findUnique({ where: { attemptId: attempt.id } });
+    if (existingResult) {
+      // A concurrent settlement (e.g. another request racing on the same expired attempt) already
+      // created the Result for this attempt. Don't grade/create again — just return the current attempt.
+      return tx.attempt.findUniqueOrThrow({ where: { id: attempt.id } });
+    }
+
     const questionIds: string[] = JSON.parse(attempt.questionOrderJson);
     const questions = await tx.question.findMany({ where: { id: { in: questionIds } }, include: { options: true } });
     const existingAnswers = await tx.answer.findMany({ where: { attemptId: attempt.id } });
