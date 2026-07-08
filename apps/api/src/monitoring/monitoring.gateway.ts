@@ -128,24 +128,28 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit {
         continue;
       }
 
-      const roster = await this.monitoring.getRosterSnapshot(
-        { organizationId: exam.organizationId, isSuperAdmin: false },
-        examId,
-      );
+      try {
+        const roster = await this.monitoring.getRosterSnapshot(
+          { organizationId: exam.organizationId, isSuperAdmin: false },
+          examId,
+        );
 
-      for (const row of roster) {
-        if (!row.attemptId) {
-          continue;
+        for (const row of roster) {
+          if (!row.attemptId) {
+            continue;
+          }
+          const previous = this.lastPresence.get(row.attemptId);
+          if (previous !== row.online) {
+            this.lastPresence.set(row.attemptId, row.online);
+            this.server.to(roomName).emit('roster:presence', {
+              attemptId: row.attemptId,
+              candidateId: row.candidateId,
+              online: row.online,
+            });
+          }
         }
-        const previous = this.lastPresence.get(row.attemptId);
-        if (previous !== row.online) {
-          this.lastPresence.set(row.attemptId, row.online);
-          this.server.to(roomName).emit('roster:presence', {
-            attemptId: row.attemptId,
-            candidateId: row.candidateId,
-            online: row.online,
-          });
-        }
+      } catch (error) {
+        this.logger.error(`Roster snapshot failed for exam ${examId}`, error as Error);
       }
     }
   }
