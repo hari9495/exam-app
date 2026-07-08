@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Attempt, Prisma } from '@prisma/client';
 import { gradeAnswer, computeResult, computeRemainingSeconds } from './grading';
+import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 
 export interface SettlementExam {
   id: string;
@@ -10,6 +11,8 @@ export interface SettlementExam {
 
 @Injectable()
 export class AttemptSettlementService {
+  constructor(private readonly monitoringGateway: MonitoringGateway) {}
+
   remainingSeconds(exam: Pick<SettlementExam, 'durationMinutes'>, attempt: { startedAt: Date }): number {
     return computeRemainingSeconds(exam.durationMinutes, attempt.startedAt);
   }
@@ -66,6 +69,12 @@ export class AttemptSettlementService {
       },
     });
 
-    return tx.attempt.update({ where: { id: attempt.id }, data: { status, submittedAt: new Date() } });
+    const finalized = await tx.attempt.update({ where: { id: attempt.id }, data: { status, submittedAt: new Date() } });
+    this.monitoringGateway.emitAttemptStatus(attempt.examId, {
+      attemptId: finalized.id,
+      candidateId: attempt.candidateId,
+      status: finalized.status,
+    });
+    return finalized;
   }
 }

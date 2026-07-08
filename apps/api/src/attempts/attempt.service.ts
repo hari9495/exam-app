@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException, UnauthorizedExcepti
 import { Prisma } from '@prisma/client';
 import { TenantPrismaService } from '../prisma/tenant-prisma.service';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
+import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { CandidateSession } from '../candidate-auth/current-candidate.decorator';
 import { AnswerDto } from './dto/answer.dto';
 import { StartAttemptDto } from './dto/start-attempt.dto';
@@ -50,6 +51,7 @@ export class AttemptService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly attemptSettlement: AttemptSettlementService,
+    private readonly monitoringGateway: MonitoringGateway,
   ) {}
 
   async getCurrent(session: CandidateSession): Promise<AttemptCurrentResponse> {
@@ -103,6 +105,11 @@ export class AttemptService {
           questionOrderJson: JSON.stringify(questionIds),
           deviceFingerprint: dto.deviceFingerprint,
         },
+      });
+      this.monitoringGateway.emitAttemptStatus(exam.id, {
+        attemptId: attempt.id,
+        candidateId: invitation.candidateId,
+        status: attempt.status,
       });
       return { id: attempt.id, status: attempt.status };
     });

@@ -3,12 +3,14 @@ import { BadRequestException, NotFoundException, UnauthorizedException } from '@
 import { AttemptService } from './attempt.service';
 import { TenantPrismaService } from '../prisma/tenant-prisma.service';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
+import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { getProctoringEventSeverity } from './proctoring-severity';
 
 describe('AttemptService', () => {
   let service: AttemptService;
   let tenantPrisma: { forTenant: jest.Mock };
   let settlement: { settleIfExpired: jest.Mock; finalize: jest.Mock; remainingSeconds: jest.Mock };
+  let monitoringGateway: { emitAttemptStatus: jest.Mock };
   const session = { invitationId: 'inv-1' };
   const exam = { id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40 };
   const invitationRecord = { id: 'inv-1', candidateId: 'cand-1', examId: 'exam-1', exam };
@@ -16,12 +18,14 @@ describe('AttemptService', () => {
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
     settlement = { settleIfExpired: jest.fn(), finalize: jest.fn(), remainingSeconds: jest.fn() };
+    monitoringGateway = { emitAttemptStatus: jest.fn() };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
         AttemptService,
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: AttemptSettlementService, useValue: settlement },
+        { provide: MonitoringGateway, useValue: monitoringGateway },
       ],
     }).compile();
     service = moduleRef.get(AttemptService);
@@ -172,6 +176,30 @@ describe('AttemptService', () => {
 
       expect(result).toEqual({ id: 'attempt-1', status: 'in_progress' });
       expect(tx.attempt.create).not.toHaveBeenCalled();
+    });
+
+    it('emits attempt:status when a new attempt is created', async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
+        examSection: { findMany: jest.fn().mockResolvedValue([{ questions: [{ questionId: 'q1' }] }]) },
+      };
+      mockBootstrapThenScoped(tx);
+
+      await service.start(session);
+
+      expect(monitoringGateway.emitAttemptStatus).toHaveBeenCalledWith('exam-1', {
+        attemptId: 'attempt-1', candidateId: 'cand-1', status: 'in_progress',
+      });
+    });
+
+    it('does not emit again when returning an already-existing attempt (idempotent path)', async () => {
+      const existing = { id: 'attempt-1', status: 'in_progress' };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(existing), create: jest.fn() } };
+      mockBootstrapThenScoped(tx);
+
+      await service.start(session);
+
+      expect(monitoringGateway.emitAttemptStatus).not.toHaveBeenCalled();
     });
   });
 
