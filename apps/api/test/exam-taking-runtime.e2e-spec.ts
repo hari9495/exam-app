@@ -22,6 +22,7 @@ describe('Exam-Taking Runtime HTTP flow', () => {
   let trueFalseId: string;
   let singleMcqOptions: { id: string; text: string }[];
   let multiMcqOptions: { id: string; text: string }[];
+  let trueFalseOptions: { id: string; text: string }[];
   const fakeEmailService = { send: jest.fn().mockResolvedValue({ success: true, previewUrl: 'https://ethereal.email/fake' }) };
 
   beforeAll(async () => {
@@ -115,6 +116,7 @@ describe('Exam-Taking Runtime HTTP flow', () => {
       })
       .expect(201);
     trueFalseId = trueFalse.body.id;
+    trueFalseOptions = trueFalse.body.options;
 
     await request(app.getHttpServer())
       .put(`/api/v1/exams/${examId}/sections/${sectionId}/questions`)
@@ -205,6 +207,13 @@ describe('Exam-Taking Runtime HTTP flow', () => {
       .send({ questionId: 'not-a-real-question-id', selectedOptionIds: [correctSingleOptionId] })
       .expect(400);
 
+    const correctTrueFalseOptionId = trueFalseOptions.find((option) => option.text === 'True')!.id;
+    await request(app.getHttpServer())
+      .post('/api/v1/attempt/answer')
+      .set('Authorization', `Bearer ${candidateAccessToken}`)
+      .send({ questionId: trueFalseId, selectedOptionIds: [correctTrueFalseOptionId] })
+      .expect(201);
+
     const submitResponse = await request(app.getHttpServer())
       .post('/api/v1/attempt/submit')
       .set('Authorization', `Bearer ${candidateAccessToken}`)
@@ -230,9 +239,9 @@ describe('Exam-Taking Runtime HTTP flow', () => {
       .expect(200);
     const aliceResult = resultsResponse.body.find((row: { candidateName: string }) => row.candidateName === 'Alice');
     expect(aliceResult.status).toBe('submitted');
-    expect(aliceResult.score).toBe(5);
+    expect(aliceResult.score).toBe(6);
     expect(aliceResult.maxScore).toBe(10);
-    expect(aliceResult.percentage).toBe(50);
+    expect(aliceResult.percentage).toBe(60);
     expect(aliceResult.passFail).toBe('pass');
 
     await request(app.getHttpServer())
@@ -287,7 +296,7 @@ describe('Exam-Taking Runtime HTTP flow', () => {
   });
 
   it('rejects redeeming a revoked or expired invitation with a specific error, not a generic 404', async () => {
-    const { candidateId } = await inviteAndRedeem('erin@ci-attempt.test', 'Erin');
+    const { candidateId, token } = await inviteAndRedeem('erin@ci-attempt.test', 'Erin');
     const listResponse = await request(app.getHttpServer())
       .get(`/api/v1/exams/${examId}/invitations`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
@@ -298,6 +307,11 @@ describe('Exam-Taking Runtime HTTP flow', () => {
       .post(`/api/v1/invitations/${erinInvitation.id}/revoke`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(201);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/candidate-auth/redeem')
+      .send({ token })
+      .expect(400);
 
     await request(app.getHttpServer())
       .post('/api/v1/candidate-auth/redeem')
