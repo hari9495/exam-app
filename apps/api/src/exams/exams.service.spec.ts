@@ -348,6 +348,7 @@ describe('ExamsService', () => {
         {
           candidateId: 'cand-1', candidateName: 'Alice', invitationId: 'inv-1', attemptId: null,
           status: 'invited', score: null, maxScore: null, percentage: null, passFail: null, submittedAt: null,
+          proctoringAnalysis: null,
         },
       ]);
     });
@@ -364,6 +365,7 @@ describe('ExamsService', () => {
               attempt: {
                 id: 'attempt-1', status: 'submitted', submittedAt,
                 result: { score: 8, maxScore: 10, percentage: 80, passFail: 'pass' },
+                proctoringAnalysis: null,
               },
             },
           ]),
@@ -377,6 +379,7 @@ describe('ExamsService', () => {
         {
           candidateId: 'cand-1', candidateName: 'Alice', invitationId: 'inv-1', attemptId: 'attempt-1',
           status: 'submitted', score: 8, maxScore: 10, percentage: 80, passFail: 'pass', submittedAt,
+          proctoringAnalysis: null,
         },
       ]);
       expect(attemptSettlement.settleIfExpired).not.toHaveBeenCalled();
@@ -405,6 +408,35 @@ describe('ExamsService', () => {
       expect(attemptSettlement.settleIfExpired).toHaveBeenCalledWith(tx, exam, inProgressAttempt);
       expect(result[0].status).toBe('auto_submitted');
       expect(result[0].passFail).toBe('pass');
+    });
+
+    it('includes the proctoring analysis for a settled attempt, and null when none exists yet', async () => {
+      const exam = { id: 'exam-1', passCriteriaPercent: 40 };
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue(exam) },
+        invitation: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' },
+              attempt: {
+                id: 'attempt-1', status: 'submitted', submittedAt: new Date(),
+                result: { score: 5, maxScore: 5, percentage: 100, passFail: 'pass' },
+                proctoringAnalysis: { status: 'completed', riskLevel: 'low', summary: 'Nothing notable.' },
+              },
+            },
+            {
+              id: 'inv-2', candidateId: 'cand-2', status: 'invited', candidate: { name: 'Bob' },
+              attempt: null,
+            },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getResults(context, 'exam-1');
+
+      expect(result[0].proctoringAnalysis).toEqual({ status: 'completed', riskLevel: 'low', summary: 'Nothing notable.' });
+      expect(result[1].proctoringAnalysis).toBeNull();
     });
   });
 });

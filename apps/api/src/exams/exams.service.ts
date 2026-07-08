@@ -28,6 +28,7 @@ export interface ExamResultRow {
   percentage: number | null;
   passFail: string | null;
   submittedAt: Date | null;
+  proctoringAnalysis: { status: string; riskLevel: string | null; summary: string | null } | null;
 }
 
 @Injectable()
@@ -249,7 +250,7 @@ export class ExamsService {
 
       const invitations = await tx.invitation.findMany({
         where: { examId },
-        include: { candidate: true, attempt: { include: { result: true } } },
+        include: { candidate: true, attempt: { include: { result: true, proctoringAnalysis: true } } },
         orderBy: [{ invitedAt: 'desc' }, { id: 'desc' }],
       });
 
@@ -258,7 +259,7 @@ export class ExamsService {
         let attempt = invitation.attempt;
         if (attempt && attempt.status === 'in_progress') {
           await this.attemptSettlement.settleIfExpired(tx, exam, attempt);
-          attempt = await tx.attempt.findUnique({ where: { id: attempt.id }, include: { result: true } });
+          attempt = await tx.attempt.findUnique({ where: { id: attempt.id }, include: { result: true, proctoringAnalysis: true } });
         }
         rows.push({
           candidateId: invitation.candidateId,
@@ -271,6 +272,9 @@ export class ExamsService {
           percentage: attempt?.result?.percentage ?? null,
           passFail: attempt?.result?.passFail ?? null,
           submittedAt: attempt?.submittedAt ?? null,
+          proctoringAnalysis: attempt?.proctoringAnalysis
+            ? { status: attempt.proctoringAnalysis.status, riskLevel: attempt.proctoringAnalysis.riskLevel, summary: attempt.proctoringAnalysis.summary }
+            : null,
         });
       }
       return rows;
