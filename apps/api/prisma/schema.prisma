@@ -232,6 +232,7 @@ model Attempt {
   result            Result?
   proctoringEvents  ProctoringEvent[]
   messages          CandidateMessage[]
+  proctoringAnalysis ProctoringAnalysis?
 
   @@index([examId, status])
   @@map("attempts")
@@ -304,4 +305,16 @@ model CandidateMessage {
 
   @@index([attemptId, sentAt])
   @@map("candidate_messages")
+}
+
+model ProctoringAnalysis {
+  id         String    @id @default(uuid()) @db.UniqueIdentifier
+  attemptId  String    @unique @map("attempt_id") @db.UniqueIdentifier
+  status     String
+  riskLevel  String?   @map("risk_level")
+  summary    String?   @db.NVarChar(Max)
+  analyzedAt DateTime  @default(now()) @map("analyzed_at")
+  attempt    Attempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@map("proctoring_analyses")
 }
