@@ -1,10 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { CandidateMessage, ProctoringEvent } from '@prisma/client';
+import { CandidateMessage, ProctoringAnalysis, ProctoringEvent } from '@prisma/client';
 import { TenantPrismaService } from '../prisma/tenant-prisma.service';
 import { TenantContext } from '../prisma/tenant-context';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { AuditService } from '../audit/audit.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
+import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
 
 @Injectable()
 export class AttemptsAdminService {
@@ -13,6 +14,7 @@ export class AttemptsAdminService {
     private readonly attemptSettlement: AttemptSettlementService,
     private readonly audit: AuditService,
     private readonly monitoringGateway: MonitoringGateway,
+    private readonly attemptAnalysisService: AttemptAnalysisService,
   ) {}
 
   async listProctoringEvents(context: TenantContext, attemptId: string): Promise<ProctoringEvent[]> {
@@ -98,5 +100,20 @@ export class AttemptsAdminService {
       }
       return tx.candidateMessage.findMany({ where: { attemptId }, orderBy: { sentAt: 'asc' } });
     });
+  }
+
+  async reanalyze(context: TenantContext, attemptId: string): Promise<ProctoringAnalysis> {
+    await this.tenantPrisma.forTenant(context, async (tx) => {
+      const attempt = await tx.attempt.findFirst({
+        where: { id: attemptId, invitation: { exam: { organizationId: context.organizationId as string } } },
+      });
+      if (!attempt) {
+        throw new NotFoundException(`Attempt ${attemptId} not found`);
+      }
+    });
+
+    await this.attemptAnalysisService.analyze(attemptId);
+
+    return this.tenantPrisma.forTenant(context, (tx) => tx.proctoringAnalysis.findUniqueOrThrow({ where: { attemptId } }));
   }
 }

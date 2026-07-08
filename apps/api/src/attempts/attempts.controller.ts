@@ -41,4 +41,10 @@ export class AttemptsController {
   listMessages(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.attemptsAdminService.listMessages(tenant, id);
   }
+
+  @Post(':id/reanalyze')
+  @RequirePermissions('exam:manage')
+  reanalyze(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.attemptsAdminService.reanalyze(tenant, id);
+  }
 }

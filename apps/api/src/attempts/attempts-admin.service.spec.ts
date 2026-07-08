@@ -5,6 +5,7 @@ import { TenantPrismaService } from '../prisma/tenant-prisma.service';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { AuditService } from '../audit/audit.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
+import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
 
 describe('AttemptsAdminService', () => {
   let service: AttemptsAdminService;
@@ -12,6 +13,7 @@ describe('AttemptsAdminService', () => {
   let attemptSettlement: { finalize: jest.Mock };
   let audit: { record: jest.Mock };
   let monitoringGateway: { emitAttemptStatus: jest.Mock; emitMessageSent: jest.Mock };
+  let attemptAnalysisService: { analyze: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
@@ -19,6 +21,7 @@ describe('AttemptsAdminService', () => {
     attemptSettlement = { finalize: jest.fn() };
     audit = { record: jest.fn() };
     monitoringGateway = { emitAttemptStatus: jest.fn(), emitMessageSent: jest.fn() };
+    attemptAnalysisService = { analyze: jest.fn().mockResolvedValue(undefined) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         AttemptsAdminService,
@@ -26,6 +29,7 @@ describe('AttemptsAdminService', () => {
         { provide: AttemptSettlementService, useValue: attemptSettlement },
         { provide: AuditService, useValue: audit },
         { provide: MonitoringGateway, useValue: monitoringGateway },
+        { provide: AttemptAnalysisService, useValue: attemptAnalysisService },
       ],
     }).compile();
     service = moduleRef.get(AttemptsAdminService);
@@ -147,6 +151,34 @@ describe('AttemptsAdminService', () => {
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
       await expect(service.listMessages(context, 'attempt-1')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('reanalyze', () => {
+    it('re-invokes analysis and returns the fresh row', async () => {
+      const ownershipTx = { attempt: { findFirst: jest.fn().mockResolvedValue({ id: 'attempt-1' }) } };
+      const fetchTx = {
+        proctoringAnalysis: {
+          findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'analysis-1', attemptId: 'attempt-1', status: 'completed', riskLevel: 'low', summary: 'ok' }),
+        },
+      };
+      tenantPrisma.forTenant
+        .mockImplementationOnce((_ctx, fn) => fn(ownershipTx))
+        .mockImplementationOnce((_ctx, fn) => fn(fetchTx));
+
+      const result = await service.reanalyze(context, 'attempt-1');
+
+      expect(attemptAnalysisService.analyze).toHaveBeenCalledWith('attempt-1');
+      expect(fetchTx.proctoringAnalysis.findUniqueOrThrow).toHaveBeenCalledWith({ where: { attemptId: 'attempt-1' } });
+      expect(result).toEqual({ id: 'analysis-1', attemptId: 'attempt-1', status: 'completed', riskLevel: 'low', summary: 'ok' });
+    });
+
+    it('throws NotFoundException when the attempt does not belong to the caller organization, without triggering analysis', async () => {
+      const ownershipTx = { attempt: { findFirst: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(ownershipTx));
+
+      await expect(service.reanalyze(context, 'attempt-1')).rejects.toThrow(NotFoundException);
+      expect(attemptAnalysisService.analyze).not.toHaveBeenCalled();
     });
   });
 });
