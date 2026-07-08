@@ -101,6 +101,7 @@ export class InvitationsService {
           invitedAt: true,
           expiresAt: true,
           revokedAt: true,
+          activeSessionFamilyId: true,
           candidate: true,
         },
         orderBy: [{ invitedAt: 'desc' }, { id: 'desc' }],
