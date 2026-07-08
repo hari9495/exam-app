@@ -4,6 +4,7 @@ import { CurrentCandidate, CandidateSession } from '../candidate-auth/current-ca
 import { AttemptService } from './attempt.service';
 import { AnswerDto } from './dto/answer.dto';
 import { StartAttemptDto } from './dto/start-attempt.dto';
+import { ReportProctoringEventDto } from './dto/report-proctoring-event.dto';
 
 @Controller('attempt')
 @UseGuards(CandidateJwtAuthGuard)
@@ -28,5 +29,10 @@ export class AttemptController {
   @Post('submit')
   submit(@CurrentCandidate() candidate: CandidateSession) {
     return this.attemptService.submit(candidate);
+  }
+
+  @Post('proctoring-event')
+  reportProctoringEvent(@CurrentCandidate() candidate: CandidateSession, @Body() dto: ReportProctoringEventDto) {
+    return this.attemptService.reportProctoringEvent(candidate, dto);
   }
 }

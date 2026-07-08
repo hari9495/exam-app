@@ -5,6 +5,8 @@ import { AttemptSettlementService } from '../grading/attempt-settlement.service'
 import { CandidateSession } from '../candidate-auth/current-candidate.decorator';
 import { AnswerDto } from './dto/answer.dto';
 import { StartAttemptDto } from './dto/start-attempt.dto';
+import { getProctoringEventSeverity } from './proctoring-severity';
+import { ReportProctoringEventDto } from './dto/report-proctoring-event.dto';
 
 interface AttemptQuestionOption {
   id: string;
@@ -146,6 +148,30 @@ export class AttemptService {
       });
 
       return { questionId: dto.questionId, selectedOptionIds: dto.selectedOptionIds, isMarkedForReview };
+    });
+  }
+
+  async reportProctoringEvent(
+    session: CandidateSession,
+    dto: ReportProctoringEventDto,
+  ): Promise<{ id: string; eventType: string; severity: string }> {
+    const { organizationId, invitation } = await this.resolveContext(session.invitationId);
+
+    return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
+      if (!attempt) {
+        throw new NotFoundException('No attempt has been started');
+      }
+
+      const event = await tx.proctoringEvent.create({
+        data: {
+          attemptId: attempt.id,
+          eventType: dto.eventType,
+          severity: getProctoringEventSeverity(dto.eventType),
+          metadataJson: dto.metadata ? JSON.stringify(dto.metadata) : null,
+        },
+      });
+      return { id: event.id, eventType: event.eventType, severity: event.severity };
     });
   }
 

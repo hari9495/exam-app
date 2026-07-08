@@ -3,6 +3,7 @@ import { BadRequestException, NotFoundException, UnauthorizedException } from '@
 import { AttemptService } from './attempt.service';
 import { TenantPrismaService } from '../prisma/tenant-prisma.service';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
+import { getProctoringEventSeverity } from './proctoring-severity';
 
 describe('AttemptService', () => {
   let service: AttemptService;
@@ -308,6 +309,38 @@ describe('AttemptService', () => {
         { organizationId: 'org-1', isSuperAdmin: false },
         expect.any(Function),
       );
+    });
+  });
+
+  describe('reportProctoringEvent', () => {
+    it('creates a proctoring event with server-computed severity', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'tab_switch', severity: 'medium' }) } };
+      mockBootstrapThenScoped(tx);
+
+      const result = await service.reportProctoringEvent(session, { eventType: 'tab_switch' });
+
+      expect(result).toEqual({ id: 'evt-1', eventType: 'tab_switch', severity: 'medium' });
+      expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+        data: { attemptId: 'attempt-1', eventType: 'tab_switch', severity: getProctoringEventSeverity('tab_switch'), metadataJson: null },
+      });
+    });
+
+    it('serializes optional metadata to JSON', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
+      mockBootstrapThenScoped(tx);
+
+      await service.reportProctoringEvent(session, { eventType: 'idle_timeout', metadata: { idleSeconds: 45 } });
+
+      expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+        data: { attemptId: 'attempt-1', eventType: 'idle_timeout', severity: 'low', metadataJson: JSON.stringify({ idleSeconds: 45 }) },
+      });
+    });
+
+    it('throws NotFoundException when no attempt has been started', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) } };
+      mockBootstrapThenScoped(tx);
+
+      await expect(service.reportProctoringEvent(session, { eventType: 'tab_switch' })).rejects.toThrow(NotFoundException);
     });
   });
 });
