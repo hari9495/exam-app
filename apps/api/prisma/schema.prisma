@@ -20,16 +20,19 @@ model Plan {
 }
 
 model Organization {
-  id        String     @id @default(uuid()) @db.UniqueIdentifier
-  name      String
-  slug      String     @unique
-  region    String     @default("us")
-  status    String     @default("active")
-  planId    String     @map("plan_id") @db.UniqueIdentifier
-  plan      Plan       @relation(fields: [planId], references: [id])
-  createdAt DateTime   @default(now()) @map("created_at")
-  users     User[]
-  auditLogs AuditLog[]
+  id           String     @id @default(uuid()) @db.UniqueIdentifier
+  name         String
+  slug         String     @unique
+  region       String     @default("us")
+  status       String     @default("active")
+  logoPath     String?    @map("logo_path")
+  primaryColor String?    @map("primary_color")
+  accentColor  String?    @map("accent_color")
+  planId       String     @map("plan_id") @db.UniqueIdentifier
+  plan         Plan       @relation(fields: [planId], references: [id])
+  createdAt    DateTime   @default(now()) @map("created_at")
+  users        User[]
+  auditLogs    AuditLog[]
 
   @@map("organizations")
 }
