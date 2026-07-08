@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Exam, ExamSection, ExamSectionQuestion, Question, QuestionOption } from '@prisma/client';
 import { TenantPrismaService } from '../prisma/tenant-prisma.service';
 import { TenantContext } from '../prisma/tenant-context';
+import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { CreateExamDto } from './dto/create-exam.dto';
 import { UpdateExamDto } from './dto/update-exam.dto';
 import { CreateExamSectionDto } from './dto/create-exam-section.dto';
@@ -16,9 +17,25 @@ interface ExamFilters {
   status?: string;
 }
 
+export interface ExamResultRow {
+  candidateId: string;
+  candidateName: string;
+  invitationId: string;
+  attemptId: string | null;
+  status: string;
+  score: number | null;
+  maxScore: number | null;
+  percentage: number | null;
+  passFail: string | null;
+  submittedAt: Date | null;
+}
+
 @Injectable()
 export class ExamsService {
-  constructor(private readonly tenantPrisma: TenantPrismaService) {}
+  constructor(
+    private readonly tenantPrisma: TenantPrismaService,
+    private readonly attemptSettlement: AttemptSettlementService,
+  ) {}
 
   async create(context: TenantContext, userId: string, dto: CreateExamDto): Promise<Exam> {
     return this.tenantPrisma.forTenant(context, (tx) =>
@@ -220,6 +237,43 @@ export class ExamsService {
         },
       });
       return updatedSection as ExamSectionWithQuestions;
+    });
+  }
+
+  async getResults(context: TenantContext, examId: string): Promise<ExamResultRow[]> {
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const exam = await tx.exam.findFirst({ where: { id: examId, organizationId: context.organizationId as string } });
+      if (!exam) {
+        throw new NotFoundException(`Exam ${examId} not found`);
+      }
+
+      const invitations = await tx.invitation.findMany({
+        where: { examId },
+        include: { candidate: true, attempt: { include: { result: true } } },
+        orderBy: [{ invitedAt: 'desc' }, { id: 'desc' }],
+      });
+
+      const rows: ExamResultRow[] = [];
+      for (const invitation of invitations) {
+        let attempt = invitation.attempt;
+        if (attempt && attempt.status === 'in_progress') {
+          await this.attemptSettlement.settleIfExpired(tx, exam, attempt);
+          attempt = await tx.attempt.findUnique({ where: { id: attempt.id }, include: { result: true } });
+        }
+        rows.push({
+          candidateId: invitation.candidateId,
+          candidateName: invitation.candidate.name,
+          invitationId: invitation.id,
+          attemptId: attempt?.id ?? null,
+          status: attempt?.status ?? invitation.status,
+          score: attempt?.result?.score ?? null,
+          maxScore: attempt?.result?.maxScore ?? null,
+          percentage: attempt?.result?.percentage ?? null,
+          passFail: attempt?.result?.passFail ?? null,
+          submittedAt: attempt?.submittedAt ?? null,
+        });
+      }
+      return rows;
     });
   }
 }

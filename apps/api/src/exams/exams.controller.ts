@@ -86,4 +86,10 @@ export class ExamsController {
   ) {
     return this.examsService.replaceSectionQuestions(tenant, examId, sectionId, dto.questionIds);
   }
+
+  @Get(':id/results')
+  @RequirePermissions('exam:manage')
+  getResults(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.examsService.getResults(tenant, id);
+  }
 }

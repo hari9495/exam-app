@@ -2,16 +2,23 @@ import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ExamsService } from './exams.service';
 import { TenantPrismaService } from '../prisma/tenant-prisma.service';
+import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 
 describe('ExamsService', () => {
   let service: ExamsService;
   let tenantPrisma: { forTenant: jest.Mock };
+  let attemptSettlement: { settleIfExpired: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
+    attemptSettlement = { settleIfExpired: jest.fn() };
     const moduleRef = await Test.createTestingModule({
-      providers: [ExamsService, { provide: TenantPrismaService, useValue: tenantPrisma }],
+      providers: [
+        ExamsService,
+        { provide: TenantPrismaService, useValue: tenantPrisma },
+        { provide: AttemptSettlementService, useValue: attemptSettlement },
+      ],
     }).compile();
     service = moduleRef.get(ExamsService);
   });
@@ -313,5 +320,91 @@ describe('ExamsService', () => {
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
     await expect(service.publish(context, 'exam-1')).rejects.toThrow(BadRequestException);
+  });
+
+  describe('getResults', () => {
+    it('throws NotFoundException when the exam does not exist', async () => {
+      const tx = { exam: { findFirst: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.getResults(context, 'missing-exam')).rejects.toThrow(NotFoundException);
+    });
+
+    it('returns one row per invitation, with nulls for candidates who have not started', async () => {
+      const exam = { id: 'exam-1', passCriteriaPercent: 40 };
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue(exam) },
+        invitation: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' }, attempt: null },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getResults(context, 'exam-1');
+
+      expect(result).toEqual([
+        {
+          candidateId: 'cand-1', candidateName: 'Alice', invitationId: 'inv-1', attemptId: null,
+          status: 'invited', score: null, maxScore: null, percentage: null, passFail: null, submittedAt: null,
+        },
+      ]);
+    });
+
+    it('returns the graded result for a submitted attempt', async () => {
+      const exam = { id: 'exam-1', passCriteriaPercent: 40 };
+      const submittedAt = new Date();
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue(exam) },
+        invitation: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' },
+              attempt: {
+                id: 'attempt-1', status: 'submitted', submittedAt,
+                result: { score: 8, maxScore: 10, percentage: 80, passFail: 'pass' },
+              },
+            },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getResults(context, 'exam-1');
+
+      expect(result).toEqual([
+        {
+          candidateId: 'cand-1', candidateName: 'Alice', invitationId: 'inv-1', attemptId: 'attempt-1',
+          status: 'submitted', score: 8, maxScore: 10, percentage: 80, passFail: 'pass', submittedAt,
+        },
+      ]);
+      expect(attemptSettlement.settleIfExpired).not.toHaveBeenCalled();
+    });
+
+    it('settles an in-progress attempt past its deadline before reporting it', async () => {
+      const exam = { id: 'exam-1', passCriteriaPercent: 40 };
+      const inProgressAttempt = { id: 'attempt-1', status: 'in_progress', result: null };
+      const settledAttempt = { id: 'attempt-1', status: 'auto_submitted', submittedAt: new Date() };
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue(exam) },
+        invitation: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' }, attempt: inProgressAttempt },
+          ]),
+        },
+        attempt: {
+          findUnique: jest.fn().mockResolvedValue({ ...settledAttempt, result: { score: 4, maxScore: 10, percentage: 40, passFail: 'pass' } }),
+        },
+      };
+      attemptSettlement.settleIfExpired.mockResolvedValue(settledAttempt);
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getResults(context, 'exam-1');
+
+      expect(attemptSettlement.settleIfExpired).toHaveBeenCalledWith(tx, exam, inProgressAttempt);
+      expect(result[0].status).toBe('auto_submitted');
+      expect(result[0].passFail).toBe('pass');
+    });
   });
 });
