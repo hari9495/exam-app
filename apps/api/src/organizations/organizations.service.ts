@@ -1,15 +1,25 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { Organization } from '@prisma/client';
+import { dirname, join } from 'path';
+import * as fs from 'fs/promises';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContext } from '../prisma/tenant-context';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateBrandingColorsDto } from './dto/update-branding-colors.dto';
+import { UPLOADS_ROOT } from './uploads-path';
 
 export interface BrandingResponse {
   logoUrl: string | null;
   primaryColor: string | null;
   accentColor: string | null;
 }
+
+const ALLOWED_LOGO_MIME_TYPES: Record<string, string> = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/svg+xml': '.svg',
+};
+const MAX_LOGO_SIZE_BYTES = 2 * 1024 * 1024;
 
 @Injectable()
 export class OrganizationsService {
@@ -37,6 +47,26 @@ export class OrganizationsService {
       where: { id: organizationId },
       data: { ...(dto.primaryColor !== undefined && { primaryColor: dto.primaryColor }), ...(dto.accentColor !== undefined && { accentColor: dto.accentColor }) },
     });
+    return this.toBrandingResponse(org);
+  }
+
+  async uploadLogo(context: TenantContext, file: Express.Multer.File): Promise<BrandingResponse> {
+    const organizationId = this.requireOrganizationId(context);
+
+    const extension = ALLOWED_LOGO_MIME_TYPES[file.mimetype];
+    if (!extension) {
+      throw new BadRequestException('Logo must be a PNG, JPEG, or SVG image');
+    }
+    if (file.size > MAX_LOGO_SIZE_BYTES) {
+      throw new BadRequestException('Logo file must be 2MB or smaller');
+    }
+
+    const logoPath = `logos/${organizationId}${extension}`;
+    const fullPath = join(UPLOADS_ROOT, logoPath);
+    await fs.mkdir(dirname(fullPath), { recursive: true });
+    await fs.writeFile(fullPath, file.buffer);
+
+    const org = await this.prisma.organization.update({ where: { id: organizationId }, data: { logoPath } });
     return this.toBrandingResponse(org);
   }
 

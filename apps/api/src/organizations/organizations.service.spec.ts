@@ -1,5 +1,13 @@
+jest.mock('fs/promises', () => ({
+  mkdir: jest.fn(),
+  writeFile: jest.fn(),
+}));
+
+import * as fs from 'fs/promises';
+
 import { Test } from '@nestjs/testing';
 import { BadRequestException, ConflictException } from '@nestjs/common';
+import { sep } from 'path';
 import { OrganizationsService } from './organizations.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -74,6 +82,45 @@ describe('OrganizationsService', () => {
         service.updateBrandingColors({ organizationId: null, isSuperAdmin: true }, { primaryColor: '#1a73e8' }),
       ).rejects.toThrow(BadRequestException);
       expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('uploadLogo', () => {
+    const pngFile = { mimetype: 'image/png', size: 1024, buffer: Buffer.from('fake-png-bytes') } as Express.Multer.File;
+
+    beforeEach(() => {
+      process.env.API_ORIGIN = 'http://localhost:3001';
+      (fs.mkdir as jest.Mock).mockReset().mockResolvedValue(undefined);
+      (fs.writeFile as jest.Mock).mockReset().mockResolvedValue(undefined);
+    });
+
+    it('writes the file to logos/{orgId}.png and updates logoPath', async () => {
+      prisma.organization.update.mockResolvedValue({ id: 'org-1', logoPath: 'logos/org-1.png', primaryColor: null, accentColor: null });
+
+      const result = await service.uploadLogo({ organizationId: 'org-1', isSuperAdmin: false }, pngFile);
+
+      expect(fs.writeFile).toHaveBeenCalledWith(expect.stringContaining(`logos${sep}org-1.png`), pngFile.buffer);
+      expect(prisma.organization.update).toHaveBeenCalledWith({ where: { id: 'org-1' }, data: { logoPath: 'logos/org-1.png' } });
+      expect(result.logoUrl).toBe('http://localhost:3001/uploads/logos/org-1.png');
+    });
+
+    it('rejects a non-image mimetype without writing any file', async () => {
+      const badFile = { mimetype: 'application/pdf', size: 1024, buffer: Buffer.from('x') } as Express.Multer.File;
+
+      await expect(service.uploadLogo({ organizationId: 'org-1', isSuperAdmin: false }, badFile)).rejects.toThrow(BadRequestException);
+      expect(fs.writeFile).not.toHaveBeenCalled();
+    });
+
+    it('rejects a file over 2MB without writing any file', async () => {
+      const bigFile = { mimetype: 'image/png', size: 2 * 1024 * 1024 + 1, buffer: Buffer.from('x') } as Express.Multer.File;
+
+      await expect(service.uploadLogo({ organizationId: 'org-1', isSuperAdmin: false }, bigFile)).rejects.toThrow(BadRequestException);
+      expect(fs.writeFile).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(service.uploadLogo({ organizationId: null, isSuperAdmin: true }, pngFile)).rejects.toThrow(BadRequestException);
+      expect(fs.writeFile).not.toHaveBeenCalled();
     });
   });
 });

@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
@@ -29,5 +30,12 @@ export class OrganizationsController {
   @RequirePermissions('org:manage_settings')
   updateBrandingColors(@CurrentTenant() tenant: TenantContext, @Body() dto: UpdateBrandingColorsDto) {
     return this.organizationsService.updateBrandingColors(tenant, dto);
+  }
+
+  @Post('branding/logo')
+  @RequirePermissions('org:manage_settings')
+  @UseInterceptors(FileInterceptor('file'))
+  uploadLogo(@CurrentTenant() tenant: TenantContext, @UploadedFile() file: Express.Multer.File) {
+    return this.organizationsService.uploadLogo(tenant, file);
   }
 }
