@@ -33,6 +33,12 @@ interface AttemptAnswerSummary {
   isMarkedForReview: boolean;
 }
 
+interface AttemptMessageSummary {
+  id: string;
+  body: string;
+  sentAt: Date;
+}
+
 interface AttemptPreviewResponse {
   exam: { title: string; instructions: string | null; durationMinutes: number };
 }
@@ -42,6 +48,7 @@ interface AttemptStateResponse {
   remainingSeconds: number;
   sections: AttemptSection[];
   answers: AttemptAnswerSummary[];
+  messages: AttemptMessageSummary[];
 }
 
 export type AttemptCurrentResponse = AttemptPreviewResponse | AttemptStateResponse;
@@ -68,6 +75,11 @@ export class AttemptService {
       const sections = await this.loadSections(tx, exam.id, questionIds);
       const answers = await tx.answer.findMany({ where: { attemptId: settled.id } });
 
+      const unreadMessages = await tx.candidateMessage.findMany({ where: { attemptId: settled.id, readAt: null } });
+      if (unreadMessages.length > 0) {
+        await tx.candidateMessage.updateMany({ where: { attemptId: settled.id, readAt: null }, data: { readAt: new Date() } });
+      }
+
       return {
         status: settled.status,
         remainingSeconds: this.attemptSettlement.remainingSeconds(exam, settled),
@@ -77,6 +89,7 @@ export class AttemptService {
           selectedOptionIds: JSON.parse(answer.selectedOptionIdsJson),
           isMarkedForReview: answer.isMarkedForReview,
         })),
+        messages: unreadMessages.map((message) => ({ id: message.id, body: message.body, sentAt: message.sentAt })),
       };
     });
   }

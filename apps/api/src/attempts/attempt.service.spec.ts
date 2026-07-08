@@ -71,6 +71,7 @@ describe('AttemptService', () => {
           ]),
         },
         answer: { findMany: jest.fn().mockResolvedValue([{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isMarkedForReview: false }]) },
+        candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(3300);
@@ -85,8 +86,32 @@ describe('AttemptService', () => {
           { title: 'Section One', questions: [{ id: 'q1', text: 'What is 2+2?', type: 'single_mcq', marks: 5, options: [{ id: 'opt-a', text: '4' }, { id: 'opt-b', text: '5' }] }] },
         ],
         answers: [{ questionId: 'q1', selectedOptionIds: ['opt-a'], isMarkedForReview: false }],
+        messages: [],
       });
       expect((result as any).sections[0].questions[0]).not.toHaveProperty('isCorrect');
+    });
+
+    it('returns unread messages and marks them read', async () => {
+      const attempt = { id: 'attempt-1', status: 'in_progress', startedAt: new Date(), questionOrderJson: '[]' };
+      const unreadMessage = { id: 'msg-1', body: 'Please stay on the exam tab', sentAt: new Date('2026-07-09T00:00:00Z') };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        examSection: { findMany: jest.fn().mockResolvedValue([]) },
+        answer: { findMany: jest.fn().mockResolvedValue([]) },
+        candidateMessage: { findMany: jest.fn().mockResolvedValue([unreadMessage]), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      settlement.remainingSeconds.mockReturnValue(1000);
+      mockBootstrapThenScoped(tx);
+
+      const result = await service.getCurrent(session);
+
+      expect((result as any).messages).toEqual([{ id: 'msg-1', body: 'Please stay on the exam tab', sentAt: unreadMessage.sentAt }]);
+      expect(tx.candidateMessage.findMany).toHaveBeenCalledWith({ where: { attemptId: 'attempt-1', readAt: null } });
+      expect(tx.candidateMessage.updateMany).toHaveBeenCalledWith({
+        where: { attemptId: 'attempt-1', readAt: null },
+        data: { readAt: expect.any(Date) },
+      });
     });
 
     it('resolves tenant context via an unscoped bootstrap lookup followed by a properly scoped call', async () => {
