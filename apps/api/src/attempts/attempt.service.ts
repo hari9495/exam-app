@@ -4,6 +4,7 @@ import { TenantPrismaService } from '../prisma/tenant-prisma.service';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { CandidateSession } from '../candidate-auth/current-candidate.decorator';
 import { AnswerDto } from './dto/answer.dto';
+import { StartAttemptDto } from './dto/start-attempt.dto';
 
 interface AttemptQuestionOption {
   id: string;
@@ -76,7 +77,7 @@ export class AttemptService {
     });
   }
 
-  async start(session: CandidateSession): Promise<{ id: string; status: string }> {
+  async start(session: CandidateSession, dto: StartAttemptDto = {}): Promise<{ id: string; status: string }> {
     const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
 
     return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
@@ -98,6 +99,7 @@ export class AttemptService {
           candidateId: invitation.candidateId,
           examId: exam.id,
           questionOrderJson: JSON.stringify(questionIds),
+          deviceFingerprint: dto.deviceFingerprint,
         },
       });
       return { id: attempt.id, status: attempt.status };

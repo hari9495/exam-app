@@ -3,6 +3,7 @@ import { CandidateJwtAuthGuard } from '../candidate-auth/candidate-jwt-auth.guar
 import { CurrentCandidate, CandidateSession } from '../candidate-auth/current-candidate.decorator';
 import { AttemptService } from './attempt.service';
 import { AnswerDto } from './dto/answer.dto';
+import { StartAttemptDto } from './dto/start-attempt.dto';
 
 @Controller('attempt')
 @UseGuards(CandidateJwtAuthGuard)
@@ -15,8 +16,8 @@ export class AttemptController {
   }
 
   @Post('start')
-  start(@CurrentCandidate() candidate: CandidateSession) {
-    return this.attemptService.start(candidate);
+  start(@CurrentCandidate() candidate: CandidateSession, @Body() dto: StartAttemptDto) {
+    return this.attemptService.start(candidate, dto);
   }
 
   @Post('answer')

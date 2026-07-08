@@ -119,7 +119,21 @@ describe('AttemptService', () => {
 
       expect(result).toEqual({ id: 'attempt-1', status: 'in_progress' });
       expect(tx.attempt.create).toHaveBeenCalledWith({
-        data: { invitationId: 'inv-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1', 'q2']) },
+        data: { invitationId: 'inv-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1', 'q2']), deviceFingerprint: undefined },
+      });
+    });
+
+    it('records a device fingerprint on the attempt when the client provides one', async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
+        examSection: { findMany: jest.fn().mockResolvedValue([{ questions: [{ questionId: 'q1' }] }]) },
+      };
+      mockBootstrapThenScoped(tx);
+
+      await service.start(session, { deviceFingerprint: 'fp-abc123' });
+
+      expect(tx.attempt.create).toHaveBeenCalledWith({
+        data: { invitationId: 'inv-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']), deviceFingerprint: 'fp-abc123' },
       });
     });
 
