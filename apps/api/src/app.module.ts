@@ -11,6 +11,7 @@ import { ExamsModule } from './exams/exams.module';
 import { CandidatesModule } from './candidates/candidates.module';
 import { InvitationsModule } from './invitations/invitations.module';
 import { CandidateAuthModule } from './candidate-auth/candidate-auth.module';
+import { AttemptModule } from './attempts/attempt.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { CandidateAuthModule } from './candidate-auth/candidate-auth.module';
     CandidatesModule,
     InvitationsModule,
     CandidateAuthModule,
+    AttemptModule,
   ],
 })
 export class AppModule {}
