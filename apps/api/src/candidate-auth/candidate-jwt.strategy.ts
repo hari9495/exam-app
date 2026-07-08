@@ -1,15 +1,17 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
+import { PrismaService } from '../prisma/prisma.service';
 
 export interface CandidateJwtPayload {
   sub: string;
   subjectType: 'candidate';
+  familyId: string;
 }
 
 @Injectable()
 export class CandidateJwtStrategy extends PassportStrategy(Strategy, 'candidate-jwt') {
-  constructor() {
+  constructor(private readonly prisma: PrismaService) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -17,9 +19,16 @@ export class CandidateJwtStrategy extends PassportStrategy(Strategy, 'candidate-
     });
   }
 
-  validate(payload: CandidateJwtPayload) {
+  async validate(payload: CandidateJwtPayload) {
     if (payload.subjectType !== 'candidate') {
       throw new UnauthorizedException('Invalid token subject type');
+    }
+    const invitation = await this.prisma.invitation.findUnique({
+      where: { id: payload.sub },
+      select: { activeSessionFamilyId: true },
+    });
+    if (!invitation || invitation.activeSessionFamilyId !== payload.familyId) {
+      throw new UnauthorizedException('This session has been replaced by a newer login');
     }
     return { invitationId: payload.sub };
   }
