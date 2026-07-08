@@ -5,6 +5,7 @@ import * as argon2 from 'argon2';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantPrismaService } from '../prisma/tenant-prisma.service';
+import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 
 type PrismaClientOrTransaction = PrismaService | Prisma.TransactionClient;
 
@@ -19,6 +20,7 @@ export class CandidateAuthService {
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly jwt: JwtService,
+    private readonly monitoringGateway: MonitoringGateway,
   ) {}
 
   async redeem(token: string): Promise<CandidateTokenPair> {
@@ -50,8 +52,15 @@ export class CandidateAuthService {
         });
         const existingAttempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
         if (existingAttempt) {
-          await tx.proctoringEvent.create({
+          const event = await tx.proctoringEvent.create({
             data: { attemptId: existingAttempt.id, eventType: 'multi_login', severity: 'high' },
+          });
+          this.monitoringGateway.emitProctoringFlag(exam.id, {
+            attemptId: existingAttempt.id,
+            candidateId: invitation.candidateId,
+            eventType: 'multi_login',
+            severity: 'high',
+            occurredAt: event.occurredAt,
           });
         }
       }

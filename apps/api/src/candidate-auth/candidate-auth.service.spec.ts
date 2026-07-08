@@ -5,6 +5,7 @@ import * as argon2 from 'argon2';
 import { CandidateAuthService } from './candidate-auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantPrismaService } from '../prisma/tenant-prisma.service';
+import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 
 describe('CandidateAuthService', () => {
   let service: CandidateAuthService;
@@ -17,6 +18,7 @@ describe('CandidateAuthService', () => {
   };
   let tenantPrisma: { forTenant: jest.Mock };
   let jwt: JwtService;
+  let monitoringGateway: { emitProctoringFlag: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -28,12 +30,14 @@ describe('CandidateAuthService', () => {
     };
     prisma.$transaction.mockImplementation((callback: (tx: typeof prisma) => unknown) => callback(prisma));
     tenantPrisma = { forTenant: jest.fn() };
+    monitoringGateway = { emitProctoringFlag: jest.fn() };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
         CandidateAuthService,
         { provide: PrismaService, useValue: prisma },
         { provide: TenantPrismaService, useValue: tenantPrisma },
+        { provide: MonitoringGateway, useValue: monitoringGateway },
         JwtService,
       ],
     }).compile();
@@ -144,6 +148,26 @@ describe('CandidateAuthService', () => {
 
       expect(prisma.proctoringEvent.create).toHaveBeenCalledWith({
         data: { attemptId: 'attempt-1', eventType: 'multi_login', severity: 'high' },
+      });
+    });
+
+    it('emits proctoring:flag when a multi_login event is logged', async () => {
+      prisma.invitation.findUnique.mockResolvedValue({
+        id: 'inv-1', candidateId: 'cand-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000),
+        examId: 'exam-1', activeSessionFamilyId: 'old-family',
+      });
+      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published' });
+      prisma.candidateRefreshToken.updateMany.mockResolvedValue({});
+      prisma.attempt.findUnique.mockResolvedValue({ id: 'attempt-1' });
+      prisma.proctoringEvent.create.mockResolvedValue({ occurredAt: new Date('2026-07-09T00:00:00Z') });
+      prisma.candidateRefreshToken.create.mockResolvedValue({});
+      prisma.invitation.update.mockResolvedValue({});
+
+      await service.redeem('token');
+
+      expect(monitoringGateway.emitProctoringFlag).toHaveBeenCalledWith('exam-1', {
+        attemptId: 'attempt-1', candidateId: 'cand-1', eventType: 'multi_login', severity: 'high',
+        occurredAt: new Date('2026-07-09T00:00:00Z'),
       });
     });
 

@@ -162,7 +162,7 @@ export class AttemptService {
     session: CandidateSession,
     dto: ReportProctoringEventDto,
   ): Promise<{ id: string; eventType: string; severity: string }> {
-    const { organizationId, invitation } = await this.resolveContext(session.invitationId);
+    const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
 
     return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
       const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
@@ -177,6 +177,13 @@ export class AttemptService {
           severity: getProctoringEventSeverity(dto.eventType),
           metadataJson: dto.metadata ? JSON.stringify(dto.metadata) : null,
         },
+      });
+      this.monitoringGateway.emitProctoringFlag(exam.id, {
+        attemptId: attempt.id,
+        candidateId: invitation.candidateId,
+        eventType: event.eventType,
+        severity: event.severity,
+        occurredAt: event.occurredAt,
       });
       return { id: event.id, eventType: event.eventType, severity: event.severity };
     });

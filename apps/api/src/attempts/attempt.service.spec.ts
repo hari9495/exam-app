@@ -10,7 +10,7 @@ describe('AttemptService', () => {
   let service: AttemptService;
   let tenantPrisma: { forTenant: jest.Mock };
   let settlement: { settleIfExpired: jest.Mock; finalize: jest.Mock; remainingSeconds: jest.Mock };
-  let monitoringGateway: { emitAttemptStatus: jest.Mock };
+  let monitoringGateway: { emitAttemptStatus: jest.Mock; emitProctoringFlag: jest.Mock };
   const session = { invitationId: 'inv-1' };
   const exam = { id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40 };
   const invitationRecord = { id: 'inv-1', candidateId: 'cand-1', examId: 'exam-1', exam };
@@ -18,7 +18,7 @@ describe('AttemptService', () => {
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
     settlement = { settleIfExpired: jest.fn(), finalize: jest.fn(), remainingSeconds: jest.fn() };
-    monitoringGateway = { emitAttemptStatus: jest.fn() };
+    monitoringGateway = { emitAttemptStatus: jest.fn(), emitProctoringFlag: jest.fn() };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -387,6 +387,18 @@ describe('AttemptService', () => {
         { organizationId: 'org-1', isSuperAdmin: false },
         expect.any(Function),
       );
+    });
+
+    it('emits proctoring:flag after creating the event', async () => {
+      const createdEvent = { id: 'evt-1', eventType: 'tab_switch', severity: 'medium', occurredAt: new Date() };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue(createdEvent) } };
+      mockBootstrapThenScoped(tx);
+
+      await service.reportProctoringEvent(session, { eventType: 'tab_switch' });
+
+      expect(monitoringGateway.emitProctoringFlag).toHaveBeenCalledWith('exam-1', {
+        attemptId: 'attempt-1', candidateId: 'cand-1', eventType: 'tab_switch', severity: 'medium', occurredAt: createdEvent.occurredAt,
+      });
     });
   });
 });
