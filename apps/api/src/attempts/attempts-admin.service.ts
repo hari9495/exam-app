@@ -1,9 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { ProctoringEvent } from '@prisma/client';
+import { CandidateMessage, ProctoringEvent } from '@prisma/client';
 import { TenantPrismaService } from '../prisma/tenant-prisma.service';
 import { TenantContext } from '../prisma/tenant-context';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { AuditService } from '../audit/audit.service';
+import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 
 @Injectable()
 export class AttemptsAdminService {
@@ -11,6 +12,7 @@ export class AttemptsAdminService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly attemptSettlement: AttemptSettlementService,
     private readonly audit: AuditService,
+    private readonly monitoringGateway: MonitoringGateway,
   ) {}
 
   async listProctoringEvents(context: TenantContext, attemptId: string): Promise<ProctoringEvent[]> {
@@ -42,6 +44,12 @@ export class AttemptsAdminService {
       return this.attemptSettlement.finalize(tx, exam, attempt, 'force_submitted');
     });
 
+    this.monitoringGateway.emitAttemptStatus(finalized.examId, {
+      attemptId: finalized.id,
+      candidateId: finalized.candidateId,
+      status: finalized.status,
+    });
+
     await this.audit.record(context, {
       actorUserId,
       action: 'attempt.force_submit',
@@ -50,5 +58,51 @@ export class AttemptsAdminService {
     });
 
     return { status: finalized.status };
+  }
+
+  async sendMessage(
+    context: TenantContext,
+    attemptId: string,
+    actorUserId: string,
+    body: string,
+  ): Promise<{ id: string; sentAt: Date }> {
+    const message = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const attempt = await tx.attempt.findFirst({
+        where: { id: attemptId, invitation: { exam: { organizationId: context.organizationId as string } } },
+      });
+      if (!attempt) {
+        throw new NotFoundException(`Attempt ${attemptId} not found`);
+      }
+      const created = await tx.candidateMessage.create({
+        data: { attemptId: attempt.id, sentByUserId: actorUserId, body },
+      });
+      this.monitoringGateway.emitMessageSent(attempt.examId, {
+        attemptId: attempt.id,
+        candidateId: attempt.candidateId,
+        sentAt: created.sentAt,
+      });
+      return created;
+    });
+
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'attempt.message_sent',
+      entityType: 'attempt',
+      entityId: attemptId,
+    });
+
+    return { id: message.id, sentAt: message.sentAt };
+  }
+
+  async listMessages(context: TenantContext, attemptId: string): Promise<CandidateMessage[]> {
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const attempt = await tx.attempt.findFirst({
+        where: { id: attemptId, invitation: { exam: { organizationId: context.organizationId as string } } },
+      });
+      if (!attempt) {
+        throw new NotFoundException(`Attempt ${attemptId} not found`);
+      }
+      return tx.candidateMessage.findMany({ where: { attemptId }, orderBy: { sentAt: 'asc' } });
+    });
   }
 }
