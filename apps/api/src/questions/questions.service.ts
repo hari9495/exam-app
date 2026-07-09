@@ -159,7 +159,7 @@ export class QuestionsService {
         }),
       ),
     );
-    return tags.map((tag) => tag.id);
+    return [...new Set(tags.map((tag) => tag.id))];
   }
 
   private toResponse(question: QuestionWithRelations): QuestionResponse {

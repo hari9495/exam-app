@@ -71,6 +71,24 @@ describe('QuestionsService', () => {
     );
   });
 
+  it('dedupes tag ids resolved from case-insensitive-collation duplicate tag names, avoiding a PK violation', async () => {
+    // Simulates the real SQL_Latin1_General_CP1_CI_AS collation on tags.name: upserting 'React' and 'react'
+    // both resolve to the same underlying row, so the mock always returns the same id regardless of casing.
+    const tagUpsert = jest.fn().mockImplementation(({ create }) =>
+      Promise.resolve({ id: `tag-${create.name.toLowerCase()}`, ...create }),
+    );
+    const questionCreate = jest.fn().mockResolvedValue({ id: 'q-1', ...validDto, tags: [] });
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ tag: { upsert: tagUpsert }, question: { create: questionCreate } }));
+
+    await service.create(context, 'user-1', { ...validDto, tags: ['React', 'react'] });
+
+    expect(questionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ tags: { create: [{ tagId: 'tag-react' }] } }),
+      }),
+    );
+  });
+
   it('lists questions scoped to the caller\'s organization, defaulting to active status', async () => {
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
       fn({ question: { findMany: jest.fn().mockResolvedValue([{ id: 'q-1', status: 'active', tags: [] }]) } }),
