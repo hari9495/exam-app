@@ -1,7 +1,11 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001/api/v1';
 
 export async function apiFetch(path: string, options: RequestInit = {}, accessToken?: string) {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(options.headers as Record<string, string>) };
+  const isFormData = options.body instanceof FormData;
+  const headers: Record<string, string> = {
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+    ...(options.headers as Record<string, string>),
+  };
   if (accessToken) {
     headers.Authorization = `Bearer ${accessToken}`;
   }
