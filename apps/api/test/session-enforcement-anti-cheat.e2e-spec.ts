@@ -4,8 +4,8 @@ import request from 'supertest';
 import * as argon2 from 'argon2';
 import { randomUUID } from 'crypto';
 import { AppModule } from '../src/app.module';
-import { PrismaService } from '../src/prisma/prisma.service';
-import { TenantPrismaService } from '../src/prisma/tenant-prisma.service';
+import { PrismaService } from '@exam-platform/shared';
+import { TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
 
 describe('Session Enforcement & Anti-Cheat HTTP flow', () => {

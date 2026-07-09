@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
-import { PrismaService } from '../src/prisma/prisma.service';
-import { TenantPrismaService } from '../src/prisma/tenant-prisma.service';
-import { PrismaModule } from '../src/prisma/prisma.module';
+import { PrismaService } from '@exam-platform/shared';
+import { TenantPrismaService } from '@exam-platform/shared';
+import { PrismaModule } from '@exam-platform/shared';
 import { randomUUID } from 'crypto';
 
 describe('Tenant Row-Level Security', () => {

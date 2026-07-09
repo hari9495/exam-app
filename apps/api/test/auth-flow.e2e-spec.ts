@@ -4,8 +4,8 @@ import request from 'supertest';
 import * as argon2 from 'argon2';
 import { randomUUID } from 'crypto';
 import { AppModule } from '../src/app.module';
-import { PrismaService } from '../src/prisma/prisma.service';
-import { TenantPrismaService } from '../src/prisma/tenant-prisma.service';
+import { PrismaService } from '@exam-platform/shared';
+import { TenantPrismaService } from '@exam-platform/shared';
 
 describe('Full Phase 0 flow: create org -> create user -> login -> protected route', () => {
   let app: INestApplication;
