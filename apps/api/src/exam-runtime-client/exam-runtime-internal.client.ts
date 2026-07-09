@@ -30,10 +30,11 @@ export class ExamRuntimeInternalClient {
     await this.throwIfNotOk(response);
   }
 
-  async settleIfExpired(attemptId: string): Promise<void> {
-    const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/attempts/${attemptId}/settle-if-expired`, {
+  async settleIfExpiredBatch(attemptIds: string[]): Promise<void> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/attempts/settle-if-expired-batch`, {
       method: 'POST',
-      headers: this.headers(),
+      headers: { ...this.headers(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ attemptIds }),
     });
     await this.throwIfNotOk(response);
   }

@@ -73,26 +73,33 @@ describe('InternalController', () => {
     });
   });
 
-  describe('settleIfExpired', () => {
-    it('throws NotFoundException when the attempt does not exist', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) } };
+  describe('settleIfExpiredBatch', () => {
+    it('settles every attempt found for the given ids', async () => {
+      const exam1 = { id: 'exam-1', durationMinutes: 30, passCriteriaPercent: 40 };
+      const attempt1 = { id: 'attempt-1', status: 'in_progress', invitation: { exam: exam1 } };
+      const attempt2 = { id: 'attempt-2', status: 'in_progress', invitation: { exam: exam1 } };
+      const tx = { attempt: { findMany: jest.fn().mockResolvedValue([attempt1, attempt2]) } };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      await expect(controller.settleIfExpired('attempt-1')).rejects.toThrow(NotFoundException);
-      expect(attemptSettlement.settleIfExpired).not.toHaveBeenCalled();
-    });
-
-    it('delegates to AttemptSettlementService.settleIfExpired with the tx, exam, and attempt', async () => {
-      const exam = { id: 'exam-1', durationMinutes: 30, passCriteriaPercent: 40 };
-      const attempt = { id: 'attempt-1', status: 'in_progress', invitation: { exam } };
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
-      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
-      attemptSettlement.settleIfExpired.mockResolvedValue(attempt);
-
-      await controller.settleIfExpired('attempt-1');
+      await controller.settleIfExpiredBatch({ attemptIds: ['attempt-1', 'attempt-2'] });
 
       expect(tenantPrisma.forTenant).toHaveBeenCalledWith({ organizationId: null, isSuperAdmin: true }, expect.any(Function));
-      expect(attemptSettlement.settleIfExpired).toHaveBeenCalledWith(tx, exam, attempt);
+      expect(tx.attempt.findMany).toHaveBeenCalledWith({
+        where: { id: { in: ['attempt-1', 'attempt-2'] } },
+        include: { invitation: { include: { exam: true } } },
+      });
+      expect(attemptSettlement.settleIfExpired).toHaveBeenCalledTimes(2);
+      expect(attemptSettlement.settleIfExpired).toHaveBeenNthCalledWith(1, tx, exam1, attempt1);
+      expect(attemptSettlement.settleIfExpired).toHaveBeenNthCalledWith(2, tx, exam1, attempt2);
+    });
+
+    it('settles nothing when no matching attempts are found', async () => {
+      const tx = { attempt: { findMany: jest.fn().mockResolvedValue([]) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await controller.settleIfExpiredBatch({ attemptIds: ['missing-1'] });
+
+      expect(attemptSettlement.settleIfExpired).not.toHaveBeenCalled();
     });
   });
 

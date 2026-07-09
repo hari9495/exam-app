@@ -63,15 +63,16 @@ describe('ExamRuntimeInternalClient', () => {
     });
   });
 
-  describe('settleIfExpired', () => {
-    it('POSTs to the internal settle-if-expired endpoint', async () => {
+  describe('settleIfExpiredBatch', () => {
+    it('POSTs the attempt ids as JSON to the internal batch settle endpoint', async () => {
       (global.fetch as jest.Mock).mockResolvedValue({ ok: true, json: async () => ({}) });
 
-      await client.settleIfExpired('attempt-1');
+      await client.settleIfExpiredBatch(['attempt-1', 'attempt-2']);
 
-      expect(global.fetch).toHaveBeenCalledWith('http://localhost:3002/api/v1/internal/attempts/attempt-1/settle-if-expired', {
+      expect(global.fetch).toHaveBeenCalledWith('http://localhost:3002/api/v1/internal/attempts/settle-if-expired-batch', {
         method: 'POST',
-        headers: { 'x-internal-secret': 'test-internal-secret' },
+        headers: { 'x-internal-secret': 'test-internal-secret', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attemptIds: ['attempt-1', 'attempt-2'] }),
         signal: expect.any(AbortSignal),
       });
     });

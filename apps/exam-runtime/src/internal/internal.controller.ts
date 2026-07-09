@@ -5,6 +5,7 @@ import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.
 import { ATTEMPT_STATUS_BROADCASTER, AttemptStatusBroadcaster } from '../monitoring/attempt-status-broadcaster';
 import { InternalAuthGuard } from './internal-auth.guard';
 import { NotifyMessageSentDto } from './dto/notify-message-sent.dto';
+import { SettleIfExpiredBatchDto } from './dto/settle-if-expired-batch.dto';
 
 @Controller('internal')
 @UseGuards(InternalAuthGuard)
@@ -41,19 +42,17 @@ export class InternalController {
     await this.attemptAnalysis.analyze(id);
   }
 
-  @Post('attempts/:id/settle-if-expired')
+  @Post('attempts/settle-if-expired-batch')
   @HttpCode(204)
-  async settleIfExpired(@Param('id') id: string): Promise<void> {
+  async settleIfExpiredBatch(@Body() dto: SettleIfExpiredBatchDto): Promise<void> {
     await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {
-      const attempt = await tx.attempt.findUnique({
-        where: { id },
+      const attempts = await tx.attempt.findMany({
+        where: { id: { in: dto.attemptIds } },
         include: { invitation: { include: { exam: true } } },
       });
-      if (!attempt) {
-        throw new NotFoundException(`Attempt ${id} not found`);
+      for (const attempt of attempts) {
+        await this.attemptSettlement.settleIfExpired(tx, attempt.invitation.exam, attempt);
       }
-      const exam = attempt.invitation.exam;
-      await this.attemptSettlement.settleIfExpired(tx, exam, attempt);
     });
   }
 
