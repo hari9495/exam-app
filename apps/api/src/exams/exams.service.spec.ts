@@ -2,22 +2,22 @@ import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ExamsService } from './exams.service';
 import { TenantPrismaService } from '@exam-platform/shared';
-import { AttemptSettlementService } from '../grading/attempt-settlement.service';
+import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
 
 describe('ExamsService', () => {
   let service: ExamsService;
   let tenantPrisma: { forTenant: jest.Mock };
-  let attemptSettlement: { settleIfExpired: jest.Mock };
+  let examRuntime: { settleIfExpired: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
-    attemptSettlement = { settleIfExpired: jest.fn() };
+    examRuntime = { settleIfExpired: jest.fn() };
     const moduleRef = await Test.createTestingModule({
       providers: [
         ExamsService,
         { provide: TenantPrismaService, useValue: tenantPrisma },
-        { provide: AttemptSettlementService, useValue: attemptSettlement },
+        { provide: ExamRuntimeInternalClient, useValue: examRuntime },
       ],
     }).compile();
     service = moduleRef.get(ExamsService);
@@ -382,7 +382,7 @@ describe('ExamsService', () => {
           proctoringAnalysis: null,
         },
       ]);
-      expect(attemptSettlement.settleIfExpired).not.toHaveBeenCalled();
+      expect(examRuntime.settleIfExpired).not.toHaveBeenCalled();
     });
 
     it('settles an in-progress attempt past its deadline before reporting it', async () => {
@@ -400,12 +400,12 @@ describe('ExamsService', () => {
           findUnique: jest.fn().mockResolvedValue({ ...settledAttempt, result: { score: 4, maxScore: 10, percentage: 40, passFail: 'pass' } }),
         },
       };
-      attemptSettlement.settleIfExpired.mockResolvedValue(settledAttempt);
+      examRuntime.settleIfExpired.mockResolvedValue(undefined);
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
       const result = await service.getResults(context, 'exam-1');
 
-      expect(attemptSettlement.settleIfExpired).toHaveBeenCalledWith(tx, exam, inProgressAttempt);
+      expect(examRuntime.settleIfExpired).toHaveBeenCalledWith(inProgressAttempt.id);
       expect(result[0].status).toBe('auto_submitted');
       expect(result[0].passFail).toBe('pass');
     });

@@ -10,8 +10,6 @@ import { QuestionsModule } from './questions/questions.module';
 import { ExamsModule } from './exams/exams.module';
 import { CandidatesModule } from './candidates/candidates.module';
 import { InvitationsModule } from './invitations/invitations.module';
-import { CandidateAuthModule } from './candidate-auth/candidate-auth.module';
-import { AttemptModule } from './attempts/attempt.module';
 import { AttemptsAdminModule } from './attempts-admin/attempts-admin.module';
 
 @Module({
@@ -28,8 +26,6 @@ import { AttemptsAdminModule } from './attempts-admin/attempts-admin.module';
     ExamsModule,
     CandidatesModule,
     InvitationsModule,
-    CandidateAuthModule,
-    AttemptModule,
     AttemptsAdminModule,
   ],
 })

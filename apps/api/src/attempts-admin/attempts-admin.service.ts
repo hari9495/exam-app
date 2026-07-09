@@ -1,20 +1,14 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CandidateMessage, ProctoringAnalysis, ProctoringEvent } from '@prisma/client';
-import { TenantPrismaService } from '@exam-platform/shared';
-import { TenantContext } from '@exam-platform/shared';
-import { AttemptSettlementService } from '../grading/attempt-settlement.service';
-import { AuditService } from '@exam-platform/shared';
-import { MonitoringGateway } from '../monitoring/monitoring.gateway';
-import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
+import { TenantPrismaService, TenantContext, AuditService } from '@exam-platform/shared';
+import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
 
 @Injectable()
 export class AttemptsAdminService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
-    private readonly attemptSettlement: AttemptSettlementService,
     private readonly audit: AuditService,
-    private readonly monitoringGateway: MonitoringGateway,
-    private readonly attemptAnalysisService: AttemptAnalysisService,
+    private readonly examRuntime: ExamRuntimeInternalClient,
   ) {}
 
   async listProctoringEvents(context: TenantContext, attemptId: string): Promise<ProctoringEvent[]> {
@@ -30,21 +24,9 @@ export class AttemptsAdminService {
   }
 
   async forceSubmit(context: TenantContext, attemptId: string, actorUserId: string): Promise<{ status: string }> {
-    const finalized = await this.tenantPrisma.forTenant(context, async (tx) => {
-      const attempt = await tx.attempt.findFirst({
-        where: { id: attemptId, invitation: { exam: { organizationId: context.organizationId as string } } },
-        include: { invitation: { include: { exam: true } } },
-      });
-      if (!attempt) {
-        throw new NotFoundException(`Attempt ${attemptId} not found`);
-      }
-      if (attempt.status !== 'in_progress') {
-        throw new BadRequestException(`Attempt ${attemptId} cannot be force-submitted from status "${attempt.status}"`);
-      }
+    await this.requireOwnedAttempt(context, attemptId);
 
-      const exam = attempt.invitation.exam;
-      return this.attemptSettlement.finalize(tx, exam, attempt, 'force_submitted');
-    });
+    const result = await this.examRuntime.forceSubmit(attemptId);
 
     await this.audit.record(context, {
       actorUserId,
@@ -53,7 +35,7 @@ export class AttemptsAdminService {
       entityId: attemptId,
     });
 
-    return { status: finalized.status };
+    return result;
   }
 
   async sendMessage(
@@ -62,7 +44,7 @@ export class AttemptsAdminService {
     actorUserId: string,
     body: string,
   ): Promise<{ id: string; sentAt: Date }> {
-    const message = await this.tenantPrisma.forTenant(context, async (tx) => {
+    const { created, examId, candidateId } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const attempt = await tx.attempt.findFirst({
         where: { id: attemptId, invitation: { exam: { organizationId: context.organizationId as string } } },
       });
@@ -72,13 +54,10 @@ export class AttemptsAdminService {
       const created = await tx.candidateMessage.create({
         data: { attemptId: attempt.id, sentByUserId: actorUserId, body },
       });
-      this.monitoringGateway.emitMessageSent(attempt.examId, {
-        attemptId: attempt.id,
-        candidateId: attempt.candidateId,
-        sentAt: created.sentAt,
-      });
-      return created;
+      return { created, examId: attempt.examId, candidateId: attempt.candidateId };
     });
+
+    await this.examRuntime.notifyMessageSent({ examId, attemptId: created.attemptId, candidateId, sentAt: created.sentAt });
 
     await this.audit.record(context, {
       actorUserId,
@@ -87,7 +66,7 @@ export class AttemptsAdminService {
       entityId: attemptId,
     });
 
-    return { id: message.id, sentAt: message.sentAt };
+    return { id: created.id, sentAt: created.sentAt };
   }
 
   async listMessages(context: TenantContext, attemptId: string): Promise<CandidateMessage[]> {
@@ -103,6 +82,14 @@ export class AttemptsAdminService {
   }
 
   async reanalyze(context: TenantContext, attemptId: string): Promise<ProctoringAnalysis> {
+    await this.requireOwnedAttempt(context, attemptId);
+
+    await this.examRuntime.reanalyze(attemptId);
+
+    return this.tenantPrisma.forTenant(context, (tx) => tx.proctoringAnalysis.findUniqueOrThrow({ where: { attemptId } }));
+  }
+
+  private async requireOwnedAttempt(context: TenantContext, attemptId: string): Promise<void> {
     await this.tenantPrisma.forTenant(context, async (tx) => {
       const attempt = await tx.attempt.findFirst({
         where: { id: attemptId, invitation: { exam: { organizationId: context.organizationId as string } } },
@@ -111,9 +98,5 @@ export class AttemptsAdminService {
         throw new NotFoundException(`Attempt ${attemptId} not found`);
       }
     });
-
-    await this.attemptAnalysisService.analyze(attemptId);
-
-    return this.tenantPrisma.forTenant(context, (tx) => tx.proctoringAnalysis.findUniqueOrThrow({ where: { attemptId } }));
   }
 }

@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Exam, ExamSection, ExamSectionQuestion, Question, QuestionOption } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
-import { AttemptSettlementService } from '../grading/attempt-settlement.service';
+import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
 import { CreateExamDto } from './dto/create-exam.dto';
 import { UpdateExamDto } from './dto/update-exam.dto';
 import { CreateExamSectionDto } from './dto/create-exam-section.dto';
@@ -35,7 +35,7 @@ export interface ExamResultRow {
 export class ExamsService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
-    private readonly attemptSettlement: AttemptSettlementService,
+    private readonly examRuntime: ExamRuntimeInternalClient,
   ) {}
 
   async create(context: TenantContext, userId: string, dto: CreateExamDto): Promise<Exam> {
@@ -258,7 +258,7 @@ export class ExamsService {
       for (const invitation of invitations) {
         let attempt = invitation.attempt;
         if (attempt && attempt.status === 'in_progress') {
-          await this.attemptSettlement.settleIfExpired(tx, exam, attempt);
+          await this.examRuntime.settleIfExpired(attempt.id);
           attempt = await tx.attempt.findUnique({ where: { id: attempt.id }, include: { result: true, proctoringAnalysis: true } });
         }
         rows.push({

@@ -1,7 +1,7 @@
 import { Body, Controller, HttpCode, Post } from '@nestjs/common';
 import { CandidateAuthService } from './candidate-auth.service';
 import { RedeemInvitationDto } from './dto/redeem-invitation.dto';
-import { RefreshDto } from '../auth/dto/refresh.dto';
+import { RefreshDto } from './dto/refresh.dto';
 
 @Controller('candidate-auth')
 export class CandidateAuthController {
