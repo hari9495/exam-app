@@ -1,15 +1,17 @@
-import { Test } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import * as argon2 from 'argon2';
 import { randomUUID } from 'crypto';
-import { AppModule } from '../src/app.module';
+import { bootAdminApp, bootRuntimeApp } from './dual-app';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
 
 describe('Exam-Taking Runtime HTTP flow', () => {
-  let app: INestApplication;
+  let adminApp: INestApplication;
+  let runtimeApp: INestApplication;
+  let adminHttp: any;
+  let runtimeHttp: any;
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
   let planId: string;
@@ -26,16 +28,20 @@ describe('Exam-Taking Runtime HTTP flow', () => {
   const fakeEmailService = { send: jest.fn().mockResolvedValue({ success: true, previewUrl: 'https://ethereal.email/fake' }) };
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(EmailService)
-      .useValue(fakeEmailService)
-      .compile();
-    app = moduleRef.createNestApplication();
-    app.setGlobalPrefix('api/v1');
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
-    await app.init();
-    prisma = moduleRef.get(PrismaService);
-    tenantPrisma = moduleRef.get(TenantPrismaService);
+    adminApp = await bootAdminApp((builder) => builder.overrideProvider(EmailService).useValue(fakeEmailService));
+    ({ app: runtimeApp } = await bootRuntimeApp());
+    adminHttp = adminApp.getHttpServer();
+    runtimeHttp = runtimeApp.getHttpServer();
+
+    // ExamsService.getResults() calls ExamRuntimeInternalClient.settleIfExpired(), which makes a
+    // real HTTP request to apps/exam-runtime's internal surface. That client reads
+    // EXAM_RUNTIME_INTERNAL_URL from process.env on every call, so bootRuntimeApp() above already
+    // starts the runtime app listening on a real ephemeral port and points the env var at it
+    // (unlike adminApp/runtimeApp's other routes, which are driven directly via supertest against
+    // getHttpServer() without a real socket).
+
+    prisma = adminApp.get(PrismaService);
+    tenantPrisma = adminApp.get(TenantPrismaService);
 
     const plan = await prisma.plan.create({
       data: { name: `ci-attempt-plan-${randomUUID()}`, candidateLimit: 10, aiCreditLimit: 1, proctoringMinutesLimit: 1 },
@@ -55,34 +61,34 @@ describe('Exam-Taking Runtime HTTP flow', () => {
     );
 
     recruiterAccessToken = (
-      await request(app.getHttpServer())
+      await request(adminHttp)
         .post('/api/v1/auth/staff/login')
         .send({ organizationSlug: org.slug, email: 'recruiter@ci-attempt.test', password: 'RecruiterPassw0rd!' })
         .expect(200)
     ).body.accessToken;
 
     orgAdminAccessToken = (
-      await request(app.getHttpServer())
+      await request(adminHttp)
         .post('/api/v1/auth/staff/login')
         .send({ organizationSlug: org.slug, email: 'orgadmin@ci-attempt.test', password: 'OrgAdminPassw0rd!' })
         .expect(200)
     ).body.accessToken;
 
-    const examResponse = await request(app.getHttpServer())
+    const examResponse = await request(adminHttp)
       .post('/api/v1/exams')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({ title: 'Full Stack Round' })
       .expect(201);
     examId = examResponse.body.id;
 
-    const sectionResponse = await request(app.getHttpServer())
+    const sectionResponse = await request(adminHttp)
       .post(`/api/v1/exams/${examId}/sections`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({ title: 'Section One' })
       .expect(201);
     const sectionId = sectionResponse.body.id;
 
-    const singleMcq = await request(app.getHttpServer())
+    const singleMcq = await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
@@ -93,7 +99,7 @@ describe('Exam-Taking Runtime HTTP flow', () => {
     singleMcqId = singleMcq.body.id;
     singleMcqOptions = singleMcq.body.options;
 
-    const multiMcq = await request(app.getHttpServer())
+    const multiMcq = await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
@@ -107,7 +113,7 @@ describe('Exam-Taking Runtime HTTP flow', () => {
     multiMcqId = multiMcq.body.id;
     multiMcqOptions = multiMcq.body.options;
 
-    const trueFalse = await request(app.getHttpServer())
+    const trueFalse = await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
@@ -118,13 +124,13 @@ describe('Exam-Taking Runtime HTTP flow', () => {
     trueFalseId = trueFalse.body.id;
     trueFalseOptions = trueFalse.body.options;
 
-    await request(app.getHttpServer())
+    await request(adminHttp)
       .put(`/api/v1/exams/${examId}/sections/${sectionId}/questions`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({ questionIds: [singleMcqId, multiMcqId, trueFalseId] })
       .expect(200);
 
-    await request(app.getHttpServer())
+    await request(adminHttp)
       .post(`/api/v1/exams/${examId}/publish`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(201);
@@ -138,18 +144,19 @@ describe('Exam-Taking Runtime HTTP flow', () => {
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.user.deleteMany({ where: { organizationId: orgId } }));
     await prisma.organization.delete({ where: { id: orgId } }).catch(() => undefined);
     await prisma.plan.delete({ where: { id: planId } }).catch(() => undefined);
-    await app.close();
+    await adminApp.close();
+    await runtimeApp.close();
   });
 
   async function inviteAndRedeem(email: string, name: string): Promise<{ candidateId: string; token: string }> {
-    const candidateResponse = await request(app.getHttpServer())
+    const candidateResponse = await request(adminHttp)
       .post('/api/v1/candidates')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({ email, name })
       .expect(201);
     const candidateId = candidateResponse.body.id;
 
-    const inviteResponse = await request(app.getHttpServer())
+    const inviteResponse = await request(adminHttp)
       .post(`/api/v1/exams/${examId}/invitations`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({ candidateIds: [candidateId] })
@@ -161,23 +168,23 @@ describe('Exam-Taking Runtime HTTP flow', () => {
   it('runs the full candidate exam-taking flow and reports a graded result to the recruiter', async () => {
     const { token } = await inviteAndRedeem('alice@ci-attempt.test', 'Alice');
 
-    const redeemResponse = await request(app.getHttpServer()).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200);
+    const redeemResponse = await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200);
     const candidateAccessToken = redeemResponse.body.accessToken;
 
-    const previewResponse = await request(app.getHttpServer())
+    const previewResponse = await request(runtimeHttp)
       .get('/api/v1/attempt/current')
       .set('Authorization', `Bearer ${candidateAccessToken}`)
       .expect(200);
     expect(previewResponse.body.exam.title).toBe('Full Stack Round');
     expect(previewResponse.body.sections).toBeUndefined();
 
-    const startResponse = await request(app.getHttpServer())
+    const startResponse = await request(runtimeHttp)
       .post('/api/v1/attempt/start')
       .set('Authorization', `Bearer ${candidateAccessToken}`)
       .expect(201);
     expect(startResponse.body.status).toBe('in_progress');
 
-    const stateResponse = await request(app.getHttpServer())
+    const stateResponse = await request(runtimeHttp)
       .get('/api/v1/attempt/current')
       .set('Authorization', `Bearer ${candidateAccessToken}`)
       .expect(200);
@@ -188,52 +195,52 @@ describe('Exam-Taking Runtime HTTP flow', () => {
     });
 
     const correctSingleOptionId = singleMcqOptions.find((option) => option.text === '4')!.id;
-    await request(app.getHttpServer())
+    await request(runtimeHttp)
       .post('/api/v1/attempt/answer')
       .set('Authorization', `Bearer ${candidateAccessToken}`)
       .send({ questionId: singleMcqId, selectedOptionIds: [correctSingleOptionId] })
       .expect(201);
 
     const partialMultiOptionId = multiMcqOptions.find((option) => option.text === '2')!.id;
-    await request(app.getHttpServer())
+    await request(runtimeHttp)
       .post('/api/v1/attempt/answer')
       .set('Authorization', `Bearer ${candidateAccessToken}`)
       .send({ questionId: multiMcqId, selectedOptionIds: [partialMultiOptionId] })
       .expect(201);
 
-    await request(app.getHttpServer())
+    await request(runtimeHttp)
       .post('/api/v1/attempt/answer')
       .set('Authorization', `Bearer ${candidateAccessToken}`)
       .send({ questionId: 'not-a-real-question-id', selectedOptionIds: [correctSingleOptionId] })
       .expect(400);
 
     const correctTrueFalseOptionId = trueFalseOptions.find((option) => option.text === 'True')!.id;
-    await request(app.getHttpServer())
+    await request(runtimeHttp)
       .post('/api/v1/attempt/answer')
       .set('Authorization', `Bearer ${candidateAccessToken}`)
       .send({ questionId: trueFalseId, selectedOptionIds: [correctTrueFalseOptionId] })
       .expect(201);
 
-    const submitResponse = await request(app.getHttpServer())
+    const submitResponse = await request(runtimeHttp)
       .post('/api/v1/attempt/submit')
       .set('Authorization', `Bearer ${candidateAccessToken}`)
       .expect(201);
     expect(submitResponse.body).toEqual({ status: 'submitted' });
     expect(submitResponse.body.score).toBeUndefined();
 
-    const duplicateSubmitResponse = await request(app.getHttpServer())
+    const duplicateSubmitResponse = await request(runtimeHttp)
       .post('/api/v1/attempt/submit')
       .set('Authorization', `Bearer ${candidateAccessToken}`)
       .expect(201);
     expect(duplicateSubmitResponse.body).toEqual({ status: 'submitted' });
 
-    await request(app.getHttpServer())
+    await request(runtimeHttp)
       .post('/api/v1/attempt/answer')
       .set('Authorization', `Bearer ${candidateAccessToken}`)
       .send({ questionId: trueFalseId, selectedOptionIds: [correctSingleOptionId] })
       .expect(400);
 
-    const resultsResponse = await request(app.getHttpServer())
+    const resultsResponse = await request(adminHttp)
       .get(`/api/v1/exams/${examId}/results`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
@@ -244,7 +251,7 @@ describe('Exam-Taking Runtime HTTP flow', () => {
     expect(aliceResult.percentage).toBe(60);
     expect(aliceResult.passFail).toBe('pass');
 
-    await request(app.getHttpServer())
+    await request(adminHttp)
       .get(`/api/v1/exams/${examId}/results`)
       .set('Authorization', `Bearer ${orgAdminAccessToken}`)
       .expect(403);
@@ -254,12 +261,12 @@ describe('Exam-Taking Runtime HTTP flow', () => {
     const bobTokens = await inviteAndRedeem('bob@ci-attempt.test', 'Bob');
     const carolTokens = await inviteAndRedeem('carol@ci-attempt.test', 'Carol');
 
-    const bobAccess = (await request(app.getHttpServer()).post('/api/v1/candidate-auth/redeem').send({ token: bobTokens.token }).expect(200)).body.accessToken;
-    const carolAccess = (await request(app.getHttpServer()).post('/api/v1/candidate-auth/redeem').send({ token: carolTokens.token }).expect(200)).body.accessToken;
+    const bobAccess = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token: bobTokens.token }).expect(200)).body.accessToken;
+    const carolAccess = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token: carolTokens.token }).expect(200)).body.accessToken;
 
-    await request(app.getHttpServer()).post('/api/v1/attempt/start').set('Authorization', `Bearer ${bobAccess}`).expect(201);
+    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${bobAccess}`).expect(201);
 
-    const carolState = await request(app.getHttpServer())
+    const carolState = await request(runtimeHttp)
       .get('/api/v1/attempt/current')
       .set('Authorization', `Bearer ${carolAccess}`)
       .expect(200);
@@ -268,9 +275,9 @@ describe('Exam-Taking Runtime HTTP flow', () => {
 
   it('auto-submits and grades an attempt that is touched again after its duration has elapsed', async () => {
     const { token } = await inviteAndRedeem('dave@ci-attempt.test', 'Dave');
-    const daveAccess = (await request(app.getHttpServer()).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
+    const daveAccess = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
 
-    const startResponse = await request(app.getHttpServer())
+    const startResponse = await request(runtimeHttp)
       .post('/api/v1/attempt/start')
       .set('Authorization', `Bearer ${daveAccess}`)
       .expect(201);
@@ -279,14 +286,14 @@ describe('Exam-Taking Runtime HTTP flow', () => {
       tx.attempt.update({ where: { id: startResponse.body.id }, data: { startedAt: new Date(Date.now() - 2 * 60 * 60_000) } }),
     );
 
-    const currentResponse = await request(app.getHttpServer())
+    const currentResponse = await request(runtimeHttp)
       .get('/api/v1/attempt/current')
       .set('Authorization', `Bearer ${daveAccess}`)
       .expect(200);
     expect(currentResponse.body.status).toBe('auto_submitted');
     expect(currentResponse.body.remainingSeconds).toBe(0);
 
-    const resultsResponse = await request(app.getHttpServer())
+    const resultsResponse = await request(adminHttp)
       .get(`/api/v1/exams/${examId}/results`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
@@ -297,23 +304,23 @@ describe('Exam-Taking Runtime HTTP flow', () => {
 
   it('rejects redeeming a revoked or expired invitation with a specific error, not a generic 404', async () => {
     const { candidateId, token } = await inviteAndRedeem('erin@ci-attempt.test', 'Erin');
-    const listResponse = await request(app.getHttpServer())
+    const listResponse = await request(adminHttp)
       .get(`/api/v1/exams/${examId}/invitations`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
     const erinInvitation = listResponse.body.find((inv: { candidateId: string }) => inv.candidateId === candidateId);
 
-    await request(app.getHttpServer())
+    await request(adminHttp)
       .post(`/api/v1/invitations/${erinInvitation.id}/revoke`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(201);
 
-    await request(app.getHttpServer())
+    await request(runtimeHttp)
       .post('/api/v1/candidate-auth/redeem')
       .send({ token })
       .expect(400);
 
-    await request(app.getHttpServer())
+    await request(runtimeHttp)
       .post('/api/v1/candidate-auth/redeem')
       .send({ token: 'this-token-does-not-exist' })
       .expect(404);
