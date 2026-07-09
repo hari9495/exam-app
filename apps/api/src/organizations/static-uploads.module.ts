@@ -1,5 +1,6 @@
 import { Module, OnModuleInit } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
+import { Response } from 'express';
 import { UPLOADS_ROOT } from './uploads-path';
 
 // Mounts the /uploads static file server directly against the underlying HTTP
@@ -20,6 +21,18 @@ export class StaticUploadsModule implements OnModuleInit {
   constructor(private readonly httpAdapterHost: HttpAdapterHost) {}
 
   onModuleInit() {
-    this.httpAdapterHost.httpAdapter.useStaticAssets(UPLOADS_ROOT, { prefix: '/uploads' });
+    this.httpAdapterHost.httpAdapter.useStaticAssets(UPLOADS_ROOT, {
+      prefix: '/uploads',
+      setHeaders: (res: Response) => {
+        // Uploaded files (e.g. org logos) are served from the same origin as
+        // cookie-based auth. A malicious SVG containing a <script> tag could
+        // execute if navigated to directly (not as an <img>), enabling a
+        // same-origin token-refresh exfiltration. These headers neutralize
+        // that: nosniff stops MIME-type upgrades, and the locked-down CSP
+        // blocks any script/resource execution on direct navigation.
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Content-Security-Policy', "default-src 'none'");
+      },
+    });
   }
 }

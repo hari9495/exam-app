@@ -101,6 +101,8 @@ describe('Organization branding flow', () => {
 
     const servedResponse = await request(app.getHttpServer()).get(`/uploads/logos/${orgId}.png`).expect(200);
     expect(Buffer.compare(servedResponse.body, pngBuffer)).toBe(0);
+    expect(servedResponse.headers['x-content-type-options']).toBe('nosniff');
+    expect(servedResponse.headers['content-security-policy']).toBe("default-src 'none'");
 
     await request(app.getHttpServer())
       .post('/api/v1/organizations/branding/logo')
