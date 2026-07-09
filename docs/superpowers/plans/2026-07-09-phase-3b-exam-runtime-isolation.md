@@ -681,6 +681,8 @@ git commit -m "refactor: split admin-facing attempt review into its own Attempts
 
 This is the one big atomic task — `CandidateAuthModule`, `MonitoringModule`, `ProctoringAnalysisModule`, `GradingModule`, and the candidate half of `attempts/` move together, `apps/exam-runtime` becomes the real candidate-facing app, and `apps/api`'s `AttemptsAdminService` is rewritten to reach the moved logic via a new internal HTTP surface. Neither app compiles cleanly between these steps — that's expected and unavoidable given the dependency graph (see Global Constraints); the deliverable is only complete, and only tested, at the end of this task.
 
+**Correction discovered during execution:** `ExamsService.getResults` (staff-side, staying in `apps/api`) also calls `AttemptSettlementService.settleIfExpired` directly — a 4th cross-reference into the moving modules that this plan's original file inventory missed (it only checked `AttemptsAdminService`, never `exams/`). Resolved with a 4th internal endpoint, `POST /internal/attempts/:id/settle-if-expired`, added to `InternalController`, following the exact same pattern as `force-submit`/`reanalyze`. `ExamRuntimeInternalClient` moved out of `attempts-admin/` into its own `apps/api/src/exam-runtime-client/` module (with an `ExamRuntimeClientModule` wrapper) so both `AttemptsAdminModule` and `ExamsModule` can consume it. See the design spec's Section 4 for full detail — updating the steps below only where the file lists changed as a result.
+
 **Files:**
 - Move: `apps/api/src/candidate-auth/` → `apps/exam-runtime/src/candidate-auth/` (whole folder)
 - Move: `apps/api/src/monitoring/` → `apps/exam-runtime/src/monitoring/` (whole folder)
