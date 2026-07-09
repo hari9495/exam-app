@@ -191,5 +191,20 @@ describe('AttemptSettlementService', () => {
         service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted'),
       ).resolves.toBeDefined();
     });
+
+    it('does not let a rejected broadcast propagate out of finalize', async () => {
+      broadcaster.emitAttemptStatus.mockRejectedValue(new Error('relay unreachable, should never surface'));
+      const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
+      const tx = {
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, options: [{ id: 'opt-a', isCorrect: true }] }]) },
+        answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
+        result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+        attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+      };
+
+      await expect(
+        service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted'),
+      ).resolves.toBeDefined();
+    });
   });
 });
