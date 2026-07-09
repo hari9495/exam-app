@@ -9,6 +9,18 @@
 5. `npm run dev:api` (terminal 1), `npm run dev:web` (terminal 2)
 6. Visit `http://localhost:3000/login` — log in with `admin@demo-org.test` / `DevAdmin123!`, org slug `demo-org`.
 
+## Phase 0: local development setup — apps/exam-runtime
+
+`apps/exam-runtime` is a second app, separate from `apps/api`. It's the candidate-facing service — exam-taking, live monitoring, proctoring analysis, and grading. It needs its own `.env` file:
+
+1. `cp .env.example apps/exam-runtime/.env`
+2. Set `DATABASE_URL` to the same value as `apps/api/.env`.
+3. Set `EXAM_RUNTIME_PORT`, `CANDIDATE_JWT_ACCESS_SECRET`, `CANDIDATE_JWT_REFRESH_SECRET`, and `ANTHROPIC_API_KEY`.
+4. Set `WEB_ORIGIN`.
+5. Set `JWT_ACCESS_SECRET` to the exact same value as `apps/api/.env`'s — the live-monitoring WebSocket gateway verifies staff JWTs issued by `apps/api`, so the secrets must match.
+6. Set `INTERNAL_SERVICE_SECRET` to the exact same value as `apps/api/.env`'s as well.
+7. `npm run dev:exam-runtime` (in its own terminal, alongside `dev:api` and `dev:web`).
+
 ## Running tests
 
 - Unit tests: `npm run test:api`
