@@ -263,9 +263,7 @@ export class ExamsService {
       return invitations.map((invitation) => this.toResultRow(invitation, invitation.attempt));
     }
 
-    for (const attemptId of attemptIdsToSettle) {
-      await this.examRuntime.settleIfExpired(attemptId);
-    }
+    await this.examRuntime.settleIfExpiredBatch(attemptIdsToSettle);
 
     const settledAttempts = await this.tenantPrisma.forTenant(context, async (tx) => {
       const attempts = await tx.attempt.findMany({

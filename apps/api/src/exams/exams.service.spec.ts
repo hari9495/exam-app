@@ -7,12 +7,12 @@ import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-i
 describe('ExamsService', () => {
   let service: ExamsService;
   let tenantPrisma: { forTenant: jest.Mock };
-  let examRuntime: { settleIfExpired: jest.Mock };
+  let examRuntime: { settleIfExpiredBatch: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
-    examRuntime = { settleIfExpired: jest.fn() };
+    examRuntime = { settleIfExpiredBatch: jest.fn() };
     const moduleRef = await Test.createTestingModule({
       providers: [
         ExamsService,
@@ -382,7 +382,7 @@ describe('ExamsService', () => {
           proctoringAnalysis: null,
         },
       ]);
-      expect(examRuntime.settleIfExpired).not.toHaveBeenCalled();
+      expect(examRuntime.settleIfExpiredBatch).not.toHaveBeenCalled();
     });
 
     it('settles an in-progress attempt past its deadline before reporting it', async () => {
@@ -408,12 +408,12 @@ describe('ExamsService', () => {
             ]),
         },
       };
-      examRuntime.settleIfExpired.mockResolvedValue(undefined);
+      examRuntime.settleIfExpiredBatch.mockResolvedValue(undefined);
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
       const result = await service.getResults(context, 'exam-1');
 
-      expect(examRuntime.settleIfExpired).toHaveBeenCalledWith(inProgressAttempt.id);
+      expect(examRuntime.settleIfExpiredBatch).toHaveBeenCalledWith([inProgressAttempt.id]);
       expect(tx.attempt.findMany).toHaveBeenCalledWith({
         where: { id: { in: [inProgressAttempt.id] } },
         include: { result: true, proctoringAnalysis: true },
@@ -421,6 +421,34 @@ describe('ExamsService', () => {
       expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(2);
       expect(result[0].status).toBe('auto_submitted');
       expect(result[0].passFail).toBe('pass');
+    });
+
+    it('batches all in-progress attempts into a single settleIfExpiredBatch call', async () => {
+      const exam = { id: 'exam-1', passCriteriaPercent: 40 };
+      const attempt1 = { id: 'attempt-1', status: 'in_progress', result: null };
+      const attempt2 = { id: 'attempt-2', status: 'in_progress', result: null };
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue(exam) },
+        invitation: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' }, attempt: attempt1 },
+            { id: 'inv-2', candidateId: 'cand-2', status: 'invited', candidate: { name: 'Bob' }, attempt: attempt2 },
+          ]),
+        },
+        attempt: {
+          findMany: jest.fn().mockResolvedValue([
+            { ...attempt1, status: 'auto_submitted', submittedAt: new Date(), result: null, proctoringAnalysis: null },
+            { ...attempt2, status: 'auto_submitted', submittedAt: new Date(), result: null, proctoringAnalysis: null },
+          ]),
+        },
+      };
+      examRuntime.settleIfExpiredBatch.mockResolvedValue(undefined);
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.getResults(context, 'exam-1');
+
+      expect(examRuntime.settleIfExpiredBatch).toHaveBeenCalledTimes(1);
+      expect(examRuntime.settleIfExpiredBatch).toHaveBeenCalledWith(['attempt-1', 'attempt-2']);
     });
 
     it('does not open a second transaction when no attempts need settling', async () => {
@@ -441,7 +469,7 @@ describe('ExamsService', () => {
       await service.getResults(context, 'exam-1');
 
       expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(1);
-      expect(examRuntime.settleIfExpired).not.toHaveBeenCalled();
+      expect(examRuntime.settleIfExpiredBatch).not.toHaveBeenCalled();
     });
 
     it('includes the proctoring analysis for a settled attempt, and null when none exists yet', async () => {
