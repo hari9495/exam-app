@@ -9,7 +9,7 @@ describe('InternalAuthGuard', () => {
     process.env.INTERNAL_SERVICE_SECRET = 'test-internal-secret';
   });
 
-  function makeContext(headers: Record<string, string>): ExecutionContext {
+  function makeContext(headers: Record<string, string | string[]>): ExecutionContext {
     return {
       switchToHttp: () => ({ getRequest: () => ({ headers }) }),
     } as unknown as ExecutionContext;
@@ -23,7 +23,17 @@ describe('InternalAuthGuard', () => {
     expect(() => guard.canActivate(makeContext({}))).toThrow(UnauthorizedException);
   });
 
-  it('rejects a request with the wrong secret', () => {
+  it('rejects a request with a shorter wrong secret', () => {
     expect(() => guard.canActivate(makeContext({ 'x-internal-secret': 'wrong' }))).toThrow(UnauthorizedException);
+  });
+
+  it('rejects a request with a same-length wrong secret', () => {
+    expect(() => guard.canActivate(makeContext({ 'x-internal-secret': 'test-internal-secre1' }))).toThrow(UnauthorizedException);
+  });
+
+  it('rejects a request where the header was sent twice (array value)', () => {
+    expect(() =>
+      guard.canActivate(makeContext({ 'x-internal-secret': ['test-internal-secret', 'test-internal-secret'] })),
+    ).toThrow(UnauthorizedException);
   });
 });
