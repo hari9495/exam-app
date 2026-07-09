@@ -3,9 +3,9 @@ import { JwtService } from '@nestjs/jwt';
 import { UnauthorizedException } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { AuthService } from './auth.service';
-import { PrismaService } from '../prisma/prisma.service';
-import { TenantPrismaService } from '../prisma/tenant-prisma.service';
-import { AuditService } from '../audit/audit.service';
+import { PrismaService } from '@exam-platform/shared';
+import { TenantPrismaService } from '@exam-platform/shared';
+import { AuditService } from '@exam-platform/shared';
 
 describe('AuthService', () => {
   let service: AuthService;

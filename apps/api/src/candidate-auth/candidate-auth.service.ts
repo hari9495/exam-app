@@ -3,8 +3,8 @@ import { JwtService } from '@nestjs/jwt';
 import { Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { randomUUID } from 'crypto';
-import { PrismaService } from '../prisma/prisma.service';
-import { TenantPrismaService } from '../prisma/tenant-prisma.service';
+import { PrismaService } from '@exam-platform/shared';
+import { TenantPrismaService } from '@exam-platform/shared';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 
 type PrismaClientOrTransaction = PrismaService | Prisma.TransactionClient;

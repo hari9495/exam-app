@@ -4,7 +4,7 @@ import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
-import { AuditModule } from '../audit/audit.module';
+import { AuditModule } from '@exam-platform/shared';
 
 @Module({
   imports: [PassportModule, JwtModule.register({}), AuditModule],

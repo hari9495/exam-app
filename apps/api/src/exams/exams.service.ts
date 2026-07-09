@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Exam, ExamSection, ExamSectionQuestion, Question, QuestionOption } from '@prisma/client';
-import { TenantPrismaService } from '../prisma/tenant-prisma.service';
-import { TenantContext } from '../prisma/tenant-context';
+import { TenantPrismaService } from '@exam-platform/shared';
+import { TenantContext } from '@exam-platform/shared';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { CreateExamDto } from './dto/create-exam.dto';
 import { UpdateExamDto } from './dto/update-exam.dto';

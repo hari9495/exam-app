@@ -3,8 +3,8 @@ import { JwtService } from '@nestjs/jwt';
 import { BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { CandidateAuthService } from './candidate-auth.service';
-import { PrismaService } from '../prisma/prisma.service';
-import { TenantPrismaService } from '../prisma/tenant-prisma.service';
+import { PrismaService } from '@exam-platform/shared';
+import { TenantPrismaService } from '@exam-platform/shared';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 
 describe('CandidateAuthService', () => {

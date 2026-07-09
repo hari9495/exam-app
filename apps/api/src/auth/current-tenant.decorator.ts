@@ -1,5 +1,5 @@
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
-import { TenantContext } from '../prisma/tenant-context';
+import { TenantContext } from '@exam-platform/shared';
 
 export const CurrentTenant = createParamDecorator((_: unknown, ctx: ExecutionContext): TenantContext => {
   const request = ctx.switchToHttp().getRequest();

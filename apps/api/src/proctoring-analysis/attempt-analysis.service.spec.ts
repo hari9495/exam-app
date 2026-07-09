@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { AttemptAnalysisService } from './attempt-analysis.service';
 import { ClaudeProctoringClient } from './claude-proctoring.client';
-import { TenantPrismaService } from '../prisma/tenant-prisma.service';
+import { TenantPrismaService } from '@exam-platform/shared';
 
 describe('AttemptAnalysisService', () => {
   let service: AttemptAnalysisService;

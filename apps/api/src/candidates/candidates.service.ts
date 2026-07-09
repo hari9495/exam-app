@@ -1,7 +1,7 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { Candidate } from '@prisma/client';
-import { TenantPrismaService } from '../prisma/tenant-prisma.service';
-import { TenantContext } from '../prisma/tenant-context';
+import { TenantPrismaService } from '@exam-platform/shared';
+import { TenantContext } from '@exam-platform/shared';
 import { CreateCandidateDto } from './dto/create-candidate.dto';
 import { parseCandidateCsv } from './csv-parser';
 

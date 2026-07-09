@@ -3,7 +3,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
-import { TenantContext } from '../prisma/tenant-context';
+import { TenantContext } from '@exam-platform/shared';
 import { InvitationsService } from './invitations.service';
 import { CreateInvitationsDto } from './dto/create-invitations.dto';
 

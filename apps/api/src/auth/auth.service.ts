@@ -2,10 +2,10 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { randomUUID } from 'crypto';
-import { PrismaService } from '../prisma/prisma.service';
-import { TenantPrismaService } from '../prisma/tenant-prisma.service';
+import { PrismaService } from '@exam-platform/shared';
+import { TenantPrismaService } from '@exam-platform/shared';
 import { LoginDto } from './dto/login.dto';
-import { AuditService } from '../audit/audit.service';
+import { AuditService } from '@exam-platform/shared';
 
 interface TokenPair {
   accessToken: string;

@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { QuestionsService } from './questions.service';
-import { TenantPrismaService } from '../prisma/tenant-prisma.service';
+import { TenantPrismaService } from '@exam-platform/shared';
 
 describe('QuestionsService', () => {
   let service: QuestionsService;

@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Question, QuestionOption } from '@prisma/client';
-import { TenantPrismaService } from '../prisma/tenant-prisma.service';
-import { TenantContext } from '../prisma/tenant-context';
+import { TenantPrismaService } from '@exam-platform/shared';
+import { TenantContext } from '@exam-platform/shared';
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
 import { validateQuestionPayload } from './question-validation';

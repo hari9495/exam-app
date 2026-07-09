@@ -1,8 +1,8 @@
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { MonitoringGateway, PRESENCE_TICK_MS } from './monitoring.gateway';
-import { PrismaService } from '../prisma/prisma.service';
-import { TenantPrismaService } from '../prisma/tenant-prisma.service';
+import { PrismaService } from '@exam-platform/shared';
+import { TenantPrismaService } from '@exam-platform/shared';
 import { MonitoringService } from './monitoring.service';
 
 describe('MonitoringGateway', () => {

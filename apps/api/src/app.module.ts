@@ -1,8 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { PrismaModule } from './prisma/prisma.module';
+import { PrismaModule, AuditModule } from '@exam-platform/shared';
 import { RbacModule } from './rbac/rbac.module';
-import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { StaticUploadsModule } from './organizations/static-uploads.module';

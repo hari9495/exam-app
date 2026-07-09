@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { TenantPrismaService } from '../prisma/tenant-prisma.service';
+import { TenantPrismaService } from '@exam-platform/shared';
 import { ClaudeProctoringClient } from './claude-proctoring.client';
 
 const CLEAN_SUMMARY = 'No proctoring events were recorded during this attempt.';

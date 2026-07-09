@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { UnauthorizedException } from '@nestjs/common';
 import { CandidateJwtStrategy } from './candidate-jwt.strategy';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '@exam-platform/shared';
 
 describe('CandidateJwtStrategy', () => {
   let strategy: CandidateJwtStrategy;

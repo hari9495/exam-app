@@ -1,8 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { Candidate, Invitation } from '@prisma/client';
-import { TenantPrismaService } from '../prisma/tenant-prisma.service';
-import { TenantContext } from '../prisma/tenant-context';
+import { TenantPrismaService } from '@exam-platform/shared';
+import { TenantContext } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 
 const INVITATION_EXPIRY_DAYS = 7;

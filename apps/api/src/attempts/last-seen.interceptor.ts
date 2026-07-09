@@ -1,6 +1,6 @@
 import { CallHandler, ExecutionContext, Injectable, Logger, NestInterceptor } from '@nestjs/common';
 import { Observable, tap } from 'rxjs';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '@exam-platform/shared';
 import { CandidateSession } from '../candidate-auth/current-candidate.decorator';
 
 @Injectable()

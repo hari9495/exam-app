@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { TenantPrismaService } from '../prisma/tenant-prisma.service';
-import { TenantContext } from '../prisma/tenant-context';
+import { TenantPrismaService } from '@exam-platform/shared';
+import { TenantContext } from '@exam-platform/shared';
 import { computeRemainingSeconds } from '../grading/grading';
 
 const ONLINE_THRESHOLD_MS = 30_000;

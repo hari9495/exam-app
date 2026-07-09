@@ -1,8 +1,8 @@
 import { Test } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { UsersService } from './users.service';
-import { TenantPrismaService } from '../prisma/tenant-prisma.service';
-import { AuditService } from '../audit/audit.service';
+import { TenantPrismaService } from '@exam-platform/shared';
+import { AuditService } from '@exam-platform/shared';
 
 describe('UsersService', () => {
   let service: UsersService;

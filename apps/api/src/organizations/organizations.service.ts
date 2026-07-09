@@ -2,8 +2,8 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Organization } from '@prisma/client';
 import { dirname, join } from 'path';
 import * as fs from 'fs/promises';
-import { PrismaService } from '../prisma/prisma.service';
-import { TenantContext } from '../prisma/tenant-context';
+import { PrismaService } from '@exam-platform/shared';
+import { TenantContext } from '@exam-platform/shared';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateBrandingColorsDto } from './dto/update-branding-colors.dto';
 import { UPLOADS_ROOT } from './uploads-path';

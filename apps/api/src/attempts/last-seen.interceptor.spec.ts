@@ -1,7 +1,7 @@
 import { CallHandler, ExecutionContext } from '@nestjs/common';
 import { of } from 'rxjs';
 import { LastSeenInterceptor } from './last-seen.interceptor';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '@exam-platform/shared';
 
 describe('LastSeenInterceptor', () => {
   let interceptor: LastSeenInterceptor;

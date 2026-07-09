@@ -9,7 +9,7 @@ import { Test } from '@nestjs/testing';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { sep } from 'path';
 import { OrganizationsService } from './organizations.service';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '@exam-platform/shared';
 
 describe('OrganizationsService', () => {
   let service: OrganizationsService;

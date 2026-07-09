@@ -1,10 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { User } from '@prisma/client';
 import * as argon2 from 'argon2';
-import { TenantPrismaService } from '../prisma/tenant-prisma.service';
-import { TenantContext } from '../prisma/tenant-context';
+import { TenantPrismaService } from '@exam-platform/shared';
+import { TenantContext } from '@exam-platform/shared';
 import { CreateUserDto } from './dto/create-user.dto';
-import { AuditService } from '../audit/audit.service';
+import { AuditService } from '@exam-platform/shared';
 
 /**
  * A User record with `passwordHash` (and any other sensitive fields) excluded.

@@ -1,9 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { CandidateMessage, ProctoringAnalysis, ProctoringEvent } from '@prisma/client';
-import { TenantPrismaService } from '../prisma/tenant-prisma.service';
-import { TenantContext } from '../prisma/tenant-context';
+import { TenantPrismaService } from '@exam-platform/shared';
+import { TenantContext } from '@exam-platform/shared';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
-import { AuditService } from '../audit/audit.service';
+import { AuditService } from '@exam-platform/shared';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
 
