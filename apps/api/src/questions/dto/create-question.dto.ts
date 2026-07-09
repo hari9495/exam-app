@@ -1,4 +1,4 @@
-import { ArrayMinSize, IsBoolean, IsIn, IsInt, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
+import { ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class QuestionOptionDto {
@@ -35,6 +35,11 @@ export class CreateQuestionDto {
   @IsInt()
   @Min(0)
   negativeMarks?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
 
   @ValidateNested({ each: true })
   @Type(() => QuestionOptionDto)

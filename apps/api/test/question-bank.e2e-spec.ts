@@ -49,6 +49,9 @@ describe('Question Bank Row-Level Security', () => {
     await tenantPrisma.forTenant({ organizationId: orgAId, isSuperAdmin: false }, (tx) =>
       tx.question.deleteMany({ where: { organizationId: orgAId } }),
     );
+    await tenantPrisma.forTenant({ organizationId: orgAId, isSuperAdmin: false }, (tx) =>
+      tx.tag.deleteMany({ where: { organizationId: orgAId } }),
+    );
     await prisma.organization.deleteMany({ where: { id: { in: [orgAId, orgBId] } } });
     await prisma.plan.delete({ where: { id: planId } });
     await prisma.$disconnect();
@@ -64,6 +67,16 @@ describe('Question Bank Row-Level Security', () => {
   it('returns zero rows when no tenant context has been set', async () => {
     const rows = await prisma.question.findMany({ where: { organizationId: orgAId } });
     expect(rows).toHaveLength(0);
+  });
+
+  it('never returns another tenant\'s tags', async () => {
+    await tenantPrisma.forTenant({ organizationId: orgAId, isSuperAdmin: false }, (tx) =>
+      tx.tag.create({ data: { organizationId: orgAId, name: 'org-a-only-tag' } }),
+    );
+
+    const orgBTags = await tenantPrisma.forTenant({ organizationId: orgBId, isSuperAdmin: false }, (tx) => tx.tag.findMany());
+
+    expect(orgBTags).toHaveLength(0);
   });
 });
 
@@ -120,6 +133,9 @@ describe('Question Bank HTTP flow', () => {
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) =>
       tx.question.deleteMany({ where: { organizationId: orgId } }),
     );
+    await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) =>
+      tx.tag.deleteMany({ where: { organizationId: orgId } }),
+    );
     // refresh_tokens has a plain FK (ON DELETE NO ACTION) to users, so any refresh tokens
     // issued to this org's users during login (in beforeAll) must be deleted before the users
     // themselves, or the user delete below fails with a foreign key violation. The
@@ -173,6 +189,33 @@ describe('Question Bank HTTP flow', () => {
     questionId = createResponse.body.id;
     expect(createResponse.body.options).toHaveLength(2);
 
+    const taggedCreateResponse = await request(app.getHttpServer())
+      .post('/api/v1/questions')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({
+        type: 'true_false',
+        text: 'Is this tagged?',
+        difficulty: 'easy',
+        marks: 1,
+        tags: ['geography', 'geography'],
+        options: [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }],
+      })
+      .expect(201);
+    expect(taggedCreateResponse.body.tags).toEqual([{ id: expect.any(String), name: 'geography' }]);
+    const geographyTagId = taggedCreateResponse.body.tags[0].id;
+
+    const tagFilteredListResponse = await request(app.getHttpServer())
+      .get(`/api/v1/questions?tagId=${geographyTagId}`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(200);
+    expect(tagFilteredListResponse.body.map((q: { id: string }) => q.id)).toEqual([taggedCreateResponse.body.id]);
+
+    const tagListResponse = await request(app.getHttpServer())
+      .get('/api/v1/tags')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(200);
+    expect(tagListResponse.body.map((t: { name: string }) => t.name)).toContain('geography');
+
     const listResponse = await request(app.getHttpServer())
       .get('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
@@ -193,6 +236,7 @@ describe('Question Bank HTTP flow', () => {
         text: 'What is the capital of France? (updated)',
         difficulty: 'medium',
         marks: 10,
+        tags: ['geography', 'capitals'],
         options: [
           { text: 'Paris', isCorrect: true },
           { text: 'Berlin', isCorrect: false },
@@ -200,6 +244,7 @@ describe('Question Bank HTTP flow', () => {
       })
       .expect(200);
     expect(updateResponse.body.marks).toBe(10);
+    expect(updateResponse.body.tags.map((t: { name: string }) => t.name).sort()).toEqual(['capitals', 'geography']);
 
     await request(app.getHttpServer())
       .post(`/api/v1/questions/${questionId}/archive`)
