@@ -1,15 +1,17 @@
-import { Test } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import * as argon2 from 'argon2';
 import { randomUUID } from 'crypto';
-import { AppModule } from '../src/app.module';
+import { bootAdminApp, bootRuntimeApp } from './dual-app';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
 
 describe('Session Enforcement & Anti-Cheat HTTP flow', () => {
-  let app: INestApplication;
+  let adminApp: INestApplication;
+  let runtimeApp: INestApplication;
+  let adminHttp: any;
+  let runtimeHttp: any;
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
   let planId: string;
@@ -20,16 +22,13 @@ describe('Session Enforcement & Anti-Cheat HTTP flow', () => {
   const fakeEmailService = { send: jest.fn().mockResolvedValue({ success: true, previewUrl: 'https://ethereal.email/fake' }) };
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(EmailService)
-      .useValue(fakeEmailService)
-      .compile();
-    app = moduleRef.createNestApplication();
-    app.setGlobalPrefix('api/v1');
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
-    await app.init();
-    prisma = moduleRef.get(PrismaService);
-    tenantPrisma = moduleRef.get(TenantPrismaService);
+    adminApp = await bootAdminApp((builder) => builder.overrideProvider(EmailService).useValue(fakeEmailService));
+    ({ app: runtimeApp } = await bootRuntimeApp());
+    adminHttp = adminApp.getHttpServer();
+    runtimeHttp = runtimeApp.getHttpServer();
+
+    prisma = adminApp.get(PrismaService);
+    tenantPrisma = adminApp.get(TenantPrismaService);
 
     const plan = await prisma.plan.create({
       data: { name: `ci-anticheat-plan-${randomUUID()}`, candidateLimit: 10, aiCreditLimit: 1, proctoringMinutesLimit: 1 },
@@ -49,34 +48,34 @@ describe('Session Enforcement & Anti-Cheat HTTP flow', () => {
     );
 
     recruiterAccessToken = (
-      await request(app.getHttpServer())
+      await request(adminHttp)
         .post('/api/v1/auth/staff/login')
         .send({ organizationSlug: org.slug, email: 'recruiter@ci-anticheat.test', password: 'RecruiterPassw0rd!' })
         .expect(200)
     ).body.accessToken;
 
     orgAdminAccessToken = (
-      await request(app.getHttpServer())
+      await request(adminHttp)
         .post('/api/v1/auth/staff/login')
         .send({ organizationSlug: org.slug, email: 'orgadmin@ci-anticheat.test', password: 'OrgAdminPassw0rd!' })
         .expect(200)
     ).body.accessToken;
 
-    const examResponse = await request(app.getHttpServer())
+    const examResponse = await request(adminHttp)
       .post('/api/v1/exams')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({ title: 'Anti-Cheat Round' })
       .expect(201);
     examId = examResponse.body.id;
 
-    const sectionResponse = await request(app.getHttpServer())
+    const sectionResponse = await request(adminHttp)
       .post(`/api/v1/exams/${examId}/sections`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({ title: 'Section One' })
       .expect(201);
     const sectionId = sectionResponse.body.id;
 
-    const questionResponse = await request(app.getHttpServer())
+    const questionResponse = await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
@@ -85,13 +84,13 @@ describe('Session Enforcement & Anti-Cheat HTTP flow', () => {
       })
       .expect(201);
 
-    await request(app.getHttpServer())
+    await request(adminHttp)
       .put(`/api/v1/exams/${examId}/sections/${sectionId}/questions`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({ questionIds: [questionResponse.body.id] })
       .expect(200);
 
-    await request(app.getHttpServer())
+    await request(adminHttp)
       .post(`/api/v1/exams/${examId}/publish`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(201);
@@ -105,17 +104,18 @@ describe('Session Enforcement & Anti-Cheat HTTP flow', () => {
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.user.deleteMany({ where: { organizationId: orgId } }));
     await prisma.organization.delete({ where: { id: orgId } }).catch(() => undefined);
     await prisma.plan.delete({ where: { id: planId } }).catch(() => undefined);
-    await app.close();
+    await adminApp.close();
+    await runtimeApp.close();
   });
 
   async function inviteAndGetToken(email: string, name: string): Promise<string> {
-    const candidateResponse = await request(app.getHttpServer())
+    const candidateResponse = await request(adminHttp)
       .post('/api/v1/candidates')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({ email, name })
       .expect(201);
 
-    const inviteResponse = await request(app.getHttpServer())
+    const inviteResponse = await request(adminHttp)
       .post(`/api/v1/exams/${examId}/invitations`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({ candidateIds: [candidateResponse.body.id] })
@@ -127,30 +127,30 @@ describe('Session Enforcement & Anti-Cheat HTTP flow', () => {
   it('kills an old session live when the same invitation is redeemed again, and logs a multi_login event once an attempt exists', async () => {
     const token = await inviteAndGetToken('alice@ci-anticheat.test', 'Alice');
 
-    const firstRedeem = await request(app.getHttpServer()).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200);
+    const firstRedeem = await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200);
     const firstAccessToken = firstRedeem.body.accessToken;
 
-    const startResponse = await request(app.getHttpServer())
+    const startResponse = await request(runtimeHttp)
       .post('/api/v1/attempt/start')
       .set('Authorization', `Bearer ${firstAccessToken}`)
       .send({ deviceFingerprint: 'fp-first-device' })
       .expect(201);
     const attemptId = startResponse.body.id;
 
-    const secondRedeem = await request(app.getHttpServer()).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200);
+    const secondRedeem = await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200);
     const secondAccessToken = secondRedeem.body.accessToken;
 
-    await request(app.getHttpServer())
+    await request(runtimeHttp)
       .get('/api/v1/attempt/current')
       .set('Authorization', `Bearer ${firstAccessToken}`)
       .expect(401);
 
-    await request(app.getHttpServer())
+    await request(runtimeHttp)
       .get('/api/v1/attempt/current')
       .set('Authorization', `Bearer ${secondAccessToken}`)
       .expect(200);
 
-    const eventsResponse = await request(app.getHttpServer())
+    const eventsResponse = await request(adminHttp)
       .get(`/api/v1/attempts/${attemptId}/proctoring-events`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
@@ -161,29 +161,29 @@ describe('Session Enforcement & Anti-Cheat HTTP flow', () => {
 
   it('records client-reported proctoring events with server-computed severity, and rejects a client-submitted multi_login', async () => {
     const token = await inviteAndGetToken('bob@ci-anticheat.test', 'Bob');
-    const accessToken = (await request(app.getHttpServer()).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
-    const attemptId = (await request(app.getHttpServer()).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).expect(201)).body.id;
+    const accessToken = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
+    const attemptId = (await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).expect(201)).body.id;
 
-    await request(app.getHttpServer())
+    await request(runtimeHttp)
       .post('/api/v1/attempt/proctoring-event')
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ eventType: 'tab_switch' })
       .expect(201);
 
-    await request(app.getHttpServer())
+    await request(runtimeHttp)
       .post('/api/v1/attempt/proctoring-event')
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ eventType: 'multi_login' })
       .expect(400);
 
-    const eventsResponse = await request(app.getHttpServer())
+    const eventsResponse = await request(adminHttp)
       .get(`/api/v1/attempts/${attemptId}/proctoring-events`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
     const tabSwitchEvent = eventsResponse.body.find((event: { eventType: string }) => event.eventType === 'tab_switch');
     expect(tabSwitchEvent.severity).toBe('medium');
 
-    await request(app.getHttpServer())
+    await request(adminHttp)
       .get(`/api/v1/attempts/${attemptId}/proctoring-events`)
       .set('Authorization', `Bearer ${orgAdminAccessToken}`)
       .expect(403);
@@ -191,16 +191,16 @@ describe('Session Enforcement & Anti-Cheat HTTP flow', () => {
 
   it('force-submits an in-progress attempt and records an audit log entry', async () => {
     const token = await inviteAndGetToken('carol@ci-anticheat.test', 'Carol');
-    const accessToken = (await request(app.getHttpServer()).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
-    const attemptId = (await request(app.getHttpServer()).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).expect(201)).body.id;
+    const accessToken = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
+    const attemptId = (await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).expect(201)).body.id;
 
-    const forceSubmitResponse = await request(app.getHttpServer())
+    const forceSubmitResponse = await request(adminHttp)
       .post(`/api/v1/attempts/${attemptId}/force-submit`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(201);
     expect(forceSubmitResponse.body).toEqual({ status: 'force_submitted' });
 
-    await request(app.getHttpServer())
+    await request(adminHttp)
       .post(`/api/v1/attempts/${attemptId}/force-submit`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(400);
@@ -213,9 +213,9 @@ describe('Session Enforcement & Anti-Cheat HTTP flow', () => {
 
   it('starts an attempt successfully with no device fingerprint provided', async () => {
     const token = await inviteAndGetToken('dave@ci-anticheat.test', 'Dave');
-    const accessToken = (await request(app.getHttpServer()).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
+    const accessToken = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
 
-    await request(app.getHttpServer())
+    await request(runtimeHttp)
       .post('/api/v1/attempt/start')
       .set('Authorization', `Bearer ${accessToken}`)
       .send({})
