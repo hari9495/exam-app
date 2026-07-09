@@ -6,7 +6,7 @@ import { AttemptModule } from './attempts/attempt.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { ProctoringAnalysisModule } from './proctoring-analysis/proctoring-analysis.module';
 import { GradingModule } from './grading/grading.module';
-import { InternalModule } from './internal/internal.module';
+import { LocalMonitoringBridgeModule } from './monitoring/local-monitoring-bridge.module';
 
 @Module({
   imports: [
@@ -17,7 +17,7 @@ import { InternalModule } from './internal/internal.module';
     MonitoringModule,
     ProctoringAnalysisModule,
     GradingModule,
-    InternalModule,
+    LocalMonitoringBridgeModule,
   ],
 })
 export class AppModule {}

@@ -1,8 +1,8 @@
-import { BadRequestException, Body, Controller, HttpCode, NotFoundException, Param, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, HttpCode, Inject, NotFoundException, Param, Post, UseGuards } from '@nestjs/common';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
-import { MonitoringGateway } from '../monitoring/monitoring.gateway';
+import { ATTEMPT_STATUS_BROADCASTER, AttemptStatusBroadcaster } from '../monitoring/attempt-status-broadcaster';
 import { InternalAuthGuard } from './internal-auth.guard';
 import { NotifyMessageSentDto } from './dto/notify-message-sent.dto';
 
@@ -13,7 +13,7 @@ export class InternalController {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly attemptSettlement: AttemptSettlementService,
     private readonly attemptAnalysis: AttemptAnalysisService,
-    private readonly monitoringGateway: MonitoringGateway,
+    @Inject(ATTEMPT_STATUS_BROADCASTER) private readonly broadcaster: AttemptStatusBroadcaster,
   ) {}
 
   @Post('attempts/:id/force-submit')
@@ -60,7 +60,7 @@ export class InternalController {
   @Post('monitoring/message-sent')
   @HttpCode(204)
   async notifyMessageSent(@Body() dto: NotifyMessageSentDto): Promise<void> {
-    this.monitoringGateway.emitMessageSent(dto.examId, {
+    await this.broadcaster.emitMessageSent(dto.examId, {
       attemptId: dto.attemptId,
       candidateId: dto.candidateId,
       sentAt: new Date(dto.sentAt),

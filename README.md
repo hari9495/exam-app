@@ -19,7 +19,8 @@
 4. Set `WEB_ORIGIN`.
 5. Set `JWT_ACCESS_SECRET` to the exact same value as `apps/api/.env`'s — the live-monitoring WebSocket gateway verifies staff JWTs issued by `apps/api`, so the secrets must match.
 6. Set `INTERNAL_SERVICE_SECRET` to the exact same value as `apps/api/.env`'s as well.
-7. `npm run dev:exam-runtime` (in its own terminal, alongside `dev:api` and `dev:web`).
+7. `apps/exam-runtime` now starts two listeners: the public candidate-facing one on `EXAM_RUNTIME_PORT` (default 3002, all interfaces), and an internal-only one on `EXAM_RUNTIME_INTERNAL_PORT` (default 3003) bound to `EXAM_RUNTIME_INTERNAL_HOST` (default `127.0.0.1` — deliberately not reachable from outside this machine). `apps/api/.env`'s `EXAM_RUNTIME_INTERNAL_URL` must point at wherever the internal listener actually is (default `http://127.0.0.1:3003`). The `INTERNAL_SERVICE_SECRET` header check still applies on top of this network restriction — it isn't a replacement for it.
+8. `npm run dev:exam-runtime` (in its own terminal, alongside `dev:api` and `dev:web`).
 
 ## Running tests
 

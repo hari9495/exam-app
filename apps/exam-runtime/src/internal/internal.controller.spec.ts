@@ -4,20 +4,20 @@ import { InternalController } from './internal.controller';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
-import { MonitoringGateway } from '../monitoring/monitoring.gateway';
+import { ATTEMPT_STATUS_BROADCASTER } from '../monitoring/attempt-status-broadcaster';
 
 describe('InternalController', () => {
   let controller: InternalController;
   let tenantPrisma: { forTenant: jest.Mock };
   let attemptSettlement: { finalize: jest.Mock; settleIfExpired: jest.Mock };
   let attemptAnalysis: { analyze: jest.Mock };
-  let monitoringGateway: { emitMessageSent: jest.Mock };
+  let broadcaster: { emitMessageSent: jest.Mock };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
     attemptSettlement = { finalize: jest.fn(), settleIfExpired: jest.fn() };
     attemptAnalysis = { analyze: jest.fn() };
-    monitoringGateway = { emitMessageSent: jest.fn() };
+    broadcaster = { emitMessageSent: jest.fn().mockResolvedValue(undefined) };
 
     const moduleRef = await Test.createTestingModule({
       controllers: [InternalController],
@@ -25,7 +25,7 @@ describe('InternalController', () => {
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: AttemptSettlementService, useValue: attemptSettlement },
         { provide: AttemptAnalysisService, useValue: attemptAnalysis },
-        { provide: MonitoringGateway, useValue: monitoringGateway },
+        { provide: ATTEMPT_STATUS_BROADCASTER, useValue: broadcaster },
       ],
     }).compile();
     controller = moduleRef.get(InternalController);
@@ -97,12 +97,12 @@ describe('InternalController', () => {
   });
 
   describe('notifyMessageSent', () => {
-    it('delegates to MonitoringGateway.emitMessageSent', async () => {
+    it('delegates to the broadcaster', async () => {
       const dto = { examId: 'exam-1', attemptId: 'attempt-1', candidateId: 'cand-1', sentAt: '2026-07-09T00:00:00.000Z' };
 
       await controller.notifyMessageSent(dto);
 
-      expect(monitoringGateway.emitMessageSent).toHaveBeenCalledWith('exam-1', {
+      expect(broadcaster.emitMessageSent).toHaveBeenCalledWith('exam-1', {
         attemptId: 'attempt-1',
         candidateId: 'cand-1',
         sentAt: new Date('2026-07-09T00:00:00.000Z'),

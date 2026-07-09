@@ -1,18 +1,18 @@
 import { Prisma } from '@prisma/client';
 import { AttemptSettlementService } from './attempt-settlement.service';
-import { MonitoringGateway } from '../monitoring/monitoring.gateway';
+import { AttemptStatusBroadcaster } from '../monitoring/attempt-status-broadcaster';
 import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
 
 describe('AttemptSettlementService', () => {
   let service: AttemptSettlementService;
-  let monitoringGateway: { emitAttemptStatus: jest.Mock };
+  let broadcaster: { emitAttemptStatus: jest.Mock; emitMessageSent: jest.Mock };
   let attemptAnalysis: { analyze: jest.Mock };
   const exam = { id: 'exam-1', durationMinutes: 30, passCriteriaPercent: 50 };
 
   beforeEach(() => {
-    monitoringGateway = { emitAttemptStatus: jest.fn() };
+    broadcaster = { emitAttemptStatus: jest.fn().mockResolvedValue(undefined), emitMessageSent: jest.fn().mockResolvedValue(undefined) };
     attemptAnalysis = { analyze: jest.fn().mockResolvedValue(undefined) };
-    service = new AttemptSettlementService(monitoringGateway as unknown as MonitoringGateway, attemptAnalysis as unknown as AttemptAnalysisService);
+    service = new AttemptSettlementService(broadcaster as unknown as AttemptStatusBroadcaster, attemptAnalysis as unknown as AttemptAnalysisService);
   });
 
   describe('remainingSeconds', () => {
@@ -132,7 +132,7 @@ describe('AttemptSettlementService', () => {
 
       await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
 
-      expect(monitoringGateway.emitAttemptStatus).toHaveBeenCalledWith('exam-1', {
+      expect(broadcaster.emitAttemptStatus).toHaveBeenCalledWith('exam-1', {
         attemptId: 'attempt-1', candidateId: 'cand-1', status: 'submitted',
       });
     });

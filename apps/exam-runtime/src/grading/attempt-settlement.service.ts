@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Attempt, Prisma } from '@prisma/client';
 import { gradeAnswer, computeResult, computeRemainingSeconds } from './grading';
-import { MonitoringGateway } from '../monitoring/monitoring.gateway';
+import { ATTEMPT_STATUS_BROADCASTER, AttemptStatusBroadcaster } from '../monitoring/attempt-status-broadcaster';
 import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
 
 export interface SettlementExam {
@@ -15,7 +15,7 @@ export class AttemptSettlementService {
   private readonly logger = new Logger(AttemptSettlementService.name);
 
   constructor(
-    private readonly monitoringGateway: MonitoringGateway,
+    @Inject(ATTEMPT_STATUS_BROADCASTER) private readonly broadcaster: AttemptStatusBroadcaster,
     private readonly attemptAnalysis: AttemptAnalysisService,
   ) {}
 
@@ -76,11 +76,13 @@ export class AttemptSettlementService {
     });
 
     const finalized = await tx.attempt.update({ where: { id: attempt.id }, data: { status, submittedAt: new Date() } });
-    this.monitoringGateway.emitAttemptStatus(attempt.examId, {
-      attemptId: finalized.id,
-      candidateId: attempt.candidateId,
-      status: finalized.status,
-    });
+    void this.broadcaster
+      .emitAttemptStatus(attempt.examId, {
+        attemptId: finalized.id,
+        candidateId: attempt.candidateId,
+        status: finalized.status,
+      })
+      .catch((error) => this.logger.error('Failed to broadcast attempt status', error as Error));
     void this.attemptAnalysis.analyze(finalized.id).catch((error) => this.logger.error('Proctoring analysis failed to start', error as Error));
     return finalized;
   }
