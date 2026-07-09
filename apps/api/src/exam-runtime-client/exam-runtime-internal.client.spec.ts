@@ -107,9 +107,12 @@ describe('ExamRuntimeInternalClient', () => {
       });
 
       const promise = client.reanalyze('attempt-1');
+      // Attach the assertion's handler to `promise` before advancing timers — advancing first
+      // would let the rejection fire while nothing observes it yet, which Jest/Node treats as
+      // an unhandled rejection and fails the test even though the exception is correct.
+      const assertion = expect(promise).rejects.toThrow(ServiceUnavailableException);
       await jest.advanceTimersByTimeAsync(5000);
-
-      await expect(promise).rejects.toThrow(ServiceUnavailableException);
+      await assertion;
     });
 
     it('uses EXAM_RUNTIME_INTERNAL_TIMEOUT_MS when set instead of the 5000ms default', async () => {
@@ -126,9 +129,9 @@ describe('ExamRuntimeInternalClient', () => {
       });
 
       const promise = client.reanalyze('attempt-1');
+      const assertion = expect(promise).rejects.toThrow(ServiceUnavailableException);
       await jest.advanceTimersByTimeAsync(100);
-
-      await expect(promise).rejects.toThrow(ServiceUnavailableException);
+      await assertion;
     });
 
     it('translates a connection error (fetch rejects without a response) into ServiceUnavailableException', async () => {
