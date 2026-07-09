@@ -116,6 +116,7 @@ model Question {
   options        QuestionOption[]
   examLinks      ExamSectionQuestion[]
   answers        Answer[]
+  tags           QuestionTag[]
 
   @@index([organizationId, topic, difficulty])
   @@map("questions")
@@ -131,6 +132,27 @@ model QuestionOption {
 
   @@index([questionId])
   @@map("question_options")
+}
+
+model Tag {
+  id             String        @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String        @map("organization_id") @db.UniqueIdentifier
+  name           String
+  createdAt      DateTime      @default(now()) @map("created_at")
+  questions      QuestionTag[]
+
+  @@unique([organizationId, name])
+  @@map("tags")
+}
+
+model QuestionTag {
+  questionId String   @map("question_id") @db.UniqueIdentifier
+  tagId      String   @map("tag_id") @db.UniqueIdentifier
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([questionId, tagId])
+  @@map("question_tags")
 }
 
 model Exam {
