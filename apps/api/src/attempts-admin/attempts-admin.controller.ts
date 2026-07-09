@@ -10,7 +10,7 @@ import { SendCandidateMessageDto } from './dto/send-candidate-message.dto';
 
 @Controller('attempts')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
-export class AttemptsController {
+export class AttemptsAdminController {
   constructor(private readonly attemptsAdminService: AttemptsAdminService) {}
 
   @Get(':id/proctoring-events')

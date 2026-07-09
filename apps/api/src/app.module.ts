@@ -12,6 +12,7 @@ import { CandidatesModule } from './candidates/candidates.module';
 import { InvitationsModule } from './invitations/invitations.module';
 import { CandidateAuthModule } from './candidate-auth/candidate-auth.module';
 import { AttemptModule } from './attempts/attempt.module';
+import { AttemptsAdminModule } from './attempts-admin/attempts-admin.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { AttemptModule } from './attempts/attempt.module';
     InvitationsModule,
     CandidateAuthModule,
     AttemptModule,
+    AttemptsAdminModule,
   ],
 })
 export class AppModule {}
