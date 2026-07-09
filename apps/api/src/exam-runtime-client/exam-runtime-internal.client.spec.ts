@@ -1,4 +1,4 @@
-import { BadRequestException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, InternalServerErrorException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { ExamRuntimeInternalClient } from './exam-runtime-internal.client';
 
 describe('ExamRuntimeInternalClient', () => {
@@ -8,7 +8,12 @@ describe('ExamRuntimeInternalClient', () => {
     client = new ExamRuntimeInternalClient();
     process.env.EXAM_RUNTIME_INTERNAL_URL = 'http://localhost:3002';
     process.env.INTERNAL_SERVICE_SECRET = 'test-internal-secret';
+    delete process.env.EXAM_RUNTIME_INTERNAL_TIMEOUT_MS;
     global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   describe('forceSubmit', () => {
@@ -20,6 +25,7 @@ describe('ExamRuntimeInternalClient', () => {
       expect(global.fetch).toHaveBeenCalledWith('http://localhost:3002/api/v1/internal/attempts/attempt-1/force-submit', {
         method: 'POST',
         headers: { 'x-internal-secret': 'test-internal-secret' },
+        signal: expect.any(AbortSignal),
       });
       expect(result).toEqual({ status: 'force_submitted' });
     });
@@ -52,6 +58,7 @@ describe('ExamRuntimeInternalClient', () => {
       expect(global.fetch).toHaveBeenCalledWith('http://localhost:3002/api/v1/internal/attempts/attempt-1/reanalyze', {
         method: 'POST',
         headers: { 'x-internal-secret': 'test-internal-secret' },
+        signal: expect.any(AbortSignal),
       });
     });
   });
@@ -65,6 +72,7 @@ describe('ExamRuntimeInternalClient', () => {
       expect(global.fetch).toHaveBeenCalledWith('http://localhost:3002/api/v1/internal/attempts/attempt-1/settle-if-expired', {
         method: 'POST',
         headers: { 'x-internal-secret': 'test-internal-secret' },
+        signal: expect.any(AbortSignal),
       });
     });
   });
@@ -80,7 +88,53 @@ describe('ExamRuntimeInternalClient', () => {
         method: 'POST',
         headers: { 'x-internal-secret': 'test-internal-secret', 'Content-Type': 'application/json' },
         body: JSON.stringify({ examId: 'exam-1', attemptId: 'attempt-1', candidateId: 'cand-1', sentAt }),
+        signal: expect.any(AbortSignal),
       });
+    });
+  });
+
+  describe('timeout and network-error handling', () => {
+    it('aborts and throws ServiceUnavailableException when the request exceeds the default timeout', async () => {
+      jest.useFakeTimers();
+      (global.fetch as jest.Mock).mockImplementation((_url: string, init: RequestInit) => {
+        return new Promise((_resolve, reject) => {
+          (init.signal as AbortSignal).addEventListener('abort', () => {
+            const err = new Error('The operation was aborted');
+            err.name = 'AbortError';
+            reject(err);
+          });
+        });
+      });
+
+      const promise = client.reanalyze('attempt-1');
+      await jest.advanceTimersByTimeAsync(5000);
+
+      await expect(promise).rejects.toThrow(ServiceUnavailableException);
+    });
+
+    it('uses EXAM_RUNTIME_INTERNAL_TIMEOUT_MS when set instead of the 5000ms default', async () => {
+      process.env.EXAM_RUNTIME_INTERNAL_TIMEOUT_MS = '100';
+      jest.useFakeTimers();
+      (global.fetch as jest.Mock).mockImplementation((_url: string, init: RequestInit) => {
+        return new Promise((_resolve, reject) => {
+          (init.signal as AbortSignal).addEventListener('abort', () => {
+            const err = new Error('The operation was aborted');
+            err.name = 'AbortError';
+            reject(err);
+          });
+        });
+      });
+
+      const promise = client.reanalyze('attempt-1');
+      await jest.advanceTimersByTimeAsync(100);
+
+      await expect(promise).rejects.toThrow(ServiceUnavailableException);
+    });
+
+    it('translates a connection error (fetch rejects without a response) into ServiceUnavailableException', async () => {
+      (global.fetch as jest.Mock).mockRejectedValue(new TypeError('fetch failed'));
+
+      await expect(client.reanalyze('attempt-1')).rejects.toThrow(ServiceUnavailableException);
     });
   });
 });

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 
 interface ForceSubmitResult {
   status: string;
@@ -14,7 +14,7 @@ interface NotifyMessageSentPayload {
 @Injectable()
 export class ExamRuntimeInternalClient {
   async forceSubmit(attemptId: string): Promise<ForceSubmitResult> {
-    const response = await fetch(`${this.baseUrl()}/api/v1/internal/attempts/${attemptId}/force-submit`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/attempts/${attemptId}/force-submit`, {
       method: 'POST',
       headers: this.headers(),
     });
@@ -23,7 +23,7 @@ export class ExamRuntimeInternalClient {
   }
 
   async reanalyze(attemptId: string): Promise<void> {
-    const response = await fetch(`${this.baseUrl()}/api/v1/internal/attempts/${attemptId}/reanalyze`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/attempts/${attemptId}/reanalyze`, {
       method: 'POST',
       headers: this.headers(),
     });
@@ -31,7 +31,7 @@ export class ExamRuntimeInternalClient {
   }
 
   async settleIfExpired(attemptId: string): Promise<void> {
-    const response = await fetch(`${this.baseUrl()}/api/v1/internal/attempts/${attemptId}/settle-if-expired`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/attempts/${attemptId}/settle-if-expired`, {
       method: 'POST',
       headers: this.headers(),
     });
@@ -39,7 +39,7 @@ export class ExamRuntimeInternalClient {
   }
 
   async notifyMessageSent(payload: NotifyMessageSentPayload): Promise<void> {
-    const response = await fetch(`${this.baseUrl()}/api/v1/internal/monitoring/message-sent`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/monitoring/message-sent`, {
       method: 'POST',
       headers: { ...this.headers(), 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -53,6 +53,26 @@ export class ExamRuntimeInternalClient {
 
   private headers(): Record<string, string> {
     return { 'x-internal-secret': process.env.INTERNAL_SERVICE_SECRET as string };
+  }
+
+  private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+    const timeoutMs = process.env.EXAM_RUNTIME_INTERNAL_TIMEOUT_MS
+      ? parseInt(process.env.EXAM_RUNTIME_INTERNAL_TIMEOUT_MS, 10)
+      : 5000;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...init, signal: controller.signal });
+    } catch (error) {
+      const isAbort = error instanceof Error && error.name === 'AbortError';
+      throw new ServiceUnavailableException(
+        isAbort
+          ? `Exam runtime internal call to ${url} timed out after ${timeoutMs}ms`
+          : `Exam runtime internal call to ${url} failed: ${error instanceof Error ? error.message : 'unknown error'}`,
+      );
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private async throwIfNotOk(response: Response): Promise<void> {
