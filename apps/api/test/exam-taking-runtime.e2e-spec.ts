@@ -33,7 +33,7 @@ describe('Exam-Taking Runtime HTTP flow', () => {
     adminHttp = adminApp.getHttpServer();
     runtimeHttp = runtimeApp.getHttpServer();
 
-    // ExamsService.getResults() calls ExamRuntimeInternalClient.settleIfExpired(), which makes a
+    // ExamsService.getResults() calls ExamRuntimeInternalClient.settleIfExpiredBatch(), which makes a
     // real HTTP request to apps/exam-runtime's internal surface. That client reads
     // EXAM_RUNTIME_INTERNAL_URL from process.env on every call, so bootRuntimeApp() above already
     // starts the runtime app listening on a real ephemeral port and points the env var at it
