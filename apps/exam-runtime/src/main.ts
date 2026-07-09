@@ -8,12 +8,7 @@ async function bootstrap() {
   app.enableCors({ origin: process.env.WEB_ORIGIN, credentials: true });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
   app.setGlobalPrefix('api/v1');
-  const publicPort = process.env.EXAM_RUNTIME_PORT ?? 3002;
-  await app.listen(publicPort);
-  // The internal app's RelayingAttemptStatusBroadcaster reads this to call back
-  // into this app's own MonitoringGateway — same-host call, regardless of what
-  // host this app's own public listener is bound to.
-  process.env.EXAM_RUNTIME_PUBLIC_URL = `http://127.0.0.1:${publicPort}`;
+  await app.listen(process.env.EXAM_RUNTIME_PORT ?? 3002);
 
   const internalApp = await NestFactory.create(InternalAppModule);
   internalApp.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));

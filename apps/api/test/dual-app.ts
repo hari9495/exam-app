@@ -40,9 +40,6 @@ export async function bootRuntimeApp(configure?: Configure): Promise<{ app: INes
   // value from .env, which may not even be running during tests. Internal routes now live on
   // a separate app/port from the public candidate-facing one (see internal-app.module.ts).
   process.env.EXAM_RUNTIME_INTERNAL_URL = `http://127.0.0.1:${internalPort}`;
-  // The internal app's RelayingAttemptStatusBroadcaster reads this to call back into the
-  // public app's real MonitoringGateway (see monitoring/relaying-attempt-status-broadcaster.ts).
-  process.env.EXAM_RUNTIME_PUBLIC_URL = `http://127.0.0.1:${port}`;
 
   // bootRuntimeApp()'s contract stays { app, port } (the public app) so the four existing
   // dual-app e2e specs need no changes — but the internal app also needs cleanup, so wrap

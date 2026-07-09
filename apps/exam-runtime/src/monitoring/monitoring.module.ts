@@ -2,12 +2,11 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { MonitoringGateway } from './monitoring.gateway';
 import { MonitoringService } from './monitoring.service';
-import { BroadcastRelayController } from './broadcast-relay.controller';
+import { MonitoringEventBusBridge } from './monitoring-event-bus-bridge';
 
 @Module({
   imports: [JwtModule.register({})],
-  controllers: [BroadcastRelayController],
-  providers: [MonitoringGateway, MonitoringService],
+  providers: [MonitoringGateway, MonitoringService, MonitoringEventBusBridge],
   exports: [MonitoringGateway],
 })
 export class MonitoringModule {}
