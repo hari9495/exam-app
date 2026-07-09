@@ -7,7 +7,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
-import { ClaudeProctoringClient } from '../src/proctoring-analysis/claude-proctoring.client';
+import { ClaudeProctoringClient } from '../../exam-runtime/src/proctoring-analysis/claude-proctoring.client';
 
 describe('AI Proctoring flow', () => {
   let app: INestApplication;

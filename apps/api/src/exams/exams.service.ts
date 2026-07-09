@@ -242,42 +242,75 @@ export class ExamsService {
   }
 
   async getResults(context: TenantContext, examId: string): Promise<ExamResultRow[]> {
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+    const invitations = await this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({ where: { id: examId, organizationId: context.organizationId as string } });
       if (!exam) {
         throw new NotFoundException(`Exam ${examId} not found`);
       }
 
-      const invitations = await tx.invitation.findMany({
+      return tx.invitation.findMany({
         where: { examId },
         include: { candidate: true, attempt: { include: { result: true, proctoringAnalysis: true } } },
         orderBy: [{ invitedAt: 'desc' }, { id: 'desc' }],
       });
-
-      const rows: ExamResultRow[] = [];
-      for (const invitation of invitations) {
-        let attempt = invitation.attempt;
-        if (attempt && attempt.status === 'in_progress') {
-          await this.examRuntime.settleIfExpired(attempt.id);
-          attempt = await tx.attempt.findUnique({ where: { id: attempt.id }, include: { result: true, proctoringAnalysis: true } });
-        }
-        rows.push({
-          candidateId: invitation.candidateId,
-          candidateName: invitation.candidate.name,
-          invitationId: invitation.id,
-          attemptId: attempt?.id ?? null,
-          status: attempt?.status ?? invitation.status,
-          score: attempt?.result?.score ?? null,
-          maxScore: attempt?.result?.maxScore ?? null,
-          percentage: attempt?.result?.percentage ?? null,
-          passFail: attempt?.result?.passFail ?? null,
-          submittedAt: attempt?.submittedAt ?? null,
-          proctoringAnalysis: attempt?.proctoringAnalysis
-            ? { status: attempt.proctoringAnalysis.status, riskLevel: attempt.proctoringAnalysis.riskLevel, summary: attempt.proctoringAnalysis.summary }
-            : null,
-        });
-      }
-      return rows;
     });
+
+    const attemptIdsToSettle = invitations
+      .filter((invitation) => invitation.attempt && invitation.attempt.status === 'in_progress')
+      .map((invitation) => invitation.attempt!.id);
+
+    if (attemptIdsToSettle.length === 0) {
+      return invitations.map((invitation) => this.toResultRow(invitation, invitation.attempt));
+    }
+
+    for (const attemptId of attemptIdsToSettle) {
+      await this.examRuntime.settleIfExpired(attemptId);
+    }
+
+    const settledAttempts = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const attempts = await tx.attempt.findMany({
+        where: { id: { in: attemptIdsToSettle } },
+        include: { result: true, proctoringAnalysis: true },
+      });
+      return new Map(attempts.map((attempt) => [attempt.id, attempt]));
+    });
+
+    return invitations.map((invitation) => {
+      const originalAttempt = invitation.attempt;
+      const attempt = originalAttempt && settledAttempts.has(originalAttempt.id)
+        ? settledAttempts.get(originalAttempt.id)!
+        : originalAttempt;
+      return this.toResultRow(invitation, attempt);
+    });
+  }
+
+  private toResultRow(
+    invitation: { id: string; candidateId: string; status: string; candidate: { name: string } },
+    attempt:
+      | {
+          id: string;
+          status: string;
+          submittedAt: Date | null;
+          result: { score: number; maxScore: number; percentage: number; passFail: string } | null;
+          proctoringAnalysis: { status: string; riskLevel: string | null; summary: string | null } | null;
+        }
+      | null
+      | undefined,
+  ): ExamResultRow {
+    return {
+      candidateId: invitation.candidateId,
+      candidateName: invitation.candidate.name,
+      invitationId: invitation.id,
+      attemptId: attempt?.id ?? null,
+      status: attempt?.status ?? invitation.status,
+      score: attempt?.result?.score ?? null,
+      maxScore: attempt?.result?.maxScore ?? null,
+      percentage: attempt?.result?.percentage ?? null,
+      passFail: attempt?.result?.passFail ?? null,
+      submittedAt: attempt?.submittedAt ?? null,
+      proctoringAnalysis: attempt?.proctoringAnalysis
+        ? { status: attempt.proctoringAnalysis.status, riskLevel: attempt.proctoringAnalysis.riskLevel, summary: attempt.proctoringAnalysis.summary }
+        : null,
+    };
   }
 }

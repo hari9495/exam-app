@@ -397,7 +397,15 @@ describe('ExamsService', () => {
           ]),
         },
         attempt: {
-          findUnique: jest.fn().mockResolvedValue({ ...settledAttempt, result: { score: 4, maxScore: 10, percentage: 40, passFail: 'pass' } }),
+          findMany: jest
+            .fn()
+            .mockResolvedValue([
+              {
+                ...settledAttempt,
+                result: { score: 4, maxScore: 10, percentage: 40, passFail: 'pass' },
+                proctoringAnalysis: null,
+              },
+            ]),
         },
       };
       examRuntime.settleIfExpired.mockResolvedValue(undefined);
@@ -406,8 +414,34 @@ describe('ExamsService', () => {
       const result = await service.getResults(context, 'exam-1');
 
       expect(examRuntime.settleIfExpired).toHaveBeenCalledWith(inProgressAttempt.id);
+      expect(tx.attempt.findMany).toHaveBeenCalledWith({
+        where: { id: { in: [inProgressAttempt.id] } },
+        include: { result: true, proctoringAnalysis: true },
+      });
+      expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(2);
       expect(result[0].status).toBe('auto_submitted');
       expect(result[0].passFail).toBe('pass');
+    });
+
+    it('does not open a second transaction when no attempts need settling', async () => {
+      const exam = { id: 'exam-1', passCriteriaPercent: 40 };
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue(exam) },
+        invitation: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' },
+              attempt: { id: 'attempt-1', status: 'submitted', submittedAt: new Date(), result: null, proctoringAnalysis: null },
+            },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.getResults(context, 'exam-1');
+
+      expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(1);
+      expect(examRuntime.settleIfExpired).not.toHaveBeenCalled();
     });
 
     it('includes the proctoring analysis for a settled attempt, and null when none exists yet', async () => {
