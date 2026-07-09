@@ -325,4 +325,99 @@ describe('Exam-Taking Runtime HTTP flow', () => {
       .send({ token: 'this-token-does-not-exist' })
       .expect(404);
   });
+
+  it('applies negative marking and floors the total score at zero', async () => {
+    const negMarksExamResponse = await request(adminHttp)
+      .post('/api/v1/exams')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ title: 'Negative Marking Round' })
+      .expect(201);
+    const negMarksExamId = negMarksExamResponse.body.id;
+
+    const negMarksSectionResponse = await request(adminHttp)
+      .post(`/api/v1/exams/${negMarksExamId}/sections`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ title: 'Section One' })
+      .expect(201);
+    const negMarksSectionId = negMarksSectionResponse.body.id;
+
+    // negativeMarks may not exceed a question's own marks (enforced by validateQuestionPayload), so the
+    // hard question's deduction is capped at its own marks value (3) rather than the larger figure a
+    // uniform-marks design might suggest. +2 (correct easy) - 3 (wrong hard) still nets negative, which is
+    // all that's needed to prove both the deduction and the zero-floor in one flow.
+    const easyQuestion = await request(adminHttp)
+      .post('/api/v1/questions')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({
+        type: 'single_mcq', text: 'Capital of Japan?', difficulty: 'easy', marks: 2, negativeMarks: 1,
+        options: [{ text: 'Tokyo', isCorrect: true }, { text: 'Osaka', isCorrect: false }],
+      })
+      .expect(201);
+    const hardQuestion = await request(adminHttp)
+      .post('/api/v1/questions')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({
+        type: 'single_mcq', text: 'What is the time complexity of binary search?', difficulty: 'hard', marks: 3, negativeMarks: 3,
+        options: [{ text: 'O(log n)', isCorrect: true }, { text: 'O(n)', isCorrect: false }],
+      })
+      .expect(201);
+
+    await request(adminHttp)
+      .put(`/api/v1/exams/${negMarksExamId}/sections/${negMarksSectionId}/questions`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ questionIds: [easyQuestion.body.id, hardQuestion.body.id] })
+      .expect(200);
+
+    await request(adminHttp)
+      .post(`/api/v1/exams/${negMarksExamId}/publish`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(201);
+
+    const frankCandidate = await request(adminHttp)
+      .post('/api/v1/candidates')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ email: 'frank@ci-attempt.test', name: 'Frank' })
+      .expect(201);
+
+    const frankInvite = await request(adminHttp)
+      .post(`/api/v1/exams/${negMarksExamId}/invitations`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ candidateIds: [frankCandidate.body.id] })
+      .expect(201);
+    const frankToken = frankInvite.body.created[0].token;
+
+    const frankRedeem = await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token: frankToken }).expect(200);
+    const frankAccessToken = frankRedeem.body.accessToken;
+
+    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${frankAccessToken}`).expect(201);
+
+    const correctEasyOptionId = easyQuestion.body.options.find((o: { text: string }) => o.text === 'Tokyo').id;
+    const wrongHardOptionId = hardQuestion.body.options.find((o: { text: string }) => o.text === 'O(n)').id;
+
+    await request(runtimeHttp)
+      .post('/api/v1/attempt/answer')
+      .set('Authorization', `Bearer ${frankAccessToken}`)
+      .send({ questionId: easyQuestion.body.id, selectedOptionIds: [correctEasyOptionId] })
+      .expect(201);
+
+    await request(runtimeHttp)
+      .post('/api/v1/attempt/answer')
+      .set('Authorization', `Bearer ${frankAccessToken}`)
+      .send({ questionId: hardQuestion.body.id, selectedOptionIds: [wrongHardOptionId] })
+      .expect(201);
+
+    await request(runtimeHttp).post('/api/v1/attempt/submit').set('Authorization', `Bearer ${frankAccessToken}`).expect(201);
+
+    const resultsResponse = await request(adminHttp)
+      .get(`/api/v1/exams/${negMarksExamId}/results`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(200);
+    const frankResult = resultsResponse.body.find((row: { candidateName: string }) => row.candidateName === 'Frank');
+
+    // Raw score: +2 (correct easy) - 3 (wrong hard) = -1, floored to 0.
+    expect(frankResult.score).toBe(0);
+    expect(frankResult.maxScore).toBe(5);
+    expect(frankResult.percentage).toBe(0);
+    expect(frankResult.passFail).toBe('fail');
+  });
 });

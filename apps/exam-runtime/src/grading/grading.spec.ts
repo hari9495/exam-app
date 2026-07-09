@@ -2,33 +2,43 @@ import { gradeAnswer, computeResult, computeRemainingSeconds } from './grading';
 
 describe('gradeAnswer', () => {
   it('awards full marks for an exact single-option match', () => {
-    const result = gradeAnswer({ marks: 5, correctOptionIds: ['opt-a'] }, ['opt-a']);
+    const result = gradeAnswer({ marks: 5, negativeMarks: 0, correctOptionIds: ['opt-a'] }, ['opt-a']);
     expect(result).toEqual({ isCorrect: true, marksAwarded: 5 });
   });
 
-  it('awards zero marks for a wrong single-option selection', () => {
-    const result = gradeAnswer({ marks: 5, correctOptionIds: ['opt-a'] }, ['opt-b']);
+  it('awards zero marks for a wrong single-option selection when negativeMarks is 0', () => {
+    const result = gradeAnswer({ marks: 5, negativeMarks: 0, correctOptionIds: ['opt-a'] }, ['opt-b']);
     expect(result).toEqual({ isCorrect: false, marksAwarded: 0 });
   });
 
   it('awards full marks for an exact multi-option match regardless of order', () => {
-    const result = gradeAnswer({ marks: 4, correctOptionIds: ['opt-a', 'opt-b'] }, ['opt-b', 'opt-a']);
+    const result = gradeAnswer({ marks: 4, negativeMarks: 0, correctOptionIds: ['opt-a', 'opt-b'] }, ['opt-b', 'opt-a']);
     expect(result).toEqual({ isCorrect: true, marksAwarded: 4 });
   });
 
   it('awards zero marks for a partial multi-option match (all-or-nothing)', () => {
-    const result = gradeAnswer({ marks: 4, correctOptionIds: ['opt-a', 'opt-b'] }, ['opt-a']);
+    const result = gradeAnswer({ marks: 4, negativeMarks: 0, correctOptionIds: ['opt-a', 'opt-b'] }, ['opt-a']);
     expect(result).toEqual({ isCorrect: false, marksAwarded: 0 });
   });
 
   it('awards zero marks when an extra incorrect option is included alongside the correct ones', () => {
-    const result = gradeAnswer({ marks: 4, correctOptionIds: ['opt-a', 'opt-b'] }, ['opt-a', 'opt-b', 'opt-c']);
+    const result = gradeAnswer({ marks: 4, negativeMarks: 0, correctOptionIds: ['opt-a', 'opt-b'] }, ['opt-a', 'opt-b', 'opt-c']);
     expect(result).toEqual({ isCorrect: false, marksAwarded: 0 });
   });
 
-  it('awards zero marks for an empty selection', () => {
-    const result = gradeAnswer({ marks: 5, correctOptionIds: ['opt-a'] }, []);
+  it('awards zero marks for an empty selection even when negativeMarks is set (no penalty for skipping)', () => {
+    const result = gradeAnswer({ marks: 5, negativeMarks: 2, correctOptionIds: ['opt-a'] }, []);
     expect(result).toEqual({ isCorrect: false, marksAwarded: 0 });
+  });
+
+  it('deducts negativeMarks for a wrong selected answer', () => {
+    const result = gradeAnswer({ marks: 5, negativeMarks: 2, correctOptionIds: ['opt-a'] }, ['opt-b']);
+    expect(result).toEqual({ isCorrect: false, marksAwarded: -2 });
+  });
+
+  it('deducts negativeMarks for a partial multi-option selection (still wrong, still attempted)', () => {
+    const result = gradeAnswer({ marks: 4, negativeMarks: 1, correctOptionIds: ['opt-a', 'opt-b'] }, ['opt-a']);
+    expect(result).toEqual({ isCorrect: false, marksAwarded: -1 });
   });
 });
 
@@ -51,6 +61,16 @@ describe('computeResult', () => {
   it('returns a zero percentage instead of dividing by zero when there are no questions', () => {
     const summary = computeResult([], [], 40);
     expect(summary).toEqual({ score: 0, maxScore: 0, percentage: 0, passFail: 'fail' });
+  });
+
+  it('floors a negative raw score at zero instead of returning a negative score or percentage', () => {
+    const summary = computeResult([{ marksAwarded: 3 }, { marksAwarded: -5 }], [{ marks: 3 }, { marks: 3 }], 50);
+    expect(summary).toEqual({ score: 0, maxScore: 6, percentage: 0, passFail: 'fail' });
+  });
+
+  it('does not floor a positive score that is merely reduced by a deduction', () => {
+    const summary = computeResult([{ marksAwarded: 5 }, { marksAwarded: -2 }], [{ marks: 5 }, { marks: 5 }], 20);
+    expect(summary).toEqual({ score: 3, maxScore: 10, percentage: 30, passFail: 'pass' });
   });
 });
 

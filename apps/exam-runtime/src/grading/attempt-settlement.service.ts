@@ -57,7 +57,10 @@ export class AttemptSettlementService {
       const answer = answersByQuestionId.get(question.id);
       const selectedOptionIds: string[] = answer ? JSON.parse(answer.selectedOptionIdsJson) : [];
       const correctOptionIds = question.options.filter((option) => option.isCorrect).map((option) => option.id);
-      const { isCorrect, marksAwarded } = gradeAnswer({ marks: question.marks, correctOptionIds }, selectedOptionIds);
+      const { isCorrect, marksAwarded } = gradeAnswer(
+        { marks: question.marks, negativeMarks: question.negativeMarks, correctOptionIds },
+        selectedOptionIds,
+      );
       gradedAnswers.push({ marksAwarded });
       if (answer) {
         await tx.answer.update({ where: { id: answer.id }, data: { isCorrect, marksAwarded } });

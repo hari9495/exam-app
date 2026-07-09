@@ -72,7 +72,7 @@ describe('AttemptSettlementService', () => {
       const tx = {
         question: {
           findMany: jest.fn().mockResolvedValue([
-            { id: 'q1', marks: 5, options: [{ id: 'opt-a', isCorrect: true }, { id: 'opt-b', isCorrect: false }] },
+            { id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }, { id: 'opt-b', isCorrect: false }] },
           ]),
         },
         answer: {
@@ -103,7 +103,7 @@ describe('AttemptSettlementService', () => {
     it('grades an unanswered question as zero marks without creating an answer row', async () => {
       const attempt = { id: 'attempt-1', questionOrderJson: JSON.stringify(['q1']) };
       const tx = {
-        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, options: [{ id: 'opt-a', isCorrect: true }] }]) },
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
         attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
@@ -121,10 +121,36 @@ describe('AttemptSettlementService', () => {
       });
     });
 
+    it('deducts negativeMarks for a wrong selected answer through the full settlement path', async () => {
+      const attempt = { id: 'attempt-1', questionOrderJson: JSON.stringify(['q1']) };
+      const tx = {
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'q1', marks: 5, negativeMarks: 2, options: [{ id: 'opt-a', isCorrect: true }, { id: 'opt-b', isCorrect: false }] },
+          ]),
+        },
+        answer: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'answer-1', questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-b']) },
+          ]),
+          update: jest.fn(),
+        },
+        result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+        attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+      };
+
+      await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
+
+      expect(tx.answer.update).toHaveBeenCalledWith({ where: { id: 'answer-1' }, data: { isCorrect: false, marksAwarded: -2 } });
+      expect(tx.result.create).toHaveBeenCalledWith({
+        data: { attemptId: 'attempt-1', score: 0, maxScore: 5, percentage: 0, passFail: 'fail' },
+      });
+    });
+
     it('emits attempt:status to the monitoring gateway after finalizing', async () => {
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
       const tx = {
-        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, options: [{ id: 'opt-a', isCorrect: true }] }]) },
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
         attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
@@ -166,7 +192,7 @@ describe('AttemptSettlementService', () => {
     it('triggers proctoring analysis for the finalized attempt without awaiting it', async () => {
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
       const tx = {
-        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, options: [{ id: 'opt-a', isCorrect: true }] }]) },
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
         attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
@@ -181,7 +207,7 @@ describe('AttemptSettlementService', () => {
       attemptAnalysis.analyze.mockRejectedValue(new Error('should never surface'));
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
       const tx = {
-        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, options: [{ id: 'opt-a', isCorrect: true }] }]) },
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
         attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
@@ -196,7 +222,7 @@ describe('AttemptSettlementService', () => {
       broadcaster.emitAttemptStatus.mockRejectedValue(new Error('relay unreachable, should never surface'));
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
       const tx = {
-        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, options: [{ id: 'opt-a', isCorrect: true }] }]) },
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
         attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
