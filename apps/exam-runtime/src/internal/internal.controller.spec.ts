@@ -115,5 +115,12 @@ describe('InternalController', () => {
         sentAt: new Date('2026-07-09T00:00:00.000Z'),
       });
     });
+
+    it('does not let a rejected broadcast propagate — the message is already persisted by the caller', async () => {
+      broadcaster.emitMessageSent.mockRejectedValue(new Error('relay unreachable, should never surface'));
+      const dto = { examId: 'exam-1', attemptId: 'attempt-1', candidateId: 'cand-1', sentAt: '2026-07-09T00:00:00.000Z' };
+
+      await expect(controller.notifyMessageSent(dto)).resolves.toBeUndefined();
+    });
   });
 });

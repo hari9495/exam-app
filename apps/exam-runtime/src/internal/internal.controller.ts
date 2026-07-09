@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, HttpCode, Inject, NotFoundException, Param, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, HttpCode, Inject, Logger, NotFoundException, Param, Post, UseGuards } from '@nestjs/common';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
@@ -10,6 +10,8 @@ import { SettleIfExpiredBatchDto } from './dto/settle-if-expired-batch.dto';
 @Controller('internal')
 @UseGuards(InternalAuthGuard)
 export class InternalController {
+  private readonly logger = new Logger(InternalController.name);
+
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly attemptSettlement: AttemptSettlementService,
@@ -59,10 +61,16 @@ export class InternalController {
   @Post('monitoring/message-sent')
   @HttpCode(204)
   async notifyMessageSent(@Body() dto: NotifyMessageSentDto): Promise<void> {
-    await this.broadcaster.emitMessageSent(dto.examId, {
-      attemptId: dto.attemptId,
-      candidateId: dto.candidateId,
-      sentAt: new Date(dto.sentAt),
-    });
+    // Fire-and-forget, mirroring finalize()'s broadcast — this is a best-effort UI push, not a
+    // core action. The message itself is already persisted by the caller (apps/api) before this
+    // internal call is made; if this awaited and threw on a relay hiccup, the caller would report
+    // a failed send for a message that was actually sent, and skip its own audit write.
+    void this.broadcaster
+      .emitMessageSent(dto.examId, {
+        attemptId: dto.attemptId,
+        candidateId: dto.candidateId,
+        sentAt: new Date(dto.sentAt),
+      })
+      .catch((error) => this.logger.error('Failed to broadcast message-sent notification', error as Error));
   }
 }
