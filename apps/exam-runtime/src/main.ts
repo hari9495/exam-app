@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { InternalAppModule } from './internal-app.module';
+import { resolveInternalBindHost } from './bootstrap-config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -13,6 +14,6 @@ async function bootstrap() {
   const internalApp = await NestFactory.create(InternalAppModule);
   internalApp.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
   internalApp.setGlobalPrefix('api/v1');
-  await internalApp.listen(process.env.EXAM_RUNTIME_INTERNAL_PORT ?? 3003, process.env.EXAM_RUNTIME_INTERNAL_HOST ?? '127.0.0.1');
+  await internalApp.listen(process.env.EXAM_RUNTIME_INTERNAL_PORT ?? 3003, resolveInternalBindHost());
 }
 bootstrap();
