@@ -26,4 +26,15 @@ describe('shuffle', () => {
   it('returns a single-element array unchanged', () => {
     expect(shuffle(['only'])).toEqual(['only']);
   });
+
+  it('actually reorders elements according to the underlying random sequence (deterministic via a mocked Math.random)', () => {
+    const randomValues = [0, 0, 0];
+    let callIndex = 0;
+    const randomSpy = jest.spyOn(Math, 'random').mockImplementation(() => randomValues[callIndex++]);
+
+    const result = shuffle([1, 2, 3, 4]);
+
+    randomSpy.mockRestore();
+    expect(result).toEqual([2, 3, 4, 1]);
+  });
 });
