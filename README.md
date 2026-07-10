@@ -3,6 +3,9 @@
 ## Phase 0: local development setup
 
 1. Get a SQL Server instance reachable at `localhost:1433`. Either `docker compose up -d` (if Docker is available), or a native SQL Server Express/Developer install configured for TCP on port 1433 with Mixed Mode auth — see Task 2's notes in `docs/superpowers/plans/2026-07-07-phase-0-foundation.md` for the exact native-install steps used on this project's original dev machine.
+
+1a. Get Redis reachable at `localhost:6379` — `docker compose up -d` starts it (this repo's `docker-compose.yml`, added in Phase 5a). Required for `apps/api` to boot at all (it runs an in-process BullMQ worker) and for its e2e suite to run, not just for AI-job-specific features.
+
 2. `npm install` — installs all workspace dependencies.
 3. `cp .env.example apps/api/.env`
 4. `cd apps/api && npx prisma migrate deploy && npx prisma generate && npx prisma db seed && cd ../..`
