@@ -171,7 +171,7 @@ export class ExamsService {
       const orderIndex = lastSection ? lastSection.orderIndex + 1 : 0;
 
       return tx.examSection.create({
-        data: { examId, title: dto.title, orderIndex },
+        data: { examId, title: dto.title, orderIndex, targetDurationMinutes: dto.targetDurationMinutes },
       });
     });
   }
@@ -229,6 +229,7 @@ export class ExamsService {
           ...(nextMode === 'pool' && uniquePoolTagIds
             ? { poolTags: { create: uniquePoolTagIds.map((tagId) => ({ tagId })) } }
             : {}),
+          ...(dto.targetDurationMinutes !== undefined ? { targetDurationMinutes: dto.targetDurationMinutes } : {}),
         },
         include: { poolTags: true },
       });

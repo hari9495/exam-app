@@ -161,7 +161,26 @@ describe('ExamsService', () => {
     const result = await service.createSection(context, 'exam-1', { title: 'Section B' });
 
     expect(result.orderIndex).toBe(3);
-    expect(tx.examSection.create).toHaveBeenCalledWith({ data: { examId: 'exam-1', title: 'Section B', orderIndex: 3 } });
+    expect(tx.examSection.create).toHaveBeenCalledWith({
+      data: { examId: 'exam-1', title: 'Section B', orderIndex: 3, targetDurationMinutes: undefined },
+    });
+  });
+
+  it('creates a section with a target duration when provided', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
+      examSection: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'section-1', orderIndex: 0, targetDurationMinutes: 20 }),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.createSection(context, 'exam-1', { title: 'Section A', targetDurationMinutes: 20 });
+
+    expect(tx.examSection.create).toHaveBeenCalledWith({
+      data: { examId: 'exam-1', title: 'Section A', orderIndex: 0, targetDurationMinutes: 20 },
+    });
   });
 
   it('throws NotFoundException when creating a section under a missing exam', async () => {
@@ -197,6 +216,48 @@ describe('ExamsService', () => {
 
     expect(tx.examSectionQuestion.deleteMany).not.toHaveBeenCalled();
     expect(tx.examSectionPoolTag.deleteMany).not.toHaveBeenCalled();
+    expect(tx.examSection.update).toHaveBeenCalledWith({
+      where: { id: 'section-1' },
+      data: { title: 'Renamed', selectionMode: 'fixed', poolSize: null, poolDifficulty: null },
+      include: { poolTags: true },
+    });
+  });
+
+  it('sets a target duration on update when provided', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
+      examSection: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'section-1', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: null }),
+        update: jest.fn().mockResolvedValue({ id: 'section-1', title: 'Section', targetDurationMinutes: 15 }),
+      },
+      examSectionQuestion: { deleteMany: jest.fn() },
+      examSectionPoolTag: { deleteMany: jest.fn() },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.updateSection(context, 'exam-1', 'section-1', { title: 'Section', targetDurationMinutes: 15 });
+
+    expect(tx.examSection.update).toHaveBeenCalledWith({
+      where: { id: 'section-1' },
+      data: { title: 'Section', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: 15 },
+      include: { poolTags: true },
+    });
+  });
+
+  it('leaves an existing target duration untouched when omitted from the update', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
+      examSection: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'section-1', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: 15 }),
+        update: jest.fn().mockResolvedValue({ id: 'section-1', title: 'Renamed', targetDurationMinutes: 15 }),
+      },
+      examSectionQuestion: { deleteMany: jest.fn() },
+      examSectionPoolTag: { deleteMany: jest.fn() },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.updateSection(context, 'exam-1', 'section-1', { title: 'Renamed' });
+
     expect(tx.examSection.update).toHaveBeenCalledWith({
       where: { id: 'section-1' },
       data: { title: 'Renamed', selectionMode: 'fixed', poolSize: null, poolDifficulty: null },

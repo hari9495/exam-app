@@ -291,4 +291,35 @@ describe('Exam Builder HTTP flow', () => {
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(201);
   });
+
+  it('sets and retrieves a section\'s target duration', async () => {
+    const examResponse = await request(app.getHttpServer())
+      .post('/api/v1/exams')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ title: 'Timed Sections Round' })
+      .expect(201);
+    const timedExamId = examResponse.body.id;
+
+    const sectionResponse = await request(app.getHttpServer())
+      .post(`/api/v1/exams/${timedExamId}/sections`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ title: 'Section One', targetDurationMinutes: 20 })
+      .expect(201);
+    expect(sectionResponse.body.targetDurationMinutes).toBe(20);
+    const timedSectionId = sectionResponse.body.id;
+
+    const updateResponse = await request(app.getHttpServer())
+      .patch(`/api/v1/exams/${timedExamId}/sections/${timedSectionId}`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ title: 'Section One', targetDurationMinutes: 25 })
+      .expect(200);
+    expect(updateResponse.body.targetDurationMinutes).toBe(25);
+
+    const examDetailResponse = await request(app.getHttpServer())
+      .get(`/api/v1/exams/${timedExamId}`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(200);
+    const timedSection = examDetailResponse.body.sections.find((s: { id: string }) => s.id === timedSectionId);
+    expect(timedSection.targetDurationMinutes).toBe(25);
+  });
 });
