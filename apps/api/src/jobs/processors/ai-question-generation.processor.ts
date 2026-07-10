@@ -1,0 +1,85 @@
+import { Injectable } from '@nestjs/common';
+import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { JobProcessor } from './job-processor.interface';
+import { ClaudeQuestionGenerationClient, GeneratedQuestion } from './claude-question-generation.client';
+import { validateQuestionPayload } from '../../questions/question-validation';
+
+interface AiQuestionGenerationInput {
+  topic: string;
+  difficulty: string;
+  questionTypes: string[];
+  count: number;
+  requestedBy: string;
+}
+
+interface DroppedQuestion {
+  reason: string;
+}
+
+interface AiQuestionGenerationOutput {
+  requested: number;
+  created: number;
+  dropped: DroppedQuestion[];
+  questionIds: string[];
+}
+
+@Injectable()
+export class AiQuestionGenerationProcessor implements JobProcessor {
+  readonly type = 'ai-question-generation';
+
+  constructor(
+    private readonly claudeClient: ClaudeQuestionGenerationClient,
+    private readonly tenantPrisma: TenantPrismaService,
+  ) {}
+
+  async process(input: unknown, context: TenantContext): Promise<AiQuestionGenerationOutput> {
+    const { topic, difficulty, questionTypes, count, requestedBy } = input as AiQuestionGenerationInput;
+
+    const generated = await this.claudeClient.generate(topic, difficulty, questionTypes, count);
+
+    const valid: GeneratedQuestion[] = [];
+    const dropped: DroppedQuestion[] = [];
+    for (const question of generated) {
+      try {
+        validateQuestionPayload({
+          type: question.type,
+          difficulty,
+          marks: 1,
+          negativeMarks: 0,
+          options: question.options,
+        });
+        valid.push(question);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : 'Unknown validation error';
+        dropped.push({ reason });
+      }
+    }
+
+    const questionIds = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const ids: string[] = [];
+      for (const question of valid) {
+        const created = await tx.question.create({
+          data: {
+            organizationId: context.organizationId as string,
+            type: question.type,
+            text: question.text,
+            topic,
+            difficulty,
+            marks: 1,
+            negativeMarks: 0,
+            status: 'draft',
+            aiGenerated: true,
+            createdBy: requestedBy,
+            options: {
+              create: question.options.map((o, index) => ({ text: o.text, isCorrect: o.isCorrect, orderIndex: index })),
+            },
+          },
+        });
+        ids.push(created.id);
+      }
+      return ids;
+    });
+
+    return { requested: count, created: questionIds.length, dropped, questionIds };
+  }
+}
