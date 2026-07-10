@@ -9,10 +9,10 @@
     "dev:api": "npm run start:dev --workspace=apps/api",
     "dev:web": "npm run dev --workspace=apps/web",
     "dev:exam-runtime": "npm run start:dev --workspace=apps/exam-runtime",
-    "test:api": "npm run test --workspace=apps/api",
-    "test:api:e2e": "npm run test:e2e --workspace=apps/api",
-    "test:exam-runtime": "npm run test --workspace=apps/exam-runtime",
-    "test:exam-runtime:e2e": "npm run test:e2e --workspace=apps/exam-runtime",
-    "test:shared": "npm run test --workspace=packages/shared"
+    "test:api": "npm run test --workspace=apps/api --",
+    "test:api:e2e": "npm run test:e2e --workspace=apps/api --",
+    "test:exam-runtime": "npm run test --workspace=apps/exam-runtime --",
+    "test:exam-runtime:e2e": "npm run test:e2e --workspace=apps/exam-runtime --",
+    "test:shared": "npm run test --workspace=packages/shared --"
   }
 }
