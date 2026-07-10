@@ -115,4 +115,73 @@ describe('ReportsService', () => {
       expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
     });
   });
+
+  describe('getQuestionAccuracy', () => {
+    it('scopes timesIncluded per question to only the attempts whose questionOrderJson contains it (pool-selection aware)', async () => {
+      examsService.getResults.mockResolvedValue([
+        row({ status: 'submitted', attemptId: 'a1' }),
+        row({ status: 'submitted', attemptId: 'a2' }),
+      ]);
+      const tx = {
+        attempt: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'a1', questionOrderJson: JSON.stringify(['q1', 'q2']) },
+            { id: 'a2', questionOrderJson: JSON.stringify(['q1']) },
+          ]),
+        },
+        answer: { findMany: jest.fn().mockResolvedValue([]) },
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'q1', text: 'Question 1' },
+            { id: 'q2', text: 'Question 2' },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const accuracy = await service.getQuestionAccuracy(context, 'exam-1');
+
+      const q1 = accuracy.find((r) => r.questionId === 'q1')!;
+      const q2 = accuracy.find((r) => r.questionId === 'q2')!;
+      expect(q1.timesIncluded).toBe(2);
+      expect(q2.timesIncluded).toBe(1);
+    });
+
+    it('computes timesAttempted, timesSkipped, timesCorrect, and accuracyPercentage from answers', async () => {
+      examsService.getResults.mockResolvedValue([
+        row({ status: 'submitted', attemptId: 'a1' }),
+        row({ status: 'auto_submitted', attemptId: 'a2' }),
+      ]);
+      const tx = {
+        attempt: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'a1', questionOrderJson: JSON.stringify(['q1']) },
+            { id: 'a2', questionOrderJson: JSON.stringify(['q1']) },
+          ]),
+        },
+        answer: {
+          findMany: jest.fn().mockResolvedValue([
+            { questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true },
+          ]),
+        },
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Question 1' }]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const accuracy = await service.getQuestionAccuracy(context, 'exam-1');
+
+      expect(accuracy).toEqual([
+        { questionId: 'q1', questionText: 'Question 1', timesIncluded: 2, timesAttempted: 1, timesSkipped: 1, timesCorrect: 1, accuracyPercentage: 50 },
+      ]);
+    });
+
+    it('returns an empty array when no attempt has settled', async () => {
+      examsService.getResults.mockResolvedValue([row({ status: 'in_progress', attemptId: 'a1' })]);
+
+      const accuracy = await service.getQuestionAccuracy(context, 'exam-1');
+
+      expect(accuracy).toEqual([]);
+      expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -181,4 +181,23 @@ describe('Exam Reporting HTTP flow', () => {
       .set('Authorization', `Bearer ${orgAdminAccessToken}`)
       .expect(403);
   });
+
+  it('returns per-question accuracy computed only from settled attempts', async () => {
+    const response = await request(adminHttp)
+      .get(`/api/v1/exams/${examId}/results/question-accuracy`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(200);
+
+    expect(response.body).toEqual([
+      {
+        questionId,
+        questionText: 'What is 2+2?',
+        timesIncluded: 2,
+        timesAttempted: 2,
+        timesSkipped: 0,
+        timesCorrect: 1,
+        accuracyPercentage: 50,
+      },
+    ]);
+  });
 });

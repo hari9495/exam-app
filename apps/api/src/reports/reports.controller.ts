@@ -16,4 +16,10 @@ export class ReportsController {
   getSummary(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.reportsService.getSummary(tenant, id);
   }
+
+  @Get(':id/results/question-accuracy')
+  @RequirePermissions('exam:manage')
+  getQuestionAccuracy(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.reportsService.getQuestionAccuracy(tenant, id);
+  }
 }

@@ -23,6 +23,16 @@ export interface ExamResultsSummary {
   attemptDuration: { avgMinutes: number; minMinutes: number; maxMinutes: number } | null;
 }
 
+export interface QuestionAccuracyRow {
+  questionId: string;
+  questionText: string;
+  timesIncluded: number;
+  timesAttempted: number;
+  timesSkipped: number;
+  timesCorrect: number;
+  accuracyPercentage: number;
+}
+
 @Injectable()
 export class ReportsService {
   constructor(
@@ -103,5 +113,69 @@ export class ReportsService {
       tx.attempt.findMany({ where: { id: { in: attemptIds } }, select: { id: true, startedAt: true } }),
     );
     return new Map(attempts.map((attempt) => [attempt.id, attempt.startedAt]));
+  }
+
+  async getQuestionAccuracy(context: TenantContext, examId: string): Promise<QuestionAccuracyRow[]> {
+    const rows = await this.examsService.getResults(context, examId);
+    const settledAttemptIds = rows
+      .filter((row) => row.attemptId !== null && SETTLED_ATTEMPT_STATUSES.includes(row.status))
+      .map((row) => row.attemptId as string);
+
+    if (settledAttemptIds.length === 0) {
+      return [];
+    }
+
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const attempts = await tx.attempt.findMany({
+        where: { id: { in: settledAttemptIds } },
+        select: { id: true, questionOrderJson: true },
+      });
+      const answers = await tx.answer.findMany({
+        where: { attemptId: { in: settledAttemptIds } },
+        select: { questionId: true, selectedOptionIdsJson: true, isCorrect: true },
+      });
+
+      const timesIncludedByQuestion = new Map<string, number>();
+      for (const attempt of attempts) {
+        const questionIds: string[] = JSON.parse(attempt.questionOrderJson);
+        for (const questionId of questionIds) {
+          timesIncludedByQuestion.set(questionId, (timesIncludedByQuestion.get(questionId) ?? 0) + 1);
+        }
+      }
+
+      const timesAttemptedByQuestion = new Map<string, number>();
+      const timesCorrectByQuestion = new Map<string, number>();
+      for (const answer of answers) {
+        const selectedOptionIds: string[] = JSON.parse(answer.selectedOptionIdsJson);
+        if (selectedOptionIds.length > 0) {
+          timesAttemptedByQuestion.set(answer.questionId, (timesAttemptedByQuestion.get(answer.questionId) ?? 0) + 1);
+        }
+        if (answer.isCorrect) {
+          timesCorrectByQuestion.set(answer.questionId, (timesCorrectByQuestion.get(answer.questionId) ?? 0) + 1);
+        }
+      }
+
+      const questionIds = [...timesIncludedByQuestion.keys()];
+      const questions = await tx.question.findMany({
+        where: { id: { in: questionIds }, organizationId: context.organizationId as string },
+        select: { id: true, text: true },
+      });
+      const textById = new Map(questions.map((question) => [question.id, question.text]));
+
+      return questionIds.map((questionId) => {
+        const timesIncluded = timesIncludedByQuestion.get(questionId) ?? 0;
+        const timesAttempted = timesAttemptedByQuestion.get(questionId) ?? 0;
+        const timesCorrect = timesCorrectByQuestion.get(questionId) ?? 0;
+        return {
+          questionId,
+          questionText: textById.get(questionId) ?? '',
+          timesIncluded,
+          timesAttempted,
+          timesSkipped: timesIncluded - timesAttempted,
+          timesCorrect,
+          accuracyPercentage: timesIncluded > 0 ? (timesCorrect / timesIncluded) * 100 : 0,
+        };
+      });
+    });
   }
 }
