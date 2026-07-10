@@ -9,6 +9,7 @@ async function bootstrap() {
   app.enableCors({ origin: process.env.WEB_ORIGIN, credentials: true });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
   app.setGlobalPrefix('api/v1');
+  app.enableShutdownHooks();
   await app.listen(process.env.API_PORT ?? 3001);
 }
 bootstrap();

@@ -6,6 +6,8 @@
 
 1a. Get Redis reachable at `localhost:6379` — `docker compose up -d` starts it (this repo's `docker-compose.yml`, added in Phase 5a). Required for `apps/api` to boot at all (it runs an in-process BullMQ worker) and for its e2e suite to run, not just for AI-job-specific features.
 
+1b. `apps/api/package.json` pins `ioredis` to an exact version (`5.10.1`, no caret) instead of a caret range, because it must match `bullmq`'s own nested `ioredis` dependency exactly — a caret range doesn't dedupe against it, leaving two structurally-incompatible `Redis` classes and a TypeScript compile error. If bumping `bullmq`, check its `package.json` for its current `ioredis` requirement and update this pin to match.
+
 2. `npm install` — installs all workspace dependencies.
 3. `cp .env.example apps/api/.env`
 4. `cd apps/api && npx prisma migrate deploy && npx prisma generate && npx prisma db seed && cd ../..`
