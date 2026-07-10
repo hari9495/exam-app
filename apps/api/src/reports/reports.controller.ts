@@ -5,7 +5,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { TenantContext } from '@exam-platform/shared';
-import { ReportsService, ExportResultRow } from './reports.service';
+import { ReportsService, ExportResultRow, CandidateDetail } from './reports.service';
 import { ExportFormatQueryDto } from './dto/export-format-query.dto';
 import { exportResultsToCsv } from './exporters/csv-exporter';
 import { exportResultsToXlsx } from './exporters/xlsx-exporter';
@@ -32,6 +32,16 @@ export class ReportsController {
   @RequirePermissions('results:view')
   getQuestionAccuracy(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.reportsService.getQuestionAccuracy(tenant, id);
+  }
+
+  @Get(':id/candidates/:candidateId/report')
+  @RequirePermissions('results:view')
+  getCandidateDetail(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @Param('candidateId') candidateId: string,
+  ): Promise<CandidateDetail> {
+    return this.reportsService.getCandidateDetail(tenant, id, candidateId);
   }
 
   @Get(':id/results/export')

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { TenantPrismaService, TenantContext } from '@exam-platform/shared';
 import { ExamsService, ExamResultRow } from '../exams/exams.service';
 
@@ -35,6 +35,49 @@ export interface QuestionAccuracyRow {
 
 export interface ExportResultRow extends ExamResultRow {
   durationMinutes: number | null;
+}
+
+export interface SectionScore {
+  sectionId: string;
+  title: string;
+  score: number;
+  maxScore: number;
+}
+
+interface SectionSnapshotEntryShape {
+  sectionId: string;
+  title: string;
+  questionIds: string[];
+}
+
+interface CandidateDetailQuestion {
+  questionId: string;
+  questionText: string;
+  type: string;
+  marks: number;
+  negativeMarks: number;
+  options: { id: string; text: string }[];
+  selectedOptionIds: string[];
+  correctOptionIds: string[];
+  isCorrect: boolean | null;
+  marksAwarded: number | null;
+}
+
+interface CandidateDetailSection extends SectionScore {
+  questions: CandidateDetailQuestion[];
+}
+
+export interface CandidateDetail {
+  candidateId: string;
+  candidateName: string;
+  status: string;
+  score: number | null;
+  maxScore: number | null;
+  percentage: number | null;
+  passFail: string | null;
+  submittedAt: Date | null;
+  proctoringAnalysis: { status: string; riskLevel: string | null; summary: string | null } | null;
+  sections: CandidateDetailSection[];
 }
 
 @Injectable()
@@ -194,6 +237,100 @@ export class ReportsService {
         ? (row.submittedAt.getTime() - startedAt.getTime()) / 60_000
         : null;
       return { ...row, durationMinutes };
+    });
+  }
+
+  async getCandidateDetail(context: TenantContext, examId: string, candidateId: string): Promise<CandidateDetail> {
+    const rows = await this.examsService.getResults(context, examId);
+    const row = rows.find((resultRow) => resultRow.candidateId === candidateId);
+    if (!row) {
+      throw new NotFoundException(`Candidate ${candidateId} not found on exam ${examId}`);
+    }
+
+    const base = {
+      candidateId: row.candidateId,
+      candidateName: row.candidateName,
+      status: row.status,
+      score: row.score,
+      maxScore: row.maxScore,
+      percentage: row.percentage,
+      passFail: row.passFail,
+      submittedAt: row.submittedAt,
+      proctoringAnalysis: row.proctoringAnalysis,
+    };
+
+    if (!row.attemptId) {
+      return { ...base, sections: [] };
+    }
+
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const attempt = await tx.attempt.findFirst({
+        where: { id: row.attemptId as string },
+        select: { sectionSnapshotJson: true, answers: true },
+      });
+      if (!attempt) {
+        return { ...base, sections: [] };
+      }
+
+      const sectionSnapshot: SectionSnapshotEntryShape[] = JSON.parse(attempt.sectionSnapshotJson);
+      const allQuestionIds = sectionSnapshot.flatMap((section) => section.questionIds);
+      const questions = await tx.question.findMany({
+        where: { id: { in: allQuestionIds }, organizationId: context.organizationId as string },
+        include: { options: true },
+      });
+      const questionsById = new Map(questions.map((question) => [question.id, question]));
+      const answersByQuestionId = new Map(attempt.answers.map((answer) => [answer.questionId, answer]));
+      const marksAwardedByQuestionId = new Map(
+        attempt.answers.filter((answer) => answer.marksAwarded !== null).map((answer) => [answer.questionId, answer.marksAwarded as number]),
+      );
+      const marksByQuestionId = new Map(questions.map((question) => [question.id, question.marks]));
+
+      const sectionScores = this.computeSectionScores(sectionSnapshot, marksAwardedByQuestionId, marksByQuestionId);
+      const sectionScoreById = new Map(sectionScores.map((score) => [score.sectionId, score]));
+
+      const sections: CandidateDetailSection[] = sectionSnapshot.map((section) => {
+        const scoreEntry = sectionScoreById.get(section.sectionId)!;
+        return {
+          sectionId: section.sectionId,
+          title: section.title,
+          score: scoreEntry.score,
+          maxScore: scoreEntry.maxScore,
+          questions: section.questionIds.map((questionId) => {
+            const question = questionsById.get(questionId);
+            const answer = answersByQuestionId.get(questionId);
+            return {
+              questionId,
+              questionText: question?.text ?? '',
+              type: question?.type ?? '',
+              marks: question?.marks ?? 0,
+              negativeMarks: question?.negativeMarks ?? 0,
+              options: question?.options.map((option) => ({ id: option.id, text: option.text })) ?? [],
+              selectedOptionIds: answer ? JSON.parse(answer.selectedOptionIdsJson) : [],
+              correctOptionIds: question?.options.filter((option) => option.isCorrect).map((option) => option.id) ?? [],
+              isCorrect: answer?.isCorrect ?? null,
+              marksAwarded: answer?.marksAwarded ?? null,
+            };
+          }),
+        };
+      });
+
+      return { ...base, sections };
+    });
+  }
+
+  private computeSectionScores(
+    sectionSnapshot: SectionSnapshotEntryShape[],
+    marksAwardedByQuestionId: Map<string, number>,
+    marksByQuestionId: Map<string, number>,
+  ): SectionScore[] {
+    return sectionSnapshot.map((section) => {
+      let score = 0;
+      let maxScore = 0;
+      for (const questionId of section.questionIds) {
+        score += marksAwardedByQuestionId.get(questionId) ?? 0;
+        maxScore += marksByQuestionId.get(questionId) ?? 0;
+      }
+      return { sectionId: section.sectionId, title: section.title, score, maxScore };
     });
   }
 }

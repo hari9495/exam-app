@@ -295,4 +295,34 @@ describe('Exam Reporting HTTP flow', () => {
       .send({ title: 'Should Not Be Created' })
       .expect(403);
   });
+
+  it('returns full per-candidate detail with section/question breakdown', async () => {
+    const resultsResponse = await request(adminHttp)
+      .get(`/api/v1/exams/${examId}/results`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(200);
+    const aliceCandidateId = resultsResponse.body.find((row: { candidateName: string }) => row.candidateName === 'Alice').candidateId;
+
+    const detailResponse = await request(adminHttp)
+      .get(`/api/v1/exams/${examId}/candidates/${aliceCandidateId}/report`)
+      .set('Authorization', `Bearer ${panelAccessToken}`)
+      .expect(200);
+
+    expect(detailResponse.body.candidateName).toBe('Alice');
+    expect(detailResponse.body.score).toBe(10);
+    expect(detailResponse.body.maxScore).toBe(10);
+    expect(detailResponse.body.sections).toHaveLength(1);
+    expect(detailResponse.body.sections[0].questions).toHaveLength(1);
+    expect(detailResponse.body.sections[0].questions[0]).toMatchObject({
+      questionId, questionText: 'What is 2+2?', isCorrect: true, marksAwarded: 10,
+    });
+    expect(detailResponse.body.sections[0].questions[0].correctOptionIds).toEqual([correctOptionId]);
+  });
+
+  it('returns 404 for a candidate not invited to the exam', async () => {
+    await request(adminHttp)
+      .get(`/api/v1/exams/${examId}/candidates/${randomUUID()}/report`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(404);
+  });
 });

@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ReportsService } from './reports.service';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { ExamsService, ExamResultRow } from '../exams/exams.service';
@@ -207,6 +208,82 @@ describe('ReportsService', () => {
       expect(exportRows[0].durationMinutes).toBe(20);
       expect(exportRows[1].durationMinutes).toBeNull();
       expect(exportRows[2].durationMinutes).toBeNull();
+    });
+  });
+
+  describe('getCandidateDetail', () => {
+    it("groups a candidate's questions by section, including a section aggregate score and full per-question detail", async () => {
+      examsService.getResults.mockResolvedValue([
+        row({
+          candidateId: 'cand-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted',
+          score: 5, maxScore: 14, percentage: 35.71, passFail: 'fail', submittedAt: new Date('2026-01-01T00:20:00Z'),
+        }),
+      ]);
+      const tx = {
+        attempt: {
+          findFirst: jest.fn().mockResolvedValue({
+            sectionSnapshotJson: JSON.stringify([
+              { sectionId: 'sec-1', title: 'Section One', questionIds: ['q1', 'q2'] },
+              { sectionId: 'sec-2', title: 'Section Two', questionIds: ['q3'] },
+            ]),
+            answers: [
+              { questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5 },
+              { questionId: 'q3', selectedOptionIdsJson: JSON.stringify(['opt-c']), isCorrect: false, marksAwarded: 0 },
+            ],
+          }),
+        },
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'q1', text: 'Q1 text', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', text: 'A', isCorrect: true }, { id: 'opt-b', text: 'B', isCorrect: false }] },
+            { id: 'q2', text: 'Q2 text', type: 'single_mcq', marks: 6, negativeMarks: 0, options: [{ id: 'opt-c2', text: 'C', isCorrect: true }] },
+            { id: 'q3', text: 'Q3 text', type: 'single_mcq', marks: 3, negativeMarks: 0, options: [{ id: 'opt-c', text: 'C', isCorrect: false }, { id: 'opt-d', text: 'D', isCorrect: true }] },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const detail = await service.getCandidateDetail(context, 'exam-1', 'cand-1');
+
+      expect(detail.candidateId).toBe('cand-1');
+      expect(detail.score).toBe(5);
+      expect(detail.maxScore).toBe(14);
+      expect(detail.sections).toHaveLength(2);
+      expect(detail.sections[0]).toMatchObject({ sectionId: 'sec-1', title: 'Section One', score: 5, maxScore: 11 });
+      expect(detail.sections[0].questions).toHaveLength(2);
+      expect(detail.sections[0].questions[0]).toEqual({
+        questionId: 'q1', questionText: 'Q1 text', type: 'single_mcq', marks: 5, negativeMarks: 0,
+        options: [{ id: 'opt-a', text: 'A' }, { id: 'opt-b', text: 'B' }],
+        selectedOptionIds: ['opt-a'], correctOptionIds: ['opt-a'],
+        isCorrect: true, marksAwarded: 5,
+      });
+      expect(detail.sections[0].questions[1]).toEqual({
+        questionId: 'q2', questionText: 'Q2 text', type: 'single_mcq', marks: 6, negativeMarks: 0,
+        options: [{ id: 'opt-c2', text: 'C' }],
+        selectedOptionIds: [], correctOptionIds: ['opt-c2'],
+        isCorrect: null, marksAwarded: null,
+      });
+      expect(detail.sections[1]).toMatchObject({ sectionId: 'sec-2', title: 'Section Two', score: 0, maxScore: 3 });
+    });
+
+    it('returns null score fields and an empty sections array for a candidate with no attempt yet, without querying attempt/question data', async () => {
+      examsService.getResults.mockResolvedValue([
+        row({ candidateId: 'cand-2', candidateName: 'Bob', attemptId: null, status: 'invited' }),
+      ]);
+
+      const detail = await service.getCandidateDetail(context, 'exam-1', 'cand-2');
+
+      expect(detail).toEqual({
+        candidateId: 'cand-2', candidateName: 'Bob', status: 'invited',
+        score: null, maxScore: null, percentage: null, passFail: null, submittedAt: null,
+        proctoringAnalysis: null, sections: [],
+      });
+      expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when the candidate was never invited to this exam', async () => {
+      examsService.getResults.mockResolvedValue([row({ candidateId: 'cand-1' })]);
+
+      await expect(service.getCandidateDetail(context, 'exam-1', 'cand-999')).rejects.toThrow(NotFoundException);
     });
   });
 });
