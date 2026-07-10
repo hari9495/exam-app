@@ -362,3 +362,19 @@ model ProctoringAnalysis {
 
   @@map("proctoring_analyses")
 }
+
+model AiJob {
+  id             String   @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String   @map("organization_id") @db.UniqueIdentifier
+  type           String
+  status         String   @default("pending")
+  inputJson      String   @db.NVarChar(Max) @map("input_json")
+  outputJson     String?  @db.NVarChar(Max) @map("output_json")
+  error          String?  @db.NVarChar(Max)
+  createdBy      String   @map("created_by") @db.UniqueIdentifier
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([organizationId, status])
+  @@map("ai_jobs")
+}
