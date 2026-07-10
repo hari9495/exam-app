@@ -24,7 +24,7 @@ export function validateSectionQuestionsReplace(
   for (const id of newQuestionIds) {
     const isNewlyAdded = !currentlyLinkedSet.has(id);
     if (isNewlyAdded && statusById.get(id) !== 'active') {
-      throw new BadRequestException(`Question ${id} is archived and cannot be added to a section for the first time`);
+      throw new BadRequestException(`Question ${id} is not active and cannot be added to a section for the first time`);
     }
   }
 }

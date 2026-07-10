@@ -5,7 +5,7 @@ describe('AiQuestionGenerationProcessor', () => {
   let claudeClient: { generate: jest.Mock };
   let tenantPrisma: { forTenant: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
-  const input = { topic: 'JavaScript closures', difficulty: 'medium', questionTypes: ['single_mcq'], count: 2, requestedBy: 'user-1' };
+  const input = { topic: 'JavaScript closures', difficulty: 'medium', questionTypes: ['single_mcq', 'true_false'], count: 2, requestedBy: 'user-1' };
 
   beforeEach(() => {
     claudeClient = { generate: jest.fn() };
@@ -105,6 +105,75 @@ describe('AiQuestionGenerationProcessor', () => {
     const result = await processor.process(input, context);
 
     expect(result).toEqual({ requested: 2, created: 0, dropped: [{ reason: expect.any(String) }], questionIds: [] });
+  });
+
+  it('truncates generated questions to the requested count before validating and inserting', async () => {
+    claudeClient.generate.mockResolvedValue([
+      {
+        type: 'single_mcq',
+        text: 'Question 1',
+        options: [
+          { text: 'A', isCorrect: true },
+          { text: 'B', isCorrect: false },
+        ],
+      },
+      {
+        type: 'single_mcq',
+        text: 'Question 2',
+        options: [
+          { text: 'A', isCorrect: true },
+          { text: 'B', isCorrect: false },
+        ],
+      },
+      {
+        type: 'single_mcq',
+        text: 'Question 3 (should be truncated)',
+        options: [
+          { text: 'A', isCorrect: true },
+          { text: 'B', isCorrect: false },
+        ],
+      },
+    ]);
+    const create = jest.fn().mockResolvedValueOnce({ id: 'q-1' }).mockResolvedValueOnce({ id: 'q-2' });
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ question: { create } }));
+
+    const result = await processor.process(input, context);
+
+    expect(result.created).toBe(2);
+    expect(result.questionIds).toEqual(['q-1', 'q-2']);
+    expect(create).toHaveBeenCalledTimes(2);
+  });
+
+  it('drops a generated question whose type is not in the requested questionTypes, without inserting it', async () => {
+    claudeClient.generate.mockResolvedValue([
+      {
+        type: 'single_mcq',
+        text: 'Requested type',
+        options: [
+          { text: 'A', isCorrect: true },
+          { text: 'B', isCorrect: false },
+        ],
+      },
+      {
+        type: 'multi_mcq',
+        text: 'Not requested type',
+        options: [
+          { text: 'A', isCorrect: true },
+          { text: 'B', isCorrect: false },
+        ],
+      },
+    ]);
+    const create = jest.fn().mockResolvedValueOnce({ id: 'q-1' });
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ question: { create } }));
+
+    const result = await processor.process(input, context);
+
+    expect(result.created).toBe(1);
+    expect(result.questionIds).toEqual(['q-1']);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(result.dropped).toEqual([
+      { reason: 'Generated type "multi_mcq" was not in the requested questionTypes' },
+    ]);
   });
 
   it('propagates an error thrown by the Claude client, failing the whole job with zero inserts', async () => {

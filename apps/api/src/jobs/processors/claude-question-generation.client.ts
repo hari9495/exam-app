@@ -12,38 +12,41 @@ export interface GeneratedQuestion {
   options: GeneratedQuestionOption[];
 }
 
-const GENERATE_QUESTIONS_TOOL = {
-  name: 'report_generated_questions',
-  description: 'Report a set of generated multiple-choice exam questions.',
-  input_schema: {
-    type: 'object' as const,
-    properties: {
-      questions: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            type: { type: 'string', enum: ['single_mcq', 'multi_mcq', 'true_false'] },
-            text: { type: 'string', description: 'The question stem.' },
-            options: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  text: { type: 'string' },
-                  isCorrect: { type: 'boolean' },
+function buildGenerateQuestionsTool(count: number) {
+  return {
+    name: 'report_generated_questions',
+    description: 'Report a set of generated multiple-choice exam questions.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        questions: {
+          type: 'array',
+          maxItems: count,
+          items: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['single_mcq', 'multi_mcq', 'true_false'] },
+              text: { type: 'string', description: 'The question stem.' },
+              options: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    text: { type: 'string' },
+                    isCorrect: { type: 'boolean' },
+                  },
+                  required: ['text', 'isCorrect'],
                 },
-                required: ['text', 'isCorrect'],
               },
             },
+            required: ['type', 'text', 'options'],
           },
-          required: ['type', 'text', 'options'],
         },
       },
+      required: ['questions'],
     },
-    required: ['questions'],
-  },
-};
+  };
+}
 
 @Injectable()
 export class ClaudeQuestionGenerationClient {
@@ -57,7 +60,7 @@ export class ClaudeQuestionGenerationClient {
     const response = await this.client.messages.create({
       model: 'claude-sonnet-5',
       max_tokens: 4096,
-      tools: [GENERATE_QUESTIONS_TOOL],
+      tools: [buildGenerateQuestionsTool(count)],
       tool_choice: { type: 'tool', name: 'report_generated_questions' },
       messages: [
         {

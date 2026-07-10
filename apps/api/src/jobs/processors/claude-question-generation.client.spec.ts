@@ -53,6 +53,28 @@ describe('ClaudeQuestionGenerationClient', () => {
     );
   });
 
+  it('sets the tool schema maxItems on the questions array to the requested count', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'tool_use', name: 'report_generated_questions', input: { questions: validQuestions } }],
+    });
+
+    await client.generate('arithmetic', 'easy', ['single_mcq'], 7);
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tools: [
+          expect.objectContaining({
+            input_schema: expect.objectContaining({
+              properties: expect.objectContaining({
+                questions: expect.objectContaining({ maxItems: 7 }),
+              }),
+            }),
+          }),
+        ],
+      }),
+    );
+  });
+
   it('throws when the response contains no tool_use block', async () => {
     mockCreate.mockResolvedValue({ content: [{ type: 'text', text: 'I cannot help with that.' }] });
 

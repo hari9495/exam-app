@@ -35,11 +35,15 @@ export class AiQuestionGenerationProcessor implements JobProcessor {
   async process(input: unknown, context: TenantContext): Promise<AiQuestionGenerationOutput> {
     const { topic, difficulty, questionTypes, count, requestedBy } = input as AiQuestionGenerationInput;
 
-    const generated = await this.claudeClient.generate(topic, difficulty, questionTypes, count);
+    const generated = (await this.claudeClient.generate(topic, difficulty, questionTypes, count)).slice(0, count);
 
     const valid: GeneratedQuestion[] = [];
     const dropped: DroppedQuestion[] = [];
     for (const question of generated) {
+      if (!questionTypes.includes(question.type)) {
+        dropped.push({ reason: `Generated type "${question.type}" was not in the requested questionTypes` });
+        continue;
+      }
       try {
         validateQuestionPayload({
           type: question.type,
