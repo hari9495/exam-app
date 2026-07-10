@@ -401,6 +401,10 @@ export class ReportsService {
     });
   }
 
+  // Floors each section's score at 0, matching computeResult()'s own floor for the overall
+  // score (apps/exam-runtime/src/grading/grading.ts) — a section can otherwise go negative
+  // under negative marking, which would read as a bug when displayed alongside the clamped
+  // headline total.
   private computeSectionScores(
     sectionSnapshot: SectionSnapshotEntryShape[],
     marksAwardedByQuestionId: Map<string, number>,
@@ -413,7 +417,7 @@ export class ReportsService {
         score += marksAwardedByQuestionId.get(questionId) ?? 0;
         maxScore += marksByQuestionId.get(questionId) ?? 0;
       }
-      return { sectionId: section.sectionId, title: section.title, score, maxScore };
+      return { sectionId: section.sectionId, title: section.title, score: Math.max(0, score), maxScore };
     });
   }
 }

@@ -285,6 +285,39 @@ describe('ReportsService', () => {
 
       await expect(service.getCandidateDetail(context, 'exam-1', 'cand-999')).rejects.toThrow(NotFoundException);
     });
+
+    it("floors a section's score at 0 when negative marking makes the raw sum negative", async () => {
+      examsService.getResults.mockResolvedValue([
+        row({
+          candidateId: 'cand-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted',
+          score: 0, maxScore: 10, percentage: 0, passFail: 'fail', submittedAt: new Date('2026-01-01T00:20:00Z'),
+        }),
+      ]);
+      const tx = {
+        attempt: {
+          findFirst: jest.fn().mockResolvedValue({
+            sectionSnapshotJson: JSON.stringify([
+              { sectionId: 'sec-1', title: 'Section One', questionIds: ['q1', 'q2'] },
+            ]),
+            answers: [
+              { questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-b']), isCorrect: false, marksAwarded: -2 },
+              { questionId: 'q2', selectedOptionIdsJson: JSON.stringify(['opt-d']), isCorrect: false, marksAwarded: -1 },
+            ],
+          }),
+        },
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'q1', text: 'Q1 text', type: 'single_mcq', marks: 5, negativeMarks: 2, options: [{ id: 'opt-a', text: 'A', isCorrect: true }, { id: 'opt-b', text: 'B', isCorrect: false }] },
+            { id: 'q2', text: 'Q2 text', type: 'single_mcq', marks: 5, negativeMarks: 1, options: [{ id: 'opt-c', text: 'C', isCorrect: true }, { id: 'opt-d', text: 'D', isCorrect: false }] },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const detail = await service.getCandidateDetail(context, 'exam-1', 'cand-1');
+
+      expect(detail.sections[0]).toMatchObject({ sectionId: 'sec-1', title: 'Section One', score: 0, maxScore: 10 });
+    });
   });
 
   describe('compareCandidates', () => {
@@ -334,6 +367,28 @@ describe('ReportsService', () => {
         score: null, maxScore: null, percentage: null, passFail: null,
         proctoringAnalysis: null, sectionScores: [],
       });
+    });
+
+    it("floors a section's score at 0 when negative marking makes the raw sum negative", async () => {
+      examsService.getResults.mockResolvedValue([
+        row({ candidateId: 'cand-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted', score: 0, maxScore: 10, percentage: 0, passFail: 'fail' }),
+        row({ candidateId: 'cand-2', candidateName: 'Bob', attemptId: 'a2', status: 'submitted', score: 5, maxScore: 10, percentage: 50, passFail: 'fail' }),
+      ]);
+      const tx = {
+        attempt: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'a1', sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1', 'q2'] }]), answers: [{ questionId: 'q1', marksAwarded: -2 }, { questionId: 'q2', marksAwarded: -1 }] },
+            { id: 'a2', sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1', 'q2'] }]), answers: [{ questionId: 'q1', marksAwarded: 5 }, { questionId: 'q2', marksAwarded: 0 }] },
+          ]),
+        },
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5 }, { id: 'q2', marks: 5 }]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const comparison = await service.compareCandidates(context, 'exam-1', 'cand-1,cand-2');
+
+      expect(comparison[0].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Section One', score: 0, maxScore: 10 }]);
+      expect(comparison[1].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Section One', score: 5, maxScore: 10 }]);
     });
   });
 });
