@@ -204,6 +204,8 @@ export class ExamsService {
         await tx.examSectionPoolTag.deleteMany({ where: { sectionId } });
       }
 
+      const uniquePoolTagIds = dto.poolTagIds ? [...new Set(dto.poolTagIds)] : undefined;
+
       return tx.examSection.update({
         where: { id: sectionId },
         data: {
@@ -211,8 +213,8 @@ export class ExamsService {
           selectionMode: nextMode,
           poolSize: nextMode === 'pool' ? (dto.poolSize ?? section.poolSize) : null,
           poolDifficulty: nextMode === 'pool' ? (dto.poolDifficulty ?? section.poolDifficulty) : null,
-          ...(nextMode === 'pool' && dto.poolTagIds
-            ? { poolTags: { create: dto.poolTagIds.map((tagId) => ({ tagId })) } }
+          ...(nextMode === 'pool' && uniquePoolTagIds
+            ? { poolTags: { create: uniquePoolTagIds.map((tagId) => ({ tagId })) } }
             : {}),
         },
         include: { poolTags: true },

@@ -258,6 +258,36 @@ describe('ExamsService', () => {
     });
   });
 
+  it('deduplicates duplicate poolTagIds when updating pool section to avoid PK violation', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
+      examSection: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'section-1', selectionMode: 'pool', poolSize: 5, poolDifficulty: 'hard' }),
+        update: jest.fn().mockResolvedValue({ id: 'section-1', title: 'Pool Section', selectionMode: 'pool' }),
+      },
+      examSectionQuestion: { deleteMany: jest.fn() },
+      examSectionPoolTag: { deleteMany: jest.fn() },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.updateSection(context, 'exam-1', 'section-1', {
+      title: 'Pool Section', selectionMode: 'pool', poolSize: 5, poolDifficulty: 'hard', poolTagIds: ['tag-1', 'tag-1', 'tag-2'],
+    });
+
+    expect(tx.examSectionPoolTag.deleteMany).toHaveBeenCalledWith({ where: { sectionId: 'section-1' } });
+    expect(tx.examSection.update).toHaveBeenCalledWith({
+      where: { id: 'section-1' },
+      data: {
+        title: 'Pool Section',
+        selectionMode: 'pool',
+        poolSize: 5,
+        poolDifficulty: 'hard',
+        poolTags: { create: [{ tagId: 'tag-1' }, { tagId: 'tag-2' }] },
+      },
+      include: { poolTags: true },
+    });
+  });
+
   it('deletes a section that belongs to the given exam', async () => {
     const tx = {
       exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
