@@ -25,12 +25,14 @@ interface AttemptQuestion {
 
 interface AttemptSection {
   title: string;
+  targetDurationMinutes: number | null;
   questions: AttemptQuestion[];
 }
 
 interface SectionSnapshotEntry {
   sectionId: string;
   title: string;
+  targetDurationMinutes: number | null;
   questionIds: string[];
 }
 
@@ -136,7 +138,12 @@ export class AttemptService {
           const fixedIds = section.questions.map((link) => link.questionId);
           questionIds = exam.randomizeOrder ? shuffle(fixedIds) : fixedIds;
         }
-        sectionSnapshot.push({ sectionId: section.id, title: section.title, questionIds });
+        sectionSnapshot.push({
+          sectionId: section.id,
+          title: section.title,
+          targetDurationMinutes: section.targetDurationMinutes,
+          questionIds,
+        });
       }
 
       const questionIds = sectionSnapshot.flatMap((section) => section.questionIds);
@@ -296,6 +303,7 @@ export class AttemptService {
 
     return snapshot.map((section) => ({
       title: section.title,
+      targetDurationMinutes: section.targetDurationMinutes,
       questions: section.questionIds
         .map((questionId) => questionsById.get(questionId))
         .filter((question): question is NonNullable<typeof question> => question !== undefined)

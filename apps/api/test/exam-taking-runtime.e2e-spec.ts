@@ -551,4 +551,63 @@ describe('Exam-Taking Runtime HTTP flow', () => {
     const secondOrder = secondRead.body.sections[0].questions[0].options.map((option: { id: string }) => option.id);
     expect(firstOrder).toEqual(secondOrder);
   });
+
+  it('surfaces a section\'s target duration to the candidate', async () => {
+    const timedExamResponse = await request(adminHttp)
+      .post('/api/v1/exams')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ title: 'Timed Section Round' })
+      .expect(201);
+    const timedExamId = timedExamResponse.body.id;
+
+    const timedSectionResponse = await request(adminHttp)
+      .post(`/api/v1/exams/${timedExamId}/sections`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ title: 'Section One', targetDurationMinutes: 15 })
+      .expect(201);
+    const timedSectionId = timedSectionResponse.body.id;
+
+    const timedQuestion = await request(adminHttp)
+      .post('/api/v1/questions')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({
+        type: 'true_false', text: 'Timed section question', difficulty: 'easy', marks: 1,
+        options: [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }],
+      })
+      .expect(201);
+
+    await request(adminHttp)
+      .put(`/api/v1/exams/${timedExamId}/sections/${timedSectionId}/questions`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ questionIds: [timedQuestion.body.id] })
+      .expect(200);
+
+    await request(adminHttp)
+      .post(`/api/v1/exams/${timedExamId}/publish`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(201);
+
+    const ivy = await request(adminHttp)
+      .post('/api/v1/candidates')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ email: 'ivy@ci-attempt.test', name: 'Ivy' })
+      .expect(201);
+    const ivyInvite = await request(adminHttp)
+      .post(`/api/v1/exams/${timedExamId}/invitations`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ candidateIds: [ivy.body.id] })
+      .expect(201);
+    const ivyAccessToken = (
+      await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token: ivyInvite.body.created[0].token }).expect(200)
+    ).body.accessToken;
+
+    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${ivyAccessToken}`).expect(201);
+
+    const stateResponse = await request(runtimeHttp)
+      .get('/api/v1/attempt/current')
+      .set('Authorization', `Bearer ${ivyAccessToken}`)
+      .expect(200);
+
+    expect(stateResponse.body.sections[0].targetDurationMinutes).toBe(15);
+  });
 });

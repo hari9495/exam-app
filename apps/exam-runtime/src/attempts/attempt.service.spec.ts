@@ -57,7 +57,7 @@ describe('AttemptService', () => {
       const attempt = {
         id: 'attempt-1', status: 'in_progress', startedAt: new Date(),
         questionOrderJson: JSON.stringify(['q1']),
-        sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', questionIds: ['q1'] }]),
+        sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', targetDurationMinutes: 20, questionIds: ['q1'] }]),
         optionOrderJson: null,
       };
       const tx = {
@@ -80,7 +80,7 @@ describe('AttemptService', () => {
         status: 'in_progress',
         remainingSeconds: 3300,
         sections: [
-          { title: 'Section One', questions: [{ id: 'q1', text: 'What is 2+2?', type: 'single_mcq', marks: 5, options: [{ id: 'opt-a', text: '4' }, { id: 'opt-b', text: '5' }] }] },
+          { title: 'Section One', targetDurationMinutes: 20, questions: [{ id: 'q1', text: 'What is 2+2?', type: 'single_mcq', marks: 5, options: [{ id: 'opt-a', text: '4' }, { id: 'opt-b', text: '5' }] }] },
         ],
         answers: [{ questionId: 'q1', selectedOptionIds: ['opt-a'], isMarkedForReview: false }],
         messages: [],
@@ -92,7 +92,7 @@ describe('AttemptService', () => {
       const attempt = {
         id: 'attempt-1', status: 'in_progress', startedAt: new Date(),
         questionOrderJson: JSON.stringify(['q1']),
-        sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', questionIds: ['q1'] }]),
+        sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', targetDurationMinutes: null, questionIds: ['q1'] }]),
         optionOrderJson: JSON.stringify({ q1: ['opt-b', 'opt-a'] }),
       };
       const tx = {
@@ -165,7 +165,7 @@ describe('AttemptService', () => {
         attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
         examSection: {
           findMany: jest.fn().mockResolvedValue([
-            { id: 'section-1', title: 'Section One', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, poolTags: [], questions: [{ questionId: 'q1' }, { questionId: 'q2' }] },
+            { id: 'section-1', title: 'Section One', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: null, poolTags: [], questions: [{ questionId: 'q1' }, { questionId: 'q2' }] },
           ]),
         },
       };
@@ -178,7 +178,7 @@ describe('AttemptService', () => {
         data: {
           invitationId: 'inv-1', candidateId: 'cand-1', examId: 'exam-1',
           questionOrderJson: JSON.stringify(['q1', 'q2']),
-          sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', questionIds: ['q1', 'q2'] }]),
+          sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', targetDurationMinutes: null, questionIds: ['q1', 'q2'] }]),
           optionOrderJson: null,
           deviceFingerprint: undefined,
         },
@@ -190,7 +190,7 @@ describe('AttemptService', () => {
         attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
         examSection: {
           findMany: jest.fn().mockResolvedValue([
-            { id: 'section-1', title: 'Section One', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, poolTags: [], questions: [{ questionId: 'q1' }] },
+            { id: 'section-1', title: 'Section One', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: null, poolTags: [], questions: [{ questionId: 'q1' }] },
           ]),
         },
       };
@@ -202,7 +202,7 @@ describe('AttemptService', () => {
         data: {
           invitationId: 'inv-1', candidateId: 'cand-1', examId: 'exam-1',
           questionOrderJson: JSON.stringify(['q1']),
-          sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', questionIds: ['q1'] }]),
+          sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', targetDurationMinutes: null, questionIds: ['q1'] }]),
           optionOrderJson: null,
           deviceFingerprint: 'fp-abc123',
         },
@@ -214,7 +214,7 @@ describe('AttemptService', () => {
         attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
         examSection: {
           findMany: jest.fn().mockResolvedValue([
-            { id: 'section-1', title: 'Section One', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, poolTags: [], questions: [{ questionId: 'q1' }, { questionId: 'q2' }] },
+            { id: 'section-1', title: 'Section One', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: null, poolTags: [], questions: [{ questionId: 'q1' }, { questionId: 'q2' }] },
           ]),
         },
       };
@@ -250,7 +250,7 @@ describe('AttemptService', () => {
         attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
         examSection: {
           findMany: jest.fn().mockResolvedValue([
-            { id: 'section-1', title: 'Section One', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, poolTags: [], questions: [{ questionId: 'q1' }] },
+            { id: 'section-1', title: 'Section One', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: null, poolTags: [], questions: [{ questionId: 'q1' }] },
           ]),
         },
       };
@@ -289,6 +289,28 @@ describe('AttemptService', () => {
       expect(tx.attempt.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ questionOrderJson: JSON.stringify(['q1', 'q2', 'q3']) }) }),
       );
+    });
+
+    it('captures each section\'s targetDurationMinutes in the snapshot at start time', async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
+        examSection: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'section-1', title: 'Section One', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: 20, poolTags: [], questions: [{ questionId: 'q1' }] },
+            { id: 'section-2', title: 'Section Two', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: null, poolTags: [], questions: [{ questionId: 'q2' }] },
+          ]),
+        },
+      };
+      mockBootstrapThenScoped(tx);
+
+      await service.start(session);
+
+      const createdData = tx.attempt.create.mock.calls[0][0].data;
+      const snapshot = JSON.parse(createdData.sectionSnapshotJson);
+      expect(snapshot).toEqual([
+        { sectionId: 'section-1', title: 'Section One', targetDurationMinutes: 20, questionIds: ['q1'] },
+        { sectionId: 'section-2', title: 'Section Two', targetDurationMinutes: null, questionIds: ['q2'] },
+      ]);
     });
 
     it('draws a pool section\'s questions matching tag and difficulty criteria, up to poolSize', async () => {
