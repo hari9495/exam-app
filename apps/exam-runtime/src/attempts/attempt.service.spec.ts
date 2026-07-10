@@ -12,7 +12,7 @@ describe('AttemptService', () => {
   let settlement: { settleIfExpired: jest.Mock; finalize: jest.Mock; remainingSeconds: jest.Mock };
   let monitoringGateway: { emitAttemptStatus: jest.Mock; emitProctoringFlag: jest.Mock };
   const session = { invitationId: 'inv-1' };
-  const exam = { id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40 };
+  const exam = { id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false };
   const invitationRecord = { id: 'inv-1', candidateId: 'cand-1', examId: 'exam-1', exam };
 
   beforeEach(async () => {
@@ -54,20 +54,17 @@ describe('AttemptService', () => {
     });
 
     it('returns the full attempt state with sections, questions (no isCorrect), and existing answers', async () => {
-      const attempt = { id: 'attempt-1', status: 'in_progress', startedAt: new Date(), questionOrderJson: JSON.stringify(['q1']) };
+      const attempt = {
+        id: 'attempt-1', status: 'in_progress', startedAt: new Date(),
+        questionOrderJson: JSON.stringify(['q1']),
+        sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', questionIds: ['q1'] }]),
+        optionOrderJson: null,
+      };
       const tx = {
         attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
-        examSection: {
+        question: {
           findMany: jest.fn().mockResolvedValue([
-            {
-              title: 'Section One',
-              questions: [
-                {
-                  questionId: 'q1',
-                  question: { id: 'q1', text: 'What is 2+2?', type: 'single_mcq', marks: 5, options: [{ id: 'opt-a', text: '4' }, { id: 'opt-b', text: '5' }] },
-                },
-              ],
-            },
+            { id: 'q1', text: 'What is 2+2?', type: 'single_mcq', marks: 5, options: [{ id: 'opt-a', text: '4' }, { id: 'opt-b', text: '5' }] },
           ]),
         },
         answer: { findMany: jest.fn().mockResolvedValue([{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isMarkedForReview: false }]) },
@@ -91,12 +88,41 @@ describe('AttemptService', () => {
       expect((result as any).sections[0].questions[0]).not.toHaveProperty('isCorrect');
     });
 
+    it('reorders a question\'s options according to optionOrderJson when present', async () => {
+      const attempt = {
+        id: 'attempt-1', status: 'in_progress', startedAt: new Date(),
+        questionOrderJson: JSON.stringify(['q1']),
+        sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', questionIds: ['q1'] }]),
+        optionOrderJson: JSON.stringify({ q1: ['opt-b', 'opt-a'] }),
+      };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'q1', text: 'What is 2+2?', type: 'single_mcq', marks: 5, options: [{ id: 'opt-a', text: '4' }, { id: 'opt-b', text: '5' }] },
+          ]),
+        },
+        answer: { findMany: jest.fn().mockResolvedValue([]) },
+        candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+      };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      settlement.remainingSeconds.mockReturnValue(3300);
+      mockBootstrapThenScoped(tx);
+
+      const result = await service.getCurrent(session);
+
+      expect((result as any).sections[0].questions[0].options).toEqual([{ id: 'opt-b', text: '5' }, { id: 'opt-a', text: '4' }]);
+    });
+
     it('returns unread messages and marks them read', async () => {
-      const attempt = { id: 'attempt-1', status: 'in_progress', startedAt: new Date(), questionOrderJson: '[]' };
+      const attempt = {
+        id: 'attempt-1', status: 'in_progress', startedAt: new Date(),
+        questionOrderJson: '[]', sectionSnapshotJson: '[]', optionOrderJson: null,
+      };
       const unreadMessage = { id: 'msg-1', body: 'Please stay on the exam tab', sentAt: new Date('2026-07-09T00:00:00Z') };
       const tx = {
         attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
-        examSection: { findMany: jest.fn().mockResolvedValue([]) },
+        question: { findMany: jest.fn().mockResolvedValue([]) },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([unreadMessage]), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       };
@@ -134,12 +160,12 @@ describe('AttemptService', () => {
   });
 
   describe('start', () => {
-    it('creates a new attempt snapshotting the question order when none exists', async () => {
+    it('creates a new attempt snapshotting the question order and section structure when none exists', async () => {
       const tx = {
         attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
         examSection: {
           findMany: jest.fn().mockResolvedValue([
-            { questions: [{ questionId: 'q1' }, { questionId: 'q2' }] },
+            { id: 'section-1', title: 'Section One', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, poolTags: [], questions: [{ questionId: 'q1' }, { questionId: 'q2' }] },
           ]),
         },
       };
@@ -149,21 +175,37 @@ describe('AttemptService', () => {
 
       expect(result).toEqual({ id: 'attempt-1', status: 'in_progress' });
       expect(tx.attempt.create).toHaveBeenCalledWith({
-        data: { invitationId: 'inv-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1', 'q2']), deviceFingerprint: undefined },
+        data: {
+          invitationId: 'inv-1', candidateId: 'cand-1', examId: 'exam-1',
+          questionOrderJson: JSON.stringify(['q1', 'q2']),
+          sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', questionIds: ['q1', 'q2'] }]),
+          optionOrderJson: null,
+          deviceFingerprint: undefined,
+        },
       });
     });
 
     it('records a device fingerprint on the attempt when the client provides one', async () => {
       const tx = {
         attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
-        examSection: { findMany: jest.fn().mockResolvedValue([{ questions: [{ questionId: 'q1' }] }]) },
+        examSection: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'section-1', title: 'Section One', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, poolTags: [], questions: [{ questionId: 'q1' }] },
+          ]),
+        },
       };
       mockBootstrapThenScoped(tx);
 
       await service.start(session, { deviceFingerprint: 'fp-abc123' });
 
       expect(tx.attempt.create).toHaveBeenCalledWith({
-        data: { invitationId: 'inv-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']), deviceFingerprint: 'fp-abc123' },
+        data: {
+          invitationId: 'inv-1', candidateId: 'cand-1', examId: 'exam-1',
+          questionOrderJson: JSON.stringify(['q1']),
+          sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', questionIds: ['q1'] }]),
+          optionOrderJson: null,
+          deviceFingerprint: 'fp-abc123',
+        },
       });
     });
 
@@ -172,7 +214,7 @@ describe('AttemptService', () => {
         attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
         examSection: {
           findMany: jest.fn().mockResolvedValue([
-            { questions: [{ questionId: 'q1' }, { questionId: 'q2' }] },
+            { id: 'section-1', title: 'Section One', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, poolTags: [], questions: [{ questionId: 'q1' }, { questionId: 'q2' }] },
           ]),
         },
       };
@@ -206,7 +248,11 @@ describe('AttemptService', () => {
     it('emits attempt:status when a new attempt is created', async () => {
       const tx = {
         attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
-        examSection: { findMany: jest.fn().mockResolvedValue([{ questions: [{ questionId: 'q1' }] }]) },
+        examSection: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'section-1', title: 'Section One', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, poolTags: [], questions: [{ questionId: 'q1' }] },
+          ]),
+        },
       };
       mockBootstrapThenScoped(tx);
 
@@ -225,6 +271,95 @@ describe('AttemptService', () => {
       await service.start(session);
 
       expect(monitoringGateway.emitAttemptStatus).not.toHaveBeenCalled();
+    });
+
+    it('preserves a fixed section\'s stored order when randomizeOrder is off', async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
+        examSection: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'section-1', title: 'Section One', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, poolTags: [], questions: [{ questionId: 'q1' }, { questionId: 'q2' }, { questionId: 'q3' }] },
+          ]),
+        },
+      };
+      mockBootstrapThenScoped(tx);
+
+      await service.start(session);
+
+      expect(tx.attempt.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ questionOrderJson: JSON.stringify(['q1', 'q2', 'q3']) }) }),
+      );
+    });
+
+    it('draws a pool section\'s questions matching tag and difficulty criteria, up to poolSize', async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
+        examSection: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'section-1', title: 'Pool Section', selectionMode: 'pool', poolSize: 2, poolDifficulty: 'hard', poolTags: [{ tagId: 'tag-1' }, { tagId: 'tag-2' }], questions: [] },
+          ]),
+        },
+        question: {
+          findMany: jest.fn().mockResolvedValue([{ id: 'q1' }, { id: 'q2' }, { id: 'q3' }]),
+        },
+      };
+      mockBootstrapThenScoped(tx);
+
+      await service.start(session);
+
+      expect(tx.question.findMany).toHaveBeenCalledWith({
+        where: {
+          organizationId: 'org-1', status: 'active', difficulty: 'hard',
+          AND: [{ tags: { some: { tagId: 'tag-1' } } }, { tags: { some: { tagId: 'tag-2' } } }],
+        },
+        select: { id: true },
+      });
+      const createdData = tx.attempt.create.mock.calls[0][0].data;
+      const questionIds: string[] = JSON.parse(createdData.questionOrderJson);
+      expect(questionIds).toHaveLength(2);
+      questionIds.forEach((id) => expect(['q1', 'q2', 'q3']).toContain(id));
+    });
+
+    it('builds optionOrderJson for every selected question when randomizeOrder is on', async () => {
+      const randomizedExam = { ...exam, randomizeOrder: true };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
+        examSection: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'section-1', title: 'Section One', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, poolTags: [], questions: [{ questionId: 'q1' }] },
+          ]),
+        },
+        question: {
+          findMany: jest.fn().mockResolvedValue([{ id: 'q1', options: [{ id: 'opt-a' }, { id: 'opt-b' }, { id: 'opt-c' }] }]),
+        },
+      };
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: randomizedExam }))
+        .mockImplementationOnce((_ctx, fn) => fn(tx));
+
+      await service.start(session);
+
+      const createdData = tx.attempt.create.mock.calls[0][0].data;
+      expect(createdData.optionOrderJson).not.toBeNull();
+      const optionOrder = JSON.parse(createdData.optionOrderJson);
+      expect([...optionOrder.q1].sort()).toEqual(['opt-a', 'opt-b', 'opt-c']);
+    });
+
+    it('leaves optionOrderJson null when randomizeOrder is off', async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
+        examSection: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'section-1', title: 'Section One', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, poolTags: [], questions: [{ questionId: 'q1' }] },
+          ]),
+        },
+      };
+      mockBootstrapThenScoped(tx);
+
+      await service.start(session);
+
+      const createdData = tx.attempt.create.mock.calls[0][0].data;
+      expect(createdData.optionOrderJson).toBeNull();
     });
   });
 

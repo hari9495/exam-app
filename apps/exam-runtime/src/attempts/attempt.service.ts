@@ -8,6 +8,7 @@ import { AnswerDto } from './dto/answer.dto';
 import { StartAttemptDto } from './dto/start-attempt.dto';
 import { getProctoringEventSeverity } from './proctoring-severity';
 import { ReportProctoringEventDto } from './dto/report-proctoring-event.dto';
+import { shuffle } from './shuffle';
 
 interface AttemptQuestionOption {
   id: string;
@@ -25,6 +26,12 @@ interface AttemptQuestion {
 interface AttemptSection {
   title: string;
   questions: AttemptQuestion[];
+}
+
+interface SectionSnapshotEntry {
+  sectionId: string;
+  title: string;
+  questionIds: string[];
 }
 
 interface AttemptAnswerSummary {
@@ -71,8 +78,7 @@ export class AttemptService {
       }
 
       const settled = await this.attemptSettlement.settleIfExpired(tx, exam, attempt);
-      const questionIds: string[] = JSON.parse(settled.questionOrderJson);
-      const sections = await this.loadSections(tx, exam.id, questionIds);
+      const sections = await this.loadSections(tx, settled.sectionSnapshotJson, settled.optionOrderJson);
       const answers = await tx.answer.findMany({ where: { attemptId: settled.id } });
 
       const unreadMessages = await tx.candidateMessage.findMany({ where: { attemptId: settled.id, readAt: null } });
@@ -106,9 +112,44 @@ export class AttemptService {
       const sections = await tx.examSection.findMany({
         where: { examId: exam.id },
         orderBy: { orderIndex: 'asc' },
-        include: { questions: { orderBy: { orderIndex: 'asc' } } },
+        include: { questions: { orderBy: { orderIndex: 'asc' } }, poolTags: true },
       });
-      const questionIds = sections.flatMap((section) => section.questions.map((link) => link.questionId));
+
+      const sectionSnapshot: SectionSnapshotEntry[] = [];
+      for (const section of sections) {
+        let questionIds: string[];
+        if (section.selectionMode === 'pool') {
+          const tagIds = section.poolTags.map((poolTag) => poolTag.tagId);
+          const candidates = await tx.question.findMany({
+            where: {
+              organizationId,
+              status: 'active',
+              ...(section.poolDifficulty ? { difficulty: section.poolDifficulty } : {}),
+              AND: tagIds.map((tagId) => ({ tags: { some: { tagId } } })),
+            },
+            select: { id: true },
+          });
+          questionIds = shuffle(candidates)
+            .slice(0, section.poolSize ?? 0)
+            .map((candidate) => candidate.id);
+        } else {
+          const fixedIds = section.questions.map((link) => link.questionId);
+          questionIds = exam.randomizeOrder ? shuffle(fixedIds) : fixedIds;
+        }
+        sectionSnapshot.push({ sectionId: section.id, title: section.title, questionIds });
+      }
+
+      const questionIds = sectionSnapshot.flatMap((section) => section.questionIds);
+
+      let optionOrderJson: string | null = null;
+      if (exam.randomizeOrder) {
+        const questions = await tx.question.findMany({ where: { id: { in: questionIds } }, include: { options: true } });
+        const optionOrder: Record<string, string[]> = {};
+        for (const question of questions) {
+          optionOrder[question.id] = shuffle(question.options.map((option) => option.id));
+        }
+        optionOrderJson = JSON.stringify(optionOrder);
+      }
 
       const attempt = await tx.attempt.create({
         data: {
@@ -116,6 +157,8 @@ export class AttemptService {
           candidateId: invitation.candidateId,
           examId: exam.id,
           questionOrderJson: JSON.stringify(questionIds),
+          sectionSnapshotJson: JSON.stringify(sectionSnapshot),
+          optionOrderJson,
           deviceFingerprint: dto.deviceFingerprint,
         },
       });
@@ -240,28 +283,37 @@ export class AttemptService {
     }
   }
 
-  private async loadSections(tx: Prisma.TransactionClient, examId: string, questionIds: string[]): Promise<AttemptSection[]> {
-    const sections = await tx.examSection.findMany({
-      where: { examId },
-      orderBy: { orderIndex: 'asc' },
-      include: {
-        questions: {
-          orderBy: { orderIndex: 'asc' },
-          include: { question: { include: { options: true } } },
-        },
-      },
-    });
-    return sections.map((section) => ({
+  private async loadSections(
+    tx: Prisma.TransactionClient,
+    sectionSnapshotJson: string,
+    optionOrderJson: string | null,
+  ): Promise<AttemptSection[]> {
+    const snapshot: SectionSnapshotEntry[] = JSON.parse(sectionSnapshotJson);
+    const allQuestionIds = snapshot.flatMap((section) => section.questionIds);
+    const questions = await tx.question.findMany({ where: { id: { in: allQuestionIds } }, include: { options: true } });
+    const questionsById = new Map(questions.map((question) => [question.id, question]));
+    const optionOrder: Record<string, string[]> | null = optionOrderJson ? JSON.parse(optionOrderJson) : null;
+
+    return snapshot.map((section) => ({
       title: section.title,
-      questions: section.questions
-        .filter((link) => questionIds.includes(link.questionId))
-        .map((link) => ({
-          id: link.question.id,
-          text: link.question.text,
-          type: link.question.type,
-          marks: link.question.marks,
-          options: link.question.options.map((option) => ({ id: option.id, text: option.text })),
-        })),
+      questions: section.questionIds
+        .map((questionId) => questionsById.get(questionId))
+        .filter((question): question is NonNullable<typeof question> => question !== undefined)
+        .map((question) => {
+          const order = optionOrder?.[question.id];
+          const orderedOptions = order
+            ? order
+                .map((optionId) => question.options.find((option) => option.id === optionId))
+                .filter((option): option is NonNullable<typeof option> => option !== undefined)
+            : question.options;
+          return {
+            id: question.id,
+            text: question.text,
+            type: question.type,
+            marks: question.marks,
+            options: orderedOptions.map((option) => ({ id: option.id, text: option.text })),
+          };
+        }),
     }));
   }
 }

@@ -420,4 +420,135 @@ describe('Exam-Taking Runtime HTTP flow', () => {
     expect(frankResult.percentage).toBe(0);
     expect(frankResult.passFail).toBe('fail');
   });
+
+  it('draws a pool section\'s questions matching its tag criteria at attempt-start', async () => {
+    const poolExamResponse = await request(adminHttp)
+      .post('/api/v1/exams')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ title: 'Pool Exam Round' })
+      .expect(201);
+    const poolExamId = poolExamResponse.body.id;
+
+    const poolSectionResponse = await request(adminHttp)
+      .post(`/api/v1/exams/${poolExamId}/sections`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ title: 'Pool Section' })
+      .expect(201);
+    const poolSectionId = poolSectionResponse.body.id;
+
+    const tagName = `pool-tag-${randomUUID()}`;
+    const poolQuestionIds: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const createdQuestion = await request(adminHttp)
+        .post('/api/v1/questions')
+        .set('Authorization', `Bearer ${recruiterAccessToken}`)
+        .send({
+          type: 'true_false', text: `Pool question ${i}`, difficulty: 'medium', marks: 1, tags: [tagName],
+          options: [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }],
+        })
+        .expect(201);
+      poolQuestionIds.push(createdQuestion.body.id);
+    }
+    const poolTagId = poolQuestionIds.length > 0
+      ? (await request(adminHttp).get(`/api/v1/questions/${poolQuestionIds[0]}`).set('Authorization', `Bearer ${recruiterAccessToken}`).expect(200)).body.tags[0].id
+      : '';
+
+    await request(adminHttp)
+      .patch(`/api/v1/exams/${poolExamId}/sections/${poolSectionId}`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ title: 'Pool Section', selectionMode: 'pool', poolSize: 2, poolTagIds: [poolTagId] })
+      .expect(200);
+
+    await request(adminHttp)
+      .post(`/api/v1/exams/${poolExamId}/publish`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(201);
+
+    const grace = await request(adminHttp)
+      .post('/api/v1/candidates')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ email: 'grace@ci-attempt.test', name: 'Grace' })
+      .expect(201);
+    const graceInvite = await request(adminHttp)
+      .post(`/api/v1/exams/${poolExamId}/invitations`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ candidateIds: [grace.body.id] })
+      .expect(201);
+    const graceAccessToken = (
+      await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token: graceInvite.body.created[0].token }).expect(200)
+    ).body.accessToken;
+
+    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${graceAccessToken}`).expect(201);
+
+    const stateResponse = await request(runtimeHttp)
+      .get('/api/v1/attempt/current')
+      .set('Authorization', `Bearer ${graceAccessToken}`)
+      .expect(200);
+
+    const receivedQuestionIds = stateResponse.body.sections.flatMap((section: { questions: { id: string }[] }) => section.questions.map((question) => question.id));
+    expect(receivedQuestionIds).toHaveLength(2);
+    receivedQuestionIds.forEach((id: string) => expect(poolQuestionIds).toContain(id));
+  });
+
+  it('serves a stable option order across repeated reads when randomizeOrder is on', async () => {
+    const randExamResponse = await request(adminHttp)
+      .post('/api/v1/exams')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ title: 'Randomized Round', randomizeOrder: true })
+      .expect(201);
+    const randExamId = randExamResponse.body.id;
+
+    const randSectionResponse = await request(adminHttp)
+      .post(`/api/v1/exams/${randExamId}/sections`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ title: 'Section One' })
+      .expect(201);
+    const randSectionId = randSectionResponse.body.id;
+
+    const manyOptionsQuestion = await request(adminHttp)
+      .post('/api/v1/questions')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({
+        type: 'single_mcq', text: 'Pick one of many', difficulty: 'easy', marks: 1,
+        options: [
+          { text: 'A', isCorrect: true }, { text: 'B', isCorrect: false }, { text: 'C', isCorrect: false },
+          { text: 'D', isCorrect: false }, { text: 'E', isCorrect: false },
+        ],
+      })
+      .expect(201);
+
+    await request(adminHttp)
+      .put(`/api/v1/exams/${randExamId}/sections/${randSectionId}/questions`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ questionIds: [manyOptionsQuestion.body.id] })
+      .expect(200);
+
+    await request(adminHttp)
+      .post(`/api/v1/exams/${randExamId}/publish`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(201);
+
+    const henry = await request(adminHttp)
+      .post('/api/v1/candidates')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ email: 'henry@ci-attempt.test', name: 'Henry' })
+      .expect(201);
+    const henryInvite = await request(adminHttp)
+      .post(`/api/v1/exams/${randExamId}/invitations`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ candidateIds: [henry.body.id] })
+      .expect(201);
+    const henryAccessToken = (
+      await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token: henryInvite.body.created[0].token }).expect(200)
+    ).body.accessToken;
+
+    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${henryAccessToken}`).expect(201);
+
+    const firstRead = await request(runtimeHttp).get('/api/v1/attempt/current').set('Authorization', `Bearer ${henryAccessToken}`).expect(200);
+    const secondRead = await request(runtimeHttp).get('/api/v1/attempt/current').set('Authorization', `Bearer ${henryAccessToken}`).expect(200);
+
+    const firstOrder = firstRead.body.sections[0].questions[0].options.map((option: { id: string }) => option.id);
+    const secondOrder = secondRead.body.sections[0].questions[0].options.map((option: { id: string }) => option.id);
+    expect(firstOrder).toEqual(secondOrder);
+  });
 });
