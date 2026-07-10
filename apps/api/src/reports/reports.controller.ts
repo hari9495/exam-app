@@ -23,19 +23,19 @@ export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
   @Get(':id/results/summary')
-  @RequirePermissions('exam:manage')
+  @RequirePermissions('results:view')
   getSummary(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.reportsService.getSummary(tenant, id);
   }
 
   @Get(':id/results/question-accuracy')
-  @RequirePermissions('exam:manage')
+  @RequirePermissions('results:view')
   getQuestionAccuracy(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.reportsService.getQuestionAccuracy(tenant, id);
   }
 
   @Get(':id/results/export')
-  @RequirePermissions('exam:manage')
+  @RequirePermissions('results:view')
   async exportResults(
     @CurrentTenant() tenant: TenantContext,
     @Param('id') id: string,

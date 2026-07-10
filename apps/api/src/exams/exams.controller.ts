@@ -88,7 +88,7 @@ export class ExamsController {
   }
 
   @Get(':id/results')
-  @RequirePermissions('exam:manage')
+  @RequirePermissions('results:view')
   getResults(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.examsService.getResults(tenant, id);
   }

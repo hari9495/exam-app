@@ -18,6 +18,7 @@ describe('Exam Reporting HTTP flow', () => {
   let orgId: string;
   let recruiterAccessToken: string;
   let orgAdminAccessToken: string;
+  let panelAccessToken: string;
   let examId: string;
   let questionId: string;
   let correctOptionId: string;
@@ -43,10 +44,12 @@ describe('Exam Reporting HTTP flow', () => {
 
     const recruiterHash = await argon2.hash('RecruiterPassw0rd!');
     const orgAdminHash = await argon2.hash('OrgAdminPassw0rd!');
+    const panelHash = await argon2.hash('PanelPassw0rd!');
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) =>
       Promise.all([
         tx.user.create({ data: { organizationId: orgId, email: 'recruiter@ci-reporting.test', passwordHash: recruiterHash, role: 'recruiter' } }),
         tx.user.create({ data: { organizationId: orgId, email: 'orgadmin@ci-reporting.test', passwordHash: orgAdminHash, role: 'org_admin' } }),
+        tx.user.create({ data: { organizationId: orgId, email: 'panel@ci-reporting.test', passwordHash: panelHash, role: 'panel' } }),
       ]),
     );
 
@@ -61,6 +64,13 @@ describe('Exam Reporting HTTP flow', () => {
       await request(adminHttp)
         .post('/api/v1/auth/staff/login')
         .send({ organizationSlug: org.slug, email: 'orgadmin@ci-reporting.test', password: 'OrgAdminPassw0rd!' })
+        .expect(200)
+    ).body.accessToken;
+
+    panelAccessToken = (
+      await request(adminHttp)
+        .post('/api/v1/auth/staff/login')
+        .send({ organizationSlug: org.slug, email: 'panel@ci-reporting.test', password: 'PanelPassw0rd!' })
         .expect(200)
     ).body.accessToken;
 
@@ -257,5 +267,32 @@ describe('Exam Reporting HTTP flow', () => {
     await tenantPrisma.forTenant({ organizationId: otherOrg.id, isSuperAdmin: false }, (tx) => tx.exam.deleteMany({ where: { organizationId: otherOrg.id } }));
     await prisma.organization.delete({ where: { id: otherOrg.id } }).catch(() => undefined);
     await prisma.plan.delete({ where: { id: otherPlan.id } }).catch(() => undefined);
+  });
+
+  it('grants panel-role users read access to all results/report routes via results:view', async () => {
+    await request(adminHttp)
+      .get(`/api/v1/exams/${examId}/results`)
+      .set('Authorization', `Bearer ${panelAccessToken}`)
+      .expect(200);
+    await request(adminHttp)
+      .get(`/api/v1/exams/${examId}/results/summary`)
+      .set('Authorization', `Bearer ${panelAccessToken}`)
+      .expect(200);
+    await request(adminHttp)
+      .get(`/api/v1/exams/${examId}/results/question-accuracy`)
+      .set('Authorization', `Bearer ${panelAccessToken}`)
+      .expect(200);
+    await request(adminHttp)
+      .get(`/api/v1/exams/${examId}/results/export?format=csv`)
+      .set('Authorization', `Bearer ${panelAccessToken}`)
+      .expect(200);
+  });
+
+  it('rejects panel-role users from exam-management routes -- results:view does not imply exam:manage', async () => {
+    await request(adminHttp)
+      .post('/api/v1/exams')
+      .set('Authorization', `Bearer ${panelAccessToken}`)
+      .send({ title: 'Should Not Be Created' })
+      .expect(403);
   });
 });
