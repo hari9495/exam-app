@@ -80,6 +80,18 @@ export interface CandidateDetail {
   sections: CandidateDetailSection[];
 }
 
+export interface CandidateComparisonRow {
+  candidateId: string;
+  candidateName: string;
+  status: string;
+  score: number | null;
+  maxScore: number | null;
+  percentage: number | null;
+  passFail: string | null;
+  proctoringAnalysis: { status: string; riskLevel: string | null; summary: string | null } | null;
+  sectionScores: SectionScore[];
+}
+
 @Injectable()
 export class ReportsService {
   constructor(
@@ -315,6 +327,77 @@ export class ReportsService {
       });
 
       return { ...base, sections };
+    });
+  }
+
+  async compareCandidates(context: TenantContext, examId: string, candidateIdsParam: string): Promise<CandidateComparisonRow[]> {
+    const candidateIds = candidateIdsParam.split(',').map((id) => id.trim()).filter((id) => id.length > 0);
+    if (candidateIds.length < 2) {
+      throw new BadRequestException('At least 2 candidateIds are required to compare');
+    }
+
+    const rows = await this.examsService.getResults(context, examId);
+    const rowByCandidateId = new Map(rows.map((row) => [row.candidateId, row]));
+    const missingIds = candidateIds.filter((id) => !rowByCandidateId.has(id));
+    if (missingIds.length > 0) {
+      throw new BadRequestException(`Candidate(s) not invited to this exam: ${missingIds.join(', ')}`);
+    }
+    const selectedRows = candidateIds.map((id) => rowByCandidateId.get(id)!);
+    const attemptIds = selectedRows.map((row) => row.attemptId).filter((id): id is string => id !== null);
+
+    if (attemptIds.length === 0) {
+      return selectedRows.map((row) => ({
+        candidateId: row.candidateId,
+        candidateName: row.candidateName,
+        status: row.status,
+        score: row.score,
+        maxScore: row.maxScore,
+        percentage: row.percentage,
+        passFail: row.passFail,
+        proctoringAnalysis: row.proctoringAnalysis,
+        sectionScores: [],
+      }));
+    }
+
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const attempts = await tx.attempt.findMany({ where: { id: { in: attemptIds } }, select: { id: true, sectionSnapshotJson: true, answers: true } });
+      const attemptById = new Map(attempts.map((attempt) => [attempt.id, attempt]));
+
+      const allQuestionIds = new Set<string>();
+      for (const attempt of attempts) {
+        const snapshot: SectionSnapshotEntryShape[] = JSON.parse(attempt.sectionSnapshotJson);
+        snapshot.forEach((section) => section.questionIds.forEach((questionId) => allQuestionIds.add(questionId)));
+      }
+      const questions = allQuestionIds.size === 0
+        ? []
+        : await tx.question.findMany({
+            where: { id: { in: [...allQuestionIds] }, organizationId: context.organizationId as string },
+            select: { id: true, marks: true },
+          });
+      const marksByQuestionId = new Map(questions.map((question) => [question.id, question.marks]));
+
+      return selectedRows.map((row) => {
+        const base = {
+          candidateId: row.candidateId,
+          candidateName: row.candidateName,
+          status: row.status,
+          score: row.score,
+          maxScore: row.maxScore,
+          percentage: row.percentage,
+          passFail: row.passFail,
+          proctoringAnalysis: row.proctoringAnalysis,
+        };
+        const attempt = row.attemptId ? attemptById.get(row.attemptId) : undefined;
+        if (!attempt) {
+          return { ...base, sectionScores: [] };
+        }
+        const sectionSnapshot: SectionSnapshotEntryShape[] = JSON.parse(attempt.sectionSnapshotJson);
+        const marksAwardedByQuestionId = new Map(
+          attempt.answers.filter((answer) => answer.marksAwarded !== null).map((answer) => [answer.questionId, answer.marksAwarded as number]),
+        );
+        const sectionScores = this.computeSectionScores(sectionSnapshot, marksAwardedByQuestionId, marksByQuestionId);
+        return { ...base, sectionScores };
+      });
     });
   }
 

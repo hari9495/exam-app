@@ -286,4 +286,54 @@ describe('ReportsService', () => {
       await expect(service.getCandidateDetail(context, 'exam-1', 'cand-999')).rejects.toThrow(NotFoundException);
     });
   });
+
+  describe('compareCandidates', () => {
+    it('computes section-wise scores per candidate from their own attempt snapshot, aligning by sectionId even when pool sections drew different questions', async () => {
+      examsService.getResults.mockResolvedValue([
+        row({ candidateId: 'cand-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted', score: 5, maxScore: 5, percentage: 100, passFail: 'pass' }),
+        row({ candidateId: 'cand-2', candidateName: 'Bob', attemptId: 'a2', status: 'submitted', score: 0, maxScore: 5, percentage: 0, passFail: 'fail' }),
+      ]);
+      const tx = {
+        attempt: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'a1', sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Pool Section', questionIds: ['q1'] }]), answers: [{ questionId: 'q1', marksAwarded: 5 }] },
+            { id: 'a2', sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Pool Section', questionIds: ['q2'] }]), answers: [{ questionId: 'q2', marksAwarded: 0 }] },
+          ]),
+        },
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5 }, { id: 'q2', marks: 5 }]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const comparison = await service.compareCandidates(context, 'exam-1', 'cand-1,cand-2');
+
+      expect(comparison[0].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Pool Section', score: 5, maxScore: 5 }]);
+      expect(comparison[1].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Pool Section', score: 0, maxScore: 5 }]);
+    });
+
+    it('throws BadRequestException when fewer than 2 candidateIds are provided, without calling getResults', async () => {
+      await expect(service.compareCandidates(context, 'exam-1', 'cand-1')).rejects.toThrow(BadRequestException);
+      expect(examsService.getResults).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException naming candidate(s) not invited to this exam', async () => {
+      examsService.getResults.mockResolvedValue([row({ candidateId: 'cand-1', candidateName: 'Alice' })]);
+
+      await expect(service.compareCandidates(context, 'exam-1', 'cand-1,cand-999')).rejects.toThrow(BadRequestException);
+    });
+
+    it('returns null score fields and empty sectionScores for a candidate with no attempt', async () => {
+      examsService.getResults.mockResolvedValue([
+        row({ candidateId: 'cand-1', candidateName: 'Alice', attemptId: null, status: 'invited' }),
+        row({ candidateId: 'cand-2', candidateName: 'Bob', attemptId: null, status: 'invited' }),
+      ]);
+
+      const comparison = await service.compareCandidates(context, 'exam-1', 'cand-1,cand-2');
+
+      expect(comparison[0]).toEqual({
+        candidateId: 'cand-1', candidateName: 'Alice', status: 'invited',
+        score: null, maxScore: null, percentage: null, passFail: null,
+        proctoringAnalysis: null, sectionScores: [],
+      });
+    });
+  });
 });

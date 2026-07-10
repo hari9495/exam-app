@@ -325,4 +325,42 @@ describe('Exam Reporting HTTP flow', () => {
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(404);
   });
+
+  it("compares 3 candidates' section-wise scores side by side", async () => {
+    const resultsResponse = await request(adminHttp)
+      .get(`/api/v1/exams/${examId}/results`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(200);
+    const byName = (name: string) =>
+      resultsResponse.body.find((row: { candidateName: string }) => row.candidateName === name).candidateId;
+    const aliceId = byName('Alice');
+    const bobId = byName('Bob');
+    const carolId = byName('Carol');
+
+    const compareResponse = await request(adminHttp)
+      .get(`/api/v1/exams/${examId}/candidates/compare?candidateIds=${aliceId},${bobId},${carolId}`)
+      .set('Authorization', `Bearer ${panelAccessToken}`)
+      .expect(200);
+
+    expect(compareResponse.body).toHaveLength(3);
+    const alice = compareResponse.body.find((row: { candidateId: string }) => row.candidateId === aliceId);
+    expect(alice.score).toBe(10);
+    expect(alice.sectionScores).toEqual([{ sectionId: expect.any(String), title: 'Section One', score: 10, maxScore: 10 }]);
+    const carol = compareResponse.body.find((row: { candidateId: string }) => row.candidateId === carolId);
+    expect(carol.status).toBe('in_progress');
+    expect(carol.score).toBeNull();
+  });
+
+  it('returns 400 when fewer than 2 candidateIds are provided', async () => {
+    const resultsResponse = await request(adminHttp)
+      .get(`/api/v1/exams/${examId}/results`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(200);
+    const aliceId = resultsResponse.body.find((row: { candidateName: string }) => row.candidateName === 'Alice').candidateId;
+
+    await request(adminHttp)
+      .get(`/api/v1/exams/${examId}/candidates/compare?candidateIds=${aliceId}`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(400);
+  });
 });
