@@ -5,6 +5,8 @@ import { TenantContext } from '@exam-platform/shared';
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
 import { validateQuestionPayload } from './question-validation';
+import { JobsService } from '../jobs/jobs.service';
+import { AiGenerateQuestionsDto } from './dto/ai-generate-questions.dto';
 
 type QuestionWithRelations = Question & { options?: QuestionOption[]; tags: (QuestionTag & { tag: Tag })[] };
 type QuestionResponse = Omit<QuestionWithRelations, 'tags'> & { tags: { id: string; name: string }[] };
@@ -20,7 +22,10 @@ interface QuestionFilters {
 
 @Injectable()
 export class QuestionsService {
-  constructor(private readonly tenantPrisma: TenantPrismaService) {}
+  constructor(
+    private readonly tenantPrisma: TenantPrismaService,
+    private readonly jobsService: JobsService,
+  ) {}
 
   async create(context: TenantContext, userId: string, dto: CreateQuestionDto): Promise<QuestionResponse> {
     validateQuestionPayload({
@@ -145,6 +150,33 @@ export class QuestionsService {
         include: { options: true, tags: { include: { tag: true } } },
       });
       return this.toResponse(archived as QuestionWithRelations);
+    });
+  }
+
+  async aiGenerate(context: TenantContext, userId: string, dto: AiGenerateQuestionsDto): Promise<{ aiJobId: string }> {
+    const inputJson = JSON.stringify({
+      topic: dto.topic,
+      difficulty: dto.difficulty,
+      questionTypes: dto.questionTypes,
+      count: dto.count,
+      requestedBy: userId,
+    });
+    const aiJob = await this.jobsService.enqueue(context, 'ai-question-generation', inputJson, userId);
+    return { aiJobId: aiJob.id };
+  }
+
+  async publish(context: TenantContext, id: string): Promise<QuestionResponse> {
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const existing = await tx.question.findFirst({ where: { id, organizationId: context.organizationId as string } });
+      if (!existing) {
+        throw new NotFoundException(`Question ${id} not found`);
+      }
+      const published = await tx.question.update({
+        where: { id },
+        data: { status: 'active' },
+        include: { options: true, tags: { include: { tag: true } } },
+      });
+      return this.toResponse(published as QuestionWithRelations);
     });
   }
 

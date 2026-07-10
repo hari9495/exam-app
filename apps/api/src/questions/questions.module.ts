@@ -3,8 +3,10 @@ import { QuestionsController } from './questions.controller';
 import { QuestionsService } from './questions.service';
 import { TagsController } from './tags.controller';
 import { TagsService } from './tags.service';
+import { JobsModule } from '../jobs/jobs.module';
 
 @Module({
+  imports: [JobsModule],
   controllers: [QuestionsController, TagsController],
   providers: [QuestionsService, TagsService],
   exports: [QuestionsService],

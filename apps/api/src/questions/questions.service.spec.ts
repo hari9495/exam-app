@@ -2,16 +2,23 @@ import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { QuestionsService } from './questions.service';
 import { TenantPrismaService } from '@exam-platform/shared';
+import { JobsService } from '../jobs/jobs.service';
 
 describe('QuestionsService', () => {
   let service: QuestionsService;
   let tenantPrisma: { forTenant: jest.Mock };
+  let jobsService: { enqueue: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
+    jobsService = { enqueue: jest.fn() };
     const moduleRef = await Test.createTestingModule({
-      providers: [QuestionsService, { provide: TenantPrismaService, useValue: tenantPrisma }],
+      providers: [
+        QuestionsService,
+        { provide: TenantPrismaService, useValue: tenantPrisma },
+        { provide: JobsService, useValue: jobsService },
+      ],
     }).compile();
     service = moduleRef.get(QuestionsService);
   });
@@ -170,5 +177,54 @@ describe('QuestionsService', () => {
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
     await expect(service.archive(context, 'missing-id')).rejects.toThrow(NotFoundException);
+  });
+
+  describe('aiGenerate', () => {
+    it('enqueues an ai-question-generation job with the request fields plus the requesting user', async () => {
+      jobsService.enqueue.mockResolvedValue({ id: 'job-1' });
+
+      const result = await service.aiGenerate(context, 'user-1', {
+        topic: 'React hooks',
+        difficulty: 'medium',
+        questionTypes: ['single_mcq'],
+        count: 5,
+      });
+
+      expect(result).toEqual({ aiJobId: 'job-1' });
+      expect(jobsService.enqueue).toHaveBeenCalledWith(
+        context,
+        'ai-question-generation',
+        JSON.stringify({ topic: 'React hooks', difficulty: 'medium', questionTypes: ['single_mcq'], count: 5, requestedBy: 'user-1' }),
+        'user-1',
+      );
+    });
+  });
+
+  describe('publish', () => {
+    it('publishes a draft question by setting status to active', async () => {
+      const tx = {
+        question: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'q-1' }),
+          update: jest.fn().mockResolvedValue({ id: 'q-1', status: 'active', tags: [] }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.publish(context, 'q-1');
+
+      expect(result.status).toBe('active');
+      expect(tx.question.update).toHaveBeenCalledWith({
+        where: { id: 'q-1' },
+        data: { status: 'active' },
+        include: { options: true, tags: { include: { tag: true } } },
+      });
+    });
+
+    it('throws NotFoundException when publishing a question that does not exist', async () => {
+      const tx = { question: { findFirst: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.publish(context, 'missing-id')).rejects.toThrow(NotFoundException);
+    });
   });
 });

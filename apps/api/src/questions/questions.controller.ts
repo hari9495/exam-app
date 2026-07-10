@@ -8,6 +8,7 @@ import { TenantContext } from '@exam-platform/shared';
 import { QuestionsService } from './questions.service';
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
+import { AiGenerateQuestionsDto } from './dto/ai-generate-questions.dto';
 
 @Controller('questions')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -18,6 +19,12 @@ export class QuestionsController {
   @RequirePermissions('question_bank:manage')
   create(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: CreateQuestionDto) {
     return this.questionsService.create(tenant, userId, dto);
+  }
+
+  @Post('ai-generate')
+  @RequirePermissions('question_bank:manage')
+  aiGenerate(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: AiGenerateQuestionsDto) {
+    return this.questionsService.aiGenerate(tenant, userId, dto);
   }
 
   @Get()
@@ -50,5 +57,11 @@ export class QuestionsController {
   @RequirePermissions('question_bank:manage')
   archive(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.questionsService.archive(tenant, id);
+  }
+
+  @Post(':id/publish')
+  @RequirePermissions('question_bank:manage')
+  publish(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.questionsService.publish(tenant, id);
   }
 }
