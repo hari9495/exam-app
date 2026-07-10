@@ -288,6 +288,73 @@ describe('ExamsService', () => {
     });
   });
 
+  it('rejects clearing poolTagIds to an empty array on an already-pool section, without mutating anything', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
+      examSection: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'section-1', selectionMode: 'pool', poolSize: 5, poolDifficulty: null, poolTags: [{ tagId: 'tag-1' }],
+        }),
+        update: jest.fn(),
+      },
+      examSectionQuestion: { deleteMany: jest.fn() },
+      examSectionPoolTag: { deleteMany: jest.fn() },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(
+      service.updateSection(context, 'exam-1', 'section-1', { title: 'X', poolTagIds: [] }),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(tx.examSectionPoolTag.deleteMany).not.toHaveBeenCalled();
+    expect(tx.examSection.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects zeroing out poolSize on an already-pool section, without mutating anything', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
+      examSection: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'section-1', selectionMode: 'pool', poolSize: 5, poolDifficulty: null, poolTags: [{ tagId: 'tag-1' }],
+        }),
+        update: jest.fn(),
+      },
+      examSectionQuestion: { deleteMany: jest.fn() },
+      examSectionPoolTag: { deleteMany: jest.fn() },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(
+      service.updateSection(context, 'exam-1', 'section-1', { title: 'X', poolSize: 0 }),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(tx.examSectionPoolTag.deleteMany).not.toHaveBeenCalled();
+    expect(tx.examSection.update).not.toHaveBeenCalled();
+  });
+
+  it('allows a title-only update on an already-valid pool section', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
+      examSection: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'section-1', selectionMode: 'pool', poolSize: 5, poolDifficulty: null, poolTags: [{ tagId: 'tag-1' }],
+        }),
+        update: jest.fn().mockResolvedValue({ id: 'section-1', title: 'Renamed', selectionMode: 'pool' }),
+      },
+      examSectionQuestion: { deleteMany: jest.fn() },
+      examSectionPoolTag: { deleteMany: jest.fn() },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.updateSection(context, 'exam-1', 'section-1', { title: 'Renamed' });
+
+    expect(tx.examSection.update).toHaveBeenCalledWith({
+      where: { id: 'section-1' },
+      data: { title: 'Renamed', selectionMode: 'pool', poolSize: 5, poolDifficulty: null },
+      include: { poolTags: true },
+    });
+  });
+
   it('deletes a section that belongs to the given exam', async () => {
     const tx = {
       exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },

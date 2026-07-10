@@ -187,12 +187,25 @@ export class ExamsService {
       if (!exam) {
         throw new NotFoundException(`Exam ${examId} not found`);
       }
-      const section = await tx.examSection.findFirst({ where: { id: sectionId, examId } });
+      const section = await tx.examSection.findFirst({ where: { id: sectionId, examId }, include: { poolTags: true } });
       if (!section) {
         throw new NotFoundException(`Section ${sectionId} not found`);
       }
 
       const nextMode = dto.selectionMode ?? section.selectionMode;
+
+      if (nextMode === 'pool') {
+        const effectivePoolSize = dto.poolSize ?? section.poolSize;
+        const effectivePoolTagCount = dto.poolTagIds !== undefined
+          ? [...new Set(dto.poolTagIds)].length
+          : section.poolTags.length;
+        if (!effectivePoolSize || effectivePoolSize < 1) {
+          throw new BadRequestException('A pool section requires poolSize to be at least 1');
+        }
+        if (effectivePoolTagCount === 0) {
+          throw new BadRequestException('A pool section requires at least one poolTagId');
+        }
+      }
 
       if (nextMode === 'pool' && section.selectionMode === 'fixed') {
         await tx.examSectionQuestion.deleteMany({ where: { sectionId } });
