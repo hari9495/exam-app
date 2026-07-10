@@ -175,16 +175,17 @@ model Exam {
 }
 
 model ExamSection {
-  id             String                @id @default(uuid()) @db.UniqueIdentifier
-  examId         String                @map("exam_id") @db.UniqueIdentifier
-  title          String
-  orderIndex     Int                   @map("order_index")
-  selectionMode  String                @default("fixed") @map("selection_mode")
-  poolSize       Int?                  @map("pool_size")
-  poolDifficulty String?               @map("pool_difficulty")
-  exam           Exam                  @relation(fields: [examId], references: [id], onDelete: Cascade)
-  questions      ExamSectionQuestion[]
-  poolTags       ExamSectionPoolTag[]
+  id                    String                @id @default(uuid()) @db.UniqueIdentifier
+  examId                String                @map("exam_id") @db.UniqueIdentifier
+  title                 String
+  orderIndex            Int                   @map("order_index")
+  selectionMode         String                @default("fixed") @map("selection_mode")
+  poolSize              Int?                  @map("pool_size")
+  poolDifficulty        String?               @map("pool_difficulty")
+  targetDurationMinutes Int?                  @map("target_duration_minutes")
+  exam                  Exam                  @relation(fields: [examId], references: [id], onDelete: Cascade)
+  questions             ExamSectionQuestion[]
+  poolTags              ExamSectionPoolTag[]
 
   @@index([examId])
   @@map("exam_sections")
