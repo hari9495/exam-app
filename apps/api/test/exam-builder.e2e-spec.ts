@@ -142,6 +142,9 @@ describe('Exam Builder HTTP flow', () => {
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) =>
       tx.question.deleteMany({ where: { organizationId: orgId } }),
     );
+    await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) =>
+      tx.tag.deleteMany({ where: { organizationId: orgId } }),
+    );
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: true }, (tx) =>
       tx.refreshToken.deleteMany({ where: { user: { organizationId: orgId } } }),
     );
@@ -236,5 +239,56 @@ describe('Exam Builder HTTP flow', () => {
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
     expect(activeListResponse.body.map((e: { id: string }) => e.id)).not.toContain(examId);
+  });
+
+  it('rejects publishing an exam with an underfilled pool section, then succeeds once enough matching questions exist', async () => {
+    const poolExamResponse = await request(app.getHttpServer())
+      .post('/api/v1/exams')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ title: 'Pool Round' })
+      .expect(201);
+    const poolExamId = poolExamResponse.body.id;
+
+    const poolSectionResponse = await request(app.getHttpServer())
+      .post(`/api/v1/exams/${poolExamId}/sections`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ title: 'Pool Section' })
+      .expect(201);
+    const poolSectionId = poolSectionResponse.body.id;
+
+    const sqlQuestionOne = await request(app.getHttpServer())
+      .post('/api/v1/questions')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({
+        type: 'true_false', text: 'SQL question one', difficulty: 'medium', marks: 1, tags: ['sql'],
+        options: [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }],
+      })
+      .expect(201);
+    const sqlTagId = sqlQuestionOne.body.tags[0].id;
+
+    await request(app.getHttpServer())
+      .patch(`/api/v1/exams/${poolExamId}/sections/${poolSectionId}`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ title: 'Pool Section', selectionMode: 'pool', poolSize: 2, poolTagIds: [sqlTagId] })
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/exams/${poolExamId}/publish`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/questions')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({
+        type: 'true_false', text: 'SQL question two', difficulty: 'medium', marks: 1, tags: ['sql'],
+        options: [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }],
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/exams/${poolExamId}/publish`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(201);
   });
 });

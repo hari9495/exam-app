@@ -47,6 +47,7 @@ export class ExamsService {
           instructions: dto.instructions,
           durationMinutes: dto.durationMinutes,
           passCriteriaPercent: dto.passCriteriaPercent,
+          randomizeOrder: dto.randomizeOrder,
           createdBy: userId,
         },
       }),
@@ -101,6 +102,7 @@ export class ExamsService {
           instructions: dto.instructions,
           ...(dto.durationMinutes !== undefined ? { durationMinutes: dto.durationMinutes } : {}),
           ...(dto.passCriteriaPercent !== undefined ? { passCriteriaPercent: dto.passCriteriaPercent } : {}),
+          ...(dto.randomizeOrder !== undefined ? { randomizeOrder: dto.randomizeOrder } : {}),
         },
       });
     });
@@ -120,7 +122,7 @@ export class ExamsService {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({
         where: { id, organizationId: context.organizationId as string },
-        include: { sections: { include: { questions: true } } },
+        include: { sections: { include: { questions: true, poolTags: true } } },
       });
       if (!exam) {
         throw new NotFoundException(`Exam ${id} not found`);
@@ -131,9 +133,25 @@ export class ExamsService {
       if (exam.sections.length === 0) {
         throw new BadRequestException('Exam must have at least one section before it can be published');
       }
-      const emptySection = exam.sections.find((section) => section.questions.length === 0);
-      if (emptySection) {
-        throw new BadRequestException(`Section "${emptySection.title}" has no questions attached`);
+      for (const section of exam.sections) {
+        if (section.selectionMode === 'pool') {
+          const tagIds = section.poolTags.map((poolTag) => poolTag.tagId);
+          const matchingCount = await tx.question.count({
+            where: {
+              organizationId: context.organizationId as string,
+              status: 'active',
+              ...(section.poolDifficulty ? { difficulty: section.poolDifficulty } : {}),
+              AND: tagIds.map((tagId) => ({ tags: { some: { tagId } } })),
+            },
+          });
+          if (matchingCount < (section.poolSize ?? 0)) {
+            throw new BadRequestException(
+              `Section "${section.title}" pool requires ${section.poolSize} matching questions, only ${matchingCount} available`,
+            );
+          }
+        } else if (section.questions.length === 0) {
+          throw new BadRequestException(`Section "${section.title}" has no questions attached`);
+        }
       }
       return tx.exam.update({ where: { id }, data: { status: 'published' } });
     });
@@ -173,7 +191,32 @@ export class ExamsService {
       if (!section) {
         throw new NotFoundException(`Section ${sectionId} not found`);
       }
-      return tx.examSection.update({ where: { id: sectionId }, data: { title: dto.title } });
+
+      const nextMode = dto.selectionMode ?? section.selectionMode;
+
+      if (nextMode === 'pool' && section.selectionMode === 'fixed') {
+        await tx.examSectionQuestion.deleteMany({ where: { sectionId } });
+      }
+      if (nextMode === 'fixed' && section.selectionMode === 'pool') {
+        await tx.examSectionPoolTag.deleteMany({ where: { sectionId } });
+      }
+      if (nextMode === 'pool' && dto.poolTagIds) {
+        await tx.examSectionPoolTag.deleteMany({ where: { sectionId } });
+      }
+
+      return tx.examSection.update({
+        where: { id: sectionId },
+        data: {
+          title: dto.title,
+          selectionMode: nextMode,
+          poolSize: nextMode === 'pool' ? (dto.poolSize ?? section.poolSize) : null,
+          poolDifficulty: nextMode === 'pool' ? (dto.poolDifficulty ?? section.poolDifficulty) : null,
+          ...(nextMode === 'pool' && dto.poolTagIds
+            ? { poolTags: { create: dto.poolTagIds.map((tagId) => ({ tagId })) } }
+            : {}),
+        },
+        include: { poolTags: true },
+      });
     });
   }
 

@@ -1,4 +1,4 @@
-import { IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class CreateExamDto {
   @IsString()
@@ -19,4 +19,8 @@ export class CreateExamDto {
   @Min(0)
   @Max(100)
   passCriteriaPercent?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  randomizeOrder?: boolean;
 }

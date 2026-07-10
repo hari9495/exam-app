@@ -46,6 +46,7 @@ describe('ExamsService', () => {
         instructions: undefined,
         durationMinutes: 45,
         passCriteriaPercent: 60,
+        randomizeOrder: undefined,
         createdBy: 'user-1',
       },
     });
@@ -64,6 +65,7 @@ describe('ExamsService', () => {
         instructions: undefined,
         durationMinutes: undefined,
         passCriteriaPercent: undefined,
+        randomizeOrder: undefined,
         createdBy: 'user-1',
       },
     });
@@ -177,6 +179,83 @@ describe('ExamsService', () => {
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
     await expect(service.updateSection(context, 'exam-1', 'wrong-section', { title: 'x' })).rejects.toThrow(NotFoundException);
+  });
+
+  it('updates a section\'s title without touching pool data when staying fixed', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
+      examSection: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'section-1', selectionMode: 'fixed', poolSize: null, poolDifficulty: null }),
+        update: jest.fn().mockResolvedValue({ id: 'section-1', title: 'Renamed', selectionMode: 'fixed' }),
+      },
+      examSectionQuestion: { deleteMany: jest.fn() },
+      examSectionPoolTag: { deleteMany: jest.fn() },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.updateSection(context, 'exam-1', 'section-1', { title: 'Renamed' });
+
+    expect(tx.examSectionQuestion.deleteMany).not.toHaveBeenCalled();
+    expect(tx.examSectionPoolTag.deleteMany).not.toHaveBeenCalled();
+    expect(tx.examSection.update).toHaveBeenCalledWith({
+      where: { id: 'section-1' },
+      data: { title: 'Renamed', selectionMode: 'fixed', poolSize: null, poolDifficulty: null },
+      include: { poolTags: true },
+    });
+  });
+
+  it('switches a section from fixed to pool, clearing existing question links and storing pool criteria', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
+      examSection: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'section-1', selectionMode: 'fixed', poolSize: null, poolDifficulty: null }),
+        update: jest.fn().mockResolvedValue({ id: 'section-1', title: 'Pool Section', selectionMode: 'pool' }),
+      },
+      examSectionQuestion: { deleteMany: jest.fn() },
+      examSectionPoolTag: { deleteMany: jest.fn() },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.updateSection(context, 'exam-1', 'section-1', {
+      title: 'Pool Section', selectionMode: 'pool', poolSize: 5, poolDifficulty: 'hard', poolTagIds: ['tag-1', 'tag-2'],
+    });
+
+    expect(tx.examSectionQuestion.deleteMany).toHaveBeenCalledWith({ where: { sectionId: 'section-1' } });
+    expect(tx.examSectionPoolTag.deleteMany).toHaveBeenCalledWith({ where: { sectionId: 'section-1' } });
+    expect(tx.examSection.update).toHaveBeenCalledWith({
+      where: { id: 'section-1' },
+      data: {
+        title: 'Pool Section',
+        selectionMode: 'pool',
+        poolSize: 5,
+        poolDifficulty: 'hard',
+        poolTags: { create: [{ tagId: 'tag-1' }, { tagId: 'tag-2' }] },
+      },
+      include: { poolTags: true },
+    });
+  });
+
+  it('switches a section from pool back to fixed, clearing pool criteria', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
+      examSection: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'section-1', selectionMode: 'pool', poolSize: 5, poolDifficulty: 'hard' }),
+        update: jest.fn().mockResolvedValue({ id: 'section-1', title: 'Section', selectionMode: 'fixed' }),
+      },
+      examSectionQuestion: { deleteMany: jest.fn() },
+      examSectionPoolTag: { deleteMany: jest.fn() },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.updateSection(context, 'exam-1', 'section-1', { title: 'Section', selectionMode: 'fixed' });
+
+    expect(tx.examSectionPoolTag.deleteMany).toHaveBeenCalledWith({ where: { sectionId: 'section-1' } });
+    expect(tx.examSectionQuestion.deleteMany).not.toHaveBeenCalled();
+    expect(tx.examSection.update).toHaveBeenCalledWith({
+      where: { id: 'section-1' },
+      data: { title: 'Section', selectionMode: 'fixed', poolSize: null, poolDifficulty: null },
+      include: { poolTags: true },
+    });
   });
 
   it('deletes a section that belongs to the given exam', async () => {
@@ -316,6 +395,48 @@ describe('ExamsService', () => {
           ],
         }),
       },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.publish(context, 'exam-1')).rejects.toThrow(BadRequestException);
+  });
+
+  it('publishes a draft exam whose pool section has enough matching questions', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'exam-1',
+          status: 'draft',
+          sections: [
+            { id: 'section-1', title: 'Pool Section', selectionMode: 'pool', poolSize: 3, poolDifficulty: 'hard', questions: [], poolTags: [{ tagId: 'tag-1' }] },
+          ],
+        }),
+        update: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }),
+      },
+      question: { count: jest.fn().mockResolvedValue(3) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    const result = await service.publish(context, 'exam-1');
+
+    expect(result.status).toBe('published');
+    expect(tx.question.count).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1', status: 'active', difficulty: 'hard', AND: [{ tags: { some: { tagId: 'tag-1' } } }] },
+    });
+  });
+
+  it('rejects publish when a pool section has fewer matching questions than its pool size', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'exam-1',
+          status: 'draft',
+          sections: [
+            { id: 'section-1', title: 'Pool Section', selectionMode: 'pool', poolSize: 5, poolDifficulty: null, questions: [], poolTags: [{ tagId: 'tag-1' }] },
+          ],
+        }),
+      },
+      question: { count: jest.fn().mockResolvedValue(3) },
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
