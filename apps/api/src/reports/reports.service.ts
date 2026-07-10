@@ -33,6 +33,10 @@ export interface QuestionAccuracyRow {
   accuracyPercentage: number;
 }
 
+export interface ExportResultRow extends ExamResultRow {
+  durationMinutes: number | null;
+}
+
 @Injectable()
 export class ReportsService {
   constructor(
@@ -176,6 +180,20 @@ export class ReportsService {
           accuracyPercentage: timesIncluded > 0 ? (timesCorrect / timesIncluded) * 100 : 0,
         };
       });
+    });
+  }
+
+  async getExportRows(context: TenantContext, examId: string): Promise<ExportResultRow[]> {
+    const rows = await this.examsService.getResults(context, examId);
+    const attemptIds = rows.map((row) => row.attemptId).filter((id): id is string => id !== null);
+    const startedAtById = await this.fetchStartedAtByAttemptId(context, attemptIds);
+
+    return rows.map((row) => {
+      const startedAt = row.attemptId ? startedAtById.get(row.attemptId) : undefined;
+      const durationMinutes = startedAt && row.submittedAt
+        ? (row.submittedAt.getTime() - startedAt.getTime()) / 60_000
+        : null;
+      return { ...row, durationMinutes };
     });
   }
 }

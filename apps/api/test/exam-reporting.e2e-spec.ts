@@ -200,4 +200,62 @@ describe('Exam Reporting HTTP flow', () => {
       },
     ]);
   });
+
+  it('exports results as CSV, XLSX, and PDF with correct headers and non-empty bodies', async () => {
+    const csvResponse = await request(adminHttp)
+      .get(`/api/v1/exams/${examId}/results/export?format=csv`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(200);
+    expect(csvResponse.headers['content-type']).toContain('text/csv');
+    expect(csvResponse.headers['content-disposition']).toContain('attachment');
+    expect(csvResponse.text).toContain('Alice');
+
+    const xlsxResponse = await request(adminHttp)
+      .get(`/api/v1/exams/${examId}/results/export?format=xlsx`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(200);
+    expect(xlsxResponse.headers['content-type']).toContain('spreadsheetml');
+    expect(Number(xlsxResponse.headers['content-length'])).toBeGreaterThan(0);
+
+    const pdfResponse = await request(adminHttp)
+      .get(`/api/v1/exams/${examId}/results/export?format=pdf`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(200);
+    expect(pdfResponse.headers['content-type']).toBe('application/pdf');
+    expect(Number(pdfResponse.headers['content-length'])).toBeGreaterThan(0);
+
+    await request(adminHttp)
+      .get(`/api/v1/exams/${examId}/results/export?format=bogus`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(400);
+  });
+
+  it('returns 404 for all three reporting endpoints when the exam belongs to a different organization', async () => {
+    const otherPlan = await prisma.plan.create({
+      data: { name: `ci-reporting-other-plan-${randomUUID()}`, candidateLimit: 10, aiCreditLimit: 1, proctoringMinutesLimit: 1 },
+    });
+    const otherOrg = await prisma.organization.create({
+      data: { name: 'CI Reporting Other Org', slug: `ci-reporting-other-org-${randomUUID()}`, planId: otherPlan.id },
+    });
+    const otherExam = await tenantPrisma.forTenant({ organizationId: otherOrg.id, isSuperAdmin: false }, (tx) =>
+      tx.exam.create({ data: { organizationId: otherOrg.id, title: 'Other Org Exam', createdBy: randomUUID() } }),
+    );
+
+    await request(adminHttp)
+      .get(`/api/v1/exams/${otherExam.id}/results/summary`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(404);
+    await request(adminHttp)
+      .get(`/api/v1/exams/${otherExam.id}/results/question-accuracy`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(404);
+    await request(adminHttp)
+      .get(`/api/v1/exams/${otherExam.id}/results/export?format=csv`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(404);
+
+    await tenantPrisma.forTenant({ organizationId: otherOrg.id, isSuperAdmin: false }, (tx) => tx.exam.deleteMany({ where: { organizationId: otherOrg.id } }));
+    await prisma.organization.delete({ where: { id: otherOrg.id } }).catch(() => undefined);
+    await prisma.plan.delete({ where: { id: otherPlan.id } }).catch(() => undefined);
+  });
 });

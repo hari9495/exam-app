@@ -184,4 +184,29 @@ describe('ReportsService', () => {
       expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
     });
   });
+
+  describe('getExportRows', () => {
+    it('enriches each result row with durationMinutes computed from startedAt/submittedAt', async () => {
+      examsService.getResults.mockResolvedValue([
+        row({ status: 'submitted', attemptId: 'a1', submittedAt: new Date('2026-01-01T00:20:00Z') }),
+        row({ status: 'in_progress', attemptId: 'a2', submittedAt: null }),
+        row({ status: 'invited', attemptId: null }),
+      ]);
+      const tx = {
+        attempt: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'a1', startedAt: new Date('2026-01-01T00:00:00Z') },
+            { id: 'a2', startedAt: new Date('2026-01-01T00:00:00Z') },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const exportRows = await service.getExportRows(context, 'exam-1');
+
+      expect(exportRows[0].durationMinutes).toBe(20);
+      expect(exportRows[1].durationMinutes).toBeNull();
+      expect(exportRows[2].durationMinutes).toBeNull();
+    });
+  });
 });
