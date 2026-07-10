@@ -135,11 +135,12 @@ model QuestionOption {
 }
 
 model Tag {
-  id             String        @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String        @map("organization_id") @db.UniqueIdentifier
+  id             String               @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String               @map("organization_id") @db.UniqueIdentifier
   name           String
-  createdAt      DateTime      @default(now()) @map("created_at")
+  createdAt      DateTime             @default(now()) @map("created_at")
   questions      QuestionTag[]
+  poolSections   ExamSectionPoolTag[]
 
   @@unique([organizationId, name])
   @@map("tags")
@@ -163,6 +164,7 @@ model Exam {
   status              String        @default("draft")
   durationMinutes     Int           @default(60) @map("duration_minutes")
   passCriteriaPercent Int           @default(40) @map("pass_criteria_percent")
+  randomizeOrder      Boolean       @default(false) @map("randomize_order")
   createdBy           String        @map("created_by") @db.UniqueIdentifier
   createdAt           DateTime      @default(now()) @map("created_at")
   sections            ExamSection[]
@@ -173,12 +175,16 @@ model Exam {
 }
 
 model ExamSection {
-  id         String                @id @default(uuid()) @db.UniqueIdentifier
-  examId     String                @map("exam_id") @db.UniqueIdentifier
-  title      String
-  orderIndex Int                   @map("order_index")
-  exam       Exam                  @relation(fields: [examId], references: [id], onDelete: Cascade)
-  questions  ExamSectionQuestion[]
+  id             String                @id @default(uuid()) @db.UniqueIdentifier
+  examId         String                @map("exam_id") @db.UniqueIdentifier
+  title          String
+  orderIndex     Int                   @map("order_index")
+  selectionMode  String                @default("fixed") @map("selection_mode")
+  poolSize       Int?                  @map("pool_size")
+  poolDifficulty String?               @map("pool_difficulty")
+  exam           Exam                  @relation(fields: [examId], references: [id], onDelete: Cascade)
+  questions      ExamSectionQuestion[]
+  poolTags       ExamSectionPoolTag[]
 
   @@index([examId])
   @@map("exam_sections")
@@ -193,6 +199,16 @@ model ExamSectionQuestion {
 
   @@id([sectionId, questionId])
   @@map("exam_section_questions")
+}
+
+model ExamSectionPoolTag {
+  sectionId String      @map("section_id") @db.UniqueIdentifier
+  tagId     String      @map("tag_id") @db.UniqueIdentifier
+  section   ExamSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  tag       Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([sectionId, tagId])
+  @@map("exam_section_pool_tags")
 }
 
 model Candidate {
@@ -242,22 +258,24 @@ model Notification {
 }
 
 model Attempt {
-  id                 String              @id @default(uuid()) @db.UniqueIdentifier
-  invitationId       String              @unique @map("invitation_id") @db.UniqueIdentifier
-  candidateId        String              @map("candidate_id") @db.UniqueIdentifier
-  examId             String              @map("exam_id") @db.UniqueIdentifier
-  status             String              @default("in_progress")
-  questionOrderJson  String              @map("question_order_json") @db.NVarChar(Max)
-  startedAt          DateTime            @default(now()) @map("started_at")
-  submittedAt        DateTime?           @map("submitted_at")
-  deviceFingerprint  String?             @map("device_fingerprint")
-  lastSeenAt         DateTime?           @map("last_seen_at")
-  invitation         Invitation          @relation(fields: [invitationId], references: [id], onDelete: Cascade)
-  answers            Answer[]
-  result             Result?
-  proctoringEvents   ProctoringEvent[]
-  messages           CandidateMessage[]
-  proctoringAnalysis ProctoringAnalysis?
+  id                  String              @id @default(uuid()) @db.UniqueIdentifier
+  invitationId        String              @unique @map("invitation_id") @db.UniqueIdentifier
+  candidateId         String              @map("candidate_id") @db.UniqueIdentifier
+  examId              String              @map("exam_id") @db.UniqueIdentifier
+  status              String              @default("in_progress")
+  questionOrderJson   String              @map("question_order_json") @db.NVarChar(Max)
+  sectionSnapshotJson String              @map("section_snapshot_json") @db.NVarChar(Max)
+  optionOrderJson     String?             @map("option_order_json") @db.NVarChar(Max)
+  startedAt           DateTime            @default(now()) @map("started_at")
+  submittedAt         DateTime?           @map("submitted_at")
+  deviceFingerprint   String?             @map("device_fingerprint")
+  lastSeenAt          DateTime?           @map("last_seen_at")
+  invitation          Invitation          @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  answers             Answer[]
+  result              Result?
+  proctoringEvents    ProctoringEvent[]
+  messages            CandidateMessage[]
+  proctoringAnalysis  ProctoringAnalysis?
 
   @@index([examId, status])
   @@map("attempts")
