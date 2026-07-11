@@ -36,7 +36,7 @@ Both `.github/ci.yml` and `.github/dependabot.yml` sit inert until a GitHub remo
 ## 3. File Structure
 
 - **Create** `.github/workflows/ci.yml` — the pipeline described above.
-- **Create** `.github/dependabot.yml` — weekly update PRs, one entry per workspace's `package.json` (root, `apps/api`, `apps/exam-runtime`, `packages/shared`, `apps/web`).
+- **Create** `.github/dependabot.yml` — weekly update PRs. A single root `npm` entry (Dependabot auto-detects npm workspaces from the root `package.json`/lockfile — a per-workspace entry would error, since all five workspaces share one lockfile), plus one `github-actions` entry. Corrected here from this spec's original per-workspace-entry claim during plan-writing self-review.
 - **Create** `.nvmrc` (repo root, contents `20`) — matches the existing `engines` constraint so any tool that respects `.nvmrc` (including some GitHub Actions setup steps, and local `nvm`/`fnm` usage) stays consistent with CI without hardcoding the version in more than one place.
 
 ## 4. Testing & Verification Approach
