@@ -34,3 +34,9 @@ jobs:
 
       - name: Build apps/exam-runtime
         run: npm run build --workspace=apps/exam-runtime
+
+      - name: Dependency audit report (all severities, informational)
+        run: npm audit || true
+
+      - name: Dependency audit gate (fails on high/critical)
+        run: npm audit --audit-level=high
