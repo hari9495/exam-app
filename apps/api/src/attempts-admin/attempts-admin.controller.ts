@@ -47,4 +47,16 @@ export class AttemptsAdminController {
   reanalyze(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.attemptsAdminService.reanalyze(tenant, id);
   }
+
+  @Get(':id/ai-insight')
+  @RequirePermissions('results:view')
+  getInsight(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.attemptsAdminService.getInsight(tenant, id);
+  }
+
+  @Post(':id/ai-insight/regenerate')
+  @RequirePermissions('results:view')
+  regenerateInsight(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.attemptsAdminService.regenerateInsight(tenant, id);
+  }
 }

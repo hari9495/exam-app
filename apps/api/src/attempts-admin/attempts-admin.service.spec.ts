@@ -8,13 +8,13 @@ describe('AttemptsAdminService', () => {
   let service: AttemptsAdminService;
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
-  let examRuntime: { forceSubmit: jest.Mock; reanalyze: jest.Mock; notifyMessageSent: jest.Mock };
+  let examRuntime: { forceSubmit: jest.Mock; reanalyze: jest.Mock; notifyMessageSent: jest.Mock; regenerateInsight: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
-    examRuntime = { forceSubmit: jest.fn(), reanalyze: jest.fn(), notifyMessageSent: jest.fn() };
+    examRuntime = { forceSubmit: jest.fn(), reanalyze: jest.fn(), notifyMessageSent: jest.fn(), regenerateInsight: jest.fn() };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -142,6 +142,71 @@ describe('AttemptsAdminService', () => {
 
       expect(examRuntime.reanalyze).toHaveBeenCalledWith('attempt-1');
       expect(result).toBe(analysis);
+    });
+  });
+
+  describe('getInsight', () => {
+    it('throws NotFoundException when the attempt is not in the caller organization', async () => {
+      const tx = { attempt: { findFirst: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.getInsight(context, 'attempt-1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws NotFoundException when the attempt is owned but no insight has been generated yet', async () => {
+      let call = 0;
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => {
+        call += 1;
+        if (call === 1) {
+          return fn({ attempt: { findFirst: jest.fn().mockResolvedValue({ id: 'attempt-1' }) } });
+        }
+        return fn({ attemptInsight: { findFirst: jest.fn().mockResolvedValue(null) } });
+      });
+
+      await expect(service.getInsight(context, 'attempt-1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('returns the AttemptInsight row for an owned attempt', async () => {
+      const insight = { attemptId: 'attempt-1', status: 'completed', summary: 'Strong in SQL.' };
+      let call = 0;
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => {
+        call += 1;
+        if (call === 1) {
+          return fn({ attempt: { findFirst: jest.fn().mockResolvedValue({ id: 'attempt-1' }) } });
+        }
+        return fn({ attemptInsight: { findFirst: jest.fn().mockResolvedValue(insight) } });
+      });
+
+      const result = await service.getInsight(context, 'attempt-1');
+
+      expect(result).toBe(insight);
+    });
+  });
+
+  describe('regenerateInsight', () => {
+    it('throws NotFoundException without calling the internal client when the attempt is not owned', async () => {
+      const tx = { attempt: { findFirst: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.regenerateInsight(context, 'attempt-1')).rejects.toThrow(NotFoundException);
+      expect(examRuntime.regenerateInsight).not.toHaveBeenCalled();
+    });
+
+    it('triggers regeneration via the internal client, then reads back the fresh AttemptInsight row', async () => {
+      const insight = { attemptId: 'attempt-1', status: 'completed', summary: 'Fresh summary.' };
+      let call = 0;
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => {
+        call += 1;
+        if (call === 1) {
+          return fn({ attempt: { findFirst: jest.fn().mockResolvedValue({ id: 'attempt-1' }) } });
+        }
+        return fn({ attemptInsight: { findUniqueOrThrow: jest.fn().mockResolvedValue(insight) } });
+      });
+
+      const result = await service.regenerateInsight(context, 'attempt-1');
+
+      expect(examRuntime.regenerateInsight).toHaveBeenCalledWith('attempt-1');
+      expect(result).toBe(insight);
     });
   });
 });

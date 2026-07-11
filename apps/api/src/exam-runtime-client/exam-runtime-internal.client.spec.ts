@@ -63,6 +63,20 @@ describe('ExamRuntimeInternalClient', () => {
     });
   });
 
+  describe('regenerateInsight', () => {
+    it('POSTs to the internal regenerate-insight endpoint', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({ ok: true, json: async () => ({}) });
+
+      await client.regenerateInsight('attempt-1');
+
+      expect(global.fetch).toHaveBeenCalledWith('http://localhost:3002/api/v1/internal/attempts/attempt-1/regenerate-insight', {
+        method: 'POST',
+        headers: { 'x-internal-secret': 'test-internal-secret' },
+        signal: expect.any(AbortSignal),
+      });
+    });
+  });
+
   describe('settleIfExpiredBatch', () => {
     it('POSTs the attempt ids as JSON to the internal batch settle endpoint', async () => {
       (global.fetch as jest.Mock).mockResolvedValue({ ok: true, json: async () => ({}) });

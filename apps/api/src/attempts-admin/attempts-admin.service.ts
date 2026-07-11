@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { CandidateMessage, ProctoringAnalysis, ProctoringEvent } from '@prisma/client';
+import { AttemptInsight, CandidateMessage, ProctoringAnalysis, ProctoringEvent } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService } from '@exam-platform/shared';
 import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
 
@@ -87,6 +87,24 @@ export class AttemptsAdminService {
     await this.examRuntime.reanalyze(attemptId);
 
     return this.tenantPrisma.forTenant(context, (tx) => tx.proctoringAnalysis.findUniqueOrThrow({ where: { attemptId } }));
+  }
+
+  async getInsight(context: TenantContext, attemptId: string): Promise<AttemptInsight> {
+    await this.requireOwnedAttempt(context, attemptId);
+
+    const insight = await this.tenantPrisma.forTenant(context, (tx) => tx.attemptInsight.findFirst({ where: { attemptId } }));
+    if (!insight) {
+      throw new NotFoundException(`AI insight not yet generated for attempt ${attemptId}`);
+    }
+    return insight;
+  }
+
+  async regenerateInsight(context: TenantContext, attemptId: string): Promise<AttemptInsight> {
+    await this.requireOwnedAttempt(context, attemptId);
+
+    await this.examRuntime.regenerateInsight(attemptId);
+
+    return this.tenantPrisma.forTenant(context, (tx) => tx.attemptInsight.findUniqueOrThrow({ where: { attemptId } }));
   }
 
   private async requireOwnedAttempt(context: TenantContext, attemptId: string): Promise<void> {
