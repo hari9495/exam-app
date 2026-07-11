@@ -278,6 +278,7 @@ model Attempt {
   proctoringEvents    ProctoringEvent[]
   messages            CandidateMessage[]
   proctoringAnalysis  ProctoringAnalysis?
+  insight             AttemptInsight?
 
   @@index([examId, status])
   @@map("attempts")
@@ -378,4 +379,15 @@ model AiJob {
 
   @@index([organizationId, status])
   @@map("ai_jobs")
+}
+
+model AttemptInsight {
+  id          String   @id @default(uuid()) @db.UniqueIdentifier
+  attemptId   String   @unique @map("attempt_id") @db.UniqueIdentifier
+  status      String
+  summary     String?  @db.NVarChar(Max)
+  generatedAt DateTime @default(now()) @map("generated_at")
+  attempt     Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@map("attempt_insights")
 }
