@@ -225,14 +225,12 @@ describe('AttemptSettlementService', () => {
       ).resolves.toBeDefined();
     });
 
-    it('triggers insight generation for the finalized attempt after proctoring analysis completes', async () => {
-      const callOrder: string[] = [];
-      attemptAnalysis.analyze.mockImplementation(async () => {
-        callOrder.push('proctoring');
+    it('triggers insight generation only after proctoring analysis completes, not concurrently with it', async () => {
+      let resolveProctoringAnalysis: () => void;
+      const proctoringAnalysisPromise = new Promise<void>((resolve) => {
+        resolveProctoringAnalysis = resolve;
       });
-      attemptInsight.analyze.mockImplementation(async () => {
-        callOrder.push('insight');
-      });
+      attemptAnalysis.analyze.mockReturnValue(proctoringAnalysisPromise);
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
       const tx = {
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
@@ -244,8 +242,14 @@ describe('AttemptSettlementService', () => {
       await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
       await new Promise((resolve) => setImmediate(resolve));
 
+      // Proctoring analysis is still pending — insight generation must not have started yet.
+      expect(attemptInsight.analyze).not.toHaveBeenCalled();
+
+      resolveProctoringAnalysis!();
+      await new Promise((resolve) => setImmediate(resolve));
+
+      // Now that proctoring analysis has resolved, insight generation should have started.
       expect(attemptInsight.analyze).toHaveBeenCalledWith('attempt-1');
-      expect(callOrder).toEqual(['proctoring', 'insight']);
     });
 
     it('still triggers insight generation even when proctoring analysis rejects', async () => {
