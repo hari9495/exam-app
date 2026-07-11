@@ -100,6 +100,12 @@ describe('AI Question Generation flow', () => {
     expect(output.questionIds).toHaveLength(1);
     const [questionId] = output.questionIds;
 
+    const usageResponse = await request(adminHttp)
+      .get('/api/v1/organizations/usage')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(200);
+    expect(usageResponse.body.breakdown.questionGeneration).toBe(1);
+
     const draftListResponse = await request(adminHttp)
       .get('/api/v1/questions?status=draft')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)

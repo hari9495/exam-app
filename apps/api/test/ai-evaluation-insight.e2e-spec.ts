@@ -179,6 +179,12 @@ describe('AI Evaluation Insight flow', () => {
     expect(fakeClaudeInsightClient.generate).toHaveBeenCalledWith(
       expect.objectContaining({ topicBreakdown: [{ topic: 'SQL', correct: 1, total: 1 }] }),
     );
+
+    const usageResponse = await request(adminHttp)
+      .get('/api/v1/organizations/usage')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(200);
+    expect(usageResponse.body.breakdown.insightGeneration).toBe(1);
   });
 
   it('regenerates an insight on demand and returns a fresh row', async () => {
