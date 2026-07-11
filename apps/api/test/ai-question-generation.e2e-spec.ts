@@ -15,6 +15,7 @@ describe('AI Question Generation flow', () => {
   let planId: string;
   let orgId: string;
   let recruiterAccessToken: string;
+  let orgAdminAccessToken: string;
   const fakeClaudeClient = { generate: jest.fn() };
 
   beforeAll(async () => {
@@ -34,14 +35,25 @@ describe('AI Question Generation flow', () => {
     orgId = org.id;
 
     const recruiterHash = await argon2.hash('RecruiterPassw0rd!');
+    const orgAdminHash = await argon2.hash('OrgAdminPassw0rd!');
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) =>
-      tx.user.create({ data: { organizationId: orgId, email: 'recruiter@ci-ai-questiongen.test', passwordHash: recruiterHash, role: 'recruiter' } }),
+      Promise.all([
+        tx.user.create({ data: { organizationId: orgId, email: 'recruiter@ci-ai-questiongen.test', passwordHash: recruiterHash, role: 'recruiter' } }),
+        tx.user.create({ data: { organizationId: orgId, email: 'orgadmin@ci-ai-questiongen.test', passwordHash: orgAdminHash, role: 'org_admin' } }),
+      ]),
     );
 
     recruiterAccessToken = (
       await request(adminHttp)
         .post('/api/v1/auth/staff/login')
         .send({ organizationSlug: org.slug, email: 'recruiter@ci-ai-questiongen.test', password: 'RecruiterPassw0rd!' })
+        .expect(200)
+    ).body.accessToken;
+
+    orgAdminAccessToken = (
+      await request(adminHttp)
+        .post('/api/v1/auth/staff/login')
+        .send({ organizationSlug: org.slug, email: 'orgadmin@ci-ai-questiongen.test', password: 'OrgAdminPassw0rd!' })
         .expect(200)
     ).body.accessToken;
   });
@@ -102,7 +114,7 @@ describe('AI Question Generation flow', () => {
 
     const usageResponse = await request(adminHttp)
       .get('/api/v1/organizations/usage')
-      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .set('Authorization', `Bearer ${orgAdminAccessToken}`)
       .expect(200);
     expect(usageResponse.body.breakdown.questionGeneration).toBe(1);
 

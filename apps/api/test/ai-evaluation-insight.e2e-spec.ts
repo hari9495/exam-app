@@ -182,7 +182,7 @@ describe('AI Evaluation Insight flow', () => {
 
     const usageResponse = await request(adminHttp)
       .get('/api/v1/organizations/usage')
-      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .set('Authorization', `Bearer ${orgAdminAccessToken}`)
       .expect(200);
     expect(usageResponse.body.breakdown.insightGeneration).toBe(1);
   });
