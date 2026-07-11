@@ -107,11 +107,11 @@ export class AuthService {
   ): Promise<TokenPair> {
     const accessToken = this.jwt.sign(
       { sub: userId, organizationId, role },
-      { secret: process.env.JWT_ACCESS_SECRET, expiresIn: `${process.env.ACCESS_TOKEN_TTL_SECONDS ?? 900}s` },
+      { secret: process.env.JWT_ACCESS_SECRET, expiresIn: `${process.env.ACCESS_TOKEN_TTL_SECONDS ?? 900}s` as `${number}s` },
     );
     const refreshToken = this.jwt.sign(
       { sub: userId, familyId },
-      { secret: process.env.JWT_REFRESH_SECRET, expiresIn: `${process.env.REFRESH_TOKEN_TTL_DAYS ?? 30}d` },
+      { secret: process.env.JWT_REFRESH_SECRET, expiresIn: `${process.env.REFRESH_TOKEN_TTL_DAYS ?? 30}d` as `${number}d` },
     );
     const tokenHash = await argon2.hash(refreshToken);
     const expiresAt = new Date();

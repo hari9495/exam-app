@@ -126,11 +126,11 @@ export class CandidateAuthService {
   ): Promise<CandidateTokenPair> {
     const accessToken = this.jwt.sign(
       { sub: invitationId, subjectType: 'candidate', familyId },
-      { secret: process.env.CANDIDATE_JWT_ACCESS_SECRET, expiresIn: `${process.env.CANDIDATE_ACCESS_TOKEN_TTL_SECONDS ?? 14400}s` },
+      { secret: process.env.CANDIDATE_JWT_ACCESS_SECRET, expiresIn: `${process.env.CANDIDATE_ACCESS_TOKEN_TTL_SECONDS ?? 14400}s` as `${number}s` },
     );
     const refreshToken = this.jwt.sign(
       { sub: invitationId, familyId },
-      { secret: process.env.CANDIDATE_JWT_REFRESH_SECRET, expiresIn: `${process.env.CANDIDATE_REFRESH_TOKEN_TTL_DAYS ?? 1}d` },
+      { secret: process.env.CANDIDATE_JWT_REFRESH_SECRET, expiresIn: `${process.env.CANDIDATE_REFRESH_TOKEN_TTL_DAYS ?? 1}d` as `${number}d` },
     );
     const tokenHash = await argon2.hash(refreshToken);
     const expiresAt = new Date();
