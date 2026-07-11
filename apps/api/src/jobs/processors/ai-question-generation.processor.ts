@@ -81,6 +81,11 @@ export class AiQuestionGenerationProcessor implements JobProcessor {
         });
         ids.push(created.id);
       }
+      if (ids.length > 0) {
+        await tx.aiCreditUsage.create({
+          data: { organizationId: context.organizationId as string, source: 'question_generation', credits: ids.length, sourceId: null },
+        });
+      }
       return ids;
     });
 

@@ -55,7 +55,7 @@ describe('AttemptInsightService', () => {
       },
       proctoringAnalysis: { findUnique: jest.fn().mockResolvedValue(null) },
     };
-    const persistTx = { attemptInsight: { upsert: jest.fn() } };
+    const persistTx = { attemptInsight: { upsert: jest.fn() }, aiCreditUsage: { create: jest.fn() } };
     tenantPrisma.forTenant
       .mockResolvedValueOnce(attemptWithResult)
       .mockImplementationOnce((_ctx, fn) => fn(readTx))
@@ -77,6 +77,42 @@ describe('AttemptInsightService', () => {
     });
   });
 
+  it('records AiCreditUsage with a flat 1 credit when generation succeeds', async () => {
+    const readTx = {
+      answer: { findMany: jest.fn().mockResolvedValue([]) },
+      proctoringAnalysis: { findUnique: jest.fn().mockResolvedValue(null) },
+    };
+    const persistTx = { attemptInsight: { upsert: jest.fn() }, aiCreditUsage: { create: jest.fn() } };
+    tenantPrisma.forTenant
+      .mockResolvedValueOnce(attemptWithResult)
+      .mockImplementationOnce((_ctx, fn) => fn(readTx))
+      .mockImplementationOnce((_ctx, fn) => fn(persistTx));
+    claudeClient.generate.mockResolvedValue('Solid performance.');
+
+    await service.analyze('attempt-1');
+
+    expect(persistTx.aiCreditUsage.create).toHaveBeenCalledWith({
+      data: { organizationId: 'org-1', source: 'insight_generation', credits: 1, sourceId: 'attempt-1' },
+    });
+  });
+
+  it('does not record AiCreditUsage when the LLM client throws', async () => {
+    const readTx = {
+      answer: { findMany: jest.fn().mockResolvedValue([]) },
+      proctoringAnalysis: { findUnique: jest.fn().mockResolvedValue(null) },
+    };
+    const persistTx = { attemptInsight: { upsert: jest.fn() }, aiCreditUsage: { create: jest.fn() } };
+    tenantPrisma.forTenant
+      .mockResolvedValueOnce(attemptWithResult)
+      .mockImplementationOnce((_ctx, fn) => fn(readTx))
+      .mockImplementationOnce((_ctx, fn) => fn(persistTx));
+    claudeClient.generate.mockRejectedValue(new Error('rate limited'));
+
+    await service.analyze('attempt-1');
+
+    expect(persistTx.aiCreditUsage.create).not.toHaveBeenCalled();
+  });
+
   it('passes the ProctoringAnalysis result as plain context when it exists', async () => {
     const readTx = {
       answer: { findMany: jest.fn().mockResolvedValue([]) },
@@ -84,7 +120,7 @@ describe('AttemptInsightService', () => {
         findUnique: jest.fn().mockResolvedValue({ status: 'completed', riskLevel: 'medium', summary: 'One tab switch.' }),
       },
     };
-    const persistTx = { attemptInsight: { upsert: jest.fn() } };
+    const persistTx = { attemptInsight: { upsert: jest.fn() }, aiCreditUsage: { create: jest.fn() } };
     tenantPrisma.forTenant
       .mockResolvedValueOnce(attemptWithResult)
       .mockImplementationOnce((_ctx, fn) => fn(readTx))

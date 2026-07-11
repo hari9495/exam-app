@@ -33,7 +33,7 @@ describe('AiQuestionGenerationProcessor', () => {
       },
     ]);
     const create = jest.fn().mockResolvedValueOnce({ id: 'q-1' }).mockResolvedValueOnce({ id: 'q-2' });
-    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ question: { create } }));
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ question: { create }, aiCreditUsage: { create: jest.fn() } }));
 
     const result = await processor.process(input, context);
 
@@ -60,6 +60,51 @@ describe('AiQuestionGenerationProcessor', () => {
     });
   });
 
+  it('records AiCreditUsage with credits equal to the number of questions actually created', async () => {
+    claudeClient.generate.mockResolvedValue([
+      {
+        type: 'single_mcq',
+        text: 'Valid question',
+        options: [
+          { text: 'A', isCorrect: true },
+          { text: 'B', isCorrect: false },
+        ],
+      },
+    ]);
+    const create = jest.fn().mockResolvedValueOnce({ id: 'q-1' });
+    const aiCreditUsageCreate = jest.fn();
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
+      fn({ question: { create }, aiCreditUsage: { create: aiCreditUsageCreate } }),
+    );
+
+    await processor.process(input, context);
+
+    expect(aiCreditUsageCreate).toHaveBeenCalledWith({
+      data: { organizationId: 'org-1', source: 'question_generation', credits: 1, sourceId: null },
+    });
+  });
+
+  it('does not record AiCreditUsage when zero questions are created', async () => {
+    claudeClient.generate.mockResolvedValue([
+      {
+        type: 'single_mcq',
+        text: 'Invalid',
+        options: [
+          { text: 'A', isCorrect: true },
+          { text: 'B', isCorrect: true },
+        ],
+      },
+    ]);
+    const aiCreditUsageCreate = jest.fn();
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
+      fn({ question: { create: jest.fn() }, aiCreditUsage: { create: aiCreditUsageCreate } }),
+    );
+
+    await processor.process(input, context);
+
+    expect(aiCreditUsageCreate).not.toHaveBeenCalled();
+  });
+
   it('drops questions that fail validation and still completes with the valid ones', async () => {
     claudeClient.generate.mockResolvedValue([
       {
@@ -80,7 +125,7 @@ describe('AiQuestionGenerationProcessor', () => {
       },
     ]);
     const create = jest.fn().mockResolvedValue({ id: 'q-1' });
-    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ question: { create } }));
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ question: { create }, aiCreditUsage: { create: jest.fn() } }));
 
     const result = await processor.process(input, context);
 
@@ -135,7 +180,7 @@ describe('AiQuestionGenerationProcessor', () => {
       },
     ]);
     const create = jest.fn().mockResolvedValueOnce({ id: 'q-1' }).mockResolvedValueOnce({ id: 'q-2' });
-    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ question: { create } }));
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ question: { create }, aiCreditUsage: { create: jest.fn() } }));
 
     const result = await processor.process(input, context);
 
@@ -164,7 +209,7 @@ describe('AiQuestionGenerationProcessor', () => {
       },
     ]);
     const create = jest.fn().mockResolvedValueOnce({ id: 'q-1' });
-    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ question: { create } }));
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ question: { create }, aiCreditUsage: { create: jest.fn() } }));
 
     const result = await processor.process(input, context);
 

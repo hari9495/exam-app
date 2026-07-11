@@ -53,13 +53,18 @@ export class AttemptInsightService {
         result = { status: 'failed', summary: null };
       }
 
-      await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
-        tx.attemptInsight.upsert({
+      await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+        await tx.attemptInsight.upsert({
           where: { attemptId },
           create: { attemptId, ...result },
           update: { ...result, generatedAt: new Date() },
-        }),
-      );
+        });
+        if (result.status === 'completed') {
+          await tx.aiCreditUsage.create({
+            data: { organizationId, source: 'insight_generation', credits: 1, sourceId: attemptId },
+          });
+        }
+      });
     } catch (error) {
       this.logger.error(`Insight generation could not run for attempt ${attemptId}`, error as Error);
     }
