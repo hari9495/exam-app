@@ -3,6 +3,7 @@ import { Attempt, Prisma } from '@prisma/client';
 import { gradeAnswer, computeResult, computeRemainingSeconds } from './grading';
 import { ATTEMPT_STATUS_BROADCASTER, AttemptStatusBroadcaster } from '../monitoring/attempt-status-broadcaster';
 import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
+import { AttemptInsightService } from '../attempt-insight/attempt-insight.service';
 
 export interface SettlementExam {
   id: string;
@@ -17,6 +18,7 @@ export class AttemptSettlementService {
   constructor(
     @Inject(ATTEMPT_STATUS_BROADCASTER) private readonly broadcaster: AttemptStatusBroadcaster,
     private readonly attemptAnalysis: AttemptAnalysisService,
+    private readonly attemptInsight: AttemptInsightService,
   ) {}
 
   remainingSeconds(exam: Pick<SettlementExam, 'durationMinutes'>, attempt: { startedAt: Date }): number {
@@ -86,7 +88,18 @@ export class AttemptSettlementService {
         status: finalized.status,
       })
       .catch((error) => this.logger.error('Failed to broadcast attempt status', error as Error));
-    void this.attemptAnalysis.analyze(finalized.id).catch((error) => this.logger.error('Proctoring analysis failed to start', error as Error));
+    void (async () => {
+      try {
+        await this.attemptAnalysis.analyze(finalized.id);
+      } catch (error) {
+        this.logger.error('Proctoring analysis failed to start', error as Error);
+      }
+      try {
+        await this.attemptInsight.analyze(finalized.id);
+      } catch (error) {
+        this.logger.error('Insight generation failed to start', error as Error);
+      }
+    })();
     return finalized;
   }
 }

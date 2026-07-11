@@ -2,17 +2,24 @@ import { Prisma } from '@prisma/client';
 import { AttemptSettlementService } from './attempt-settlement.service';
 import { AttemptStatusBroadcaster } from '../monitoring/attempt-status-broadcaster';
 import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
+import { AttemptInsightService } from '../attempt-insight/attempt-insight.service';
 
 describe('AttemptSettlementService', () => {
   let service: AttemptSettlementService;
   let broadcaster: { emitAttemptStatus: jest.Mock; emitMessageSent: jest.Mock };
   let attemptAnalysis: { analyze: jest.Mock };
+  let attemptInsight: { analyze: jest.Mock };
   const exam = { id: 'exam-1', durationMinutes: 30, passCriteriaPercent: 50 };
 
   beforeEach(() => {
     broadcaster = { emitAttemptStatus: jest.fn().mockResolvedValue(undefined), emitMessageSent: jest.fn().mockResolvedValue(undefined) };
     attemptAnalysis = { analyze: jest.fn().mockResolvedValue(undefined) };
-    service = new AttemptSettlementService(broadcaster as unknown as AttemptStatusBroadcaster, attemptAnalysis as unknown as AttemptAnalysisService);
+    attemptInsight = { analyze: jest.fn().mockResolvedValue(undefined) };
+    service = new AttemptSettlementService(
+      broadcaster as unknown as AttemptStatusBroadcaster,
+      attemptAnalysis as unknown as AttemptAnalysisService,
+      attemptInsight as unknown as AttemptInsightService,
+    );
   });
 
   describe('remainingSeconds', () => {
@@ -205,6 +212,60 @@ describe('AttemptSettlementService', () => {
 
     it('does not let a rejected analysis trigger propagate out of finalize', async () => {
       attemptAnalysis.analyze.mockRejectedValue(new Error('should never surface'));
+      const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
+      const tx = {
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
+        answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
+        result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+        attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+      };
+
+      await expect(
+        service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted'),
+      ).resolves.toBeDefined();
+    });
+
+    it('triggers insight generation for the finalized attempt after proctoring analysis completes', async () => {
+      const callOrder: string[] = [];
+      attemptAnalysis.analyze.mockImplementation(async () => {
+        callOrder.push('proctoring');
+      });
+      attemptInsight.analyze.mockImplementation(async () => {
+        callOrder.push('insight');
+      });
+      const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
+      const tx = {
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
+        answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
+        result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+        attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+      };
+
+      await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(attemptInsight.analyze).toHaveBeenCalledWith('attempt-1');
+      expect(callOrder).toEqual(['proctoring', 'insight']);
+    });
+
+    it('still triggers insight generation even when proctoring analysis rejects', async () => {
+      attemptAnalysis.analyze.mockRejectedValue(new Error('proctoring analysis unavailable'));
+      const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
+      const tx = {
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
+        answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
+        result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+        attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+      };
+
+      await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(attemptInsight.analyze).toHaveBeenCalledWith('attempt-1');
+    });
+
+    it('does not let a rejected insight generation trigger propagate out of finalize', async () => {
+      attemptInsight.analyze.mockRejectedValue(new Error('should never surface'));
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
       const tx = {
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },

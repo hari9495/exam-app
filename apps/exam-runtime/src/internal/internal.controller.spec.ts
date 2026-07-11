@@ -4,6 +4,7 @@ import { InternalController } from './internal.controller';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
+import { AttemptInsightService } from '../attempt-insight/attempt-insight.service';
 import { ATTEMPT_STATUS_BROADCASTER } from '../monitoring/attempt-status-broadcaster';
 
 describe('InternalController', () => {
@@ -11,12 +12,14 @@ describe('InternalController', () => {
   let tenantPrisma: { forTenant: jest.Mock };
   let attemptSettlement: { finalize: jest.Mock; settleIfExpired: jest.Mock };
   let attemptAnalysis: { analyze: jest.Mock };
+  let attemptInsight: { analyze: jest.Mock };
   let broadcaster: { emitMessageSent: jest.Mock };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
     attemptSettlement = { finalize: jest.fn(), settleIfExpired: jest.fn() };
     attemptAnalysis = { analyze: jest.fn() };
+    attemptInsight = { analyze: jest.fn() };
     broadcaster = { emitMessageSent: jest.fn().mockResolvedValue(undefined) };
 
     const moduleRef = await Test.createTestingModule({
@@ -25,6 +28,7 @@ describe('InternalController', () => {
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: AttemptSettlementService, useValue: attemptSettlement },
         { provide: AttemptAnalysisService, useValue: attemptAnalysis },
+        { provide: AttemptInsightService, useValue: attemptInsight },
         { provide: ATTEMPT_STATUS_BROADCASTER, useValue: broadcaster },
       ],
     }).compile();
@@ -70,6 +74,14 @@ describe('InternalController', () => {
       await controller.reanalyze('attempt-1');
 
       expect(attemptAnalysis.analyze).toHaveBeenCalledWith('attempt-1');
+    });
+  });
+
+  describe('regenerateInsight', () => {
+    it('delegates to AttemptInsightService.analyze', async () => {
+      await controller.regenerateInsight('attempt-1');
+
+      expect(attemptInsight.analyze).toHaveBeenCalledWith('attempt-1');
     });
   });
 
