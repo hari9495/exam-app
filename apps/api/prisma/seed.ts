@@ -1,4 +1,4 @@
-import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 
 const prisma = new PrismaClient();
@@ -23,7 +23,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
 };
 
 async function main() {
-  await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+  await prisma.$transaction(async (tx) => {
     // Enable bypass of RLS by setting session context to super admin mode. This must run
     // on the same physical connection as every write below (including the users-table
     // writes that actually require it), which is only guaranteed inside a single
