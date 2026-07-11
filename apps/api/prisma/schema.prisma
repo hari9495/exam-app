@@ -391,3 +391,15 @@ model AttemptInsight {
 
   @@map("attempt_insights")
 }
+
+model AiCreditUsage {
+  id             String   @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String   @map("organization_id") @db.UniqueIdentifier
+  source         String
+  credits        Int
+  sourceId       String?  @map("source_id") @db.UniqueIdentifier
+  occurredAt     DateTime @default(now()) @map("occurred_at")
+
+  @@index([organizationId])
+  @@map("ai_credit_usage")
+}
