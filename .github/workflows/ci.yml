@@ -23,6 +23,9 @@ jobs:
       - name: Generate Prisma Client
         run: npx prisma generate --schema=apps/api/prisma/schema.prisma
 
+      # Unscoped: --ignore-scripts above also skips other packages' native
+      # install/postinstall hooks (e.g. msgpackr-extract), not just argon2 --
+      # keep this rebuilding everything rather than narrowing to one package.
       - name: Rebuild native dependencies
         run: npm rebuild
 
