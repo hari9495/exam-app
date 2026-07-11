@@ -26,6 +26,12 @@ export class OrganizationsController {
     return this.organizationsService.getBranding(tenant);
   }
 
+  @Get('usage')
+  @RequirePermissions('org:manage_settings')
+  getUsage(@CurrentTenant() tenant: TenantContext) {
+    return this.organizationsService.getUsage(tenant);
+  }
+
   @Patch('branding')
   @RequirePermissions('org:manage_settings')
   updateBrandingColors(@CurrentTenant() tenant: TenantContext, @Body() dto: UpdateBrandingColorsDto) {

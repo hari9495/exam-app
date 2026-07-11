@@ -3,7 +3,7 @@ import { Organization } from '@prisma/client';
 import { dirname, join } from 'path';
 import * as fs from 'fs/promises';
 import { PrismaService } from '@exam-platform/shared';
-import { TenantContext } from '@exam-platform/shared';
+import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateBrandingColorsDto } from './dto/update-branding-colors.dto';
 import { UPLOADS_ROOT } from './uploads-path';
@@ -12,6 +12,12 @@ export interface BrandingResponse {
   logoUrl: string | null;
   primaryColor: string | null;
   accentColor: string | null;
+}
+
+export interface AiCreditUsageResponse {
+  aiCreditLimit: number;
+  totalUsed: number;
+  breakdown: { questionGeneration: number; insightGeneration: number };
 }
 
 const ALLOWED_LOGO_MIME_TYPES: Record<string, string> = {
@@ -23,7 +29,10 @@ const MAX_LOGO_SIZE_BYTES = 2 * 1024 * 1024;
 
 @Injectable()
 export class OrganizationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tenantPrisma: TenantPrismaService,
+  ) {}
 
   async create(dto: CreateOrganizationDto): Promise<Organization> {
     const existing = await this.prisma.organization.findUnique({ where: { slug: dto.slug } });
@@ -76,6 +85,32 @@ export class OrganizationsService {
       throw new NotFoundException(`Organization "${slug}" not found`);
     }
     return this.toBrandingResponse(org);
+  }
+
+  async getUsage(context: TenantContext): Promise<AiCreditUsageResponse> {
+    const organizationId = this.requireOrganizationId(context);
+
+    const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, include: { plan: true } });
+
+    const grouped = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.aiCreditUsage.groupBy({ by: ['source'], where: { organizationId }, _sum: { credits: true } }),
+    );
+
+    const breakdown = { questionGeneration: 0, insightGeneration: 0 };
+    for (const row of grouped) {
+      const credits = row._sum.credits ?? 0;
+      if (row.source === 'question_generation') {
+        breakdown.questionGeneration = credits;
+      } else if (row.source === 'insight_generation') {
+        breakdown.insightGeneration = credits;
+      }
+    }
+
+    return {
+      aiCreditLimit: org!.plan.aiCreditLimit,
+      totalUsed: breakdown.questionGeneration + breakdown.insightGeneration,
+      breakdown,
+    };
   }
 
   private requireOrganizationId(context: TenantContext): string {

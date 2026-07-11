@@ -9,16 +9,22 @@ import { Test } from '@nestjs/testing';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { sep } from 'path';
 import { OrganizationsService } from './organizations.service';
-import { PrismaService } from '@exam-platform/shared';
+import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 
 describe('OrganizationsService', () => {
   let service: OrganizationsService;
   let prisma: { organization: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock } };
+  let tenantPrisma: { forTenant: jest.Mock };
 
   beforeEach(async () => {
     prisma = { organization: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn() } };
+    tenantPrisma = { forTenant: jest.fn() };
     const moduleRef = await Test.createTestingModule({
-      providers: [OrganizationsService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        OrganizationsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: TenantPrismaService, useValue: tenantPrisma },
+      ],
     }).compile();
     service = moduleRef.get(OrganizationsService);
   });
@@ -139,6 +145,47 @@ describe('OrganizationsService', () => {
       prisma.organization.findUnique.mockResolvedValue(null);
 
       await expect(service.getPublicBrandingBySlug('nope')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('getUsage', () => {
+    const context = { organizationId: 'org-1', isSuperAdmin: false };
+
+    it('returns the plan limit alongside a zero breakdown for an org with no usage yet', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', plan: { aiCreditLimit: 100 } });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
+        fn({ aiCreditUsage: { groupBy: jest.fn().mockResolvedValue([]) } }),
+      );
+
+      const result = await service.getUsage(context);
+
+      expect(result).toEqual({
+        aiCreditLimit: 100,
+        totalUsed: 0,
+        breakdown: { questionGeneration: 0, insightGeneration: 0 },
+      });
+    });
+
+    it('sums usage per source into the breakdown', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', plan: { aiCreditLimit: 100 } });
+      const groupBy = jest.fn().mockResolvedValue([
+        { source: 'question_generation', _sum: { credits: 7 } },
+        { source: 'insight_generation', _sum: { credits: 3 } },
+      ]);
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ aiCreditUsage: { groupBy } }));
+
+      const result = await service.getUsage(context);
+
+      expect(result).toEqual({
+        aiCreditLimit: 100,
+        totalUsed: 10,
+        breakdown: { questionGeneration: 7, insightGeneration: 3 },
+      });
+      expect(groupBy).toHaveBeenCalledWith({
+        by: ['source'],
+        where: { organizationId: 'org-1' },
+        _sum: { credits: true },
+      });
     });
   });
 });
