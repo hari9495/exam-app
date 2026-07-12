@@ -5,6 +5,9 @@
     "node": ">=20 <21"
   },
   "workspaces": ["apps/*", "packages/*"],
+  "overrides": {
+    "tar": "^7.5.16"
+  },
   "scripts": {
     "dev:api": "npm run start:dev --workspace=apps/api",
     "dev:web": "npm run dev --workspace=apps/web",
