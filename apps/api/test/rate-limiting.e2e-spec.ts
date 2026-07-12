@@ -3,7 +3,6 @@ import { Controller, Get, INestApplication, Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { Throttle, ThrottlerGuard, ThrottlerModule, seconds } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
-import Redis from 'ioredis';
 import request from 'supertest';
 
 // This exercises the exact @nestjs/throttler + @nest-lab/throttler-storage-redis + APP_GUARD
@@ -24,7 +23,7 @@ class RateLimitProbeController {
   imports: [
     ThrottlerModule.forRoot({
       throttlers: [{ name: 'default', ttl: seconds(60), limit: 1000 }],
-      storage: new ThrottlerStorageRedisService(new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379')),
+      storage: new ThrottlerStorageRedisService(process.env.REDIS_URL ?? 'redis://localhost:6379'),
     }),
   ],
   controllers: [RateLimitProbeController],
