@@ -121,7 +121,7 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
   }
 
   private async tickPresence(): Promise<void> {
-    const rooms = this.server.sockets.adapter.rooms;
+    const rooms = (this.server as unknown as { adapter: { rooms: Map<string, Set<string>> } }).adapter.rooms;
     for (const roomName of rooms.keys()) {
       if (!roomName.startsWith(EXAM_ROOM_PREFIX)) {
         continue;

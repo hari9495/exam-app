@@ -144,4 +144,39 @@ describe('MonitoringGateway', () => {
       expect(() => gateway.onModuleDestroy()).not.toThrow();
     });
   });
+
+  describe('tickPresence via the interval (realistic Server shape)', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('reads rooms from server.adapter.rooms (real Socket.IO Namespace shape)', async () => {
+      jest.useFakeTimers();
+      const emit = jest.fn();
+      const rooms = new Map([['exam:exam-1', new Set(['socket-1'])]]);
+      (gateway as any).server = {
+        adapter: { rooms },
+        to: jest.fn().mockReturnValue({ emit }),
+      };
+      tenantPrisma.forTenant.mockImplementation((_context: unknown, fn: (tx: unknown) => unknown) =>
+        Promise.resolve(fn({ exam: { findUnique: () => Promise.resolve({ id: 'exam-1', organizationId: 'org-1' }) } })),
+      );
+      monitoring.getRosterSnapshot.mockResolvedValue([
+        { attemptId: 'attempt-1', candidateId: 'cand-1', online: true },
+      ]);
+
+      gateway.afterInit();
+      await jest.advanceTimersByTimeAsync(PRESENCE_TICK_MS);
+
+      expect(monitoring.getRosterSnapshot).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        'exam-1',
+      );
+      expect(emit).toHaveBeenCalledWith('roster:presence', {
+        attemptId: 'attempt-1',
+        candidateId: 'cand-1',
+        online: true,
+      });
+    });
+  });
 });
