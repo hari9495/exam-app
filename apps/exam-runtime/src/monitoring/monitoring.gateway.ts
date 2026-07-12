@@ -9,7 +9,7 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
-import { Server, Socket } from 'socket.io';
+import { Namespace, Socket } from 'socket.io';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { MonitoringService, RosterRow } from './monitoring.service';
@@ -26,7 +26,7 @@ const EXAM_ROOM_PREFIX = 'exam:';
 @WebSocketGateway({ namespace: '/monitoring', cors: { origin: process.env.WEB_ORIGIN } })
 export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, OnModuleDestroy {
   @WebSocketServer()
-  server!: Server;
+  server!: Namespace;
 
   private readonly logger = new Logger(MonitoringGateway.name);
   private readonly lastPresence = new Map<string, boolean>();
@@ -121,7 +121,7 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
   }
 
   private async tickPresence(): Promise<void> {
-    const rooms = (this.server as unknown as { adapter: { rooms: Map<string, Set<string>> } }).adapter.rooms;
+    const rooms = this.server.adapter.rooms;
     for (const roomName of rooms.keys()) {
       if (!roomName.startsWith(EXAM_ROOM_PREFIX)) {
         continue;
