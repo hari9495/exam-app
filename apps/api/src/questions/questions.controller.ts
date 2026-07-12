@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
@@ -9,6 +10,7 @@ import { QuestionsService } from './questions.service';
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
 import { AiGenerateQuestionsDto } from './dto/ai-generate-questions.dto';
+import { STRICT_AI_GENERATE_THROTTLE } from '../rate-limit-tiers';
 
 @Controller('questions')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -23,6 +25,7 @@ export class QuestionsController {
 
   @Post('ai-generate')
   @RequirePermissions('question_bank:manage')
+  @Throttle(STRICT_AI_GENERATE_THROTTLE)
   aiGenerate(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: AiGenerateQuestionsDto) {
     return this.questionsService.aiGenerate(tenant, userId, dto);
   }

@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Patch, Post, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
@@ -8,6 +9,7 @@ import { TenantContext } from '@exam-platform/shared';
 import { OrganizationsService } from './organizations.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateBrandingColorsDto } from './dto/update-branding-colors.dto';
+import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 
 @Controller('organizations')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -41,6 +43,7 @@ export class OrganizationsController {
   @Post('branding/logo')
   @RequirePermissions('org:manage_settings')
   @UseInterceptors(FileInterceptor('file'))
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
   uploadLogo(@CurrentTenant() tenant: TenantContext, @UploadedFile() file: Express.Multer.File) {
     return this.organizationsService.uploadLogo(tenant, file);
   }
