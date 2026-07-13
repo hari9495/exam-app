@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
+import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
 import { CandidatesService } from './candidates.service';
 import { CreateCandidateDto } from './dto/create-candidate.dto';
@@ -29,5 +30,11 @@ export class CandidatesController {
   @RequirePermissions('candidate:manage')
   bulkUpload(@CurrentTenant() tenant: TenantContext, @Body() dto: BulkUploadCandidatesDto) {
     return this.candidatesService.bulkUpload(tenant, dto.csvContent);
+  }
+
+  @Get(':id/export')
+  @RequirePermissions('candidate:data_rights')
+  exportData(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.candidatesService.exportData(tenant, userId, id);
   }
 }

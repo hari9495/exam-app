@@ -1,7 +1,8 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Candidate } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
+import { AuditService } from '@exam-platform/shared';
 import { CreateCandidateDto } from './dto/create-candidate.dto';
 import { parseCandidateCsv } from './csv-parser';
 
@@ -16,9 +17,28 @@ export interface BulkUploadResult {
   errors: { row: number; reason: string }[];
 }
 
+export interface CandidateDataExport {
+  candidate: { id: string; email: string; name: string; phone: string | null; createdAt: Date };
+  invitations: {
+    id: string; examTitle: string; status: string; invitedAt: Date; expiresAt: Date; revokedAt: Date | null;
+  }[];
+  attempts: {
+    id: string; examTitle: string; status: string; startedAt: Date; submittedAt: Date | null; deviceFingerprint: string | null;
+    result: { score: number; maxScore: number; percentage: number; passFail: string } | null;
+    answers: { questionText: string; selectedOptions: string[]; isCorrect: boolean | null; marksAwarded: number | null }[];
+    proctoringEvents: { eventType: string; severity: string; occurredAt: Date; metadata: Record<string, unknown> | null }[];
+    proctoringAnalysis: { status: string; riskLevel: string | null; summary: string | null } | null;
+    insight: { status: string; summary: string | null } | null;
+    messages: { body: string; sentAt: Date; readAt: Date | null }[];
+  }[];
+}
+
 @Injectable()
 export class CandidatesService {
-  constructor(private readonly tenantPrisma: TenantPrismaService) {}
+  constructor(
+    private readonly tenantPrisma: TenantPrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   async create(context: TenantContext, dto: CreateCandidateDto): Promise<Candidate> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
@@ -83,5 +103,84 @@ export class CandidatesService {
 
       return { created, updated, errors };
     });
+  }
+
+  async exportData(context: TenantContext, actorUserId: string, candidateId: string): Promise<CandidateDataExport> {
+    const exportPayload = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const candidate = await tx.candidate.findFirst({
+        where: { id: candidateId, organizationId: context.organizationId as string },
+      });
+      if (!candidate) {
+        throw new NotFoundException(`Candidate ${candidateId} not found`);
+      }
+
+      const invitations = await tx.invitation.findMany({
+        where: { candidateId },
+        orderBy: { invitedAt: 'desc' },
+        include: {
+          exam: { select: { title: true } },
+          attempt: {
+            include: {
+              result: true,
+              answers: { include: { question: { select: { text: true, options: { select: { id: true, text: true } } } } } },
+              proctoringEvents: { orderBy: { occurredAt: 'asc' } },
+              proctoringAnalysis: true,
+              insight: true,
+              messages: { orderBy: { sentAt: 'asc' } },
+            },
+          },
+        },
+      });
+
+      return {
+        candidate: {
+          id: candidate.id, email: candidate.email, name: candidate.name, phone: candidate.phone, createdAt: candidate.createdAt,
+        },
+        invitations: invitations.map((invitation) => ({
+          id: invitation.id, examTitle: invitation.exam.title, status: invitation.status,
+          invitedAt: invitation.invitedAt, expiresAt: invitation.expiresAt, revokedAt: invitation.revokedAt,
+        })),
+        attempts: invitations
+          .filter((invitation) => invitation.attempt !== null)
+          .map((invitation) => {
+            const attempt = invitation.attempt!;
+            return {
+              id: attempt.id, examTitle: invitation.exam.title, status: attempt.status,
+              startedAt: attempt.startedAt, submittedAt: attempt.submittedAt, deviceFingerprint: attempt.deviceFingerprint,
+              result: attempt.result
+                ? { score: attempt.result.score, maxScore: attempt.result.maxScore, percentage: attempt.result.percentage, passFail: attempt.result.passFail }
+                : null,
+              answers: attempt.answers.map((answer) => {
+                const selectedIds: string[] = JSON.parse(answer.selectedOptionIdsJson);
+                const optionTextById = new Map(answer.question.options.map((option) => [option.id, option.text]));
+                return {
+                  questionText: answer.question.text,
+                  selectedOptions: selectedIds.map((optionId) => optionTextById.get(optionId) ?? optionId),
+                  isCorrect: answer.isCorrect,
+                  marksAwarded: answer.marksAwarded,
+                };
+              }),
+              proctoringEvents: attempt.proctoringEvents.map((event) => ({
+                eventType: event.eventType, severity: event.severity, occurredAt: event.occurredAt,
+                metadata: event.metadataJson ? JSON.parse(event.metadataJson) : null,
+              })),
+              proctoringAnalysis: attempt.proctoringAnalysis
+                ? { status: attempt.proctoringAnalysis.status, riskLevel: attempt.proctoringAnalysis.riskLevel, summary: attempt.proctoringAnalysis.summary }
+                : null,
+              insight: attempt.insight ? { status: attempt.insight.status, summary: attempt.insight.summary } : null,
+              messages: attempt.messages.map((message) => ({ body: message.body, sentAt: message.sentAt, readAt: message.readAt })),
+            };
+          }),
+      };
+    });
+
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'candidate.data_exported',
+      entityType: 'candidate',
+      entityId: candidateId,
+    });
+
+    return exportPayload;
   }
 }

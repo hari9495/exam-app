@@ -1,17 +1,23 @@
 import { Test } from '@nestjs/testing';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { CandidatesService } from './candidates.service';
-import { TenantPrismaService } from '@exam-platform/shared';
+import { TenantPrismaService, AuditService } from '@exam-platform/shared';
 
 describe('CandidatesService', () => {
   let service: CandidatesService;
   let tenantPrisma: { forTenant: jest.Mock };
+  let audit: { record: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
+    audit = { record: jest.fn() };
     const moduleRef = await Test.createTestingModule({
-      providers: [CandidatesService, { provide: TenantPrismaService, useValue: tenantPrisma }],
+      providers: [
+        CandidatesService,
+        { provide: TenantPrismaService, useValue: tenantPrisma },
+        { provide: AuditService, useValue: audit },
+      ],
     }).compile();
     service = moduleRef.get(CandidatesService);
   });
@@ -77,6 +83,100 @@ describe('CandidatesService', () => {
     expect(tx.candidate.update).toHaveBeenCalledWith({
       where: { id: 'cand-existing' },
       data: { name: 'Bob Updated', phone: undefined },
+    });
+  });
+
+  describe('exportData', () => {
+    it('assembles the candidate\'s full data footprint with human-readable joins', async () => {
+      const tx = {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'cand-1', email: 'a@test.com', name: 'Alice', phone: '555-1234', createdAt: new Date('2026-01-01'),
+          }),
+        },
+        invitation: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'inv-1', status: 'completed', invitedAt: new Date('2026-01-02'),
+              expiresAt: new Date('2026-01-09'), revokedAt: null,
+              exam: { title: 'Backend Round' },
+              attempt: {
+                id: 'attempt-1', status: 'submitted', startedAt: new Date('2026-01-03'),
+                submittedAt: new Date('2026-01-03'), deviceFingerprint: 'fp-abc',
+                result: { score: 5, maxScore: 10, percentage: 50, passFail: 'pass' },
+                answers: [
+                  {
+                    selectedOptionIdsJson: JSON.stringify(['opt-a']),
+                    isCorrect: true, marksAwarded: 5,
+                    question: { text: 'What is 2+2?', options: [{ id: 'opt-a', text: '4' }, { id: 'opt-b', text: '5' }] },
+                  },
+                ],
+                proctoringEvents: [
+                  { eventType: 'tab_switch', severity: 'medium', occurredAt: new Date('2026-01-03'), metadataJson: JSON.stringify({ count: 2 }) },
+                ],
+                proctoringAnalysis: { status: 'completed', riskLevel: 'low', summary: 'No issues observed.' },
+                insight: { status: 'completed', summary: 'Strong fundamentals.' },
+                messages: [{ body: 'Please stay in frame', sentAt: new Date('2026-01-03'), readAt: null }],
+              },
+            },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.exportData(context, 'user-1', 'cand-1');
+
+      expect(result.candidate).toEqual({
+        id: 'cand-1', email: 'a@test.com', name: 'Alice', phone: '555-1234', createdAt: new Date('2026-01-01'),
+      });
+      expect(result.invitations).toEqual([
+        { id: 'inv-1', examTitle: 'Backend Round', status: 'completed', invitedAt: new Date('2026-01-02'), expiresAt: new Date('2026-01-09'), revokedAt: null },
+      ]);
+      expect(result.attempts).toHaveLength(1);
+      expect(result.attempts[0].examTitle).toBe('Backend Round');
+      expect(result.attempts[0].result).toEqual({ score: 5, maxScore: 10, percentage: 50, passFail: 'pass' });
+      expect(result.attempts[0].answers).toEqual([
+        { questionText: 'What is 2+2?', selectedOptions: ['4'], isCorrect: true, marksAwarded: 5 },
+      ]);
+      expect(result.attempts[0].proctoringEvents).toEqual([
+        { eventType: 'tab_switch', severity: 'medium', occurredAt: new Date('2026-01-03'), metadata: { count: 2 } },
+      ]);
+      expect(result.attempts[0].messages).toEqual([
+        { body: 'Please stay in frame', sentAt: new Date('2026-01-03'), readAt: null },
+      ]);
+      expect(audit.record).toHaveBeenCalledWith(context, {
+        actorUserId: 'user-1', action: 'candidate.data_exported', entityType: 'candidate', entityId: 'cand-1',
+      });
+    });
+
+    it('handles an invitation with no attempt yet', async () => {
+      const tx = {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'a@test.com', name: 'Alice', phone: null, createdAt: new Date('2026-01-01') }),
+        },
+        invitation: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'inv-1', status: 'invited', invitedAt: new Date('2026-01-02'), expiresAt: new Date('2026-01-09'), revokedAt: null,
+              exam: { title: 'Backend Round' }, attempt: null,
+            },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.exportData(context, 'user-1', 'cand-1');
+
+      expect(result.invitations).toHaveLength(1);
+      expect(result.attempts).toEqual([]);
+    });
+
+    it('throws NotFoundException (and does not audit) for a candidate outside the caller organization', async () => {
+      const tx = { candidate: { findFirst: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.exportData(context, 'user-1', 'cand-x')).rejects.toThrow(NotFoundException);
+      expect(audit.record).not.toHaveBeenCalled();
     });
   });
 });
