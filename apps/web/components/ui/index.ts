@@ -5,3 +5,8 @@ export { Checkbox } from './Checkbox';
 export { RadioGroup, RadioGroupItem } from './Radio';
 export { Badge } from './Badge';
 export { Card } from './Card';
+export { Modal } from './Modal';
+export { ToastProvider, useToast } from './Toast';
+export { Tabs, TabsList, TabsTrigger, TabsContent } from './Tabs';
+export { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from './DropdownMenu';
+export { Table, type Column } from './Table';
