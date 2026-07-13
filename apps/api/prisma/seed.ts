@@ -14,11 +14,12 @@ const PERMISSIONS = [
   { key: 'results:view', description: 'View exam results, reports, and candidate comparisons' },
   { key: 'ai_jobs:view', description: 'Poll the status of AI background jobs' },
   { key: 'audit:view', description: 'View the audit log and role/permission mappings' },
+  { key: 'candidate:data_rights', description: 'Process GDPR data subject requests: export or erase a candidate\'s personal data' },
 ];
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
   super_admin: ['platform:manage_organizations', 'org:manage_users', 'org:manage_settings', 'org:view', 'audit:view'],
-  org_admin: ['org:manage_users', 'org:manage_settings', 'org:view', 'audit:view'],
+  org_admin: ['org:manage_users', 'org:manage_settings', 'org:view', 'audit:view', 'candidate:data_rights'],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view'],
   panel: ['org:view', 'results:view'],
 };

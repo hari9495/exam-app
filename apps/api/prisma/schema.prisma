@@ -232,6 +232,7 @@ model Candidate {
   name           String
   phone          String?
   createdAt      DateTime     @default(now()) @map("created_at")
+  erasedAt       DateTime?    @map("erased_at")
   invitations    Invitation[]
 
   @@unique([organizationId, email])
