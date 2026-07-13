@@ -13,6 +13,7 @@ describe('Audit log + access review', () => {
   let planId: string;
   let orgAId: string;
   let orgBId: string;
+  let orgBSlug: string;
   let orgAAdminToken: string;
   let orgARecruiterToken: string;
 
@@ -34,6 +35,7 @@ describe('Audit log + access review', () => {
     const orgB = await prisma.organization.create({ data: { name: 'Audit Org B', slug: `audit-org-b-${randomUUID()}`, planId } });
     orgAId = orgA.id;
     orgBId = orgB.id;
+    orgBSlug = orgB.slug;
 
     const adminHash = await argon2.hash('OrgAdminPassw0rd!');
     const recruiterHash = await argon2.hash('RecruiterPassw0rd!');
@@ -112,25 +114,34 @@ describe('Audit log + access review', () => {
   });
 
   it('org_admin cannot see another organization\'s audit entries', async () => {
-    const listResponse = await request(app.getHttpServer())
+    // Perform a real audited action as org B, then prove its audit entry never shows up
+    // in org A's view -- rather than asserting on a query that never had anything to leak.
+    const orgBAdminLogin = await request(app.getHttpServer())
+      .post('/api/v1/auth/staff/login')
+      .send({ organizationSlug: orgBSlug, email: 'admin@audit-b.test', password: 'OrgBAdminPassw0rd!' })
+      .expect(200);
+    const orgBAdminToken = orgBAdminLogin.body.accessToken;
+
+    await request(app.getHttpServer())
+      .patch('/api/v1/organizations/branding')
+      .set('Authorization', `Bearer ${orgBAdminToken}`)
+      .send({ primaryColor: '#123456' })
+      .expect(200);
+
+    const orgBAuditResponse = await request(app.getHttpServer())
+      .get('/api/v1/audit-logs')
+      .query({ entityType: 'organization', action: 'organization.branding_updated' })
+      .set('Authorization', `Bearer ${orgBAdminToken}`)
+      .expect(200);
+    expect(orgBAuditResponse.body.length).toBeGreaterThan(0);
+    const orgBEntryId = orgBAuditResponse.body[0].id;
+
+    const orgAAuditResponse = await request(app.getHttpServer())
       .get('/api/v1/audit-logs')
       .set('Authorization', `Bearer ${orgAAdminToken}`)
       .expect(200);
 
-    for (const entry of listResponse.body) {
-      expect(entry.entityType === 'exam' ? entry : true).toBeTruthy();
-    }
-    // Every entry returned belongs to org A -- verified structurally by re-querying with an
-    // org-B-only filter (actorUserId scoped elsewhere) returning nothing for org A's token.
-    // actorUserId is a `uniqueidentifier` column in SQL Server, so the filter value must be a
-    // syntactically valid (but non-existent) GUID -- an arbitrary non-GUID string causes SQL
-    // Server to throw a type-conversion error instead of matching zero rows.
-    const crossOrgAttempt = await request(app.getHttpServer())
-      .get('/api/v1/audit-logs')
-      .query({ actorUserId: randomUUID() })
-      .set('Authorization', `Bearer ${orgAAdminToken}`)
-      .expect(200);
-    expect(crossOrgAttempt.body).toEqual([]);
+    expect(orgAAuditResponse.body.some((entry: { id: string }) => entry.id === orgBEntryId)).toBe(false);
   });
 
   it('rejects recruiter and panel roles with 403 (no audit:view permission)', async () => {
