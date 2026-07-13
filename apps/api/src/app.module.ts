@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule, ThrottlerGuard, seconds } from '@nestjs/throttler';
+import { ThrottlerModule, seconds } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import { PrismaModule, AuditModule } from '@exam-platform/shared';
 import { RbacModule } from './rbac/rbac.module';
@@ -17,6 +17,7 @@ import { AttemptsAdminModule } from './attempts-admin/attempts-admin.module';
 import { ReportsModule } from './reports/reports.module';
 import { JobsModule } from './jobs/jobs.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
+import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
 
 @Module({
   imports: [
@@ -42,6 +43,6 @@ import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
     ReportsModule,
     JobsModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [{ provide: APP_GUARD, useClass: FailOpenThrottlerGuard }],
 })
 export class AppModule {}

@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule, ThrottlerGuard, seconds } from '@nestjs/throttler';
+import { ThrottlerModule, seconds } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import { PrismaModule } from '@exam-platform/shared';
 import { CandidateAuthModule } from './candidate-auth/candidate-auth.module';
@@ -11,6 +11,7 @@ import { ProctoringAnalysisModule } from './proctoring-analysis/proctoring-analy
 import { GradingModule } from './grading/grading.module';
 import { LocalMonitoringBridgeModule } from './monitoring/local-monitoring-bridge.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
+import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
 
 @Module({
   imports: [
@@ -29,6 +30,6 @@ import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
     GradingModule,
     LocalMonitoringBridgeModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [{ provide: APP_GUARD, useClass: FailOpenThrottlerGuard }],
 })
 export class AppModule {}
