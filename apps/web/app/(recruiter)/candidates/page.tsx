@@ -17,11 +17,14 @@ export default function CandidatesPage() {
   const [examId, setExamId] = useState<string>('');
   const bulkInvite = useBulkInvite(examId);
 
-  // ponytail: no exam picker exists yet when this list first loads, so default
-  // to the first published exam once the list resolves rather than forcing the
-  // recruiter to open a one-item dropdown before they can invite anyone.
+  // ponytail: only auto-select when the choice is unambiguous (exactly one
+  // published exam). With 0 or 2+ published exams, list order is
+  // backend-determined and not meaningful to the recruiter -- silently
+  // landing on exams[0] risked bulk-inviting candidates to the wrong exam.
+  // Leave examId at '' so the disabled Send-invitations button forces an
+  // explicit pick.
   useEffect(() => {
-    if (!examId && publishedExams && publishedExams.length > 0) {
+    if (!examId && publishedExams && publishedExams.length === 1) {
       setExamId(publishedExams[0].id);
     }
   }, [publishedExams, examId]);
