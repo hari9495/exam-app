@@ -48,6 +48,7 @@ model User {
   lastLoginAt    DateTime?      @map("last_login_at")
   createdAt      DateTime       @default(now()) @map("created_at")
   refreshTokens  RefreshToken[]
+  auditLogs      AuditLog[]
 
   @@unique([organizationId, email])
   @@map("users")
@@ -91,12 +92,23 @@ model AuditLog {
   organizationId String?       @map("organization_id") @db.UniqueIdentifier
   organization   Organization? @relation(fields: [organizationId], references: [id])
   actorUserId    String?       @map("actor_user_id") @db.UniqueIdentifier
+  // onDelete: NoAction here is a schema-validator-only annotation, not the real DB behavior.
+  // Prisma's generate/validate step flags this relation and the organization relation above as
+  // two ambiguous SetNull-cascade paths into AuditLog (Organization -> AuditLog directly, and
+  // Organization -> User -> AuditLog.actor), even though the actual FK constraint -- defined by
+  // this project's hand-written migration, never auto-generated from this annotation -- really is
+  // ON DELETE SET NULL ON UPDATE NO ACTION, exactly as applied and already accepted by SQL Server.
+  actor          User?         @relation(fields: [actorUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   action         String
   entityType     String        @map("entity_type")
   entityId       String?       @map("entity_id")
   metadataJson   String?       @map("metadata_json") @db.NVarChar(Max)
   createdAt      DateTime      @default(now()) @map("created_at")
 
+  @@index([organizationId, createdAt])
+  @@index([actorUserId])
+  @@index([entityType])
+  @@index([action])
   @@map("audit_logs")
 }
 

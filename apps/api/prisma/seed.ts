@@ -13,11 +13,12 @@ const PERMISSIONS = [
   { key: 'candidate:manage', description: 'Add candidates and manage invitations in the organization' },
   { key: 'results:view', description: 'View exam results, reports, and candidate comparisons' },
   { key: 'ai_jobs:view', description: 'Poll the status of AI background jobs' },
+  { key: 'audit:view', description: 'View the audit log and role/permission mappings' },
 ];
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
-  super_admin: ['platform:manage_organizations', 'org:manage_users', 'org:manage_settings', 'org:view'],
-  org_admin: ['org:manage_users', 'org:manage_settings', 'org:view'],
+  super_admin: ['platform:manage_organizations', 'org:manage_users', 'org:manage_settings', 'org:view', 'audit:view'],
+  org_admin: ['org:manage_users', 'org:manage_settings', 'org:view', 'audit:view'],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view'],
   panel: ['org:view', 'results:view'],
 };
