@@ -3,12 +3,14 @@
 import { useState } from 'react';
 import { useExam } from '../lib/hooks/useExams';
 import { useCreateSection } from '../lib/hooks/useExamSections';
+import { SectionQuestionPicker } from './SectionQuestionPicker';
 import { Button, Input, Card } from '../components/ui';
 
 export function ExamSectionsPanel({ examId }: { examId: string }) {
   const { data: exam } = useExam(examId);
   const createSection = useCreateSection(examId);
   const [newTitle, setNewTitle] = useState('');
+  const [pickerSectionId, setPickerSectionId] = useState<string | null>(null);
 
   function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -22,14 +24,26 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
         .slice()
         .sort((a, b) => a.orderIndex - b.orderIndex)
         .map((section) => (
-          <Card key={section.id}>
+          <Card key={section.id} className="flex items-center justify-between">
             <p className="font-medium">{section.title}</p>
+            <Button variant="secondary" onClick={() => setPickerSectionId(section.id)}>
+              Manage questions
+            </Button>
           </Card>
         ))}
       <form onSubmit={handleAdd} className="flex items-end gap-2">
         <Input label="New section title" value={newTitle} onChange={setNewTitle} />
         <Button type="submit">Add section</Button>
       </form>
+      {pickerSectionId && (
+        <SectionQuestionPicker
+          examId={examId}
+          sectionId={pickerSectionId}
+          open
+          onClose={() => setPickerSectionId(null)}
+          existingQuestionIds={[]}
+        />
+      )}
     </div>
   );
 }
