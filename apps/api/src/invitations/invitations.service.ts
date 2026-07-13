@@ -3,6 +3,7 @@ import { randomBytes } from 'crypto';
 import { Candidate, Invitation } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
+import { AuditService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 
 const INVITATION_EXPIRY_DAYS = 7;
@@ -27,6 +28,7 @@ export class InvitationsService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly emailService: EmailService,
+    private readonly audit: AuditService,
   ) {}
 
   async bulkInvite(context: TenantContext, examId: string, candidateIds: string[]): Promise<BulkInviteResult> {
@@ -132,8 +134,8 @@ export class InvitationsService {
     return invitation;
   }
 
-  async revoke(context: TenantContext, invitationId: string): Promise<Invitation> {
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+  async revoke(context: TenantContext, actorUserId: string, invitationId: string): Promise<Invitation> {
+    const { invitation, didRevoke } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.invitation.findFirst({
         where: { id: invitationId, exam: { organizationId: context.organizationId as string } },
       });
@@ -141,10 +143,20 @@ export class InvitationsService {
         throw new NotFoundException(`Invitation ${invitationId} not found`);
       }
       if (existing.status === 'revoked') {
-        return existing;
+        return { invitation: existing, didRevoke: false };
       }
-      return tx.invitation.update({ where: { id: invitationId }, data: { status: 'revoked', revokedAt: new Date() } });
+      const updated = await tx.invitation.update({ where: { id: invitationId }, data: { status: 'revoked', revokedAt: new Date() } });
+      return { invitation: updated, didRevoke: true };
     });
+    if (didRevoke) {
+      await this.audit.record(context, {
+        actorUserId,
+        action: 'invitation.revoked',
+        entityType: 'invitation',
+        entityId: invitationId,
+      });
+    }
+    return invitation;
   }
 
   private async dispatchInvitationEmail(

@@ -1,23 +1,26 @@
 import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { InvitationsService } from './invitations.service';
-import { TenantPrismaService } from '@exam-platform/shared';
+import { TenantPrismaService, AuditService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 
 describe('InvitationsService', () => {
   let service: InvitationsService;
   let tenantPrisma: { forTenant: jest.Mock };
   let emailService: { send: jest.Mock };
+  let audit: { record: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
     emailService = { send: jest.fn().mockResolvedValue({ success: true, previewUrl: 'https://ethereal.email/x' }) };
+    audit = { record: jest.fn() };
     const moduleRef = await Test.createTestingModule({
       providers: [
         InvitationsService,
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: EmailService, useValue: emailService },
+        { provide: AuditService, useValue: audit },
       ],
     }).compile();
     service = moduleRef.get(InvitationsService);
@@ -179,16 +182,19 @@ describe('InvitationsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    const result = await service.revoke(context, 'inv-1');
+    const result = await service.revoke(context, 'user-1', 'inv-1');
 
     expect(result.status).toBe('revoked');
     expect(tx.invitation.update).toHaveBeenCalledWith({
       where: { id: 'inv-1' },
       data: { status: 'revoked', revokedAt: expect.any(Date) },
     });
+    expect(audit.record).toHaveBeenCalledWith(context, {
+      actorUserId: 'user-1', action: 'invitation.revoked', entityType: 'invitation', entityId: 'inv-1',
+    });
   });
 
-  it('revoking an already-revoked invitation is a no-op, not an error', async () => {
+  it('revoking an already-revoked invitation is a no-op, not an error, and is not re-audited', async () => {
     const tx = {
       invitation: {
         findFirst: jest.fn().mockResolvedValue({ id: 'inv-1', status: 'revoked' }),
@@ -197,16 +203,18 @@ describe('InvitationsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    const result = await service.revoke(context, 'inv-1');
+    const result = await service.revoke(context, 'user-1', 'inv-1');
 
     expect(result.status).toBe('revoked');
     expect(tx.invitation.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it('throws NotFoundException when revoking an invitation that does not exist', async () => {
     const tx = { invitation: { findFirst: jest.fn().mockResolvedValue(null) } };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await expect(service.revoke(context, 'missing-inv')).rejects.toThrow(NotFoundException);
+    await expect(service.revoke(context, 'user-1', 'missing-inv')).rejects.toThrow(NotFoundException);
+    expect(audit.record).not.toHaveBeenCalled();
   });
 });

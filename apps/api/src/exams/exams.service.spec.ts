@@ -1,23 +1,26 @@
 import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ExamsService } from './exams.service';
-import { TenantPrismaService } from '@exam-platform/shared';
+import { TenantPrismaService, AuditService } from '@exam-platform/shared';
 import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
 
 describe('ExamsService', () => {
   let service: ExamsService;
   let tenantPrisma: { forTenant: jest.Mock };
   let examRuntime: { settleIfExpiredBatch: jest.Mock };
+  let audit: { record: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
     examRuntime = { settleIfExpiredBatch: jest.fn() };
+    audit = { record: jest.fn() };
     const moduleRef = await Test.createTestingModule({
       providers: [
         ExamsService,
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: ExamRuntimeInternalClient, useValue: examRuntime },
+        { provide: AuditService, useValue: audit },
       ],
     }).compile();
     service = moduleRef.get(ExamsService);
@@ -135,17 +138,21 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    const result = await service.archive(context, 'exam-1');
+    const result = await service.archive(context, 'user-1', 'exam-1');
 
     expect(result.status).toBe('archived');
     expect(tx.exam.update).toHaveBeenCalledWith({ where: { id: 'exam-1' }, data: { status: 'archived' } });
+    expect(audit.record).toHaveBeenCalledWith(context, {
+      actorUserId: 'user-1', action: 'exam.archived', entityType: 'exam', entityId: 'exam-1',
+    });
   });
 
   it('throws NotFoundException when archiving an exam that does not exist', async () => {
     const tx = { exam: { findFirst: jest.fn().mockResolvedValue(null) } };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await expect(service.archive(context, 'missing-id')).rejects.toThrow(NotFoundException);
+    await expect(service.archive(context, 'user-1', 'missing-id')).rejects.toThrow(NotFoundException);
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it('creates a section appended after the current last orderIndex', async () => {
@@ -510,17 +517,21 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    const result = await service.publish(context, 'exam-1');
+    const result = await service.publish(context, 'user-1', 'exam-1');
 
     expect(result.status).toBe('published');
     expect(tx.exam.update).toHaveBeenCalledWith({ where: { id: 'exam-1' }, data: { status: 'published' } });
+    expect(audit.record).toHaveBeenCalledWith(context, {
+      actorUserId: 'user-1', action: 'exam.published', entityType: 'exam', entityId: 'exam-1',
+    });
   });
 
   it('throws NotFoundException when publishing an exam that does not exist', async () => {
     const tx = { exam: { findFirst: jest.fn().mockResolvedValue(null) } };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await expect(service.publish(context, 'missing-id')).rejects.toThrow(NotFoundException);
+    await expect(service.publish(context, 'user-1', 'missing-id')).rejects.toThrow(NotFoundException);
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it('throws BadRequestException when publishing an exam that is not in draft status', async () => {
@@ -529,7 +540,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await expect(service.publish(context, 'exam-1')).rejects.toThrow(BadRequestException);
+    await expect(service.publish(context, 'user-1', 'exam-1')).rejects.toThrow(BadRequestException);
   });
 
   it('throws BadRequestException when publishing an exam with no sections', async () => {
@@ -538,7 +549,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await expect(service.publish(context, 'exam-1')).rejects.toThrow(BadRequestException);
+    await expect(service.publish(context, 'user-1', 'exam-1')).rejects.toThrow(BadRequestException);
   });
 
   it('throws BadRequestException when publishing an exam with a section that has no questions', async () => {
@@ -556,7 +567,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await expect(service.publish(context, 'exam-1')).rejects.toThrow(BadRequestException);
+    await expect(service.publish(context, 'user-1', 'exam-1')).rejects.toThrow(BadRequestException);
   });
 
   it('publishes a draft exam whose pool section has enough matching questions', async () => {
@@ -575,7 +586,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    const result = await service.publish(context, 'exam-1');
+    const result = await service.publish(context, 'user-1', 'exam-1');
 
     expect(result.status).toBe('published');
     expect(tx.question.count).toHaveBeenCalledWith({
@@ -598,7 +609,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await expect(service.publish(context, 'exam-1')).rejects.toThrow(BadRequestException);
+    await expect(service.publish(context, 'user-1', 'exam-1')).rejects.toThrow(BadRequestException);
   });
 
   describe('getResults', () => {

@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Exam, ExamSection, ExamSectionQuestion, Question, QuestionOption } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
+import { AuditService } from '@exam-platform/shared';
 import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
 import { CreateExamDto } from './dto/create-exam.dto';
 import { UpdateExamDto } from './dto/update-exam.dto';
@@ -36,6 +37,7 @@ export class ExamsService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly examRuntime: ExamRuntimeInternalClient,
+    private readonly audit: AuditService,
   ) {}
 
   async create(context: TenantContext, userId: string, dto: CreateExamDto): Promise<Exam> {
@@ -108,18 +110,20 @@ export class ExamsService {
     });
   }
 
-  async archive(context: TenantContext, id: string): Promise<Exam> {
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+  async archive(context: TenantContext, actorUserId: string, id: string): Promise<Exam> {
+    const archived = await this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.exam.findFirst({ where: { id, organizationId: context.organizationId as string } });
       if (!existing) {
         throw new NotFoundException(`Exam ${id} not found`);
       }
       return tx.exam.update({ where: { id }, data: { status: 'archived' } });
     });
+    await this.audit.record(context, { actorUserId, action: 'exam.archived', entityType: 'exam', entityId: id });
+    return archived;
   }
 
-  async publish(context: TenantContext, id: string): Promise<Exam> {
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+  async publish(context: TenantContext, actorUserId: string, id: string): Promise<Exam> {
+    const published = await this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({
         where: { id, organizationId: context.organizationId as string },
         include: { sections: { include: { questions: true, poolTags: true } } },
@@ -155,6 +159,8 @@ export class ExamsService {
       }
       return tx.exam.update({ where: { id }, data: { status: 'published' } });
     });
+    await this.audit.record(context, { actorUserId, action: 'exam.published', entityType: 'exam', entityId: id });
+    return published;
   }
 
   async createSection(context: TenantContext, examId: string, dto: CreateExamSectionDto): Promise<ExamSection> {

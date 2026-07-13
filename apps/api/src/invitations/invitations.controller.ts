@@ -3,6 +3,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
+import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
 import { InvitationsService } from './invitations.service';
 import { CreateInvitationsDto } from './dto/create-invitations.dto';
@@ -32,7 +33,7 @@ export class InvitationsController {
 
   @Post('invitations/:id/revoke')
   @RequirePermissions('candidate:manage')
-  revoke(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
-    return this.invitationsService.revoke(tenant, id);
+  revoke(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.invitationsService.revoke(tenant, userId, id);
   }
 }

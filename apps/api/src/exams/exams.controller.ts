@@ -43,14 +43,14 @@ export class ExamsController {
 
   @Delete(':id')
   @RequirePermissions('exam:manage')
-  archive(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
-    return this.examsService.archive(tenant, id);
+  archive(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.examsService.archive(tenant, userId, id);
   }
 
   @Post(':id/publish')
   @RequirePermissions('exam:manage')
-  publish(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
-    return this.examsService.publish(tenant, id);
+  publish(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.examsService.publish(tenant, userId, id);
   }
 
   @Post(':id/sections')
