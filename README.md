@@ -8,9 +8,9 @@
 
 1b. `apps/api/package.json` pins `ioredis` to an exact version (`5.10.1`, no caret) instead of a caret range, because it must match `bullmq`'s own nested `ioredis` dependency exactly — a caret range doesn't dedupe against it, leaving two structurally-incompatible `Redis` classes and a TypeScript compile error. If bumping `bullmq`, check its `package.json` for its current `ioredis` requirement and update this pin to match.
 
-2. `npm install` — installs all workspace dependencies.
+2. `npm install` — installs all workspace dependencies. The Prisma client is generated automatically during install (`packages/shared`'s `prepare` script runs `prisma generate` before its own build, since its compile depends on the generated client). No separate `prisma generate` step is needed after a plain `npm install`/`npm ci` — only `--ignore-scripts` installs (like CI's) still need it run explicitly.
 3. `cp .env.example apps/api/.env`
-4. `cd apps/api && npx prisma migrate deploy && npx prisma generate && npx prisma db seed && cd ../..`
+4. `cd apps/api && npx prisma migrate deploy && npx prisma db seed && cd ../..`
 5. `npm run dev:api` (terminal 1), `npm run dev:web` (terminal 2)
 6. Visit `http://localhost:3000/login` — log in with `admin@demo-org.test` / `DevAdmin123!`, org slug `demo-org`.
 
