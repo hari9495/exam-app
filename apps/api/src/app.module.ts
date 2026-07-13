@@ -16,6 +16,7 @@ import { InvitationsModule } from './invitations/invitations.module';
 import { AttemptsAdminModule } from './attempts-admin/attempts-admin.module';
 import { ReportsModule } from './reports/reports.module';
 import { JobsModule } from './jobs/jobs.module';
+import { AuditQueryModule } from './audit/audit-query.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
 import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
 
@@ -38,6 +39,7 @@ import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
     PrismaModule,
     RbacModule,
     AuditModule,
+    AuditQueryModule,
     AuthModule,
     OrganizationsModule,
     UsersModule,
