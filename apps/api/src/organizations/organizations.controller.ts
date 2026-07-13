@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
+import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
 import { OrganizationsService } from './organizations.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
@@ -18,8 +19,8 @@ export class OrganizationsController {
 
   @Post()
   @RequirePermissions('platform:manage_organizations')
-  create(@Body() dto: CreateOrganizationDto) {
-    return this.organizationsService.create(dto);
+  create(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: CreateOrganizationDto) {
+    return this.organizationsService.create(tenant, userId, dto);
   }
 
   @Get('branding')
@@ -36,15 +37,15 @@ export class OrganizationsController {
 
   @Patch('branding')
   @RequirePermissions('org:manage_settings')
-  updateBrandingColors(@CurrentTenant() tenant: TenantContext, @Body() dto: UpdateBrandingColorsDto) {
-    return this.organizationsService.updateBrandingColors(tenant, dto);
+  updateBrandingColors(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateBrandingColorsDto) {
+    return this.organizationsService.updateBrandingColors(tenant, userId, dto);
   }
 
   @Post('branding/logo')
   @RequirePermissions('org:manage_settings')
   @UseInterceptors(FileInterceptor('file'))
   @Throttle(MODERATE_UPLOAD_THROTTLE)
-  uploadLogo(@CurrentTenant() tenant: TenantContext, @UploadedFile() file: Express.Multer.File) {
-    return this.organizationsService.uploadLogo(tenant, file);
+  uploadLogo(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @UploadedFile() file: Express.Multer.File) {
+    return this.organizationsService.uploadLogo(tenant, userId, file);
   }
 }

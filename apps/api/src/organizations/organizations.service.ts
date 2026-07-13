@@ -4,6 +4,7 @@ import { dirname, join } from 'path';
 import * as fs from 'fs/promises';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { AuditService } from '@exam-platform/shared';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateBrandingColorsDto } from './dto/update-branding-colors.dto';
 import { UPLOADS_ROOT } from './uploads-path';
@@ -32,16 +33,24 @@ export class OrganizationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
+    private readonly audit: AuditService,
   ) {}
 
-  async create(dto: CreateOrganizationDto): Promise<Organization> {
+  async create(context: TenantContext, actorUserId: string, dto: CreateOrganizationDto): Promise<Organization> {
     const existing = await this.prisma.organization.findUnique({ where: { slug: dto.slug } });
     if (existing) {
       throw new ConflictException(`Organization slug "${dto.slug}" is already taken`);
     }
-    return this.prisma.organization.create({
+    const org = await this.prisma.organization.create({
       data: { name: dto.name, slug: dto.slug, region: dto.region, planId: dto.planId },
     });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'organization.created',
+      entityType: 'organization',
+      entityId: org.id,
+    });
+    return org;
   }
 
   async getBranding(context: TenantContext): Promise<BrandingResponse> {
@@ -50,16 +59,22 @@ export class OrganizationsService {
     return this.toBrandingResponse(org!);
   }
 
-  async updateBrandingColors(context: TenantContext, dto: UpdateBrandingColorsDto): Promise<BrandingResponse> {
+  async updateBrandingColors(context: TenantContext, actorUserId: string, dto: UpdateBrandingColorsDto): Promise<BrandingResponse> {
     const organizationId = this.requireOrganizationId(context);
     const org = await this.prisma.organization.update({
       where: { id: organizationId },
       data: { ...(dto.primaryColor !== undefined && { primaryColor: dto.primaryColor }), ...(dto.accentColor !== undefined && { accentColor: dto.accentColor }) },
     });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'organization.branding_updated',
+      entityType: 'organization',
+      entityId: organizationId,
+    });
     return this.toBrandingResponse(org);
   }
 
-  async uploadLogo(context: TenantContext, file: Express.Multer.File): Promise<BrandingResponse> {
+  async uploadLogo(context: TenantContext, actorUserId: string, file: Express.Multer.File): Promise<BrandingResponse> {
     const organizationId = this.requireOrganizationId(context);
 
     const extension = ALLOWED_LOGO_MIME_TYPES[file.mimetype];
@@ -76,6 +91,12 @@ export class OrganizationsService {
     await fs.writeFile(fullPath, file.buffer);
 
     const org = await this.prisma.organization.update({ where: { id: organizationId }, data: { logoPath } });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'organization.logo_updated',
+      entityType: 'organization',
+      entityId: organizationId,
+    });
     return this.toBrandingResponse(org);
   }
 
