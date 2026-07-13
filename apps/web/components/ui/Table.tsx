@@ -45,33 +45,46 @@ export function Table<T>({ columns, rows, rowKey, emptyMessage = 'No results.' }
     return <p className="py-8 text-center text-sm text-gray-500">{emptyMessage}</p>;
   }
 
+  function handleKeyDown(event: React.KeyboardEvent<HTMLTableCellElement>, column: Column<T>) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      if (event.key === ' ') event.preventDefault();
+      handleSort(column);
+    }
+  }
+
   return (
-    <table className="w-full border-collapse text-sm">
-      <thead>
-        <tr className="border-b border-gray-200 text-left">
-          {columns.map((column) => (
-            <th
-              key={column.key}
-              className={clsx('px-3 py-2 font-medium text-gray-600', column.sortValue && 'cursor-pointer select-none')}
-              onClick={() => handleSort(column)}
-            >
-              {column.header}
-              {sortKey === column.key && (sortDir === 'asc' ? ' ↑' : ' ↓')}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {sorted.map((row) => (
-          <tr key={rowKey(row)} className="border-b border-gray-100 last:border-0">
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-gray-200 text-left">
             {columns.map((column) => (
-              <td key={column.key} className="px-3 py-2">
-                {column.render(row)}
-              </td>
+              <th
+                key={column.key}
+                className={clsx('px-3 py-2 font-medium text-gray-600', column.sortValue && 'cursor-pointer select-none')}
+                onClick={column.sortValue ? () => handleSort(column) : undefined}
+                tabIndex={column.sortValue ? 0 : undefined}
+                role={column.sortValue ? 'button' : undefined}
+                onKeyDown={column.sortValue ? (event) => handleKeyDown(event, column) : undefined}
+                aria-sort={column.sortValue ? (sortKey === column.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
+              >
+                {column.header}
+                {sortKey === column.key && (sortDir === 'asc' ? ' ↑' : ' ↓')}
+              </th>
             ))}
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {sorted.map((row) => (
+            <tr key={rowKey(row)} className="border-b border-gray-100 last:border-0">
+              {columns.map((column) => (
+                <td key={column.key} className="px-3 py-2">
+                  {column.render(row)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

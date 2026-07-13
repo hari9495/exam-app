@@ -29,4 +29,21 @@ describe('Table', () => {
     render(<Table columns={columns} rows={[]} rowKey={(row) => row.id} emptyMessage="No candidates yet." />);
     expect(screen.getByText('No candidates yet.')).toBeInTheDocument();
   });
+
+  it('sorts via keyboard and exposes aria-sort on the active sortable header', () => {
+    render(<Table columns={columns} rows={rows} rowKey={(row) => row.id} />);
+    const header = screen.getByText('Name').closest('th')!;
+
+    expect(header).toHaveAttribute('tabIndex', '0');
+    expect(header).toHaveAttribute('role', 'button');
+    expect(header).toHaveAttribute('aria-sort', 'none');
+
+    fireEvent.keyDown(header, { key: 'Enter' });
+    expect(screen.getAllByRole('cell')[0]).toHaveTextContent('Alpha');
+    expect(header).toHaveAttribute('aria-sort', 'ascending');
+
+    fireEvent.keyDown(header, { key: 'Enter' });
+    expect(screen.getAllByRole('cell')[0]).toHaveTextContent('Bravo');
+    expect(header).toHaveAttribute('aria-sort', 'descending');
+  });
 });

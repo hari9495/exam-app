@@ -4,6 +4,12 @@ import { ExamSectionsPanel } from './ExamSectionsPanel';
 import { AuthProvider } from '../lib/auth-context';
 import { QueryProvider } from '../lib/query-provider';
 
+jest.mock('./SectionQuestionPicker', () => ({
+  SectionQuestionPicker: ({ existingQuestionIds }: { existingQuestionIds: string[] }) => (
+    <div data-testid="picker">existingQuestionIds:{JSON.stringify(existingQuestionIds)}</div>
+  ),
+}));
+
 describe('ExamSectionsPanel', () => {
   const originalFetch = global.fetch;
   afterEach(() => {
@@ -33,7 +39,17 @@ describe('ExamSectionsPanel', () => {
             randomizeOrder: false,
             createdAt: '2026-01-01T00:00:00.000Z',
             sections: [
-              { id: 's-1', examId: 'exam-1', title: 'Section One', orderIndex: 0, selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: null },
+              {
+                id: 's-1',
+                examId: 'exam-1',
+                title: 'Section One',
+                orderIndex: 0,
+                selectionMode: 'fixed',
+                poolSize: null,
+                poolDifficulty: null,
+                targetDurationMinutes: null,
+                questions: [{ questionId: 'q1' }],
+              },
             ],
           }),
           { status: 200 },
@@ -58,5 +74,56 @@ describe('ExamSectionsPanel', () => {
     await waitFor(() =>
       expect(fetchMock.mock.calls.some((call) => String(call[0]).endsWith('/exams/exam-1/sections') && call[1]?.method === 'POST')).toBe(true),
     );
+  });
+
+  it('passes the section\'s existing question ids to the picker instead of an empty array', async () => {
+    const fetchMock = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/exams/exam-1')) {
+        return new Response(
+          JSON.stringify({
+            id: 'exam-1',
+            title: 'Backend Round',
+            instructions: null,
+            status: 'draft',
+            durationMinutes: 60,
+            passCriteriaPercent: 40,
+            randomizeOrder: false,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            sections: [
+              {
+                id: 's-1',
+                examId: 'exam-1',
+                title: 'Section One',
+                orderIndex: 0,
+                selectionMode: 'fixed',
+                poolSize: null,
+                poolDifficulty: null,
+                targetDurationMinutes: null,
+                questions: [{ questionId: 'q1' }],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <ExamSectionsPanel examId="exam-1" />
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Section One')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'Manage questions' }));
+
+    expect(await screen.findByTestId('picker')).toHaveTextContent('existingQuestionIds:["q1"]');
   });
 });

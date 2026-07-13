@@ -39,6 +39,7 @@ export interface ExamSection {
   poolSize: number | null;
   poolDifficulty: Difficulty | null;
   targetDurationMinutes: number | null;
+  questions: { questionId: string }[];
 }
 
 export interface Exam {

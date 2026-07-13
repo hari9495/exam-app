@@ -41,7 +41,7 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
           sectionId={pickerSectionId}
           open
           onClose={() => setPickerSectionId(null)}
-          existingQuestionIds={[]}
+          existingQuestionIds={exam?.sections.find((s) => s.id === pickerSectionId)?.questions.map((q) => q.questionId) ?? []}
         />
       )}
     </div>
