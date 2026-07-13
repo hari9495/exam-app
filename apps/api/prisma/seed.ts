@@ -104,6 +104,20 @@ async function main() {
           organizationId: demoOrg.id,
         },
       });
+
+      // recruiter role: org_admin lacks exam:manage/question_bank:manage/candidate:manage
+      // (see ROLE_PERMISSIONS above), so the golden-path e2e flow needs a seeded recruiter.
+      const recruiterHash = await argon2.hash('Passw0rd!2026');
+      await tx.user.upsert({
+        where: { organizationId_email: { organizationId: demoOrg.id, email: 'recruiter@demo-org.test' } },
+        update: {},
+        create: {
+          email: 'recruiter@demo-org.test',
+          passwordHash: recruiterHash,
+          role: 'recruiter',
+          organizationId: demoOrg.id,
+        },
+      });
     } finally {
       // sp_set_session_context is scoped to the physical connection, not the transaction,
       // and is not undone by rollback. Reset it before the transaction callback returns for
@@ -116,7 +130,7 @@ async function main() {
     }
   });
 
-  console.log('Seed complete: super@platform.test / DevSuper123!, admin@demo-org.test / DevAdmin123! (org slug: demo-org)');
+  console.log('Seed complete: super@platform.test / DevSuper123!, admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (org slug: demo-org)');
 }
 
 main()
