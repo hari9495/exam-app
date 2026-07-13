@@ -1,6 +1,10 @@
 import { ExecutionContext, HttpException, Injectable, Logger } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
 
+// This file has a byte-identical twin in the other app (apps/api and
+// apps/exam-runtime each carry one copy, since monorepo apps don't
+// cross-import internals). Keep them in sync; the unit spec lives in apps/api.
+//
 // ThrottlerGuard awaits the Redis-backed storage on every request with no
 // fallback, which would turn a Redis outage into a 500 on every route. A
 // rate limiter is a protection layer, not a dependency the whole API should

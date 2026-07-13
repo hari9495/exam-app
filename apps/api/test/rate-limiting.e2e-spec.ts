@@ -23,6 +23,10 @@ class RateLimitProbeController {
   imports: [
     ThrottlerModule.forRoot({
       throttlers: [{ name: 'default', ttl: seconds(60), limit: 1000 }],
+      // Unlike the real app modules, no fast-fail options here: this probe uses the plain
+      // ThrottlerGuard (no fail-open), so with enableOfflineQueue: false a request landing in
+      // the brief window before ioredis reaches 'ready' would 500. The default offline queue
+      // absorbs that startup window; outage fail-open behavior is the guard spec's concern.
       storage: new ThrottlerStorageRedisService(process.env.REDIS_URL ?? 'redis://localhost:6379'),
     }),
   ],

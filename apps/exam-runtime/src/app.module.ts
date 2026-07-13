@@ -19,7 +19,13 @@ import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
     ThrottlerModule.forRootAsync({
       useFactory: () => ({
         throttlers: [{ name: 'default', ttl: seconds(60), limit: DEFAULT_THROTTLE_LIMIT }],
-        storage: new ThrottlerStorageRedisService(process.env.REDIS_URL ?? 'redis://localhost:6379'),
+        // Fast-fail options: ioredis defaults (offline queue + 20 retries/request) would
+        // stall every request ~10s during a Redis outage before FailOpenThrottlerGuard's
+        // fail-open path engages -- reject immediately instead.
+        storage: new ThrottlerStorageRedisService(process.env.REDIS_URL ?? 'redis://localhost:6379', {
+          maxRetriesPerRequest: 1,
+          enableOfflineQueue: false,
+        }),
       }),
     }),
     PrismaModule,
