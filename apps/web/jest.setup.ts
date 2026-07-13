@@ -16,6 +16,16 @@ if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
 
+// Polyfill for ResizeObserver - needed for Radix UI RadioGroup's bubble
+// input (useSize) in jsdom, which jsdom does not implement.
+if (typeof (globalThis as { ResizeObserver?: unknown }).ResizeObserver === 'undefined') {
+  (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
 // Minimal Fetch API `Response` polyfill.
 // jest-environment-jsdom (jsdom itself) does not implement the Fetch API, so
 // `global.fetch` mocks that construct `new Response(json, { status })` throw
