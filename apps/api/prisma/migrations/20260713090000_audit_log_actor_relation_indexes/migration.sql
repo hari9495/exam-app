@@ -9,6 +9,10 @@ UPDATE [dbo].[audit_logs] SET [actor_user_id] = NULL WHERE [actor_user_id] IS NO
 EXEC sp_set_session_context @key=N'app_is_super_admin', @value=0;
 
 -- AddForeignKey
+-- ON UPDATE NO ACTION (not CASCADE, unlike the sibling FKs on this table) -- a third
+-- ON UPDATE CASCADE path from organizations (via users.organization_id -> this FK)
+-- would trigger SQL Server error 1785 (multiple cascade paths). ON DELETE SET NULL is
+-- unaffected and preserved.
 ALTER TABLE [dbo].[audit_logs] ADD CONSTRAINT [audit_logs_actor_user_id_fkey] FOREIGN KEY ([actor_user_id]) REFERENCES [dbo].[users]([id]) ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- CreateIndex
