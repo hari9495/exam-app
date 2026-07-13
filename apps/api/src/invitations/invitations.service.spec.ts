@@ -29,7 +29,7 @@ describe('InvitationsService', () => {
   it('invites every requested candidate to a published exam and sends an email for each', async () => {
     const createTx = {
       exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', title: 'Backend Round', status: 'published' }) },
-      candidate: { findMany: jest.fn().mockResolvedValue([{ id: 'cand-1', email: 'a@test.com', name: 'Alice' }]) },
+      candidate: { findMany: jest.fn().mockResolvedValue([{ id: 'cand-1', email: 'a@test.com', name: 'Alice', erasedAt: null }]) },
       invitation: {
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited' }),
@@ -50,6 +50,23 @@ describe('InvitationsService', () => {
     expect(notifTx.notification.create).toHaveBeenCalledWith({
       data: { invitationId: 'inv-1', status: 'sent', sentAt: expect.any(Date) },
     });
+  });
+
+  it('rejects inviting an erased candidate', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', title: 'Backend Round', status: 'published' }) },
+      candidate: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'cand-1', email: 'a@test.com', name: 'Alice', erasedAt: null },
+          { id: 'cand-2', email: 'erased-cand-2@redacted.invalid', name: 'Redacted', erasedAt: new Date('2026-06-01') },
+        ]),
+      },
+      invitation: { findMany: jest.fn().mockResolvedValue([]), create: jest.fn() },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.bulkInvite(context, 'exam-1', ['cand-1', 'cand-2'])).rejects.toThrow(BadRequestException);
+    expect(tx.invitation.create).not.toHaveBeenCalled();
   });
 
   it('throws NotFoundException when the exam does not exist', async () => {
@@ -79,7 +96,7 @@ describe('InvitationsService', () => {
   it('skips a candidate who already has a live invitation instead of creating a duplicate', async () => {
     const tx = {
       exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', title: 'Backend Round', status: 'published' }) },
-      candidate: { findMany: jest.fn().mockResolvedValue([{ id: 'cand-1', email: 'a@test.com', name: 'Alice' }]) },
+      candidate: { findMany: jest.fn().mockResolvedValue([{ id: 'cand-1', email: 'a@test.com', name: 'Alice', erasedAt: null }]) },
       invitation: {
         findMany: jest.fn().mockResolvedValue([{ candidateId: 'cand-1' }]),
         create: jest.fn(),

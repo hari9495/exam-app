@@ -52,6 +52,11 @@ export class InvitationsService {
         throw new NotFoundException(`One or more candidates were not found in this organization: ${missingIds.join(', ')}`);
       }
 
+      const erasedIds = candidates.filter((c) => c.erasedAt !== null).map((c) => c.id);
+      if (erasedIds.length > 0) {
+        throw new BadRequestException(`One or more candidates have been erased and cannot be invited: ${erasedIds.join(', ')}`);
+      }
+
       const liveInvitations = await tx.invitation.findMany({
         where: { examId, candidateId: { in: uniqueCandidateIds }, status: 'invited', expiresAt: { gt: new Date() } },
         select: { candidateId: true },

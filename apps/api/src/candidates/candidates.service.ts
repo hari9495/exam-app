@@ -183,4 +183,58 @@ export class CandidatesService {
 
     return exportPayload;
   }
+
+  async erase(context: TenantContext, actorUserId: string, candidateId: string): Promise<{ id: string; erasedAt: Date }> {
+    const { erasedAt, didErase } = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const candidate = await tx.candidate.findFirst({
+        where: { id: candidateId, organizationId: context.organizationId as string },
+      });
+      if (!candidate) {
+        throw new NotFoundException(`Candidate ${candidateId} not found`);
+      }
+      if (candidate.erasedAt) {
+        return { erasedAt: candidate.erasedAt, didErase: false };
+      }
+
+      const invitations = await tx.invitation.findMany({ where: { candidateId }, select: { id: true } });
+      const invitationIds = invitations.map((invitation) => invitation.id);
+      const attempts = await tx.attempt.findMany({ where: { invitationId: { in: invitationIds } }, select: { id: true } });
+      const attemptIds = attempts.map((attempt) => attempt.id);
+
+      const now = new Date();
+      await tx.candidate.update({
+        where: { id: candidateId },
+        data: { name: 'Redacted', email: `erased-${candidateId}@redacted.invalid`, phone: null, erasedAt: now },
+      });
+      await tx.attempt.updateMany({ where: { id: { in: attemptIds } }, data: { deviceFingerprint: null } });
+      await tx.candidateMessage.updateMany({ where: { attemptId: { in: attemptIds } }, data: { body: '[redacted]' } });
+      await tx.proctoringEvent.updateMany({ where: { attemptId: { in: attemptIds } }, data: { metadataJson: null } });
+      await tx.proctoringAnalysis.updateMany({
+        where: { attemptId: { in: attemptIds }, summary: { not: null } },
+        data: { summary: '[redacted]' },
+      });
+      await tx.attemptInsight.updateMany({
+        where: { attemptId: { in: attemptIds }, summary: { not: null } },
+        data: { summary: '[redacted]' },
+      });
+      await tx.candidateRefreshToken.deleteMany({ where: { invitationId: { in: invitationIds } } });
+      await tx.invitation.updateMany({
+        where: { id: { in: invitationIds }, status: 'invited' },
+        data: { status: 'revoked', revokedAt: now },
+      });
+
+      return { erasedAt: now, didErase: true };
+    });
+
+    if (didErase) {
+      await this.audit.record(context, {
+        actorUserId,
+        action: 'candidate.erased',
+        entityType: 'candidate',
+        entityId: candidateId,
+      });
+    }
+
+    return { id: candidateId, erasedAt };
+  }
 }

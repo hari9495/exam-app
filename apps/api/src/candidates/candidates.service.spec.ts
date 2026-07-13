@@ -179,4 +179,94 @@ describe('CandidatesService', () => {
       expect(audit.record).not.toHaveBeenCalled();
     });
   });
+
+  describe('erase', () => {
+    function makeEraseTx(overrides: { candidate?: Record<string, unknown> } = {}) {
+      return {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue(
+            overrides.candidate ?? { id: 'cand-1', email: 'a@test.com', name: 'Alice', phone: '555-1234', erasedAt: null },
+          ),
+          update: jest.fn(),
+        },
+        invitation: {
+          findMany: jest.fn().mockResolvedValue([{ id: 'inv-1' }, { id: 'inv-2' }]),
+          updateMany: jest.fn(),
+        },
+        attempt: {
+          findMany: jest.fn().mockResolvedValue([{ id: 'attempt-1' }]),
+          updateMany: jest.fn(),
+        },
+        candidateMessage: { updateMany: jest.fn() },
+        proctoringEvent: { updateMany: jest.fn() },
+        proctoringAnalysis: { updateMany: jest.fn() },
+        attemptInsight: { updateMany: jest.fn() },
+        candidateRefreshToken: { deleteMany: jest.fn() },
+      };
+    }
+
+    it('scrubs every PII-bearing field, deletes session tokens, and revokes live invitations atomically', async () => {
+      const tx = makeEraseTx();
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.erase(context, 'user-1', 'cand-1');
+
+      expect(tx.candidate.update).toHaveBeenCalledWith({
+        where: { id: 'cand-1' },
+        data: { name: 'Redacted', email: 'erased-cand-1@redacted.invalid', phone: null, erasedAt: expect.any(Date) },
+      });
+      expect(tx.attempt.updateMany).toHaveBeenCalledWith({
+        where: { id: { in: ['attempt-1'] } }, data: { deviceFingerprint: null },
+      });
+      expect(tx.candidateMessage.updateMany).toHaveBeenCalledWith({
+        where: { attemptId: { in: ['attempt-1'] } }, data: { body: '[redacted]' },
+      });
+      expect(tx.proctoringEvent.updateMany).toHaveBeenCalledWith({
+        where: { attemptId: { in: ['attempt-1'] } }, data: { metadataJson: null },
+      });
+      expect(tx.proctoringAnalysis.updateMany).toHaveBeenCalledWith({
+        where: { attemptId: { in: ['attempt-1'] }, summary: { not: null } }, data: { summary: '[redacted]' },
+      });
+      expect(tx.attemptInsight.updateMany).toHaveBeenCalledWith({
+        where: { attemptId: { in: ['attempt-1'] }, summary: { not: null } }, data: { summary: '[redacted]' },
+      });
+      expect(tx.candidateRefreshToken.deleteMany).toHaveBeenCalledWith({
+        where: { invitationId: { in: ['inv-1', 'inv-2'] } },
+      });
+      expect(tx.invitation.updateMany).toHaveBeenCalledWith({
+        where: { id: { in: ['inv-1', 'inv-2'] }, status: 'invited' },
+        data: { status: 'revoked', revokedAt: expect.any(Date) },
+      });
+      expect(result.id).toBe('cand-1');
+      expect(result.erasedAt).toEqual(expect.any(Date));
+      expect(audit.record).toHaveBeenCalledWith(context, {
+        actorUserId: 'user-1', action: 'candidate.erased', entityType: 'candidate', entityId: 'cand-1',
+      });
+    });
+
+    it('is idempotent: an already-erased candidate is a no-op with no re-scrub and no second audit entry', async () => {
+      const previouslyErasedAt = new Date('2026-06-01');
+      const tx = makeEraseTx({
+        candidate: { id: 'cand-1', email: 'erased-cand-1@redacted.invalid', name: 'Redacted', phone: null, erasedAt: previouslyErasedAt },
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.erase(context, 'user-1', 'cand-1');
+
+      expect(result).toEqual({ id: 'cand-1', erasedAt: previouslyErasedAt });
+      expect(tx.candidate.update).not.toHaveBeenCalled();
+      expect(tx.candidateRefreshToken.deleteMany).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException (and touches nothing) for a candidate outside the caller organization', async () => {
+      const tx = makeEraseTx();
+      tx.candidate.findFirst.mockResolvedValue(null);
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.erase(context, 'user-1', 'cand-x')).rejects.toThrow(NotFoundException);
+      expect(tx.candidate.update).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+  });
 });

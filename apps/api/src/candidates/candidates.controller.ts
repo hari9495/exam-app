@@ -37,4 +37,10 @@ export class CandidatesController {
   exportData(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
     return this.candidatesService.exportData(tenant, userId, id);
   }
+
+  @Post(':id/erase')
+  @RequirePermissions('candidate:data_rights')
+  erase(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.candidatesService.erase(tenant, userId, id);
+  }
 }
