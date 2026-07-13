@@ -4,34 +4,17 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
-
-interface PublicBranding {
-  logoUrl: string | null;
-  primaryColor: string | null;
-  accentColor: string | null;
-}
+import { Button, Input, Card } from '../../components/ui';
+import { useBranding } from '../../lib/hooks/useBranding';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { setAccessToken } = useAuth();
-  const [organizationSlug, setOrganizationSlug] = useState('demo-org');
-  const [email, setEmail] = useState('admin@demo-org.test');
+  const { login } = useAuth();
+  const [organizationSlug, setOrganizationSlug] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [branding, setBranding] = useState<PublicBranding | null>(null);
-
-  async function handleSlugBlur() {
-    if (!organizationSlug) {
-      setBranding(null);
-      return;
-    }
-    try {
-      const result = await apiFetch(`/organizations/by-slug/${organizationSlug}/branding`);
-      setBranding(result);
-    } catch {
-      setBranding(null);
-    }
-  }
+  const { data: branding } = useBranding(organizationSlug || null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -41,7 +24,7 @@ export default function LoginPage() {
         method: 'POST',
         body: JSON.stringify({ organizationSlug: organizationSlug || undefined, email, password }),
       });
-      setAccessToken(result.accessToken);
+      login(organizationSlug, result.accessToken);
       router.push('/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
@@ -49,27 +32,24 @@ export default function LoginPage() {
   }
 
   return (
-    <main>
-      {branding?.logoUrl && <img src={branding.logoUrl} alt="Organization logo" style={{ maxHeight: 60 }} />}
-      <h1 style={branding?.primaryColor ? { color: branding.primaryColor } : undefined}>Staff Login</h1>
-      <form onSubmit={handleSubmit}>
-        <label>
-          Organization slug (leave blank for platform login)
-          <input value={organizationSlug} onChange={(e) => setOrganizationSlug(e.target.value)} onBlur={handleSlugBlur} />
-        </label>
-        <label>
-          Email
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-        </label>
-        <label>
-          Password
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-        </label>
-        <button type="submit" style={branding?.primaryColor ? { backgroundColor: branding.primaryColor } : undefined}>
-          Log in
-        </button>
-      </form>
-      {error && <p role="alert">{error}</p>}
+    <main className="flex min-h-screen items-center justify-center bg-gray-50">
+      <Card className="w-full max-w-sm">
+        {branding?.logoUrl && <img src={branding.logoUrl} alt="Organization logo" className="mb-4 max-h-14" />}
+        <h1 className="mb-4 text-xl font-semibold" style={branding?.primaryColor ? { color: branding.primaryColor } : undefined}>
+          Staff Login
+        </h1>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <Input label="Organization slug" value={organizationSlug} onChange={setOrganizationSlug} />
+          <Input label="Email" type="email" value={email} onChange={setEmail} required />
+          <Input label="Password" type="password" value={password} onChange={setPassword} required />
+          <Button type="submit">Log in</Button>
+          {error && (
+            <p role="alert" className="text-sm text-red-600">
+              {error}
+            </p>
+          )}
+        </form>
+      </Card>
     </main>
   );
 }
