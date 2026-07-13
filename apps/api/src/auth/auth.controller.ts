@@ -1,6 +1,6 @@
-import { Body, Controller, HttpCode, Post, Res } from '@nestjs/common';
+import { Body, Controller, HttpCode, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
@@ -24,16 +24,23 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(200)
   @Throttle(STRICT_AUTH_THROTTLE)
-  async refresh(@Body() dto: RefreshDto, @Res({ passthrough: true }) res: Response) {
-    const tokens = await this.authService.refresh(dto.refreshToken);
+  async refresh(@Body() dto: RefreshDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const refreshToken = dto.refreshToken ?? req.cookies?.[REFRESH_COOKIE];
+    if (!refreshToken) {
+      throw new UnauthorizedException('Refresh token required');
+    }
+    const tokens = await this.authService.refresh(refreshToken);
     res.cookie(REFRESH_COOKIE, tokens.refreshToken, { httpOnly: true, sameSite: 'lax', secure: false });
     return { accessToken: tokens.accessToken };
   }
 
   @Post('logout')
   @HttpCode(200)
-  async logout(@Body() dto: RefreshDto, @Res({ passthrough: true }) res: Response) {
-    await this.authService.logout(dto.refreshToken);
+  async logout(@Body() dto: RefreshDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const refreshToken = dto.refreshToken ?? req.cookies?.[REFRESH_COOKIE];
+    if (refreshToken) {
+      await this.authService.logout(refreshToken);
+    }
     res.clearCookie(REFRESH_COOKIE);
     return { success: true };
   }
