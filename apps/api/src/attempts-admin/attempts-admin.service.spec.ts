@@ -123,7 +123,7 @@ describe('AttemptsAdminService', () => {
       const tx = { attempt: { findFirst: jest.fn().mockResolvedValue(null) } };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      await expect(service.reanalyze(context, 'attempt-1')).rejects.toThrow(NotFoundException);
+      await expect(service.reanalyze(context, 'user-1', 'attempt-1')).rejects.toThrow(NotFoundException);
       expect(examRuntime.reanalyze).not.toHaveBeenCalled();
     });
 
@@ -138,9 +138,12 @@ describe('AttemptsAdminService', () => {
         return fn({ proctoringAnalysis: { findUniqueOrThrow: jest.fn().mockResolvedValue(analysis) } });
       });
 
-      const result = await service.reanalyze(context, 'attempt-1');
+      const result = await service.reanalyze(context, 'user-1', 'attempt-1');
 
       expect(examRuntime.reanalyze).toHaveBeenCalledWith('attempt-1');
+      expect(audit.record).toHaveBeenCalledWith(context, {
+        actorUserId: 'user-1', action: 'attempt.reanalyze_triggered', entityType: 'attempt', entityId: 'attempt-1',
+      });
       expect(result).toBe(analysis);
     });
   });
@@ -188,7 +191,7 @@ describe('AttemptsAdminService', () => {
       const tx = { attempt: { findFirst: jest.fn().mockResolvedValue(null) } };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      await expect(service.regenerateInsight(context, 'attempt-1')).rejects.toThrow(NotFoundException);
+      await expect(service.regenerateInsight(context, 'user-1', 'attempt-1')).rejects.toThrow(NotFoundException);
       expect(examRuntime.regenerateInsight).not.toHaveBeenCalled();
     });
 
@@ -203,9 +206,12 @@ describe('AttemptsAdminService', () => {
         return fn({ attemptInsight: { findUniqueOrThrow: jest.fn().mockResolvedValue(insight) } });
       });
 
-      const result = await service.regenerateInsight(context, 'attempt-1');
+      const result = await service.regenerateInsight(context, 'user-1', 'attempt-1');
 
       expect(examRuntime.regenerateInsight).toHaveBeenCalledWith('attempt-1');
+      expect(audit.record).toHaveBeenCalledWith(context, {
+        actorUserId: 'user-1', action: 'attempt.insight_regenerated', entityType: 'attempt', entityId: 'attempt-1',
+      });
       expect(result).toBe(insight);
     });
   });

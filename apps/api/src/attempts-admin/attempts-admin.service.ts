@@ -81,10 +81,17 @@ export class AttemptsAdminService {
     });
   }
 
-  async reanalyze(context: TenantContext, attemptId: string): Promise<ProctoringAnalysis> {
+  async reanalyze(context: TenantContext, actorUserId: string, attemptId: string): Promise<ProctoringAnalysis> {
     await this.requireOwnedAttempt(context, attemptId);
 
     await this.examRuntime.reanalyze(attemptId);
+
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'attempt.reanalyze_triggered',
+      entityType: 'attempt',
+      entityId: attemptId,
+    });
 
     return this.tenantPrisma.forTenant(context, (tx) => tx.proctoringAnalysis.findUniqueOrThrow({ where: { attemptId } }));
   }
@@ -99,10 +106,17 @@ export class AttemptsAdminService {
     return insight;
   }
 
-  async regenerateInsight(context: TenantContext, attemptId: string): Promise<AttemptInsight> {
+  async regenerateInsight(context: TenantContext, actorUserId: string, attemptId: string): Promise<AttemptInsight> {
     await this.requireOwnedAttempt(context, attemptId);
 
     await this.examRuntime.regenerateInsight(attemptId);
+
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'attempt.insight_regenerated',
+      entityType: 'attempt',
+      entityId: attemptId,
+    });
 
     return this.tenantPrisma.forTenant(context, (tx) => tx.attemptInsight.findUniqueOrThrow({ where: { attemptId } }));
   }

@@ -74,6 +74,11 @@ export class AuthService {
         where: { userId: payload.sub, familyId: payload.familyId },
         data: { revokedAt: new Date() },
       });
+      const compromisedUser = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+      await this.audit.record(
+        { organizationId: compromisedUser?.organizationId ?? null, isSuperAdmin: compromisedUser?.role === 'super_admin' },
+        { actorUserId: payload.sub, action: 'auth.token_reuse_detected', entityType: 'user', entityId: payload.sub },
+      );
       throw new UnauthorizedException('Refresh token reuse detected — session revoked');
     }
 

@@ -9,7 +9,11 @@ import { AuditService } from '@exam-platform/shared';
 
 describe('AuthService', () => {
   let service: AuthService;
-  let prisma: { organization: { findUnique: jest.Mock }; refreshToken: { create: jest.Mock } };
+  let prisma: {
+    organization: { findUnique: jest.Mock };
+    refreshToken: { create: jest.Mock; findFirst: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
+    user: { findUnique: jest.Mock };
+  };
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
   let jwt: JwtService;
@@ -17,7 +21,8 @@ describe('AuthService', () => {
   beforeEach(async () => {
     prisma = {
       organization: { findUnique: jest.fn() },
-      refreshToken: { create: jest.fn() },
+      refreshToken: { create: jest.fn(), findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
+      user: { findUnique: jest.fn() },
     };
     tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
@@ -76,5 +81,22 @@ describe('AuthService', () => {
     const decoded = jwt.decode(result.accessToken) as { organizationId: string; role: string };
     expect(decoded.organizationId).toBe('org-1');
     expect(decoded.role).toBe('org_admin');
+  });
+
+  it('revokes the whole refresh-token family and audits the incident on reuse detection', async () => {
+    const refreshToken = jwt.sign({ sub: 'user-1', familyId: 'family-1' }, { secret: process.env.JWT_REFRESH_SECRET });
+    prisma.refreshToken.findFirst.mockResolvedValue(null);
+    prisma.user.findUnique.mockResolvedValue({ id: 'user-1', organizationId: 'org-1', role: 'org_admin' });
+
+    await expect(service.refresh(refreshToken)).rejects.toThrow(UnauthorizedException);
+
+    expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'user-1', familyId: 'family-1' },
+      data: { revokedAt: expect.any(Date) },
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      { organizationId: 'org-1', isSuperAdmin: false },
+      { actorUserId: 'user-1', action: 'auth.token_reuse_detected', entityType: 'user', entityId: 'user-1' },
+    );
   });
 });
