@@ -1,10 +1,14 @@
+import './globals.css';
 import { AuthProvider } from '../lib/auth-context';
+import { QueryProvider } from '../lib/query-provider';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <QueryProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </QueryProvider>
       </body>
     </html>
   );
