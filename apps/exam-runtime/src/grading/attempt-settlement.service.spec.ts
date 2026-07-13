@@ -9,7 +9,7 @@ describe('AttemptSettlementService', () => {
   let broadcaster: { emitAttemptStatus: jest.Mock; emitMessageSent: jest.Mock };
   let attemptAnalysis: { analyze: jest.Mock };
   let attemptInsight: { analyze: jest.Mock };
-  const exam = { id: 'exam-1', durationMinutes: 30, passCriteriaPercent: 50 };
+  const exam = { id: 'exam-1', organizationId: 'org-1', durationMinutes: 30, passCriteriaPercent: 50 };
 
   beforeEach(() => {
     broadcaster = { emitAttemptStatus: jest.fn().mockResolvedValue(undefined), emitMessageSent: jest.fn().mockResolvedValue(undefined) };
@@ -90,6 +90,7 @@ describe('AttemptSettlementService', () => {
         },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
         attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'auto_submitted' }) },
+        auditLog: { create: jest.fn() },
       };
 
       const result = await service.settleIfExpired(tx as unknown as Prisma.TransactionClient, exam, attempt as any);
@@ -114,6 +115,7 @@ describe('AttemptSettlementService', () => {
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
         attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+        auditLog: { create: jest.fn() },
       };
 
       await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
@@ -125,6 +127,30 @@ describe('AttemptSettlementService', () => {
       expect(tx.attempt.update).toHaveBeenCalledWith({
         where: { id: 'attempt-1' },
         data: { status: 'submitted', submittedAt: expect.any(Date) },
+      });
+    });
+
+    it('writes an atomic attempt.settled audit entry alongside the grading transaction', async () => {
+      const attempt = { id: 'attempt-1', questionOrderJson: JSON.stringify(['q1']) };
+      const tx = {
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
+        answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
+        result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+        attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+        auditLog: { create: jest.fn() },
+      };
+
+      await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
+
+      expect(tx.auditLog.create).toHaveBeenCalledWith({
+        data: {
+          organizationId: 'org-1',
+          actorUserId: null,
+          action: 'attempt.settled',
+          entityType: 'attempt',
+          entityId: 'attempt-1',
+          metadataJson: JSON.stringify({ status: 'submitted', score: 0, maxScore: 5, percentage: 0, passFail: 'fail' }),
+        },
       });
     });
 
@@ -144,6 +170,7 @@ describe('AttemptSettlementService', () => {
         },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
         attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+        auditLog: { create: jest.fn() },
       };
 
       await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
@@ -161,6 +188,7 @@ describe('AttemptSettlementService', () => {
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
         attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+        auditLog: { create: jest.fn() },
       };
 
       await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
@@ -203,6 +231,7 @@ describe('AttemptSettlementService', () => {
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
         attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+        auditLog: { create: jest.fn() },
       };
 
       await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
@@ -218,6 +247,7 @@ describe('AttemptSettlementService', () => {
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
         attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+        auditLog: { create: jest.fn() },
       };
 
       await expect(
@@ -237,6 +267,7 @@ describe('AttemptSettlementService', () => {
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
         attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+        auditLog: { create: jest.fn() },
       };
 
       await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
@@ -260,6 +291,7 @@ describe('AttemptSettlementService', () => {
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
         attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+        auditLog: { create: jest.fn() },
       };
 
       await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
@@ -276,6 +308,7 @@ describe('AttemptSettlementService', () => {
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
         attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+        auditLog: { create: jest.fn() },
       };
 
       await expect(
@@ -291,6 +324,7 @@ describe('AttemptSettlementService', () => {
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
         attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+        auditLog: { create: jest.fn() },
       };
 
       await expect(

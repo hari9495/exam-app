@@ -7,6 +7,7 @@ import { AttemptInsightService } from '../attempt-insight/attempt-insight.servic
 
 export interface SettlementExam {
   id: string;
+  organizationId: string;
   durationMinutes: number;
   passCriteriaPercent: number;
 }
@@ -81,6 +82,16 @@ export class AttemptSettlementService {
     });
 
     const finalized = await tx.attempt.update({ where: { id: attempt.id }, data: { status, submittedAt: new Date() } });
+    await tx.auditLog.create({
+      data: {
+        organizationId: exam.organizationId,
+        actorUserId: null,
+        action: 'attempt.settled',
+        entityType: 'attempt',
+        entityId: finalized.id,
+        metadataJson: JSON.stringify({ status, score: summary.score, maxScore: summary.maxScore, percentage: summary.percentage, passFail: summary.passFail }),
+      },
+    });
     void this.broadcaster
       .emitAttemptStatus(attempt.examId, {
         attemptId: finalized.id,
