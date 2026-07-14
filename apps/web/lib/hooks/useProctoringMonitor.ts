@@ -9,6 +9,8 @@ const TAB_SWITCH_DEBOUNCE_MS = 5000;
 
 export function useProctoringMonitor(enabled: boolean): void {
   const report = useReportProctoringEvent();
+  const reportRef = useRef(report);
+  reportRef.current = report;
   const debounceTimers = useRef<Partial<Record<ProctoringEventType, ReturnType<typeof setTimeout>>>>({});
   const idleTimer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -17,7 +19,7 @@ export function useProctoringMonitor(enabled: boolean): void {
 
     function debouncedReport(eventType: ProctoringEventType, windowMs: number, metadata?: Record<string, unknown>) {
       if (debounceTimers.current[eventType]) return;
-      report(eventType, metadata);
+      reportRef.current(eventType, metadata);
       debounceTimers.current[eventType] = setTimeout(() => {
         delete debounceTimers.current[eventType];
       }, windowMs);
@@ -25,7 +27,7 @@ export function useProctoringMonitor(enabled: boolean): void {
 
     function resetIdleTimer() {
       if (idleTimer.current) clearTimeout(idleTimer.current);
-      idleTimer.current = setTimeout(() => report('idle_timeout'), IDLE_TIMEOUT_MS);
+      idleTimer.current = setTimeout(() => reportRef.current('idle_timeout'), IDLE_TIMEOUT_MS);
     }
 
     function onVisibilityChange() {
@@ -39,17 +41,17 @@ export function useProctoringMonitor(enabled: boolean): void {
       }
     }
     function onCopy() {
-      report('copy_paste', { action: 'copy' });
+      reportRef.current('copy_paste', { action: 'copy' });
     }
     function onPaste() {
-      report('copy_paste', { action: 'paste' });
+      reportRef.current('copy_paste', { action: 'paste' });
     }
     function onContextMenu() {
-      report('right_click');
+      reportRef.current('right_click');
     }
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'F12' || (event.ctrlKey && event.shiftKey && event.key === 'I')) {
-        report('dev_tools_detected', { trigger: 'shortcut' });
+        reportRef.current('dev_tools_detected', { trigger: 'shortcut' });
       }
       resetIdleTimer();
     }
@@ -70,7 +72,7 @@ export function useProctoringMonitor(enabled: boolean): void {
       const widthDelta = window.outerWidth - window.innerWidth;
       const heightDelta = window.outerHeight - window.innerHeight;
       if (widthDelta > DEVTOOLS_SIZE_THRESHOLD || heightDelta > DEVTOOLS_SIZE_THRESHOLD) {
-        report('dev_tools_detected', { trigger: 'window-size' });
+        reportRef.current('dev_tools_detected', { trigger: 'window-size' });
       }
     }, DEVTOOLS_POLL_MS);
 
@@ -84,6 +86,8 @@ export function useProctoringMonitor(enabled: boolean): void {
       document.removeEventListener('mousemove', onMouseMove);
       clearInterval(devtoolsInterval);
       if (idleTimer.current) clearTimeout(idleTimer.current);
+      Object.values(debounceTimers.current).forEach((timer) => clearTimeout(timer));
+      debounceTimers.current = {};
     };
-  }, [enabled, report]);
+  }, [enabled]);
 }
