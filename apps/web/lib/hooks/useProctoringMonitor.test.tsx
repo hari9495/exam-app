@@ -50,12 +50,20 @@ describe('useProctoringMonitor', () => {
   });
 
   it('does not reset the idle timer merely because the host component re-renders', () => {
+    // The real (non-memoized) useReportProctoringEvent returns a brand-new function
+    // identity on every render. mockReturnValue would hand back the same reference
+    // every time, which fails to reproduce that — so mock a fresh closure per call.
+    const idleReportCalls: [string, unknown?][] = [];
+    jest.spyOn(useAttemptModule, 'useReportProctoringEvent').mockImplementation(() => {
+      return (eventType: string, metadata?: unknown) => idleReportCalls.push([eventType, metadata]);
+    });
+
     const { rerender } = render(<Probe enabled={true} />);
 
     act(() => {
       jest.advanceTimersByTime(4 * 60 * 1000 + 50 * 1000); // 4:50 of 5:00
     });
-    expect(report).not.toHaveBeenCalledWith('idle_timeout');
+    expect(idleReportCalls).not.toContainEqual(['idle_timeout', undefined]);
 
     // Re-render caused by unrelated host state (e.g. a ticking countdown), not real user input.
     rerender(<Probe enabled={true} />);
@@ -64,7 +72,7 @@ describe('useProctoringMonitor', () => {
       jest.advanceTimersByTime(10 * 1000); // remaining 10s to reach the 5:00 threshold
     });
 
-    expect(report).toHaveBeenCalledWith('idle_timeout');
+    expect(idleReportCalls).toContainEqual(['idle_timeout', undefined]);
   });
 
   it('does not drop a debounced event that recurs across a disable/re-enable cycle', () => {
