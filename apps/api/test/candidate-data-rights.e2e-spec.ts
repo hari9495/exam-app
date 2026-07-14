@@ -230,4 +230,35 @@ describe('Candidate data subject rights (GDPR export + erasure)', () => {
     expect(erasedEntry.entityId).toBe(candidateId);
     expect(erasedEntry.actorEmail).toBe('orgadmin@gdpr-a.test');
   });
+
+  it('looks up a candidate by exact email match for an org_admin', async () => {
+    const response = await request(adminHttp)
+      .get('/api/v1/candidates/lookup')
+      .query({ email: `erased-${candidateId}@redacted.invalid` })
+      .set('Authorization', `Bearer ${orgAdminAccessToken}`)
+      .expect(200);
+
+    expect(response.body.id).toBe(candidateId);
+  });
+
+  it('returns 404 for an email with no match, and 400 when email is omitted', async () => {
+    await request(adminHttp)
+      .get('/api/v1/candidates/lookup')
+      .query({ email: 'nobody@nowhere.test' })
+      .set('Authorization', `Bearer ${orgAdminAccessToken}`)
+      .expect(404);
+
+    await request(adminHttp)
+      .get('/api/v1/candidates/lookup')
+      .set('Authorization', `Bearer ${orgAdminAccessToken}`)
+      .expect(400);
+  });
+
+  it('rejects recruiter (no candidate:data_rights) on lookup with 403', async () => {
+    await request(adminHttp)
+      .get('/api/v1/candidates/lookup')
+      .query({ email: `erased-${candidateId}@redacted.invalid` })
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(403);
+  });
 });

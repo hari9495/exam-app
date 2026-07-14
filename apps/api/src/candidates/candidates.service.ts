@@ -71,6 +71,18 @@ export class CandidatesService {
     );
   }
 
+  async lookupByEmail(context: TenantContext, email: string): Promise<Candidate> {
+    const candidate = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.candidate.findFirst({
+        where: { organizationId: context.organizationId as string, email },
+      }),
+    );
+    if (!candidate) {
+      throw new NotFoundException(`No candidate found with email ${email}`);
+    }
+    return candidate;
+  }
+
   async bulkUpload(context: TenantContext, csvContent: string): Promise<BulkUploadResult> {
     const { rows, errors } = parseCandidateCsv(csvContent);
 

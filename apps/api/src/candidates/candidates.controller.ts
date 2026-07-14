@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
@@ -24,6 +24,15 @@ export class CandidatesController {
   @RequirePermissions('candidate:manage')
   list(@CurrentTenant() tenant: TenantContext, @Query('limit') limit?: string, @Query('cursor') cursor?: string) {
     return this.candidatesService.list(tenant, { limit: limit ? parseInt(limit, 10) : undefined, cursor });
+  }
+
+  @Get('lookup')
+  @RequirePermissions('candidate:data_rights')
+  lookupByEmail(@CurrentTenant() tenant: TenantContext, @Query('email') email?: string) {
+    if (!email) {
+      throw new BadRequestException('email query parameter is required');
+    }
+    return this.candidatesService.lookupByEmail(tenant, email);
   }
 
   @Post('bulk')
