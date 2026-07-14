@@ -130,6 +130,11 @@ export default function DataRightsPage() {
       )}
       <Modal open={confirmOpen} title="Erase candidate data?" onClose={() => setConfirmOpen(false)}>
         <p className="mb-4 text-sm text-gray-600">This permanently redacts {candidate?.name}&apos;s personal data. This cannot be undone.</p>
+        {error && (
+          <p role="alert" className="mb-4 text-sm text-red-600">
+            {error}
+          </p>
+        )}
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={() => setConfirmOpen(false)}>
             Cancel

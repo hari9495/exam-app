@@ -123,9 +123,10 @@ describe('DataRightsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Erase candidate' }));
     await userEvent.click(screen.getByRole('button', { name: 'Confirm erase' }));
 
-    // Wait for the error message to appear
-    await waitFor(() => expect(screen.getByText('Erase failed unexpectedly')).toBeInTheDocument());
+    // Wait for the error message to appear; it renders in both the modal and top-of-page
+    await waitFor(() => expect(screen.getAllByText('Erase failed unexpectedly').length).toBeGreaterThan(0));
     // Modal should remain open, so the Confirm erase button should still be visible
+    // This proves the error is visible while the modal is still open
     expect(screen.getByRole('button', { name: 'Confirm erase' })).toBeInTheDocument();
   });
 
@@ -170,8 +171,8 @@ describe('DataRightsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Erase candidate' }));
     await userEvent.click(screen.getByRole('button', { name: 'Confirm erase' }));
 
-    // Wait for error banner to appear with the first failure message
-    await waitFor(() => expect(screen.getByText('Erase failed on first attempt')).toBeInTheDocument());
+    // Wait for error banner to appear with the first failure message; it renders in both the modal and top-of-page
+    await waitFor(() => expect(screen.getAllByText('Erase failed on first attempt').length).toBeGreaterThan(0));
 
     // Modal should still be open, click confirm again (second time - succeeds)
     await userEvent.click(screen.getByRole('button', { name: 'Confirm erase' }));
@@ -180,6 +181,6 @@ describe('DataRightsPage', () => {
     await waitFor(() => expect(screen.getByText(/Erased at/)).toBeInTheDocument());
 
     // Verify the error banner is gone (stale banner bug is fixed)
-    expect(screen.queryByText('Erase failed on first attempt')).not.toBeInTheDocument();
+    expect(screen.queryAllByText('Erase failed on first attempt').length).toBe(0);
   });
 });
