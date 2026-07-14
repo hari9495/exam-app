@@ -6,20 +6,24 @@ import { CandidateButton } from '../components/CandidateButton';
 import { useAttemptQuery, useStartAttempt } from '../../../lib/hooks/useAttempt';
 import { isAttemptStarted } from '../../../lib/types';
 import { useToast } from '../../../components/ui';
+import { useCandidateAuth } from '../../../lib/candidate-auth-context';
 
 export default function CandidateWelcomePage() {
   const router = useRouter();
+  const { accessToken, isLoading: authLoading } = useCandidateAuth();
   const { data: current, isLoading, isError } = useAttemptQuery();
   const startAttempt = useStartAttempt();
   const { toast } = useToast();
 
   useEffect(() => {
-    if (isError) {
+    if (!authLoading && !accessToken) {
+      router.push('/session-ended');
+    } else if (isError) {
       router.push('/session-ended');
     } else if (current && isAttemptStarted(current)) {
       router.push('/exam');
     }
-  }, [current, isError, router]);
+  }, [current, isError, router, accessToken, authLoading]);
 
   if (isLoading || isError || !current || isAttemptStarted(current)) {
     return <p className="p-8 text-sm text-gray-500">Loading…</p>;

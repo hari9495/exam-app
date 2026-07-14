@@ -2,10 +2,12 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useRouter } from 'next/navigation';
 import { useAttemptQuery, useStartAttempt } from '../../../lib/hooks/useAttempt';
+import { useCandidateAuth } from '../../../lib/candidate-auth-context';
 import CandidateWelcomePage from './page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn() }));
 jest.mock('../../../lib/hooks/useAttempt', () => ({ useAttemptQuery: jest.fn(), useStartAttempt: jest.fn() }));
+jest.mock('../../../lib/candidate-auth-context', () => ({ useCandidateAuth: jest.fn() }));
 
 const mockToast = jest.fn();
 jest.mock('../../../components/ui', () => {
@@ -20,6 +22,7 @@ describe('CandidateWelcomePage', () => {
     push.mockClear();
     mockToast.mockClear();
     (useRouter as jest.Mock).mockReturnValue({ push });
+    (useCandidateAuth as jest.Mock).mockReturnValue({ accessToken: 'token-1', isLoading: false });
   });
 
   it('shows exam title, duration, instructions, and a monitoring disclosure before start', () => {
@@ -82,6 +85,16 @@ describe('CandidateWelcomePage', () => {
 
   it('redirects to /session-ended when the attempt query errors (dead session)', () => {
     (useAttemptQuery as jest.Mock).mockReturnValue({ data: undefined, isLoading: false, isError: true });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+
+    render(<CandidateWelcomePage />);
+
+    expect(push).toHaveBeenCalledWith('/session-ended');
+  });
+
+  it('redirects to /session-ended when there is no access token', () => {
+    (useCandidateAuth as jest.Mock).mockReturnValue({ accessToken: null, isLoading: false });
+    (useAttemptQuery as jest.Mock).mockReturnValue({ data: undefined, isLoading: false, isError: false });
     (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
 
     render(<CandidateWelcomePage />);
