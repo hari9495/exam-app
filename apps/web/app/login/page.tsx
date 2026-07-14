@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
+import { decodeJwtPayload } from '../../lib/jwt';
 import { Button, Input, Card } from '../../components/ui';
 import { useBranding } from '../../lib/hooks/useBranding';
 
@@ -25,7 +26,8 @@ export default function LoginPage() {
         body: JSON.stringify({ organizationSlug: organizationSlug || undefined, email, password }),
       });
       login(organizationSlug, result.accessToken);
-      router.push('/dashboard');
+      const payload = decodeJwtPayload(result.accessToken);
+      router.push(payload?.role === 'org_admin' ? '/users' : '/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     }

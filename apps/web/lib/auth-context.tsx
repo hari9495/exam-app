@@ -2,10 +2,12 @@
 
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { apiFetch, setUnauthorizedHandler } from './api-client';
+import { decodeJwtPayload } from './jwt';
 
 interface AuthContextValue {
   accessToken: string | null;
   organizationSlug: string | null;
+  role: string | null;
   isLoading: boolean;
   login: (organizationSlug: string, accessToken: string) => void;
   logout: () => Promise<void>;
@@ -17,18 +19,25 @@ const SLUG_STORAGE_KEY = 'organizationSlug';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [role, setRole] = useState<string | null>(null);
   const [organizationSlug, setOrganizationSlug] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const accessTokenRef = useRef<string | null>(null);
   accessTokenRef.current = accessToken;
 
+  function applyToken(token: string | null) {
+    setAccessToken(token);
+    const payload = token ? decodeJwtPayload(token) : null;
+    setRole(payload && typeof payload.role === 'string' ? payload.role : null);
+  }
+
   async function silentRefresh(): Promise<string | null> {
     try {
       const result = await apiFetch('/auth/refresh', { method: 'POST', body: JSON.stringify({}) });
-      setAccessToken(result.accessToken);
+      applyToken(result.accessToken);
       return result.accessToken;
     } catch {
-      setAccessToken(null);
+      applyToken(null);
       return null;
     }
   }
@@ -46,7 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   function login(slug: string, token: string) {
     setOrganizationSlug(slug);
-    setAccessToken(token);
+    applyToken(token);
     if (typeof window !== 'undefined') {
       window.sessionStorage.setItem(SLUG_STORAGE_KEY, slug);
     }
@@ -54,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function logout() {
     await apiFetch('/auth/logout', { method: 'POST', body: JSON.stringify({}) }).catch(() => undefined);
-    setAccessToken(null);
+    applyToken(null);
     setOrganizationSlug(null);
     if (typeof window !== 'undefined') {
       window.sessionStorage.removeItem(SLUG_STORAGE_KEY);
@@ -62,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ accessToken, organizationSlug, isLoading, login, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ accessToken, organizationSlug, role, isLoading, login, logout }}>{children}</AuthContext.Provider>
   );
 }
 

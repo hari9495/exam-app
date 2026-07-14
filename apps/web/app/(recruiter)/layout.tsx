@@ -17,21 +17,23 @@ const NAV_ITEMS = [
 export default function RecruiterLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { accessToken, organizationSlug, isLoading } = useAuth();
+  const { accessToken, organizationSlug, role, isLoading } = useAuth();
   const { data: branding } = useBranding(organizationSlug);
 
   useEffect(() => {
     if (!isLoading && !accessToken) {
       router.push('/login');
+    } else if (!isLoading && accessToken && role && role !== 'recruiter') {
+      router.push('/login');
     }
-  }, [isLoading, accessToken, router]);
+  }, [isLoading, accessToken, role, router]);
 
   const themeStyle = {
     ...(branding?.primaryColor ? { '--color-primary': branding.primaryColor } : {}),
     ...(branding?.accentColor ? { '--color-accent': branding.accentColor } : {}),
   } as React.CSSProperties;
 
-  if (isLoading || !accessToken) {
+  if (isLoading || !accessToken || (role !== null && role !== 'recruiter')) {
     return <p className="p-8 text-sm text-gray-500">Loading…</p>;
   }
 

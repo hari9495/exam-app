@@ -1,15 +1,18 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import LoginPage from './page';
 import { AuthProvider } from '../../lib/auth-context';
 import { QueryProvider } from '../../lib/query-provider';
+import { fakeJwt } from '../../lib/test-utils/fake-jwt';
 
-jest.mock('next/navigation', () => ({ useRouter: () => ({ push: jest.fn() }) }));
+const mockPush = jest.fn();
+jest.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush }) }));
 
 describe('LoginPage', () => {
   const originalFetch = global.fetch;
   afterEach(() => {
     global.fetch = originalFetch;
+    mockPush.mockClear();
   });
 
   it('submits organization slug, email, and password to the login endpoint', async () => {
@@ -44,5 +47,33 @@ describe('LoginPage', () => {
       email: 'recruiter@demo-org.test',
       password: 'Passw0rd!',
     });
+  });
+
+  it('redirects org_admin to /users after login', async () => {
+    const orgAdminToken = fakeJwt({ sub: 'u1', organizationId: 'org1', role: 'org_admin' });
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ message: 'no session' }), { status: 401 });
+      }
+      if (String(url).endsWith('/auth/staff/login')) {
+        return new Response(JSON.stringify({ accessToken: orgAdminToken }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <LoginPage />
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    await userEvent.type(screen.getByLabelText(/organization slug/i), 'demo-org');
+    await userEvent.type(screen.getByLabelText(/email/i), 'admin@demo-org.test');
+    await userEvent.type(screen.getByLabelText(/password/i), 'DevAdmin123!');
+    await userEvent.click(screen.getByRole('button', { name: 'Log in' }));
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/users'));
   });
 });
