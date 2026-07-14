@@ -89,6 +89,26 @@ describe('CandidateExamPage', () => {
     expect(push).toHaveBeenCalledWith('/session-ended');
   });
 
+  it('redirects to /submitted instead of rendering the exam when the attempt is already finished', () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({ data: { ...attemptState, status: 'submitted' }, isError: false });
+
+    render(<CandidateExamPage />);
+
+    expect(push).toHaveBeenCalledWith('/submitted');
+    expect(screen.queryByText('What is 2 + 2?')).not.toBeInTheDocument();
+  });
+
+  it('retrying a failed submission navigates to /submitted on success', async () => {
+    (useSubmitAttempt as jest.Mock).mockReturnValue({ mutateAsync, isPending: false, isError: true, mutate: jest.fn() });
+
+    render(<CandidateExamPage />);
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => expect(flush).toHaveBeenCalled());
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/submitted'));
+  });
+
   it('redirects to /session-ended when there is no access token', () => {
     (useCandidateAuth as jest.Mock).mockReturnValue({ accessToken: null, isLoading: false });
     (useAttemptQuery as jest.Mock).mockReturnValue({ data: undefined, isError: false });

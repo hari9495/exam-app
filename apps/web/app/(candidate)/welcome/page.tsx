@@ -20,6 +20,8 @@ export default function CandidateWelcomePage() {
       router.push('/session-ended');
     } else if (isError) {
       router.push('/session-ended');
+    } else if (current && isAttemptStarted(current) && current.status !== 'in_progress') {
+      router.push('/submitted');
     } else if (current && isAttemptStarted(current)) {
       router.push('/exam');
     }

@@ -46,7 +46,8 @@ export default function CandidateExamPage() {
   const [localSelections, setLocalSelections] = useState<Record<string, string[]>>({});
 
   const attemptState = current && isAttemptStarted(current) ? current : null;
-  const started = Boolean(attemptState);
+  const isTerminal = Boolean(attemptState && attemptState.status !== 'in_progress');
+  const started = Boolean(attemptState) && !isTerminal;
   useProctoringMonitor(started);
 
   async function finishSubmit() {
@@ -67,8 +68,10 @@ export default function CandidateExamPage() {
       router.push('/session-ended');
     } else if (current && !isAttemptStarted(current)) {
       router.push('/welcome');
+    } else if (isTerminal) {
+      router.push('/submitted');
     }
-  }, [current, isError, router, accessToken, authLoading]);
+  }, [current, isError, router, accessToken, authLoading, isTerminal]);
 
   const questions = useMemo(() => (attemptState ? flattenQuestions(attemptState.sections) : []), [attemptState]);
   const question = questions[currentIndex];
@@ -80,7 +83,7 @@ export default function CandidateExamPage() {
     return !a || a.selectedOptionIds.length === 0;
   }).length;
 
-  if (isError || !attemptState || !question) {
+  if (isError || !attemptState || !question || isTerminal) {
     return <p className="p-8 text-sm text-gray-500">Loading…</p>;
   }
 
@@ -194,7 +197,7 @@ export default function CandidateExamPage() {
       <Modal open={submitAttempt.isError} title="Couldn't submit" onClose={() => undefined}>
         <p className="mb-4 text-sm text-gray-600">Your submission didn&apos;t go through. Your answers are saved — please retry.</p>
         <div className="flex justify-end">
-          <CandidateButton onClick={() => submitAttempt.mutate()}>Retry</CandidateButton>
+          <CandidateButton onClick={() => finishSubmit()}>Retry</CandidateButton>
         </div>
       </Modal>
     </div>

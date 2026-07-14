@@ -201,6 +201,19 @@ describe('Exam-Taking Runtime HTTP flow', () => {
       .send({ questionId: singleMcqId, selectedOptionIds: [correctSingleOptionId] })
       .expect(201);
 
+    // Marking a question for review before selecting an answer must succeed with an empty selection.
+    await request(runtimeHttp)
+      .post('/api/v1/attempt/answer')
+      .set('Authorization', `Bearer ${candidateAccessToken}`)
+      .send({ questionId: multiMcqId, selectedOptionIds: [], markedForReview: true })
+      .expect(201);
+    const markedOnlyState = await request(runtimeHttp)
+      .get('/api/v1/attempt/current')
+      .set('Authorization', `Bearer ${candidateAccessToken}`)
+      .expect(200);
+    const multiMcqAnswer = markedOnlyState.body.answers.find((answer: Record<string, unknown>) => answer.questionId === multiMcqId);
+    expect(multiMcqAnswer).toEqual({ questionId: multiMcqId, selectedOptionIds: [], isMarkedForReview: true });
+
     const partialMultiOptionId = multiMcqOptions.find((option) => option.text === '2')!.id;
     await request(runtimeHttp)
       .post('/api/v1/attempt/answer')

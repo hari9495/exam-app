@@ -408,6 +408,36 @@ describe('AttemptService', () => {
       });
     });
 
+    it('allows marking for review with an empty selection and persists it', async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        question: { findFirstOrThrow: jest.fn().mockResolvedValue(question) },
+        answer: { upsert: jest.fn().mockResolvedValue({}) },
+      };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      mockBootstrapThenScoped(tx);
+
+      const result = await service.answer(session, { questionId: 'q1', selectedOptionIds: [], markedForReview: true });
+
+      expect(result).toEqual({ questionId: 'q1', selectedOptionIds: [], isMarkedForReview: true });
+      expect(tx.answer.upsert).toHaveBeenCalledWith({
+        where: { attemptId_questionId: { attemptId: 'attempt-1', questionId: 'q1' } },
+        create: { attemptId: 'attempt-1', questionId: 'q1', selectedOptionIdsJson: JSON.stringify([]), isMarkedForReview: true },
+        update: { selectedOptionIdsJson: JSON.stringify([]), isMarkedForReview: true, answeredAt: expect.any(Date) },
+      });
+    });
+
+    it('still rejects a non-empty selection containing an option id that does not belong to the question', async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        question: { findFirstOrThrow: jest.fn().mockResolvedValue(question) },
+      };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      mockBootstrapThenScoped(tx);
+
+      await expect(service.answer(session, { questionId: 'q1', selectedOptionIds: ['opt-does-not-exist'] })).rejects.toThrow(BadRequestException);
+    });
+
     it('throws BadRequestException for a question not part of this attempt', async () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
       settlement.settleIfExpired.mockResolvedValue(attempt);

@@ -83,6 +83,19 @@ describe('CandidateWelcomePage', () => {
     expect(push).toHaveBeenCalledWith('/exam');
   });
 
+  it('redirects to /submitted when the attempt is already finished', () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: { status: 'submitted', remainingSeconds: 0, sections: [], answers: [], messages: [] },
+      isLoading: false,
+    });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+
+    render(<CandidateWelcomePage />);
+
+    expect(push).toHaveBeenCalledWith('/submitted');
+    expect(push).not.toHaveBeenCalledWith('/exam');
+  });
+
   it('redirects to /session-ended when the attempt query errors (dead session)', () => {
     (useAttemptQuery as jest.Mock).mockReturnValue({ data: undefined, isLoading: false, isError: true });
     (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });

@@ -1,11 +1,11 @@
-import { ArrayMinSize, IsArray, IsBoolean, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsBoolean, IsOptional, IsString } from 'class-validator';
 
 export class AnswerDto {
   @IsString()
   questionId!: string;
 
+  // ponytail: empty array allowed — represents "mark for review before answering"
   @IsArray()
-  @ArrayMinSize(1)
   @IsString({ each: true })
   selectedOptionIds!: string[];
 

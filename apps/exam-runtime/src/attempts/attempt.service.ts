@@ -199,7 +199,10 @@ export class AttemptService {
         throw new BadRequestException(`Question ${dto.questionId} is not part of this attempt`);
       }
       const question = await tx.question.findFirstOrThrow({ where: { id: dto.questionId }, include: { options: true } });
-      this.validateSelection(question, dto.selectedOptionIds);
+      // An empty selection means "no answer yet, possibly just toggling markedForReview" — skip option validation.
+      if (dto.selectedOptionIds.length > 0) {
+        this.validateSelection(question, dto.selectedOptionIds);
+      }
 
       const isMarkedForReview = dto.markedForReview ?? false;
       await tx.answer.upsert({
