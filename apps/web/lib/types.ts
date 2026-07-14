@@ -18,6 +18,17 @@ export interface StaffUser {
   createdAt: string;
 }
 
+export interface AuditLogEntry {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  actorUserId: string | null;
+  actorEmail: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
 export interface QuestionOption {
   id: string;
   text: string;
