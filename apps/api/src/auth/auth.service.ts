@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { randomUUID } from 'crypto';
@@ -14,6 +14,8 @@ interface TokenPair {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
@@ -75,10 +77,26 @@ export class AuthService {
         data: { revokedAt: new Date() },
       });
       const compromisedUser = await this.prisma.user.findUnique({ where: { id: payload.sub } });
-      await this.audit.record(
-        { organizationId: compromisedUser?.organizationId ?? null, isSuperAdmin: compromisedUser?.role === 'super_admin' },
-        { actorUserId: payload.sub, action: 'auth.token_reuse_detected', entityType: 'user', entityId: payload.sub },
-      );
+      // When compromisedUser is null (the token's user no longer exists -- e.g. deleted,
+      // or a stale token from before a reset), organizationId is also null. A null
+      // organizationId with isSuperAdmin: false is unwritable under this table's RLS
+      // block predicate: NULL = NULL evaluates to UNKNOWN in SQL, so the predicate
+      // rejects every such row, regardless of load. Route this case through the
+      // super_admin bypass instead -- correct both mechanically (it's the only way to
+      // write a null-org row) and semantically (a token attributable to no known user
+      // isn't attributable to any tenant either).
+      const isSuperAdmin = compromisedUser ? compromisedUser.role === 'super_admin' : true;
+      try {
+        await this.audit.record(
+          { organizationId: compromisedUser?.organizationId ?? null, isSuperAdmin },
+          { actorUserId: payload.sub, action: 'auth.token_reuse_detected', entityType: 'user', entityId: payload.sub },
+        );
+      } catch (error) {
+        // A failure to write the audit trail must not prevent the client from being
+        // told their session was revoked -- surfacing a 500 here instead of the 401
+        // below would leave them retrying with the same compromised token.
+        this.logger.error('Failed to record auth.token_reuse_detected audit entry', error as Error);
+      }
       throw new UnauthorizedException('Refresh token reuse detected — session revoked');
     }
 

@@ -99,4 +99,29 @@ describe('AuthService', () => {
       { actorUserId: 'user-1', action: 'auth.token_reuse_detected', entityType: 'user', entityId: 'user-1' },
     );
   });
+
+  it('audits reuse detection with isSuperAdmin: true when the token\'s user no longer exists', async () => {
+    // organizationId: null with isSuperAdmin: false is unwritable under this table's RLS
+    // block predicate (NULL = NULL is UNKNOWN in SQL, never TRUE) -- this must route
+    // through the super_admin bypass instead, or the audit write always fails.
+    const refreshToken = jwt.sign({ sub: 'ghost-user', familyId: 'family-1' }, { secret: process.env.JWT_REFRESH_SECRET });
+    prisma.refreshToken.findFirst.mockResolvedValue(null);
+    prisma.user.findUnique.mockResolvedValue(null);
+
+    await expect(service.refresh(refreshToken)).rejects.toThrow(UnauthorizedException);
+
+    expect(audit.record).toHaveBeenCalledWith(
+      { organizationId: null, isSuperAdmin: true },
+      { actorUserId: 'ghost-user', action: 'auth.token_reuse_detected', entityType: 'user', entityId: 'ghost-user' },
+    );
+  });
+
+  it('still throws UnauthorizedException (not a 500) when the reuse-detection audit write itself fails', async () => {
+    const refreshToken = jwt.sign({ sub: 'user-1', familyId: 'family-1' }, { secret: process.env.JWT_REFRESH_SECRET });
+    prisma.refreshToken.findFirst.mockResolvedValue(null);
+    prisma.user.findUnique.mockResolvedValue({ id: 'user-1', organizationId: 'org-1', role: 'org_admin' });
+    audit.record.mockRejectedValue(new Error('DB unavailable'));
+
+    await expect(service.refresh(refreshToken)).rejects.toThrow(UnauthorizedException);
+  });
 });
