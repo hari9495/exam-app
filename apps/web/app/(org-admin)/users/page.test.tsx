@@ -93,4 +93,60 @@ describe('UsersPage', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument(), { timeout: 2000 });
     expect(screen.getByText('Failed to load users.')).toBeInTheDocument();
   });
+
+  it(
+    'shows error message when adding a user fails',
+    async () => {
+      const fetchMock = jest.fn(async (url, options) => {
+        if (String(url).endsWith('/auth/refresh')) {
+          return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        }
+        if (String(url).endsWith('/users') && options?.method === 'POST') {
+          return new Response(
+            JSON.stringify({ message: 'A user with this email already exists' }),
+            { status: 409 },
+          );
+        }
+        if (String(url).endsWith('/users')) {
+          return new Response(
+            JSON.stringify([
+              {
+                id: 'user-1', organizationId: 'org-1', email: 'admin@demo-org.test', role: 'org_admin',
+                status: 'active', lastLoginAt: '2026-07-10T00:00:00.000Z', createdAt: '2026-07-01T00:00:00.000Z',
+              },
+            ]),
+            { status: 200 },
+          );
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      render(
+        <QueryProvider>
+          <ToastProvider>
+            <AuthProvider>
+              <UsersPage />
+            </AuthProvider>
+          </ToastProvider>
+        </QueryProvider>,
+      );
+
+      await waitFor(() => expect(screen.getByText('admin@demo-org.test')).toBeInTheDocument());
+
+      await userEvent.type(screen.getByLabelText('Email'), 'duplicate@demo-org.test');
+      await userEvent.type(screen.getByLabelText('Password'), 'Passw0rd!2026');
+      await userEvent.click(screen.getByRole('button', { name: 'Add staff member' }));
+
+      await waitFor(() =>
+        expect(fetchMock.mock.calls.some((call) => String(call[0]).endsWith('/users') && call[1]?.method === 'POST')).toBe(true),
+      );
+
+      await waitFor(() =>
+        expect(screen.getByRole('alert')).toBeInTheDocument(),
+      );
+      expect(screen.getByText('A user with this email already exists')).toBeInTheDocument();
+    },
+    10000,
+  );
 });
