@@ -4,6 +4,12 @@ import { ToastProvider } from '../../components/ui';
 import { CandidateAuthProvider } from '../candidate-auth-context';
 import { useAttemptQuery, useAnswerMutation } from './useAttempt';
 
+const mockToast = jest.fn();
+jest.mock('../../components/ui', () => {
+  const actual = jest.requireActual('../../components/ui');
+  return { ...actual, useToast: () => ({ toast: mockToast }) };
+});
+
 function wrapper({ children }: { children: React.ReactNode }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
@@ -49,6 +55,7 @@ describe('useAnswerMutation', () => {
   afterEach(() => {
     global.fetch = originalFetch;
     jest.useRealTimers();
+    mockToast.mockClear();
   });
 
   it('debounces rapid saves for the same question into one request', async () => {
@@ -109,5 +116,37 @@ describe('useAnswerMutation', () => {
     });
 
     expect(calls).toHaveLength(1);
+  });
+
+  it('shows a non-blocking error toast after 3 failed retries and does not throw', async () => {
+    jest.useFakeTimers();
+    let answerAttempts = 0;
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/candidate-auth/refresh')) {
+        return new Response(JSON.stringify({ message: 'none' }), { status: 401 });
+      }
+      answerAttempts += 1;
+      return new Response(JSON.stringify({ message: 'fail' }), { status: 500 });
+    }) as unknown as typeof fetch;
+
+    let hook: ReturnType<typeof useAnswerMutation> | undefined;
+    function Probe() {
+      hook = useAnswerMutation();
+      return null;
+    }
+    render(<Probe />, { wrapper });
+
+    act(() => {
+      hook!.saveAnswer('q1', ['a']);
+    });
+
+    // debounce (800ms) + retry backoffs (500ms + 1000ms) across 3 attempts
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(800 + 500 + 1000);
+    });
+
+    expect(answerAttempts).toBe(3);
+    expect(mockToast).toHaveBeenCalledTimes(1);
+    expect(mockToast).toHaveBeenCalledWith(expect.any(String), 'error');
   });
 });

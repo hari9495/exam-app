@@ -16,10 +16,7 @@ export function useCountdown(remainingSeconds: number | undefined, onExpire: () 
   useEffect(() => {
     const interval = setInterval(() => {
       setDisplaySeconds((current) => {
-        if (current <= 0) {
-          return 0;
-        }
-        const next = current - 1;
+        const next = current <= 0 ? 0 : current - 1;
         if (next <= 0 && !firedRef.current) {
           firedRef.current = true;
           onExpireRef.current();

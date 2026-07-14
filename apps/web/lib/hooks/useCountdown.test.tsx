@@ -34,6 +34,16 @@ describe('useCountdown', () => {
     expect(onExpire).toHaveBeenCalledTimes(1);
   });
 
+  it('calls onExpire when seeded at exactly zero (e.g. a stale poll response)', () => {
+    const onExpire = jest.fn();
+    render(<CountdownProbe remainingSeconds={0} onExpire={onExpire} />);
+    expect(screen.getByText('seconds:0')).toBeInTheDocument();
+
+    act(() => jest.advanceTimersByTime(1000));
+    expect(screen.getByText('seconds:0')).toBeInTheDocument();
+    expect(onExpire).toHaveBeenCalledTimes(1);
+  });
+
   it('re-seeds from a fresh remainingSeconds value (e.g. after a poll)', () => {
     const onExpire = jest.fn();
     const { rerender } = render(<CountdownProbe remainingSeconds={2} onExpire={onExpire} />);
