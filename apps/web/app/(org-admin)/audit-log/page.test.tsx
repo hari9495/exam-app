@@ -80,4 +80,48 @@ describe('AuditLogPage', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument(), { timeout: 2000 });
     expect(screen.getByText('Failed to load audit log.')).toBeInTheDocument();
   });
+
+  it('appends entries when clicking "Load more" with cursor-based pagination', async () => {
+    const fetchMock = jest.fn(async (url) => {
+      const urlStr = String(url);
+      if (urlStr.endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (urlStr.includes('/audit-logs') && urlStr.includes('cursor=log-1')) {
+        return new Response(JSON.stringify([ENTRY_2]), { status: 200 });
+      }
+      if (urlStr.includes('/audit-logs')) {
+        return new Response(JSON.stringify([ENTRY_1]), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <AuditLogPage />
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    // Wait for first entry to appear
+    await waitFor(() => expect(screen.getByText('user.created')).toBeInTheDocument());
+    expect(screen.queryByText('candidate.erased')).not.toBeInTheDocument();
+
+    // Click "Load more"
+    const loadMoreBtn = screen.getByRole('button', { name: 'Load more' });
+    await userEvent.click(loadMoreBtn);
+
+    // Wait for second entry to appear
+    await waitFor(() => expect(screen.getByText('candidate.erased')).toBeInTheDocument());
+
+    // Assert both entries are now visible (proving append, not replace)
+    expect(screen.getByText('user.created')).toBeInTheDocument();
+    expect(screen.getByText('candidate.erased')).toBeInTheDocument();
+
+    // Assert the second fetch includes cursor=log-1
+    const paginationCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('cursor=log-1'));
+    expect(paginationCall).toBeDefined();
+  });
 });
