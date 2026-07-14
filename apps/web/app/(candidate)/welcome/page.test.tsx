@@ -7,11 +7,18 @@ import CandidateWelcomePage from './page';
 jest.mock('next/navigation', () => ({ useRouter: jest.fn() }));
 jest.mock('../../../lib/hooks/useAttempt', () => ({ useAttemptQuery: jest.fn(), useStartAttempt: jest.fn() }));
 
+const mockToast = jest.fn();
+jest.mock('../../../components/ui', () => {
+  const actual = jest.requireActual('../../../components/ui');
+  return { ...actual, useToast: () => ({ toast: mockToast }) };
+});
+
 describe('CandidateWelcomePage', () => {
   const push = jest.fn();
 
   beforeEach(() => {
     push.mockClear();
+    mockToast.mockClear();
     (useRouter as jest.Mock).mockReturnValue({ push });
   });
 
@@ -43,6 +50,22 @@ describe('CandidateWelcomePage', () => {
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
     await waitFor(() => expect(push).toHaveBeenCalledWith('/exam'));
+  });
+
+  it('shows a toast and does not navigate when starting the attempt fails', async () => {
+    const mutateAsync = jest.fn().mockRejectedValue(new Error('network error'));
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 } },
+      isLoading: false,
+    });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync, isPending: false });
+
+    render(<CandidateWelcomePage />);
+    await userEvent.click(screen.getByRole('button', { name: 'Start exam' }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
+    await waitFor(() => expect(mockToast).toHaveBeenCalledWith(expect.any(String), 'error'));
+    expect(push).not.toHaveBeenCalledWith('/exam');
   });
 
   it('redirects straight to /exam if an attempt is already in progress (resume case)', () => {

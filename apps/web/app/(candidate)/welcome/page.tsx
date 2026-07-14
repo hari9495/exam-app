@@ -5,11 +5,13 @@ import { useRouter } from 'next/navigation';
 import { CandidateButton } from '../components/CandidateButton';
 import { useAttemptQuery, useStartAttempt } from '../../../lib/hooks/useAttempt';
 import { isAttemptStarted } from '../../../lib/types';
+import { useToast } from '../../../components/ui';
 
 export default function CandidateWelcomePage() {
   const router = useRouter();
   const { data: current, isLoading, isError } = useAttemptQuery();
   const startAttempt = useStartAttempt();
+  const { toast } = useToast();
 
   useEffect(() => {
     if (isError) {
@@ -24,8 +26,12 @@ export default function CandidateWelcomePage() {
   }
 
   async function handleStart() {
-    await startAttempt.mutateAsync();
-    router.push('/exam');
+    try {
+      await startAttempt.mutateAsync();
+      router.push('/exam');
+    } catch {
+      toast("Couldn't start the exam — please check your connection and try again.", 'error');
+    }
   }
 
   return (
