@@ -51,6 +51,7 @@ interface PendingAnswer {
 export function useAnswerMutation() {
   const { accessToken } = useCandidateAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const pending = useRef<Record<string, PendingAnswer>>({});
 
@@ -66,7 +67,11 @@ export function useAnswerMutation() {
         accessToken ?? undefined,
       ),
     )
-      .then(() => undefined)
+      .then(() => {
+        // ponytail: re-sync from the server so the "marked for review" / answered
+        // state updates promptly instead of waiting on the 30s poll interval.
+        queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] });
+      })
       .catch(() => toast("Couldn't save your last answer — please check your connection.", 'error'));
   }
 
