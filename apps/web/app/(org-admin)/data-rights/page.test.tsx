@@ -128,4 +128,58 @@ describe('DataRightsPage', () => {
     // Modal should remain open, so the Confirm erase button should still be visible
     expect(screen.getByRole('button', { name: 'Confirm erase' })).toBeInTheDocument();
   });
+
+  it('clears the error banner when a failed erase is retried and succeeds', async () => {
+    let eraseCallCount = 0;
+    const fetchMock = jest.fn(async (url, options) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      const urlStr = String(url);
+      if (urlStr.includes('/candidates/lookup')) {
+        return new Response(JSON.stringify(CANDIDATE), { status: 200 });
+      }
+      if (urlStr.endsWith('/candidates/cand-1/erase') && options?.method === 'POST') {
+        eraseCallCount++;
+        // First erase attempt fails, second succeeds
+        if (eraseCallCount === 1) {
+          return new Response(JSON.stringify({ message: 'Erase failed on first attempt' }), { status: 500 });
+        }
+        return new Response(JSON.stringify({ id: 'cand-1', erasedAt: '2026-07-14T12:00:00.000Z' }), { status: 201 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <DataRightsPage />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    // Look up the candidate
+    await userEvent.type(screen.getByLabelText('Candidate email'), 'gina@example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Look up' }));
+    await waitFor(() => expect(screen.getByText('Gina GDPR')).toBeInTheDocument());
+
+    // Open erase modal and click confirm (first time - fails)
+    await userEvent.click(screen.getByRole('button', { name: 'Erase candidate' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm erase' }));
+
+    // Wait for error banner to appear with the first failure message
+    await waitFor(() => expect(screen.getByText('Erase failed on first attempt')).toBeInTheDocument());
+
+    // Modal should still be open, click confirm again (second time - succeeds)
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm erase' }));
+
+    // Wait for the success state (erased message appears)
+    await waitFor(() => expect(screen.getByText(/Erased at/)).toBeInTheDocument());
+
+    // Verify the error banner is gone (stale banner bug is fixed)
+    expect(screen.queryByText('Erase failed on first attempt')).not.toBeInTheDocument();
+  });
 });

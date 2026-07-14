@@ -30,7 +30,10 @@ export default function DataRightsPage() {
   function handleExport() {
     if (!candidate) return;
     exportCandidate.mutate(candidate.id, {
-      onSuccess: (result) => setExportData(result),
+      onSuccess: (result) => {
+        setError(null);
+        setExportData(result);
+      },
       onError: (err) => setError(err instanceof Error ? err.message : 'Failed to export candidate data'),
     });
   }
@@ -50,6 +53,7 @@ export default function DataRightsPage() {
     if (!candidate) return;
     eraseCandidate.mutate(candidate.id, {
       onSuccess: (result) => {
+        setError(null);
         setCandidate({ ...candidate, erasedAt: result.erasedAt });
         setConfirmOpen(false);
         toast('Candidate data erased.');
