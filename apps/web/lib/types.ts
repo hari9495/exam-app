@@ -124,3 +124,61 @@ export interface BrandingResponse {
   primaryColor: string | null;
   accentColor: string | null;
 }
+
+export type ProctoringEventType =
+  | 'tab_switch'
+  | 'fullscreen_exit'
+  | 'copy_paste'
+  | 'right_click'
+  | 'dev_tools_detected'
+  | 'refresh_warning'
+  | 'idle_timeout';
+
+export interface AttemptQuestionOption {
+  id: string;
+  text: string;
+}
+
+export interface AttemptQuestion {
+  id: string;
+  text: string;
+  type: QuestionType;
+  marks: number;
+  options: AttemptQuestionOption[];
+}
+
+export interface AttemptSection {
+  title: string;
+  targetDurationMinutes: number | null;
+  questions: AttemptQuestion[];
+}
+
+export interface AttemptAnswerSummary {
+  questionId: string;
+  selectedOptionIds: string[];
+  isMarkedForReview: boolean;
+}
+
+export interface AttemptMessageSummary {
+  id: string;
+  body: string;
+  sentAt: string;
+}
+
+export interface AttemptPreview {
+  exam: { title: string; instructions: string | null; durationMinutes: number };
+}
+
+export interface AttemptState {
+  status: string;
+  remainingSeconds: number;
+  sections: AttemptSection[];
+  answers: AttemptAnswerSummary[];
+  messages: AttemptMessageSummary[];
+}
+
+export type AttemptCurrent = AttemptPreview | AttemptState;
+
+export function isAttemptStarted(current: AttemptCurrent): current is AttemptState {
+  return 'status' in current;
+}
