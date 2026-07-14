@@ -8,6 +8,16 @@ export interface Tag {
   name: string;
 }
 
+export interface StaffUser {
+  id: string;
+  organizationId: string | null;
+  email: string;
+  role: string;
+  status: string;
+  lastLoginAt: string | null;
+  createdAt: string;
+}
+
 export interface QuestionOption {
   id: string;
   text: string;
