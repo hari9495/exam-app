@@ -29,6 +29,25 @@ export interface AuditLogEntry {
   createdAt: string;
 }
 
+export interface CandidateDataExport {
+  candidate: { id: string; email: string; name: string; phone: string | null; createdAt: string };
+  invitations: { id: string; examTitle: string; status: string; invitedAt: string; expiresAt: string; revokedAt: string | null }[];
+  attempts: {
+    id: string;
+    examTitle: string;
+    status: string;
+    startedAt: string;
+    submittedAt: string | null;
+    deviceFingerprint: string | null;
+    result: { score: number; maxScore: number; percentage: number; passFail: string } | null;
+    answers: { questionText: string; selectedOptions: string[]; isCorrect: boolean | null; marksAwarded: number | null }[];
+    proctoringEvents: { eventType: string; severity: string; occurredAt: string; metadata: Record<string, unknown> | null }[];
+    proctoringAnalysis: { status: string; riskLevel: string | null; summary: string | null } | null;
+    insight: { status: string; summary: string | null } | null;
+    messages: { body: string; sentAt: string; readAt: string | null }[];
+  }[];
+}
+
 export interface QuestionOption {
   id: string;
   text: string;
