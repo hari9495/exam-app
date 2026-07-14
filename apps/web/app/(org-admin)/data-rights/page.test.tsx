@@ -89,4 +89,43 @@ describe('DataRightsPage', () => {
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
   });
+
+  it('shows an error and keeps the modal open when erase fails', async () => {
+    const fetchMock = jest.fn(async (url, options) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      const urlStr = String(url);
+      if (urlStr.includes('/candidates/lookup')) {
+        return new Response(JSON.stringify(CANDIDATE), { status: 200 });
+      }
+      if (urlStr.endsWith('/candidates/cand-1/erase') && options?.method === 'POST') {
+        return new Response(JSON.stringify({ message: 'Erase failed unexpectedly' }), { status: 500 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <DataRightsPage />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await userEvent.type(screen.getByLabelText('Candidate email'), 'gina@example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Look up' }));
+    await waitFor(() => expect(screen.getByText('Gina GDPR')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Erase candidate' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm erase' }));
+
+    // Wait for the error message to appear
+    await waitFor(() => expect(screen.getByText('Erase failed unexpectedly')).toBeInTheDocument());
+    // Modal should remain open, so the Confirm erase button should still be visible
+    expect(screen.getByRole('button', { name: 'Confirm erase' })).toBeInTheDocument();
+  });
 });
