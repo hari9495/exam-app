@@ -26,6 +26,9 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
 
 async function main() {
   await prisma.$transaction(async (tx) => {
+    // ponytail: 30s timeout — remote (Azure SQL) round-trip latency across this
+    // script's many sequential inserts exceeds Prisma's 5s default; raise if
+    // seeding still times out against a slower connection.
     // Enable bypass of RLS by setting session context to super admin mode. This must run
     // on the same physical connection as every write below (including the users-table
     // writes that actually require it), which is only guaranteed inside a single
@@ -128,7 +131,7 @@ async function main() {
         "EXEC sp_set_session_context @key=N'app_is_super_admin', @value=0"
       );
     }
-  });
+  }, { timeout: 30000 });
 
   console.log('Seed complete: super@platform.test / DevSuper123!, admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (org slug: demo-org)');
 }
