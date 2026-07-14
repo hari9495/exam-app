@@ -44,6 +44,12 @@ describe('InvitationsService', () => {
 
     expect(result.created).toHaveLength(1);
     expect(result.skipped).toHaveLength(0);
+
+    // Email dispatch is fire-and-forget (the HTTP response no longer waits on it) --
+    // flush the microtask queue so the background send + notification write settle
+    // before asserting on them.
+    await new Promise((resolve) => setImmediate(resolve));
+
     expect(emailService.send).toHaveBeenCalledWith(
       expect.objectContaining({ to: 'a@test.com', subject: "You've been invited to an exam" }),
     );
@@ -164,6 +170,10 @@ describe('InvitationsService', () => {
       where: { id: 'inv-1' },
       data: { token: expect.any(String), expiresAt: expect.any(Date) },
     });
+
+    // Email dispatch is fire-and-forget -- flush the microtask queue before asserting.
+    await new Promise((resolve) => setImmediate(resolve));
+
     expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'a@test.com' }));
   });
 

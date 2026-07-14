@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { Candidate, Invitation } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
@@ -25,6 +25,8 @@ export interface BulkInviteResult {
 
 @Injectable()
 export class InvitationsService {
+  private readonly logger = new Logger(InvitationsService.name);
+
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly emailService: EmailService,
@@ -85,8 +87,16 @@ export class InvitationsService {
       return { examTitle: exam.title, createdWithCandidate, skipped };
     });
 
+    // Fire-and-forget: email delivery is a notification side effect, not part of the
+    // transactional outcome of inviting a candidate (the invitation + token already exist
+    // in the DB and are returned below regardless of email success). Awaiting this inline
+    // ties the HTTP response time to a real outbound network call (SMTP, or in dev/test,
+    // Ethereal's test-account provisioning), which has been observed to take several
+    // seconds on a cold start.
     for (const { invitation, candidate } of createdWithCandidate) {
-      await this.dispatchInvitationEmail(context, examTitle, invitation, candidate);
+      this.dispatchInvitationEmail(context, examTitle, invitation, candidate).catch((error) =>
+        this.logger.error(`Failed to dispatch invitation email for candidate ${candidate.id}`, error as Error),
+      );
     }
 
     return { created: createdWithCandidate.map((c) => c.invitation), skipped };
@@ -135,7 +145,9 @@ export class InvitationsService {
       return { invitation: updated, examTitle: existing.exam.title, candidate: existing.candidate };
     });
 
-    await this.dispatchInvitationEmail(context, examTitle, invitation, candidate);
+    this.dispatchInvitationEmail(context, examTitle, invitation, candidate).catch((error) =>
+      this.logger.error(`Failed to dispatch invitation email for invitation ${invitation.id}`, error as Error),
+    );
     return invitation;
   }
 
