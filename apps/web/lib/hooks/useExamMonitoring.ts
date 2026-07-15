@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from '../auth-context';
 import { RosterRow, ProctoringFlag, ConnectionStatus } from '../types';
@@ -18,6 +18,8 @@ interface UseExamMonitoringResult {
 
 export function useExamMonitoring(examId: string): UseExamMonitoringResult {
   const { accessToken } = useAuth();
+  const tokenRef = useRef(accessToken);
+  tokenRef.current = accessToken;
   const [roster, setRoster] = useState<RosterRow[]>([]);
   const [alerts, setAlerts] = useState<ProctoringFlag[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
@@ -34,7 +36,12 @@ export function useExamMonitoring(examId: string): UseExamMonitoringResult {
     setConnectionStatus('connecting');
 
     const socket = io(`${EXAM_RUNTIME_ORIGIN}/monitoring`, {
-      auth: { token: accessToken },
+      // Read the token fresh on every (re)connection attempt instead of depending on
+      // accessToken's exact value below, so a silentRefresh()-issued token swap (every
+      // 15 minutes, per ACCESS_TOKEN_TTL_SECONDS) doesn't tear down this effect and wipe
+      // the in-memory alert feed, which has no server-side replay (unlike roster, which
+      // self-heals via roster:snapshot).
+      auth: (cb: (data: { token: string | null }) => void) => cb({ token: tokenRef.current }),
       transports: ['websocket'],
     });
 
@@ -77,7 +84,11 @@ export function useExamMonitoring(examId: string): UseExamMonitoringResult {
     return () => {
       socket.disconnect();
     };
-  }, [accessToken, examId]);
+    // accessToken is intentionally omitted: reconnecting on every refreshed token would
+    // drop the in-memory alert feed (see auth callback comment above). Boolean(accessToken)
+    // still re-runs this effect on its first arrival (login) and on logout (token -> null).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [Boolean(accessToken), examId]);
 
   return { roster, alerts, connectionStatus, joinError };
 }

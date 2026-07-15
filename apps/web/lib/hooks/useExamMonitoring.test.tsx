@@ -1,9 +1,10 @@
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { io } from 'socket.io-client';
-import { AuthProvider } from '../auth-context';
+import { useAuth } from '../auth-context';
 import { useExamMonitoring } from './useExamMonitoring';
 
 jest.mock('socket.io-client', () => ({ io: jest.fn() }));
+jest.mock('../auth-context', () => ({ useAuth: jest.fn() }));
 
 type Handler = (...args: unknown[]) => void;
 
@@ -19,24 +20,23 @@ function createMockSocket() {
   };
 }
 
-function wrapper({ children }: { children: React.ReactNode }) {
-  return <AuthProvider>{children}</AuthProvider>;
+function mockAccessToken(accessToken: string | null) {
+  (useAuth as jest.Mock).mockReturnValue({
+    accessToken,
+    organizationSlug: 'acme',
+    role: 'recruiter',
+    isLoading: false,
+    login: jest.fn(),
+    logout: jest.fn(),
+  });
 }
 
 describe('useExamMonitoring', () => {
-  const originalFetch = global.fetch;
-
   beforeEach(() => {
-    global.fetch = jest.fn(async (url) => {
-      if (String(url).endsWith('/auth/refresh')) {
-        return new Response(JSON.stringify({ accessToken: 'test-token' }), { status: 200 });
-      }
-      throw new Error(`Unexpected fetch to ${url}`);
-    }) as unknown as typeof fetch;
+    mockAccessToken('test-token');
   });
 
   afterEach(() => {
-    global.fetch = originalFetch;
     jest.clearAllMocks();
   });
 
@@ -44,12 +44,16 @@ describe('useExamMonitoring', () => {
     const socket = createMockSocket();
     (io as jest.Mock).mockReturnValue(socket);
 
-    renderHook(() => useExamMonitoring('exam-1'), { wrapper });
+    renderHook(() => useExamMonitoring('exam-1'));
 
-    await waitFor(() => expect(io).toHaveBeenCalledWith('http://localhost:3002/monitoring', {
-      auth: { token: 'test-token' },
-      transports: ['websocket'],
-    }));
+    await waitFor(() => expect(io).toHaveBeenCalled());
+    const [url, options] = (io as jest.Mock).mock.calls[0];
+    expect(url).toBe('http://localhost:3002/monitoring');
+    expect(options.transports).toEqual(['websocket']);
+    expect(typeof options.auth).toBe('function');
+    const authCb = jest.fn();
+    options.auth(authCb);
+    expect(authCb).toHaveBeenCalledWith({ token: 'test-token' });
 
     act(() => socket.trigger('connect'));
     expect(socket.emit).toHaveBeenCalledWith('join-exam', { examId: 'exam-1' });
@@ -59,7 +63,7 @@ describe('useExamMonitoring', () => {
     const socket = createMockSocket();
     (io as jest.Mock).mockReturnValue(socket);
 
-    const { result } = renderHook(() => useExamMonitoring('exam-1'), { wrapper });
+    const { result } = renderHook(() => useExamMonitoring('exam-1'));
     await waitFor(() => expect(io).toHaveBeenCalled());
     act(() => socket.trigger('connect'));
 
@@ -77,7 +81,7 @@ describe('useExamMonitoring', () => {
     const socket = createMockSocket();
     (io as jest.Mock).mockReturnValue(socket);
 
-    const { result } = renderHook(() => useExamMonitoring('exam-1'), { wrapper });
+    const { result } = renderHook(() => useExamMonitoring('exam-1'));
     await waitFor(() => expect(io).toHaveBeenCalled());
     act(() => socket.trigger('connect'));
     act(() =>
@@ -97,7 +101,7 @@ describe('useExamMonitoring', () => {
     const socket = createMockSocket();
     (io as jest.Mock).mockReturnValue(socket);
 
-    const { result } = renderHook(() => useExamMonitoring('exam-1'), { wrapper });
+    const { result } = renderHook(() => useExamMonitoring('exam-1'));
     await waitFor(() => expect(io).toHaveBeenCalled());
     act(() => socket.trigger('connect'));
     act(() =>
@@ -118,7 +122,7 @@ describe('useExamMonitoring', () => {
     const socket = createMockSocket();
     (io as jest.Mock).mockReturnValue(socket);
 
-    const { result } = renderHook(() => useExamMonitoring('exam-1'), { wrapper });
+    const { result } = renderHook(() => useExamMonitoring('exam-1'));
     await waitFor(() => expect(io).toHaveBeenCalled());
     act(() => socket.trigger('connect'));
     act(() =>
@@ -137,7 +141,7 @@ describe('useExamMonitoring', () => {
     const socket = createMockSocket();
     (io as jest.Mock).mockReturnValue(socket);
 
-    const { result } = renderHook(() => useExamMonitoring('exam-1'), { wrapper });
+    const { result } = renderHook(() => useExamMonitoring('exam-1'));
     await waitFor(() => expect(io).toHaveBeenCalled());
     act(() => socket.trigger('connect'));
 
@@ -157,7 +161,7 @@ describe('useExamMonitoring', () => {
     const socket = createMockSocket();
     (io as jest.Mock).mockReturnValue(socket);
 
-    const { result } = renderHook(() => useExamMonitoring('exam-1'), { wrapper });
+    const { result } = renderHook(() => useExamMonitoring('exam-1'));
     await waitFor(() => expect(io).toHaveBeenCalled());
     act(() => socket.trigger('connect'));
     act(() => socket.trigger('error', { message: 'Exam exam-1 not found' }));
@@ -169,11 +173,37 @@ describe('useExamMonitoring', () => {
     const socket = createMockSocket();
     (io as jest.Mock).mockReturnValue(socket);
 
-    const { unmount } = renderHook(() => useExamMonitoring('exam-1'), { wrapper });
+    const { unmount } = renderHook(() => useExamMonitoring('exam-1'));
     await waitFor(() => expect(io).toHaveBeenCalled());
 
     unmount();
 
     expect(socket.disconnect).toHaveBeenCalled();
+  });
+
+  it('keeps the socket connected and preserves accumulated alerts across an access-token refresh', async () => {
+    const socket = createMockSocket();
+    (io as jest.Mock).mockReturnValue(socket);
+
+    const { result, rerender } = renderHook(() => useExamMonitoring('exam-1'));
+    await waitFor(() => expect(io).toHaveBeenCalledTimes(1));
+    act(() => socket.trigger('connect'));
+
+    act(() =>
+      socket.trigger('proctoring:flag', {
+        attemptId: 'a1', candidateId: 'c1', eventType: 'tab_switch', severity: 'medium', occurredAt: '2026-01-01T00:00:00Z',
+      }),
+    );
+    expect(result.current.alerts).toHaveLength(1);
+
+    // Simulate AuthProvider.silentRefresh() swapping in a new token after a 401.
+    mockAccessToken('refreshed-token');
+    rerender();
+
+    // The effect must not have torn down and reconnected the socket.
+    expect(io).toHaveBeenCalledTimes(1);
+    expect(socket.disconnect).not.toHaveBeenCalled();
+    // The alert accumulated before the refresh must still be present.
+    expect(result.current.alerts).toHaveLength(1);
   });
 });
