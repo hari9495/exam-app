@@ -121,6 +121,20 @@ async function main() {
           organizationId: demoOrg.id,
         },
       });
+
+      // panel role: read-only results/reporting UI needs a seeded panel fixture
+      // for the panel golden-path e2e flow.
+      const panelHash = await argon2.hash('Passw0rd!2026');
+      await tx.user.upsert({
+        where: { organizationId_email: { organizationId: demoOrg.id, email: 'panel@demo-org.test' } },
+        update: {},
+        create: {
+          email: 'panel@demo-org.test',
+          passwordHash: panelHash,
+          role: 'panel',
+          organizationId: demoOrg.id,
+        },
+      });
     } finally {
       // sp_set_session_context is scoped to the physical connection, not the transaction,
       // and is not undone by rollback. Reset it before the transaction callback returns for
@@ -133,7 +147,7 @@ async function main() {
     }
   }, { timeout: 30000 });
 
-  console.log('Seed complete: super@platform.test / DevSuper123!, admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (org slug: demo-org)');
+  console.log('Seed complete: super@platform.test / DevSuper123!, admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026, panel@demo-org.test / Passw0rd!2026 (org slug: demo-org)');
 }
 
 main()
