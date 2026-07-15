@@ -60,7 +60,19 @@ export class AttemptSettlementService {
     for (const question of questions) {
       if (question.type === 'code') {
         // Manual grading only — never auto-graded, never contributes to gradedAnswers until a
-        // recruiter enters marks via finalizeManualGrade().
+        // recruiter enters marks via finalizeManualGrade(). If the candidate never submitted
+        // anything for this question, create a blank Answer row so it still surfaces in the
+        // recruiter's grading queue instead of silently vanishing (no row = invisible question).
+        if (!answersByQuestionId.has(question.id)) {
+          await tx.answer.create({
+            data: {
+              attemptId: attempt.id,
+              questionId: question.id,
+              selectedOptionIdsJson: '[]',
+              answerText: null,
+            },
+          });
+        }
         continue;
       }
       const answer = answersByQuestionId.get(question.id);
@@ -113,10 +125,16 @@ export class AttemptSettlementService {
       } catch (error) {
         this.logger.error('Proctoring analysis failed to start', error as Error);
       }
-      try {
-        await this.attemptInsight.analyze(finalized.id);
-      } catch (error) {
-        this.logger.error('Insight generation failed to start', error as Error);
+      // Skip insight generation for attempts pending manual grading — at this point the Result
+      // is computed from MCQ-only scoredQuestions (code questions excluded) and passFail is null,
+      // so an insight generated now would reflect an artificially skewed percentage. It's
+      // regenerated in finalizeManualGrade() once the full, correct score is known.
+      if (!hasCodeQuestions) {
+        try {
+          await this.attemptInsight.analyze(finalized.id);
+        } catch (error) {
+          this.logger.error('Insight generation failed to start', error as Error);
+        }
       }
     })();
     return finalized;
@@ -163,6 +181,13 @@ export class AttemptSettlementService {
     void this.broadcaster
       .emitAttemptStatus(attempt.examId, { attemptId: finalized.id, candidateId: attempt.candidateId, status: finalized.status })
       .catch((error) => this.logger.error('Failed to broadcast attempt status', error as Error));
+    void (async () => {
+      try {
+        await this.attemptInsight.analyze(finalized.id);
+      } catch (error) {
+        this.logger.error('Insight generation failed to start', error as Error);
+      }
+    })();
     return finalized;
   }
 }

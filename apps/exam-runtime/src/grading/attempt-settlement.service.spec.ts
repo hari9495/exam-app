@@ -368,6 +368,87 @@ describe('AttemptSettlementService', () => {
       expect(result.status).toBe('pending_manual_grade');
     });
 
+    it('creates a blank Answer row for a code question the candidate never answered, so it surfaces in the grading queue', async () => {
+      const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1', 'q2']) };
+      const tx = {
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'q1', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }, { id: 'opt-b', isCorrect: false }] },
+            { id: 'q2', type: 'code', marks: 10, negativeMarks: 0, options: [] },
+          ]),
+        },
+        answer: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'answer-1', questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']) },
+            // No answer row for q2 — the candidate never submitted anything for it.
+          ]),
+          update: jest.fn(),
+          create: jest.fn().mockResolvedValue({ id: 'answer-2', questionId: 'q2' }),
+        },
+        result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+        attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'pending_manual_grade' }) },
+        auditLog: { create: jest.fn() },
+      };
+
+      await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
+
+      expect(tx.answer.create).toHaveBeenCalledWith({
+        data: { attemptId: 'attempt-1', questionId: 'q2', selectedOptionIdsJson: '[]', answerText: null },
+      });
+    });
+
+    it('does not create an Answer row for a code question that already has one', async () => {
+      const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q2']) };
+      const tx = {
+        question: {
+          findMany: jest.fn().mockResolvedValue([{ id: 'q2', type: 'code', marks: 10, negativeMarks: 0, options: [] }]),
+        },
+        answer: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'answer-2', questionId: 'q2', selectedOptionIdsJson: JSON.stringify([]), answerText: 'print("hi")', marksAwarded: null },
+          ]),
+          update: jest.fn(),
+          create: jest.fn(),
+        },
+        result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+        attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'pending_manual_grade' }) },
+        auditLog: { create: jest.fn() },
+      };
+
+      await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
+
+      expect(tx.answer.create).not.toHaveBeenCalled();
+    });
+
+    it('does not trigger insight generation when the attempt has code questions (data is incomplete until manual grading)', async () => {
+      const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1', 'q2']) };
+      const tx = {
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'q1', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] },
+            { id: 'q2', type: 'code', marks: 10, negativeMarks: 0, options: [] },
+          ]),
+        },
+        answer: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'answer-1', questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']) },
+            { id: 'answer-2', questionId: 'q2', selectedOptionIdsJson: JSON.stringify([]), answerText: 'print("hi")', marksAwarded: null },
+          ]),
+          update: jest.fn(),
+          create: jest.fn(),
+        },
+        result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+        attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'pending_manual_grade' }) },
+        auditLog: { create: jest.fn() },
+      };
+
+      await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
+      await new Promise((resolve) => setImmediate(resolve));
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(attemptInsight.analyze).not.toHaveBeenCalled();
+    });
+
     it('settles normally (no pending_manual_grade) when the attempt has no code questions', async () => {
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
       const tx = {
@@ -454,6 +535,97 @@ describe('AttemptSettlementService', () => {
         data: { score: 13, maxScore: 15, percentage: expect.closeTo((13 / 15) * 100, 5), passFail: 'pass' },
       });
       expect(tx.attempt.update).toHaveBeenCalledWith({ where: { id: 'attempt-1' }, data: { status: 'submitted' } });
+    });
+
+    it('still rejects finalization when the code question only has the blank Answer row finalize() created for it (no marks entered yet)', async () => {
+      const attempt = {
+        id: 'attempt-1', status: 'pending_manual_grade', questionOrderJson: JSON.stringify(['q1', 'q2']),
+      };
+      const tx = {
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'q1', type: 'single_mcq', marks: 5 },
+            { id: 'q2', type: 'code', marks: 10 },
+          ]),
+        },
+        answer: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'answer-1', questionId: 'q1', marksAwarded: 5 },
+            // The blank Answer row finalize() creates for an unanswered code question — no marks yet.
+            { id: 'answer-2', questionId: 'q2', selectedOptionIdsJson: '[]', answerText: null, marksAwarded: null },
+          ]),
+        },
+        result: { update: jest.fn() },
+        attempt: { update: jest.fn() },
+        auditLog: { create: jest.fn() },
+      };
+
+      await expect(
+        service.finalizeManualGrade(tx as unknown as Prisma.TransactionClient, exam, attempt as any),
+      ).rejects.toThrow(/still need grading/);
+      expect(tx.result.update).not.toHaveBeenCalled();
+      expect(tx.attempt.update).not.toHaveBeenCalled();
+    });
+
+    it('succeeds once the recruiter explicitly grades the blank submission as zero', async () => {
+      const attempt = {
+        id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', status: 'pending_manual_grade',
+        questionOrderJson: JSON.stringify(['q1', 'q2']),
+      };
+      const tx = {
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'q1', type: 'single_mcq', marks: 5 },
+            { id: 'q2', type: 'code', marks: 10 },
+          ]),
+        },
+        answer: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'answer-1', questionId: 'q1', marksAwarded: 5 },
+            { id: 'answer-2', questionId: 'q2', selectedOptionIdsJson: '[]', answerText: null, marksAwarded: 0 },
+          ]),
+        },
+        result: { update: jest.fn() },
+        attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+        auditLog: { create: jest.fn() },
+      };
+
+      const finalized = await service.finalizeManualGrade(tx as unknown as Prisma.TransactionClient, exam, attempt as any);
+
+      expect(finalized.status).toBe('submitted');
+      expect(tx.result.update).toHaveBeenCalledWith({
+        where: { attemptId: 'attempt-1' },
+        data: { score: 5, maxScore: 15, percentage: expect.closeTo((5 / 15) * 100, 5), passFail: 'fail' },
+      });
+    });
+
+    it('triggers insight generation once the final grade is known', async () => {
+      const attempt = {
+        id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', status: 'pending_manual_grade',
+        questionOrderJson: JSON.stringify(['q1', 'q2']),
+      };
+      const tx = {
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'q1', type: 'single_mcq', marks: 5 },
+            { id: 'q2', type: 'code', marks: 10 },
+          ]),
+        },
+        answer: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'answer-1', questionId: 'q1', marksAwarded: 5 },
+            { id: 'answer-2', questionId: 'q2', marksAwarded: 8 },
+          ]),
+        },
+        result: { update: jest.fn() },
+        attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+        auditLog: { create: jest.fn() },
+      };
+
+      await service.finalizeManualGrade(tx as unknown as Prisma.TransactionClient, exam, attempt as any);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(attemptInsight.analyze).toHaveBeenCalledWith('attempt-1');
     });
   });
 });

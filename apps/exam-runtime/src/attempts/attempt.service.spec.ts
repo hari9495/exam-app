@@ -88,6 +88,35 @@ describe('AttemptService', () => {
       expect((result as any).sections[0].questions[0]).not.toHaveProperty('isCorrect');
     });
 
+    it('includes codeLanguage and starterCode for a code question so the candidate\'s editor can be configured', async () => {
+      const attempt = {
+        id: 'attempt-1', status: 'in_progress', startedAt: new Date(),
+        questionOrderJson: JSON.stringify(['code-q1']),
+        sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', targetDurationMinutes: null, questionIds: ['code-q1'] }]),
+        optionOrderJson: null,
+      };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'code-q1', text: 'Reverse a string', type: 'code', marks: 10, codeLanguage: 'python', starterCode: 'def reverse(s):\n    pass', options: [] },
+          ]),
+        },
+        answer: { findMany: jest.fn().mockResolvedValue([]) },
+        candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+      };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      settlement.remainingSeconds.mockReturnValue(3300);
+      mockBootstrapThenScoped(tx);
+
+      const result = await service.getCurrent(session);
+
+      expect((result as any).sections[0].questions[0]).toEqual({
+        id: 'code-q1', text: 'Reverse a string', type: 'code', marks: 10,
+        codeLanguage: 'python', starterCode: 'def reverse(s):\n    pass', options: [],
+      });
+    });
+
     it('reorders a question\'s options according to optionOrderJson when present', async () => {
       const attempt = {
         id: 'attempt-1', status: 'in_progress', startedAt: new Date(),

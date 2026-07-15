@@ -182,4 +182,54 @@ describe('Exam code-grading HTTP flow', () => {
       .expect(200);
     expect(pendingAfterFinalize.body).toHaveLength(0);
   });
+
+  it('surfaces and allows finalizing an attempt where the candidate never answered the code question', async () => {
+    const candidateResponse = await request(adminHttp)
+      .post('/api/v1/candidates')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ email: 'bob@ci-code-grading.test', name: 'Bob' })
+      .expect(201);
+
+    const inviteResponse = await request(adminHttp)
+      .post(`/api/v1/exams/${examId}/invitations`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ candidateIds: [candidateResponse.body.id] })
+      .expect(201);
+    const token = inviteResponse.body.created[0].token;
+
+    const accessToken = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
+    const startResponse = await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({}).expect(201);
+    const attemptId = startResponse.body.id;
+
+    // Candidate submits without ever answering the code question — no POST /attempt/answer call for it.
+    await request(runtimeHttp).post('/api/v1/attempt/submit').set('Authorization', `Bearer ${accessToken}`).expect(201);
+
+    const pendingResponse = await request(adminHttp)
+      .get(`/api/v1/exams/${examId}/pending-grading`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(200);
+    const row = pendingResponse.body.find((r: any) => r.attemptId === attemptId);
+    expect(row).toBeDefined();
+    expect(row.codeQuestions).toEqual([
+      expect.objectContaining({ questionId: codeQuestionId, answerText: null, marks: 10, marksAwarded: null }),
+    ]);
+
+    // Finalizing before grading the blank submission is still rejected.
+    await request(adminHttp)
+      .post(`/api/v1/attempts/${attemptId}/finalize-manual-grade`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(400);
+
+    await request(adminHttp)
+      .post(`/api/v1/attempts/${attemptId}/answers/${codeQuestionId}/grade`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ marksAwarded: 0, feedback: 'No submission' })
+      .expect(201);
+
+    const finalizeResponse = await request(adminHttp)
+      .post(`/api/v1/attempts/${attemptId}/finalize-manual-grade`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(201);
+    expect(finalizeResponse.body).toEqual({ status: 'submitted' });
+  });
 });
