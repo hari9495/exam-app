@@ -27,7 +27,7 @@ export default function LoginPage() {
       });
       login(organizationSlug, result.accessToken);
       const payload = decodeJwtPayload(result.accessToken);
-      router.push(payload?.role === 'org_admin' ? '/users' : '/dashboard');
+      router.push(payload?.role === 'org_admin' ? '/users' : payload?.role === 'panel' ? '/reports' : '/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     }
