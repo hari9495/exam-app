@@ -45,6 +45,8 @@ describe('QuestionForm', () => {
           negativeMarks: 0,
           status: 'active',
           aiGenerated: false,
+          codeLanguage: null,
+          starterCode: null,
           createdAt: '2026-01-01T00:00:00.000Z',
           options: [
             { id: 'o-1', text: 'True', isCorrect: true },
@@ -58,5 +60,30 @@ describe('QuestionForm', () => {
     );
     expect(screen.getByLabelText('Question text')).toHaveValue('The sky is blue.');
     expect(screen.getByLabelText('Marks')).toHaveValue(2);
+  });
+
+  it('submits a code question with codeLanguage, starterCode, and zero options when type is code', async () => {
+    const onSubmit = jest.fn();
+    render(<QuestionForm tags={[]} onSubmit={onSubmit} submitLabel="Create" />);
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Question type' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Code' }));
+    await userEvent.type(screen.getByLabelText('Question text'), 'Reverse a string');
+    await userEvent.click(screen.getByRole('combobox', { name: 'Language' }));
+    await userEvent.click(screen.getByRole('option', { name: 'python' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'code', codeLanguage: 'python', options: [] }),
+    );
+  });
+
+  it('does not show the options editor when type is code', async () => {
+    render(<QuestionForm tags={[]} onSubmit={jest.fn()} submitLabel="Create" />);
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Question type' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Code' }));
+
+    expect(screen.queryByText('Options')).not.toBeInTheDocument();
   });
 });

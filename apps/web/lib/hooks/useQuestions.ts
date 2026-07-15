@@ -52,6 +52,8 @@ export interface QuestionInput {
   marks: number;
   negativeMarks?: number;
   tags?: string[];
+  codeLanguage?: string;
+  starterCode?: string;
   options: { text: string; isCorrect: boolean }[];
 }
 

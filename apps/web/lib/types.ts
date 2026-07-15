@@ -1,7 +1,10 @@
-export type QuestionType = 'single_mcq' | 'multi_mcq' | 'true_false';
+export type QuestionType = 'single_mcq' | 'multi_mcq' | 'true_false' | 'code';
 export type Difficulty = 'easy' | 'medium' | 'hard';
 export type ExamStatus = 'draft' | 'published' | 'archived';
 export type InvitationStatus = 'invited' | 'revoked';
+
+export const CODE_LANGUAGE_OPTIONS = ['javascript', 'typescript', 'python', 'java', 'csharp', 'cpp', 'go', 'ruby'] as const;
+export type CodeLanguage = (typeof CODE_LANGUAGE_OPTIONS)[number];
 
 export interface Tag {
   id: string;
@@ -65,6 +68,8 @@ export interface Question {
   negativeMarks: number;
   status: 'active' | 'archived';
   aiGenerated: boolean;
+  codeLanguage: CodeLanguage | null;
+  starterCode: string | null;
   createdAt: string;
   options: QuestionOption[];
   tags?: Tag[];
@@ -144,6 +149,8 @@ export interface AttemptQuestion {
   text: string;
   type: QuestionType;
   marks: number;
+  codeLanguage: CodeLanguage | null;
+  starterCode: string | null;
   options: AttemptQuestionOption[];
 }
 
@@ -156,6 +163,7 @@ export interface AttemptSection {
 export interface AttemptAnswerSummary {
   questionId: string;
   selectedOptionIds: string[];
+  answerText: string | null;
   isMarkedForReview: boolean;
 }
 
