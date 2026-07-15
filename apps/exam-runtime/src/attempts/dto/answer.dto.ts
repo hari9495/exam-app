@@ -10,6 +10,10 @@ export class AnswerDto {
   selectedOptionIds!: string[];
 
   @IsOptional()
+  @IsString()
+  answerText?: string;
+
+  @IsOptional()
   @IsBoolean()
   markedForReview?: boolean;
 }

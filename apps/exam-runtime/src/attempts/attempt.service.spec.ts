@@ -400,7 +400,7 @@ describe('AttemptService', () => {
 
       const result = await service.answer(session, { questionId: 'q1', selectedOptionIds: ['opt-a'] });
 
-      expect(result).toEqual({ questionId: 'q1', selectedOptionIds: ['opt-a'], isMarkedForReview: false });
+      expect(result).toEqual({ questionId: 'q1', selectedOptionIds: ['opt-a'], answerText: null, isMarkedForReview: false });
       expect(tx.answer.upsert).toHaveBeenCalledWith({
         where: { attemptId_questionId: { attemptId: 'attempt-1', questionId: 'q1' } },
         create: { attemptId: 'attempt-1', questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isMarkedForReview: false },
@@ -419,7 +419,7 @@ describe('AttemptService', () => {
 
       const result = await service.answer(session, { questionId: 'q1', selectedOptionIds: [], markedForReview: true });
 
-      expect(result).toEqual({ questionId: 'q1', selectedOptionIds: [], isMarkedForReview: true });
+      expect(result).toEqual({ questionId: 'q1', selectedOptionIds: [], answerText: null, isMarkedForReview: true });
       expect(tx.answer.upsert).toHaveBeenCalledWith({
         where: { attemptId_questionId: { attemptId: 'attempt-1', questionId: 'q1' } },
         create: { attemptId: 'attempt-1', questionId: 'q1', selectedOptionIdsJson: JSON.stringify([]), isMarkedForReview: true },
@@ -494,6 +494,37 @@ describe('AttemptService', () => {
         { organizationId: 'org-1', isSuperAdmin: false },
         expect.any(Function),
       );
+    });
+
+    it('stores answerText for a code question without validating it against options', async () => {
+      const codeAttempt = { ...attempt, questionOrderJson: JSON.stringify(['code-question-1']) };
+      const codeQuestion = { id: 'code-question-1', type: 'code', options: [] };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(codeAttempt) },
+        question: { findFirstOrThrow: jest.fn().mockResolvedValue(codeQuestion) },
+        answer: { upsert: jest.fn().mockResolvedValue({}) },
+      };
+      settlement.settleIfExpired.mockResolvedValue(codeAttempt);
+      mockBootstrapThenScoped(tx);
+
+      const result = await service.answer(session, { questionId: 'code-question-1', selectedOptionIds: [], answerText: 'function reverse(s) { return s; }' });
+
+      expect(result).toEqual({ questionId: 'code-question-1', selectedOptionIds: [], answerText: 'function reverse(s) { return s; }', isMarkedForReview: false });
+      expect(tx.answer.upsert).toHaveBeenCalledWith({
+        where: { attemptId_questionId: { attemptId: 'attempt-1', questionId: 'code-question-1' } },
+        create: {
+          attemptId: 'attempt-1',
+          questionId: 'code-question-1',
+          selectedOptionIdsJson: JSON.stringify([]),
+          answerText: 'function reverse(s) { return s; }',
+          isMarkedForReview: false,
+        },
+        update: {
+          answerText: 'function reverse(s) { return s; }',
+          isMarkedForReview: false,
+          answeredAt: expect.any(Date),
+        },
+      });
     });
   });
 

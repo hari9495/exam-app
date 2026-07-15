@@ -39,6 +39,7 @@ interface SectionSnapshotEntry {
 interface AttemptAnswerSummary {
   questionId: string;
   selectedOptionIds: string[];
+  answerText: string | null;
   isMarkedForReview: boolean;
 }
 
@@ -95,6 +96,7 @@ export class AttemptService {
         answers: answers.map((answer) => ({
           questionId: answer.questionId,
           selectedOptionIds: JSON.parse(answer.selectedOptionIdsJson),
+          answerText: answer.answerText,
           isMarkedForReview: answer.isMarkedForReview,
         })),
         messages: unreadMessages.map((message) => ({ id: message.id, body: message.body, sentAt: message.sentAt })),
@@ -181,7 +183,7 @@ export class AttemptService {
   async answer(
     session: CandidateSession,
     dto: AnswerDto,
-  ): Promise<{ questionId: string; selectedOptionIds: string[]; isMarkedForReview: boolean }> {
+  ): Promise<{ questionId: string; selectedOptionIds: string[]; answerText: string | null; isMarkedForReview: boolean }> {
     const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
 
     return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
@@ -199,12 +201,32 @@ export class AttemptService {
         throw new BadRequestException(`Question ${dto.questionId} is not part of this attempt`);
       }
       const question = await tx.question.findFirstOrThrow({ where: { id: dto.questionId }, include: { options: true } });
+      const isMarkedForReview = dto.markedForReview ?? false;
+
+      if (question.type === 'code') {
+        await tx.answer.upsert({
+          where: { attemptId_questionId: { attemptId: settled.id, questionId: dto.questionId } },
+          create: {
+            attemptId: settled.id,
+            questionId: dto.questionId,
+            selectedOptionIdsJson: JSON.stringify([]),
+            answerText: dto.answerText ?? null,
+            isMarkedForReview,
+          },
+          update: {
+            answerText: dto.answerText ?? null,
+            isMarkedForReview,
+            answeredAt: new Date(),
+          },
+        });
+        return { questionId: dto.questionId, selectedOptionIds: [], answerText: dto.answerText ?? null, isMarkedForReview };
+      }
+
       // An empty selection means "no answer yet, possibly just toggling markedForReview" — skip option validation.
       if (dto.selectedOptionIds.length > 0) {
         this.validateSelection(question, dto.selectedOptionIds);
       }
 
-      const isMarkedForReview = dto.markedForReview ?? false;
       await tx.answer.upsert({
         where: { attemptId_questionId: { attemptId: settled.id, questionId: dto.questionId } },
         create: {
@@ -220,7 +242,7 @@ export class AttemptService {
         },
       });
 
-      return { questionId: dto.questionId, selectedOptionIds: dto.selectedOptionIds, isMarkedForReview };
+      return { questionId: dto.questionId, selectedOptionIds: dto.selectedOptionIds, answerText: null, isMarkedForReview };
     });
   }
 
