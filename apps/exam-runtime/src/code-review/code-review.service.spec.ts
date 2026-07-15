@@ -1,12 +1,12 @@
 import { CodeReviewService } from './code-review.service';
 
 describe('CodeReviewService', () => {
-  function buildService(claudeResult: { suggestedMarks: number; summary: string } | Error) {
+  function buildService(claudeResult: { suggestedMarks: number; summary: string } | Error, answerText: string | null = 'function reverse(s) { return s; }') {
     const tx = {
       answer: {
         findUniqueOrThrow: jest.fn().mockResolvedValue({
           id: 'answer-1',
-          answerText: 'function reverse(s) { return s; }',
+          answerText,
           question: { text: 'Reverse a string', starterCode: null, codeLanguage: 'javascript', marks: 10 },
           attempt: { invitation: { exam: { organizationId: 'org-1' } } },
         }),
@@ -18,7 +18,7 @@ describe('CodeReviewService', () => {
     const claudeClient = {
       review: claudeResult instanceof Error ? jest.fn().mockRejectedValue(claudeResult) : jest.fn().mockResolvedValue(claudeResult),
     };
-    return { service: new CodeReviewService(tenantPrisma as never, claudeClient as never), tx, tenantPrisma };
+    return { service: new CodeReviewService(tenantPrisma as never, claudeClient as never), tx, tenantPrisma, claudeClient };
   }
 
   it('generates a review, upserts CodeAnswerReview as completed, and records AI credit usage', async () => {
@@ -43,6 +43,32 @@ describe('CodeReviewService', () => {
 
     expect(tx.codeAnswerReview.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ create: expect.objectContaining({ status: 'failed', suggestedMarks: null, summary: null }) }),
+    );
+    expect(tx.aiCreditUsage.create).not.toHaveBeenCalled();
+  });
+
+  it('skips the Claude call and records no credit usage for a blank submission', async () => {
+    const { service, tx, claudeClient } = buildService({ suggestedMarks: 8, summary: 'Solid solution.' }, null);
+
+    await service.analyze('answer-1');
+
+    expect(claudeClient.review).not.toHaveBeenCalled();
+    expect(tx.codeAnswerReview.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ answerId: 'answer-1', status: 'completed', suggestedMarks: 0, summary: 'No code was submitted for this question.' }),
+      }),
+    );
+    expect(tx.aiCreditUsage.create).not.toHaveBeenCalled();
+  });
+
+  it('treats a whitespace-only submission the same as blank', async () => {
+    const { service, tx, claudeClient } = buildService({ suggestedMarks: 8, summary: 'Solid solution.' }, '   ');
+
+    await service.analyze('answer-1');
+
+    expect(claudeClient.review).not.toHaveBeenCalled();
+    expect(tx.codeAnswerReview.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ create: expect.objectContaining({ status: 'completed', suggestedMarks: 0 }) }),
     );
     expect(tx.aiCreditUsage.create).not.toHaveBeenCalled();
   });
