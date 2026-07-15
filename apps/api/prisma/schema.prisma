@@ -336,7 +336,7 @@ model Result {
   score      Int
   maxScore   Int      @map("max_score")
   percentage Float
-  passFail   String   @map("pass_fail")
+  passFail   String?  @map("pass_fail")
   computedAt DateTime @default(now()) @map("computed_at")
   attempt    Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 

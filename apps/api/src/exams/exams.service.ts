@@ -354,7 +354,7 @@ export class ExamsService {
           id: string;
           status: string;
           submittedAt: Date | null;
-          result: { score: number; maxScore: number; percentage: number; passFail: string } | null;
+          result: { score: number; maxScore: number; percentage: number; passFail: string | null } | null;
           proctoringAnalysis: { status: string; riskLevel: string | null; summary: string | null } | null;
         }
       | null

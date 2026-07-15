@@ -24,7 +24,7 @@ export interface CandidateDataExport {
   }[];
   attempts: {
     id: string; examTitle: string; status: string; startedAt: Date; submittedAt: Date | null; deviceFingerprint: string | null;
-    result: { score: number; maxScore: number; percentage: number; passFail: string } | null;
+    result: { score: number; maxScore: number; percentage: number; passFail: string | null } | null;
     answers: { questionText: string; selectedOptions: string[]; isCorrect: boolean | null; marksAwarded: number | null }[];
     proctoringEvents: { eventType: string; severity: string; occurredAt: Date; metadata: Record<string, unknown> | null }[];
     proctoringAnalysis: { status: string; riskLevel: string | null; summary: string | null } | null;

@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { Attempt, Prisma } from '@prisma/client';
 import { gradeAnswer, computeResult, computeRemainingSeconds } from './grading';
 import { ATTEMPT_STATUS_BROADCASTER, AttemptStatusBroadcaster } from '../monitoring/attempt-status-broadcaster';
@@ -55,8 +55,14 @@ export class AttemptSettlementService {
     const existingAnswers = await tx.answer.findMany({ where: { attemptId: attempt.id } });
     const answersByQuestionId = new Map(existingAnswers.map((answer) => [answer.questionId, answer]));
 
+    const hasCodeQuestions = questions.some((question) => question.type === 'code');
     const gradedAnswers: { marksAwarded: number }[] = [];
     for (const question of questions) {
+      if (question.type === 'code') {
+        // Manual grading only — never auto-graded, never contributes to gradedAnswers until a
+        // recruiter enters marks via finalizeManualGrade().
+        continue;
+      }
       const answer = answersByQuestionId.get(question.id);
       const selectedOptionIds: string[] = answer ? JSON.parse(answer.selectedOptionIdsJson) : [];
       const correctOptionIds = question.options.filter((option) => option.isCorrect).map((option) => option.id);
@@ -70,18 +76,20 @@ export class AttemptSettlementService {
       }
     }
 
-    const summary = computeResult(gradedAnswers, questions, exam.passCriteriaPercent);
+    const scoredQuestions = hasCodeQuestions ? questions.filter((question) => question.type !== 'code') : questions;
+    const summary = computeResult(gradedAnswers, scoredQuestions, exam.passCriteriaPercent);
     await tx.result.create({
       data: {
         attemptId: attempt.id,
         score: summary.score,
         maxScore: summary.maxScore,
         percentage: summary.percentage,
-        passFail: summary.passFail,
+        passFail: hasCodeQuestions ? null : summary.passFail,
       },
     });
 
-    const finalized = await tx.attempt.update({ where: { id: attempt.id }, data: { status, submittedAt: new Date() } });
+    const finalStatus = hasCodeQuestions ? 'pending_manual_grade' : status;
+    const finalized = await tx.attempt.update({ where: { id: attempt.id }, data: { status: finalStatus, submittedAt: new Date() } });
     await tx.auditLog.create({
       data: {
         organizationId: exam.organizationId,
@@ -111,6 +119,50 @@ export class AttemptSettlementService {
         this.logger.error('Insight generation failed to start', error as Error);
       }
     })();
+    return finalized;
+  }
+
+  async finalizeManualGrade(tx: Prisma.TransactionClient, exam: SettlementExam, attempt: Attempt): Promise<Attempt> {
+    if (attempt.status !== 'pending_manual_grade') {
+      throw new BadRequestException(`Cannot finalize grading — attempt status is "${attempt.status}"`);
+    }
+
+    const questionIds: string[] = JSON.parse(attempt.questionOrderJson);
+    const questions = await tx.question.findMany({ where: { id: { in: questionIds } } });
+    const answers = await tx.answer.findMany({ where: { attemptId: attempt.id } });
+    const answersByQuestionId = new Map(answers.map((answer) => [answer.questionId, answer]));
+
+    const codeQuestions = questions.filter((question) => question.type === 'code');
+    const ungraded = codeQuestions.filter((question) => {
+      const answer = answersByQuestionId.get(question.id);
+      return !answer || answer.marksAwarded === null;
+    });
+    if (ungraded.length > 0) {
+      throw new BadRequestException(`${ungraded.length} code question(s) still need grading before this attempt can be finalized`);
+    }
+
+    const gradedAnswers = questions.map((question) => ({ marksAwarded: answersByQuestionId.get(question.id)?.marksAwarded ?? 0 }));
+    const summary = computeResult(gradedAnswers, questions, exam.passCriteriaPercent);
+
+    await tx.result.update({
+      where: { attemptId: attempt.id },
+      data: { score: summary.score, maxScore: summary.maxScore, percentage: summary.percentage, passFail: summary.passFail },
+    });
+
+    const finalized = await tx.attempt.update({ where: { id: attempt.id }, data: { status: 'submitted' } });
+    await tx.auditLog.create({
+      data: {
+        organizationId: exam.organizationId,
+        actorUserId: null,
+        action: 'attempt.manually_graded',
+        entityType: 'attempt',
+        entityId: finalized.id,
+        metadataJson: JSON.stringify({ score: summary.score, maxScore: summary.maxScore, percentage: summary.percentage, passFail: summary.passFail }),
+      },
+    });
+    void this.broadcaster
+      .emitAttemptStatus(attempt.examId, { attemptId: finalized.id, candidateId: attempt.candidateId, status: finalized.status })
+      .catch((error) => this.logger.error('Failed to broadcast attempt status', error as Error));
     return finalized;
   }
 }

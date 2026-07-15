@@ -43,7 +43,9 @@ export class AttemptInsightService {
       try {
         const summary = await this.claudeInsightClient.generate({
           percentage: attempt.result.percentage,
-          passFail: attempt.result.passFail,
+          // ponytail: Result.passFail can now be null (pending manual grade of a code question);
+          // insight generation is narrative-only, so fall back to a plain label rather than gating it.
+          passFail: attempt.result.passFail ?? 'pending',
           topicBreakdown,
           proctoring,
         });
