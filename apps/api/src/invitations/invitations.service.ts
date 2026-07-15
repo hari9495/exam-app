@@ -18,6 +18,13 @@ function addDays(date: Date, days: number): Date {
   return result;
 }
 
+function resolveInvitationExpiry(exam: { schedulingEnabled: boolean; availabilityWindowEnd: Date | null }): Date {
+  if (exam.schedulingEnabled && exam.availabilityWindowEnd) {
+    return exam.availabilityWindowEnd;
+  }
+  return addDays(new Date(), INVITATION_EXPIRY_DAYS);
+}
+
 export interface BulkInviteResult {
   created: Invitation[];
   skipped: { candidateId: string; reason: string }[];
@@ -78,7 +85,7 @@ export class InvitationsService {
             examId,
             candidateId: candidate.id,
             token: generateToken(),
-            expiresAt: addDays(new Date(), INVITATION_EXPIRY_DAYS),
+            expiresAt: resolveInvitationExpiry(exam),
           },
         });
         createdWithCandidate.push({ invitation, candidate });
@@ -140,7 +147,7 @@ export class InvitationsService {
       }
       const updated = await tx.invitation.update({
         where: { id: invitationId },
-        data: { token: generateToken(), expiresAt: addDays(new Date(), INVITATION_EXPIRY_DAYS) },
+        data: { token: generateToken(), expiresAt: resolveInvitationExpiry(existing.exam) },
       });
       return { invitation: updated, examTitle: existing.exam.title, candidate: existing.candidate };
     });

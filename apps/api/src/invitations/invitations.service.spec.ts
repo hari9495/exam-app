@@ -118,6 +118,64 @@ describe('InvitationsService', () => {
     expect(emailService.send).not.toHaveBeenCalled();
   });
 
+  it('sets expiresAt to the exam availability window end for a scheduled exam', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'exam-1',
+          title: 'Backend Round',
+          status: 'published',
+          schedulingEnabled: true,
+          availabilityWindowEnd: new Date('2026-07-27T18:00:00.000Z'),
+        }),
+      },
+      candidate: { findMany: jest.fn().mockResolvedValue([{ id: 'cand-1', email: 'a@test.com', name: 'Alice', erasedAt: null }]) },
+      invitation: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited' }),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.bulkInvite(context, 'exam-1', ['cand-1']);
+
+    expect(tx.invitation.create).toHaveBeenCalledWith({
+      data: {
+        examId: 'exam-1',
+        candidateId: 'cand-1',
+        token: expect.any(String),
+        expiresAt: new Date('2026-07-27T18:00:00.000Z'),
+      },
+    });
+  });
+
+  it('sets expiresAt to a 7-day default for a non-scheduled exam', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'exam-1',
+          title: 'Backend Round',
+          status: 'published',
+          schedulingEnabled: false,
+          availabilityWindowEnd: null,
+        }),
+      },
+      candidate: { findMany: jest.fn().mockResolvedValue([{ id: 'cand-1', email: 'a@test.com', name: 'Alice', erasedAt: null }]) },
+      invitation: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited' }),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.bulkInvite(context, 'exam-1', ['cand-1']);
+
+    const expiresAt: Date = tx.invitation.create.mock.calls[0][0].data.expiresAt;
+    const expectedExpiry = new Date();
+    expectedExpiry.setDate(expectedExpiry.getDate() + 7);
+    expect(Math.abs(expiresAt.getTime() - expectedExpiry.getTime())).toBeLessThan(5000);
+  });
+
   it('lists invitations for an exam', async () => {
     const tx = {
       exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
@@ -175,6 +233,30 @@ describe('InvitationsService', () => {
     await new Promise((resolve) => setImmediate(resolve));
 
     expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'a@test.com' }));
+  });
+
+  it('resend() also uses the scheduled window end, not the 7-day default, for a scheduled exam', async () => {
+    const existing = {
+      id: 'inv-1',
+      status: 'invited',
+      exam: { title: 'Backend Round', organizationId: 'org-1', schedulingEnabled: true, availabilityWindowEnd: new Date('2026-08-01T00:00:00.000Z') },
+      candidate: { email: 'a@test.com', name: 'Alice' },
+    };
+    const updated = { id: 'inv-1', token: 'new-token', status: 'invited' };
+    const tx = {
+      invitation: {
+        findFirst: jest.fn().mockResolvedValue(existing),
+        update: jest.fn().mockResolvedValue(updated),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.resend(context, 'inv-1');
+
+    expect(tx.invitation.update).toHaveBeenCalledWith({
+      where: { id: 'inv-1' },
+      data: { token: expect.any(String), expiresAt: new Date('2026-08-01T00:00:00.000Z') },
+    });
   });
 
   it('throws NotFoundException when resending an invitation that does not exist', async () => {
