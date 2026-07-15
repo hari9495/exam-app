@@ -1,0 +1,102 @@
+'use client';
+
+import { useParams, useSearchParams } from 'next/navigation';
+import { useCandidateReport, useAttemptInsight, useRegenerateAttemptInsight } from '../../../../../../lib/hooks/usePanelReports';
+import { Badge, Button, Card } from '../../../../../../components/ui';
+
+const PASS_FAIL_VARIANT: Record<string, 'success' | 'danger'> = { pass: 'success', fail: 'danger' };
+
+export default function PanelCandidateDetailPage() {
+  const { examId, candidateId } = useParams<{ examId: string; candidateId: string }>();
+  const searchParams = useSearchParams();
+  const attemptId = searchParams.get('attemptId') || null;
+  const { data: candidate, isLoading } = useCandidateReport(examId, candidateId);
+  const { data: insight, isLoading: insightLoading } = useAttemptInsight(attemptId);
+  const regenerate = useRegenerateAttemptInsight();
+
+  if (isLoading || !candidate) {
+    return <p className="p-8 text-sm text-gray-500">Loading…</p>;
+  }
+
+  return (
+    <div>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">{candidate.candidateName}</h1>
+        {candidate.passFail && <Badge variant={PASS_FAIL_VARIANT[candidate.passFail] ?? 'default'}>{candidate.passFail}</Badge>}
+      </div>
+
+      <Card className="mb-6">
+        <p className="text-xs text-gray-500">Score</p>
+        <p className="text-2xl font-semibold">
+          {candidate.percentage !== null ? `${candidate.percentage.toFixed(1)}%` : '—'}
+          {candidate.score !== null && candidate.maxScore !== null && (
+            <span className="ml-2 text-sm font-normal text-gray-500">
+              ({candidate.score}/{candidate.maxScore})
+            </span>
+          )}
+        </p>
+      </Card>
+
+      {attemptId && (
+        <div className="mb-6">
+          <h2 className="mb-2 text-lg font-medium">AI Insight</h2>
+          {insightLoading ? (
+            <p className="text-sm text-gray-500">Loading…</p>
+          ) : insight ? (
+            <Card>
+              <p className="text-sm text-gray-700">{insight.summary}</p>
+            </Card>
+          ) : (
+            <Card>
+              <p className="mb-3 text-sm text-gray-500">Not yet generated</p>
+              <Button variant="secondary" disabled={regenerate.isPending} onClick={() => regenerate.mutateAsync(attemptId)}>
+                Regenerate
+              </Button>
+            </Card>
+          )}
+        </div>
+      )}
+
+      <div className="flex flex-col gap-4">
+        {candidate.sections.map((section) => (
+          <Card key={section.sectionId}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-base font-medium">{section.title}</h3>
+              <span className="text-sm text-gray-500">
+                {section.score}/{section.maxScore}
+              </span>
+            </div>
+            <div className="flex flex-col gap-3">
+              {section.questions.map((question) => (
+                <div key={question.questionId} className="border-t border-gray-100 pt-3 first:border-0 first:pt-0">
+                  <p className="mb-2 text-sm text-gray-800">{question.questionText}</p>
+                  <div className="flex flex-col gap-1">
+                    {question.options.map((option) => {
+                      const wasSelected = question.selectedOptionIds.includes(option.id);
+                      const isCorrectOption = question.correctOptionIds.includes(option.id);
+                      return (
+                        <p
+                          key={option.id}
+                          className={
+                            isCorrectOption
+                              ? 'text-sm font-medium text-green-700'
+                              : wasSelected
+                                ? 'text-sm font-medium text-red-700'
+                                : 'text-sm text-gray-600'
+                          }
+                        >
+                          {wasSelected ? '◉' : '○'} {option.text}
+                          {isCorrectOption ? ' (correct)' : ''}
+                        </p>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
