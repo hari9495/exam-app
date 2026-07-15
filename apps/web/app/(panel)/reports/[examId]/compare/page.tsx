@@ -2,7 +2,6 @@
 
 import { useParams, useSearchParams } from 'next/navigation';
 import { useCandidateComparison } from '../../../../../lib/hooks/usePanelReports';
-import { Card } from '../../../../../components/ui';
 
 export default function PanelComparePage() {
   const { examId } = useParams<{ examId: string }>();

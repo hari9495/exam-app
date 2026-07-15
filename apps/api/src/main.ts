@@ -6,7 +6,7 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.use(cookieParser());
-  app.enableCors({ origin: process.env.WEB_ORIGIN, credentials: true });
+  app.enableCors({ origin: process.env.WEB_ORIGIN, credentials: true, exposedHeaders: ['Content-Disposition'] });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
   app.setGlobalPrefix('api/v1');
   app.enableShutdownHooks();
