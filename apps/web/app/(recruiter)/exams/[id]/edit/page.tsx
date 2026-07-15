@@ -56,7 +56,14 @@ export default function EditExamPage() {
           <ExamDetailsForm
             initialExam={exam}
             submitLabel="Save details"
-            onSubmit={(input) => updateExam.mutate(input, { onSuccess: () => toast('Exam updated.') })}
+            onSubmit={(input) =>
+              updateExam.mutate(input, {
+                onSuccess: () => toast('Exam updated.'),
+                onError: (error) => {
+                  toast(error instanceof Error ? error.message : 'Failed to update exam.', 'error');
+                },
+              })
+            }
           />
         </TabsContent>
         <TabsContent value="sections">

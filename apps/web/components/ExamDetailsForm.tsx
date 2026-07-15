@@ -48,6 +48,10 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel }: ExamDeta
       setSchedulingError('Both a window open and close time are required.');
       return;
     }
+    if (schedulingEnabled && new Date(availabilityWindowEnd) <= new Date(availabilityWindowStart)) {
+      setSchedulingError('The window close time must be after its open time.');
+      return;
+    }
     setSchedulingError(undefined);
     onSubmit({
       title,

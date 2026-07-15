@@ -21,6 +21,9 @@ export default function NewExamPage() {
               toast('Exam created.');
               router.push(`/exams/${created.id}/edit`);
             },
+            onError: (error) => {
+              toast(error instanceof Error ? error.message : 'Failed to create exam.', 'error');
+            },
           })
         }
       />

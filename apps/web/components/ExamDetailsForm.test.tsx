@@ -50,6 +50,22 @@ describe('ExamDetailsForm', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it('shows a validation error and does not submit when the window close time is not after the open time', async () => {
+    const onSubmit = jest.fn();
+    render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Create" />);
+
+    await userEvent.type(screen.getByLabelText('Title'), 'Backwards Window Exam');
+    await userEvent.click(screen.getByLabelText('Enable scheduling'));
+    const startInput = screen.getByLabelText('Window opens') as HTMLInputElement;
+    const endInput = screen.getByLabelText('Window closes') as HTMLInputElement;
+    fireEvent.change(startInput, { target: { value: '2026-07-27T18:00' } });
+    fireEvent.change(endInput, { target: { value: '2026-07-20T09:00' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    expect(screen.getByText('The window close time must be after its open time.')).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it('does not include scheduling window fields when scheduling is off', async () => {
     const onSubmit = jest.fn();
     render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Create" />);
