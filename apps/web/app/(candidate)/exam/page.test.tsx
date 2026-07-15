@@ -16,6 +16,12 @@ jest.mock('../../../lib/hooks/useAttempt', () => ({
 jest.mock('../../../lib/hooks/useCountdown', () => ({ useCountdown: jest.fn() }));
 jest.mock('../../../lib/hooks/useProctoringMonitor', () => ({ useProctoringMonitor: jest.fn() }));
 jest.mock('../../../lib/candidate-auth-context', () => ({ useCandidateAuth: jest.fn() }));
+jest.mock('@monaco-editor/react', () => ({
+  __esModule: true,
+  default: ({ value, onChange }: { value?: string; onChange?: (value: string | undefined) => void }) => (
+    <textarea aria-label="code-editor" value={value} onChange={(event) => onChange?.(event.target.value)} />
+  ),
+}));
 
 const attemptState = {
   status: 'in_progress',
@@ -26,6 +32,30 @@ const attemptState = {
       targetDurationMinutes: null,
       questions: [
         { id: 'q1', text: 'What is 2 + 2?', type: 'single_mcq', marks: 5, options: [{ id: 'o1', text: '4' }, { id: 'o2', text: '5' }] },
+      ],
+    },
+  ],
+  answers: [],
+  messages: [],
+};
+
+const codeAttemptState = {
+  status: 'in_progress',
+  remainingSeconds: 590,
+  sections: [
+    {
+      title: 'Section One',
+      targetDurationMinutes: null,
+      questions: [
+        {
+          id: 'q1',
+          text: 'Write a function that adds two numbers.',
+          type: 'code',
+          marks: 5,
+          codeLanguage: 'javascript',
+          starterCode: 'function add(a, b) {}',
+          options: [],
+        },
       ],
     },
   ],
@@ -116,5 +146,55 @@ describe('CandidateExamPage', () => {
     render(<CandidateExamPage />);
 
     expect(push).toHaveBeenCalledWith('/session-ended');
+  });
+
+  it('renders a Monaco editor pre-filled with starterCode for a code question', () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({ data: codeAttemptState, isError: false });
+
+    render(<CandidateExamPage />);
+
+    expect(screen.getByText('CODE · 5 MARKS')).toBeInTheDocument();
+    expect(screen.getByLabelText('code-editor')).toHaveValue('function add(a, b) {}');
+  });
+
+  it('pre-fills the editor with the saved answerText instead of starterCode when resuming', () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: { ...codeAttemptState, answers: [{ questionId: 'q1', selectedOptionIds: [], answerText: 'function add(a, b) { return a + b; }', isMarkedForReview: false }] },
+      isError: false,
+    });
+
+    render(<CandidateExamPage />);
+
+    expect(screen.getByLabelText('code-editor')).toHaveValue('function add(a, b) { return a + b; }');
+  });
+
+  it('saves code changes via saveAnswer with the editor value as answerText', async () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({ data: codeAttemptState, isError: false });
+
+    render(<CandidateExamPage />);
+    await userEvent.type(screen.getByLabelText('code-editor'), 'x');
+
+    expect(saveAnswer).toHaveBeenCalledWith('q1', [], undefined, expect.any(String));
+  });
+
+  it('does not wipe answerText when toggling mark-for-review on a code question', async () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: { ...codeAttemptState, answers: [{ questionId: 'q1', selectedOptionIds: [], answerText: 'function add(a, b) { return a + b; }', isMarkedForReview: false }] },
+      isError: false,
+    });
+
+    render(<CandidateExamPage />);
+    await userEvent.click(screen.getByRole('button', { name: /Mark for review/ }));
+
+    expect(saveAnswer).toHaveBeenCalledWith('q1', [], true, 'function add(a, b) { return a + b; }');
+  });
+
+  it('counts a code question as unanswered until it has non-empty answerText', async () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({ data: codeAttemptState, isError: false });
+
+    render(<CandidateExamPage />);
+    await userEvent.click(screen.getAllByRole('button', { name: 'Review & Submit' })[0]);
+
+    expect(screen.getByText(/You have 1 unanswered question/)).toBeInTheDocument();
   });
 });

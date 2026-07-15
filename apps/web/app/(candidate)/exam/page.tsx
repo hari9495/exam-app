@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
+import Editor from '@monaco-editor/react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '../../../components/ui';
 import { CandidateButton } from '../components/CandidateButton';
@@ -80,6 +81,9 @@ export default function CandidateExamPage() {
   const selectedOptionIds = question ? localSelections[question.id] ?? existingAnswer?.selectedOptionIds ?? [] : [];
   const unansweredCount = questions.filter((q) => {
     const a = answers.find((ans) => ans.questionId === q.id);
+    if (q.type === 'code') {
+      return !a || !a.answerText || a.answerText.trim() === '';
+    }
     return !a || a.selectedOptionIds.length === 0;
   }).length;
 
@@ -99,7 +103,15 @@ export default function CandidateExamPage() {
   }
 
   function toggleMarkForReview() {
-    saveAnswer(question!.id, selectedOptionIds, !existingAnswer?.isMarkedForReview);
+    if (question!.type === 'code') {
+      saveAnswer(question!.id, [], !existingAnswer?.isMarkedForReview, existingAnswer?.answerText ?? undefined);
+    } else {
+      saveAnswer(question!.id, selectedOptionIds, !existingAnswer?.isMarkedForReview);
+    }
+  }
+
+  function handleCodeChange(value: string | undefined) {
+    saveAnswer(question!.id, [], existingAnswer?.isMarkedForReview, value ?? '');
   }
 
   async function handleConfirmSubmit() {
@@ -128,20 +140,30 @@ export default function CandidateExamPage() {
         <div className="flex-1 rounded-lg bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
             <span className="text-xs font-semibold text-gray-500">
-              {question.type === 'multi_mcq' ? 'MULTIPLE CHOICE' : 'SINGLE CHOICE'} · {question.marks} MARKS
+              {question.type === 'code' ? 'CODE' : question.type === 'multi_mcq' ? 'MULTIPLE CHOICE' : 'SINGLE CHOICE'} · {question.marks} MARKS
             </span>
             <button onClick={toggleMarkForReview} className={markButtonClasses(existingAnswer?.isMarkedForReview)}>
               {existingAnswer?.isMarkedForReview ? '★ Marked for review' : '☆ Mark for review'}
             </button>
           </div>
           <p className="mb-4 text-sm text-gray-800">{question.text}</p>
-          <div className="flex flex-col gap-2">
-            {question.options.map((option) => (
-              <button key={option.id} onClick={() => toggleOption(option.id)} className={optionClasses(selectedOptionIds.includes(option.id))}>
-                {selectedOptionIds.includes(option.id) ? '◉' : '○'} {option.text}
-              </button>
-            ))}
-          </div>
+          {question.type === 'code' ? (
+            <Editor
+              height="400px"
+              language={question.codeLanguage ?? 'plaintext'}
+              value={existingAnswer?.answerText ?? question.starterCode ?? ''}
+              onChange={handleCodeChange}
+              options={{ minimap: { enabled: false }, fontSize: 13 }}
+            />
+          ) : (
+            <div className="flex flex-col gap-2">
+              {question.options.map((option) => (
+                <button key={option.id} onClick={() => toggleOption(option.id)} className={optionClasses(selectedOptionIds.includes(option.id))}>
+                  {selectedOptionIds.includes(option.id) ? '◉' : '○'} {option.text}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="mt-4 flex justify-between">
             <CandidateButton variant="secondary" disabled={currentIndex === 0} onClick={() => setCurrentIndex((i) => i - 1)}>
               ← Previous

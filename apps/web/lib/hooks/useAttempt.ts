@@ -45,6 +45,7 @@ export function useStartAttempt() {
 
 interface PendingAnswer {
   selectedOptionIds: string[];
+  answerText?: string;
   markedForReview?: boolean;
 }
 
@@ -75,8 +76,8 @@ export function useAnswerMutation() {
       .catch(() => toast("Couldn't save your last answer — please check your connection.", 'error'));
   }
 
-  function saveAnswer(questionId: string, selectedOptionIds: string[], markedForReview?: boolean) {
-    pending.current[questionId] = { selectedOptionIds, markedForReview };
+  function saveAnswer(questionId: string, selectedOptionIds: string[], markedForReview?: boolean, answerText?: string) {
+    pending.current[questionId] = { selectedOptionIds, markedForReview, answerText };
     if (timers.current[questionId]) {
       clearTimeout(timers.current[questionId]);
     }
