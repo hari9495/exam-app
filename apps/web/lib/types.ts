@@ -321,3 +321,30 @@ export interface ProctoringFlag {
   severity: string;
   occurredAt: string;
 }
+
+export interface PendingGradingCodeQuestion {
+  questionId: string;
+  questionText: string;
+  starterCode: string | null;
+  codeLanguage: CodeLanguage | null;
+  answerText: string | null;
+  marks: number;
+  marksAwarded: number | null;
+  gradingFeedback: string | null;
+}
+
+export interface PendingGradingRow {
+  attemptId: string;
+  candidateId: string;
+  candidateName: string;
+  codeQuestions: PendingGradingCodeQuestion[];
+}
+
+export interface CodeAnswerReview {
+  id: string;
+  answerId: string;
+  status: string;
+  suggestedMarks: number | null;
+  summary: string | null;
+  generatedAt: string;
+}
