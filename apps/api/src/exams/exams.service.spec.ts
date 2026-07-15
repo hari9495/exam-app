@@ -50,6 +50,9 @@ describe('ExamsService', () => {
         durationMinutes: 45,
         passCriteriaPercent: 60,
         randomizeOrder: undefined,
+        schedulingEnabled: false,
+        availabilityWindowStart: null,
+        availabilityWindowEnd: null,
         createdBy: 'user-1',
       },
     });
@@ -69,8 +72,75 @@ describe('ExamsService', () => {
         durationMinutes: undefined,
         passCriteriaPercent: undefined,
         randomizeOrder: undefined,
+        schedulingEnabled: false,
+        availabilityWindowStart: null,
+        availabilityWindowEnd: null,
         createdBy: 'user-1',
       },
+    });
+  });
+
+  it('creates a scheduled exam with schedulingEnabled true and a valid window', async () => {
+    const tx = { exam: { create: jest.fn().mockResolvedValue({ id: 'exam-1' }) } };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.create(context, 'user-1', {
+      title: 'Scheduled Exam',
+      schedulingEnabled: true,
+      availabilityWindowStart: '2026-07-20T09:00:00.000Z',
+      availabilityWindowEnd: '2026-07-27T18:00:00.000Z',
+    });
+
+    expect(tx.exam.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        schedulingEnabled: true,
+        availabilityWindowStart: new Date('2026-07-20T09:00:00.000Z'),
+        availabilityWindowEnd: new Date('2026-07-27T18:00:00.000Z'),
+      }),
+    });
+  });
+
+  it('rejects schedulingEnabled true with a missing window field', async () => {
+    const tx = { exam: { create: jest.fn() } };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(
+      service.create(context, 'user-1', {
+        title: 'Bad Exam',
+        schedulingEnabled: true,
+        availabilityWindowStart: '2026-07-20T09:00:00.000Z',
+      }),
+    ).rejects.toThrow('Scheduling requires both an availability window start and end');
+    expect(tx.exam.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects an availability window whose end is not after its start', async () => {
+    const tx = { exam: { create: jest.fn() } };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(
+      service.create(context, 'user-1', {
+        title: 'Bad Exam',
+        schedulingEnabled: true,
+        availabilityWindowStart: '2026-07-27T18:00:00.000Z',
+        availabilityWindowEnd: '2026-07-20T09:00:00.000Z',
+      }),
+    ).rejects.toThrow('The availability window end must be after its start');
+    expect(tx.exam.create).not.toHaveBeenCalled();
+  });
+
+  it('creates a non-scheduled exam with null window fields when schedulingEnabled is omitted', async () => {
+    const tx = { exam: { create: jest.fn().mockResolvedValue({ id: 'exam-1' }) } };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.create(context, 'user-1', { title: 'Normal Exam' });
+
+    expect(tx.exam.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        schedulingEnabled: false,
+        availabilityWindowStart: null,
+        availabilityWindowEnd: null,
+      }),
     });
   });
 
@@ -107,8 +177,8 @@ describe('ExamsService', () => {
   it("updates an exam's title and instructions", async () => {
     const tx = {
       exam: {
-        findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }),
-        update: jest.fn().mockResolvedValue({ id: 'exam-1', title: 'Updated Title' }),
+        findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null }),
+        update: jest.fn().mockResolvedValue({ id: 'exam-1', title: 'Updated Title', schedulingEnabled: false }),
       },
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
@@ -118,7 +188,13 @@ describe('ExamsService', () => {
     expect(result.title).toBe('Updated Title');
     expect(tx.exam.update).toHaveBeenCalledWith({
       where: { id: 'exam-1' },
-      data: { title: 'Updated Title', instructions: undefined },
+      data: {
+        title: 'Updated Title',
+        instructions: undefined,
+        schedulingEnabled: false,
+        availabilityWindowStart: null,
+        availabilityWindowEnd: null,
+      },
     });
   });
 
@@ -127,6 +203,62 @@ describe('ExamsService', () => {
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
     await expect(service.update(context, 'missing-id', { title: 'x' })).rejects.toThrow(NotFoundException);
+  });
+
+  it('update() re-syncs expiresAt on not-yet-started invitations when the window changes', async () => {
+    const newEnd = '2026-08-01T18:00:00.000Z';
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'exam-1',
+          schedulingEnabled: true,
+          availabilityWindowStart: new Date('2026-07-20T09:00:00.000Z'),
+          availabilityWindowEnd: new Date('2026-07-27T18:00:00.000Z'),
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: 'exam-1',
+          schedulingEnabled: true,
+          availabilityWindowStart: new Date('2026-07-20T09:00:00.000Z'),
+          availabilityWindowEnd: new Date(newEnd),
+        }),
+      },
+      invitation: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'inv-not-started', status: 'invited', attempt: null },
+          { id: 'inv-started', status: 'invited', attempt: { id: 'attempt-1' } },
+        ]),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.update(context, 'exam-1', { title: 'exam-1', availabilityWindowEnd: newEnd });
+
+    expect(tx.invitation.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['inv-not-started'] } },
+      data: { expiresAt: new Date(newEnd) },
+    });
+  });
+
+  it('update() does not touch invitations when schedulingEnabled is false', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'exam-1',
+          schedulingEnabled: false,
+          availabilityWindowStart: null,
+          availabilityWindowEnd: null,
+        }),
+        update: jest.fn().mockResolvedValue({ id: 'exam-1', title: 'New Title', schedulingEnabled: false }),
+      },
+      invitation: { findMany: jest.fn(), updateMany: jest.fn() },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.update(context, 'exam-1', { title: 'New Title' });
+
+    expect(tx.invitation.findMany).not.toHaveBeenCalled();
+    expect(tx.invitation.updateMany).not.toHaveBeenCalled();
   });
 
   it('archives an exam by setting status to archived', async () => {

@@ -58,7 +58,27 @@ export class ExamsService {
     private readonly audit: AuditService,
   ) {}
 
+  private resolveSchedulingFields(
+    schedulingEnabled: boolean | undefined,
+    availabilityWindowStart: string | undefined,
+    availabilityWindowEnd: string | undefined,
+  ): { schedulingEnabled: boolean; availabilityWindowStart: Date | null; availabilityWindowEnd: Date | null } {
+    if (!schedulingEnabled) {
+      return { schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null };
+    }
+    if (!availabilityWindowStart || !availabilityWindowEnd) {
+      throw new BadRequestException('Scheduling requires both an availability window start and end');
+    }
+    const start = new Date(availabilityWindowStart);
+    const end = new Date(availabilityWindowEnd);
+    if (end <= start) {
+      throw new BadRequestException('The availability window end must be after its start');
+    }
+    return { schedulingEnabled: true, availabilityWindowStart: start, availabilityWindowEnd: end };
+  }
+
   async create(context: TenantContext, userId: string, dto: CreateExamDto): Promise<Exam> {
+    const scheduling = this.resolveSchedulingFields(dto.schedulingEnabled, dto.availabilityWindowStart, dto.availabilityWindowEnd);
     return this.tenantPrisma.forTenant(context, (tx) =>
       tx.exam.create({
         data: {
@@ -68,6 +88,9 @@ export class ExamsService {
           durationMinutes: dto.durationMinutes,
           passCriteriaPercent: dto.passCriteriaPercent,
           randomizeOrder: dto.randomizeOrder,
+          schedulingEnabled: scheduling.schedulingEnabled,
+          availabilityWindowStart: scheduling.availabilityWindowStart,
+          availabilityWindowEnd: scheduling.availabilityWindowEnd,
           createdBy: userId,
         },
       }),
@@ -115,7 +138,15 @@ export class ExamsService {
       if (!existing) {
         throw new NotFoundException(`Exam ${id} not found`);
       }
-      return tx.exam.update({
+
+      const schedulingEnabledInput = dto.schedulingEnabled !== undefined ? dto.schedulingEnabled : existing.schedulingEnabled;
+      const availabilityWindowStartInput =
+        dto.availabilityWindowStart !== undefined ? dto.availabilityWindowStart : (existing.availabilityWindowStart?.toISOString() ?? undefined);
+      const availabilityWindowEndInput =
+        dto.availabilityWindowEnd !== undefined ? dto.availabilityWindowEnd : (existing.availabilityWindowEnd?.toISOString() ?? undefined);
+      const scheduling = this.resolveSchedulingFields(schedulingEnabledInput, availabilityWindowStartInput, availabilityWindowEndInput);
+
+      const updated = await tx.exam.update({
         where: { id },
         data: {
           title: dto.title,
@@ -123,8 +154,27 @@ export class ExamsService {
           ...(dto.durationMinutes !== undefined ? { durationMinutes: dto.durationMinutes } : {}),
           ...(dto.passCriteriaPercent !== undefined ? { passCriteriaPercent: dto.passCriteriaPercent } : {}),
           ...(dto.randomizeOrder !== undefined ? { randomizeOrder: dto.randomizeOrder } : {}),
+          schedulingEnabled: scheduling.schedulingEnabled,
+          availabilityWindowStart: scheduling.availabilityWindowStart,
+          availabilityWindowEnd: scheduling.availabilityWindowEnd,
         },
       });
+
+      if (updated.schedulingEnabled) {
+        const liveInvitations = await tx.invitation.findMany({
+          where: { examId: id, status: 'invited' },
+          include: { attempt: true },
+        });
+        const notYetStartedIds = liveInvitations.filter((invitation) => !invitation.attempt).map((invitation) => invitation.id);
+        if (notYetStartedIds.length > 0) {
+          await tx.invitation.updateMany({
+            where: { id: { in: notYetStartedIds } },
+            data: { expiresAt: updated.availabilityWindowEnd as Date },
+          });
+        }
+      }
+
+      return updated;
     });
   }
 
