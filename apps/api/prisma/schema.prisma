@@ -180,6 +180,9 @@ model Exam {
   durationMinutes     Int           @default(60) @map("duration_minutes")
   passCriteriaPercent Int           @default(40) @map("pass_criteria_percent")
   randomizeOrder      Boolean       @default(false) @map("randomize_order")
+  schedulingEnabled   Boolean       @default(false) @map("scheduling_enabled")
+  availabilityWindowStart DateTime? @map("availability_window_start")
+  availabilityWindowEnd   DateTime? @map("availability_window_end")
   createdBy           String        @map("created_by") @db.UniqueIdentifier
   createdAt           DateTime      @default(now()) @map("created_at")
   sections            ExamSection[]
