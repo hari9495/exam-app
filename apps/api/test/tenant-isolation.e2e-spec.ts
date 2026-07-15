@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing';
+import { ConfigModule } from '@nestjs/config';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { PrismaModule } from '@exam-platform/shared';
@@ -12,7 +13,13 @@ describe('Tenant Row-Level Security', () => {
   let orgBId: string;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [PrismaModule] }).compile();
+    // Unlike every other e2e spec, this one doesn't import AppModule, so it never gets
+    // AppModule's ConfigModule.forRoot() bootstrap that loads .env into process.env.
+    // PrismaService reads DATABASE_URL straight from process.env with no ConfigModule
+    // of its own, so without this the suite only passes when a sibling spec's AppModule
+    // has already populated process.env earlier in the same Jest worker — flaky/order-
+    // dependent when run in isolation. Load it here explicitly instead.
+    const moduleRef = await Test.createTestingModule({ imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule] }).compile();
     prisma = moduleRef.get(PrismaService);
     tenantPrisma = moduleRef.get(TenantPrismaService);
 
