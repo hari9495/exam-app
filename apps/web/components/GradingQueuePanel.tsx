@@ -15,7 +15,7 @@ function CodeQuestionGrader({ attemptId, question }: { attemptId: string; questi
 
   async function handleSaveGrade() {
     const marksAwarded = Number(marks);
-    if (Number.isNaN(marksAwarded) || marksAwarded < 0 || marksAwarded > question.marks) {
+    if (marks.trim() === '' || Number.isNaN(marksAwarded) || marksAwarded < 0 || marksAwarded > question.marks) {
       toast(`Marks must be between 0 and ${question.marks}.`, 'error');
       return;
     }

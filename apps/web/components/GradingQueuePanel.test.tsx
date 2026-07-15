@@ -68,6 +68,20 @@ describe('GradingQueuePanel', () => {
     expect(gradeMutateAsync).toHaveBeenCalledWith({ questionId: 'q1', marksAwarded: 8, feedback: undefined });
   });
 
+  it('clicking Save grade with an empty marks field shows an error and does not save', async () => {
+    renderPanel();
+    await userEvent.click(screen.getByRole('button', { name: 'Save grade' }));
+    expect(await screen.findByText('Marks must be between 0 and 10.')).toBeInTheDocument();
+    expect(gradeMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('explicitly entering 0 marks still saves', async () => {
+    renderPanel();
+    await userEvent.type(screen.getByLabelText('Marks for Reverse a string'), '0');
+    await userEvent.click(screen.getByRole('button', { name: 'Save grade' }));
+    expect(gradeMutateAsync).toHaveBeenCalledWith({ questionId: 'q1', marksAwarded: 0, feedback: undefined });
+  });
+
   it('enables Finalize grade once every code question already has marksAwarded, and clicking it finalizes', async () => {
     (usePendingGrading as jest.Mock).mockReturnValue({
       data: [{ ...pendingRow, codeQuestions: [{ ...pendingRow.codeQuestions[0], marksAwarded: 8 }] }],
