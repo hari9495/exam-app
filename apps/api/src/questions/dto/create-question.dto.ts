@@ -1,5 +1,6 @@
-import { ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
+import { VALID_CODE_LANGUAGES } from '../question-validation';
 
 export class QuestionOptionDto {
   @IsString()
@@ -10,7 +11,7 @@ export class QuestionOptionDto {
 }
 
 export class CreateQuestionDto {
-  @IsIn(['single_mcq', 'multi_mcq', 'true_false'])
+  @IsIn(['single_mcq', 'multi_mcq', 'true_false', 'code'])
   type!: string;
 
   @IsString()
@@ -41,8 +42,16 @@ export class CreateQuestionDto {
   @IsString({ each: true })
   tags?: string[];
 
+  @IsOptional()
+  @IsIn(VALID_CODE_LANGUAGES)
+  codeLanguage?: string;
+
+  @IsOptional()
+  @IsString()
+  starterCode?: string;
+
+  @IsArray()
   @ValidateNested({ each: true })
   @Type(() => QuestionOptionDto)
-  @ArrayMinSize(1)
   options!: QuestionOptionDto[];
 }

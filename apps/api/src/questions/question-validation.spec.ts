@@ -183,4 +183,55 @@ describe('validateQuestionPayload', () => {
       }),
     ).toThrow(BadRequestException);
   });
+
+  it('accepts a code question with zero options and a valid codeLanguage', () => {
+    expect(() =>
+      validateQuestionPayload({
+        type: 'code',
+        difficulty: 'medium',
+        marks: 10,
+        negativeMarks: 0,
+        options: [],
+        codeLanguage: 'python',
+      }),
+    ).not.toThrow();
+  });
+
+  it('rejects a code question with any options', () => {
+    expect(() =>
+      validateQuestionPayload({
+        type: 'code',
+        difficulty: 'medium',
+        marks: 10,
+        negativeMarks: 0,
+        options: [{ text: 'irrelevant', isCorrect: false }],
+        codeLanguage: 'python',
+      }),
+    ).toThrow('code questions must not have options');
+  });
+
+  it('rejects a code question with a missing codeLanguage', () => {
+    expect(() =>
+      validateQuestionPayload({
+        type: 'code',
+        difficulty: 'medium',
+        marks: 10,
+        negativeMarks: 0,
+        options: [],
+      }),
+    ).toThrow('Unknown or missing codeLanguage');
+  });
+
+  it('rejects a code question with an unsupported codeLanguage', () => {
+    expect(() =>
+      validateQuestionPayload({
+        type: 'code',
+        difficulty: 'medium',
+        marks: 10,
+        negativeMarks: 0,
+        options: [],
+        codeLanguage: 'cobol',
+      }),
+    ).toThrow('Unknown or missing codeLanguage');
+  });
 });

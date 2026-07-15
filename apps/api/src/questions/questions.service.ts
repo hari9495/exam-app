@@ -34,6 +34,7 @@ export class QuestionsService {
       marks: dto.marks,
       negativeMarks: dto.negativeMarks ?? 0,
       options: dto.options,
+      codeLanguage: dto.codeLanguage,
     });
 
     const question = await this.tenantPrisma.forTenant(context, async (tx) => {
@@ -48,6 +49,8 @@ export class QuestionsService {
           difficulty: dto.difficulty,
           marks: dto.marks,
           negativeMarks: dto.negativeMarks ?? 0,
+          codeLanguage: dto.codeLanguage,
+          starterCode: dto.starterCode,
           createdBy: userId,
           options: {
             create: dto.options.map((o, index) => ({ text: o.text, isCorrect: o.isCorrect, orderIndex: index })),
@@ -102,6 +105,7 @@ export class QuestionsService {
       marks: dto.marks,
       negativeMarks: dto.negativeMarks ?? 0,
       options: dto.options,
+      codeLanguage: dto.codeLanguage,
     });
 
     return this.tenantPrisma.forTenant(context, async (tx) => {
@@ -125,6 +129,8 @@ export class QuestionsService {
           difficulty: dto.difficulty,
           marks: dto.marks,
           negativeMarks: dto.negativeMarks ?? 0,
+          codeLanguage: dto.codeLanguage,
+          starterCode: dto.starterCode,
           options: {
             create: dto.options.map((o, index) => ({ text: o.text, isCorrect: o.isCorrect, orderIndex: index })),
           },

@@ -53,6 +53,34 @@ describe('QuestionsService', () => {
     expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
   });
 
+  it('creates a code question with zero options and persists codeLanguage/starterCode', async () => {
+    const codeDto = {
+      type: 'code',
+      text: 'Write a function that reverses a string.',
+      difficulty: 'medium',
+      marks: 10,
+      codeLanguage: 'javascript',
+      starterCode: 'function reverse(str) {\n  \n}',
+      options: [],
+    };
+    const created = {
+      id: 'q-1',
+      organizationId: 'org-1',
+      ...codeDto,
+      tags: [],
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
+      fn({ tag: { upsert: jest.fn() }, question: { create: jest.fn().mockResolvedValue(created) } }),
+    );
+
+    const result = await service.create(context, 'user-1', codeDto);
+
+    expect(result.type).toBe('code');
+    expect(result.codeLanguage).toBe('javascript');
+    expect(result.starterCode).toBe('function reverse(str) {\n  \n}');
+    expect(result.options).toEqual([]);
+  });
+
   it('resolves tag names into Tag rows and links them when creating a question, deduping and trimming input', async () => {
     const tagUpsert = jest.fn().mockImplementation(({ create }) => Promise.resolve({ id: `tag-${create.name}`, ...create }));
     const questionCreate = jest.fn().mockResolvedValue({ id: 'q-1', ...validDto, tags: [] });
