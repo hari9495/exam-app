@@ -84,6 +84,18 @@ describe('PanelCandidateDetailPage', () => {
     expect(screen.getByText('Strong performance overall.')).toBeInTheDocument();
   });
 
+  it('shows "Not yet generated" with a working Regenerate button when the insight row exists but has no summary yet (pending/failed)', async () => {
+    (useAttemptInsight as jest.Mock).mockReturnValue({
+      data: { id: 'ins-1', attemptId: 'a1', status: 'failed', summary: null, generatedAt: '2026-01-01' },
+      isLoading: false,
+    });
+    render(<PanelCandidateDetailPage />);
+
+    expect(screen.getByText('Not yet generated')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Regenerate' }));
+    expect(mutateAsync).toHaveBeenCalledWith('a1');
+  });
+
   it('hides the AI Insight section entirely when the candidate has no attemptId (not yet attempted)', () => {
     (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
     (useAttemptInsight as jest.Mock).mockReturnValue({ data: null, isLoading: false });

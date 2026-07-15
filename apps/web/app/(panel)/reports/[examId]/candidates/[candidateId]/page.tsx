@@ -42,7 +42,7 @@ export default function PanelCandidateDetailPage() {
           <h2 className="mb-2 text-lg font-medium">AI Insight</h2>
           {insightLoading ? (
             <p className="text-sm text-gray-500">Loading…</p>
-          ) : insight ? (
+          ) : insight?.summary ? (
             <Card>
               <p className="text-sm text-gray-700">{insight.summary}</p>
             </Card>
