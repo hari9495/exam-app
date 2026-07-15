@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequirePermissions, RequireAnyPermission } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
@@ -24,13 +24,13 @@ export class ExamsController {
   }
 
   @Get()
-  @RequirePermissions('exam:manage')
+  @RequireAnyPermission('exam:manage', 'results:view')
   list(@CurrentTenant() tenant: TenantContext, @Query('status') status?: string) {
     return this.examsService.list(tenant, { status });
   }
 
   @Get(':id')
-  @RequirePermissions('exam:manage')
+  @RequireAnyPermission('exam:manage', 'results:view')
   findOne(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.examsService.findOne(tenant, id);
   }

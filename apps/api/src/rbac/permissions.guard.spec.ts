@@ -1,7 +1,7 @@
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PermissionsGuard } from './permissions.guard';
-import { PERMISSIONS_KEY } from './permissions.decorator';
+import { PERMISSIONS_KEY, PERMISSIONS_ANY_KEY } from './permissions.decorator';
 
 function mockContext(user: unknown): ExecutionContext {
   return {
@@ -39,5 +39,28 @@ describe('PermissionsGuard', () => {
     const guard = new PermissionsGuard(reflector, prisma as any);
 
     await expect(guard.canActivate(mockContext({ role: 'org_admin' }))).rejects.toThrow(ForbiddenException);
+  });
+
+  it('allows access when the role has at least one of the "any" permissions', async () => {
+    const reflector = {
+      get: jest.fn((key: string) => (key === PERMISSIONS_ANY_KEY ? ['exam:manage', 'results:view'] : undefined)),
+    } as unknown as Reflector;
+    const prisma = {
+      rolePermission: { findMany: jest.fn().mockResolvedValue([{ permission: { key: 'results:view' } }]) },
+    };
+    const guard = new PermissionsGuard(reflector, prisma as any);
+
+    const result = await guard.canActivate(mockContext({ role: 'panel' }));
+    expect(result).toBe(true);
+  });
+
+  it('throws ForbiddenException when the role has none of the "any" permissions', async () => {
+    const reflector = {
+      get: jest.fn((key: string) => (key === PERMISSIONS_ANY_KEY ? ['exam:manage', 'results:view'] : undefined)),
+    } as unknown as Reflector;
+    const prisma = { rolePermission: { findMany: jest.fn().mockResolvedValue([]) } };
+    const guard = new PermissionsGuard(reflector, prisma as any);
+
+    await expect(guard.canActivate(mockContext({ role: 'candidate' }))).rejects.toThrow(ForbiddenException);
   });
 });

@@ -1,7 +1,7 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PrismaService } from '@exam-platform/shared';
-import { PERMISSIONS_KEY } from './permissions.decorator';
+import { PERMISSIONS_KEY, PERMISSIONS_ANY_KEY } from './permissions.decorator';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
@@ -11,8 +11,11 @@ export class PermissionsGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const required = this.reflector.get<string[]>(PERMISSIONS_KEY, context.getHandler());
-    if (!required || required.length === 0) {
+    const requiredAll = this.reflector.get<string[]>(PERMISSIONS_KEY, context.getHandler());
+    const requiredAny = this.reflector.get<string[]>(PERMISSIONS_ANY_KEY, context.getHandler());
+    const hasAllRequirement = Boolean(requiredAll && requiredAll.length > 0);
+    const hasAnyRequirement = Boolean(requiredAny && requiredAny.length > 0);
+    if (!hasAllRequirement && !hasAnyRequirement) {
       return true;
     }
 
@@ -22,14 +25,18 @@ export class PermissionsGuard implements CanActivate {
       throw new ForbiddenException('Not authenticated');
     }
 
+    const allKeys = [...(requiredAll ?? []), ...(requiredAny ?? [])];
     const grants = await this.prisma.rolePermission.findMany({
-      where: { role: user.role, permission: { key: { in: required } } },
+      where: { role: user.role, permission: { key: { in: allKeys } } },
       select: { permission: { select: { key: true } } },
     });
     const grantedKeys = new Set(grants.map((g) => g.permission.key));
-    const hasAll = required.every((key) => grantedKeys.has(key));
-    if (!hasAll) {
-      throw new ForbiddenException(`Missing required permission(s): ${required.join(', ')}`);
+
+    if (hasAllRequirement && !requiredAll!.every((key) => grantedKeys.has(key))) {
+      throw new ForbiddenException(`Missing required permission(s): ${requiredAll!.join(', ')}`);
+    }
+    if (hasAnyRequirement && !requiredAny!.some((key) => grantedKeys.has(key))) {
+      throw new ForbiddenException(`Missing any of required permission(s): ${requiredAny!.join(', ')}`);
     }
     return true;
   }

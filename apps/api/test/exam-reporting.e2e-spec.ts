@@ -296,6 +296,25 @@ describe('Exam Reporting HTTP flow', () => {
       .expect(403);
   });
 
+  it('grants panel-role users read access to GET /exams and GET /exams/:id via results:view, without disturbing recruiter access', async () => {
+    const panelListResponse = await request(adminHttp)
+      .get('/api/v1/exams')
+      .set('Authorization', `Bearer ${panelAccessToken}`)
+      .expect(200);
+    expect(Array.isArray(panelListResponse.body)).toBe(true);
+
+    await request(adminHttp)
+      .get(`/api/v1/exams/${examId}`)
+      .set('Authorization', `Bearer ${panelAccessToken}`)
+      .expect(200);
+
+    const recruiterListResponse = await request(adminHttp)
+      .get('/api/v1/exams')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(200);
+    expect(Array.isArray(recruiterListResponse.body)).toBe(true);
+  });
+
   it('returns full per-candidate detail with section/question breakdown', async () => {
     const resultsResponse = await request(adminHttp)
       .get(`/api/v1/exams/${examId}/results`)
