@@ -60,7 +60,14 @@ export function useExamMonitoring(examId: string): UseExamMonitoringResult {
     });
 
     socket.on('attempt:status', (payload: { attemptId: string; candidateId: string; status: string }) => {
-      setRoster((current) => current.map((row) => (row.attemptId === payload.attemptId ? { ...row, status: payload.status } : row)));
+      // ponytail: match by candidateId, not attemptId — a roster row's attemptId is
+      // null until the candidate's first attempt:status event (they start as "invited"
+      // with no attempt yet), so matching on attemptId can never hit on the very
+      // transition this event exists to report. candidateId is stable from the initial
+      // roster:snapshot onward.
+      setRoster((current) =>
+        current.map((row) => (row.candidateId === payload.candidateId ? { ...row, attemptId: payload.attemptId, status: payload.status } : row)),
+      );
     });
 
     socket.on('proctoring:flag', (payload: ProctoringFlag) => {

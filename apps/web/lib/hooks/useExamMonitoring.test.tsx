@@ -111,6 +111,28 @@ describe('useExamMonitoring', () => {
     expect(result.current.roster[0].status).toBe('in_progress');
   });
 
+  it('applies an attempt:status update for a candidate whose roster row has no attempt yet', async () => {
+    // Regression: a freshly invited candidate's roster row has attemptId: null until
+    // they start — the very first attempt:status event must still be able to find
+    // that row, which requires matching by candidateId rather than attemptId.
+    const socket = createMockSocket();
+    (io as jest.Mock).mockReturnValue(socket);
+
+    const { result } = renderHook(() => useExamMonitoring('exam-1'), { wrapper });
+    await waitFor(() => expect(io).toHaveBeenCalled());
+    act(() => socket.trigger('connect'));
+    act(() =>
+      socket.trigger('roster:snapshot', [
+        { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: null, status: 'invited', online: false, remainingSeconds: null, answeredCount: null, totalQuestions: null },
+      ]),
+    );
+
+    act(() => socket.trigger('attempt:status', { attemptId: 'a1', candidateId: 'c1', status: 'in_progress' }));
+
+    expect(result.current.roster[0].status).toBe('in_progress');
+    expect(result.current.roster[0].attemptId).toBe('a1');
+  });
+
   it('accumulates proctoring:flag events newest-first, capped at 50', async () => {
     const socket = createMockSocket();
     (io as jest.Mock).mockReturnValue(socket);
