@@ -91,23 +91,14 @@ describe('Exam code-grading HTTP flow', () => {
   });
 
   afterAll(async () => {
-    // This spec is the first one to write audit_logs rows with a real actorUserId (via
-    // gradeCodeAnswer/finalizeManualGrade) and then delete that same user in cleanup. That
-    // exercises audit_logs_actor_user_id_fkey's delete behavior, which — verified directly
-    // against the DB with sqlcmd, bypassing the app and RLS entirely — is actually NO ACTION
-    // on this database, not the ON DELETE SET NULL that schema.prisma and migration
-    // 20260713090000_audit_log_actor_relation_indexes both document. (_prisma_migrations shows
-    // that migration failed to apply three times before a fourth attempt was recorded as
-    // applied; the live sys.foreign_keys definition never actually picked up SET NULL, so the
-    // DB and the migration history/docs have drifted apart.) Until that's reconciled, cascade
-    // deletion can't be relied on here — null out this org's audit rows ourselves first, the
-    // same effect ON DELETE SET NULL was supposed to have.
-    //
     // try/finally: any cleanup step throwing must not skip closing the Nest apps below — an
     // unclosed app leaves DB connections/listeners open and hangs the Jest process on exit
-    // instead of failing loudly (this is exactly what happened before this fix was added).
+    // instead of failing loudly. (This spec previously worked around a drifted
+    // audit_logs_actor_user_id_fkey constraint here by manually nulling actorUserId before
+    // deleting users; migration 20260715210000_fix_audit_log_actor_fk_set_null reconciled the
+    // live constraint to its documented ON DELETE SET NULL behavior, so that workaround is no
+    // longer needed — cascade deletion handles it now.)
     try {
-      await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.auditLog.updateMany({ where: { organizationId: orgId }, data: { actorUserId: null } }));
       await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.exam.deleteMany({ where: { organizationId: orgId } }));
       await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.question.deleteMany({ where: { organizationId: orgId } }));
       await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.candidate.deleteMany({ where: { organizationId: orgId } }));
