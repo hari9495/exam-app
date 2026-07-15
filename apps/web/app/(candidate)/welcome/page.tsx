@@ -46,13 +46,25 @@ export default function CandidateWelcomePage() {
         <h1 className="mb-2 text-xl font-semibold text-gray-900">{current.exam.title}</h1>
         <p className="mb-4 text-sm text-gray-600">Duration: {current.exam.durationMinutes} minutes</p>
         {current.exam.instructions && <p className="mb-4 whitespace-pre-wrap text-sm text-gray-700">{current.exam.instructions}</p>}
-        <div className="mb-6 rounded-md bg-candidate-review-bg p-3 text-xs text-candidate-review">
-          This exam is monitored. Tab switches, exiting fullscreen, copy/paste, right-click, and developer tools will be
-          reported.
-        </div>
-        <CandidateButton onClick={handleStart} disabled={startAttempt.isPending} className="w-full">
-          {startAttempt.isPending ? 'Starting…' : 'Start exam'}
-        </CandidateButton>
+        {current.schedulingWindowState === 'not_open' ? (
+          <div className="rounded-md bg-gray-50 p-3 text-sm text-gray-700">
+            This exam opens on {new Date(current.exam.availabilityWindowStart as string).toLocaleString()}. Come back then to start.
+          </div>
+        ) : current.schedulingWindowState === 'closed' ? (
+          <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+            This exam&apos;s availability window has closed. Please contact the recruiter who invited you.
+          </div>
+        ) : (
+          <>
+            <div className="mb-6 rounded-md bg-candidate-review-bg p-3 text-xs text-candidate-review">
+              This exam is monitored. Tab switches, exiting fullscreen, copy/paste, right-click, and developer tools will be
+              reported.
+            </div>
+            <CandidateButton onClick={handleStart} disabled={startAttempt.isPending} className="w-full">
+              {startAttempt.isPending ? 'Starting…' : 'Start exam'}
+            </CandidateButton>
+          </>
+        )}
       </div>
     </div>
   );

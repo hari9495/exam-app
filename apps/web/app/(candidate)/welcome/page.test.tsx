@@ -114,4 +114,75 @@ describe('CandidateWelcomePage', () => {
 
     expect(push).toHaveBeenCalledWith('/session-ended');
   });
+
+  it('shows a waiting message with the open time when schedulingWindowState is not_open', () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: {
+        exam: {
+          title: 'Scheduled Exam', instructions: null, durationMinutes: 60,
+          schedulingEnabled: true, availabilityWindowStart: '2026-07-20T09:00:00.000Z', availabilityWindowEnd: '2026-07-27T18:00:00.000Z',
+        },
+        schedulingWindowState: 'not_open',
+      },
+      isLoading: false, isError: false,
+    });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+
+    render(<CandidateWelcomePage />);
+
+    expect(screen.getByText(/opens on/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start exam' })).not.toBeInTheDocument();
+  });
+
+  it('shows a closed message when schedulingWindowState is closed', () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: {
+        exam: {
+          title: 'Scheduled Exam', instructions: null, durationMinutes: 60,
+          schedulingEnabled: true, availabilityWindowStart: '2026-07-01T09:00:00.000Z', availabilityWindowEnd: '2026-07-02T18:00:00.000Z',
+        },
+        schedulingWindowState: 'closed',
+      },
+      isLoading: false, isError: false,
+    });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+
+    render(<CandidateWelcomePage />);
+
+    expect(screen.getByText(/availability window has closed/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start exam' })).not.toBeInTheDocument();
+  });
+
+  it('shows the normal Start button when schedulingWindowState is open', () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: {
+        exam: {
+          title: 'Scheduled Exam', instructions: null, durationMinutes: 60,
+          schedulingEnabled: true, availabilityWindowStart: '2026-07-01T09:00:00.000Z', availabilityWindowEnd: '2026-12-31T18:00:00.000Z',
+        },
+        schedulingWindowState: 'open',
+      },
+      isLoading: false, isError: false,
+    });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+
+    render(<CandidateWelcomePage />);
+
+    expect(screen.getByRole('button', { name: 'Start exam' })).toBeInTheDocument();
+  });
+
+  it('shows the normal Start button when schedulingWindowState is null (non-scheduled exam)', () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: {
+        exam: { title: 'Normal Exam', instructions: null, durationMinutes: 60, schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null },
+        schedulingWindowState: null,
+      },
+      isLoading: false, isError: false,
+    });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+
+    render(<CandidateWelcomePage />);
+
+    expect(screen.getByRole('button', { name: 'Start exam' })).toBeInTheDocument();
+  });
 });
