@@ -18,6 +18,13 @@ async function doFetch(path: string, options: RequestInit, accessToken?: string)
   return fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include' });
 }
 
+async function throwForResponse(response: Response): Promise<never> {
+  const body = await response.json().catch(() => ({}));
+  const error = new Error(body.message ?? `Request failed with status ${response.status}`) as Error & { status?: number };
+  error.status = response.status;
+  throw error;
+}
+
 export async function apiFetch(path: string, options: RequestInit = {}, accessToken?: string) {
   let response = await doFetch(path, options, accessToken);
 
@@ -32,8 +39,21 @@ export async function apiFetch(path: string, options: RequestInit = {}, accessTo
   }
 
   if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.message ?? `Request failed with status ${response.status}`);
+    await throwForResponse(response);
   }
   return response.json();
+}
+
+export async function apiFetchBlob(
+  path: string,
+  options: RequestInit = {},
+  accessToken?: string,
+): Promise<{ blob: Blob; filename: string | null }> {
+  const response = await doFetch(path, options, accessToken);
+  if (!response.ok) {
+    await throwForResponse(response);
+  }
+  const disposition = response.headers.get('Content-Disposition');
+  const filenameMatch = disposition?.match(/filename="([^"]+)"/);
+  return { blob: await response.blob(), filename: filenameMatch ? filenameMatch[1] : null };
 }

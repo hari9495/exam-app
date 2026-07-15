@@ -32,26 +32,53 @@ if (typeof (globalThis as { ResizeObserver?: unknown }).ResizeObserver === 'unde
 // `ReferenceError: Response is not defined` even though Node's own runtime has
 // a global `fetch`/`Response` -- that global lives in the outer Node realm and
 // is not exposed inside the jsdom VM sandbox Jest creates for each test file.
-// This implements just the subset (`status`, `ok`, `json()`) that the test
+// This implements just the subset (`status`, `ok`, `json()`, `blob()`, `headers`) that the test
 // suite's fetch mocks rely on.
 if (typeof (globalThis as { Response?: unknown }).Response === 'undefined') {
+  class PolyfillHeaders {
+    private readonly data: Record<string, string>;
+
+    constructor(init?: Record<string, string>) {
+      this.data = init ?? {};
+    }
+
+    get(name: string): string | null {
+      return this.data[name] ?? null;
+    }
+  }
+
   class PolyfillResponse {
     readonly status: number;
     readonly ok: boolean;
-    private readonly bodyText: string;
+    private readonly bodyData: unknown;
+    readonly headers: PolyfillHeaders;
 
-    constructor(body?: unknown, init: { status?: number } = {}) {
-      this.bodyText = typeof body === 'string' ? body : '';
+    constructor(body?: unknown, init: { status?: number; headers?: Record<string, string> } = {}) {
+      this.bodyData = body;
       this.status = init.status ?? 200;
       this.ok = this.status >= 200 && this.status < 300;
+      this.headers = new PolyfillHeaders(init.headers);
     }
 
     async json() {
-      return this.bodyText ? JSON.parse(this.bodyText) : undefined;
+      if (typeof this.bodyData === 'string') {
+        return JSON.parse(this.bodyData);
+      }
+      return undefined;
     }
 
     async text() {
-      return this.bodyText;
+      if (typeof this.bodyData === 'string') {
+        return this.bodyData;
+      }
+      return '';
+    }
+
+    async blob(): Promise<Blob> {
+      if (this.bodyData instanceof Blob) {
+        return this.bodyData;
+      }
+      return new Blob([]);
     }
   }
 

@@ -182,3 +182,112 @@ export type AttemptCurrent = AttemptPreview | AttemptState;
 export function isAttemptStarted(current: AttemptCurrent): current is AttemptState {
   return 'status' in current;
 }
+
+export interface ScoreDistributionBucket {
+  rangeLabel: string;
+  count: number;
+}
+
+export interface AttemptDurationStats {
+  avgMinutes: number;
+  minMinutes: number;
+  maxMinutes: number;
+}
+
+export interface ExamResultsSummary {
+  totalCandidates: number;
+  settledCount: number;
+  inProgressCount: number;
+  notStartedCount: number;
+  passRate: number;
+  averagePercentage: number;
+  scoreDistribution: ScoreDistributionBucket[];
+  attemptDuration: AttemptDurationStats | null;
+}
+
+export interface QuestionAccuracyRow {
+  questionId: string;
+  questionText: string;
+  timesIncluded: number;
+  timesAttempted: number;
+  timesSkipped: number;
+  timesCorrect: number;
+  accuracyPercentage: number;
+}
+
+export interface ProctoringAnalysisSummary {
+  status: string;
+  riskLevel: string | null;
+  summary: string | null;
+}
+
+export interface ExamResultRow {
+  candidateId: string;
+  candidateName: string;
+  invitationId: string;
+  attemptId: string | null;
+  status: string;
+  score: number | null;
+  maxScore: number | null;
+  percentage: number | null;
+  passFail: string | null;
+  submittedAt: string | null;
+  proctoringAnalysis: ProctoringAnalysisSummary | null;
+}
+
+export interface SectionScore {
+  sectionId: string;
+  title: string;
+  score: number;
+  maxScore: number;
+}
+
+export interface CandidateDetailQuestion {
+  questionId: string;
+  questionText: string;
+  type: string;
+  marks: number;
+  negativeMarks: number;
+  options: { id: string; text: string }[];
+  selectedOptionIds: string[];
+  correctOptionIds: string[];
+  isCorrect: boolean | null;
+  marksAwarded: number | null;
+}
+
+export interface CandidateDetailSection extends SectionScore {
+  questions: CandidateDetailQuestion[];
+}
+
+export interface CandidateDetail {
+  candidateId: string;
+  candidateName: string;
+  status: string;
+  score: number | null;
+  maxScore: number | null;
+  percentage: number | null;
+  passFail: string | null;
+  submittedAt: string | null;
+  proctoringAnalysis: ProctoringAnalysisSummary | null;
+  sections: CandidateDetailSection[];
+}
+
+export interface CandidateComparisonRow {
+  candidateId: string;
+  candidateName: string;
+  status: string;
+  score: number | null;
+  maxScore: number | null;
+  percentage: number | null;
+  passFail: string | null;
+  proctoringAnalysis: ProctoringAnalysisSummary | null;
+  sectionScores: SectionScore[];
+}
+
+export interface AttemptInsight {
+  id: string;
+  attemptId: string;
+  status: string;
+  summary: string | null;
+  generatedAt: string;
+}

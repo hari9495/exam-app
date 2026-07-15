@@ -1,4 +1,4 @@
-import { apiFetch, setUnauthorizedHandler } from './api-client';
+import { apiFetch, apiFetchBlob, setUnauthorizedHandler } from './api-client';
 
 describe('apiFetch', () => {
   const originalFetch = global.fetch;
@@ -28,5 +28,43 @@ describe('apiFetch', () => {
     global.fetch = jest.fn(async () => new Response(JSON.stringify({ message: 'Not found' }), { status: 404 })) as unknown as typeof fetch;
 
     await expect(apiFetch('/exams/missing')).rejects.toThrow('Not found');
+  });
+
+  it('attaches the HTTP status code to the thrown error', async () => {
+    global.fetch = jest.fn(async () => new Response(JSON.stringify({ message: 'Not found' }), { status: 404 })) as unknown as typeof fetch;
+
+    try {
+      await apiFetch('/exams/missing');
+      throw new Error('expected apiFetch to throw');
+    } catch (error) {
+      expect((error as Error & { status?: number }).status).toBe(404);
+    }
+  });
+});
+
+describe('apiFetchBlob', () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('returns the response body as a blob along with the filename from Content-Disposition', async () => {
+    global.fetch = jest.fn(async () =>
+      new Response(new Blob(['a,b,c'], { type: 'text/csv' }), {
+        status: 200,
+        headers: { 'Content-Disposition': 'attachment; filename="exam-123-results.csv"' },
+      }),
+    ) as unknown as typeof fetch;
+
+    const result = await apiFetchBlob('/exams/123/results/export?format=csv', {}, 'tok');
+    expect(result.filename).toBe('exam-123-results.csv');
+    expect(result.blob).toBeInstanceOf(Blob);
+  });
+
+  it('throws with the server message and attaches status on a non-ok response', async () => {
+    global.fetch = jest.fn(async () => new Response(JSON.stringify({ message: 'Forbidden' }), { status: 403 })) as unknown as typeof fetch;
+
+    await expect(apiFetchBlob('/exams/123/results/export?format=csv')).rejects.toThrow('Forbidden');
   });
 });
