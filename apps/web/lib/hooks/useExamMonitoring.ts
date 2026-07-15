@@ -54,6 +54,13 @@ export function useExamMonitoring(examId: string): UseExamMonitoringResult {
       setConnectionStatus('disconnected');
     });
 
+    socket.on('connect_error', () => {
+      // Fires on a failed handshake (server down, rejected auth, etc.) rather than
+      // 'disconnect', which only fires after a prior successful connection. Without
+      // this, connectionStatus would stay 'connecting' forever on a failed handshake.
+      setConnectionStatus('disconnected');
+    });
+
     socket.on('error', (payload: { message: string }) => {
       setJoinError(payload.message);
     });

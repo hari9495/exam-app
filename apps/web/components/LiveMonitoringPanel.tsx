@@ -83,9 +83,9 @@ export function LiveMonitoringPanel({ examId }: { examId: string }) {
             <p className="text-2xl font-semibold">{recentAlertsCount}</p>
           </Card>
         </div>
-        <span className="ml-4 text-sm text-gray-500">
+        <Badge variant={connectionStatus === 'connected' ? 'success' : connectionStatus === 'connecting' ? 'default' : 'danger'}>
           {connectionStatus === 'connected' ? 'Connected' : connectionStatus === 'connecting' ? 'Connecting…' : 'Disconnected'}
-        </span>
+        </Badge>
       </div>
 
       {joinError ? (

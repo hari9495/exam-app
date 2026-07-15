@@ -169,6 +169,19 @@ describe('useExamMonitoring', () => {
     expect(result.current.joinError).toBe('Exam exam-1 not found');
   });
 
+  it('reports connectionStatus as disconnected when the initial handshake fails (connect_error)', async () => {
+    const socket = createMockSocket();
+    (io as jest.Mock).mockReturnValue(socket);
+
+    const { result } = renderHook(() => useExamMonitoring('exam-1'));
+    await waitFor(() => expect(io).toHaveBeenCalled());
+
+    expect(result.current.connectionStatus).toBe('connecting');
+    act(() => socket.trigger('connect_error', new Error('xhr poll error')));
+
+    expect(result.current.connectionStatus).toBe('disconnected');
+  });
+
   it('disconnects the socket on unmount', async () => {
     const socket = createMockSocket();
     (io as jest.Mock).mockReturnValue(socket);
