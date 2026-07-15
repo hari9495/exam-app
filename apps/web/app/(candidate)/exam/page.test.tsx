@@ -189,6 +189,28 @@ describe('CandidateExamPage', () => {
     expect(saveAnswer).toHaveBeenCalledWith('q1', [], true, 'function add(a, b) { return a + b; }');
   });
 
+  it('preserves just-typed code when mark-for-review is toggled before the debounced save fires', async () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: { ...codeAttemptState, answers: [{ questionId: 'q1', selectedOptionIds: [], answerText: 'function add(a, b) {}', isMarkedForReview: false }] },
+      isError: false,
+    });
+
+    render(<CandidateExamPage />);
+
+    // Types new text (debounced save hasn't fired yet — saveAnswer is mocked so no timer
+    // actually resolves the pending write). The React Query cache (existingAnswer) still
+    // reflects the OLD pre-edit text at this point.
+    const editor = screen.getByLabelText('code-editor');
+    await userEvent.clear(editor);
+    await userEvent.type(editor, 'function add(a, b) {{ return a + b; }');
+
+    // Immediately toggle mark-for-review, racing ahead of the debounced autosave.
+    await userEvent.click(screen.getByRole('button', { name: /Mark for review/ }));
+
+    const lastCall = saveAnswer.mock.calls[saveAnswer.mock.calls.length - 1];
+    expect(lastCall).toEqual(['q1', [], true, 'function add(a, b) { return a + b; }']);
+  });
+
   it('counts a code question as unanswered until it has non-empty answerText', async () => {
     (useAttemptQuery as jest.Mock).mockReturnValue({ data: codeAttemptState, isError: false });
 

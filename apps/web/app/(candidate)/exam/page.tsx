@@ -45,6 +45,7 @@ export default function CandidateExamPage() {
   const [navigatorOpen, setNavigatorOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [localSelections, setLocalSelections] = useState<Record<string, string[]>>({});
+  const [localCodeValues, setLocalCodeValues] = useState<Record<string, string>>({});
 
   const attemptState = current && isAttemptStarted(current) ? current : null;
   const isTerminal = Boolean(attemptState && attemptState.status !== 'in_progress');
@@ -79,6 +80,7 @@ export default function CandidateExamPage() {
   const answers: AttemptAnswerSummary[] = attemptState?.answers ?? [];
   const existingAnswer = answers.find((answer) => answer.questionId === question?.id);
   const selectedOptionIds = question ? localSelections[question.id] ?? existingAnswer?.selectedOptionIds ?? [] : [];
+  const codeValue = question ? localCodeValues[question.id] ?? existingAnswer?.answerText ?? question.starterCode ?? '' : '';
   const unansweredCount = questions.filter((q) => {
     const a = answers.find((ans) => ans.questionId === q.id);
     if (q.type === 'code') {
@@ -104,14 +106,16 @@ export default function CandidateExamPage() {
 
   function toggleMarkForReview() {
     if (question!.type === 'code') {
-      saveAnswer(question!.id, [], !existingAnswer?.isMarkedForReview, existingAnswer?.answerText ?? undefined);
+      saveAnswer(question!.id, [], !existingAnswer?.isMarkedForReview, codeValue);
     } else {
       saveAnswer(question!.id, selectedOptionIds, !existingAnswer?.isMarkedForReview);
     }
   }
 
   function handleCodeChange(value: string | undefined) {
-    saveAnswer(question!.id, [], existingAnswer?.isMarkedForReview, value ?? '');
+    const next = value ?? '';
+    setLocalCodeValues((prev) => ({ ...prev, [question!.id]: next }));
+    saveAnswer(question!.id, [], existingAnswer?.isMarkedForReview, next);
   }
 
   async function handleConfirmSubmit() {
@@ -151,7 +155,7 @@ export default function CandidateExamPage() {
             <Editor
               height="400px"
               language={question.codeLanguage ?? 'plaintext'}
-              value={existingAnswer?.answerText ?? question.starterCode ?? ''}
+              value={codeValue}
               onChange={handleCodeChange}
               options={{ minimap: { enabled: false }, fontSize: 13 }}
             />
