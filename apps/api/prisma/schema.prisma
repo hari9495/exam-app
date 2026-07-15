@@ -124,6 +124,8 @@ model Question {
   negativeMarks  Int                   @default(0) @map("negative_marks")
   status         String                @default("active")
   aiGenerated    Boolean               @default(false) @map("ai_generated")
+  codeLanguage   String?               @map("code_language")
+  starterCode    String?               @map("starter_code") @db.NVarChar(Max)
   createdBy      String                @map("created_by") @db.UniqueIdentifier
   createdAt      DateTime              @default(now()) @map("created_at")
   options        QuestionOption[]
@@ -306,11 +308,26 @@ model Answer {
   answeredAt            DateTime @default(now()) @map("answered_at")
   isCorrect             Boolean? @map("is_correct")
   marksAwarded          Int?     @map("marks_awarded")
+  answerText            String?  @map("answer_text") @db.NVarChar(Max)
+  gradingFeedback       String?  @map("grading_feedback") @db.NVarChar(Max)
   attempt               Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
   question              Question @relation(fields: [questionId], references: [id])
+  codeReview            CodeAnswerReview?
 
   @@unique([attemptId, questionId])
   @@map("answers")
+}
+
+model CodeAnswerReview {
+  id             String   @id @default(uuid()) @db.UniqueIdentifier
+  answerId       String   @unique @map("answer_id") @db.UniqueIdentifier
+  status         String
+  suggestedMarks Int?     @map("suggested_marks")
+  summary        String?  @db.NVarChar(Max)
+  generatedAt    DateTime @default(now()) @map("generated_at")
+  answer         Answer   @relation(fields: [answerId], references: [id], onDelete: Cascade)
+
+  @@map("code_answer_reviews")
 }
 
 model Result {
