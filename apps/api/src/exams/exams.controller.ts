@@ -92,4 +92,10 @@ export class ExamsController {
   getResults(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.examsService.getResults(tenant, id);
   }
+
+  @Get(':id/pending-grading')
+  @RequirePermissions('exam:manage')
+  getPendingGrading(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.examsService.getPendingGrading(tenant, id);
+  }
 }

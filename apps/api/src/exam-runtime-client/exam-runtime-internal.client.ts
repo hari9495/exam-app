@@ -11,10 +11,44 @@ interface NotifyMessageSentPayload {
   sentAt: Date;
 }
 
+interface GradeCodeAnswerPayload {
+  marksAwarded: number;
+  feedback?: string;
+}
+
+interface GradeCodeAnswerResult {
+  questionId: string;
+  marksAwarded: number;
+  gradingFeedback: string | null;
+}
+
+interface FinalizeManualGradeResult {
+  status: string;
+}
+
 @Injectable()
 export class ExamRuntimeInternalClient {
   async forceSubmit(attemptId: string): Promise<ForceSubmitResult> {
     const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/attempts/${attemptId}/force-submit`, {
+      method: 'POST',
+      headers: this.headers(),
+    });
+    await this.throwIfNotOk(response);
+    return response.json();
+  }
+
+  async gradeCodeAnswer(attemptId: string, questionId: string, payload: GradeCodeAnswerPayload): Promise<GradeCodeAnswerResult> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/attempts/${attemptId}/answers/${questionId}/grade`, {
+      method: 'POST',
+      headers: { ...this.headers(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    await this.throwIfNotOk(response);
+    return response.json();
+  }
+
+  async finalizeManualGrade(attemptId: string): Promise<FinalizeManualGradeResult> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/attempts/${attemptId}/finalize-manual-grade`, {
       method: 'POST',
       headers: this.headers(),
     });

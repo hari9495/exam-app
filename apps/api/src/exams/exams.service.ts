@@ -32,6 +32,24 @@ export interface ExamResultRow {
   proctoringAnalysis: { status: string; riskLevel: string | null; summary: string | null } | null;
 }
 
+export interface PendingGradingCodeQuestion {
+  questionId: string;
+  questionText: string;
+  starterCode: string | null;
+  codeLanguage: string | null;
+  answerText: string | null;
+  marks: number;
+  marksAwarded: number | null;
+  gradingFeedback: string | null;
+}
+
+export interface PendingGradingRow {
+  attemptId: string;
+  candidateId: string;
+  candidateName: string;
+  codeQuestions: PendingGradingCodeQuestion[];
+}
+
 @Injectable()
 export class ExamsService {
   constructor(
@@ -344,6 +362,38 @@ export class ExamsService {
         ? settledAttempts.get(originalAttempt.id)!
         : originalAttempt;
       return this.toResultRow(invitation, attempt);
+    });
+  }
+
+  async getPendingGrading(context: TenantContext, examId: string): Promise<PendingGradingRow[]> {
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const exam = await tx.exam.findFirst({ where: { id: examId, organizationId: context.organizationId as string } });
+      if (!exam) {
+        throw new NotFoundException(`Exam ${examId} not found`);
+      }
+
+      const attempts = await tx.attempt.findMany({
+        where: { examId, status: 'pending_manual_grade' },
+        include: { invitation: { include: { candidate: true } }, answers: { include: { question: true } } },
+      });
+
+      return attempts.map((attempt) => ({
+        attemptId: attempt.id,
+        candidateId: attempt.invitation.candidateId,
+        candidateName: attempt.invitation.candidate.name,
+        codeQuestions: attempt.answers
+          .filter((answer) => answer.question.type === 'code')
+          .map((answer) => ({
+            questionId: answer.questionId,
+            questionText: answer.question.text,
+            starterCode: answer.question.starterCode,
+            codeLanguage: answer.question.codeLanguage,
+            answerText: answer.answerText,
+            marks: answer.question.marks,
+            marksAwarded: answer.marksAwarded,
+            gradingFeedback: answer.gradingFeedback,
+          })),
+      }));
     });
   }
 

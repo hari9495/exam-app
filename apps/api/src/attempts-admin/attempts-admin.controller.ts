@@ -7,6 +7,7 @@ import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
 import { AttemptsAdminService } from './attempts-admin.service';
 import { SendCandidateMessageDto } from './dto/send-candidate-message.dto';
+import { GradeCodeAnswerDto } from './dto/grade-code-answer.dto';
 
 @Controller('attempts')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -23,6 +24,24 @@ export class AttemptsAdminController {
   @RequirePermissions('exam:manage')
   forceSubmit(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
     return this.attemptsAdminService.forceSubmit(tenant, id, userId);
+  }
+
+  @Post(':id/answers/:questionId/grade')
+  @RequirePermissions('exam:manage')
+  gradeCodeAnswer(
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentUserId() userId: string,
+    @Param('id') id: string,
+    @Param('questionId') questionId: string,
+    @Body() dto: GradeCodeAnswerDto,
+  ) {
+    return this.attemptsAdminService.gradeCodeAnswer(tenant, id, questionId, userId, dto.marksAwarded, dto.feedback);
+  }
+
+  @Post(':id/finalize-manual-grade')
+  @RequirePermissions('exam:manage')
+  finalizeManualGrade(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.attemptsAdminService.finalizeManualGrade(tenant, id, userId);
   }
 
   @Post(':id/message')

@@ -7,6 +7,7 @@ import { ATTEMPT_STATUS_BROADCASTER, AttemptStatusBroadcaster } from '../monitor
 import { InternalAuthGuard } from './internal-auth.guard';
 import { NotifyMessageSentDto } from './dto/notify-message-sent.dto';
 import { SettleIfExpiredBatchDto } from './dto/settle-if-expired-batch.dto';
+import { GradeCodeAnswerDto } from './dto/grade-code-answer.dto';
 
 @Controller('internal')
 @UseGuards(InternalAuthGuard)
@@ -36,6 +37,39 @@ export class InternalController {
       }
       const exam = attempt.invitation.exam;
       return this.attemptSettlement.finalize(tx, exam, attempt, 'force_submitted');
+    });
+    return { status: finalized.status };
+  }
+
+  @Post('attempts/:id/answers/:questionId/grade')
+  async gradeCodeAnswer(@Param('id') id: string, @Param('questionId') questionId: string, @Body() dto: GradeCodeAnswerDto) {
+    return this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {
+      const answer = await tx.answer.findFirst({ where: { attemptId: id, questionId }, include: { question: true } });
+      if (!answer) {
+        throw new NotFoundException(`No answer found for attempt ${id}, question ${questionId}`);
+      }
+      if (answer.question.type !== 'code') {
+        throw new BadRequestException(`Question ${questionId} is not a code question`);
+      }
+      if (dto.marksAwarded > answer.question.marks) {
+        throw new BadRequestException(`marksAwarded (${dto.marksAwarded}) cannot exceed the question's marks (${answer.question.marks})`);
+      }
+      const updated = await tx.answer.update({
+        where: { id: answer.id },
+        data: { marksAwarded: dto.marksAwarded, gradingFeedback: dto.feedback ?? null },
+      });
+      return { questionId, marksAwarded: updated.marksAwarded, gradingFeedback: updated.gradingFeedback };
+    });
+  }
+
+  @Post('attempts/:id/finalize-manual-grade')
+  async finalizeManualGrade(@Param('id') id: string) {
+    const finalized = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { id }, include: { invitation: { include: { exam: true } } } });
+      if (!attempt) {
+        throw new NotFoundException(`Attempt ${id} not found`);
+      }
+      return this.attemptSettlement.finalizeManualGrade(tx, attempt.invitation.exam, attempt);
     });
     return { status: finalized.status };
   }

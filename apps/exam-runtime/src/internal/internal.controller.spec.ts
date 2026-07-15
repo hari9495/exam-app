@@ -10,14 +10,14 @@ import { ATTEMPT_STATUS_BROADCASTER } from '../monitoring/attempt-status-broadca
 describe('InternalController', () => {
   let controller: InternalController;
   let tenantPrisma: { forTenant: jest.Mock };
-  let attemptSettlement: { finalize: jest.Mock; settleIfExpired: jest.Mock };
+  let attemptSettlement: { finalize: jest.Mock; settleIfExpired: jest.Mock; finalizeManualGrade: jest.Mock };
   let attemptAnalysis: { analyze: jest.Mock };
   let attemptInsight: { analyze: jest.Mock };
   let broadcaster: { emitMessageSent: jest.Mock };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
-    attemptSettlement = { finalize: jest.fn(), settleIfExpired: jest.fn() };
+    attemptSettlement = { finalize: jest.fn(), settleIfExpired: jest.fn(), finalizeManualGrade: jest.fn() };
     attemptAnalysis = { analyze: jest.fn() };
     attemptInsight = { analyze: jest.fn() };
     broadcaster = { emitMessageSent: jest.fn().mockResolvedValue(undefined) };
@@ -66,6 +66,78 @@ describe('InternalController', () => {
       expect(tenantPrisma.forTenant).toHaveBeenCalledWith({ organizationId: null, isSuperAdmin: true }, expect.any(Function));
       expect(attemptSettlement.finalize).toHaveBeenCalledWith(tx, exam, attempt, 'force_submitted');
       expect(result).toEqual({ status: 'force_submitted' });
+    });
+  });
+
+  describe('gradeCodeAnswer', () => {
+    it('grades a code answer and caps marksAwarded at the question marks', async () => {
+      const answer = { id: 'answer-1', attemptId: 'attempt-1', questionId: 'question-1', question: { type: 'code', marks: 10 } };
+      const tx = {
+        answer: {
+          findFirst: jest.fn().mockResolvedValue(answer),
+          update: jest.fn().mockResolvedValue({ id: 'answer-1', marksAwarded: 8, gradingFeedback: 'Good approach' }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await controller.gradeCodeAnswer('attempt-1', 'question-1', { marksAwarded: 8, feedback: 'Good approach' });
+
+      expect(tx.answer.findFirst).toHaveBeenCalledWith({
+        where: { attemptId: 'attempt-1', questionId: 'question-1' },
+        include: { question: true },
+      });
+      expect(tx.answer.update).toHaveBeenCalledWith({
+        where: { id: 'answer-1' },
+        data: { marksAwarded: 8, gradingFeedback: 'Good approach' },
+      });
+      expect(result).toEqual({ questionId: 'question-1', marksAwarded: 8, gradingFeedback: 'Good approach' });
+    });
+
+    it('rejects grading a code answer with marksAwarded exceeding the question marks', async () => {
+      const answer = { id: 'answer-1', attemptId: 'attempt-1', questionId: 'question-1', question: { type: 'code', marks: 10 } };
+      const tx = { answer: { findFirst: jest.fn().mockResolvedValue(answer), update: jest.fn() } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(controller.gradeCodeAnswer('attempt-1', 'question-1', { marksAwarded: 15 })).rejects.toThrow(BadRequestException);
+      expect(tx.answer.update).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when no answer exists for the attempt/question', async () => {
+      const tx = { answer: { findFirst: jest.fn().mockResolvedValue(null), update: jest.fn() } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(controller.gradeCodeAnswer('attempt-1', 'question-1', { marksAwarded: 5 })).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws BadRequestException when the question is not a code question', async () => {
+      const answer = { id: 'answer-1', attemptId: 'attempt-1', questionId: 'question-1', question: { type: 'single_mcq', marks: 10 } };
+      const tx = { answer: { findFirst: jest.fn().mockResolvedValue(answer), update: jest.fn() } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(controller.gradeCodeAnswer('attempt-1', 'question-1', { marksAwarded: 5 })).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('finalizeManualGrade', () => {
+    it('finalizes manual grading via AttemptSettlementService.finalizeManualGrade', async () => {
+      const exam = { id: 'exam-1', durationMinutes: 30, passCriteriaPercent: 40 };
+      const attempt = { id: 'attempt-1', status: 'pending_manual_grade', invitation: { exam } };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      attemptSettlement.finalizeManualGrade.mockResolvedValue({ status: 'submitted' });
+
+      const result = await controller.finalizeManualGrade('attempt-1');
+
+      expect(tenantPrisma.forTenant).toHaveBeenCalledWith({ organizationId: null, isSuperAdmin: true }, expect.any(Function));
+      expect(attemptSettlement.finalizeManualGrade).toHaveBeenCalledWith(tx, exam, attempt);
+      expect(result).toEqual({ status: 'submitted' });
+    });
+
+    it('throws NotFoundException when the attempt does not exist', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(controller.finalizeManualGrade('attempt-1')).rejects.toThrow(NotFoundException);
     });
   });
 

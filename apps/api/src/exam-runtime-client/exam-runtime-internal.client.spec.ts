@@ -49,6 +49,38 @@ describe('ExamRuntimeInternalClient', () => {
     });
   });
 
+  describe('gradeCodeAnswer', () => {
+    it('POSTs to the internal grade endpoint and returns the parsed result', async () => {
+      const result = { questionId: 'question-1', marksAwarded: 8, gradingFeedback: 'Nice' };
+      (global.fetch as jest.Mock).mockResolvedValue({ ok: true, json: async () => result });
+
+      const response = await client.gradeCodeAnswer('attempt-1', 'question-1', { marksAwarded: 8, feedback: 'Nice' });
+
+      expect(global.fetch).toHaveBeenCalledWith('http://localhost:3002/api/v1/internal/attempts/attempt-1/answers/question-1/grade', {
+        method: 'POST',
+        headers: { 'x-internal-secret': 'test-internal-secret', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ marksAwarded: 8, feedback: 'Nice' }),
+        signal: expect.any(AbortSignal),
+      });
+      expect(response).toEqual(result);
+    });
+  });
+
+  describe('finalizeManualGrade', () => {
+    it('POSTs to the internal finalize endpoint', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({ ok: true, json: async () => ({ status: 'submitted' }) });
+
+      const response = await client.finalizeManualGrade('attempt-1');
+
+      expect(global.fetch).toHaveBeenCalledWith('http://localhost:3002/api/v1/internal/attempts/attempt-1/finalize-manual-grade', {
+        method: 'POST',
+        headers: { 'x-internal-secret': 'test-internal-secret' },
+        signal: expect.any(AbortSignal),
+      });
+      expect(response).toEqual({ status: 'submitted' });
+    });
+  });
+
   describe('reanalyze', () => {
     it('POSTs to the internal reanalyze endpoint', async () => {
       (global.fetch as jest.Mock).mockResolvedValue({ ok: true, json: async () => ({}) });

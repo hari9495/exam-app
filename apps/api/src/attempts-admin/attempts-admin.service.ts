@@ -38,6 +38,44 @@ export class AttemptsAdminService {
     return result;
   }
 
+  async gradeCodeAnswer(
+    context: TenantContext,
+    attemptId: string,
+    questionId: string,
+    actorUserId: string,
+    marksAwarded: number,
+    feedback?: string,
+  ): Promise<{ questionId: string; marksAwarded: number; gradingFeedback: string | null }> {
+    await this.requireOwnedAttempt(context, attemptId);
+
+    const result = await this.examRuntime.gradeCodeAnswer(attemptId, questionId, { marksAwarded, feedback });
+
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'attempt.answer_graded',
+      entityType: 'attempt',
+      entityId: attemptId,
+      metadata: { questionId, marksAwarded },
+    });
+
+    return result;
+  }
+
+  async finalizeManualGrade(context: TenantContext, attemptId: string, actorUserId: string): Promise<{ status: string }> {
+    await this.requireOwnedAttempt(context, attemptId);
+
+    const result = await this.examRuntime.finalizeManualGrade(attemptId);
+
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'attempt.manually_graded',
+      entityType: 'attempt',
+      entityId: attemptId,
+    });
+
+    return result;
+  }
+
   async sendMessage(
     context: TenantContext,
     attemptId: string,
