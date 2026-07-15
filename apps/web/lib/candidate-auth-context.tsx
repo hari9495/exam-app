@@ -29,6 +29,20 @@ export function CandidateAuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setCandidateUnauthorizedHandler(silentRefresh);
+
+    // /start redeems an invite token on mount (see start/page.tsx). If this
+    // browser still has another candidate's refresh-token cookie from an
+    // earlier session, an automatic silentRefresh() here would race that
+    // redeem() call and could overwrite it with the stale candidate's
+    // session. The token query param only ever appears on /start, so its
+    // presence means redeem() — not silentRefresh() — is the one setting
+    // accessToken for this page load.
+    const isRedeemingInvite = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('token');
+    if (isRedeemingInvite) {
+      setIsLoading(false);
+      return () => setCandidateUnauthorizedHandler(null);
+    }
+
     silentRefresh().finally(() => setIsLoading(false));
     return () => setCandidateUnauthorizedHandler(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps

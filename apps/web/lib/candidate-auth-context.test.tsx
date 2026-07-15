@@ -15,9 +15,11 @@ function Probe() {
 
 describe('CandidateAuthProvider', () => {
   const originalFetch = global.fetch;
+  const originalSearch = window.location.search;
 
   afterEach(() => {
     global.fetch = originalFetch;
+    window.history.replaceState(null, '', `${window.location.pathname}${originalSearch}`);
   });
 
   it('silently refreshes on mount via the httpOnly cookie', async () => {
@@ -69,5 +71,39 @@ describe('CandidateAuthProvider', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Redeem' }));
     await waitFor(() => expect(screen.getByText('token:redeemed-token')).toBeInTheDocument());
+  });
+
+  it('does not run the automatic silent refresh when a redeem token is present in the URL, so a stale cookie from a previous candidate cannot race and clobber the new redemption', async () => {
+    window.history.replaceState(null, '', '/start?token=invite-token');
+
+    let refreshResolve: ((response: Response) => void) | undefined;
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/candidate-auth/refresh')) {
+        // If this ever fires, it's the automatic mount-time silent refresh
+        // racing the explicit redeem below — it must never be called while
+        // a redeem token is present, so this promise is deliberately left
+        // unresolved for the duration of the test.
+        return new Promise<Response>((resolve) => {
+          refreshResolve = resolve;
+        });
+      }
+      if (String(url).endsWith('/candidate-auth/redeem')) {
+        return new Response(JSON.stringify({ accessToken: 'redeemed-token', refreshToken: 'rt' }), { status: 200 });
+      }
+      throw new Error(`Unexpected fetch to ${url}`);
+    }) as unknown as typeof fetch;
+
+    render(
+      <CandidateAuthProvider>
+        <Probe />
+      </CandidateAuthProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('no-token')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'Redeem' }));
+    await waitFor(() => expect(screen.getByText('token:redeemed-token')).toBeInTheDocument());
+
+    expect(refreshResolve).toBeUndefined();
+    expect(global.fetch).not.toHaveBeenCalledWith(expect.stringContaining('/candidate-auth/refresh'), expect.anything());
   });
 });
