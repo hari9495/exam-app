@@ -12,7 +12,10 @@ describe('AttemptService', () => {
   let settlement: { settleIfExpired: jest.Mock; finalize: jest.Mock; remainingSeconds: jest.Mock };
   let monitoringGateway: { emitAttemptStatus: jest.Mock; emitProctoringFlag: jest.Mock };
   const session = { invitationId: 'inv-1' };
-  const exam = { id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false };
+  const exam = {
+    id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false,
+    schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null,
+  };
   const invitationRecord = { id: 'inv-1', candidateId: 'cand-1', examId: 'exam-1', exam };
 
   beforeEach(async () => {
@@ -50,7 +53,13 @@ describe('AttemptService', () => {
 
       const result = await service.getCurrent(session);
 
-      expect(result).toEqual({ exam: { title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60 } });
+      expect(result).toEqual({
+        exam: {
+          title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60,
+          schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null,
+        },
+        schedulingWindowState: null,
+      });
     });
 
     it('returns the full attempt state with sections, questions (no isCorrect), and existing answers', async () => {
@@ -411,6 +420,124 @@ describe('AttemptService', () => {
 
       const createdData = tx.attempt.create.mock.calls[0][0].data;
       expect(createdData.optionOrderJson).toBeNull();
+    });
+  });
+
+  describe('scheduling', () => {
+    const notYetOpenExam = {
+      ...exam,
+      schedulingEnabled: true,
+      availabilityWindowStart: new Date(Date.now() + 60 * 60 * 1000),
+      availabilityWindowEnd: new Date(Date.now() + 2 * 60 * 60 * 1000),
+    };
+    const closedExam = {
+      ...exam,
+      schedulingEnabled: true,
+      availabilityWindowStart: new Date(Date.now() - 2 * 60 * 60 * 1000),
+      availabilityWindowEnd: new Date(Date.now() - 60 * 60 * 1000),
+    };
+    const openExam = {
+      ...exam,
+      schedulingEnabled: true,
+      availabilityWindowStart: new Date(Date.now() - 60 * 60 * 1000),
+      availabilityWindowEnd: new Date(Date.now() + 60 * 60 * 1000),
+    };
+
+    function mockInvitationWithExam(scopedTx: unknown, scheduledExam: Record<string, unknown>) {
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: scheduledExam }))
+        .mockImplementationOnce((_ctx, fn) => fn(scopedTx));
+    }
+
+    it('getCurrent() returns schedulingWindowState "not_open" before the window opens, with no attempt created', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() } };
+      mockInvitationWithExam(tx, notYetOpenExam);
+
+      const result = await service.getCurrent(session);
+
+      expect(result).toEqual({
+        exam: {
+          title: notYetOpenExam.title, instructions: notYetOpenExam.instructions, durationMinutes: notYetOpenExam.durationMinutes,
+          schedulingEnabled: true,
+          availabilityWindowStart: notYetOpenExam.availabilityWindowStart,
+          availabilityWindowEnd: notYetOpenExam.availabilityWindowEnd,
+        },
+        schedulingWindowState: 'not_open',
+      });
+      expect(tx.attempt.create).not.toHaveBeenCalled();
+    });
+
+    it('getCurrent() returns schedulingWindowState "closed" after the window has passed, with no attempt created', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() } };
+      mockInvitationWithExam(tx, closedExam);
+
+      const result = await service.getCurrent(session);
+
+      expect(result).toEqual(expect.objectContaining({ schedulingWindowState: 'closed' }));
+      expect(tx.attempt.create).not.toHaveBeenCalled();
+    });
+
+    it('getCurrent() returns schedulingWindowState "open" within the window', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) } };
+      mockInvitationWithExam(tx, openExam);
+
+      const result = await service.getCurrent(session);
+
+      expect(result).toEqual(expect.objectContaining({ schedulingWindowState: 'open' }));
+    });
+
+    it('getCurrent() returns schedulingWindowState null for a non-scheduled exam', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) } };
+      mockBootstrapThenScoped(tx);
+
+      const result = await service.getCurrent(session);
+
+      expect(result).toEqual(expect.objectContaining({ schedulingWindowState: null }));
+    });
+
+    it('start() rejects with "not open yet" before the window opens', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() } };
+      mockInvitationWithExam(tx, notYetOpenExam);
+
+      await expect(service.start(session, {})).rejects.toThrow(
+        'This exam is not open yet — check back during its scheduled window.',
+      );
+      expect(tx.attempt.create).not.toHaveBeenCalled();
+    });
+
+    it('start() rejects with "closed" after the window has passed', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() } };
+      mockInvitationWithExam(tx, closedExam);
+
+      await expect(service.start(session, {})).rejects.toThrow("This exam's availability window has closed.");
+      expect(tx.attempt.create).not.toHaveBeenCalled();
+    });
+
+    it('start() succeeds within the window', async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
+        examSection: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'section-1', title: 'Section One', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: null, poolTags: [], questions: [{ questionId: 'q1' }] },
+          ]),
+        },
+      };
+      mockInvitationWithExam(tx, openExam);
+
+      const result = await service.start(session, {});
+
+      expect(result).toEqual({ id: 'attempt-1', status: 'in_progress' });
+    });
+
+    it('start() returns an existing attempt idempotently even when the window is closed', async () => {
+      const existing = { id: 'attempt-1', status: 'in_progress' };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(existing), create: jest.fn() } };
+      mockInvitationWithExam(tx, closedExam);
+
+      const result = await service.start(session, {});
+
+      expect(result).toEqual({ id: 'attempt-1', status: 'in_progress' });
+      expect(tx.attempt.create).not.toHaveBeenCalled();
     });
   });
 

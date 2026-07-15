@@ -52,7 +52,15 @@ interface AttemptMessageSummary {
 }
 
 interface AttemptPreviewResponse {
-  exam: { title: string; instructions: string | null; durationMinutes: number };
+  exam: {
+    title: string;
+    instructions: string | null;
+    durationMinutes: number;
+    schedulingEnabled: boolean;
+    availabilityWindowStart: Date | null;
+    availabilityWindowEnd: Date | null;
+  };
+  schedulingWindowState: 'not_open' | 'open' | 'closed' | null;
 }
 
 interface AttemptStateResponse {
@@ -79,7 +87,17 @@ export class AttemptService {
     return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
       const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
       if (!attempt) {
-        return { exam: { title: exam.title, instructions: exam.instructions, durationMinutes: exam.durationMinutes } };
+        return {
+          exam: {
+            title: exam.title,
+            instructions: exam.instructions,
+            durationMinutes: exam.durationMinutes,
+            schedulingEnabled: exam.schedulingEnabled,
+            availabilityWindowStart: exam.availabilityWindowStart,
+            availabilityWindowEnd: exam.availabilityWindowEnd,
+          },
+          schedulingWindowState: this.getSchedulingWindowState(exam),
+        };
       }
 
       const settled = await this.attemptSettlement.settleIfExpired(tx, exam, attempt);
@@ -113,6 +131,14 @@ export class AttemptService {
       const existing = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
       if (existing) {
         return { id: existing.id, status: existing.status };
+      }
+
+      const windowState = this.getSchedulingWindowState(exam);
+      if (windowState === 'not_open') {
+        throw new BadRequestException('This exam is not open yet — check back during its scheduled window.');
+      }
+      if (windowState === 'closed') {
+        throw new BadRequestException("This exam's availability window has closed.");
       }
 
       const sections = await tx.examSection.findMany({
@@ -305,6 +331,24 @@ export class AttemptService {
       throw new UnauthorizedException('Invalid candidate session');
     }
     return { organizationId: invitation.exam.organizationId, exam: invitation.exam, invitation };
+  }
+
+  private getSchedulingWindowState(exam: {
+    schedulingEnabled: boolean;
+    availabilityWindowStart: Date | null;
+    availabilityWindowEnd: Date | null;
+  }): 'not_open' | 'open' | 'closed' | null {
+    if (!exam.schedulingEnabled || !exam.availabilityWindowStart || !exam.availabilityWindowEnd) {
+      return null;
+    }
+    const now = new Date();
+    if (now < exam.availabilityWindowStart) {
+      return 'not_open';
+    }
+    if (now > exam.availabilityWindowEnd) {
+      return 'closed';
+    }
+    return 'open';
   }
 
   private validateSelection(question: { type: string; options: { id: string }[] }, selectedOptionIds: string[]): void {
