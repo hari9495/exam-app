@@ -5,6 +5,7 @@ import { TenantPrismaService } from '@exam-platform/shared';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
 import { AttemptInsightService } from '../attempt-insight/attempt-insight.service';
+import { CodeReviewService } from '../code-review/code-review.service';
 import { ATTEMPT_STATUS_BROADCASTER } from '../monitoring/attempt-status-broadcaster';
 
 describe('InternalController', () => {
@@ -13,6 +14,7 @@ describe('InternalController', () => {
   let attemptSettlement: { finalize: jest.Mock; settleIfExpired: jest.Mock; finalizeManualGrade: jest.Mock };
   let attemptAnalysis: { analyze: jest.Mock };
   let attemptInsight: { analyze: jest.Mock };
+  let codeReviewService: { analyze: jest.Mock };
   let broadcaster: { emitMessageSent: jest.Mock };
 
   beforeEach(async () => {
@@ -20,6 +22,7 @@ describe('InternalController', () => {
     attemptSettlement = { finalize: jest.fn(), settleIfExpired: jest.fn(), finalizeManualGrade: jest.fn() };
     attemptAnalysis = { analyze: jest.fn() };
     attemptInsight = { analyze: jest.fn() };
+    codeReviewService = { analyze: jest.fn() };
     broadcaster = { emitMessageSent: jest.fn().mockResolvedValue(undefined) };
 
     const moduleRef = await Test.createTestingModule({
@@ -29,6 +32,7 @@ describe('InternalController', () => {
         { provide: AttemptSettlementService, useValue: attemptSettlement },
         { provide: AttemptAnalysisService, useValue: attemptAnalysis },
         { provide: AttemptInsightService, useValue: attemptInsight },
+        { provide: CodeReviewService, useValue: codeReviewService },
         { provide: ATTEMPT_STATUS_BROADCASTER, useValue: broadcaster },
       ],
     }).compile();
@@ -154,6 +158,14 @@ describe('InternalController', () => {
       await controller.regenerateInsight('attempt-1');
 
       expect(attemptInsight.analyze).toHaveBeenCalledWith('attempt-1');
+    });
+  });
+
+  describe('generateCodeReview', () => {
+    it('delegates to CodeReviewService.analyze', async () => {
+      await controller.generateCodeReview('answer-1');
+
+      expect(codeReviewService.analyze).toHaveBeenCalledWith('answer-1');
     });
   });
 

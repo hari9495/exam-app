@@ -3,6 +3,7 @@ import { TenantPrismaService } from '@exam-platform/shared';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
 import { AttemptInsightService } from '../attempt-insight/attempt-insight.service';
+import { CodeReviewService } from '../code-review/code-review.service';
 import { ATTEMPT_STATUS_BROADCASTER, AttemptStatusBroadcaster } from '../monitoring/attempt-status-broadcaster';
 import { InternalAuthGuard } from './internal-auth.guard';
 import { NotifyMessageSentDto } from './dto/notify-message-sent.dto';
@@ -19,6 +20,7 @@ export class InternalController {
     private readonly attemptSettlement: AttemptSettlementService,
     private readonly attemptAnalysis: AttemptAnalysisService,
     private readonly attemptInsight: AttemptInsightService,
+    private readonly codeReviewService: CodeReviewService,
     @Inject(ATTEMPT_STATUS_BROADCASTER) private readonly broadcaster: AttemptStatusBroadcaster,
   ) {}
 
@@ -84,6 +86,12 @@ export class InternalController {
   @HttpCode(204)
   async regenerateInsight(@Param('id') id: string): Promise<void> {
     await this.attemptInsight.analyze(id);
+  }
+
+  @Post('attempts/answers/:answerId/generate-code-review')
+  @HttpCode(204)
+  async generateCodeReview(@Param('answerId') answerId: string): Promise<void> {
+    await this.codeReviewService.analyze(answerId);
   }
 
   @Post('attempts/settle-if-expired-batch')

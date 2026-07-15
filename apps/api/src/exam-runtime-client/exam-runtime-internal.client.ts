@@ -72,6 +72,14 @@ export class ExamRuntimeInternalClient {
     await this.throwIfNotOk(response);
   }
 
+  async generateCodeReview(answerId: string): Promise<void> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/attempts/answers/${answerId}/generate-code-review`, {
+      method: 'POST',
+      headers: this.headers(),
+    });
+    await this.throwIfNotOk(response);
+  }
+
   async settleIfExpiredBatch(attemptIds: string[]): Promise<void> {
     const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/attempts/settle-if-expired-batch`, {
       method: 'POST',

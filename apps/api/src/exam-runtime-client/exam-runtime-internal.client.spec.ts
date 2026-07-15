@@ -109,6 +109,20 @@ describe('ExamRuntimeInternalClient', () => {
     });
   });
 
+  describe('generateCodeReview', () => {
+    it('POSTs to the internal generate-code-review endpoint', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({ ok: true, json: async () => ({}) });
+
+      await client.generateCodeReview('answer-1');
+
+      expect(global.fetch).toHaveBeenCalledWith('http://localhost:3002/api/v1/internal/attempts/answers/answer-1/generate-code-review', {
+        method: 'POST',
+        headers: { 'x-internal-secret': 'test-internal-secret' },
+        signal: expect.any(AbortSignal),
+      });
+    });
+  });
+
   describe('settleIfExpiredBatch', () => {
     it('POSTs the attempt ids as JSON to the internal batch settle endpoint', async () => {
       (global.fetch as jest.Mock).mockResolvedValue({ ok: true, json: async () => ({}) });

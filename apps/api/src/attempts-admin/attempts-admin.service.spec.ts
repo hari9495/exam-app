@@ -8,13 +8,25 @@ describe('AttemptsAdminService', () => {
   let service: AttemptsAdminService;
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
-  let examRuntime: { forceSubmit: jest.Mock; reanalyze: jest.Mock; notifyMessageSent: jest.Mock; regenerateInsight: jest.Mock };
+  let examRuntime: {
+    forceSubmit: jest.Mock;
+    reanalyze: jest.Mock;
+    notifyMessageSent: jest.Mock;
+    regenerateInsight: jest.Mock;
+    generateCodeReview: jest.Mock;
+  };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
-    examRuntime = { forceSubmit: jest.fn(), reanalyze: jest.fn(), notifyMessageSent: jest.fn(), regenerateInsight: jest.fn() };
+    examRuntime = {
+      forceSubmit: jest.fn(),
+      reanalyze: jest.fn(),
+      notifyMessageSent: jest.fn(),
+      regenerateInsight: jest.fn(),
+      generateCodeReview: jest.fn(),
+    };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -213,6 +225,78 @@ describe('AttemptsAdminService', () => {
         actorUserId: 'user-1', action: 'attempt.insight_regenerated', entityType: 'attempt', entityId: 'attempt-1',
       });
       expect(result).toBe(insight);
+    });
+  });
+
+  describe('getCodeReview', () => {
+    it('throws NotFoundException when the attempt is not in the caller organization', async () => {
+      const tx = { attempt: { findFirst: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.getCodeReview(context, 'attempt-1', 'question-1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws NotFoundException when the attempt is owned but no code review has been generated yet', async () => {
+      let call = 0;
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => {
+        call += 1;
+        if (call === 1) {
+          return fn({ attempt: { findFirst: jest.fn().mockResolvedValue({ id: 'attempt-1' }) } });
+        }
+        return fn({ codeAnswerReview: { findFirst: jest.fn().mockResolvedValue(null) } });
+      });
+
+      await expect(service.getCodeReview(context, 'attempt-1', 'question-1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('returns the CodeAnswerReview row for an owned attempt', async () => {
+      const review = { answerId: 'answer-1', status: 'completed', suggestedMarks: 8, summary: 'Solid solution.' };
+      let call = 0;
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => {
+        call += 1;
+        if (call === 1) {
+          return fn({ attempt: { findFirst: jest.fn().mockResolvedValue({ id: 'attempt-1' }) } });
+        }
+        return fn({ codeAnswerReview: { findFirst: jest.fn().mockResolvedValue(review) } });
+      });
+
+      const result = await service.getCodeReview(context, 'attempt-1', 'question-1');
+
+      expect(result).toBe(review);
+    });
+  });
+
+  describe('regenerateCodeReview', () => {
+    it('throws NotFoundException without calling the internal client when no answer is found', async () => {
+      const tx = { answer: { findFirst: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.regenerateCodeReview(context, 'user-1', 'attempt-1', 'question-1')).rejects.toThrow(NotFoundException);
+      expect(examRuntime.generateCodeReview).not.toHaveBeenCalled();
+    });
+
+    it('triggers generation via the internal client, then reads back the fresh CodeAnswerReview row', async () => {
+      const review = { answerId: 'answer-1', status: 'completed', suggestedMarks: 7, summary: 'Correct logic.' };
+      let call = 0;
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => {
+        call += 1;
+        if (call === 1) {
+          return fn({ answer: { findFirst: jest.fn().mockResolvedValue({ id: 'answer-1' }) } });
+        }
+        return fn({ codeAnswerReview: { findFirstOrThrow: jest.fn().mockResolvedValue(review) } });
+      });
+
+      const result = await service.regenerateCodeReview(context, 'user-1', 'attempt-1', 'question-1');
+
+      expect(examRuntime.generateCodeReview).toHaveBeenCalledWith('answer-1');
+      expect(audit.record).toHaveBeenCalledWith(context, {
+        actorUserId: 'user-1',
+        action: 'attempt.code_review_regenerated',
+        entityType: 'attempt',
+        entityId: 'attempt-1',
+        metadata: { questionId: 'question-1' },
+      });
+      expect(result).toBe(review);
     });
   });
 });

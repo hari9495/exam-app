@@ -78,4 +78,21 @@ export class AttemptsAdminController {
   regenerateInsight(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
     return this.attemptsAdminService.regenerateInsight(tenant, userId, id);
   }
+
+  @Get(':id/answers/:questionId/code-review')
+  @RequirePermissions('exam:manage')
+  getCodeReview(@CurrentTenant() tenant: TenantContext, @Param('id') id: string, @Param('questionId') questionId: string) {
+    return this.attemptsAdminService.getCodeReview(tenant, id, questionId);
+  }
+
+  @Post(':id/answers/:questionId/code-review/regenerate')
+  @RequirePermissions('exam:manage')
+  regenerateCodeReview(
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentUserId() userId: string,
+    @Param('id') id: string,
+    @Param('questionId') questionId: string,
+  ) {
+    return this.attemptsAdminService.regenerateCodeReview(tenant, userId, id, questionId);
+  }
 }

@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { AttemptInsight, CandidateMessage, ProctoringAnalysis, ProctoringEvent } from '@prisma/client';
+import { AttemptInsight, CandidateMessage, CodeAnswerReview, ProctoringAnalysis, ProctoringEvent } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService } from '@exam-platform/shared';
 import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
 
@@ -157,6 +157,39 @@ export class AttemptsAdminService {
     });
 
     return this.tenantPrisma.forTenant(context, (tx) => tx.attemptInsight.findUniqueOrThrow({ where: { attemptId } }));
+  }
+
+  async getCodeReview(context: TenantContext, attemptId: string, questionId: string): Promise<CodeAnswerReview> {
+    await this.requireOwnedAttempt(context, attemptId);
+
+    const review = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.codeAnswerReview.findFirst({ where: { answer: { attemptId, questionId } } }),
+    );
+    if (!review) {
+      throw new NotFoundException(`Code review not yet generated for attempt ${attemptId}, question ${questionId}`);
+    }
+    return review;
+  }
+
+  async regenerateCodeReview(context: TenantContext, actorUserId: string, attemptId: string, questionId: string): Promise<CodeAnswerReview> {
+    const answer = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.answer.findFirst({ where: { attemptId, questionId } }),
+    );
+    if (!answer) {
+      throw new NotFoundException(`No answer found for attempt ${attemptId}, question ${questionId}`);
+    }
+
+    await this.examRuntime.generateCodeReview(answer.id);
+
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'attempt.code_review_regenerated',
+      entityType: 'attempt',
+      entityId: attemptId,
+      metadata: { questionId },
+    });
+
+    return this.tenantPrisma.forTenant(context, (tx) => tx.codeAnswerReview.findFirstOrThrow({ where: { answerId: answer.id } }));
   }
 
   private async requireOwnedAttempt(context: TenantContext, attemptId: string): Promise<void> {
