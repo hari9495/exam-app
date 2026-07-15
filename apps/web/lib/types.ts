@@ -95,6 +95,9 @@ export interface Exam {
   durationMinutes: number;
   passCriteriaPercent: number;
   randomizeOrder: boolean;
+  schedulingEnabled: boolean;
+  availabilityWindowStart: string | null;
+  availabilityWindowEnd: string | null;
   createdAt: string;
   sections: ExamSection[];
 }
@@ -174,7 +177,15 @@ export interface AttemptMessageSummary {
 }
 
 export interface AttemptPreview {
-  exam: { title: string; instructions: string | null; durationMinutes: number };
+  exam: {
+    title: string;
+    instructions: string | null;
+    durationMinutes: number;
+    schedulingEnabled: boolean;
+    availabilityWindowStart: string | null;
+    availabilityWindowEnd: string | null;
+  };
+  schedulingWindowState: 'not_open' | 'open' | 'closed' | null;
 }
 
 export interface AttemptState {

@@ -27,6 +27,9 @@ interface CreateExamInput {
   durationMinutes?: number;
   passCriteriaPercent?: number;
   randomizeOrder?: boolean;
+  schedulingEnabled?: boolean;
+  availabilityWindowStart?: string;
+  availabilityWindowEnd?: string;
 }
 
 export function useCreateExam() {
