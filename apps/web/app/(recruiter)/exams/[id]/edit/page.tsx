@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ExamDetailsForm } from '../../../../../components/ExamDetailsForm';
 import { ExamSectionsPanel } from '../../../../../components/ExamSectionsPanel';
+import { LiveMonitoringPanel } from '../../../../../components/LiveMonitoringPanel';
 import { useExam, useUpdateExam, usePublishExam } from '../../../../../lib/hooks/useExams';
 import { Tabs, TabsList, TabsTrigger, TabsContent, Button, useToast } from '../../../../../components/ui';
 
@@ -47,6 +48,7 @@ export default function EditExamPage() {
         <TabsList>
           <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="sections">Sections &amp; Questions</TabsTrigger>
+          <TabsTrigger value="live">Live</TabsTrigger>
         </TabsList>
         <TabsContent value="details">
           <ExamDetailsForm
@@ -57,6 +59,9 @@ export default function EditExamPage() {
         </TabsContent>
         <TabsContent value="sections">
           <ExamSectionsPanel examId={exam.id} />
+        </TabsContent>
+        <TabsContent value="live">
+          <LiveMonitoringPanel examId={exam.id} />
         </TabsContent>
       </Tabs>
     </div>
