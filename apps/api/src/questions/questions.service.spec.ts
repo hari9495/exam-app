@@ -69,16 +69,18 @@ describe('QuestionsService', () => {
       ...codeDto,
       tags: [],
     };
-    tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
-      fn({ tag: { upsert: jest.fn() }, question: { create: jest.fn().mockResolvedValue(created) } }),
-    );
+    const questionCreate = jest.fn().mockResolvedValue(created);
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ tag: { upsert: jest.fn() }, question: { create: questionCreate } }));
 
     const result = await service.create(context, 'user-1', codeDto);
 
     expect(result.type).toBe('code');
-    expect(result.codeLanguage).toBe('javascript');
-    expect(result.starterCode).toBe('function reverse(str) {\n  \n}');
     expect(result.options).toEqual([]);
+    expect(questionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ codeLanguage: 'javascript', starterCode: 'function reverse(str) {\n  \n}' }),
+      }),
+    );
   });
 
   it('resolves tag names into Tag rows and links them when creating a question, deduping and trimming input', async () => {
