@@ -291,3 +291,25 @@ export interface AttemptInsight {
   summary: string | null;
   generatedAt: string;
 }
+
+export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
+
+export interface RosterRow {
+  candidateId: string;
+  candidateName: string;
+  invitationId: string;
+  attemptId: string | null;
+  status: string;
+  online: boolean;
+  remainingSeconds: number | null;
+  answeredCount: number | null;
+  totalQuestions: number | null;
+}
+
+export interface ProctoringFlag {
+  attemptId: string;
+  candidateId: string;
+  eventType: string;
+  severity: string;
+  occurredAt: string;
+}
