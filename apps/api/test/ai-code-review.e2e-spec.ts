@@ -95,15 +95,12 @@ describe('AI Code Review flow', () => {
   });
 
   afterAll(async () => {
-    // See exam-code-grading.e2e-spec.ts's afterAll for the full explanation: this spec also
-    // grants a recruiter permissions that write audit_logs rows (regenerating/grading a code
-    // review) and then deletes that same user in cleanup, which hits the real (NO ACTION, not
-    // ON DELETE SET NULL) audit_logs_actor_user_id_fkey behavior on this database. Null out this
-    // org's audit rows first, and keep the whole cleanup body in try/finally so app teardown
-    // always runs even if a cleanup step throws — otherwise the Nest apps stay open and the Jest
-    // process hangs on exit instead of failing loudly.
+    // try/finally: any cleanup step throwing must not skip closing the Nest apps below — an
+    // unclosed app leaves DB connections/listeners open and hangs the Jest process on exit
+    // instead of failing loudly. (audit_logs_actor_user_id_fkey's ON DELETE SET NULL cascade
+    // handles the user-delete-after-audit-write case here; see migration
+    // 20260715210000_fix_audit_log_actor_fk_set_null.)
     try {
-      await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.auditLog.updateMany({ where: { organizationId: orgId }, data: { actorUserId: null } }));
       await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.exam.deleteMany({ where: { organizationId: orgId } }));
       await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.question.deleteMany({ where: { organizationId: orgId } }));
       await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.candidate.deleteMany({ where: { organizationId: orgId } }));
