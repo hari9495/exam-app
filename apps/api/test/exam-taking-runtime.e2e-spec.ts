@@ -212,7 +212,7 @@ describe('Exam-Taking Runtime HTTP flow', () => {
       .set('Authorization', `Bearer ${candidateAccessToken}`)
       .expect(200);
     const multiMcqAnswer = markedOnlyState.body.answers.find((answer: Record<string, unknown>) => answer.questionId === multiMcqId);
-    expect(multiMcqAnswer).toEqual({ questionId: multiMcqId, selectedOptionIds: [], isMarkedForReview: true });
+    expect(multiMcqAnswer).toEqual({ questionId: multiMcqId, selectedOptionIds: [], answerText: null, isMarkedForReview: true });
 
     const partialMultiOptionId = multiMcqOptions.find((option) => option.text === '2')!.id;
     await request(runtimeHttp)
