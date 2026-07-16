@@ -42,6 +42,14 @@ test('recruiter creates an exam, adds a section and question, publishes, adds a 
   await page.getByRole('button', { name: 'Publish' }).click();
   await expect(page).toHaveURL(/\/exams$/);
 
+  await page.getByRole('row', { name: examTitle }).getByRole('button', { name: 'Duplicate' }).click();
+  await expect(page).toHaveURL(/\/exams\/.+\/edit$/);
+  await expect(page.getByLabel('Title')).toHaveValue(`${examTitle} (Copy)`);
+
+  await page.getByRole('link', { name: 'Exams' }).click();
+  await expect(page).toHaveURL(/\/exams$/);
+  await expect(page.getByRole('row', { name: `${examTitle} (Copy)` }).getByText('draft')).toBeVisible();
+
   await page.getByRole('link', { name: 'Candidates' }).click();
   const candidateEmail = `golden-${Date.now()}@example.com`;
   await page.getByLabel('Name').fill('Golden Path Candidate');
