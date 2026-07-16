@@ -286,4 +286,43 @@ describe('Candidates & Invitations HTTP flow', () => {
       .send({ candidateIds: [candidateIds[0]] })
       .expect(403);
   });
+
+  it('bulk-uploads a CSV of candidates and invites them, splitting created/skipped/errors', async () => {
+    const csv = [
+      'Email,Name,Phone',
+      'frank@ci-http.test,Frank,555-2000',
+      'alice@ci-http.test,Alice Renamed,',
+      'not-an-email,Bad Row,',
+    ].join('\n');
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/candidates/bulk-upload-invite')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .field('examId', examId)
+      .attach('file', Buffer.from(csv), { filename: 'candidates.csv', contentType: 'text/csv' })
+      .expect(201);
+
+    expect(response.body.created).toHaveLength(1);
+    expect(response.body.created[0].candidateId).toBeDefined();
+    expect(response.body.skipped).toEqual([{ email: 'alice@ci-http.test', reason: 'Candidate already has a live invitation for this exam' }]);
+    expect(response.body.errors).toEqual([{ row: 3, message: 'Invalid or missing email: "not-an-email"' }]);
+
+    const listResponse = await request(app.getHttpServer())
+      .get('/api/v1/candidates')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(200);
+    const frank = listResponse.body.find((c: { email: string }) => c.email === 'frank@ci-http.test');
+    expect(frank).toBeDefined();
+    const alice = listResponse.body.find((c: { email: string }) => c.email === 'alice@ci-http.test');
+    expect(alice.name).toBe('Alice Renamed');
+  });
+
+  it('rejects a bulk upload+invite file with an unsupported extension', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/candidates/bulk-upload-invite')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .field('examId', examId)
+      .attach('file', Buffer.from('irrelevant'), { filename: 'candidates.txt', contentType: 'text/plain' })
+      .expect(400);
+  });
 });

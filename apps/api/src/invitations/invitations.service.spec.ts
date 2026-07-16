@@ -326,4 +326,83 @@ describe('InvitationsService', () => {
     await expect(service.revoke(context, 'user-1', 'missing-inv')).rejects.toThrow(NotFoundException);
     expect(audit.record).not.toHaveBeenCalled();
   });
+
+  describe('bulkUploadAndInvite', () => {
+    it('creates/updates candidates from a CSV, invites them, and reports skips and errors separately', async () => {
+      const csv = [
+        'Email,Name,Phone',
+        'new@test.com,New Person,',
+        'existing@test.com,Existing Updated,555-0002',
+        'not-an-email,Bad Row,',
+      ].join('\n');
+      const file = { originalname: 'candidates.csv', size: Buffer.byteLength(csv), buffer: Buffer.from(csv) } as Express.Multer.File;
+
+      const examCheckTx = { exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', title: 'Backend Round', status: 'published' }) } };
+      const candidateLoopTx = {
+        candidate: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce({ id: 'cand-existing', email: 'existing@test.com' }),
+          create: jest.fn().mockResolvedValue({ id: 'cand-new', email: 'new@test.com' }),
+          update: jest.fn().mockResolvedValue({ id: 'cand-existing', email: 'existing@test.com' }),
+        },
+      };
+      const bulkInviteTx = {
+        exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', title: 'Backend Round', status: 'published' }) },
+        candidate: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'cand-new', email: 'new@test.com', name: 'New Person', erasedAt: null },
+            { id: 'cand-existing', email: 'existing@test.com', name: 'Existing Updated', erasedAt: null },
+          ]),
+        },
+        invitation: {
+          findMany: jest.fn().mockResolvedValue([{ candidateId: 'cand-existing' }]),
+          create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-new', status: 'invited' }),
+        },
+      };
+      // Three sequential forTenant calls, in order: the exam-published check, the
+      // candidate create/update loop, and bulkInvite's own internal transaction.
+      // A 4th call (the fire-and-forget notification write inside dispatchInvitationEmail)
+      // happens asynchronously after this method returns and is not awaited here --
+      // matching how the existing bulkInvite test above only asserts on it after an
+      // explicit microtask flush. It's left unmocked; an unmocked forTenant call falls
+      // through to undefined, which dispatchInvitationEmail awaits harmlessly since its
+      // caller already wraps it in .catch().
+      tenantPrisma.forTenant
+        .mockImplementationOnce((_ctx, fn) => fn(examCheckTx))
+        .mockImplementationOnce((_ctx, fn) => fn(candidateLoopTx))
+        .mockImplementationOnce((_ctx, fn) => fn(bulkInviteTx));
+
+      const result = await service.bulkUploadAndInvite(context, 'exam-1', file);
+
+      expect(result.created).toHaveLength(1);
+      expect(result.created[0].candidateId).toBe('cand-new');
+      expect(result.skipped).toEqual([{ email: 'existing@test.com', reason: 'Candidate already has a live invitation for this exam' }]);
+      expect(result.errors).toEqual([{ row: 3, message: 'Invalid or missing email: "not-an-email"' }]);
+      expect(candidateLoopTx.candidate.create).toHaveBeenCalledWith({
+        data: { organizationId: 'org-1', email: 'new@test.com', name: 'New Person', phone: undefined },
+      });
+      expect(candidateLoopTx.candidate.update).toHaveBeenCalledWith({
+        where: { id: 'cand-existing' },
+        data: { name: 'Existing Updated', phone: '555-0002' },
+      });
+    });
+
+    it('rejects the whole request when the exam is not published, before any candidate is created', async () => {
+      const csv = 'Email,Name,Phone\nalice@test.com,Alice,';
+      const file = { originalname: 'candidates.csv', size: Buffer.byteLength(csv), buffer: Buffer.from(csv) } as Express.Multer.File;
+      const tx = { exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'draft' }) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.bulkUploadAndInvite(context, 'exam-1', file)).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects a file with an unsupported extension before touching the exam or database', async () => {
+      const file = { originalname: 'candidates.txt', size: 10, buffer: Buffer.from('irrelevant') } as Express.Multer.File;
+
+      await expect(service.bulkUploadAndInvite(context, 'exam-1', file)).rejects.toThrow(BadRequestException);
+      expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -5,6 +5,13 @@ import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
+import {
+  parseBulkInviteFile,
+  detectFileKind,
+  MAX_BULK_INVITE_SIZE_BYTES,
+  MAX_BULK_INVITE_ROWS,
+  BulkInviteRowError,
+} from '../candidates/bulk-invite-parser';
 
 const INVITATION_EXPIRY_DAYS = 7;
 
@@ -28,6 +35,12 @@ function resolveInvitationExpiry(exam: { schedulingEnabled: boolean; availabilit
 export interface BulkInviteResult {
   created: Invitation[];
   skipped: { candidateId: string; reason: string }[];
+}
+
+export interface BulkUploadInviteResult {
+  created: Invitation[];
+  skipped: { email: string; reason: string }[];
+  errors: BulkInviteRowError[];
 }
 
 @Injectable()
@@ -107,6 +120,86 @@ export class InvitationsService {
     }
 
     return { created: createdWithCandidate.map((c) => c.invitation), skipped };
+  }
+
+  async bulkUploadAndInvite(context: TenantContext, examId: string, file: Express.Multer.File): Promise<BulkUploadInviteResult> {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+    const kind = detectFileKind(file.originalname);
+    if (!kind) {
+      throw new BadRequestException('File must be a .csv or .xlsx file');
+    }
+    if (file.size > MAX_BULK_INVITE_SIZE_BYTES) {
+      throw new BadRequestException('File must be 5MB or smaller');
+    }
+
+    const exam = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.exam.findFirst({ where: { id: examId, organizationId: context.organizationId as string } }),
+    );
+    if (!exam) {
+      throw new NotFoundException(`Exam ${examId} not found`);
+    }
+    if (exam.status !== 'published') {
+      throw new BadRequestException(`Exam ${examId} must be published before candidates can be invited`);
+    }
+
+    // parseBulkInviteFile parses per-row data issues (bad email, missing name) into
+    // BulkInviteRowError entries, but a structurally malformed CSV (unmatched quotes,
+    // etc.) makes the underlying csv-parse call throw directly instead. Without this
+    // catch, that throw would escape as a plain Error and Nest's default handler would
+    // turn it into an unhandled 500 rather than a clean 4xx.
+    let rows: Awaited<ReturnType<typeof parseBulkInviteFile>>['rows'];
+    let parseErrors: BulkInviteRowError[];
+    try {
+      ({ rows, errors: parseErrors } = await parseBulkInviteFile(file.buffer, kind));
+    } catch (error) {
+      throw new BadRequestException(`Unable to parse file: ${error instanceof Error ? error.message : 'invalid file'}`);
+    }
+    if (rows.length + parseErrors.length > MAX_BULK_INVITE_ROWS) {
+      throw new BadRequestException(
+        `File must contain at most ${MAX_BULK_INVITE_ROWS} candidates (found ${rows.length + parseErrors.length})`,
+      );
+    }
+
+    const candidateIds: string[] = [];
+    const emailByCandidateId = new Map<string, string>();
+
+    await this.tenantPrisma.forTenant(context, async (tx) => {
+      for (const row of rows) {
+        const existing = await tx.candidate.findFirst({
+          where: { organizationId: context.organizationId as string, email: row.email },
+        });
+        let candidateId: string;
+        if (existing) {
+          const updated = await tx.candidate.update({
+            where: { id: existing.id },
+            data: { name: row.name, phone: row.phone },
+          });
+          candidateId = updated.id;
+        } else {
+          const created = await tx.candidate.create({
+            data: {
+              organizationId: context.organizationId as string,
+              email: row.email,
+              name: row.name,
+              phone: row.phone,
+            },
+          });
+          candidateId = created.id;
+        }
+        candidateIds.push(candidateId);
+        emailByCandidateId.set(candidateId, row.email);
+      }
+    });
+
+    const inviteResult = await this.bulkInvite(context, examId, candidateIds);
+
+    return {
+      created: inviteResult.created,
+      skipped: inviteResult.skipped.map((s) => ({ email: emailByCandidateId.get(s.candidateId) ?? s.candidateId, reason: s.reason })),
+      errors: parseErrors,
+    };
   }
 
   async list(context: TenantContext, examId: string): Promise<(Omit<Invitation, 'token'> & { candidate: Candidate })[]> {
