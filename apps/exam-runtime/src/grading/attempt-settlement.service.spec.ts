@@ -25,14 +25,14 @@ describe('AttemptSettlementService', () => {
   describe('remainingSeconds', () => {
     it('returns a positive value before the exam duration has elapsed', () => {
       const startedAt = new Date(Date.now() - 5 * 60_000);
-      const seconds = service.remainingSeconds(exam, { startedAt });
+      const seconds = service.remainingSeconds(exam, { startedAt, pausedDurationMs: 0, pausedAt: null, status: 'in_progress' });
       expect(seconds).toBeGreaterThan(0);
       expect(seconds).toBeLessThanOrEqual(25 * 60);
     });
 
     it('returns zero (not negative) once the duration has elapsed', () => {
       const startedAt = new Date(Date.now() - 60 * 60_000);
-      expect(service.remainingSeconds(exam, { startedAt })).toBe(0);
+      expect(service.remainingSeconds(exam, { startedAt, pausedDurationMs: 0, pausedAt: null, status: 'in_progress' })).toBe(0);
     });
   });
 

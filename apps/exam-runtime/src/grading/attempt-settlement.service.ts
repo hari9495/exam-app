@@ -22,11 +22,18 @@ export class AttemptSettlementService {
     private readonly attemptInsight: AttemptInsightService,
   ) {}
 
-  remainingSeconds(exam: Pick<SettlementExam, 'durationMinutes'>, attempt: { startedAt: Date }): number {
-    return computeRemainingSeconds(exam.durationMinutes, attempt.startedAt);
+  remainingSeconds(
+    exam: Pick<SettlementExam, 'durationMinutes'>,
+    attempt: { startedAt: Date; pausedDurationMs: number; pausedAt: Date | null; status: string },
+  ): number {
+    const frozenAt = attempt.status === 'paused' || attempt.status === 'blocked' ? attempt.pausedAt : null;
+    return computeRemainingSeconds(exam.durationMinutes, attempt.startedAt, attempt.pausedDurationMs, frozenAt);
   }
 
-  private isExpired(exam: Pick<SettlementExam, 'durationMinutes'>, attempt: { startedAt: Date }): boolean {
+  private isExpired(
+    exam: Pick<SettlementExam, 'durationMinutes'>,
+    attempt: { startedAt: Date; pausedDurationMs: number; pausedAt: Date | null; status: string },
+  ): boolean {
     return this.remainingSeconds(exam, attempt) <= 0;
   }
 

@@ -86,4 +86,21 @@ describe('computeRemainingSeconds', () => {
     const startedAt = new Date(Date.now() - 60 * 60_000);
     expect(computeRemainingSeconds(30, startedAt)).toBe(0);
   });
+
+  it('extends the deadline by pausedDurationMs', () => {
+    const startedAt = new Date(Date.now() - 40 * 60_000); // 40 min ago, on a 30-min exam — would be expired
+    const seconds = computeRemainingSeconds(30, startedAt, 15 * 60_000); // but 15 min of pause time is credited back
+    expect(seconds).toBeGreaterThan(0);
+    expect(seconds).toBeLessThanOrEqual(5 * 60);
+  });
+
+  it('freezes at the value computed at frozenAt, ignoring the real current time', () => {
+    const startedAt = new Date(Date.now() - 10 * 60_000);
+    const frozenAt = new Date(Date.now() - 5 * 60_000); // pause began 5 min ago
+    const seconds = computeRemainingSeconds(30, startedAt, 0, frozenAt);
+    // Same call a moment "later" (real Date.now() has advanced) must return the identical value.
+    const secondsAgain = computeRemainingSeconds(30, startedAt, 0, frozenAt);
+    expect(seconds).toBe(secondsAgain);
+    expect(seconds).toBe(25 * 60); // 30 min duration - 5 min elapsed at the moment it froze
+  });
 });

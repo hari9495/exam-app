@@ -43,7 +43,13 @@ export function computeResult(
   return { score, maxScore, percentage, passFail };
 }
 
-export function computeRemainingSeconds(durationMinutes: number, startedAt: Date): number {
-  const deadline = new Date(startedAt).getTime() + durationMinutes * 60_000;
-  return Math.max(0, Math.round((deadline - Date.now()) / 1000));
+export function computeRemainingSeconds(
+  durationMinutes: number,
+  startedAt: Date,
+  pausedDurationMs = 0,
+  frozenAt: Date | null = null,
+): number {
+  const deadline = new Date(startedAt).getTime() + durationMinutes * 60_000 + pausedDurationMs;
+  const now = frozenAt ? frozenAt.getTime() : Date.now();
+  return Math.max(0, Math.round((deadline - now) / 1000));
 }
