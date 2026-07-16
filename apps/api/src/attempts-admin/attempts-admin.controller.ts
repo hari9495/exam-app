@@ -26,6 +26,12 @@ export class AttemptsAdminController {
     return this.attemptsAdminService.forceSubmit(tenant, id, userId);
   }
 
+  @Post(':id/unblock')
+  @RequirePermissions('exam:manage')
+  unblock(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.attemptsAdminService.unblock(tenant, id, userId);
+  }
+
   @Post(':id/answers/:questionId/grade')
   @RequirePermissions('exam:manage')
   gradeCodeAnswer(

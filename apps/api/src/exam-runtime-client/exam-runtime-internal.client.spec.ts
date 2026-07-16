@@ -49,6 +49,21 @@ describe('ExamRuntimeInternalClient', () => {
     });
   });
 
+  describe('unblock', () => {
+    it('POSTs to the internal unblock endpoint and returns the status', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({ ok: true, json: async () => ({ status: 'in_progress' }) });
+
+      const result = await client.unblock('attempt-1');
+
+      expect(global.fetch).toHaveBeenCalledWith('http://localhost:3002/api/v1/internal/attempts/attempt-1/unblock', {
+        method: 'POST',
+        headers: { 'x-internal-secret': 'test-internal-secret' },
+        signal: expect.any(AbortSignal),
+      });
+      expect(result).toEqual({ status: 'in_progress' });
+    });
+  });
+
   describe('gradeCodeAnswer', () => {
     it('POSTs to the internal grade endpoint and returns the parsed result', async () => {
       const result = { questionId: 'question-1', marksAwarded: 8, gradingFeedback: 'Nice' };

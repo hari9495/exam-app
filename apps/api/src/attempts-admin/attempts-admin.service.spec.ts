@@ -10,6 +10,7 @@ describe('AttemptsAdminService', () => {
   let audit: { record: jest.Mock };
   let examRuntime: {
     forceSubmit: jest.Mock;
+    unblock: jest.Mock;
     reanalyze: jest.Mock;
     notifyMessageSent: jest.Mock;
     regenerateInsight: jest.Mock;
@@ -22,6 +23,7 @@ describe('AttemptsAdminService', () => {
     audit = { record: jest.fn() };
     examRuntime = {
       forceSubmit: jest.fn(),
+      unblock: jest.fn(),
       reanalyze: jest.fn(),
       notifyMessageSent: jest.fn(),
       regenerateInsight: jest.fn(),
@@ -83,6 +85,30 @@ describe('AttemptsAdminService', () => {
         actorUserId: 'user-1', action: 'attempt.force_submit', entityType: 'attempt', entityId: 'attempt-1',
       });
       expect(result).toEqual({ status: 'force_submitted' });
+    });
+  });
+
+  describe('unblock', () => {
+    it('throws NotFoundException without calling the internal client when the attempt is not owned', async () => {
+      const tx = { attempt: { findFirst: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.unblock(context, 'attempt-1', 'user-1')).rejects.toThrow(NotFoundException);
+      expect(examRuntime.unblock).not.toHaveBeenCalled();
+    });
+
+    it('proxies to examRuntime.unblock and records an audit entry', async () => {
+      const tx = { attempt: { findFirst: jest.fn().mockResolvedValue({ id: 'attempt-1' }) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      examRuntime.unblock.mockResolvedValue({ status: 'in_progress' });
+
+      const result = await service.unblock(context, 'attempt-1', 'user-1');
+
+      expect(examRuntime.unblock).toHaveBeenCalledWith('attempt-1');
+      expect(audit.record).toHaveBeenCalledWith(context, {
+        actorUserId: 'user-1', action: 'attempt.unblock', entityType: 'attempt', entityId: 'attempt-1',
+      });
+      expect(result).toEqual({ status: 'in_progress' });
     });
   });
 

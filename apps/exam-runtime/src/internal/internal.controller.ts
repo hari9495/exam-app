@@ -43,6 +43,21 @@ export class InternalController {
     return { status: finalized.status };
   }
 
+  @Post('attempts/:id/unblock')
+  async unblock(@Param('id') id: string) {
+    const updated = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { id } });
+      if (!attempt) {
+        throw new NotFoundException(`Attempt ${id} not found`);
+      }
+      if (attempt.status !== 'blocked') {
+        throw new BadRequestException(`Attempt ${id} cannot be unblocked from status "${attempt.status}"`);
+      }
+      return this.attemptSettlement.resumeFromPause(tx, attempt);
+    });
+    return { status: updated.status };
+  }
+
   @Post('attempts/:id/answers/:questionId/grade')
   async gradeCodeAnswer(@Param('id') id: string, @Param('questionId') questionId: string, @Body() dto: GradeCodeAnswerDto) {
     return this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {

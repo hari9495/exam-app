@@ -37,6 +37,15 @@ export class ExamRuntimeInternalClient {
     return response.json();
   }
 
+  async unblock(attemptId: string): Promise<{ status: string }> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/attempts/${attemptId}/unblock`, {
+      method: 'POST',
+      headers: this.headers(),
+    });
+    await this.throwIfNotOk(response);
+    return response.json();
+  }
+
   async gradeCodeAnswer(attemptId: string, questionId: string, payload: GradeCodeAnswerPayload): Promise<GradeCodeAnswerResult> {
     const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/attempts/${attemptId}/answers/${questionId}/grade`, {
       method: 'POST',

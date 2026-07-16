@@ -11,7 +11,7 @@ import { ATTEMPT_STATUS_BROADCASTER } from '../monitoring/attempt-status-broadca
 describe('InternalController', () => {
   let controller: InternalController;
   let tenantPrisma: { forTenant: jest.Mock };
-  let attemptSettlement: { finalize: jest.Mock; settleIfExpired: jest.Mock; finalizeManualGrade: jest.Mock };
+  let attemptSettlement: { finalize: jest.Mock; settleIfExpired: jest.Mock; finalizeManualGrade: jest.Mock; resumeFromPause: jest.Mock };
   let attemptAnalysis: { analyze: jest.Mock };
   let attemptInsight: { analyze: jest.Mock };
   let codeReviewService: { analyze: jest.Mock };
@@ -19,7 +19,7 @@ describe('InternalController', () => {
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
-    attemptSettlement = { finalize: jest.fn(), settleIfExpired: jest.fn(), finalizeManualGrade: jest.fn() };
+    attemptSettlement = { finalize: jest.fn(), settleIfExpired: jest.fn(), finalizeManualGrade: jest.fn(), resumeFromPause: jest.fn() };
     attemptAnalysis = { analyze: jest.fn() };
     attemptInsight = { analyze: jest.fn() };
     codeReviewService = { analyze: jest.fn() };
@@ -70,6 +70,24 @@ describe('InternalController', () => {
       expect(tenantPrisma.forTenant).toHaveBeenCalledWith({ organizationId: null, isSuperAdmin: true }, expect.any(Function));
       expect(attemptSettlement.finalize).toHaveBeenCalledWith(tx, exam, attempt, 'force_submitted');
       expect(result).toEqual({ status: 'force_submitted' });
+    });
+  });
+
+  describe('unblock', () => {
+    it('throws BadRequestException when the attempt is not blocked', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn({ attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) } }));
+
+      await expect(controller.unblock('attempt-1')).rejects.toThrow(BadRequestException);
+    });
+
+    it('resumes a blocked attempt via AttemptSettlementService.resumeFromPause', async () => {
+      const attempt = { id: 'attempt-1', status: 'blocked' };
+      tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn({ attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } }));
+      attemptSettlement.resumeFromPause = jest.fn().mockResolvedValue({ ...attempt, status: 'in_progress' });
+
+      const result = await controller.unblock('attempt-1');
+
+      expect(result).toEqual({ status: 'in_progress' });
     });
   });
 

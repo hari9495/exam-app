@@ -38,6 +38,21 @@ export class AttemptsAdminService {
     return result;
   }
 
+  async unblock(context: TenantContext, attemptId: string, actorUserId: string): Promise<{ status: string }> {
+    await this.requireOwnedAttempt(context, attemptId);
+
+    const result = await this.examRuntime.unblock(attemptId);
+
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'attempt.unblock',
+      entityType: 'attempt',
+      entityId: attemptId,
+    });
+
+    return result;
+  }
+
   async gradeCodeAnswer(
     context: TenantContext,
     attemptId: string,
