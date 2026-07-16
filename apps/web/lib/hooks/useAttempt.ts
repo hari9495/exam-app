@@ -106,6 +106,22 @@ export function useSubmitAttempt() {
   });
 }
 
+export interface RunCodeResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  compileError: string | null;
+  timedOut: boolean;
+}
+
+export function useRunCode() {
+  const { accessToken } = useCandidateAuth();
+  return useMutation({
+    mutationFn: ({ questionId, code, stdin }: { questionId: string; code: string; stdin?: string }): Promise<RunCodeResult> =>
+      candidateApiFetch('/attempt/run-code', { method: 'POST', body: JSON.stringify({ questionId, code, stdin }) }, accessToken ?? undefined),
+  });
+}
+
 export function useReportProctoringEvent() {
   const { accessToken } = useCandidateAuth();
   return function report(eventType: ProctoringEventType, metadata?: Record<string, unknown>) {

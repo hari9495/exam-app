@@ -2,7 +2,7 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastProvider } from '../../components/ui';
 import { CandidateAuthProvider } from '../candidate-auth-context';
-import { useAttemptQuery, useAnswerMutation } from './useAttempt';
+import { useAttemptQuery, useAnswerMutation, useRunCode } from './useAttempt';
 
 const mockToast = jest.fn();
 jest.mock('../../components/ui', () => {
@@ -148,5 +148,39 @@ describe('useAnswerMutation', () => {
     expect(answerAttempts).toBe(3);
     expect(mockToast).toHaveBeenCalledTimes(1);
     expect(mockToast).toHaveBeenCalledWith(expect.any(String), 'error');
+  });
+});
+
+describe('useRunCode', () => {
+  const originalFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('posts the code and stdin to /attempt/run-code and returns the sandbox result', async () => {
+    const calls: { url: string; body: unknown }[] = [];
+    global.fetch = jest.fn(async (url, options) => {
+      if (String(url).endsWith('/candidate-auth/refresh')) {
+        return new Response(JSON.stringify({ message: 'none' }), { status: 401 });
+      }
+      calls.push({ url: String(url), body: JSON.parse((options as RequestInit).body as string) });
+      return new Response(
+        JSON.stringify({ stdout: 'hi\n', stderr: '', exitCode: 0, compileError: null, timedOut: false }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+
+    let hook: ReturnType<typeof useRunCode> | undefined;
+    function Probe() {
+      hook = useRunCode();
+      return null;
+    }
+    render(<Probe />, { wrapper });
+
+    const result = await hook!.mutateAsync({ questionId: 'q-1', code: 'print("hi")', stdin: 'Alice' });
+
+    expect(result).toEqual({ stdout: 'hi\n', stderr: '', exitCode: 0, compileError: null, timedOut: false });
+    expect(calls[0].url).toContain('/attempt/run-code');
+    expect(calls[0].body).toEqual({ questionId: 'q-1', code: 'print("hi")', stdin: 'Alice' });
   });
 });

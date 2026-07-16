@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useRouter } from 'next/navigation';
-import { useAttemptQuery, useAnswerMutation, useSubmitAttempt } from '../../../lib/hooks/useAttempt';
+import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode } from '../../../lib/hooks/useAttempt';
 import { useCountdown } from '../../../lib/hooks/useCountdown';
 import { useProctoringMonitor } from '../../../lib/hooks/useProctoringMonitor';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
@@ -12,6 +12,7 @@ jest.mock('../../../lib/hooks/useAttempt', () => ({
   useAttemptQuery: jest.fn(),
   useAnswerMutation: jest.fn(),
   useSubmitAttempt: jest.fn(),
+  useRunCode: jest.fn(),
 }));
 jest.mock('../../../lib/hooks/useCountdown', () => ({ useCountdown: jest.fn() }));
 jest.mock('../../../lib/hooks/useProctoringMonitor', () => ({ useProctoringMonitor: jest.fn() }));
@@ -55,6 +56,7 @@ const codeAttemptState = {
           codeLanguage: 'javascript',
           starterCode: 'function add(a, b) {}',
           options: [],
+          allowStdin: false,
         },
       ],
     },
@@ -63,17 +65,24 @@ const codeAttemptState = {
   messages: [],
 };
 
+const codeAttemptStateWithStdin = {
+  ...codeAttemptState,
+  sections: [{ ...codeAttemptState.sections[0], questions: [{ ...codeAttemptState.sections[0].questions[0], allowStdin: true }] }],
+};
+
 describe('CandidateExamPage', () => {
   const push = jest.fn();
   const saveAnswer = jest.fn();
   const flush = jest.fn().mockResolvedValue(undefined);
   const mutateAsync = jest.fn().mockResolvedValue({ status: 'submitted' });
+  const runCodeMutate = jest.fn();
 
   beforeEach(() => {
     push.mockClear();
     saveAnswer.mockClear();
     flush.mockClear();
     mutateAsync.mockClear();
+    runCodeMutate.mockClear();
     (useRouter as jest.Mock).mockReturnValue({ push });
     (useAttemptQuery as jest.Mock).mockReturnValue({ data: attemptState, isError: false });
     (useAnswerMutation as jest.Mock).mockReturnValue({ saveAnswer, flush });
@@ -81,6 +90,7 @@ describe('CandidateExamPage', () => {
     (useCountdown as jest.Mock).mockReturnValue(590);
     (useProctoringMonitor as jest.Mock).mockReturnValue(undefined);
     (useCandidateAuth as jest.Mock).mockReturnValue({ accessToken: 'token-1', isLoading: false });
+    (useRunCode as jest.Mock).mockReturnValue({ mutate: runCodeMutate, isPending: false });
   });
 
   it('renders the current question and saves an answer on selection', async () => {
@@ -218,5 +228,54 @@ describe('CandidateExamPage', () => {
     await userEvent.click(screen.getAllByRole('button', { name: 'Review & Submit' })[0]);
 
     expect(screen.getByText(/You have 1 unanswered question/)).toBeInTheDocument();
+  });
+
+  it('runs code and displays the output panel', async () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({ data: codeAttemptState, isError: false });
+    runCodeMutate.mockImplementation((_payload, { onSuccess }) =>
+      onSuccess({ stdout: 'hi\n', stderr: '', exitCode: 0, compileError: null, timedOut: false }),
+    );
+    render(<CandidateExamPage />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
+
+    expect(await screen.findByText('hi')).toBeInTheDocument();
+    expect(screen.getByText('Exit code: 0')).toBeInTheDocument();
+  });
+
+  it('shows the stdin box only when the question allows it', () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({ data: codeAttemptState, isError: false });
+    render(<CandidateExamPage />);
+    expect(screen.queryByLabelText('Standard input (optional)')).not.toBeInTheDocument();
+  });
+
+  it('shows the stdin box when the question allows it', () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({ data: codeAttemptStateWithStdin, isError: false });
+    render(<CandidateExamPage />);
+    expect(screen.getByLabelText('Standard input (optional)')).toBeInTheDocument();
+  });
+
+  it('shows the server-provided message when the sandbox is unavailable', async () => {
+    // This exact string is what apps/exam-runtime's runCode() sends as the HttpException
+    // message for a Piston failure (see Task 5, Step 5) — candidateApiFetch surfaces a failed
+    // response's body.message as the thrown Error's .message, and the page displays it as-is
+    // rather than a hardcoded string, so this test exercises the real end-to-end message path.
+    (useAttemptQuery as jest.Mock).mockReturnValue({ data: codeAttemptState, isError: false });
+    runCodeMutate.mockImplementation((_payload, { onError }) => onError(new Error("Couldn't run your code right now, try again.")));
+    render(<CandidateExamPage />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
+
+    expect(await screen.findByText("Couldn't run your code right now, try again.")).toBeInTheDocument();
+  });
+
+  it('shows the run-cap message when the cap is exceeded', async () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({ data: codeAttemptState, isError: false });
+    runCodeMutate.mockImplementation((_payload, { onError }) => onError(new Error('You have used all 30 runs for this question')));
+    render(<CandidateExamPage />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
+
+    expect(await screen.findByText('You have used all 30 runs for this question')).toBeInTheDocument();
   });
 });

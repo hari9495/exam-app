@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { Modal } from '../../../components/ui';
 import { CandidateButton } from '../components/CandidateButton';
 import { QuestionNavigator, flattenQuestions } from '../components/QuestionNavigator';
-import { useAttemptQuery, useAnswerMutation, useSubmitAttempt } from '../../../lib/hooks/useAttempt';
+import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode, RunCodeResult } from '../../../lib/hooks/useAttempt';
 import { useCountdown } from '../../../lib/hooks/useCountdown';
 import { useProctoringMonitor } from '../../../lib/hooks/useProctoringMonitor';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
@@ -41,11 +41,15 @@ export default function CandidateExamPage() {
   const { data: current, isError } = useAttemptQuery();
   const { saveAnswer, flush } = useAnswerMutation();
   const submitAttempt = useSubmitAttempt();
+  const runCode = useRunCode();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [navigatorOpen, setNavigatorOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [localSelections, setLocalSelections] = useState<Record<string, string[]>>({});
   const [localCodeValues, setLocalCodeValues] = useState<Record<string, string>>({});
+  const [stdinValue, setStdinValue] = useState('');
+  const [runResult, setRunResult] = useState<RunCodeResult | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
 
   const attemptState = current && isAttemptStarted(current) ? current : null;
   const isTerminal = Boolean(attemptState && attemptState.status !== 'in_progress');
@@ -118,6 +122,21 @@ export default function CandidateExamPage() {
     saveAnswer(question!.id, [], existingAnswer?.isMarkedForReview, next);
   }
 
+  function handleRun() {
+    if (!question) return;
+    setRunError(null);
+    runCode.mutate(
+      { questionId: question.id, code: codeValue, stdin: question.allowStdin ? stdinValue : undefined },
+      {
+        onSuccess: (result) => setRunResult(result),
+        // error.message carries the server's real message (e.g. the run-cap or
+        // sandbox_unavailable text set in apps/exam-runtime's runCode()) rather than a
+        // hardcoded string here, matching this codebase's established onError convention.
+        onError: (error) => setRunError(error instanceof Error ? error.message : "Couldn't run your code right now, try again."),
+      },
+    );
+  }
+
   async function handleConfirmSubmit() {
     setConfirmOpen(false);
     await finishSubmit();
@@ -152,13 +171,51 @@ export default function CandidateExamPage() {
           </div>
           <p className="mb-4 text-sm text-gray-800">{question.text}</p>
           {question.type === 'code' ? (
-            <Editor
-              height="400px"
-              language={question.codeLanguage ?? 'plaintext'}
-              value={codeValue}
-              onChange={handleCodeChange}
-              options={{ minimap: { enabled: false }, fontSize: 13 }}
-            />
+            <>
+              <Editor
+                height="400px"
+                language={question.codeLanguage ?? 'plaintext'}
+                value={codeValue}
+                onChange={handleCodeChange}
+                options={{ minimap: { enabled: false }, fontSize: 13 }}
+              />
+              {question.allowStdin ? (
+                <div className="mt-2 flex flex-col gap-1">
+                  <label htmlFor="stdin-input" className="text-xs font-medium text-gray-600">
+                    Standard input (optional)
+                  </label>
+                  <textarea
+                    id="stdin-input"
+                    aria-label="Standard input (optional)"
+                    value={stdinValue}
+                    onChange={(e) => setStdinValue(e.target.value)}
+                    className="rounded border border-gray-300 px-2 py-1 font-mono text-xs"
+                    rows={2}
+                  />
+                </div>
+              ) : null}
+              <div className="mt-2 flex items-center gap-2">
+                <CandidateButton variant="secondary" onClick={handleRun} disabled={runCode.isPending}>
+                  {runCode.isPending ? 'Running…' : 'Run'}
+                </CandidateButton>
+              </div>
+              {runError ? (
+                <div className="mt-2 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">{runError}</div>
+              ) : runResult ? (
+                <div className="mt-2 rounded border border-gray-200 bg-gray-50 p-2 font-mono text-xs">
+                  {runResult.compileError ? (
+                    <div className="text-red-700">{runResult.compileError}</div>
+                  ) : (
+                    <>
+                      {runResult.stdout ? <div className="whitespace-pre-wrap">{runResult.stdout}</div> : null}
+                      {runResult.stderr ? <div className="whitespace-pre-wrap text-red-700">{runResult.stderr}</div> : null}
+                      {runResult.timedOut ? <div className="text-amber-700">Your program was stopped for taking too long.</div> : null}
+                    </>
+                  )}
+                  <div className="mt-1 text-gray-500">Exit code: {runResult.exitCode}</div>
+                </div>
+              ) : null}
+            </>
           ) : (
             <div className="flex flex-col gap-2">
               {question.options.map((option) => (
