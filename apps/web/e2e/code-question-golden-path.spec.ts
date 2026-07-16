@@ -45,7 +45,7 @@ test('candidate writes and submits code, recruiter grades and finalizes the atte
 
   await page.getByRole('link', { name: 'Candidates' }).click();
   const candidateEmail = `code-path-${Date.now()}@example.com`;
-  await page.getByLabel('Name').fill('Code Path Candidate');
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Code Path Candidate');
   await page.getByLabel('Email').fill(candidateEmail);
   await page.getByRole('button', { name: 'Add candidate' }).click();
   await expect(page.getByText(candidateEmail)).toBeVisible();
@@ -81,6 +81,13 @@ test('candidate writes and submits code, recruiter grades and finalizes the atte
   await candidatePage.keyboard.insertText('function reverse(str) {\n  return str.split("").reverse().join("");\n}');
   // Wait for the debounced autosave to fire before submitting.
   await candidatePage.waitForResponse((response) => response.url().includes('/attempt/answer') && response.request().method() === 'POST');
+
+  await candidatePage.getByRole('button', { name: 'Run' }).click();
+  // Real Piston execution can take a second or two; wait for either a real result or the
+  // sandbox_unavailable error panel, rather than a fixed sleep.
+  await candidatePage.waitForResponse((response) => response.url().includes('/attempt/run-code'));
+  const resultPanel = candidatePage.getByText(/Exit code:|Couldn't run your code right now/);
+  await expect(resultPanel).toBeVisible({ timeout: 10000 });
 
   await candidatePage.getByRole('button', { name: 'Review & Submit' }).first().click();
   await candidatePage.getByRole('button', { name: 'Submit' }).click();
