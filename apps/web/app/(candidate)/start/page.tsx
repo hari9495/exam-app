@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
+import { TerminalCard } from '../components/TerminalCard';
 
 function StartRedeemer() {
   const router = useRouter();
@@ -23,23 +24,16 @@ function StartRedeemer() {
   }, [searchParams]);
 
   if (error) {
-    return (
-      <div className="max-w-md rounded-lg bg-white p-6 text-center shadow-sm">
-        <h1 className="mb-2 text-lg font-semibold text-gray-900">Can&apos;t open this invitation</h1>
-        <p className="text-sm text-gray-600">{error}</p>
-      </div>
-    );
+    return <TerminalCard tone="error" title="Can't open this invitation" body={error} />;
   }
 
-  return <p className="text-sm text-gray-500">Verifying your invitation…</p>;
+  return <TerminalCard tone="loading" title="Verifying your invitation" body="This only takes a moment." />;
 }
 
 export default function CandidateStartPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center p-8">
-      <Suspense fallback={<p className="text-sm text-gray-500">Loading…</p>}>
-        <StartRedeemer />
-      </Suspense>
-    </div>
+    <Suspense fallback={<TerminalCard tone="loading" title="Loading" body="This only takes a moment." />}>
+      <StartRedeemer />
+    </Suspense>
   );
 }
