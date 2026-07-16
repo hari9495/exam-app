@@ -293,5 +293,20 @@ describe('QuestionsService', () => {
       await expect(service.bulkUpload(context, 'user-1', file)).rejects.toThrow(BadRequestException);
       expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
     });
+
+    it('converts a structurally malformed CSV parse failure into a BadRequestException', async () => {
+      const malformedCsv = [
+        'Type,Text,Difficulty,Marks,NegativeMarks,Option1Text,Option1Correct,Option2Text,Option2Correct',
+        'single_mcq,"Unterminated quote,easy,5,0,3,FALSE,4,TRUE',
+      ].join('\n');
+      const file = {
+        originalname: 'questions.csv',
+        size: Buffer.byteLength(malformedCsv),
+        buffer: Buffer.from(malformedCsv),
+      } as Express.Multer.File;
+
+      await expect(service.bulkUpload(context, 'user-1', file)).rejects.toThrow(BadRequestException);
+      expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+    });
   });
 });

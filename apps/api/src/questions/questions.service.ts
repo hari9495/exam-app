@@ -211,7 +211,13 @@ export class QuestionsService {
       throw new BadRequestException('File must be 5MB or smaller');
     }
 
-    const { rows, errors: parseErrors } = await parseBulkQuestionFile(file.buffer, kind);
+    let rows: BulkQuestionRow[];
+    let parseErrors: BulkUploadRowError[];
+    try {
+      ({ rows, errors: parseErrors } = await parseBulkQuestionFile(file.buffer, kind));
+    } catch (error) {
+      throw new BadRequestException(`Unable to parse file: ${error instanceof Error ? error.message : 'invalid file'}`);
+    }
     if (rows.length + parseErrors.length > MAX_BULK_UPLOAD_ROWS) {
       throw new BadRequestException(
         `File must contain at most ${MAX_BULK_UPLOAD_ROWS} questions (found ${rows.length + parseErrors.length})`,
