@@ -35,7 +35,6 @@ test('candidate is blocked before the window opens and can start once the recrui
   await page.getByLabel('Window closes').fill(toLocalInputValue(inOneHour));
   await page.getByRole('button', { name: 'Create exam' }).click();
   await expect(page).toHaveURL(/\/exams\/.+\/edit$/);
-  const examUrl = page.url();
 
   await page.getByRole('tab', { name: 'Sections & Questions' }).click();
   await page.getByLabel('New section title').fill('Section One');
@@ -68,7 +67,8 @@ test('candidate is blocked before the window opens and can start once the recrui
   await expect(candidatePage.getByText(/opens on/i)).toBeVisible();
   await expect(candidatePage.getByRole('button', { name: 'Start exam' })).not.toBeVisible();
 
-  await page.goto(examUrl);
+  await page.getByRole('link', { name: 'Exams' }).click();
+  await page.getByRole('row', { name: examTitle }).getByRole('link', { name: 'Edit' }).click();
   await page.getByLabel('Window opens').fill(toLocalInputValue(new Date(Date.now() - 60 * 1000)));
   await page.getByRole('button', { name: 'Save details' }).click();
 

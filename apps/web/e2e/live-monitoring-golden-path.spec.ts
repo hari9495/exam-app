@@ -30,7 +30,6 @@ test('recruiter sees a candidate go live on the exam Live tab as they start thei
   await page.getByLabel('Title').fill(examTitle);
   await page.getByRole('button', { name: 'Create exam' }).click();
   await expect(page).toHaveURL(/\/exams\/.+\/edit$/);
-  const examUrl = page.url();
 
   await page.getByRole('tab', { name: 'Sections & Questions' }).click();
   await page.getByLabel('New section title').fill('Section One');
@@ -61,10 +60,11 @@ test('recruiter sees a candidate go live on the exam Live tab as they start thei
   const inviteToken: string = inviteBody.created[0].token;
 
   // Recruiter: open the exam's Live tab and wait for the roster to load
-  await page.goto(examUrl);
+  await page.getByRole('link', { name: 'Exams' }).click();
+  await page.getByRole('row', { name: examTitle }).getByRole('link', { name: 'Edit' }).click();
   await page.getByRole('tab', { name: 'Live' }).click();
   await expect(page.getByText('Live Path Candidate')).toBeVisible();
-  await expect(page.getByText('invited')).toBeVisible();
+  await expect(page.getByRole('row', { name: 'Live Path Candidate' }).getByText('invited')).toBeVisible();
 
   // Candidate: start the exam in a second, independent browser context
   const candidateContext = await browser.newContext();

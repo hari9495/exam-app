@@ -33,7 +33,6 @@ test('candidate writes and submits code, recruiter grades and finalizes the atte
   await page.getByLabel('Title').fill(examTitle);
   await page.getByRole('button', { name: 'Create exam' }).click();
   await expect(page).toHaveURL(/\/exams\/.+\/edit$/);
-  const examUrl = page.url();
 
   await page.getByRole('tab', { name: 'Sections & Questions' }).click();
   await page.getByLabel('New section title').fill('Section One');
@@ -89,7 +88,8 @@ test('candidate writes and submits code, recruiter grades and finalizes the atte
   await candidateContext.close();
 
   // Recruiter: open the Grading tab, grade the submission, finalize
-  await page.goto(examUrl);
+  await page.getByRole('link', { name: 'Exams' }).click();
+  await page.getByRole('row', { name: examTitle }).getByRole('link', { name: 'Edit' }).click();
   await page.getByRole('tab', { name: 'Grading' }).click();
   await expect(page.getByText('Code Path Candidate')).toBeVisible();
   await expect(page.getByText(/return str\.split/)).toBeVisible();
