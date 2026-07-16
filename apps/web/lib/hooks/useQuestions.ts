@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiFetch } from '../api-client';
+import { apiFetch, apiFetchBlob } from '../api-client';
 import { Question, QuestionType, Difficulty, Tag } from '../types';
 import { useAuth } from '../auth-context';
 
@@ -77,5 +77,35 @@ export function useUpdateQuestion(id: string) {
       queryClient.invalidateQueries({ queryKey: ['questions'] });
       queryClient.invalidateQueries({ queryKey: ['questions', id] });
     },
+  });
+}
+
+export interface BulkUploadRowError {
+  row: number;
+  message: string;
+}
+
+export interface BulkUploadResult {
+  created: Question[];
+  errors: BulkUploadRowError[];
+}
+
+export function useBulkUploadQuestions() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File): Promise<BulkUploadResult> => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return apiFetch('/questions/bulk-upload', { method: 'POST', body: formData }, accessToken ?? undefined);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['questions'] }),
+  });
+}
+
+export function useDownloadBulkUploadTemplate() {
+  const { accessToken } = useAuth();
+  return useMutation({
+    mutationFn: () => apiFetchBlob('/questions/bulk-upload/template', {}, accessToken ?? undefined),
   });
 }

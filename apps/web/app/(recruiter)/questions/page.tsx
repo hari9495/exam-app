@@ -40,9 +40,14 @@ export default function QuestionsPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Question Bank</h1>
-        <Link href="/questions/new">
-          <Button>New question</Button>
-        </Link>
+        <div className="flex gap-2">
+          <Link href="/questions/bulk-upload">
+            <Button variant="secondary">Bulk upload</Button>
+          </Link>
+          <Link href="/questions/new">
+            <Button>New question</Button>
+          </Link>
+        </div>
       </div>
       <Table columns={columns} rows={questions ?? []} rowKey={(q) => q.id} emptyMessage="No questions yet." />
     </div>
