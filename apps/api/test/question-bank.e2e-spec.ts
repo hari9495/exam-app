@@ -280,4 +280,50 @@ describe('Question Bank HTTP flow', () => {
       })
       .expect(400);
   });
+
+  it('downloads the bulk upload template as an xlsx file', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/questions/bulk-upload/template')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(200);
+
+    expect(response.headers['content-type']).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    expect(response.headers['content-disposition']).toContain('question-bulk-upload-template.xlsx');
+  });
+
+  it('bulk-uploads a CSV with valid and invalid rows, creating only the valid ones', async () => {
+    const csv = [
+      'Type,Text,Difficulty,Marks,Option1Text,Option1Correct,Option2Text,Option2Correct',
+      'true_false,Bulk row one,easy,2,True,TRUE,False,FALSE',
+      'true_false,Bulk row two - only one option,easy,2,True,TRUE,,',
+      'single_mcq,Bulk row three - no correct answer,easy,5,A,FALSE,B,FALSE',
+    ].join('\n');
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/questions/bulk-upload')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .attach('file', Buffer.from(csv), { filename: 'questions.csv', contentType: 'text/csv' })
+      .expect(201);
+
+    expect(response.body.created).toHaveLength(1);
+    expect(response.body.created[0].text).toBe('Bulk row one');
+    expect(response.body.errors).toEqual([
+      { row: 2, message: 'true_false questions must have exactly 2 options' },
+      { row: 3, message: 'single_mcq questions must have exactly 1 correct option' },
+    ]);
+
+    const listResponse = await request(app.getHttpServer())
+      .get('/api/v1/questions')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(200);
+    expect(listResponse.body.some((q: { text: string }) => q.text === 'Bulk row one')).toBe(true);
+  });
+
+  it('rejects a bulk upload file with an unsupported extension', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/questions/bulk-upload')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .attach('file', Buffer.from('irrelevant'), { filename: 'questions.txt', contentType: 'text/plain' })
+      .expect(400);
+  });
 });

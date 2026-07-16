@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, Question, QuestionOption, QuestionTag, Tag } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
@@ -7,6 +7,14 @@ import { UpdateQuestionDto } from './dto/update-question.dto';
 import { validateQuestionPayload } from './question-validation';
 import { JobsService } from '../jobs/jobs.service';
 import { AiGenerateQuestionsDto } from './dto/ai-generate-questions.dto';
+import {
+  parseBulkQuestionFile,
+  detectFileKind,
+  MAX_BULK_UPLOAD_SIZE_BYTES,
+  MAX_BULK_UPLOAD_ROWS,
+  BulkQuestionRow,
+  BulkUploadRowError,
+} from './bulk-upload-parser';
 
 type QuestionWithRelations = Question & { options?: QuestionOption[]; tags: (QuestionTag & { tag: Tag })[] };
 type QuestionResponse = Omit<QuestionWithRelations, 'tags'> & { tags: { id: string; name: string }[] };
@@ -18,6 +26,11 @@ interface QuestionFilters {
   tagId?: string;
   limit?: number;
   cursor?: string;
+}
+
+export interface BulkUploadResult {
+  created: QuestionResponse[];
+  errors: BulkUploadRowError[];
 }
 
 @Injectable()
@@ -184,6 +197,78 @@ export class QuestionsService {
       });
       return this.toResponse(published as QuestionWithRelations);
     });
+  }
+
+  async bulkUpload(context: TenantContext, userId: string, file: Express.Multer.File): Promise<BulkUploadResult> {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+    const kind = detectFileKind(file.originalname);
+    if (!kind) {
+      throw new BadRequestException('File must be a .csv or .xlsx file');
+    }
+    if (file.size > MAX_BULK_UPLOAD_SIZE_BYTES) {
+      throw new BadRequestException('File must be 5MB or smaller');
+    }
+
+    const { rows, errors: parseErrors } = await parseBulkQuestionFile(file.buffer, kind);
+    if (rows.length + parseErrors.length > MAX_BULK_UPLOAD_ROWS) {
+      throw new BadRequestException(
+        `File must contain at most ${MAX_BULK_UPLOAD_ROWS} questions (found ${rows.length + parseErrors.length})`,
+      );
+    }
+
+    const validationErrors: BulkUploadRowError[] = [];
+    const validRows: BulkQuestionRow[] = [];
+    for (const row of rows) {
+      try {
+        validateQuestionPayload({
+          type: row.type,
+          difficulty: row.difficulty,
+          marks: row.marks,
+          negativeMarks: row.negativeMarks,
+          options: row.options,
+          codeLanguage: row.codeLanguage,
+        });
+        validRows.push(row);
+      } catch (err) {
+        validationErrors.push({ row: row.rowNumber, message: err instanceof Error ? err.message : 'Invalid row' });
+      }
+    }
+
+    const created = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const results: QuestionResponse[] = [];
+      for (const row of validRows) {
+        const tagIds = await this.resolveTagIds(tx, context.organizationId as string, row.tags);
+        const question = await tx.question.create({
+          data: {
+            organizationId: context.organizationId as string,
+            type: row.type,
+            text: row.text,
+            topic: row.topic,
+            category: row.category,
+            difficulty: row.difficulty,
+            marks: row.marks,
+            negativeMarks: row.negativeMarks,
+            codeLanguage: row.codeLanguage,
+            starterCode: row.starterCode,
+            createdBy: userId,
+            options: {
+              create: row.options.map((o, index) => ({ text: o.text, isCorrect: o.isCorrect, orderIndex: index })),
+            },
+            tags: {
+              create: tagIds.map((tagId) => ({ tagId })),
+            },
+          },
+          include: { options: true, tags: { include: { tag: true } } },
+        });
+        results.push(this.toResponse(question as QuestionWithRelations));
+      }
+      return results;
+    });
+
+    const errors = [...parseErrors, ...validationErrors].sort((a, b) => a.row - b.row);
+    return { created, errors };
   }
 
   private async resolveTagIds(tx: Prisma.TransactionClient, organizationId: string, names: string[]): Promise<string[]> {

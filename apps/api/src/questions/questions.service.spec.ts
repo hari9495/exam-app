@@ -257,4 +257,41 @@ describe('QuestionsService', () => {
       await expect(service.publish(context, 'missing-id')).rejects.toThrow(NotFoundException);
     });
   });
+
+  describe('bulkUpload', () => {
+    it('creates valid rows and reports errors for invalid ones from a CSV file', async () => {
+      const csv = [
+        'Type,Text,Difficulty,Marks,NegativeMarks,Option1Text,Option1Correct,Option2Text,Option2Correct',
+        'single_mcq,What is 2+2?,easy,5,0,3,FALSE,4,TRUE',
+        'single_mcq,Bad row - two correct,easy,5,0,3,TRUE,4,TRUE',
+      ].join('\n');
+      const file = { originalname: 'questions.csv', size: Buffer.byteLength(csv), buffer: Buffer.from(csv) } as Express.Multer.File;
+
+      const tx = {
+        tag: { upsert: jest.fn() },
+        question: { create: jest.fn().mockResolvedValue({ id: 'q-1', options: [], tags: [] }) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.bulkUpload(context, 'user-1', file);
+
+      expect(result.created).toHaveLength(1);
+      expect(tx.question.create).toHaveBeenCalledTimes(1);
+      expect(result.errors).toEqual([{ row: 2, message: 'single_mcq questions must have exactly 1 correct option' }]);
+    });
+
+    it('rejects a file with an unsupported extension before parsing', async () => {
+      const file = { originalname: 'questions.txt', size: 10, buffer: Buffer.from('irrelevant') } as Express.Multer.File;
+
+      await expect(service.bulkUpload(context, 'user-1', file)).rejects.toThrow(BadRequestException);
+      expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+    });
+
+    it('rejects a file larger than 5MB', async () => {
+      const file = { originalname: 'questions.csv', size: 6 * 1024 * 1024, buffer: Buffer.from('Type,Text\n') } as Express.Multer.File;
+
+      await expect(service.bulkUpload(context, 'user-1', file)).rejects.toThrow(BadRequestException);
+      expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+    });
+  });
 });
