@@ -123,7 +123,7 @@ export interface Invitation {
 }
 
 export interface BulkInviteResult {
-  created: Invitation[];
+  created: (Invitation & { token: string })[];
   skipped: { candidateId: string; reason: string }[];
 }
 

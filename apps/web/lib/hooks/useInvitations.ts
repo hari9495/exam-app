@@ -19,7 +19,7 @@ export interface BulkUploadInviteRowError {
 }
 
 export interface BulkUploadInviteResult {
-  created: Invitation[];
+  created: (Invitation & { token: string })[];
   skipped: { email: string; reason: string }[];
   errors: BulkUploadInviteRowError[];
 }
