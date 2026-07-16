@@ -108,7 +108,7 @@ describe('AttemptService', () => {
         attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
         question: {
           findMany: jest.fn().mockResolvedValue([
-            { id: 'code-q1', text: 'Reverse a string', type: 'code', marks: 10, codeLanguage: 'python', starterCode: 'def reverse(s):\n    pass', options: [] },
+            { id: 'code-q1', text: 'Reverse a string', type: 'code', marks: 10, codeLanguage: 'python', starterCode: 'def reverse(s):\n    pass', allowStdin: true, options: [] },
           ]),
         },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
@@ -122,8 +122,9 @@ describe('AttemptService', () => {
 
       expect((result as any).sections[0].questions[0]).toEqual({
         id: 'code-q1', text: 'Reverse a string', type: 'code', marks: 10,
-        codeLanguage: 'python', starterCode: 'def reverse(s):\n    pass', options: [],
+        codeLanguage: 'python', starterCode: 'def reverse(s):\n    pass', allowStdin: true, options: [],
       });
+      expect((result as any).sections[0].questions.find((q: any) => q.type === 'code')?.allowStdin).toBe(true);
     });
 
     it('reorders a question\'s options according to optionOrderJson when present', async () => {

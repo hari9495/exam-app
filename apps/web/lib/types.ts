@@ -155,6 +155,7 @@ export interface AttemptQuestion {
   marks: number;
   codeLanguage: CodeLanguage | null;
   starterCode: string | null;
+  allowStdin: boolean;
   options: AttemptQuestionOption[];
 }
 

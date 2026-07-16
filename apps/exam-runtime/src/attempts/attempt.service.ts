@@ -22,6 +22,7 @@ interface AttemptQuestion {
   marks: number;
   codeLanguage: string | null;
   starterCode: string | null;
+  allowStdin: boolean;
   options: AttemptQuestionOption[];
 }
 
@@ -392,6 +393,7 @@ export class AttemptService {
             marks: question.marks,
             codeLanguage: question.codeLanguage,
             starterCode: question.starterCode,
+            allowStdin: question.allowStdin,
             options: orderedOptions.map((option) => ({ id: option.id, text: option.text })),
           };
         }),
