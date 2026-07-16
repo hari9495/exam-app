@@ -13,6 +13,7 @@ import { PistonClient, PistonExecuteResult } from '../code-execution/piston-clie
 import { RunLimiter } from '../code-execution/run-limiter';
 import { PISTON_LANGUAGE_MAP } from '../code-execution/piston-languages';
 import { RunCodeDto } from './dto/run-code.dto';
+import { WebcamViolationDto } from './dto/webcam-violation.dto';
 
 interface AttemptQuestionOption {
   id: string;
@@ -71,6 +72,7 @@ interface AttemptPreviewResponse {
 interface AttemptStateResponse {
   status: string;
   remainingSeconds: number;
+  webcamViolationCount: number;
   sections: AttemptSection[];
   answers: AttemptAnswerSummary[];
   messages: AttemptMessageSummary[];
@@ -121,6 +123,7 @@ export class AttemptService {
       return {
         status: settled.status,
         remainingSeconds: this.attemptSettlement.remainingSeconds(exam, settled),
+        webcamViolationCount: settled.webcamViolationCount,
         sections,
         answers: answers.map((answer) => ({
           questionId: answer.questionId,
@@ -369,6 +372,38 @@ export class AttemptService {
         occurredAt: event.occurredAt,
       });
       return { id: event.id, eventType: event.eventType, severity: event.severity };
+    });
+  }
+
+  async webcamViolation(session: CandidateSession, dto: WebcamViolationDto): Promise<{ strike: number; status: string }> {
+    const { organizationId, invitation } = await this.resolveContext(session.invitationId);
+
+    return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
+      if (!attempt) {
+        throw new NotFoundException('No attempt has been started');
+      }
+      if (attempt.status !== 'in_progress') {
+        throw new BadRequestException(`Cannot report a webcam violation — attempt status is "${attempt.status}"`);
+      }
+      const { attempt: updated, strike } = await this.attemptSettlement.registerWebcamViolation(tx, attempt, dto.reason, dto.snapshot);
+      return { strike, status: updated.status };
+    });
+  }
+
+  async webcamResume(session: CandidateSession): Promise<{ status: string }> {
+    const { organizationId, invitation } = await this.resolveContext(session.invitationId);
+
+    return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
+      if (!attempt) {
+        throw new NotFoundException('No attempt has been started');
+      }
+      if (attempt.status !== 'paused') {
+        throw new BadRequestException(`Cannot resume — attempt status is "${attempt.status}"`);
+      }
+      const updated = await this.attemptSettlement.resumeFromPause(tx, attempt);
+      return { status: updated.status };
     });
   }
 

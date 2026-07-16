@@ -11,7 +11,13 @@ import { RunLimiter } from '../code-execution/run-limiter';
 describe('AttemptService', () => {
   let service: AttemptService;
   let tenantPrisma: { forTenant: jest.Mock };
-  let settlement: { settleIfExpired: jest.Mock; finalize: jest.Mock; remainingSeconds: jest.Mock };
+  let settlement: {
+    settleIfExpired: jest.Mock;
+    finalize: jest.Mock;
+    remainingSeconds: jest.Mock;
+    registerWebcamViolation: jest.Mock;
+    resumeFromPause: jest.Mock;
+  };
   let monitoringGateway: { emitAttemptStatus: jest.Mock; emitProctoringFlag: jest.Mock };
   let pistonClient: { execute: jest.Mock };
   let runLimiter: { checkAndIncrement: jest.Mock };
@@ -24,7 +30,13 @@ describe('AttemptService', () => {
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
-    settlement = { settleIfExpired: jest.fn(), finalize: jest.fn(), remainingSeconds: jest.fn() };
+    settlement = {
+      settleIfExpired: jest.fn(),
+      finalize: jest.fn(),
+      remainingSeconds: jest.fn(),
+      registerWebcamViolation: jest.fn(),
+      resumeFromPause: jest.fn(),
+    };
     monitoringGateway = { emitAttemptStatus: jest.fn(), emitProctoringFlag: jest.fn() };
     pistonClient = { execute: jest.fn() };
     runLimiter = { checkAndIncrement: jest.fn() };
@@ -896,6 +908,48 @@ describe('AttemptService', () => {
       pistonClient.execute.mockRejectedValue(new Error('network error'));
 
       await expect(service.runCode(session, { questionId: 'q-code-1', code: 'x' })).rejects.toMatchObject({ status: 502 });
+    });
+  });
+
+  describe('webcamViolation', () => {
+    it('throws BadRequestException when the attempt is not in_progress', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'blocked' }) } };
+      mockBootstrapThenScoped(tx);
+
+      await expect(service.webcamViolation(session, { reason: 'no_face', snapshot: 'x' })).rejects.toThrow(BadRequestException);
+    });
+
+    it('delegates to AttemptSettlementService.registerWebcamViolation and returns strike/status', async () => {
+      const attempt = { id: 'attempt-1', status: 'in_progress', webcamViolationCount: 0 };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
+      mockBootstrapThenScoped(tx);
+      settlement.registerWebcamViolation = jest.fn().mockResolvedValue({ attempt: { ...attempt, status: 'paused', webcamViolationCount: 1 }, strike: 1 });
+
+      const result = await service.webcamViolation(session, { reason: 'no_face', snapshot: 'x' });
+
+      expect(result).toEqual({ strike: 1, status: 'paused' });
+      expect(settlement.registerWebcamViolation).toHaveBeenCalledWith(tx, attempt, 'no_face', 'x');
+    });
+  });
+
+  describe('webcamResume', () => {
+    it('throws BadRequestException when the attempt is not paused', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'blocked' }) } };
+      mockBootstrapThenScoped(tx);
+
+      await expect(service.webcamResume(session)).rejects.toThrow(BadRequestException);
+    });
+
+    it('delegates to AttemptSettlementService.resumeFromPause and returns the new status', async () => {
+      const attempt = { id: 'attempt-1', status: 'paused' };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
+      mockBootstrapThenScoped(tx);
+      settlement.resumeFromPause = jest.fn().mockResolvedValue({ ...attempt, status: 'in_progress' });
+
+      const result = await service.webcamResume(session);
+
+      expect(result).toEqual({ status: 'in_progress' });
+      expect(settlement.resumeFromPause).toHaveBeenCalledWith(tx, attempt);
     });
   });
 });
