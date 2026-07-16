@@ -1,0 +1,13 @@
+import ExcelJS from 'exceljs';
+
+const HEADERS = ['Email', 'Name', 'Phone'];
+const EXAMPLE_ROW = { Email: 'alice@example.com', Name: 'Alice Smith', Phone: '555-1234' };
+
+export async function generateBulkInviteTemplate(): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Candidates');
+  sheet.columns = HEADERS.map((header) => ({ header, key: header, width: 24 }));
+  sheet.addRow(EXAMPLE_ROW);
+  const arrayBuffer = await workbook.xlsx.writeBuffer();
+  return Buffer.from(arrayBuffer);
+}
