@@ -70,6 +70,41 @@ const codeAttemptStateWithStdin = {
   sections: [{ ...codeAttemptState.sections[0], questions: [{ ...codeAttemptState.sections[0].questions[0], allowStdin: true }] }],
 };
 
+const twoCodeQuestionsAttemptState = {
+  status: 'in_progress',
+  remainingSeconds: 590,
+  sections: [
+    {
+      title: 'Section One',
+      targetDurationMinutes: null,
+      questions: [
+        {
+          id: 'q1',
+          text: 'Write a function that adds two numbers.',
+          type: 'code',
+          marks: 5,
+          codeLanguage: 'javascript',
+          starterCode: 'function add(a, b) {}',
+          options: [],
+          allowStdin: false,
+        },
+        {
+          id: 'q2',
+          text: 'Write a function that subtracts two numbers.',
+          type: 'code',
+          marks: 5,
+          codeLanguage: 'javascript',
+          starterCode: 'function subtract(a, b) {}',
+          options: [],
+          allowStdin: false,
+        },
+      ],
+    },
+  ],
+  answers: [],
+  messages: [],
+};
+
 describe('CandidateExamPage', () => {
   const push = jest.fn();
   const saveAnswer = jest.fn();
@@ -277,5 +312,26 @@ describe('CandidateExamPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Run' }));
 
     expect(await screen.findByText('You have used all 30 runs for this question')).toBeInTheDocument();
+  });
+
+  it('keeps run output and stdin per-question, not shared across navigation', async () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({ data: twoCodeQuestionsAttemptState, isError: false });
+    runCodeMutate.mockImplementation((_payload, { onSuccess }) =>
+      onSuccess({ stdout: 'question one output\n', stderr: '', exitCode: 0, compileError: null, timedOut: false }),
+    );
+    render(<CandidateExamPage />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
+    expect(await screen.findByText('question one output')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next →' }));
+
+    expect(screen.getByText('Write a function that subtracts two numbers.')).toBeInTheDocument();
+    expect(screen.queryByText('question one output')).not.toBeInTheDocument();
+    expect(screen.queryByText('Exit code: 0')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: '← Previous' }));
+
+    expect(screen.getByText('question one output')).toBeInTheDocument();
   });
 });

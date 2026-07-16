@@ -47,9 +47,9 @@ export default function CandidateExamPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [localSelections, setLocalSelections] = useState<Record<string, string[]>>({});
   const [localCodeValues, setLocalCodeValues] = useState<Record<string, string>>({});
-  const [stdinValue, setStdinValue] = useState('');
-  const [runResult, setRunResult] = useState<RunCodeResult | null>(null);
-  const [runError, setRunError] = useState<string | null>(null);
+  const [stdinValues, setStdinValues] = useState<Record<string, string>>({});
+  const [runResults, setRunResults] = useState<Record<string, RunCodeResult>>({});
+  const [runErrors, setRunErrors] = useState<Record<string, string>>({});
 
   const attemptState = current && isAttemptStarted(current) ? current : null;
   const isTerminal = Boolean(attemptState && attemptState.status !== 'in_progress');
@@ -85,6 +85,9 @@ export default function CandidateExamPage() {
   const existingAnswer = answers.find((answer) => answer.questionId === question?.id);
   const selectedOptionIds = question ? localSelections[question.id] ?? existingAnswer?.selectedOptionIds ?? [] : [];
   const codeValue = question ? localCodeValues[question.id] ?? existingAnswer?.answerText ?? question.starterCode ?? '' : '';
+  const stdinValue = question ? stdinValues[question.id] ?? '' : '';
+  const runResult = question ? runResults[question.id] ?? null : null;
+  const runError = question ? runErrors[question.id] ?? null : null;
   const unansweredCount = questions.filter((q) => {
     const a = answers.find((ans) => ans.questionId === q.id);
     if (q.type === 'code') {
@@ -124,15 +127,24 @@ export default function CandidateExamPage() {
 
   function handleRun() {
     if (!question) return;
-    setRunError(null);
+    const questionId = question.id;
+    setRunErrors((prev) => {
+      const next = { ...prev };
+      delete next[questionId];
+      return next;
+    });
     runCode.mutate(
-      { questionId: question.id, code: codeValue, stdin: question.allowStdin ? stdinValue : undefined },
+      { questionId, code: codeValue, stdin: question.allowStdin ? stdinValue : undefined },
       {
-        onSuccess: (result) => setRunResult(result),
+        onSuccess: (result) => setRunResults((prev) => ({ ...prev, [questionId]: result })),
         // error.message carries the server's real message (e.g. the run-cap or
         // sandbox_unavailable text set in apps/exam-runtime's runCode()) rather than a
         // hardcoded string here, matching this codebase's established onError convention.
-        onError: (error) => setRunError(error instanceof Error ? error.message : "Couldn't run your code right now, try again."),
+        onError: (error) =>
+          setRunErrors((prev) => ({
+            ...prev,
+            [questionId]: error instanceof Error ? error.message : "Couldn't run your code right now, try again.",
+          })),
       },
     );
   }
@@ -188,7 +200,7 @@ export default function CandidateExamPage() {
                     id="stdin-input"
                     aria-label="Standard input (optional)"
                     value={stdinValue}
-                    onChange={(e) => setStdinValue(e.target.value)}
+                    onChange={(e) => setStdinValues((prev) => ({ ...prev, [question.id]: e.target.value }))}
                     className="rounded border border-gray-300 px-2 py-1 font-mono text-xs"
                     rows={2}
                   />
