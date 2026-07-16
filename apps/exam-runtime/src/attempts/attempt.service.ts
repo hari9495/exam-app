@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, HttpException, HttpStatus, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
@@ -9,6 +9,10 @@ import { StartAttemptDto } from './dto/start-attempt.dto';
 import { getProctoringEventSeverity } from './proctoring-severity';
 import { ReportProctoringEventDto } from './dto/report-proctoring-event.dto';
 import { shuffle } from './shuffle';
+import { PistonClient, PistonExecuteResult } from '../code-execution/piston-client';
+import { RunLimiter } from '../code-execution/run-limiter';
+import { PISTON_LANGUAGE_MAP } from '../code-execution/piston-languages';
+import { RunCodeDto } from './dto/run-code.dto';
 
 interface AttemptQuestionOption {
   id: string;
@@ -80,6 +84,8 @@ export class AttemptService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly attemptSettlement: AttemptSettlementService,
     private readonly monitoringGateway: MonitoringGateway,
+    private readonly pistonClient: PistonClient,
+    private readonly runLimiter: RunLimiter,
   ) {}
 
   async getCurrent(session: CandidateSession): Promise<AttemptCurrentResponse> {
@@ -273,6 +279,60 @@ export class AttemptService {
 
       return { questionId: dto.questionId, selectedOptionIds: dto.selectedOptionIds, answerText: null, isMarkedForReview };
     });
+  }
+
+  async runCode(session: CandidateSession, dto: RunCodeDto): Promise<PistonExecuteResult> {
+    const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
+
+    const { question } = await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
+      if (!attempt) {
+        throw new NotFoundException('No attempt has been started');
+      }
+      const settled = await this.attemptSettlement.settleIfExpired(tx, exam, attempt);
+      if (settled.status !== 'in_progress') {
+        throw new BadRequestException(`Cannot run code — attempt status is "${settled.status}"`);
+      }
+
+      const questionIds: string[] = JSON.parse(settled.questionOrderJson);
+      if (!questionIds.includes(dto.questionId)) {
+        throw new BadRequestException(`Question ${dto.questionId} is not part of this attempt`);
+      }
+      const question = await tx.question.findFirstOrThrow({ where: { id: dto.questionId } });
+      if (question.type !== 'code') {
+        throw new BadRequestException(`Question ${dto.questionId} is not a code question`);
+      }
+      return { question };
+    });
+
+    const { allowed } = await this.runLimiter.checkAndIncrement(invitation.id, dto.questionId);
+    if (!allowed) {
+      throw new HttpException('You have used all 30 runs for this question', HttpStatus.TOO_MANY_REQUESTS);
+    }
+
+    const languageEntry = PISTON_LANGUAGE_MAP[question.codeLanguage as string];
+    if (!languageEntry) {
+      throw new BadRequestException(`Unsupported code language: ${question.codeLanguage}`);
+    }
+
+    try {
+      return await this.pistonClient.execute({
+        language: languageEntry.language,
+        version: languageEntry.version,
+        code: dto.code,
+        stdin: question.allowStdin ? dto.stdin : undefined,
+      });
+    } catch {
+      // `message` (not just `error`) is deliberate: apps/web's candidateApiFetch surfaces a
+      // failed response's body.message as the thrown Error's .message, and Task 6's frontend
+      // displays that message directly rather than a hardcoded string — so this exact text is
+      // what the candidate sees. Keeping `error: 'sandbox_unavailable'` too for any future
+      // machine-readable handling.
+      throw new HttpException(
+        { error: 'sandbox_unavailable', message: "Couldn't run your code right now, try again." },
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
   }
 
   async reportProctoringEvent(

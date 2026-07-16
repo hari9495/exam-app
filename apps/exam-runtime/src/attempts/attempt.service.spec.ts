@@ -5,12 +5,16 @@ import { TenantPrismaService } from '@exam-platform/shared';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { getProctoringEventSeverity } from './proctoring-severity';
+import { PistonClient } from '../code-execution/piston-client';
+import { RunLimiter } from '../code-execution/run-limiter';
 
 describe('AttemptService', () => {
   let service: AttemptService;
   let tenantPrisma: { forTenant: jest.Mock };
   let settlement: { settleIfExpired: jest.Mock; finalize: jest.Mock; remainingSeconds: jest.Mock };
   let monitoringGateway: { emitAttemptStatus: jest.Mock; emitProctoringFlag: jest.Mock };
+  let pistonClient: { execute: jest.Mock };
+  let runLimiter: { checkAndIncrement: jest.Mock };
   const session = { invitationId: 'inv-1' };
   const exam = {
     id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false,
@@ -22,6 +26,8 @@ describe('AttemptService', () => {
     tenantPrisma = { forTenant: jest.fn() };
     settlement = { settleIfExpired: jest.fn(), finalize: jest.fn(), remainingSeconds: jest.fn() };
     monitoringGateway = { emitAttemptStatus: jest.fn(), emitProctoringFlag: jest.fn() };
+    pistonClient = { execute: jest.fn() };
+    runLimiter = { checkAndIncrement: jest.fn() };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -29,6 +35,8 @@ describe('AttemptService', () => {
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: AttemptSettlementService, useValue: settlement },
         { provide: MonitoringGateway, useValue: monitoringGateway },
+        { provide: PistonClient, useValue: pistonClient },
+        { provide: RunLimiter, useValue: runLimiter },
       ],
     }).compile();
     service = moduleRef.get(AttemptService);
@@ -799,6 +807,95 @@ describe('AttemptService', () => {
       expect(monitoringGateway.emitProctoringFlag).toHaveBeenCalledWith('exam-1', {
         attemptId: 'attempt-1', candidateId: 'cand-1', eventType: 'tab_switch', severity: 'medium', occurredAt: createdEvent.occurredAt,
       });
+    });
+  });
+
+  describe('runCode', () => {
+    const codeQuestion = { id: 'q-code-1', type: 'code', codeLanguage: 'python', allowStdin: false };
+
+    function setupTx(overrides: Partial<{ status: string; questionOrderJson: string; question: typeof codeQuestion }> = {}) {
+      const attempt = {
+        id: 'attempt-1',
+        status: overrides.status ?? 'in_progress',
+        questionOrderJson: overrides.questionOrderJson ?? JSON.stringify(['q-code-1']),
+      };
+      return {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        question: { findFirstOrThrow: jest.fn().mockResolvedValue(overrides.question ?? codeQuestion) },
+      };
+    }
+
+    it('runs code for a valid code question and returns the Piston result', async () => {
+      const tx = setupTx();
+      settlement.settleIfExpired.mockResolvedValue({ id: 'attempt-1', status: 'in_progress', questionOrderJson: JSON.stringify(['q-code-1']) });
+      mockBootstrapThenScoped(tx);
+      pistonClient.execute.mockResolvedValue({ stdout: 'hi\n', stderr: '', exitCode: 0, compileError: null, timedOut: false });
+      runLimiter.checkAndIncrement.mockResolvedValue({ allowed: true, remaining: 29 });
+
+      const result = await service.runCode(session, { questionId: 'q-code-1', code: 'print("hi")' });
+
+      expect(result).toEqual({ stdout: 'hi\n', stderr: '', exitCode: 0, compileError: null, timedOut: false });
+      expect(pistonClient.execute).toHaveBeenCalledWith({ language: 'python', version: '3.10.0', code: 'print("hi")', stdin: undefined });
+    });
+
+    it('rejects a non-code question', async () => {
+      const tx = setupTx({ question: { ...codeQuestion, type: 'single_mcq' } });
+      settlement.settleIfExpired.mockResolvedValue({ id: 'attempt-1', status: 'in_progress', questionOrderJson: JSON.stringify(['q-code-1']) });
+      mockBootstrapThenScoped(tx);
+
+      await expect(service.runCode(session, { questionId: 'q-code-1', code: 'x' })).rejects.toThrow(BadRequestException);
+    });
+
+    it('ignores stdin when the question does not allow it', async () => {
+      const tx = setupTx();
+      settlement.settleIfExpired.mockResolvedValue({ id: 'attempt-1', status: 'in_progress', questionOrderJson: JSON.stringify(['q-code-1']) });
+      mockBootstrapThenScoped(tx);
+      pistonClient.execute.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, compileError: null, timedOut: false });
+      runLimiter.checkAndIncrement.mockResolvedValue({ allowed: true, remaining: 29 });
+
+      await service.runCode(session, { questionId: 'q-code-1', code: 'x', stdin: 'ignored' });
+
+      expect(pistonClient.execute).toHaveBeenCalledWith(expect.objectContaining({ stdin: undefined }));
+    });
+
+    it('passes stdin through when the question allows it', async () => {
+      const tx = setupTx({ question: { ...codeQuestion, allowStdin: true } });
+      settlement.settleIfExpired.mockResolvedValue({ id: 'attempt-1', status: 'in_progress', questionOrderJson: JSON.stringify(['q-code-1']) });
+      mockBootstrapThenScoped(tx);
+      pistonClient.execute.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, compileError: null, timedOut: false });
+      runLimiter.checkAndIncrement.mockResolvedValue({ allowed: true, remaining: 29 });
+
+      await service.runCode(session, { questionId: 'q-code-1', code: 'x', stdin: 'Alice' });
+
+      expect(pistonClient.execute).toHaveBeenCalledWith(expect.objectContaining({ stdin: 'Alice' }));
+    });
+
+    it('rejects with 429 once the run cap is exceeded', async () => {
+      const tx = setupTx();
+      settlement.settleIfExpired.mockResolvedValue({ id: 'attempt-1', status: 'in_progress', questionOrderJson: JSON.stringify(['q-code-1']) });
+      mockBootstrapThenScoped(tx);
+      runLimiter.checkAndIncrement.mockResolvedValue({ allowed: false, remaining: 0 });
+
+      await expect(service.runCode(session, { questionId: 'q-code-1', code: 'x' })).rejects.toMatchObject({ status: 429 });
+      expect(pistonClient.execute).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the attempt is not in progress', async () => {
+      const tx = setupTx({ status: 'submitted' });
+      settlement.settleIfExpired.mockResolvedValue({ id: 'attempt-1', status: 'submitted', questionOrderJson: JSON.stringify(['q-code-1']) });
+      mockBootstrapThenScoped(tx);
+
+      await expect(service.runCode(session, { questionId: 'q-code-1', code: 'x' })).rejects.toThrow(BadRequestException);
+    });
+
+    it('translates a Piston failure into a 502 sandbox_unavailable error', async () => {
+      const tx = setupTx();
+      settlement.settleIfExpired.mockResolvedValue({ id: 'attempt-1', status: 'in_progress', questionOrderJson: JSON.stringify(['q-code-1']) });
+      mockBootstrapThenScoped(tx);
+      runLimiter.checkAndIncrement.mockResolvedValue({ allowed: true, remaining: 29 });
+      pistonClient.execute.mockRejectedValue(new Error('network error'));
+
+      await expect(service.runCode(session, { questionId: 'q-code-1', code: 'x' })).rejects.toMatchObject({ status: 502 });
     });
   });
 });

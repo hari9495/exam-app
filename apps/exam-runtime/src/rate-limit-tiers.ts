@@ -9,3 +9,4 @@ export const DEFAULT_THROTTLE_LIMIT = isTest ? 10_000 : 100;
 
 export const STRICT_AUTH_THROTTLE = { default: { limit: isTest ? 10_000 : 5, ttl: seconds(60) } };
 export const MODERATE_ATTEMPT_THROTTLE = { default: { limit: isTest ? 10_000 : 30, ttl: seconds(60) } };
+export const STRICT_CODE_RUN_THROTTLE = { default: { limit: isTest ? 10_000 : 10, ttl: seconds(60) } };

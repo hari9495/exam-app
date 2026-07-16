@@ -7,7 +7,8 @@ import { AttemptService } from './attempt.service';
 import { AnswerDto } from './dto/answer.dto';
 import { StartAttemptDto } from './dto/start-attempt.dto';
 import { ReportProctoringEventDto } from './dto/report-proctoring-event.dto';
-import { MODERATE_ATTEMPT_THROTTLE } from '../rate-limit-tiers';
+import { RunCodeDto } from './dto/run-code.dto';
+import { MODERATE_ATTEMPT_THROTTLE, STRICT_CODE_RUN_THROTTLE } from '../rate-limit-tiers';
 
 @Controller('attempt')
 @UseGuards(CandidateJwtAuthGuard)
@@ -42,5 +43,11 @@ export class AttemptController {
   @Throttle(MODERATE_ATTEMPT_THROTTLE)
   reportProctoringEvent(@CurrentCandidate() candidate: CandidateSession, @Body() dto: ReportProctoringEventDto) {
     return this.attemptService.reportProctoringEvent(candidate, dto);
+  }
+
+  @Post('run-code')
+  @Throttle(STRICT_CODE_RUN_THROTTLE)
+  runCode(@CurrentCandidate() candidate: CandidateSession, @Body() dto: RunCodeDto) {
+    return this.attemptService.runCode(candidate, dto);
   }
 }
