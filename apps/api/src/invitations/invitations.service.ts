@@ -32,13 +32,18 @@ function resolveInvitationExpiry(exam: { schedulingEnabled: boolean; availabilit
   return addDays(new Date(), INVITATION_EXPIRY_DAYS);
 }
 
+function stripToken(invitation: Invitation): Omit<Invitation, 'token'> {
+  const { token, ...rest } = invitation;
+  return rest;
+}
+
 export interface BulkInviteResult {
-  created: Invitation[];
+  created: Omit<Invitation, 'token'>[];
   skipped: { candidateId: string; reason: string }[];
 }
 
 export interface BulkUploadInviteResult {
-  created: Invitation[];
+  created: Omit<Invitation, 'token'>[];
   skipped: { email: string; reason: string }[];
   errors: BulkInviteRowError[];
 }
@@ -119,7 +124,7 @@ export class InvitationsService {
       );
     }
 
-    return { created: createdWithCandidate.map((c) => c.invitation), skipped };
+    return { created: createdWithCandidate.map((c) => stripToken(c.invitation)), skipped };
   }
 
   async bulkUploadAndInvite(context: TenantContext, examId: string, file: Express.Multer.File): Promise<BulkUploadInviteResult> {

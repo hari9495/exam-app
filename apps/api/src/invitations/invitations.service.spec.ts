@@ -32,7 +32,9 @@ describe('InvitationsService', () => {
       candidate: { findMany: jest.fn().mockResolvedValue([{ id: 'cand-1', email: 'a@test.com', name: 'Alice', erasedAt: null }]) },
       invitation: {
         findMany: jest.fn().mockResolvedValue([]),
-        create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited' }),
+        create: jest
+          .fn()
+          .mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'secret-token' }),
       },
     };
     const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) } };
@@ -44,6 +46,7 @@ describe('InvitationsService', () => {
 
     expect(result.created).toHaveLength(1);
     expect(result.skipped).toHaveLength(0);
+    expect(result.created[0]).not.toHaveProperty('token');
 
     // Email dispatch is fire-and-forget (the HTTP response no longer waits on it) --
     // flush the microtask queue so the background send + notification write settle
@@ -358,7 +361,9 @@ describe('InvitationsService', () => {
         },
         invitation: {
           findMany: jest.fn().mockResolvedValue([{ candidateId: 'cand-existing' }]),
-          create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-new', status: 'invited' }),
+          create: jest
+            .fn()
+            .mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-new', status: 'invited', token: 'secret-token' }),
         },
       };
       // Three sequential forTenant calls, in order: the exam-published check, the
@@ -378,6 +383,7 @@ describe('InvitationsService', () => {
 
       expect(result.created).toHaveLength(1);
       expect(result.created[0].candidateId).toBe('cand-new');
+      expect(result.created[0]).not.toHaveProperty('token');
       expect(result.skipped).toEqual([{ email: 'existing@test.com', reason: 'Candidate already has a live invitation for this exam' }]);
       expect(result.errors).toEqual([{ row: 3, message: 'Invalid or missing email: "not-an-email"' }]);
       expect(candidateLoopTx.candidate.create).toHaveBeenCalledWith({
