@@ -628,4 +628,58 @@ describe('AttemptSettlementService', () => {
       expect(attemptInsight.analyze).toHaveBeenCalledWith('attempt-1');
     });
   });
+
+  describe('registerWebcamViolation', () => {
+    it('pauses the attempt and logs a medium-severity event on strike 1', async () => {
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', webcamViolationCount: 0 } as any;
+      const tx = {
+        proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
+        attempt: { update: jest.fn().mockResolvedValue({ ...attempt, status: 'paused', webcamViolationCount: 1 }) },
+      } as any;
+
+      const { attempt: updated, strike } = await service.registerWebcamViolation(tx, attempt, 'no_face', 'data:image/jpeg;base64,abc');
+
+      expect(strike).toBe(1);
+      expect(updated.status).toBe('paused');
+      expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+        data: { attemptId: 'attempt-1', eventType: 'webcam_no_face', severity: 'medium', metadataJson: JSON.stringify({ snapshot: 'data:image/jpeg;base64,abc', strike: 1 }) },
+      });
+      expect(tx.attempt.update).toHaveBeenCalledWith({
+        where: { id: 'attempt-1' },
+        data: { webcamViolationCount: 1, status: 'paused', pausedAt: expect.any(Date) },
+      });
+    });
+
+    it('blocks the attempt with high severity on strike 3', async () => {
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', webcamViolationCount: 2 } as any;
+      const tx = {
+        proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
+        attempt: { update: jest.fn().mockResolvedValue({ ...attempt, status: 'blocked', webcamViolationCount: 3 }) },
+      } as any;
+
+      const { attempt: updated, strike } = await service.registerWebcamViolation(tx, attempt, 'head_turned', 'snap');
+
+      expect(strike).toBe(3);
+      expect(updated.status).toBe('blocked');
+      expect(tx.proctoringEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: 'webcam_head_turned', severity: 'high' }) }));
+      expect(tx.attempt.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'blocked' }) }));
+    });
+  });
+
+  describe('resumeFromPause', () => {
+    it('accumulates the elapsed pause time into pausedDurationMs and clears pausedAt', async () => {
+      const pausedAt = new Date(Date.now() - 10_000); // paused 10s ago
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', pausedAt, pausedDurationMs: 5_000 } as any;
+      const tx = { attempt: { update: jest.fn().mockResolvedValue({ ...attempt, status: 'in_progress', pausedAt: null, pausedDurationMs: 15_000 }) } } as any;
+
+      const updated = await service.resumeFromPause(tx, attempt);
+
+      expect(updated.status).toBe('in_progress');
+      const call = tx.attempt.update.mock.calls[0][0];
+      expect(call.where).toEqual({ id: 'attempt-1' });
+      expect(call.data.status).toBe('in_progress');
+      expect(call.data.pausedAt).toBeNull();
+      expect(call.data.pausedDurationMs).toBeGreaterThanOrEqual(5_000 + 9_000); // >= previous 5s + ~10s just elapsed, with slack
+    });
+  });
 });

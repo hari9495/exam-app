@@ -4,6 +4,7 @@ import { gradeAnswer, computeResult, computeRemainingSeconds } from './grading';
 import { ATTEMPT_STATUS_BROADCASTER, AttemptStatusBroadcaster } from '../monitoring/attempt-status-broadcaster';
 import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
 import { AttemptInsightService } from '../attempt-insight/attempt-insight.service';
+import { WebcamViolationReason } from '../attempts/dto/webcam-violation.dto';
 
 export interface SettlementExam {
   id: string;
@@ -196,5 +197,44 @@ export class AttemptSettlementService {
       }
     })();
     return finalized;
+  }
+
+  async registerWebcamViolation(
+    tx: Prisma.TransactionClient,
+    attempt: Attempt,
+    reason: WebcamViolationReason,
+    snapshot: string,
+  ): Promise<{ attempt: Attempt; strike: number }> {
+    const strike = attempt.webcamViolationCount + 1;
+    const eventType = reason === 'no_face' ? 'webcam_no_face' : 'webcam_head_turned';
+    await tx.proctoringEvent.create({
+      data: {
+        attemptId: attempt.id,
+        eventType,
+        severity: strike >= 3 ? 'high' : 'medium',
+        metadataJson: JSON.stringify({ snapshot, strike }),
+      },
+    });
+    const status = strike >= 3 ? 'blocked' : 'paused';
+    const updated = await tx.attempt.update({
+      where: { id: attempt.id },
+      data: { webcamViolationCount: strike, status, pausedAt: new Date() },
+    });
+    void this.broadcaster
+      .emitAttemptStatus(attempt.examId, { attemptId: updated.id, candidateId: attempt.candidateId, status: updated.status })
+      .catch((error) => this.logger.error('Failed to broadcast attempt status', error as Error));
+    return { attempt: updated, strike };
+  }
+
+  async resumeFromPause(tx: Prisma.TransactionClient, attempt: Attempt): Promise<Attempt> {
+    const elapsedMs = attempt.pausedAt ? Date.now() - attempt.pausedAt.getTime() : 0;
+    const updated = await tx.attempt.update({
+      where: { id: attempt.id },
+      data: { status: 'in_progress', pausedAt: null, pausedDurationMs: attempt.pausedDurationMs + elapsedMs },
+    });
+    void this.broadcaster
+      .emitAttemptStatus(attempt.examId, { attemptId: updated.id, candidateId: attempt.candidateId, status: updated.status })
+      .catch((error) => this.logger.error('Failed to broadcast attempt status', error as Error));
+    return updated;
   }
 }
