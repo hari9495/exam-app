@@ -3,3 +3,9 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+  piston:
+    image: ghcr.io/engineer-man/piston
+    ports:
+      - "2000:2000"
+    tmpfs:
+      - /piston/jobs:exec
