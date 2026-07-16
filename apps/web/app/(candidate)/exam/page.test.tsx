@@ -1,9 +1,10 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useRouter } from 'next/navigation';
-import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode } from '../../../lib/hooks/useAttempt';
+import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode, useWebcamResume } from '../../../lib/hooks/useAttempt';
 import { useCountdown } from '../../../lib/hooks/useCountdown';
 import { useProctoringMonitor } from '../../../lib/hooks/useProctoringMonitor';
+import { useWebcamMonitor } from '../../../lib/hooks/useWebcamMonitor';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
 import CandidateExamPage from './page';
 
@@ -13,9 +14,11 @@ jest.mock('../../../lib/hooks/useAttempt', () => ({
   useAnswerMutation: jest.fn(),
   useSubmitAttempt: jest.fn(),
   useRunCode: jest.fn(),
+  useWebcamResume: jest.fn(),
 }));
 jest.mock('../../../lib/hooks/useCountdown', () => ({ useCountdown: jest.fn() }));
 jest.mock('../../../lib/hooks/useProctoringMonitor', () => ({ useProctoringMonitor: jest.fn() }));
+jest.mock('../../../lib/hooks/useWebcamMonitor', () => ({ useWebcamMonitor: jest.fn() }));
 jest.mock('../../../lib/candidate-auth-context', () => ({ useCandidateAuth: jest.fn() }));
 jest.mock('@monaco-editor/react', () => ({
   __esModule: true,
@@ -126,6 +129,8 @@ describe('CandidateExamPage', () => {
     (useProctoringMonitor as jest.Mock).mockReturnValue(undefined);
     (useCandidateAuth as jest.Mock).mockReturnValue({ accessToken: 'token-1', isLoading: false });
     (useRunCode as jest.Mock).mockReturnValue({ mutate: runCodeMutate, isPending: false });
+    (useWebcamMonitor as jest.Mock).mockReturnValue(undefined);
+    (useWebcamResume as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false, isError: false });
   });
 
   it('renders the current question and saves an answer on selection', async () => {
@@ -333,5 +338,32 @@ describe('CandidateExamPage', () => {
     await userEvent.click(screen.getByRole('button', { name: '← Previous' }));
 
     expect(screen.getByText('question one output')).toBeInTheDocument();
+  });
+
+  it('shows a warning overlay with the strike count when paused, and a Continue button', async () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: { ...attemptState, status: 'paused', webcamViolationCount: 1 },
+      isError: false,
+    });
+    const resumeMutate = jest.fn();
+    (useWebcamResume as jest.Mock).mockReturnValue({ mutate: resumeMutate, isPending: false, isError: false });
+
+    render(<CandidateExamPage />);
+
+    expect(screen.getByText(/warning 1\/3/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /continue/i }));
+    expect(resumeMutate).toHaveBeenCalled();
+  });
+
+  it('shows a block overlay with no self-resume option when blocked', () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: { ...attemptState, status: 'blocked', webcamViolationCount: 3 },
+      isError: false,
+    });
+
+    render(<CandidateExamPage />);
+
+    expect(screen.getByText(/recruiter needs to unblock/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /continue/i })).not.toBeInTheDocument();
   });
 });

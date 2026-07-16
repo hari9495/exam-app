@@ -193,6 +193,7 @@ export interface AttemptPreview {
 export interface AttemptState {
   status: string;
   remainingSeconds: number;
+  webcamViolationCount: number;
   sections: AttemptSection[];
   answers: AttemptAnswerSummary[];
   messages: AttemptMessageSummary[];

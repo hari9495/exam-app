@@ -29,7 +29,11 @@ export function useAttemptQuery() {
     queryKey: ['attempt', 'current'],
     queryFn: () => candidateApiFetch('/attempt/current', {}, accessToken ?? undefined),
     enabled: Boolean(accessToken),
-    refetchInterval: 30_000,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      const isPausedOrBlocked = data && 'status' in data && (data.status === 'paused' || data.status === 'blocked');
+      return isPausedOrBlocked ? 3_000 : 30_000;
+    },
     refetchOnWindowFocus: true,
   });
 }
