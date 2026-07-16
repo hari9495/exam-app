@@ -85,6 +85,11 @@ test('candidate redeems an invitation, takes an exam, and submits', async ({ pag
 });
 
 test('candidate sees the pause and block overlays when the backend reports paused/blocked status', async ({ page }) => {
+  // ponytail: the in-progress poll interval is 30s (useAttemptQuery) and this test has no
+  // real webcam-violation mutation to invalidate the query early (the whole point of mocking
+  // at the network layer instead of driving real MediaPipe detection) -- so the first
+  // paused/blocked transition genuinely has to ride that interval out.
+  test.setTimeout(60_000);
   await page.goto('/login');
   await page.getByLabel('Organization slug').fill(ORG_SLUG);
   await page.getByLabel('Email').fill(RECRUITER_EMAIL);
@@ -152,7 +157,12 @@ test('candidate sees the pause and block overlays when the backend reports pause
     }
     const response = await route.fetch();
     const body = await response.json();
-    if ('status' in body) {
+    // ponytail: only force the mocked status once the candidate has actually reached /exam.
+    // Forcing it earlier corrupts the real in-progress response the /welcome page's own
+    // redirect effect depends on (it treats any non-in_progress status as terminal and sends
+    // the candidate to /submitted -- it has no paused/blocked special-case because in real
+    // usage a violation can't be recorded until after the candidate is already on /exam).
+    if ('status' in body && page.url().includes('/exam')) {
       body.status = mockedStatus;
       body.webcamViolationCount = mockedStatus === 'paused' ? 1 : 3;
     }
@@ -165,7 +175,7 @@ test('candidate sees the pause and block overlays when the backend reports pause
   await page.getByRole('button', { name: 'Start exam' }).click();
   await expect(page).toHaveURL(/\/exam$/);
 
-  await expect(page.getByText('Warning 1/3')).toBeVisible();
+  await expect(page.getByText('Warning 1/3')).toBeVisible({ timeout: 35_000 });
 
   mockedStatus = 'blocked';
   await page.getByRole('button', { name: 'Continue' }).click();
