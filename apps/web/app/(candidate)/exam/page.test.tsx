@@ -351,8 +351,10 @@ describe('CandidateExamPage', () => {
     render(<CandidateExamPage />);
 
     expect(screen.getByText(/warning 1\/3/i)).toBeInTheDocument();
+    expect(push).not.toHaveBeenCalledWith('/submitted');
     await userEvent.click(screen.getByRole('button', { name: /continue/i }));
     expect(resumeMutate).toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalledWith('/submitted');
   });
 
   it('shows a block overlay with no self-resume option when blocked', () => {
@@ -365,5 +367,6 @@ describe('CandidateExamPage', () => {
 
     expect(screen.getByText(/recruiter needs to unblock/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /continue/i })).not.toBeInTheDocument();
+    expect(push).not.toHaveBeenCalledWith('/submitted');
   });
 });
