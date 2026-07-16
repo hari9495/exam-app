@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useExams } from '../../../lib/hooks/useExams';
-import { Table, Badge, Button, type Column } from '../../../components/ui';
+import { useRouter } from 'next/navigation';
+import { useExams, useDuplicateExam } from '../../../lib/hooks/useExams';
+import { Table, Badge, Button, useToast, type Column } from '../../../components/ui';
 import { Exam, ExamStatus } from '../../../lib/types';
 
 const STATUS_VARIANT: Record<ExamStatus, 'default' | 'success' | 'warning'> = {
@@ -11,14 +12,36 @@ const STATUS_VARIANT: Record<ExamStatus, 'default' | 'success' | 'warning'> = {
   archived: 'default',
 };
 
-const columns: Column<Exam>[] = [
-  { key: 'title', header: 'Title', render: (exam) => exam.title, sortValue: (exam) => exam.title },
-  { key: 'status', header: 'Status', render: (exam) => <Badge variant={STATUS_VARIANT[exam.status]}>{exam.status}</Badge> },
-  { key: 'edit', header: '', render: (exam) => <Link href={`/exams/${exam.id}/edit`}>Edit</Link> },
-];
-
 export default function ExamsPage() {
   const { data: exams, isLoading, isError } = useExams();
+  const router = useRouter();
+  const { toast } = useToast();
+  const duplicateExam = useDuplicateExam();
+
+  function handleDuplicate(examId: string) {
+    duplicateExam.mutate(examId, {
+      onSuccess: (created) => {
+        toast('Exam duplicated.');
+        router.push(`/exams/${created.id}/edit`);
+      },
+      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to duplicate exam.', 'error'),
+    });
+  }
+
+  const columns: Column<Exam>[] = [
+    { key: 'title', header: 'Title', render: (exam) => exam.title, sortValue: (exam) => exam.title },
+    { key: 'status', header: 'Status', render: (exam) => <Badge variant={STATUS_VARIANT[exam.status]}>{exam.status}</Badge> },
+    { key: 'edit', header: '', render: (exam) => <Link href={`/exams/${exam.id}/edit`}>Edit</Link> },
+    {
+      key: 'duplicate',
+      header: '',
+      render: (exam) => (
+        <Button variant="secondary" onClick={() => handleDuplicate(exam.id)} disabled={duplicateExam.isPending}>
+          Duplicate
+        </Button>
+      ),
+    },
+  ];
 
   if (isLoading) {
     return (
