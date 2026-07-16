@@ -29,6 +29,7 @@ describe('useWebcamMonitor', () => {
       configurable: true,
     });
     HTMLMediaElement.prototype.play = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(HTMLMediaElement.prototype, 'readyState', { get: () => 2, configurable: true });
     jest.useFakeTimers();
   });
 

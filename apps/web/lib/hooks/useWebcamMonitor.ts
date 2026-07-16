@@ -48,10 +48,8 @@ export function useWebcamMonitor(enabled: boolean): void {
       await video.play();
 
       intervalId = setInterval(() => {
-        // ponytail: no readyState gate here — jsdom always reports readyState 0,
-        // which would make this interval a permanent no-op under test. In real
-        // browsers an early call before the first frame just yields a stale/empty
-        // detection that self-corrects on the next 500ms tick.
+        if (video.readyState < 2) return;
+
         const result = landmarker.detectForVideo(video, performance.now());
         const reason = detectViolationReason(result);
         const now = Date.now();
