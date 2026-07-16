@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CandidateButton } from '../components/CandidateButton';
 import { useAttemptQuery, useStartAttempt } from '../../../lib/hooks/useAttempt';
@@ -14,6 +14,7 @@ export default function CandidateWelcomePage() {
   const { data: current, isLoading, isError } = useAttemptQuery();
   const startAttempt = useStartAttempt();
   const { toast } = useToast();
+  const [cameraStatus, setCameraStatus] = useState<'idle' | 'checking' | 'granted' | 'denied'>('idle');
 
   useEffect(() => {
     if (!authLoading && !accessToken) {
@@ -29,6 +30,17 @@ export default function CandidateWelcomePage() {
 
   if (isLoading || isError || !current || isAttemptStarted(current)) {
     return <p className="p-8 text-sm text-gray-500">Loading…</p>;
+  }
+
+  async function handleEnableCamera() {
+    setCameraStatus('checking');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stream.getTracks().forEach((track) => track.stop());
+      setCameraStatus('granted');
+    } catch {
+      setCameraStatus('denied');
+    }
   }
 
   async function handleStart() {
@@ -60,9 +72,22 @@ export default function CandidateWelcomePage() {
               This exam is monitored. Tab switches, exiting fullscreen, copy/paste, right-click, and developer tools will be
               reported.
             </div>
-            <CandidateButton onClick={handleStart} disabled={startAttempt.isPending} className="w-full">
-              {startAttempt.isPending ? 'Starting…' : 'Start exam'}
-            </CandidateButton>
+            {cameraStatus === 'granted' ? (
+              <CandidateButton onClick={handleStart} disabled={startAttempt.isPending} className="w-full">
+                {startAttempt.isPending ? 'Starting…' : 'Start exam'}
+              </CandidateButton>
+            ) : (
+              <>
+                <CandidateButton onClick={handleEnableCamera} disabled={cameraStatus === 'checking'} className="w-full">
+                  {cameraStatus === 'checking' ? 'Requesting camera…' : 'Enable camera'}
+                </CandidateButton>
+                {cameraStatus === 'denied' ? (
+                  <p className="mt-2 text-xs text-red-600">
+                    Camera access is required to start this exam. Please allow camera access and try again.
+                  </p>
+                ) : null}
+              </>
+            )}
           </>
         )}
       </div>

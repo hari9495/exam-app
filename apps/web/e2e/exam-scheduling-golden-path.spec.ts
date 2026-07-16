@@ -62,6 +62,14 @@ test('candidate is blocked before the window opens and can start once the recrui
 
   const candidateContext = await browser.newContext();
   const candidatePage = await candidateContext.newPage();
+  await candidatePage.addInitScript(() => {
+    // ponytail: real Chromium exposes navigator.mediaDevices as a non-configurable accessor,
+    // so plain assignment silently no-ops — Object.defineProperty is required to override it.
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: { getUserMedia: async () => ({ getTracks: () => [{ stop: () => undefined }] }) },
+      configurable: true,
+    });
+  });
   await candidatePage.goto(`/start?token=${inviteToken}`);
   await expect(candidatePage).toHaveURL(/\/welcome/);
   await expect(candidatePage.getByText(/opens on/i)).toBeVisible();
@@ -74,7 +82,8 @@ test('candidate is blocked before the window opens and can start once the recrui
 
   await candidatePage.waitForTimeout(31_000);
   await candidatePage.reload();
-  await expect(candidatePage.getByRole('button', { name: 'Start exam' })).toBeVisible({ timeout: 10_000 });
+  await expect(candidatePage.getByRole('button', { name: 'Enable camera' })).toBeVisible({ timeout: 10_000 });
+  await candidatePage.getByRole('button', { name: 'Enable camera' }).click();
   await candidatePage.getByRole('button', { name: 'Start exam' }).click();
   await expect(candidatePage).toHaveURL(/\/exam/);
 

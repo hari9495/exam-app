@@ -61,8 +61,17 @@ test('candidate writes and submits code, recruiter grades and finalizes the atte
   // Candidate: redeem the invite in a second, independent browser context, write code, submit
   const candidateContext = await browser.newContext();
   const candidatePage = await candidateContext.newPage();
+  await candidatePage.addInitScript(() => {
+    // ponytail: real Chromium exposes navigator.mediaDevices as a non-configurable accessor,
+    // so plain assignment silently no-ops — Object.defineProperty is required to override it.
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: { getUserMedia: async () => ({ getTracks: () => [{ stop: () => undefined }] }) },
+      configurable: true,
+    });
+  });
   await candidatePage.goto(`/start?token=${inviteToken}`);
   await expect(candidatePage).toHaveURL(/\/welcome$/);
+  await candidatePage.getByRole('button', { name: 'Enable camera' }).click();
   await candidatePage.getByRole('button', { name: 'Start exam' }).click();
   await expect(candidatePage).toHaveURL(/\/exam$/);
 

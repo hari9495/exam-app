@@ -15,6 +15,11 @@ jest.mock('../../../components/ui', () => {
   return { ...actual, useToast: () => ({ toast: mockToast }) };
 });
 
+function mockCameraGranted() {
+  const getUserMedia = jest.fn().mockResolvedValue({ getTracks: () => [{ stop: jest.fn() }] });
+  Object.defineProperty(global.navigator, 'mediaDevices', { value: { getUserMedia }, configurable: true });
+}
+
 describe('CandidateWelcomePage', () => {
   const push = jest.fn();
 
@@ -47,9 +52,11 @@ describe('CandidateWelcomePage', () => {
       isLoading: false,
     });
     (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync, isPending: false });
+    mockCameraGranted();
 
     render(<CandidateWelcomePage />);
-    await userEvent.click(screen.getByRole('button', { name: 'Start exam' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
     await waitFor(() => expect(push).toHaveBeenCalledWith('/exam'));
@@ -62,9 +69,11 @@ describe('CandidateWelcomePage', () => {
       isLoading: false,
     });
     (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync, isPending: false });
+    mockCameraGranted();
 
     render(<CandidateWelcomePage />);
-    await userEvent.click(screen.getByRole('button', { name: 'Start exam' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
     await waitFor(() => expect(mockToast).toHaveBeenCalledWith(expect.any(String), 'error'));
@@ -153,7 +162,7 @@ describe('CandidateWelcomePage', () => {
     expect(screen.queryByRole('button', { name: 'Start exam' })).not.toBeInTheDocument();
   });
 
-  it('shows the normal Start button when schedulingWindowState is open', () => {
+  it('shows the normal Start button when schedulingWindowState is open', async () => {
     (useAttemptQuery as jest.Mock).mockReturnValue({
       data: {
         exam: {
@@ -165,13 +174,15 @@ describe('CandidateWelcomePage', () => {
       isLoading: false, isError: false,
     });
     (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+    mockCameraGranted();
 
     render(<CandidateWelcomePage />);
+    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
 
-    expect(screen.getByRole('button', { name: 'Start exam' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Start exam' })).toBeInTheDocument();
   });
 
-  it('shows the normal Start button when schedulingWindowState is null (non-scheduled exam)', () => {
+  it('shows the normal Start button when schedulingWindowState is null (non-scheduled exam)', async () => {
     (useAttemptQuery as jest.Mock).mockReturnValue({
       data: {
         exam: { title: 'Normal Exam', instructions: null, durationMinutes: 60, schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null },
@@ -180,9 +191,46 @@ describe('CandidateWelcomePage', () => {
       isLoading: false, isError: false,
     });
     (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+    mockCameraGranted();
+
+    render(<CandidateWelcomePage />);
+    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
+
+    expect(await screen.findByRole('button', { name: 'Start exam' })).toBeInTheDocument();
+  });
+
+  it('requires camera permission before Start exam is available', async () => {
+    const getUserMedia = jest.fn().mockResolvedValue({ getTracks: () => [{ stop: jest.fn() }] });
+    Object.defineProperty(global.navigator, 'mediaDevices', { value: { getUserMedia }, configurable: true });
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 } },
+      isLoading: false,
+    });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
 
     render(<CandidateWelcomePage />);
 
-    expect(screen.getByRole('button', { name: 'Start exam' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /start exam/i })).not.toBeInTheDocument();
+    const enableButton = screen.getByRole('button', { name: /enable camera/i });
+    await userEvent.click(enableButton);
+
+    expect(getUserMedia).toHaveBeenCalledWith({ video: true });
+    expect(await screen.findByRole('button', { name: /start exam/i })).toBeInTheDocument();
+  });
+
+  it('shows an error and keeps Start hidden when camera permission is denied', async () => {
+    const getUserMedia = jest.fn().mockRejectedValue(new Error('denied'));
+    Object.defineProperty(global.navigator, 'mediaDevices', { value: { getUserMedia }, configurable: true });
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 } },
+      isLoading: false,
+    });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+
+    render(<CandidateWelcomePage />);
+    await userEvent.click(screen.getByRole('button', { name: /enable camera/i }));
+
+    expect(await screen.findByText(/camera access is required/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /start exam/i })).not.toBeInTheDocument();
   });
 });

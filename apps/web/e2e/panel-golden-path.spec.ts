@@ -29,9 +29,18 @@ async function settleAttempt(page: import('@playwright/test').Page, token: strin
   // leftover candidate refresh-token cookie from a prior candidate in this same browser context
   // races the new redeem() call and can silently re-authenticate as the previous candidate.
   await page.context().clearCookies();
+  await page.addInitScript(() => {
+    // ponytail: real Chromium exposes navigator.mediaDevices as a non-configurable accessor,
+    // so plain assignment silently no-ops — Object.defineProperty is required to override it.
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: { getUserMedia: async () => ({ getTracks: () => [{ stop: () => undefined }] }) },
+      configurable: true,
+    });
+  });
   await page.goto(`/start?token=${token}`);
   await expect(page).toHaveURL(/\/welcome$/);
   await expect(page.getByText(examTitle)).toBeVisible();
+  await page.getByRole('button', { name: 'Enable camera' }).click();
   await page.getByRole('button', { name: 'Start exam' }).click();
   await expect(page).toHaveURL(/\/exam$/);
 
