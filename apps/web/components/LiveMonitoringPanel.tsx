@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useExamMonitoring } from '../lib/hooks/useExamMonitoring';
+import { useUnblockAttempt } from '../lib/hooks/useAttemptModeration';
 import { Table, Badge, Card, useToast, type Column } from './ui';
 import { RosterRow, ConnectionStatus } from '../lib/types';
 
@@ -11,6 +12,7 @@ const STATUS_VARIANT: Record<string, 'default' | 'success' | 'warning' | 'danger
   submitted: 'success',
   auto_submitted: 'success',
   force_submitted: 'danger',
+  blocked: 'danger',
 };
 
 const RECENT_ALERT_WINDOW_MS = 5 * 60 * 1000;
@@ -36,6 +38,7 @@ function formatRelativeTime(occurredAt: string): string {
 export function LiveMonitoringPanel({ examId }: { examId: string }) {
   const { roster, alerts, connectionStatus, joinError } = useExamMonitoring(examId);
   const { toast } = useToast();
+  const unblockAttempt = useUnblockAttempt();
   const previousStatusRef = useRef<ConnectionStatus>(connectionStatus);
 
   useEffect(() => {
@@ -59,6 +62,25 @@ export function LiveMonitoringPanel({ examId }: { examId: string }) {
       key: 'progress',
       header: 'Progress',
       render: (row) => (row.answeredCount !== null && row.totalQuestions !== null ? `${row.answeredCount} / ${row.totalQuestions}` : '—'),
+    },
+    {
+      key: 'actions',
+      header: '',
+      render: (row) =>
+        row.status === 'blocked' && row.attemptId ? (
+          <button
+            onClick={() => {
+              unblockAttempt.mutate(row.attemptId as string, {
+                onSuccess: () => toast('Candidate unblocked.', 'success'),
+                onError: () => toast("Couldn't unblock the candidate — please try again.", 'error'),
+              });
+            }}
+            disabled={unblockAttempt.isPending}
+            className="rounded-full border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-50"
+          >
+            Unblock
+          </button>
+        ) : null,
     },
   ];
 

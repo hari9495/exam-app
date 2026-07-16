@@ -1,9 +1,13 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ToastProvider } from './ui';
 import { useExamMonitoring } from '../lib/hooks/useExamMonitoring';
+import * as useExamMonitoringModule from '../lib/hooks/useExamMonitoring';
+import * as useAttemptModerationModule from '../lib/hooks/useAttemptModeration';
 import { LiveMonitoringPanel } from './LiveMonitoringPanel';
 
 jest.mock('../lib/hooks/useExamMonitoring', () => ({ useExamMonitoring: jest.fn() }));
+jest.mock('../lib/hooks/useAttemptModeration', () => ({ useUnblockAttempt: jest.fn() }));
 
 const now = new Date('2026-01-01T00:10:00Z');
 
@@ -113,5 +117,26 @@ describe('LiveMonitoringPanel', () => {
     renderPanel();
 
     expect(screen.queryByText('Live connection lost. Reconnecting…')).not.toBeInTheDocument();
+  });
+
+  it('shows an Unblock action for a blocked candidate and calls the mutation on click', async () => {
+    jest.spyOn(useExamMonitoringModule, 'useExamMonitoring').mockReturnValue({
+      roster: [{ candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'blocked', online: true, remainingSeconds: null, answeredCount: 2, totalQuestions: 5 }],
+      alerts: [],
+      connectionStatus: 'connected',
+      joinError: null,
+    });
+    const mutate = jest.fn();
+    jest.spyOn(useAttemptModerationModule, 'useUnblockAttempt').mockReturnValue({ mutate, isPending: false } as any);
+
+    renderPanel();
+
+    // userEvent's default click uses real setTimeout delays, which hangs under this
+    // file's jest.useFakeTimers(); delay: null makes it synchronous.
+    const user = userEvent.setup({ delay: null });
+    const unblockButton = screen.getByRole('button', { name: /unblock/i });
+    await user.click(unblockButton);
+    // The component passes onSuccess/onError toast callbacks as a second arg (see Step 7 of the brief).
+    expect(mutate).toHaveBeenCalledWith('a1', expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }));
   });
 });
