@@ -13,7 +13,7 @@ export function CameraPreview({ status, onEnable }: CameraPreviewProps) {
   if (status === 'granted') {
     return (
       <div className="flex items-center gap-3">
-        <div className="flex h-12 w-16 flex-shrink-0 items-center justify-center rounded-md bg-candidate-text text-green-400">
+        <div className="flex h-12 w-16 flex-shrink-0 items-center justify-center rounded-md bg-candidate-text text-candidate-primary">
           <Video className="h-5 w-5" aria-hidden="true" />
         </div>
         <div>
