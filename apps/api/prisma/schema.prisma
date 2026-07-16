@@ -291,6 +291,9 @@ model Attempt {
   submittedAt         DateTime?           @map("submitted_at")
   deviceFingerprint   String?             @map("device_fingerprint")
   lastSeenAt          DateTime?           @map("last_seen_at")
+  webcamViolationCount Int                @default(0) @map("webcam_violation_count")
+  pausedAt            DateTime?           @map("paused_at")
+  pausedDurationMs    Int                 @default(0) @map("paused_duration_ms")
   invitation          Invitation          @relation(fields: [invitationId], references: [id], onDelete: Cascade)
   answers             Answer[]
   result              Result?
