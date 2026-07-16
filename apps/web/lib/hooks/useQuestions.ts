@@ -54,6 +54,7 @@ export interface QuestionInput {
   tags?: string[];
   codeLanguage?: string;
   starterCode?: string;
+  allowStdin?: boolean;
   options: { text: string; isCorrect: boolean }[];
 }
 

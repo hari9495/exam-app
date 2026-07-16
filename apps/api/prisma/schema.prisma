@@ -126,6 +126,7 @@ model Question {
   aiGenerated    Boolean               @default(false) @map("ai_generated")
   codeLanguage   String?               @map("code_language")
   starterCode    String?               @map("starter_code") @db.NVarChar(Max)
+  allowStdin     Boolean               @default(false) @map("allow_stdin")
   createdBy      String                @map("created_by") @db.UniqueIdentifier
   createdAt      DateTime              @default(now()) @map("created_at")
   options        QuestionOption[]

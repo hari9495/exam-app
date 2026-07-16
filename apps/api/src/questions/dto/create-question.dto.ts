@@ -50,6 +50,10 @@ export class CreateQuestionDto {
   @IsString()
   starterCode?: string;
 
+  @IsOptional()
+  @IsBoolean()
+  allowStdin?: boolean;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => QuestionOptionDto)

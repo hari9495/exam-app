@@ -47,6 +47,7 @@ describe('QuestionForm', () => {
           aiGenerated: false,
           codeLanguage: null,
           starterCode: null,
+          allowStdin: false,
           createdAt: '2026-01-01T00:00:00.000Z',
           options: [
             { id: 'o-1', text: 'True', isCorrect: true },
@@ -85,5 +86,18 @@ describe('QuestionForm', () => {
     await userEvent.click(screen.getByRole('option', { name: 'Code' }));
 
     expect(screen.queryByText('Options')).not.toBeInTheDocument();
+  });
+
+  it('includes allowStdin in the submitted payload when checked, for code questions only', async () => {
+    const onSubmit = jest.fn();
+    render(<QuestionForm tags={[]} submitLabel="Create question" onSubmit={onSubmit} />);
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Question type' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Code' }));
+    await userEvent.click(screen.getByLabelText('Allow candidates to provide input (stdin)'));
+    await userEvent.type(screen.getByLabelText('Question text'), 'Read a line and print it.');
+    await userEvent.click(screen.getByRole('button', { name: 'Create question' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ allowStdin: true }));
   });
 });

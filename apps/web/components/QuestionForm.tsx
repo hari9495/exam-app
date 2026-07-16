@@ -57,6 +57,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(initialQuestion?.tags?.map((tag) => tag.id) ?? []);
   const [codeLanguage, setCodeLanguage] = useState<CodeLanguage>(initialQuestion?.codeLanguage ?? 'javascript');
   const [starterCode, setStarterCode] = useState(initialQuestion?.starterCode ?? '');
+  const [allowStdin, setAllowStdin] = useState(initialQuestion?.allowStdin ?? false);
   const [options, setOptions] = useState<OptionDraft[]>(
     initialQuestion ? initialQuestion.options.map((option) => ({ text: option.text, isCorrect: option.isCorrect })) : defaultOptionsFor(type),
   );
@@ -94,6 +95,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
       tags: selectedTagIds,
       codeLanguage: type === 'code' ? codeLanguage : undefined,
       starterCode: type === 'code' ? starterCode : undefined,
+      allowStdin: type === 'code' ? allowStdin : undefined,
       options,
     });
   }
@@ -133,6 +135,15 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
               rows={6}
             />
           </div>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={allowStdin}
+              onChange={(e) => setAllowStdin(e.target.checked)}
+              aria-label="Allow candidates to provide input (stdin)"
+            />
+            Allow candidates to provide input (stdin)
+          </label>
         </div>
       ) : (
         <div className="flex flex-col gap-2">

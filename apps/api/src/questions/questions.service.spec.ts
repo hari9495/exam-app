@@ -83,6 +83,18 @@ describe('QuestionsService', () => {
     );
   });
 
+  it('passes allowStdin through to the created question', async () => {
+    const created = { id: 'q-1', organizationId: 'org-1', ...validDto, allowStdin: true, options: validDto.options, tags: [] };
+    const tx = { tag: { upsert: jest.fn() }, question: { create: jest.fn().mockResolvedValue(created) } };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.create(context, 'user-1', { ...validDto, allowStdin: true });
+
+    expect(tx.question.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ allowStdin: true }) }),
+    );
+  });
+
   it('resolves tag names into Tag rows and links them when creating a question, deduping and trimming input', async () => {
     const tagUpsert = jest.fn().mockImplementation(({ create }) => Promise.resolve({ id: `tag-${create.name}`, ...create }));
     const questionCreate = jest.fn().mockResolvedValue({ id: 'q-1', ...validDto, tags: [] });

@@ -70,6 +70,7 @@ export interface Question {
   aiGenerated: boolean;
   codeLanguage: CodeLanguage | null;
   starterCode: string | null;
+  allowStdin: boolean;
   createdAt: string;
   options: QuestionOption[];
   tags?: Tag[];

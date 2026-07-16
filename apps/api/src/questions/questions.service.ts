@@ -64,6 +64,7 @@ export class QuestionsService {
           negativeMarks: dto.negativeMarks ?? 0,
           codeLanguage: dto.codeLanguage,
           starterCode: dto.starterCode,
+          allowStdin: dto.allowStdin ?? false,
           createdBy: userId,
           options: {
             create: dto.options.map((o, index) => ({ text: o.text, isCorrect: o.isCorrect, orderIndex: index })),
@@ -144,6 +145,7 @@ export class QuestionsService {
           negativeMarks: dto.negativeMarks ?? 0,
           codeLanguage: dto.codeLanguage,
           starterCode: dto.starterCode,
+          allowStdin: dto.allowStdin ?? false,
           options: {
             create: dto.options.map((o, index) => ({ text: o.text, isCorrect: o.isCorrect, orderIndex: index })),
           },
