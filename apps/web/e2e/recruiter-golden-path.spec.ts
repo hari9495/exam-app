@@ -72,4 +72,12 @@ test('recruiter creates an exam, adds a section and question, publishes, adds a 
   await page.getByRole('row', { name: candidateEmail }).getByRole('checkbox', { name: 'Golden Path Candidate' }).click();
   await page.getByRole('button', { name: 'Send invitations' }).click();
   await expect(page.getByText(/Invited 1 candidate/).first()).toBeVisible();
+
+  await page.getByRole('button', { name: 'Bulk upload & invite' }).click();
+  await expect(page).toHaveURL(/\/candidates\/bulk-upload-invite$/);
+  await page.getByLabel('Exam to invite to').click();
+  await page.getByRole('option', { name: examTitle, exact: true }).click();
+  await page.getByLabel(/Candidate file/).setInputFiles(path.join(__dirname, 'fixtures', 'bulk-candidates.csv'));
+  await page.getByRole('button', { name: 'Upload & invite' }).click();
+  await expect(page.getByText('1 candidate(s) invited.')).toBeVisible();
 });
