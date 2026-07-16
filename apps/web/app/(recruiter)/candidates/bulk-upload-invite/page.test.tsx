@@ -58,7 +58,7 @@ describe('BulkUploadInviteCandidatesPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Upload & invite' }));
 
     await waitFor(() => expect(screen.getByText('1 candidate(s) invited.')).toBeInTheDocument());
-    expect(screen.getByText('existing@test.com')).toBeInTheDocument();
+    expect(screen.getByText('existing@test.com — Candidate already has a live invitation for this exam')).toBeInTheDocument();
     expect(screen.getByText('Invalid or missing email: "not-an-email"')).toBeInTheDocument();
   });
 

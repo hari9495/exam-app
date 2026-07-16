@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, apiFetchBlob } from '../api-client';
-import { BulkInviteResult } from '../types';
+import { BulkInviteResult, Invitation } from '../types';
 import { useAuth } from '../auth-context';
 
 export function useBulkInvite(examId: string) {
@@ -19,7 +19,7 @@ export interface BulkUploadInviteRowError {
 }
 
 export interface BulkUploadInviteResult {
-  created: { id: string; candidateId: string }[];
+  created: (Invitation & { token: string })[];
   skipped: { email: string; reason: string }[];
   errors: BulkUploadInviteRowError[];
 }

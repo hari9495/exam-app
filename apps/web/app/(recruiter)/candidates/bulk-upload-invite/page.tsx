@@ -88,7 +88,9 @@ export default function BulkUploadInviteCandidatesPage() {
               <p className="text-sm font-medium text-gray-700">{result.skipped.length} already invited:</p>
               <ul className="mt-1 text-sm text-gray-600">
                 {result.skipped.map((skip) => (
-                  <li key={skip.email}>{skip.email}</li>
+                  <li key={skip.email}>
+                    {skip.email} — {skip.reason}
+                  </li>
                 ))}
               </ul>
             </div>
