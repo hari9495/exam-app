@@ -69,8 +69,8 @@ export default function CandidateWelcomePage() {
         ) : (
           <>
             <div className="mb-6 rounded-md bg-candidate-review-bg p-3 text-xs text-candidate-review">
-              This exam is monitored. Tab switches, exiting fullscreen, copy/paste, right-click, and developer tools will be
-              reported.
+              This exam is monitored. Tab switches, exiting fullscreen, copy/paste, right-click, developer tools, and your
+              webcam will be reported.
             </div>
             {cameraStatus === 'granted' ? (
               <CandidateButton onClick={handleStart} disabled={startAttempt.isPending} className="w-full">
