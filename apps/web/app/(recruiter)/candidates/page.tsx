@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useCandidates, useCreateCandidate } from '../../../lib/hooks/useCandidates';
 import { useExams } from '../../../lib/hooks/useExams';
 import { useBulkInvite } from '../../../lib/hooks/useInvitations';
@@ -90,6 +91,9 @@ export default function CandidatesPage() {
         <Button onClick={handleInvite} disabled={!examId || selectedIds.length === 0}>
           Send invitations
         </Button>
+        <Link href="/candidates/bulk-upload-invite">
+          <Button variant="secondary">Bulk upload &amp; invite</Button>
+        </Link>
       </div>
       <Table columns={columns} rows={candidates ?? []} rowKey={(candidate) => candidate.id} emptyMessage="No candidates yet." />
     </div>
