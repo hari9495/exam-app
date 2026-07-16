@@ -322,4 +322,126 @@ describe('Exam Builder HTTP flow', () => {
     const timedSection = examDetailResponse.body.sections.find((s: { id: string }) => s.id === timedSectionId);
     expect(timedSection.targetDurationMinutes).toBe(25);
   });
+
+  it('duplicates an exam, cloning settings, sections, and question/pool-tag links while resetting status and scheduling', async () => {
+    const sourceExamResponse = await request(app.getHttpServer())
+      .post('/api/v1/exams')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({
+        title: 'Source Round',
+        instructions: 'Clone me',
+        durationMinutes: 45,
+        passCriteriaPercent: 55,
+        randomizeOrder: true,
+      })
+      .expect(201);
+    const sourceExamId = sourceExamResponse.body.id;
+
+    const dupQuestionCResponse = await request(app.getHttpServer())
+      .post('/api/v1/questions')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({
+        type: 'true_false', text: 'Duplicate-flow question C', difficulty: 'easy', marks: 1,
+        options: [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }],
+      })
+      .expect(201);
+    const dupQuestionCId = dupQuestionCResponse.body.id;
+
+    const dupQuestionDResponse = await request(app.getHttpServer())
+      .post('/api/v1/questions')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({
+        type: 'true_false', text: 'Duplicate-flow question D', difficulty: 'easy', marks: 1,
+        options: [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }],
+      })
+      .expect(201);
+    const dupQuestionDId = dupQuestionDResponse.body.id;
+
+    const fixedSectionResponse = await request(app.getHttpServer())
+      .post(`/api/v1/exams/${sourceExamId}/sections`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ title: 'Fixed Section', targetDurationMinutes: 20 })
+      .expect(201);
+    const fixedSectionId = fixedSectionResponse.body.id;
+
+    await request(app.getHttpServer())
+      .put(`/api/v1/exams/${sourceExamId}/sections/${fixedSectionId}/questions`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ questionIds: [dupQuestionCId, dupQuestionDId] })
+      .expect(200);
+
+    const tagQuestionResponse = await request(app.getHttpServer())
+      .post('/api/v1/questions')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({
+        type: 'true_false', text: 'Duplicate-flow tag question', difficulty: 'medium', marks: 1, tags: ['clone-tag'],
+        options: [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }],
+      })
+      .expect(201);
+    const cloneTagId = tagQuestionResponse.body.tags[0].id;
+
+    const poolSectionResponse = await request(app.getHttpServer())
+      .post(`/api/v1/exams/${sourceExamId}/sections`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ title: 'Pool Section' })
+      .expect(201);
+    const poolSectionId = poolSectionResponse.body.id;
+
+    await request(app.getHttpServer())
+      .patch(`/api/v1/exams/${sourceExamId}/sections/${poolSectionId}`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({ title: 'Pool Section', selectionMode: 'pool', poolSize: 1, poolTagIds: [cloneTagId] })
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/exams/${sourceExamId}/publish`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(201);
+
+    const duplicateResponse = await request(app.getHttpServer())
+      .post(`/api/v1/exams/${sourceExamId}/duplicate`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(201);
+
+    expect(duplicateResponse.body.title).toBe('Source Round (Copy)');
+    expect(duplicateResponse.body.status).toBe('draft');
+    expect(duplicateResponse.body.schedulingEnabled).toBe(false);
+    expect(duplicateResponse.body.durationMinutes).toBe(45);
+    expect(duplicateResponse.body.passCriteriaPercent).toBe(55);
+    expect(duplicateResponse.body.randomizeOrder).toBe(true);
+    const clonedExamId = duplicateResponse.body.id;
+
+    const clonedDetailResponse = await request(app.getHttpServer())
+      .get(`/api/v1/exams/${clonedExamId}`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(200);
+    expect(clonedDetailResponse.body.sections).toHaveLength(2);
+    const clonedFixedSection = clonedDetailResponse.body.sections.find((s: { title: string }) => s.title === 'Fixed Section');
+    expect(clonedFixedSection.targetDurationMinutes).toBe(20);
+    expect(clonedFixedSection.questions.map((q: { questionId: string }) => q.questionId).sort()).toEqual(
+      [dupQuestionCId, dupQuestionDId].sort(),
+    );
+    const clonedPoolSection = clonedDetailResponse.body.sections.find((s: { title: string }) => s.title === 'Pool Section');
+    expect(clonedPoolSection.selectionMode).toBe('pool');
+    expect(clonedPoolSection.poolSize).toBe(1);
+
+    const clonedPoolTags = await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) =>
+      tx.examSectionPoolTag.findMany({ where: { sectionId: clonedPoolSection.id } }),
+    );
+    expect(clonedPoolTags.map((poolTag) => poolTag.tagId)).toEqual([cloneTagId]);
+
+    const sourceDetailResponse = await request(app.getHttpServer())
+      .get(`/api/v1/exams/${sourceExamId}`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(200);
+    expect(sourceDetailResponse.body.status).toBe('published');
+    expect(sourceDetailResponse.body.sections).toHaveLength(2);
+  });
+
+  it('returns 404 when duplicating an exam that does not exist', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/exams/00000000-0000-0000-0000-000000000000/duplicate')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .expect(404);
+  });
 });

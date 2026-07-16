@@ -53,6 +53,12 @@ export class ExamsController {
     return this.examsService.publish(tenant, userId, id);
   }
 
+  @Post(':id/duplicate')
+  @RequirePermissions('exam:manage')
+  duplicate(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.examsService.duplicate(tenant, userId, id);
+  }
+
   @Post(':id/sections')
   @RequirePermissions('exam:manage')
   createSection(@CurrentTenant() tenant: TenantContext, @Param('id') examId: string, @Body() dto: CreateExamSectionDto) {

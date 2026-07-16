@@ -231,6 +231,80 @@ export class ExamsService {
     return published;
   }
 
+  async duplicate(context: TenantContext, userId: string, id: string): Promise<Exam> {
+    const created = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const exam = await tx.exam.findFirst({
+        where: { id, organizationId: context.organizationId as string },
+        include: {
+          sections: {
+            orderBy: { orderIndex: 'asc' },
+            include: {
+              questions: { orderBy: { orderIndex: 'asc' } },
+              poolTags: true,
+            },
+          },
+        },
+      });
+      if (!exam) {
+        throw new NotFoundException(`Exam ${id} not found`);
+      }
+
+      const clone = await tx.exam.create({
+        data: {
+          organizationId: context.organizationId as string,
+          title: `${exam.title} (Copy)`,
+          instructions: exam.instructions,
+          durationMinutes: exam.durationMinutes,
+          passCriteriaPercent: exam.passCriteriaPercent,
+          randomizeOrder: exam.randomizeOrder,
+          schedulingEnabled: false,
+          availabilityWindowStart: null,
+          availabilityWindowEnd: null,
+          createdBy: userId,
+        },
+      });
+
+      for (const section of exam.sections) {
+        const newSection = await tx.examSection.create({
+          data: {
+            examId: clone.id,
+            title: section.title,
+            orderIndex: section.orderIndex,
+            selectionMode: section.selectionMode,
+            poolSize: section.poolSize,
+            poolDifficulty: section.poolDifficulty,
+            targetDurationMinutes: section.targetDurationMinutes,
+            ...(section.poolTags.length > 0
+              ? { poolTags: { create: section.poolTags.map((poolTag) => ({ tagId: poolTag.tagId })) } }
+              : {}),
+          },
+        });
+
+        if (section.questions.length > 0) {
+          await tx.examSectionQuestion.createMany({
+            data: section.questions.map((link) => ({
+              sectionId: newSection.id,
+              questionId: link.questionId,
+              orderIndex: link.orderIndex,
+            })),
+          });
+        }
+      }
+
+      return clone;
+    });
+
+    await this.audit.record(context, {
+      actorUserId: userId,
+      action: 'exam.duplicated',
+      entityType: 'exam',
+      entityId: created.id,
+      metadata: { sourceExamId: id },
+    });
+
+    return created;
+  }
+
   async createSection(context: TenantContext, examId: string, dto: CreateExamSectionDto): Promise<ExamSection> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({ where: { id: examId, organizationId: context.organizationId as string } });

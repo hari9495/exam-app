@@ -744,6 +744,150 @@ describe('ExamsService', () => {
     await expect(service.publish(context, 'user-1', 'exam-1')).rejects.toThrow(BadRequestException);
   });
 
+  describe('duplicate', () => {
+    it("duplicates an exam's own settings, resetting status and scheduling regardless of source", async () => {
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1',
+            title: 'Backend Round',
+            instructions: 'Answer all questions.',
+            durationMinutes: 45,
+            passCriteriaPercent: 60,
+            randomizeOrder: true,
+            schedulingEnabled: true,
+            availabilityWindowStart: new Date('2026-07-20T09:00:00.000Z'),
+            availabilityWindowEnd: new Date('2026-07-27T18:00:00.000Z'),
+            sections: [],
+          }),
+          create: jest.fn().mockResolvedValue({ id: 'exam-2', title: 'Backend Round (Copy)' }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.duplicate(context, 'user-1', 'exam-1');
+
+      expect(result).toEqual({ id: 'exam-2', title: 'Backend Round (Copy)' });
+      expect(tx.exam.create).toHaveBeenCalledWith({
+        data: {
+          organizationId: 'org-1',
+          title: 'Backend Round (Copy)',
+          instructions: 'Answer all questions.',
+          durationMinutes: 45,
+          passCriteriaPercent: 60,
+          randomizeOrder: true,
+          schedulingEnabled: false,
+          availabilityWindowStart: null,
+          availabilityWindowEnd: null,
+          createdBy: 'user-1',
+        },
+      });
+      expect(audit.record).toHaveBeenCalledWith(context, {
+        actorUserId: 'user-1',
+        action: 'exam.duplicated',
+        entityType: 'exam',
+        entityId: 'exam-2',
+        metadata: { sourceExamId: 'exam-1' },
+      });
+    });
+
+    it('duplicates a fixed section and a pool section, re-linking the same questions and tags', async () => {
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1',
+            title: 'Mixed Round',
+            instructions: null,
+            durationMinutes: 60,
+            passCriteriaPercent: 40,
+            randomizeOrder: false,
+            schedulingEnabled: false,
+            availabilityWindowStart: null,
+            availabilityWindowEnd: null,
+            sections: [
+              {
+                id: 'section-1',
+                title: 'Fixed Section',
+                orderIndex: 0,
+                selectionMode: 'fixed',
+                poolSize: null,
+                poolDifficulty: null,
+                targetDurationMinutes: 15,
+                questions: [
+                  { questionId: 'q1', orderIndex: 0 },
+                  { questionId: 'q2', orderIndex: 1 },
+                ],
+                poolTags: [],
+              },
+              {
+                id: 'section-2',
+                title: 'Pool Section',
+                orderIndex: 1,
+                selectionMode: 'pool',
+                poolSize: 3,
+                poolDifficulty: 'hard',
+                targetDurationMinutes: null,
+                questions: [],
+                poolTags: [{ tagId: 'tag-1' }, { tagId: 'tag-2' }],
+              },
+            ],
+          }),
+          create: jest.fn().mockResolvedValue({ id: 'exam-2', title: 'Mixed Round (Copy)' }),
+        },
+        examSection: {
+          create: jest
+            .fn()
+            .mockResolvedValueOnce({ id: 'new-section-1' })
+            .mockResolvedValueOnce({ id: 'new-section-2' }),
+        },
+        examSectionQuestion: {
+          createMany: jest.fn().mockResolvedValue({ count: 2 }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.duplicate(context, 'user-1', 'exam-1');
+
+      expect(tx.examSection.create).toHaveBeenNthCalledWith(1, {
+        data: {
+          examId: 'exam-2',
+          title: 'Fixed Section',
+          orderIndex: 0,
+          selectionMode: 'fixed',
+          poolSize: null,
+          poolDifficulty: null,
+          targetDurationMinutes: 15,
+        },
+      });
+      expect(tx.examSection.create).toHaveBeenNthCalledWith(2, {
+        data: {
+          examId: 'exam-2',
+          title: 'Pool Section',
+          orderIndex: 1,
+          selectionMode: 'pool',
+          poolSize: 3,
+          poolDifficulty: 'hard',
+          targetDurationMinutes: null,
+          poolTags: { create: [{ tagId: 'tag-1' }, { tagId: 'tag-2' }] },
+        },
+      });
+      expect(tx.examSectionQuestion.createMany).toHaveBeenCalledWith({
+        data: [
+          { sectionId: 'new-section-1', questionId: 'q1', orderIndex: 0 },
+          { sectionId: 'new-section-1', questionId: 'q2', orderIndex: 1 },
+        ],
+      });
+    });
+
+    it('throws NotFoundException when duplicating an exam that does not exist', async () => {
+      const tx = { exam: { findFirst: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.duplicate(context, 'user-1', 'missing-id')).rejects.toThrow(NotFoundException);
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getResults', () => {
     it('throws NotFoundException when the exam does not exist', async () => {
       const tx = { exam: { findFirst: jest.fn().mockResolvedValue(null) } };
