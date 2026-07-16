@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CandidateButton } from '../components/CandidateButton';
+import { CameraPreview } from '../components/CameraPreview';
 import { useAttemptQuery, useStartAttempt } from '../../../lib/hooks/useAttempt';
 import { isAttemptStarted } from '../../../lib/types';
 import { useToast } from '../../../components/ui';
@@ -54,40 +55,42 @@ export default function CandidateWelcomePage() {
 
   return (
     <div className="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-6 p-8">
-      <div className="rounded-lg bg-white p-6 shadow-sm">
-        <h1 className="mb-2 text-xl font-semibold text-gray-900">{current.exam.title}</h1>
-        <p className="mb-4 text-sm text-gray-600">Duration: {current.exam.durationMinutes} minutes</p>
-        {current.exam.instructions && <p className="mb-4 whitespace-pre-wrap text-sm text-gray-700">{current.exam.instructions}</p>}
+      <div className="rounded-lg border border-candidate-border bg-white p-6 shadow-sm">
+        <p className="mb-1 text-xs font-bold uppercase tracking-wide text-candidate-primary">You&apos;re invited to</p>
+        <h1 className="mb-3 text-xl font-bold text-candidate-text">{current.exam.title}</h1>
+        <p className="mb-4 text-sm text-candidate-text-secondary">Duration: {current.exam.durationMinutes} minutes</p>
+
         {current.schedulingWindowState === 'not_open' ? (
-          <div className="rounded-md bg-gray-50 p-3 text-sm text-gray-700">
+          <div className="rounded-md border border-candidate-border bg-candidate-bg p-3 text-sm text-candidate-text-secondary">
             This exam opens on {new Date(current.exam.availabilityWindowStart as string).toLocaleString()}. Come back then to start.
           </div>
         ) : current.schedulingWindowState === 'closed' ? (
-          <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+          <div className="rounded-md border border-candidate-danger-border bg-candidate-danger-bg p-3 text-sm text-candidate-danger">
             This exam&apos;s availability window has closed. Please contact the recruiter who invited you.
           </div>
         ) : (
           <>
-            <div className="mb-6 rounded-md bg-candidate-review-bg p-3 text-xs text-candidate-review">
-              This exam is monitored. Tab switches, exiting fullscreen, copy/paste, right-click, developer tools, and your
-              webcam will be reported.
+            {current.exam.instructions ? (
+              <div className="mb-3 rounded-md border border-candidate-border p-3">
+                <h2 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-candidate-text-secondary">Instructions</h2>
+                <p className="whitespace-pre-wrap text-sm text-candidate-text-secondary">{current.exam.instructions}</p>
+              </div>
+            ) : null}
+
+            <div className="mb-4 rounded-md border border-candidate-border p-3">
+              <h2 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-candidate-text-secondary">Camera monitoring</h2>
+              <p className="mb-3 text-xs text-candidate-text-secondary">
+                This exam is monitored. Tab switches, exiting fullscreen, copy/paste, right-click, developer tools, and your
+                webcam will be reported.
+              </p>
+              <CameraPreview status={cameraStatus} onEnable={handleEnableCamera} />
             </div>
+
             {cameraStatus === 'granted' ? (
               <CandidateButton onClick={handleStart} disabled={startAttempt.isPending} className="w-full">
                 {startAttempt.isPending ? 'Starting…' : 'Start exam'}
               </CandidateButton>
-            ) : (
-              <>
-                <CandidateButton onClick={handleEnableCamera} disabled={cameraStatus === 'checking'} className="w-full">
-                  {cameraStatus === 'checking' ? 'Requesting camera…' : 'Enable camera'}
-                </CandidateButton>
-                {cameraStatus === 'denied' ? (
-                  <p className="mt-2 text-xs text-red-600">
-                    Camera access is required to start this exam. Please allow camera access and try again.
-                  </p>
-                ) : null}
-              </>
-            )}
+            ) : null}
           </>
         )}
       </div>
