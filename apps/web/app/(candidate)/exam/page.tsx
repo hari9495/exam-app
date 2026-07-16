@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { Modal } from '../../../components/ui';
 import { CandidateButton } from '../components/CandidateButton';
 import { QuestionNavigator, flattenQuestions } from '../components/QuestionNavigator';
+import { ProctoringWarningOverlay, ProctoringBlockOverlay } from '../components/ProctoringOverlay';
 import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode, useWebcamResume, RunCodeResult } from '../../../lib/hooks/useAttempt';
 import { useCountdown } from '../../../lib/hooks/useCountdown';
 import { useProctoringMonitor } from '../../../lib/hooks/useProctoringMonitor';
@@ -105,33 +106,6 @@ export default function CandidateExamPage() {
     return <p className="p-8 text-sm text-gray-500">Loading…</p>;
   }
 
-  if (isPaused) {
-    return (
-      <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-4 p-8 text-center">
-        <h1 className="text-lg font-semibold text-gray-900">Warning {attemptState.webcamViolationCount}/3</h1>
-        <p className="text-sm text-gray-600">
-          We couldn&apos;t see your face clearly. Make sure you&apos;re centered in the camera and facing forward, then continue.
-        </p>
-        <CandidateButton onClick={() => webcamResume.mutate()} disabled={webcamResume.isPending}>
-          {webcamResume.isPending ? 'Checking…' : 'Continue'}
-        </CandidateButton>
-        {webcamResume.isError ? <p className="text-xs text-red-600">Still not detected — reposition and try again.</p> : null}
-      </div>
-    );
-  }
-
-  if (isBlocked) {
-    return (
-      <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-4 p-8 text-center">
-        <h1 className="text-lg font-semibold text-gray-900">Exam paused</h1>
-        <p className="text-sm text-gray-600">
-          Your exam has been paused after repeated webcam violations. A recruiter needs to unblock your session before you can
-          continue.
-        </p>
-      </div>
-    );
-  }
-
   if (!question || isTerminal) {
     return <p className="p-8 text-sm text-gray-500">Loading…</p>;
   }
@@ -191,7 +165,17 @@ export default function CandidateExamPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl p-4">
+    <div className="relative">
+      {isPaused ? (
+        <ProctoringWarningOverlay
+          strike={attemptState.webcamViolationCount}
+          onContinue={() => webcamResume.mutate()}
+          continuePending={webcamResume.isPending}
+          continueError={webcamResume.isError}
+        />
+      ) : null}
+      {isBlocked ? <ProctoringBlockOverlay /> : null}
+      <div className={clsx('mx-auto max-w-4xl p-4', (isPaused || isBlocked) && 'pointer-events-none blur-sm select-none')}>
       <div className="mb-4 flex items-center justify-between rounded-lg bg-white px-4 py-3 shadow-sm">
         <button
           onClick={() => setNavigatorOpen((open) => !open)}
@@ -331,6 +315,7 @@ export default function CandidateExamPage() {
           <CandidateButton onClick={() => finishSubmit()}>Retry</CandidateButton>
         </div>
       </Modal>
+      </div>
     </div>
   );
 }

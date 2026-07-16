@@ -369,4 +369,16 @@ describe('CandidateExamPage', () => {
     expect(screen.queryByRole('button', { name: /continue/i })).not.toBeInTheDocument();
     expect(push).not.toHaveBeenCalledWith('/submitted');
   });
+
+  it('keeps the question card mounted underneath the warning overlay instead of replacing the page', () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: { ...attemptState, status: 'paused', webcamViolationCount: 1 },
+      isError: false,
+    });
+
+    render(<CandidateExamPage />);
+
+    expect(screen.getByText(/warning 1\/3/i)).toBeInTheDocument();
+    expect(screen.getByText('What is 2 + 2?')).toBeInTheDocument();
+  });
 });
