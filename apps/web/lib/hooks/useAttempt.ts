@@ -132,3 +132,34 @@ export function useReportProctoringEvent() {
     ).catch(() => undefined);
   };
 }
+
+export interface WebcamViolationResult {
+  strike: number;
+  status: string;
+}
+
+export function useReportWebcamViolation() {
+  const { accessToken } = useCandidateAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ reason, snapshot }: { reason: 'no_face' | 'head_turned'; snapshot: string }): Promise<WebcamViolationResult> =>
+      withRetry(() =>
+        candidateApiFetch(
+          '/attempt/webcam-violation',
+          { method: 'POST', body: JSON.stringify({ reason, snapshot }) },
+          accessToken ?? undefined,
+        ),
+      ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] }),
+  });
+}
+
+export function useWebcamResume() {
+  const { accessToken } = useCandidateAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (): Promise<{ status: string }> =>
+      withRetry(() => candidateApiFetch('/attempt/webcam-resume', { method: 'POST', body: JSON.stringify({}) }, accessToken ?? undefined)),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] }),
+  });
+}
