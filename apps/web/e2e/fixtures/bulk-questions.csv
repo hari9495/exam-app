@@ -1,0 +1,3 @@
+Type,Text,Difficulty,Marks,NegativeMarks,Tags,Option1Text,Option1Correct,Option2Text,Option2Correct
+true_false,Bulk Upload True/False: the sky is blue,easy,2,0,bulk-fixture,True,TRUE,False,FALSE
+single_mcq,Bulk Upload MCQ: 3 + 3 = ?,easy,5,0,bulk-fixture,5,FALSE,6,TRUE

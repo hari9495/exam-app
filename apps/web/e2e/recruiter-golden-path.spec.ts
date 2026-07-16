@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import path from 'path';
 
 const ORG_SLUG = process.env.E2E_ORG_SLUG ?? 'demo-org';
 const RECRUITER_EMAIL = process.env.E2E_RECRUITER_EMAIL ?? 'recruiter@demo-org.test';
@@ -23,6 +24,15 @@ test('recruiter creates an exam, adds a section and question, publishes, adds a 
   await page.getByRole('button', { name: 'Create question' }).click();
   await expect(page).toHaveURL(/\/questions$/);
   await expect(page.getByText('What is 2 + 2?').first()).toBeVisible();
+
+  await page.getByRole('link', { name: 'Bulk upload' }).click();
+  await expect(page).toHaveURL(/\/questions\/bulk-upload$/);
+  await page.getByLabel(/Question file/).setInputFiles(path.join(__dirname, 'fixtures', 'bulk-questions.csv'));
+  await page.getByRole('button', { name: 'Upload' }).click();
+  await expect(page.getByText('2 question(s) created.').first()).toBeVisible();
+
+  await page.getByRole('link', { name: 'Question Bank' }).click();
+  await expect(page.getByText('Bulk Upload True/False: the sky is blue').first()).toBeVisible();
 
   await page.getByRole('link', { name: 'Exams' }).click();
   await page.getByRole('link', { name: 'New exam' }).click();
