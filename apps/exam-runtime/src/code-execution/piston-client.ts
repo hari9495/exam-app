@@ -48,7 +48,8 @@ export class PistonClient {
     });
 
     if (!response.ok) {
-      throw new Error(`Piston request failed with status ${response.status}`);
+      const body = typeof response.text === 'function' ? await response.text().catch(() => '') : '';
+      throw new Error(`Piston request failed with status ${response.status}${body ? `: ${body}` : ''}`);
     }
 
     const body = (await response.json()) as PistonApiResponse;

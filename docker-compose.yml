@@ -5,7 +5,15 @@ services:
       - "6379:6379"
   piston:
     image: ghcr.io/engineer-man/piston
+    privileged: true
     ports:
       - "2000:2000"
     tmpfs:
       - /piston/jobs:exec
+    environment:
+      # Must be >= PistonClient's RUN_TIMEOUT_MS (apps/exam-runtime/src/code-execution/piston-client.ts).
+      # The stock image's own default cap (3000ms) is lower than that constant, so without this
+      # override every real request is rejected by Piston itself and silently surfaces to
+      # candidates as "sandbox_unavailable" — see apps/exam-runtime/src/attempts/attempt.service.ts.
+      PISTON_RUN_TIMEOUT: 10000
+      PISTON_COMPILE_TIMEOUT: 10000

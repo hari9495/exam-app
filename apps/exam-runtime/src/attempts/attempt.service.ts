@@ -1,4 +1,4 @@
-import { BadRequestException, HttpException, HttpStatus, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, HttpException, HttpStatus, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
@@ -80,6 +80,8 @@ export type AttemptCurrentResponse = AttemptPreviewResponse | AttemptStateRespon
 
 @Injectable()
 export class AttemptService {
+  private readonly logger = new Logger(AttemptService.name);
+
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly attemptSettlement: AttemptSettlementService,
@@ -322,7 +324,11 @@ export class AttemptService {
         code: dto.code,
         stdin: question.allowStdin ? dto.stdin : undefined,
       });
-    } catch {
+    } catch (error) {
+      // Logged before translating to the generic candidate-facing message below — otherwise a
+      // real misconfiguration (e.g. Piston's own run_timeout cap set lower than RUN_TIMEOUT_MS
+      // in piston-client.ts) is indistinguishable from an actually-down sandbox in server logs.
+      this.logger.error(`Piston execute failed for question ${dto.questionId}`, error as Error);
       // `message` (not just `error`) is deliberate: apps/web's candidateApiFetch surfaces a
       // failed response's body.message as the thrown Error's .message, and Task 6's frontend
       // displays that message directly rather than a hardcoded string — so this exact text is
