@@ -344,6 +344,13 @@ export interface ProctoringFlag {
   occurredAt: string;
 }
 
+export interface RecruiterLeaderboardRow {
+  rank: number;
+  candidateId: string;
+  candidateName: string;
+  correctCount: number;
+}
+
 export interface PendingGradingCodeQuestion {
   questionId: string;
   questionText: string;

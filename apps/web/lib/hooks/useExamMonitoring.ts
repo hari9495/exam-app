@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from '../auth-context';
-import { RosterRow, ProctoringFlag, ConnectionStatus } from '../types';
+import { RosterRow, ProctoringFlag, ConnectionStatus, RecruiterLeaderboardRow } from '../types';
 
 const EXAM_RUNTIME_API_BASE = process.env.NEXT_PUBLIC_EXAM_RUNTIME_API_BASE ?? 'http://localhost:3002/api/v1';
 const EXAM_RUNTIME_ORIGIN = EXAM_RUNTIME_API_BASE.replace(/\/api\/v1\/?$/, '');
@@ -12,6 +12,7 @@ const MAX_ALERTS = 50;
 interface UseExamMonitoringResult {
   roster: RosterRow[];
   alerts: ProctoringFlag[];
+  leaderboard: RecruiterLeaderboardRow[];
   connectionStatus: ConnectionStatus;
   joinError: string | null;
 }
@@ -22,6 +23,7 @@ export function useExamMonitoring(examId: string): UseExamMonitoringResult {
   tokenRef.current = accessToken;
   const [roster, setRoster] = useState<RosterRow[]>([]);
   const [alerts, setAlerts] = useState<ProctoringFlag[]>([]);
+  const [leaderboard, setLeaderboard] = useState<RecruiterLeaderboardRow[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const [joinError, setJoinError] = useState<string | null>(null);
 
@@ -32,6 +34,7 @@ export function useExamMonitoring(examId: string): UseExamMonitoringResult {
 
     setRoster([]);
     setAlerts([]);
+    setLeaderboard([]);
     setJoinError(null);
     setConnectionStatus('connecting');
 
@@ -88,6 +91,14 @@ export function useExamMonitoring(examId: string): UseExamMonitoringResult {
       setAlerts((current) => [payload, ...current].slice(0, MAX_ALERTS));
     });
 
+    socket.on('leaderboard:snapshot', (rows: RecruiterLeaderboardRow[]) => {
+      setLeaderboard(rows);
+    });
+
+    socket.on('leaderboard:update', (rows: RecruiterLeaderboardRow[]) => {
+      setLeaderboard(rows);
+    });
+
     return () => {
       socket.disconnect();
     };
@@ -97,5 +108,5 @@ export function useExamMonitoring(examId: string): UseExamMonitoringResult {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [Boolean(accessToken), examId]);
 
-  return { roster, alerts, connectionStatus, joinError };
+  return { roster, alerts, leaderboard, connectionStatus, joinError };
 }

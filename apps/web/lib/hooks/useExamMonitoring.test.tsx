@@ -157,6 +157,21 @@ describe('useExamMonitoring', () => {
     expect(result.current.alerts[0].occurredAt).toBe('2026-01-01T00:00:51Z');
   });
 
+  it('updates leaderboard state on leaderboard:snapshot and leaderboard:update', async () => {
+    const socket = createMockSocket();
+    (io as jest.Mock).mockReturnValue(socket);
+
+    const { result } = renderHook(() => useExamMonitoring('exam-1'));
+    await waitFor(() => expect(io).toHaveBeenCalled());
+    act(() => socket.trigger('connect'));
+
+    act(() => socket.trigger('leaderboard:snapshot', [{ rank: 1, candidateId: 'c1', candidateName: 'Alice', correctCount: 2 }]));
+    expect(result.current.leaderboard).toEqual([{ rank: 1, candidateId: 'c1', candidateName: 'Alice', correctCount: 2 }]);
+
+    act(() => socket.trigger('leaderboard:update', [{ rank: 1, candidateId: 'c2', candidateName: 'Bob', correctCount: 3 }]));
+    expect(result.current.leaderboard).toEqual([{ rank: 1, candidateId: 'c2', candidateName: 'Bob', correctCount: 3 }]);
+  });
+
   it('surfaces a join-exam error via joinError', async () => {
     const socket = createMockSocket();
     (io as jest.Mock).mockReturnValue(socket);
