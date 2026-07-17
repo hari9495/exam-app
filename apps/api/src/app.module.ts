@@ -15,6 +15,7 @@ import { CandidatesModule } from './candidates/candidates.module';
 import { InvitationsModule } from './invitations/invitations.module';
 import { AttemptsAdminModule } from './attempts-admin/attempts-admin.module';
 import { ReportsModule } from './reports/reports.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 import { JobsModule } from './jobs/jobs.module';
 import { AuditQueryModule } from './audit/audit-query.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
@@ -49,6 +50,7 @@ import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
     InvitationsModule,
     AttemptsAdminModule,
     ReportsModule,
+    DashboardModule,
     JobsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: FailOpenThrottlerGuard }],
