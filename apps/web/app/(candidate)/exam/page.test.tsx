@@ -1,6 +1,7 @@
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useRouter } from 'next/navigation';
+import * as useAttemptModule from '../../../lib/hooks/useAttempt';
 import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode, useWebcamResume } from '../../../lib/hooks/useAttempt';
 import { useCountdown } from '../../../lib/hooks/useCountdown';
 import { useProctoringMonitor } from '../../../lib/hooks/useProctoringMonitor';
@@ -15,6 +16,7 @@ jest.mock('../../../lib/hooks/useAttempt', () => ({
   useSubmitAttempt: jest.fn(),
   useRunCode: jest.fn(),
   useWebcamResume: jest.fn(),
+  useLeaderboard: jest.fn(),
 }));
 jest.mock('../../../lib/hooks/useCountdown', () => ({ useCountdown: jest.fn() }));
 jest.mock('../../../lib/hooks/useProctoringMonitor', () => ({ useProctoringMonitor: jest.fn() }));
@@ -134,6 +136,7 @@ describe('CandidateExamPage', () => {
     (useRunCode as jest.Mock).mockReturnValue({ mutate: runCodeMutate, isPending: false });
     (useWebcamMonitor as jest.Mock).mockReturnValue(undefined);
     (useWebcamResume as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false, isError: false });
+    jest.spyOn(useAttemptModule, 'useLeaderboard').mockReturnValue({ data: { you: { rank: 3, correctCount: 2 }, top: [] }, isLoading: false } as any);
   });
 
   afterEach(() => jest.useRealTimers());
@@ -443,5 +446,11 @@ describe('CandidateExamPage', () => {
     render(<CandidateExamPage />);
 
     expect(screen.getByTestId('dimmable-content')).not.toHaveAttribute('inert');
+  });
+
+  it('shows the leaderboard widget with the candidate\'s current rank', () => {
+    render(<CandidateExamPage />);
+
+    expect(screen.getByText(/#3/)).toBeInTheDocument();
   });
 });

@@ -351,6 +351,18 @@ export interface RecruiterLeaderboardRow {
   correctCount: number;
 }
 
+export interface CandidateLeaderboardRow {
+  rank: number;
+  correctCount: number;
+  label: string;
+  isYou: boolean;
+}
+
+export interface CandidateLeaderboardResponse {
+  you: { rank: number; correctCount: number } | null;
+  top: CandidateLeaderboardRow[];
+}
+
 export interface PendingGradingCodeQuestion {
   questionId: string;
   questionText: string;

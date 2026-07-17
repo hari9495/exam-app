@@ -3,7 +3,7 @@ import { useRef } from 'react';
 import { candidateApiFetch } from '../candidate-api-client';
 import { useCandidateAuth } from '../candidate-auth-context';
 import { useToast } from '../../components/ui';
-import { AttemptCurrent, ProctoringEventType } from '../types';
+import { AttemptCurrent, ProctoringEventType, CandidateLeaderboardResponse } from '../types';
 
 const ANSWER_DEBOUNCE_MS = 800;
 const RETRY_ATTEMPTS = 3;
@@ -166,5 +166,15 @@ export function useWebcamResume() {
     mutationFn: (): Promise<{ status: string }> =>
       withRetry(() => candidateApiFetch('/attempt/webcam-resume', { method: 'POST', body: JSON.stringify({}) }, accessToken ?? undefined)),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] }),
+  });
+}
+
+export function useLeaderboard(enabled: boolean) {
+  const { accessToken } = useCandidateAuth();
+  return useQuery<CandidateLeaderboardResponse>({
+    queryKey: ['attempt', 'leaderboard'],
+    queryFn: () => candidateApiFetch('/attempt/leaderboard', {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken) && enabled,
+    refetchInterval: 5_000,
   });
 }

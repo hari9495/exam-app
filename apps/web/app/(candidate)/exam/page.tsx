@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import { Modal } from '../../../components/ui';
 import { CandidateButton } from '../components/CandidateButton';
 import { CodeOutputPanel } from '../components/CodeOutputPanel';
+import { LeaderboardWidget } from '../components/LeaderboardWidget';
 import { QuestionNavigator, flattenQuestions } from '../components/QuestionNavigator';
 import { ProctoringWarningOverlay, ProctoringBlockOverlay } from '../components/ProctoringOverlay';
 import { TimerBar } from '../components/TimerBar';
@@ -200,6 +201,7 @@ export default function CandidateExamPage() {
               <ChevronDown className="h-3 w-3" aria-hidden="true" />
             </span>
           </button>
+          <LeaderboardWidget />
           <span className="hidden text-sm font-bold text-candidate-text lg:inline">{attemptState.exam.title}</span>
         </div>
         <TimerBar remainingSeconds={remainingSeconds} totalSeconds={totalSecondsRef.current ?? remainingSeconds} />
