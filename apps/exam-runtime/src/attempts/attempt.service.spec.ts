@@ -4,6 +4,7 @@ import { AttemptService } from './attempt.service';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
+import { LeaderboardService } from '../leaderboard/leaderboard.service';
 import { getProctoringEventSeverity } from './proctoring-severity';
 import { PistonClient } from '../code-execution/piston-client';
 import { RunLimiter } from '../code-execution/run-limiter';
@@ -18,9 +19,10 @@ describe('AttemptService', () => {
     registerWebcamViolation: jest.Mock;
     resumeFromPause: jest.Mock;
   };
-  let monitoringGateway: { emitAttemptStatus: jest.Mock; emitProctoringFlag: jest.Mock };
+  let monitoringGateway: { emitAttemptStatus: jest.Mock; emitProctoringFlag: jest.Mock; emitLeaderboardUpdate: jest.Mock };
   let pistonClient: { execute: jest.Mock };
   let runLimiter: { checkAndIncrement: jest.Mock };
+  let leaderboardService: { computeRecruiterView: jest.Mock; computeCandidateView: jest.Mock };
   const session = { invitationId: 'inv-1' };
   const exam = {
     id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false,
@@ -37,9 +39,10 @@ describe('AttemptService', () => {
       registerWebcamViolation: jest.fn(),
       resumeFromPause: jest.fn(),
     };
-    monitoringGateway = { emitAttemptStatus: jest.fn(), emitProctoringFlag: jest.fn() };
+    monitoringGateway = { emitAttemptStatus: jest.fn(), emitProctoringFlag: jest.fn(), emitLeaderboardUpdate: jest.fn() };
     pistonClient = { execute: jest.fn() };
     runLimiter = { checkAndIncrement: jest.fn() };
+    leaderboardService = { computeRecruiterView: jest.fn(), computeCandidateView: jest.fn() };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -49,6 +52,7 @@ describe('AttemptService', () => {
         { provide: MonitoringGateway, useValue: monitoringGateway },
         { provide: PistonClient, useValue: pistonClient },
         { provide: RunLimiter, useValue: runLimiter },
+        { provide: LeaderboardService, useValue: leaderboardService },
       ],
     }).compile();
     service = moduleRef.get(AttemptService);
@@ -703,6 +707,41 @@ describe('AttemptService', () => {
           answeredAt: expect.any(Date),
         },
       });
+    });
+
+    it('recomputes and broadcasts the leaderboard after an auto-gradable answer is saved', async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        question: { findFirstOrThrow: jest.fn().mockResolvedValue(question) },
+        answer: { upsert: jest.fn().mockResolvedValue({}) },
+      };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      mockBootstrapThenScoped(tx);
+      leaderboardService.computeRecruiterView.mockResolvedValue([{ rank: 1, candidateId: 'cand-1', candidateName: 'Alice', correctCount: 1 }]);
+
+      await service.answer(session, { questionId: 'q1', selectedOptionIds: ['opt-a'] });
+
+      expect(leaderboardService.computeRecruiterView).toHaveBeenCalledWith({ organizationId: 'org-1', isSuperAdmin: false }, 'exam-1');
+      expect(monitoringGateway.emitLeaderboardUpdate).toHaveBeenCalledWith('exam-1', [
+        { rank: 1, candidateId: 'cand-1', candidateName: 'Alice', correctCount: 1 },
+      ]);
+    });
+
+    it('does not recompute the leaderboard when the answered question is a code question', async () => {
+      const codeAttempt = { ...attempt, questionOrderJson: JSON.stringify(['code-question-1']) };
+      const codeQuestion = { id: 'code-question-1', type: 'code', options: [] };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(codeAttempt) },
+        question: { findFirstOrThrow: jest.fn().mockResolvedValue(codeQuestion) },
+        answer: { upsert: jest.fn().mockResolvedValue({}) },
+      };
+      settlement.settleIfExpired.mockResolvedValue(codeAttempt);
+      mockBootstrapThenScoped(tx);
+
+      await service.answer(session, { questionId: 'code-question-1', selectedOptionIds: [], answerText: 'print("hi")' });
+
+      expect(leaderboardService.computeRecruiterView).not.toHaveBeenCalled();
+      expect(monitoringGateway.emitLeaderboardUpdate).not.toHaveBeenCalled();
     });
   });
 

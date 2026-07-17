@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
+import { LeaderboardService, AUTO_GRADABLE_QUESTION_TYPES } from '../leaderboard/leaderboard.service';
 import { CandidateSession } from '../candidate-auth/current-candidate.decorator';
 import { AnswerDto } from './dto/answer.dto';
 import { StartAttemptDto } from './dto/start-attempt.dto';
@@ -91,6 +92,7 @@ export class AttemptService {
     private readonly monitoringGateway: MonitoringGateway,
     private readonly pistonClient: PistonClient,
     private readonly runLimiter: RunLimiter,
+    private readonly leaderboardService: LeaderboardService,
   ) {}
 
   async getCurrent(session: CandidateSession): Promise<AttemptCurrentResponse> {
@@ -228,7 +230,7 @@ export class AttemptService {
   ): Promise<{ questionId: string; selectedOptionIds: string[]; answerText: string | null; isMarkedForReview: boolean }> {
     const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
 
-    return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+    const { response, isAutoGradable } = await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
       const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
       if (!attempt) {
         throw new NotFoundException('No attempt has been started');
@@ -261,7 +263,10 @@ export class AttemptService {
             answeredAt: new Date(),
           },
         });
-        return { questionId: dto.questionId, selectedOptionIds: [], answerText: dto.answerText ?? null, isMarkedForReview };
+        return {
+          response: { questionId: dto.questionId, selectedOptionIds: [], answerText: dto.answerText ?? null, isMarkedForReview },
+          isAutoGradable: false,
+        };
       }
 
       // An empty selection means "no answer yet, possibly just toggling markedForReview" — skip option validation.
@@ -284,8 +289,23 @@ export class AttemptService {
         },
       });
 
-      return { questionId: dto.questionId, selectedOptionIds: dto.selectedOptionIds, answerText: null, isMarkedForReview };
+      return {
+        response: { questionId: dto.questionId, selectedOptionIds: dto.selectedOptionIds, answerText: null, isMarkedForReview },
+        isAutoGradable: AUTO_GRADABLE_QUESTION_TYPES.includes(question.type),
+      };
     });
+
+    // computeRecruiterView opens its own tenantPrisma.forTenant(...) transaction — this must only
+    // fire after the outer transaction above has fully resolved (committed), not from inside its
+    // callback, or it risks a nested transaction reading stale/uncommitted data. Fire-and-forget so
+    // it never delays the response to the candidate.
+    if (isAutoGradable) {
+      void this.broadcastLeaderboard(organizationId, exam.id).catch((error) =>
+        this.logger.error('Failed to broadcast leaderboard update', error as Error),
+      );
+    }
+
+    return response;
   }
 
   async runCode(session: CandidateSession, dto: RunCodeDto): Promise<PistonExecuteResult & { runsRemaining: number }> {
@@ -502,5 +522,10 @@ export class AttemptService {
           };
         }),
     }));
+  }
+
+  private async broadcastLeaderboard(organizationId: string, examId: string): Promise<void> {
+    const rows = await this.leaderboardService.computeRecruiterView({ organizationId, isSuperAdmin: false }, examId);
+    this.monitoringGateway.emitLeaderboardUpdate(examId, rows);
   }
 }
