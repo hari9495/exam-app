@@ -46,11 +46,14 @@ export default function BrandingSettingsPage() {
   return (
     <Card className="max-w-md">
       <h1 className="mb-4 text-xl font-semibold text-recruiter-text">Branding Settings</h1>
+      {!branding && <p className="mb-4 text-sm text-recruiter-text-secondary">Loading current branding…</p>}
       {branding?.logoUrl && <img src={branding.logoUrl} alt="Organization logo" className="mb-4 max-h-20" />}
       <form onSubmit={handleColorsSubmit} className="mb-4 flex flex-col gap-3">
         <Input label="Primary color" type="color" value={primaryColor} onChange={setPrimaryColor} />
         <Input label="Accent color" type="color" value={accentColor} onChange={setAccentColor} />
-        <Button type="submit">Save colors</Button>
+        <Button type="submit" disabled={!branding}>
+          Save colors
+        </Button>
       </form>
       <form onSubmit={handleLogoSubmit} className="flex flex-col gap-3">
         <label className="text-sm font-medium text-recruiter-text-secondary">
@@ -62,7 +65,7 @@ export default function BrandingSettingsPage() {
             className="mt-1 block w-full rounded-md border border-recruiter-border p-1.5 text-sm text-recruiter-text-secondary"
           />
         </label>
-        <Button type="submit" variant="secondary">
+        <Button type="submit" variant="secondary" disabled={!branding}>
           Upload logo
         </Button>
       </form>

@@ -48,6 +48,10 @@ describe('BrandingSettingsPage (org-admin)', () => {
       expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/organizations/by-slug/'))).toBe(true),
     );
 
+    // "Save colors" is disabled until the branding query resolves, so this must wait for
+    // the button to become enabled before clicking it.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save colors' })).toBeEnabled());
+
     await userEvent.click(screen.getByRole('button', { name: 'Save colors' }));
 
     await waitFor(() =>
@@ -55,5 +59,39 @@ describe('BrandingSettingsPage (org-admin)', () => {
         fetchMock.mock.calls.some((call) => String(call[0]).endsWith('/organizations/branding') && call[1]?.method === 'PATCH'),
       ).toBe(true),
     );
+  });
+
+  it('disables Save colors when organizationSlug is null (session restored without sessionStorage)', async () => {
+    // Simulates a returning org_admin whose session was restored via silent refresh but whose
+    // sessionStorage was cleared (new tab, browser restart): organizationSlug stays null, so
+    // useBranding never fires and `branding` stays undefined. The Save button must stay
+    // disabled so the user can't overwrite real org branding with the hardcoded defaults.
+    const fetchMock = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <BrandingSettingsPage />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(fetchMock.mock.calls.some((call) => String(call[0]).endsWith('/auth/refresh'))).toBe(true));
+
+    expect(screen.getByRole('button', { name: 'Save colors' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Upload logo' })).toBeDisabled();
+
+    // Stays disabled -- there's no branding fetch in flight to resolve it.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByRole('button', { name: 'Save colors' })).toBeDisabled();
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/organizations/by-slug/'))).toBe(false);
   });
 });
