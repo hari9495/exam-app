@@ -42,7 +42,7 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-screen md:grid-cols-2">
+    <main className="grid md:min-h-screen md:grid-cols-2">
       <div
         className="relative hidden overflow-hidden md:flex md:flex-col md:items-start md:justify-center md:gap-4 md:px-16 md:py-12"
         style={{
