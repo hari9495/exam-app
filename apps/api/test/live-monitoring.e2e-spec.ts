@@ -252,4 +252,44 @@ describe('Live Monitoring WebSocket flow', () => {
     await prisma.organization.delete({ where: { id: otherOrg.id } }).catch(() => undefined);
     await prisma.plan.delete({ where: { id: otherPlan.id } }).catch(() => undefined);
   });
+
+  it('pushes a leaderboard:update after a candidate answers an auto-gradable question correctly, and omits code-question answers', async () => {
+    const token = await inviteAndGetToken('dana@ci-monitoring.test', 'Dana');
+    const socket = connectRecruiterSocket();
+    await waitForEvent(socket, 'connect');
+    socket.emit('join-exam', { examId });
+    // The exam is shared across every `it` block in this file (see `beforeAll`), and earlier
+    // tests (Alice, Bob, Carol) already started attempts on it — so the snapshot isn't empty by
+    // the time this test runs. Assert against Dana's absence/presence rather than exact equality.
+    const snapshot = await waitForEvent<any[]>(socket, 'leaderboard:snapshot');
+    expect(snapshot.find((entry: any) => entry.candidateName === 'Dana')).toBeUndefined();
+
+    const accessToken = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
+    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({}).expect(201);
+
+    const current = await request(runtimeHttp).get('/api/v1/attempt/current').set('Authorization', `Bearer ${accessToken}`).expect(200);
+    const questionId = current.body.sections[0].questions[0].id;
+    // The `beforeAll` above seeds this true_false question with options [{ text: 'True', isCorrect: true },
+    // { text: 'False', isCorrect: false }] (see the `POST /api/v1/questions` call), so 'True' is the real
+    // correct option — no fallback needed, and correctCount below can be asserted exactly.
+    const correctOptionId = current.body.sections[0].questions[0].options.find((option: any) => option.text === 'True').id;
+
+    const leaderboardUpdatePromise = waitForEvent<any>(socket, 'leaderboard:update');
+    await request(runtimeHttp)
+      .post('/api/v1/attempt/answer')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ questionId, selectedOptionIds: [correctOptionId] })
+      .expect(201);
+    const update = await leaderboardUpdatePromise;
+
+    expect(update).toHaveLength(snapshot.length + 1);
+    const danaEntry = update.find((entry: any) => entry.candidateName === 'Dana');
+    expect(danaEntry).toMatchObject({ candidateName: 'Dana', correctCount: 1 });
+
+    const candidateView = await request(runtimeHttp).get('/api/v1/attempt/leaderboard').set('Authorization', `Bearer ${accessToken}`).expect(200);
+    expect(candidateView.body.you).not.toBeNull();
+    expect(candidateView.body.top[0]).toMatchObject({ isYou: true, label: 'You' });
+
+    socket.disconnect();
+  });
 });
