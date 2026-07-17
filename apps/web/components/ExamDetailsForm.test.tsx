@@ -85,6 +85,7 @@ describe('ExamDetailsForm', () => {
       passCriteriaPercent: 40, randomizeOrder: false, schedulingEnabled: true,
       availabilityWindowStart: '2026-07-20T09:00:00.000Z', availabilityWindowEnd: '2026-07-27T18:00:00.000Z',
       createdAt: '2026-07-01T00:00:00.000Z', sections: [],
+      invitationCount: 0, attemptSettledCount: 0, attemptTotalCount: 0,
     };
     render(<ExamDetailsForm initialExam={scheduledExam} onSubmit={jest.fn()} submitLabel="Save" />);
 
