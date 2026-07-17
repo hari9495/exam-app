@@ -253,7 +253,7 @@ describe('Live Monitoring WebSocket flow', () => {
     await prisma.plan.delete({ where: { id: otherPlan.id } }).catch(() => undefined);
   });
 
-  it('pushes a leaderboard:update after a candidate answers an auto-gradable question correctly, and omits code-question answers', async () => {
+  it('pushes a leaderboard:update after a candidate answers an auto-gradable question correctly', async () => {
     const token = await inviteAndGetToken('dana@ci-monitoring.test', 'Dana');
     const socket = connectRecruiterSocket();
     await waitForEvent(socket, 'connect');
