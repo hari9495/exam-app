@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import UsersPage from './page';
 import { AuthProvider } from '../../../lib/auth-context';
@@ -180,7 +180,8 @@ describe('UsersPage', () => {
     );
 
     await waitFor(() => expect(screen.getByText('admin@demo-org.test')).toBeInTheDocument());
-    expect(screen.queryAllByText('Org Admin')).not.toHaveLength(0);
-    expect(screen.getByText('Active')).toBeInTheDocument();
+    const table = screen.getByRole('table');
+    expect(within(table).getByText('Org Admin')).toBeInTheDocument();
+    expect(within(table).getByText('Active')).toBeInTheDocument();
   });
 });
