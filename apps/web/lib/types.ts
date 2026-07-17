@@ -101,6 +101,9 @@ export interface Exam {
   availabilityWindowEnd: string | null;
   createdAt: string;
   sections: ExamSection[];
+  invitationCount: number;
+  attemptSettledCount: number;
+  attemptTotalCount: number;
 }
 
 export interface Candidate {

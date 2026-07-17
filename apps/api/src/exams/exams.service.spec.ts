@@ -145,7 +145,11 @@ describe('ExamsService', () => {
   });
 
   it("lists exams scoped to the caller's organization, excluding archived by default", async () => {
-    const tx = { exam: { findMany: jest.fn().mockResolvedValue([{ id: 'exam-1', status: 'draft' }]) } };
+    const tx = {
+      exam: { findMany: jest.fn().mockResolvedValue([{ id: 'exam-1', status: 'draft' }]) },
+      invitation: { groupBy: jest.fn().mockResolvedValue([]) },
+      attempt: { groupBy: jest.fn().mockResolvedValue([]) },
+    };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
     const result = await service.list(context, {});
@@ -157,7 +161,11 @@ describe('ExamsService', () => {
   });
 
   it('lists exams filtered by an explicit status', async () => {
-    const tx = { exam: { findMany: jest.fn().mockResolvedValue([{ id: 'exam-1', status: 'published' }]) } };
+    const tx = {
+      exam: { findMany: jest.fn().mockResolvedValue([{ id: 'exam-1', status: 'published' }]) },
+      invitation: { groupBy: jest.fn().mockResolvedValue([]) },
+      attempt: { groupBy: jest.fn().mockResolvedValue([]) },
+    };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
     const result = await service.list(context, { status: 'published' });
@@ -166,6 +174,36 @@ describe('ExamsService', () => {
     expect(tx.exam.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ status: 'published' }) }),
     );
+  });
+
+  it('returns invitation and attempt-progress counts alongside each exam', async () => {
+    const tx = {
+      exam: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'exam-1', title: 'Backend Round', status: 'published', organizationId: 'org-1' }]),
+      },
+      invitation: {
+        groupBy: jest.fn().mockResolvedValue([{ examId: 'exam-1', _count: { _all: 20 } }]),
+      },
+      attempt: {
+        groupBy: jest.fn().mockResolvedValue([
+          { examId: 'exam-1', status: 'submitted', _count: { _all: 12 } },
+          { examId: 'exam-1', status: 'auto_submitted', _count: { _all: 2 } },
+          { examId: 'exam-1', status: 'in_progress', _count: { _all: 3 } },
+        ]),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    const result = await service.list(context, {});
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        id: 'exam-1',
+        invitationCount: 20,
+        attemptSettledCount: 14,
+        attemptTotalCount: 17,
+      }),
+    ]);
   });
 
   it('throws NotFoundException when findOne cannot find the exam', async () => {

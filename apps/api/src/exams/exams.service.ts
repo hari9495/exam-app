@@ -4,6 +4,7 @@ import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
+import { SETTLED_ATTEMPT_STATUSES } from '../reports/reports.service';
 import { CreateExamDto } from './dto/create-exam.dto';
 import { UpdateExamDto } from './dto/update-exam.dto';
 import { CreateExamSectionDto } from './dto/create-exam-section.dto';
@@ -97,16 +98,39 @@ export class ExamsService {
     );
   }
 
-  async list(context: TenantContext, filters: ExamFilters): Promise<Exam[]> {
-    return this.tenantPrisma.forTenant(context, (tx) =>
-      tx.exam.findMany({
+  async list(context: TenantContext, filters: ExamFilters): Promise<(Exam & { invitationCount: number; attemptSettledCount: number; attemptTotalCount: number })[]> {
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const exams = await tx.exam.findMany({
         where: {
           organizationId: context.organizationId as string,
           ...(filters.status ? { status: filters.status } : { status: { not: 'archived' } }),
         },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      }),
-    );
+      });
+      const examIds = exams.map((exam) => exam.id);
+
+      const [invitationGroups, attemptGroups] = await Promise.all([
+        tx.invitation.groupBy({ by: ['examId'], where: { examId: { in: examIds } }, _count: { _all: true } }),
+        tx.attempt.groupBy({ by: ['examId', 'status'], where: { examId: { in: examIds } }, _count: { _all: true } }),
+      ]);
+
+      const invitationCountByExam = new Map(invitationGroups.map((group) => [group.examId, group._count._all]));
+      const settledByExam = new Map<string, number>();
+      const totalByExam = new Map<string, number>();
+      for (const group of attemptGroups) {
+        totalByExam.set(group.examId, (totalByExam.get(group.examId) ?? 0) + group._count._all);
+        if ((SETTLED_ATTEMPT_STATUSES as string[]).includes(group.status)) {
+          settledByExam.set(group.examId, (settledByExam.get(group.examId) ?? 0) + group._count._all);
+        }
+      }
+
+      return exams.map((exam) => ({
+        ...exam,
+        invitationCount: invitationCountByExam.get(exam.id) ?? 0,
+        attemptSettledCount: settledByExam.get(exam.id) ?? 0,
+        attemptTotalCount: totalByExam.get(exam.id) ?? 0,
+      }));
+    });
   }
 
   async findOne(context: TenantContext, id: string): Promise<Exam & { sections: ExamSectionWithQuestions[] }> {
