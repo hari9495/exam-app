@@ -76,4 +76,50 @@ describe('LoginPage', () => {
 
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/users'));
   });
+
+  it('shows an error banner when login fails', async () => {
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ message: 'no session' }), { status: 401 });
+      }
+      if (String(url).endsWith('/auth/staff/login')) {
+        return new Response(JSON.stringify({ message: 'Invalid credentials' }), { status: 401 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <LoginPage />
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    await userEvent.type(screen.getByLabelText(/organization slug/i), 'demo-org');
+    await userEvent.type(screen.getByLabelText(/email/i), 'recruiter@demo-org.test');
+    await userEvent.type(screen.getByLabelText(/password/i), 'wrong');
+    await userEvent.click(screen.getByRole('button', { name: 'Log in' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid credentials');
+  });
+
+  it('toggles password visibility when the show/hide button is clicked', async () => {
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <LoginPage />
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    const passwordInput = screen.getByLabelText(/password/i);
+    expect(passwordInput).toHaveAttribute('type', 'password');
+
+    await userEvent.click(screen.getByRole('button', { name: /show characters/i }));
+    expect(passwordInput).toHaveAttribute('type', 'text');
+
+    await userEvent.click(screen.getByRole('button', { name: /hide characters/i }));
+    expect(passwordInput).toHaveAttribute('type', 'password');
+  });
 });
