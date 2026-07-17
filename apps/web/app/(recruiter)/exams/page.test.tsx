@@ -127,7 +127,7 @@ describe('ExamsPage', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Backend Round')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
 
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/exams/exam-2/edit'));
   });
@@ -160,9 +160,49 @@ describe('ExamsPage', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Backend Round')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
 
     await waitFor(() => expect(screen.getByText('Exam not found')).toBeInTheDocument());
     expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('shows a status badge and a settled/total progress readout for each exam', async () => {
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/exams')) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: 'exam-1',
+              title: 'Backend Round',
+              status: 'published',
+              sections: [],
+              invitationCount: 20,
+              attemptSettledCount: 14,
+              attemptTotalCount: 17,
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ExamsPage />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Backend Round')).toBeInTheDocument());
+    expect(screen.getByText('Published')).toBeInTheDocument();
+    expect(screen.getByText('14/17')).toBeInTheDocument();
+    expect(screen.getByText('20')).toBeInTheDocument();
   });
 });
