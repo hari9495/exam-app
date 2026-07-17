@@ -119,6 +119,15 @@ export class InvitationsService {
       );
     }
 
+    if (createdWithCandidate.length > 0) {
+      await this.audit.record(context, {
+        actorUserId: null,
+        action: 'invitation.created',
+        entityType: 'invitation',
+        metadata: { count: createdWithCandidate.length, examTitle },
+      });
+    }
+
     return { created: createdWithCandidate.map((c) => c.invitation), skipped };
   }
 

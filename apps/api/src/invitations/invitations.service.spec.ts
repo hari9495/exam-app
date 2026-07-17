@@ -176,6 +176,46 @@ describe('InvitationsService', () => {
     expect(Math.abs(expiresAt.getTime() - expectedExpiry.getTime())).toBeLessThan(5000);
   });
 
+  it('records an invitation.created audit entry with the invited count and exam title', async () => {
+    const createTx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', title: 'Backend Round', status: 'published' }) },
+      candidate: { findMany: jest.fn().mockResolvedValue([{ id: 'cand-1', email: 'a@test.com', name: 'Alice', erasedAt: null }]) },
+      invitation: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited' }),
+      },
+    };
+    const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) } };
+    tenantPrisma.forTenant
+      .mockImplementationOnce((_ctx, fn) => fn(createTx))
+      .mockImplementationOnce((_ctx, fn) => fn(notifTx));
+
+    await service.bulkInvite(context, 'exam-1', ['cand-1']);
+
+    expect(audit.record).toHaveBeenCalledWith(context, {
+      actorUserId: null,
+      action: 'invitation.created',
+      entityType: 'invitation',
+      metadata: { count: 1, examTitle: 'Backend Round' },
+    });
+  });
+
+  it('does not record an invitation.created audit entry when every candidate is skipped', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', title: 'Backend Round', status: 'published' }) },
+      candidate: { findMany: jest.fn().mockResolvedValue([{ id: 'cand-1', email: 'a@test.com', name: 'Alice', erasedAt: null }]) },
+      invitation: {
+        findMany: jest.fn().mockResolvedValue([{ candidateId: 'cand-1' }]),
+        create: jest.fn(),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.bulkInvite(context, 'exam-1', ['cand-1']);
+
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it('lists invitations for an exam', async () => {
     const tx = {
       exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
