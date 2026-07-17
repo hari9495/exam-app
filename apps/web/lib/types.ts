@@ -366,3 +366,18 @@ export interface CodeAnswerReview {
   summary: string | null;
   generatedAt: string;
 }
+
+export interface DashboardSummary {
+  stats: {
+    totalCandidates: number;
+    invitationsSent: number;
+    attemptsInProgress: number;
+    pendingGradingCount: number;
+  };
+  attention: {
+    pendingGrading: { examId: string; examTitle: string; count: number }[];
+    recentProctoringFlags: { examId: string; examTitle: string; occurredAt: string }[];
+    staleInvitationCount: number;
+  };
+  activity: { id: string; description: string; occurredAt: string }[];
+}
