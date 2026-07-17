@@ -13,4 +13,14 @@ describe('Input', () => {
     render(<Input label="Email" value="" onChange={() => {}} error="Required" />);
     expect(screen.getByText('Required')).toBeInTheDocument();
   });
+
+  it('renders an icon inside the field when provided', () => {
+    render(<Input label="Email" value="" onChange={() => {}} icon={<span data-testid="input-icon">@</span>} />);
+    expect(screen.getByTestId('input-icon')).toBeInTheDocument();
+  });
+
+  it('does not add left padding when no icon is provided', () => {
+    render(<Input label="Email" value="" onChange={() => {}} />);
+    expect(screen.getByLabelText('Email')).not.toHaveClass('pl-9');
+  });
 });

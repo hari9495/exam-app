@@ -1,4 +1,4 @@
-import { InputHTMLAttributes, useId } from 'react';
+import { InputHTMLAttributes, ReactNode, useId } from 'react';
 import clsx from 'clsx';
 
 interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'value'> {
@@ -6,9 +6,10 @@ interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChan
   value: string;
   onChange: (value: string) => void;
   error?: string;
+  icon?: ReactNode;
 }
 
-export function Input({ label, value, onChange, error, className, id, ...props }: InputProps) {
+export function Input({ label, value, onChange, error, icon, className, id, ...props }: InputProps) {
   const generatedId = useId();
   const inputId = id ?? generatedId;
   return (
@@ -16,18 +17,24 @@ export function Input({ label, value, onChange, error, className, id, ...props }
       <label htmlFor={inputId} className="text-sm font-medium text-gray-700">
         {label}
       </label>
-      <input
-        id={inputId}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={clsx(
-          'rounded border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none',
-          error && 'border-red-500',
-          className,
+      <div className="relative">
+        {icon && (
+          <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400">{icon}</span>
         )}
-        aria-invalid={Boolean(error)}
-        {...props}
-      />
+        <input
+          id={inputId}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={clsx(
+            'w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none',
+            icon && 'pl-9',
+            error && 'border-red-500',
+            className,
+          )}
+          aria-invalid={Boolean(error)}
+          {...props}
+        />
+      </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
   );
