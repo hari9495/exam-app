@@ -123,6 +123,7 @@ describe('LiveMonitoringPanel', () => {
     jest.spyOn(useExamMonitoringModule, 'useExamMonitoring').mockReturnValue({
       roster: [{ candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'blocked', online: true, remainingSeconds: null, answeredCount: 2, totalQuestions: 5 }],
       alerts: [],
+      leaderboard: [],
       connectionStatus: 'connected',
       joinError: null,
     });
