@@ -19,4 +19,18 @@ describe('Button', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(onClick).not.toHaveBeenCalled();
   });
+
+  it('disables the button and shows a spinner when loading', () => {
+    const onClick = jest.fn();
+    render(
+      <Button onClick={onClick} loading>
+        Save
+      </Button>,
+    );
+    const button = screen.getByRole('button', { name: 'Save' });
+    expect(button).toBeDisabled();
+    expect(button.querySelector('svg')).toBeInTheDocument();
+    fireEvent.click(button);
+    expect(onClick).not.toHaveBeenCalled();
+  });
 });
