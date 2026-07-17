@@ -1,16 +1,20 @@
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
-import { randomUUID } from 'crypto';
+import { randomBytes, createHash, randomUUID } from 'crypto';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { LoginDto } from './dto/login.dto';
 import { AuditService } from '@exam-platform/shared';
+import { EmailService } from '../email/email.service';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 
 interface TokenPair {
   accessToken: string;
   refreshToken: string;
 }
+
+const PASSWORD_RESET_EXPIRY_MINUTES = 15;
 
 @Injectable()
 export class AuthService {
@@ -21,6 +25,7 @@ export class AuthService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly jwt: JwtService,
     private readonly audit: AuditService,
+    private readonly emailService: EmailService,
   ) {}
 
   async login(dto: LoginDto): Promise<TokenPair> {
@@ -55,6 +60,43 @@ export class AuthService {
       { actorUserId: user.id, action: 'login.success', entityType: 'user', entityId: user.id },
     );
     return tokens;
+  }
+
+  async forgotPassword(dto: ForgotPasswordDto): Promise<void> {
+    const org = await this.prisma.organization.findUnique({ where: { slug: dto.organizationSlug } });
+    if (!org) {
+      return;
+    }
+
+    const user = await this.tenantPrisma.forTenant({ organizationId: org.id, isSuperAdmin: false }, (tx) =>
+      tx.user.findFirst({ where: { email: dto.email, organizationId: org.id } }),
+    );
+    if (!user) {
+      return;
+    }
+
+    const rawToken = randomBytes(32).toString('hex');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + PASSWORD_RESET_EXPIRY_MINUTES);
+
+    await this.prisma.passwordResetToken.create({ data: { userId: user.id, tokenHash, expiresAt } });
+
+    // Fire-and-forget, matching the invitation-email pattern in InvitationsService:
+    // email delivery is a notification side effect, not something the caller should
+    // wait on (or that should make forgotPassword() throw on SMTP failure).
+    this.dispatchResetEmail(user.email, rawToken).catch((error) =>
+      this.logger.error(`Failed to dispatch password reset email to ${user.email}`, error as Error),
+    );
+  }
+
+  private async dispatchResetEmail(email: string, rawToken: string): Promise<void> {
+    const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/reset-password/${rawToken}`;
+    await this.emailService.send({
+      to: email,
+      subject: 'Reset your password',
+      html: `<p>Click the link below to reset your password. This link expires in 15 minutes.</p><p><a href="${link}">${link}</a></p>`,
+    });
   }
 
   async refresh(refreshToken: string): Promise<TokenPair> {

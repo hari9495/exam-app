@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
+import { EmailService } from '../email/email.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -13,9 +14,12 @@ describe('AuthService', () => {
     organization: { findUnique: jest.Mock };
     refreshToken: { create: jest.Mock; findFirst: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
     user: { findUnique: jest.Mock };
+    passwordResetToken: { create: jest.Mock; findUnique: jest.Mock; update: jest.Mock };
+    $transaction: jest.Mock;
   };
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
+  let emailService: { send: jest.Mock };
   let jwt: JwtService;
 
   beforeEach(async () => {
@@ -23,9 +27,12 @@ describe('AuthService', () => {
       organization: { findUnique: jest.fn() },
       refreshToken: { create: jest.fn(), findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
       user: { findUnique: jest.fn() },
+      passwordResetToken: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+      $transaction: jest.fn(async (callback: (tx: unknown) => unknown) => callback(prisma)),
     };
     tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
+    emailService = { send: jest.fn().mockResolvedValue({ success: true }) };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -33,6 +40,7 @@ describe('AuthService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: AuditService, useValue: audit },
+        { provide: EmailService, useValue: emailService },
         JwtService,
       ],
     }).compile();
@@ -123,5 +131,51 @@ describe('AuthService', () => {
     audit.record.mockRejectedValue(new Error('DB unavailable'));
 
     await expect(service.refresh(refreshToken)).rejects.toThrow(UnauthorizedException);
+  });
+
+  describe('forgotPassword', () => {
+    it('creates a hashed reset token and emails a link when the org and user match', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
+      tenantPrisma.forTenant.mockResolvedValue({ id: 'user-1', email: 'admin@demo-org.test', organizationId: 'org-1' });
+      prisma.passwordResetToken.create.mockResolvedValue({});
+
+      await service.forgotPassword({ organizationSlug: 'demo-org', email: 'admin@demo-org.test' });
+
+      expect(prisma.passwordResetToken.create).toHaveBeenCalledTimes(1);
+      const createCall = prisma.passwordResetToken.create.mock.calls[0][0];
+      expect(createCall.data.userId).toBe('user-1');
+      expect(createCall.data.tokenHash).toEqual(expect.any(String));
+      expect(createCall.data.tokenHash).not.toBe(''); // a hash was computed, not the raw token stored directly
+      expect(createCall.data.expiresAt.getTime()).toBeGreaterThan(Date.now());
+
+      // Email dispatch is fire-and-forget; give the microtask queue a tick to run it.
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(emailService.send).toHaveBeenCalledWith(
+        expect.objectContaining({ to: 'admin@demo-org.test', subject: expect.any(String) }),
+      );
+    });
+
+    it('does not create a token or send an email when the org slug does not resolve, and does not throw', async () => {
+      prisma.organization.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.forgotPassword({ organizationSlug: 'no-such-org', email: 'a@b.com' }),
+      ).resolves.toBeUndefined();
+
+      expect(prisma.passwordResetToken.create).not.toHaveBeenCalled();
+      expect(emailService.send).not.toHaveBeenCalled();
+    });
+
+    it('does not create a token or send an email when the email does not match a user in that org, and does not throw', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
+      tenantPrisma.forTenant.mockResolvedValue(null);
+
+      await expect(
+        service.forgotPassword({ organizationSlug: 'demo-org', email: 'nobody@demo-org.test' }),
+      ).resolves.toBeUndefined();
+
+      expect(prisma.passwordResetToken.create).not.toHaveBeenCalled();
+      expect(emailService.send).not.toHaveBeenCalled();
+    });
   });
 });
