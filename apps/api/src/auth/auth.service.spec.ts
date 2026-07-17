@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { UnauthorizedException } from '@nestjs/common';
 import * as argon2 from 'argon2';
+import { createHash } from 'crypto';
 import { AuthService } from './auth.service';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
@@ -153,6 +154,15 @@ describe('AuthService', () => {
       expect(emailService.send).toHaveBeenCalledWith(
         expect.objectContaining({ to: 'admin@demo-org.test', subject: expect.any(String) }),
       );
+
+      // Verify the token stored in the DB is actually a sha256 hash of the raw token sent in the email.
+      const emailCall = emailService.send.mock.calls[0][0];
+      const htmlContent = emailCall.html as string;
+      const tokenMatch = htmlContent.match(/\/reset-password\/([a-f0-9]+)/);
+      expect(tokenMatch).not.toBeNull();
+      const rawToken = tokenMatch![1];
+      const computedHash = createHash('sha256').update(rawToken).digest('hex');
+      expect(computedHash).toBe(createCall.data.tokenHash);
     });
 
     it('does not create a token or send an email when the org slug does not resolve, and does not throw', async () => {
