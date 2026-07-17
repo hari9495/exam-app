@@ -22,7 +22,14 @@ export function useWebcamMonitor(enabled: boolean): void {
     // a real webcam violation on every long-running spec. Playwright's init scripts set this
     // flag to skip webcam monitoring entirely in that environment; the rest of each spec's
     // flow (answering, running code, submitting) still exercises the real, unmocked behavior.
-    if (typeof window !== 'undefined' && (window as unknown as { __DISABLE_WEBCAM_MONITOR__?: boolean }).__DISABLE_WEBCAM_MONITOR__) {
+    // Gated on NODE_ENV !== 'production' so this escape hatch is dead-code-eliminated from
+    // production bundles -- a candidate flipping the flag from devtools in prod cannot disable
+    // proctoring.
+    if (
+      process.env.NODE_ENV !== 'production' &&
+      typeof window !== 'undefined' &&
+      (window as unknown as { __DISABLE_WEBCAM_MONITOR__?: boolean }).__DISABLE_WEBCAM_MONITOR__
+    ) {
       return;
     }
 

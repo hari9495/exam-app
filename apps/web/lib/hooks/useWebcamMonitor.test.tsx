@@ -66,4 +66,23 @@ describe('useWebcamMonitor', () => {
     jest.advanceTimersByTime(2_000);
     expect(mutate).not.toHaveBeenCalled();
   });
+
+  it('ignores the __DISABLE_WEBCAM_MONITOR__ escape hatch in production builds', async () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    // NODE_ENV's type is readonly (Next.js's global.d.ts); a real assignment is what next dev/
+    // build actually does under the hood, and Object.defineProperty on process.env is a no-op
+    // in this Jest/Node environment (its descriptor is protected), so cast past the type instead.
+    (process.env as { NODE_ENV: string }).NODE_ENV = 'production';
+    (window as unknown as { __DISABLE_WEBCAM_MONITOR__?: boolean }).__DISABLE_WEBCAM_MONITOR__ = true;
+
+    try {
+      render(<Probe enabled={true} />);
+      // A candidate flipping this flag from devtools must not be able to disable
+      // proctoring in production -- monitoring should still start.
+      await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled());
+    } finally {
+      (process.env as { NODE_ENV: string }).NODE_ENV = originalNodeEnv as string;
+      delete (window as unknown as { __DISABLE_WEBCAM_MONITOR__?: boolean }).__DISABLE_WEBCAM_MONITOR__;
+    }
+  });
 });
