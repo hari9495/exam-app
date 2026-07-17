@@ -55,7 +55,7 @@ export default function ExamsPage() {
       render: (exam) => (
         <div>
           <div className="font-semibold text-recruiter-text">{exam.title}</div>
-          <div className="text-xs text-recruiter-text-tertiary">{exam.durationMinutes} min · {exam.sections.length} section{exam.sections.length === 1 ? '' : 's'}</div>
+          <div className="text-xs text-recruiter-text-tertiary">{exam.durationMinutes} min</div>
         </div>
       ),
       sortValue: (exam) => exam.title,
