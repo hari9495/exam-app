@@ -2,6 +2,7 @@
 
 import { ReactNode, useState } from 'react';
 import clsx from 'clsx';
+import { ArrowUp, ArrowDown } from 'lucide-react';
 
 export interface Column<T> {
   key: string;
@@ -42,7 +43,7 @@ export function Table<T>({ columns, rows, rowKey, emptyMessage = 'No results.' }
   }
 
   if (rows.length === 0) {
-    return <p className="py-8 text-center text-sm text-gray-500">{emptyMessage}</p>;
+    return <p className="py-8 text-center text-sm text-recruiter-text-tertiary">{emptyMessage}</p>;
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLTableCellElement>, column: Column<T>) {
@@ -56,11 +57,14 @@ export function Table<T>({ columns, rows, rowKey, emptyMessage = 'No results.' }
     <div className="overflow-x-auto">
       <table className="w-full border-collapse text-sm">
         <thead>
-          <tr className="border-b border-gray-200 text-left">
+          <tr className="border-b border-recruiter-border bg-recruiter-bg-subtle text-left">
             {columns.map((column) => (
               <th
                 key={column.key}
-                className={clsx('px-3 py-2 font-medium text-gray-600', column.sortValue && 'cursor-pointer select-none')}
+                className={clsx(
+                  'px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary',
+                  column.sortValue && 'cursor-pointer select-none',
+                )}
                 onClick={column.sortValue ? () => handleSort(column) : undefined}
                 tabIndex={column.sortValue ? 0 : undefined}
                 role={column.sortValue ? 'button' : undefined}
@@ -68,16 +72,21 @@ export function Table<T>({ columns, rows, rowKey, emptyMessage = 'No results.' }
                 aria-sort={column.sortValue ? (sortKey === column.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
               >
                 {column.header}
-                {sortKey === column.key && (sortDir === 'asc' ? ' ↑' : ' ↓')}
+                {sortKey === column.key &&
+                  (sortDir === 'asc' ? (
+                    <ArrowUp size={12} className="ml-1 inline" />
+                  ) : (
+                    <ArrowDown size={12} className="ml-1 inline" />
+                  ))}
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
           {sorted.map((row) => (
-            <tr key={rowKey(row)} className="border-b border-gray-100 last:border-0">
+            <tr key={rowKey(row)} className="group border-b border-recruiter-border/60 last:border-0 hover:bg-recruiter-bg-subtle">
               {columns.map((column) => (
-                <td key={column.key} className="px-3 py-2">
+                <td key={column.key} className="px-3 py-2.5 text-recruiter-text">
                   {column.render(row)}
                 </td>
               ))}

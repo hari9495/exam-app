@@ -12,7 +12,7 @@ const VARIANT_CLASSES: Record<Variant, string> = {
 
 export function Badge({ variant = 'default', children }: { variant?: Variant; children: ReactNode }) {
   return (
-    <span className={clsx('inline-block rounded-full px-2 py-0.5 text-xs font-medium', variant, VARIANT_CLASSES[variant])}>
+    <span className={clsx('inline-block rounded-full px-2 py-0.5 text-xs font-medium', VARIANT_CLASSES[variant])}>
       {children}
     </span>
   );

@@ -9,7 +9,7 @@ export function DropdownMenu({ children }: { children: ReactNode }) {
 
 export function DropdownMenuTrigger({ children }: { children: ReactNode }) {
   return (
-    <RadixDropdown.Trigger asChild={false} className="rounded border border-gray-300 px-3 py-2 text-sm">
+    <RadixDropdown.Trigger asChild={false} className="rounded border border-recruiter-border px-3 py-2 text-sm">
       {children}
     </RadixDropdown.Trigger>
   );
@@ -18,7 +18,7 @@ export function DropdownMenuTrigger({ children }: { children: ReactNode }) {
 export function DropdownMenuContent({ children }: { children: ReactNode }) {
   return (
     <RadixDropdown.Portal>
-      <RadixDropdown.Content className="rounded border border-gray-200 bg-white p-1 shadow-md" sideOffset={4}>
+      <RadixDropdown.Content className="rounded border border-recruiter-border bg-white p-1 shadow-md" sideOffset={4}>
         {children}
       </RadixDropdown.Content>
     </RadixDropdown.Portal>

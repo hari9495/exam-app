@@ -1,6 +1,7 @@
 'use client';
 
 import * as RadixSelect from '@radix-ui/react-select';
+import { ChevronDown } from 'lucide-react';
 
 export interface SelectOption {
   value: string;
@@ -22,13 +23,13 @@ export function Select({ label, value, onChange, options }: SelectProps) {
       <RadixSelect.Root value={value} onValueChange={onChange}>
         <RadixSelect.Trigger
           aria-label={label}
-          className="flex items-center justify-between rounded border border-gray-300 px-3 py-2 text-sm"
+          className="flex items-center justify-between rounded border border-recruiter-border px-3 py-2 text-sm"
         >
           <RadixSelect.Value>{selected?.label ?? ''}</RadixSelect.Value>
-          <RadixSelect.Icon>▾</RadixSelect.Icon>
+          <RadixSelect.Icon><ChevronDown size={14} /></RadixSelect.Icon>
         </RadixSelect.Trigger>
         <RadixSelect.Portal>
-          <RadixSelect.Content className="rounded border border-gray-200 bg-white shadow-md">
+          <RadixSelect.Content className="rounded border border-recruiter-border bg-white shadow-md">
             <RadixSelect.Viewport>
               {options.map((option) => (
                 <RadixSelect.Item
