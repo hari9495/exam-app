@@ -1,8 +1,16 @@
 import { render, screen, act } from '@testing-library/react';
 import { useCountdown } from './useCountdown';
 
-function CountdownProbe({ remainingSeconds, onExpire }: { remainingSeconds: number | undefined; onExpire: () => void }) {
-  const seconds = useCountdown(remainingSeconds, onExpire);
+function CountdownProbe({
+  remainingSeconds,
+  onExpire,
+  isTicking,
+}: {
+  remainingSeconds: number | undefined;
+  onExpire: () => void;
+  isTicking?: boolean;
+}) {
+  const seconds = useCountdown(remainingSeconds, onExpire, isTicking);
   return <p>seconds:{seconds}</p>;
 }
 
@@ -55,5 +63,15 @@ describe('useCountdown', () => {
     act(() => jest.advanceTimersByTime(1000));
     expect(screen.getByText('seconds:9')).toBeInTheDocument();
     expect(onExpire).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not decrement or fire onExpire while frozen (isTicking=false), even at 1 second left', () => {
+    const onExpire = jest.fn();
+    render(<CountdownProbe remainingSeconds={1} onExpire={onExpire} isTicking={false} />);
+    expect(screen.getByText('seconds:1')).toBeInTheDocument();
+
+    act(() => jest.advanceTimersByTime(5000));
+    expect(screen.getByText('seconds:1')).toBeInTheDocument();
+    expect(onExpire).not.toHaveBeenCalled();
   });
 });

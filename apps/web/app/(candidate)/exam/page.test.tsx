@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useRouter } from 'next/navigation';
 import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode, useWebcamResume } from '../../../lib/hooks/useAttempt';
@@ -132,6 +132,8 @@ describe('CandidateExamPage', () => {
     (useWebcamMonitor as jest.Mock).mockReturnValue(undefined);
     (useWebcamResume as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false, isError: false });
   });
+
+  afterEach(() => jest.useRealTimers());
 
   it('renders the current question and saves an answer on selection', async () => {
     render(<CandidateExamPage />);
@@ -369,6 +371,30 @@ describe('CandidateExamPage', () => {
     expect(screen.queryByRole('button', { name: /continue/i })).not.toBeInTheDocument();
     expect(push).not.toHaveBeenCalledWith('/submitted');
   });
+
+  it.each(['paused', 'blocked'] as const)(
+    'does not let the frozen countdown reach zero and trigger a submit while %s, even with remainingSeconds=1',
+    (status) => {
+      // Uses the real useCountdown (not the module mock) so this exercises the actual
+      // freeze wiring end-to-end: exam/page.tsx must pass isTicking=false while paused/blocked.
+      const { useCountdown: actualUseCountdown } = jest.requireActual('../../../lib/hooks/useCountdown');
+      (useCountdown as jest.Mock).mockImplementation(actualUseCountdown);
+      (useAttemptQuery as jest.Mock).mockReturnValue({
+        data: { ...attemptState, status, remainingSeconds: 1, webcamViolationCount: 3 },
+        isError: false,
+      });
+
+      jest.useFakeTimers();
+      render(<CandidateExamPage />);
+      act(() => {
+        jest.advanceTimersByTime(5000);
+      });
+      jest.useRealTimers();
+
+      expect(mutateAsync).not.toHaveBeenCalled();
+      expect(push).not.toHaveBeenCalledWith('/submitted');
+    },
+  );
 
   it('keeps the question card mounted underneath the warning overlay instead of replacing the page', () => {
     (useAttemptQuery as jest.Mock).mockReturnValue({

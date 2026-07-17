@@ -71,9 +71,13 @@ export default function CandidateExamPage() {
     router.push('/submitted');
   }
 
-  const remainingSeconds = useCountdown(attemptState?.remainingSeconds, () => {
-    finishSubmit();
-  });
+  const remainingSeconds = useCountdown(
+    attemptState?.remainingSeconds,
+    () => {
+      finishSubmit();
+    },
+    attemptState?.status === 'in_progress',
+  );
 
   useEffect(() => {
     if (!authLoading && !accessToken) {
