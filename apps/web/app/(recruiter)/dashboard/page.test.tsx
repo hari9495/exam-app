@@ -2,8 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import DashboardPage from './page';
 import { AuthProvider } from '../../../lib/auth-context';
 import { QueryProvider } from '../../../lib/query-provider';
-
-jest.mock('next/navigation', () => ({ useRouter: () => ({ push: jest.fn() }) }));
+import { ToastProvider } from '../../../components/ui';
 
 describe('DashboardPage', () => {
   const originalFetch = global.fetch;
@@ -11,87 +10,83 @@ describe('DashboardPage', () => {
     global.fetch = originalFetch;
   });
 
-  it('shows exam counts by status once exams load', async () => {
+  function mockSummaryFetch(summary: any) {
     global.fetch = jest.fn(async (url) => {
       if (String(url).endsWith('/auth/refresh')) {
         return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
       }
-      if (String(url).includes('/exams')) {
-        return new Response(
-          JSON.stringify([
-            { id: '1', title: 'A', status: 'draft', sections: [] },
-            { id: '2', title: 'B', status: 'published', sections: [] },
-            { id: '3', title: 'C', status: 'published', sections: [] },
-          ]),
-          { status: 200 },
-        );
+      if (String(url).includes('/dashboard/summary')) {
+        return new Response(JSON.stringify(summary), { status: 200 });
       }
       return new Response(JSON.stringify({}), { status: 200 });
     }) as unknown as typeof fetch;
+  }
 
+  function renderPage() {
     render(
       <QueryProvider>
-        <AuthProvider>
-          <DashboardPage />
-        </AuthProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <DashboardPage />
+          </AuthProvider>
+        </ToastProvider>
       </QueryProvider>,
     );
+  }
 
-    await waitFor(() => expect(screen.getByText('1')).toBeInTheDocument()); // draft count
-    expect(screen.getByText('2')).toBeInTheDocument(); // published count
-  });
-
-  it('shows loading state while exams are fetching', async () => {
-    let resolveExams: (value: any) => void;
-    const examsPromise = new Promise((resolve) => {
-      resolveExams = resolve;
+  it('renders the 4 stat cards from the summary endpoint', async () => {
+    mockSummaryFetch({
+      stats: { totalCandidates: 248, invitationsSent: 312, attemptsInProgress: 17, pendingGradingCount: 9 },
+      attention: { pendingGrading: [], recentProctoringFlags: [], staleInvitationCount: 0 },
+      activity: [],
     });
+    renderPage();
 
-    global.fetch = jest.fn(async (url) => {
-      if (String(url).endsWith('/auth/refresh')) {
-        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
-      }
-      if (String(url).includes('/exams')) {
-        await examsPromise;
-        return new Response(JSON.stringify([]), { status: 200 });
-      }
-      return new Response(JSON.stringify({}), { status: 200 });
-    }) as unknown as typeof fetch;
-
-    render(
-      <QueryProvider>
-        <AuthProvider>
-          <DashboardPage />
-        </AuthProvider>
-      </QueryProvider>,
-    );
-
-    await waitFor(() => expect(screen.getByText('Loading…')).toBeInTheDocument(), { timeout: 2000 });
-    resolveExams!(null);
-
-    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('248')).toBeInTheDocument());
+    expect(screen.getByText('312')).toBeInTheDocument();
+    expect(screen.getByText('17')).toBeInTheDocument();
+    expect(screen.getByText('9')).toBeInTheDocument();
   });
 
-  it('shows error state when exam fetch fails', async () => {
+  it('renders attention items with their counts', async () => {
+    mockSummaryFetch({
+      stats: { totalCandidates: 0, invitationsSent: 0, attemptsInProgress: 0, pendingGradingCount: 4 },
+      attention: {
+        pendingGrading: [{ examId: 'exam-1', examTitle: 'Backend Round — Python', count: 4 }],
+        recentProctoringFlags: [],
+        staleInvitationCount: 6,
+      },
+      activity: [],
+    });
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText(/Backend Round — Python/)).toBeInTheDocument());
+    expect(screen.getByText('6')).toBeInTheDocument();
+  });
+
+  it('renders the recent activity feed', async () => {
+    mockSummaryFetch({
+      stats: { totalCandidates: 0, invitationsSent: 0, attemptsInProgress: 0, pendingGradingCount: 0 },
+      attention: { pendingGrading: [], recentProctoringFlags: [], staleInvitationCount: 0 },
+      activity: [{ id: 'log-1', description: '3 candidates invited to Backend Round', occurredAt: '2026-07-17T10:00:00Z' }],
+    });
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('3 candidates invited to Backend Round')).toBeInTheDocument());
+  });
+
+  it('shows an error state when the summary fetch fails', async () => {
     global.fetch = jest.fn(async (url) => {
       if (String(url).endsWith('/auth/refresh')) {
         return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
       }
-      if (String(url).includes('/exams')) {
+      if (String(url).includes('/dashboard/summary')) {
         return new Response(JSON.stringify({ message: 'Server error' }), { status: 500 });
       }
       return new Response(JSON.stringify({}), { status: 200 });
     }) as unknown as typeof fetch;
+    renderPage();
 
-    render(
-      <QueryProvider>
-        <AuthProvider>
-          <DashboardPage />
-        </AuthProvider>
-      </QueryProvider>,
-    );
-
-    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument(), { timeout: 2000 });
-    expect(screen.getByText('Failed to load exams.')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
   });
 });
