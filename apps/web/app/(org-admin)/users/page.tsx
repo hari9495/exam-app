@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useUsers, useCreateUser } from '../../../lib/hooks/useUsers';
-import { Table, Input, Select, Button, useToast, type Column } from '../../../components/ui';
+import { Table, Input, Select, Button, StatusBadge, useToast, type Column, type StatusTone } from '../../../components/ui';
 import { StaffUser } from '../../../lib/types';
 
 const ROLE_OPTIONS = [
@@ -10,6 +10,29 @@ const ROLE_OPTIONS = [
   { value: 'recruiter', label: 'Recruiter' },
   { value: 'panel', label: 'Interview Panel' },
 ];
+
+const ROLE_TONE: Record<string, StatusTone> = {
+  org_admin: 'purple',
+  recruiter: 'info',
+  panel: 'neutral',
+};
+
+const ROLE_LABEL: Record<string, string> = {
+  org_admin: 'Org Admin',
+  recruiter: 'Recruiter',
+  panel: 'Interview Panel',
+};
+
+// StaffUser.status is an unconstrained backend string (no enum/check constraint) whose
+// only real value today is 'active' -- default unknown/future values to a neutral tone
+// and a title-cased label rather than assuming a closed set.
+function statusTone(status: string): StatusTone {
+  return status === 'active' ? 'success' : 'neutral';
+}
+
+function statusLabel(status: string): string {
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
 
 export default function UsersPage() {
   const { data: users, isLoading, isError } = useUsers();
@@ -39,8 +62,17 @@ export default function UsersPage() {
 
   const columns: Column<StaffUser>[] = [
     { key: 'email', header: 'Email', render: (user) => user.email, sortValue: (user) => user.email },
-    { key: 'role', header: 'Role', render: (user) => user.role, sortValue: (user) => user.role },
-    { key: 'status', header: 'Status', render: (user) => user.status },
+    {
+      key: 'role',
+      header: 'Role',
+      render: (user) => <StatusBadge tone={ROLE_TONE[user.role] ?? 'neutral'}>{ROLE_LABEL[user.role] ?? user.role}</StatusBadge>,
+      sortValue: (user) => user.role,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (user) => <StatusBadge tone={statusTone(user.status)}>{statusLabel(user.status)}</StatusBadge>,
+    },
     {
       key: 'lastLoginAt',
       header: 'Last login',
@@ -51,8 +83,8 @@ export default function UsersPage() {
   if (isLoading) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-semibold">Staff Users</h1>
-        <p className="text-sm text-gray-500">Loading…</p>
+        <h1 className="mb-6 text-2xl font-semibold text-recruiter-text">Staff Users</h1>
+        <p className="text-sm text-recruiter-text-tertiary">Loading…</p>
       </div>
     );
   }
@@ -60,8 +92,8 @@ export default function UsersPage() {
   if (isError) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-semibold">Staff Users</h1>
-        <p role="alert" className="text-sm text-red-600">
+        <h1 className="mb-6 text-2xl font-semibold text-recruiter-text">Staff Users</h1>
+        <p role="alert" className="text-sm text-status-danger">
           Failed to load users.
         </p>
       </div>
@@ -70,7 +102,7 @@ export default function UsersPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-semibold">Staff Users</h1>
+      <h1 className="mb-6 text-2xl font-semibold text-recruiter-text">Staff Users</h1>
       <form onSubmit={handleSubmit} className="mb-6 flex items-end gap-2">
         <Input label="Email" type="email" value={email} onChange={setEmail} required />
         <Input label="Password" type="password" value={password} onChange={setPassword} required minLength={8} />
@@ -78,7 +110,7 @@ export default function UsersPage() {
         <Button type="submit">Add staff member</Button>
       </form>
       {error && (
-        <p role="alert" className="mb-4 text-sm text-red-600">
+        <p role="alert" className="mb-4 text-sm text-status-danger">
           {error}
         </p>
       )}

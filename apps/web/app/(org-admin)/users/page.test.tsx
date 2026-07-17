@@ -149,4 +149,38 @@ describe('UsersPage', () => {
     },
     10000,
   );
+
+  it('shows role and status as StatusBadge tags', async () => {
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).endsWith('/users')) {
+        return new Response(
+          JSON.stringify([
+            {
+              id: 'user-1', organizationId: 'org-1', email: 'admin@demo-org.test', role: 'org_admin',
+              status: 'active', lastLoginAt: null, createdAt: '2026-07-01T00:00:00.000Z',
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <UsersPage />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('admin@demo-org.test')).toBeInTheDocument());
+    expect(screen.queryAllByText('Org Admin')).not.toHaveLength(0);
+    expect(screen.getByText('Active')).toBeInTheDocument();
+  });
 });
