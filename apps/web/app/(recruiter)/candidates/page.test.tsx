@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import CandidatesPage from './page';
 import { AuthProvider } from '../../../lib/auth-context';
@@ -174,5 +174,44 @@ describe('CandidatesPage', () => {
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument(), { timeout: 2000 });
     expect(screen.getByText('Failed to load candidates.')).toBeInTheDocument();
+  });
+
+  it('filters the candidate list by the search box', async () => {
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/exams')) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (String(url).includes('/candidates')) {
+        return new Response(
+          JSON.stringify([
+            { id: 'cand-1', email: 'alice@test.com', name: 'Alice Chen', phone: null, createdAt: '2026-07-01T00:00:00Z', erasedAt: null },
+            { id: 'cand-2', email: 'raj@test.com', name: 'Raj Kumar', phone: null, createdAt: '2026-07-02T00:00:00Z', erasedAt: null },
+          ]),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <CandidatesPage />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Alice Chen')).toBeInTheDocument());
+    expect(screen.getByText('Raj Kumar')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText('Search candidates…'), { target: { value: 'alice' } });
+
+    expect(screen.getByText('Alice Chen')).toBeInTheDocument();
+    expect(screen.queryByText('Raj Kumar')).not.toBeInTheDocument();
   });
 });
