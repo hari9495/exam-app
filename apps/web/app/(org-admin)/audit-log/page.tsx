@@ -2,8 +2,18 @@
 
 import { useEffect, useState } from 'react';
 import { useAuditLogs, type AuditLogFilters } from '../../../lib/hooks/useAuditLogs';
-import { Input, Button, Table, type Column } from '../../../components/ui';
+import { Input, Button, Table, StatusBadge, type Column, type StatusTone } from '../../../components/ui';
 import { AuditLogEntry } from '../../../lib/types';
+
+// Action strings are open-ended ("<entity>.<verb>", e.g. "exam.published",
+// "candidate.erased", "attempt.settled") -- tone by verb suffix rather than
+// an exhaustive map, since new action types are added elsewhere in the app
+// without this page's knowledge.
+function actionTone(action: string): StatusTone {
+  if (action.endsWith('.erased') || action.endsWith('.revoked') || action.endsWith('.archived')) return 'danger';
+  if (action.endsWith('.published') || action.endsWith('.created') || action.endsWith('.settled')) return 'success';
+  return 'neutral';
+}
 
 export default function AuditLogPage() {
   const [filters, setFilters] = useState<AuditLogFilters>({});
@@ -34,17 +44,17 @@ export default function AuditLogPage() {
     {
       key: 'createdAt',
       header: 'When',
-      render: (entry) => new Date(entry.createdAt).toLocaleString(),
+      render: (entry) => <span className="text-recruiter-text-tertiary">{new Date(entry.createdAt).toLocaleString()}</span>,
       sortValue: (entry) => entry.createdAt,
     },
     { key: 'actorEmail', header: 'Actor', render: (entry) => entry.actorEmail ?? 'System' },
-    { key: 'action', header: 'Action', render: (entry) => entry.action },
+    { key: 'action', header: 'Action', render: (entry) => <StatusBadge tone={actionTone(entry.action)}>{entry.action}</StatusBadge> },
     { key: 'entityType', header: 'Entity', render: (entry) => entry.entityType },
   ];
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-semibold">Audit Log</h1>
+      <h1 className="mb-6 text-2xl font-semibold text-recruiter-text">Audit Log</h1>
       <form onSubmit={handleApplyFilters} className="mb-6 flex flex-wrap items-end gap-2">
         <Input
           label="Actor user ID"
@@ -76,12 +86,12 @@ export default function AuditLogPage() {
         <Button type="submit">Apply filters</Button>
       </form>
       {isError && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-status-danger">
           Failed to load audit log.
         </p>
       )}
       {isLoading && entries.length === 0 ? (
-        <p className="text-sm text-gray-500">Loading…</p>
+        <p className="text-sm text-recruiter-text-tertiary">Loading…</p>
       ) : (
         !isError && (
           <>

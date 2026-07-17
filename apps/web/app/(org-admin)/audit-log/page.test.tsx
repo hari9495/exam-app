@@ -124,4 +124,30 @@ describe('AuditLogPage', () => {
     const paginationCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('cursor=log-1'));
     expect(paginationCall).toBeDefined();
   });
+
+  it('renders the action column as a tone-mapped StatusBadge', async () => {
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/audit-logs')) {
+        return new Response(JSON.stringify([ENTRY_1, ENTRY_2]), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <AuditLogPage />
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('user.created')).toBeInTheDocument());
+    const createdBadge = screen.getByText('user.created');
+    expect(createdBadge.className).toContain('bg-status-success-bg');
+    const erasedBadge = screen.getByText('candidate.erased');
+    expect(erasedBadge.className).toContain('bg-status-danger-bg');
+  });
 });
