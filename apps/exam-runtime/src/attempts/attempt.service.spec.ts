@@ -108,6 +108,7 @@ describe('AttemptService', () => {
       expect(result).toEqual({
         status: 'in_progress',
         remainingSeconds: 3300,
+        exam: { title: 'Backend Round' },
         sections: [
           { title: 'Section One', targetDurationMinutes: 20, questions: [{ id: 'q1', text: 'What is 2+2?', type: 'single_mcq', marks: 5, options: [{ id: 'opt-a', text: '4' }, { id: 'opt-b', text: '5' }] }] },
         ],

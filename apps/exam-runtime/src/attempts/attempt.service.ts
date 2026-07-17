@@ -73,6 +73,7 @@ interface AttemptStateResponse {
   status: string;
   remainingSeconds: number;
   webcamViolationCount: number;
+  exam: { title: string };
   sections: AttemptSection[];
   answers: AttemptAnswerSummary[];
   messages: AttemptMessageSummary[];
@@ -124,6 +125,7 @@ export class AttemptService {
         status: settled.status,
         remainingSeconds: this.attemptSettlement.remainingSeconds(exam, settled),
         webcamViolationCount: settled.webcamViolationCount,
+        exam: { title: exam.title },
         sections,
         answers: answers.map((answer) => ({
           questionId: answer.questionId,

@@ -30,6 +30,7 @@ jest.mock('@monaco-editor/react', () => ({
 const attemptState = {
   status: 'in_progress',
   remainingSeconds: 590,
+  exam: { title: 'Test Exam' },
   sections: [
     {
       title: 'Section One',
@@ -46,6 +47,7 @@ const attemptState = {
 const codeAttemptState = {
   status: 'in_progress',
   remainingSeconds: 590,
+  exam: { title: 'Test Exam' },
   sections: [
     {
       title: 'Section One',
@@ -76,6 +78,7 @@ const codeAttemptStateWithStdin = {
 const twoCodeQuestionsAttemptState = {
   status: 'in_progress',
   remainingSeconds: 590,
+  exam: { title: 'Test Exam' },
   sections: [
     {
       title: 'Section One',
@@ -205,7 +208,7 @@ describe('CandidateExamPage', () => {
 
     render(<CandidateExamPage />);
 
-    expect(screen.getByText('CODE · 5 MARKS')).toBeInTheDocument();
+    expect(screen.getByText('Question 1 of 1 · Code · 5 marks')).toBeInTheDocument();
     expect(screen.getByLabelText('code-editor')).toHaveValue('function add(a, b) {}');
   });
 
@@ -269,7 +272,8 @@ describe('CandidateExamPage', () => {
     render(<CandidateExamPage />);
     await userEvent.click(screen.getAllByRole('button', { name: 'Review & Submit' })[0]);
 
-    expect(screen.getByText(/You have 1 unanswered question/)).toBeInTheDocument();
+    const unansweredStat = screen.getAllByText('1').find((el) => el.className.includes('text-lg'));
+    expect(unansweredStat).toBeInTheDocument();
   });
 
   it('runs code and displays the output panel', async () => {

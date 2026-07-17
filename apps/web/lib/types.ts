@@ -194,6 +194,7 @@ export interface AttemptState {
   status: string;
   remainingSeconds: number;
   webcamViolationCount: number;
+  exam: { title: string };
   sections: AttemptSection[];
   answers: AttemptAnswerSummary[];
   messages: AttemptMessageSummary[];

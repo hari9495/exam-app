@@ -1,15 +1,16 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import Editor from '@monaco-editor/react';
-import { Play } from 'lucide-react';
+import { Bookmark, Play } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '../../../components/ui';
 import { CandidateButton } from '../components/CandidateButton';
 import { CodeOutputPanel } from '../components/CodeOutputPanel';
 import { QuestionNavigator, flattenQuestions } from '../components/QuestionNavigator';
 import { ProctoringWarningOverlay, ProctoringBlockOverlay } from '../components/ProctoringOverlay';
+import { TimerBar } from '../components/TimerBar';
 import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode, useWebcamResume, RunCodeResult } from '../../../lib/hooks/useAttempt';
 import { useCountdown } from '../../../lib/hooks/useCountdown';
 import { useProctoringMonitor } from '../../../lib/hooks/useProctoringMonitor';
@@ -17,16 +18,10 @@ import { useWebcamMonitor } from '../../../lib/hooks/useWebcamMonitor';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
 import { AttemptAnswerSummary, isAttemptStarted } from '../../../lib/types';
 
-function formatTime(totalSeconds: number) {
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-}
-
 function markButtonClasses(marked: boolean | undefined) {
   return clsx(
     'rounded-full border px-2 py-0.5 text-xs',
-    marked ? 'border-candidate-review-border bg-candidate-review-bg text-candidate-review' : 'border-gray-200 text-gray-400',
+    marked ? 'border-candidate-review-border bg-candidate-review-bg text-candidate-review' : 'border-candidate-border text-candidate-text-faint',
   );
 }
 
@@ -35,7 +30,7 @@ function optionClasses(selected: boolean) {
     'rounded-lg border px-3 py-2 text-left text-sm',
     selected
       ? 'border-[1.5px] border-candidate-primary bg-candidate-primary-light font-semibold text-candidate-primary'
-      : 'border-gray-200 text-gray-700',
+      : 'border-candidate-border text-candidate-text-secondary',
   );
 }
 
@@ -79,6 +74,11 @@ export default function CandidateExamPage() {
     attemptState?.status === 'in_progress',
   );
 
+  const totalSecondsRef = useRef<number | null>(null);
+  if (totalSecondsRef.current === null && attemptState?.remainingSeconds) {
+    totalSecondsRef.current = attemptState.remainingSeconds;
+  }
+
   useEffect(() => {
     if (!authLoading && !accessToken) {
       router.push('/session-ended');
@@ -100,13 +100,13 @@ export default function CandidateExamPage() {
   const stdinValue = question ? stdinValues[question.id] ?? '' : '';
   const runResult = question ? runResults[question.id] ?? null : null;
   const runError = question ? runErrors[question.id] ?? null : null;
-  const unansweredCount = questions.filter((q) => {
+  const answeredCount = questions.filter((q) => {
     const a = answers.find((ans) => ans.questionId === q.id);
-    if (q.type === 'code') {
-      return !a || !a.answerText || a.answerText.trim() === '';
-    }
-    return !a || a.selectedOptionIds.length === 0;
+    if (q.type === 'code') return Boolean(a && a.answerText && a.answerText.trim() !== '');
+    return Boolean(a && a.selectedOptionIds.length > 0);
   }).length;
+  const reviewCount = questions.filter((q) => answers.find((ans) => ans.questionId === q.id)?.isMarkedForReview).length;
+  const unansweredCount = questions.length - answeredCount;
 
   if (isError || !attemptState) {
     return <p className="p-8 text-sm text-gray-500">Loading…</p>;
@@ -182,29 +182,32 @@ export default function CandidateExamPage() {
       ) : null}
       {isBlocked ? <ProctoringBlockOverlay /> : null}
       <div className={clsx('mx-auto max-w-4xl p-4', (isPaused || isBlocked) && 'pointer-events-none blur-sm select-none')}>
-      <div className="mb-4 flex items-center justify-between rounded-lg bg-white px-4 py-3 shadow-sm">
-        <button
-          onClick={() => setNavigatorOpen((open) => !open)}
-          className="rounded-full bg-candidate-primary-light px-3 py-1 text-xs font-bold text-candidate-primary lg:hidden"
-        >
-          Q{currentIndex + 1}/{questions.length} ▾
-        </button>
-        <span className="hidden text-sm font-bold text-candidate-primary lg:inline">
-          Question {currentIndex + 1} of {questions.length}
-        </span>
-        <span className="rounded-full bg-candidate-primary-light px-3 py-1 text-xs font-bold text-candidate-primary">
-          ⏱ {formatTime(remainingSeconds)}
-        </span>
+      <div className="mb-4 rounded-lg border border-candidate-border bg-white px-4 py-3 shadow-sm">
+        <div className="mb-2 flex items-center justify-between">
+          <button
+            onClick={() => setNavigatorOpen((open) => !open)}
+            className="rounded-full bg-candidate-primary-light px-3 py-1 text-xs font-bold text-candidate-primary lg:hidden"
+          >
+            Q{currentIndex + 1}/{questions.length} ▾
+          </button>
+          <span className="hidden text-sm font-bold text-candidate-text lg:inline">{attemptState.exam.title}</span>
+        </div>
+        <TimerBar remainingSeconds={remainingSeconds} totalSeconds={totalSecondsRef.current ?? remainingSeconds} />
       </div>
 
       <div className="flex gap-4">
         <div className="flex-1 rounded-lg bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-500">
-              {question.type === 'code' ? 'CODE' : question.type === 'multi_mcq' ? 'MULTIPLE CHOICE' : 'SINGLE CHOICE'} · {question.marks} MARKS
+            <span className="text-xs font-semibold uppercase tracking-wide text-candidate-text-tertiary">
+              Question {currentIndex + 1} of {questions.length} ·{' '}
+              {question.type === 'code' ? 'Code' : question.type === 'multi_mcq' ? 'Multiple choice' : 'Single choice'} ·{' '}
+              {question.marks} marks
             </span>
             <button onClick={toggleMarkForReview} className={markButtonClasses(existingAnswer?.isMarkedForReview)}>
-              {existingAnswer?.isMarkedForReview ? '★ Marked for review' : '☆ Mark for review'}
+              <span className="inline-flex items-center gap-1">
+                <Bookmark className="h-3 w-3" fill={existingAnswer?.isMarkedForReview ? 'currentColor' : 'none'} aria-hidden="true" />
+                {existingAnswer?.isMarkedForReview ? 'Marked for review' : 'Mark for review'}
+              </span>
             </button>
           </div>
           <p className="mb-4 text-sm text-gray-800">{question.text}</p>
@@ -252,11 +255,23 @@ export default function CandidateExamPage() {
             </>
           ) : (
             <div className="flex flex-col gap-2">
-              {question.options.map((option) => (
-                <button key={option.id} onClick={() => toggleOption(option.id)} className={optionClasses(selectedOptionIds.includes(option.id))}>
-                  {selectedOptionIds.includes(option.id) ? '◉' : '○'} {option.text}
-                </button>
-              ))}
+              {question.options.map((option) => {
+                const selected = selectedOptionIds.includes(option.id);
+                return (
+                  <button key={option.id} onClick={() => toggleOption(option.id)} className={optionClasses(selected)}>
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        className={clsx(
+                          'inline-block h-3.5 w-3.5 flex-shrink-0 rounded-full border-2',
+                          selected ? 'border-candidate-primary bg-candidate-primary shadow-[inset_0_0_0_2px_white]' : 'border-candidate-text-faint',
+                        )}
+                        aria-hidden="true"
+                      />
+                      {option.text}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           )}
           <div className="mt-4 flex justify-between">
@@ -296,11 +311,21 @@ export default function CandidateExamPage() {
       )}
 
       <Modal open={confirmOpen} title="Submit exam?" onClose={() => setConfirmOpen(false)}>
-        <p className="mb-4 text-sm text-gray-600">
-          {unansweredCount > 0
-            ? `You have ${unansweredCount} unanswered question${unansweredCount === 1 ? '' : 's'}. Once submitted, you cannot make further changes.`
-            : 'Once submitted, you cannot make further changes.'}
-        </p>
+        <p className="mb-4 text-sm text-candidate-text-secondary">You won&apos;t be able to change your answers after this.</p>
+        <div className="mb-4 grid grid-cols-3 gap-2">
+          <div className="rounded-md bg-candidate-primary-light p-2 text-center">
+            <div className="text-lg font-bold text-candidate-primary">{answeredCount}</div>
+            <div className="text-[10px] uppercase tracking-wide text-candidate-text-tertiary">Answered</div>
+          </div>
+          <div className="rounded-md bg-candidate-review-bg p-2 text-center">
+            <div className="text-lg font-bold text-candidate-review">{reviewCount}</div>
+            <div className="text-[10px] uppercase tracking-wide text-candidate-text-tertiary">For review</div>
+          </div>
+          <div className="rounded-md bg-candidate-bg p-2 text-center">
+            <div className="text-lg font-bold text-candidate-text-secondary">{unansweredCount}</div>
+            <div className="text-[10px] uppercase tracking-wide text-candidate-text-tertiary">Unanswered</div>
+          </div>
+        </div>
         <div className="flex justify-end gap-2">
           <CandidateButton variant="secondary" onClick={() => setConfirmOpen(false)}>
             Keep reviewing
@@ -312,9 +337,13 @@ export default function CandidateExamPage() {
       </Modal>
 
       <Modal open={submitAttempt.isError} title="Couldn't submit" onClose={() => undefined}>
-        <p className="mb-4 text-sm text-gray-600">Your submission didn&apos;t go through. Your answers are saved — please retry.</p>
+        <p className="mb-4 text-sm text-candidate-text-secondary">
+          Your submission didn&apos;t go through. Your answers are saved — please retry.
+        </p>
         <div className="flex justify-end">
-          <CandidateButton onClick={() => finishSubmit()}>Retry</CandidateButton>
+          <CandidateButton onClick={() => finishSubmit()} className="bg-candidate-danger hover:opacity-90">
+            Retry
+          </CandidateButton>
         </div>
       </Modal>
       </div>
