@@ -4,6 +4,7 @@ import { MonitoringGateway, PRESENCE_TICK_MS } from './monitoring.gateway';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { MonitoringService } from './monitoring.service';
+import { LeaderboardService } from '../leaderboard/leaderboard.service';
 
 describe('MonitoringGateway', () => {
   let gateway: MonitoringGateway;
@@ -11,6 +12,7 @@ describe('MonitoringGateway', () => {
   let prisma: { rolePermission: { findFirst: jest.Mock } };
   let tenantPrisma: { forTenant: jest.Mock };
   let monitoring: { getRosterSnapshot: jest.Mock };
+  let leaderboardService: { computeRecruiterView: jest.Mock };
 
   function makeSocket(overrides: Record<string, unknown> = {}) {
     return {
@@ -27,6 +29,7 @@ describe('MonitoringGateway', () => {
     prisma = { rolePermission: { findFirst: jest.fn() } };
     tenantPrisma = { forTenant: jest.fn() };
     monitoring = { getRosterSnapshot: jest.fn() };
+    leaderboardService = { computeRecruiterView: jest.fn() };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -35,6 +38,7 @@ describe('MonitoringGateway', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: MonitoringService, useValue: monitoring },
+        { provide: LeaderboardService, useValue: leaderboardService },
       ],
     }).compile();
 
@@ -109,12 +113,31 @@ describe('MonitoringGateway', () => {
       prisma.rolePermission.findFirst.mockResolvedValue({ role: 'recruiter' });
       const roster = [{ candidateId: 'cand-1' }];
       monitoring.getRosterSnapshot.mockResolvedValue(roster);
+      leaderboardService.computeRecruiterView.mockResolvedValue([
+        { rank: 1, candidateId: 'cand-1', candidateName: 'Alice', correctCount: 2 },
+      ]);
 
       await gateway.handleJoinExam(socket, { examId: 'exam-1' });
 
       expect(socket.join).toHaveBeenCalledWith('exam:exam-1');
       expect(socket.emit).toHaveBeenCalledWith('roster:snapshot', roster);
       expect(monitoring.getRosterSnapshot).toHaveBeenCalledWith({ organizationId: 'org-1', isSuperAdmin: false }, 'exam-1');
+      expect(socket.emit).toHaveBeenCalledWith('leaderboard:snapshot', [
+        { rank: 1, candidateId: 'cand-1', candidateName: 'Alice', correctCount: 2 },
+      ]);
+    });
+  });
+
+  describe('emitLeaderboardUpdate', () => {
+    it('emits leaderboard:update to the exam room', () => {
+      (gateway as any).server = { to: jest.fn().mockReturnThis(), emit: jest.fn() };
+
+      gateway.emitLeaderboardUpdate('exam-1', [{ rank: 1, candidateId: 'cand-1', candidateName: 'Alice', correctCount: 3 }]);
+
+      expect((gateway as any).server.to).toHaveBeenCalledWith('exam:exam-1');
+      expect((gateway as any).server.emit).toHaveBeenCalledWith('leaderboard:update', [
+        { rank: 1, candidateId: 'cand-1', candidateName: 'Alice', correctCount: 3 },
+      ]);
     });
   });
 

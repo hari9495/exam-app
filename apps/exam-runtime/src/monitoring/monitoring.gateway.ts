@@ -13,6 +13,7 @@ import { Namespace, Socket } from 'socket.io';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { MonitoringService, RosterRow } from './monitoring.service';
+import { LeaderboardService, RecruiterLeaderboardRow } from '../leaderboard/leaderboard.service';
 
 interface StaffSocketUser {
   userId: string;
@@ -37,6 +38,7 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly monitoring: MonitoringService,
+    private readonly leaderboard: LeaderboardService,
   ) {}
 
   afterInit(): void {
@@ -98,6 +100,9 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
 
     await client.join(`${EXAM_ROOM_PREFIX}${body.examId}`);
     client.emit('roster:snapshot', roster);
+
+    const leaderboard = await this.leaderboard.computeRecruiterView(context, body.examId);
+    client.emit('leaderboard:snapshot', leaderboard);
   }
 
   emitAttemptStatus(examId: string, payload: { attemptId: string; candidateId: string; status: string }): void {
@@ -113,6 +118,10 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
 
   emitMessageSent(examId: string, payload: { attemptId: string; candidateId: string; sentAt: Date }): void {
     this.server?.to(`${EXAM_ROOM_PREFIX}${examId}`).emit('message:sent', payload);
+  }
+
+  emitLeaderboardUpdate(examId: string, rows: RecruiterLeaderboardRow[]): void {
+    this.server?.to(`${EXAM_ROOM_PREFIX}${examId}`).emit('leaderboard:update', rows);
   }
 
   private async hasExamManagePermission(role: string): Promise<boolean> {
