@@ -61,4 +61,29 @@ describe('Org admin layout', () => {
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/login'));
     expect(screen.queryByRole('link', { name: 'Staff Users' })).not.toBeInTheDocument();
   });
+
+  it('renders each nav item with an icon and marks the active route via text-primary', async () => {
+    const orgAdminToken = fakeJwt({ sub: 'u1', organizationId: 'org1', role: 'org_admin' });
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: orgAdminToken }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <OrgAdminLayout>
+            <p>Page content</p>
+          </OrgAdminLayout>
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    const usersLink = await screen.findByRole('link', { name: 'Staff Users' });
+    expect(usersLink.className).toContain('text-primary');
+    const auditLink = screen.getByRole('link', { name: 'Audit Log' });
+    expect(auditLink.className).not.toContain('text-primary');
+  });
 });
