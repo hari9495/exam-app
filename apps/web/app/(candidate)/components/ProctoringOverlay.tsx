@@ -38,10 +38,12 @@ export function ProctoringBlockOverlay() {
           <ShieldAlert className="h-5 w-5" aria-hidden="true" />
         </div>
         <h1 className="mb-1 text-base font-bold text-candidate-text">Exam paused</h1>
-        <p className="text-sm text-candidate-text-secondary">
+        <p className="mb-3 text-sm text-candidate-text-secondary">
           Your exam has been paused after repeated webcam violations. A recruiter needs to unblock your session before you
           can continue.
         </p>
+        <p className="mb-1 text-xs text-candidate-text-faint">Waiting for a recruiter · checking automatically</p>
+        <p className="text-xs text-candidate-text-faint">Your timer is paused — you won&apos;t lose time waiting.</p>
       </div>
     </div>
   );

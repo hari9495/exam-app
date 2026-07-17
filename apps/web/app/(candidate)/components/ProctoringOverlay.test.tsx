@@ -29,4 +29,10 @@ describe('ProctoringBlockOverlay', () => {
     expect(screen.getByText(/recruiter needs to unblock/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /continue/i })).not.toBeInTheDocument();
   });
+
+  it('reassures the candidate the timer is paused and shows a waiting/polling status', () => {
+    render(<ProctoringBlockOverlay />);
+    expect(screen.getByText(/waiting for a recruiter/i)).toBeInTheDocument();
+    expect(screen.getByText(/timer is paused/i)).toBeInTheDocument();
+  });
 });

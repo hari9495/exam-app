@@ -116,6 +116,7 @@ export interface RunCodeResult {
   exitCode: number;
   compileError: string | null;
   timedOut: boolean;
+  runsRemaining: number;
 }
 
 export function useRunCode() {

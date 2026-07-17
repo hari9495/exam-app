@@ -144,7 +144,7 @@ describe('Code Run Execution HTTP flow', () => {
       .send({ questionId: codeQuestionId, code: 'print("hi")' })
       .expect(201);
 
-    expect(runResponse.body).toEqual({ stdout: 'hi\n', stderr: '', exitCode: 0, compileError: null, timedOut: false });
+    expect(runResponse.body).toEqual({ stdout: 'hi\n', stderr: '', exitCode: 0, compileError: null, timedOut: false, runsRemaining: 29 });
     expect(fakePistonClient.execute).toHaveBeenCalledWith({ language: 'python', version: '3.10.0', code: 'print("hi")', stdin: undefined });
   });
 

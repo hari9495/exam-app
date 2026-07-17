@@ -30,7 +30,7 @@ export default function CandidateWelcomePage() {
   }, [current, isError, router, accessToken, authLoading]);
 
   if (isLoading || isError || !current || isAttemptStarted(current)) {
-    return <p className="p-8 text-sm text-gray-500">Loading…</p>;
+    return <p className="p-8 text-sm text-candidate-text-tertiary">Loading…</p>;
   }
 
   async function handleEnableCamera() {

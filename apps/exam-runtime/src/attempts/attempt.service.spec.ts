@@ -847,7 +847,7 @@ describe('AttemptService', () => {
 
       const result = await service.runCode(session, { questionId: 'q-code-1', code: 'print("hi")' });
 
-      expect(result).toEqual({ stdout: 'hi\n', stderr: '', exitCode: 0, compileError: null, timedOut: false });
+      expect(result).toEqual({ stdout: 'hi\n', stderr: '', exitCode: 0, compileError: null, timedOut: false, runsRemaining: 29 });
       expect(pistonClient.execute).toHaveBeenCalledWith({ language: 'python', version: '3.10.0', code: 'print("hi")', stdin: undefined });
     });
 

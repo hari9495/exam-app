@@ -279,7 +279,7 @@ describe('CandidateExamPage', () => {
   it('runs code and displays the output panel', async () => {
     (useAttemptQuery as jest.Mock).mockReturnValue({ data: codeAttemptState, isError: false });
     runCodeMutate.mockImplementation((_payload, { onSuccess }) =>
-      onSuccess({ stdout: 'hi\n', stderr: '', exitCode: 0, compileError: null, timedOut: false }),
+      onSuccess({ stdout: 'hi\n', stderr: '', exitCode: 0, compileError: null, timedOut: false, runsRemaining: 29 }),
     );
     render(<CandidateExamPage />);
 
@@ -287,6 +287,19 @@ describe('CandidateExamPage', () => {
 
     expect(await screen.findByText('hi')).toBeInTheDocument();
     expect(screen.getByText('Exit code: 0')).toBeInTheDocument();
+  });
+
+  it('shows the runs-remaining count next to the Run button after a run', async () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({ data: codeAttemptState, isError: false });
+    runCodeMutate.mockImplementation((_payload, { onSuccess }) =>
+      onSuccess({ stdout: 'hi\n', stderr: '', exitCode: 0, compileError: null, timedOut: false, runsRemaining: 27 }),
+    );
+    render(<CandidateExamPage />);
+
+    expect(screen.queryByText(/runs left/i)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
+
+    expect(await screen.findByText('27 runs left')).toBeInTheDocument();
   });
 
   it('shows the stdin box only when the question allows it', () => {
@@ -328,20 +341,20 @@ describe('CandidateExamPage', () => {
   it('keeps run output and stdin per-question, not shared across navigation', async () => {
     (useAttemptQuery as jest.Mock).mockReturnValue({ data: twoCodeQuestionsAttemptState, isError: false });
     runCodeMutate.mockImplementation((_payload, { onSuccess }) =>
-      onSuccess({ stdout: 'question one output\n', stderr: '', exitCode: 0, compileError: null, timedOut: false }),
+      onSuccess({ stdout: 'question one output\n', stderr: '', exitCode: 0, compileError: null, timedOut: false, runsRemaining: 29 }),
     );
     render(<CandidateExamPage />);
 
     await userEvent.click(screen.getByRole('button', { name: 'Run' }));
     expect(await screen.findByText('question one output')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Next →' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
 
     expect(screen.getByText('Write a function that subtracts two numbers.')).toBeInTheDocument();
     expect(screen.queryByText('question one output')).not.toBeInTheDocument();
     expect(screen.queryByText('Exit code: 0')).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: '← Previous' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Previous' }));
 
     expect(screen.getByText('question one output')).toBeInTheDocument();
   });
@@ -410,5 +423,25 @@ describe('CandidateExamPage', () => {
 
     expect(screen.getByText(/warning 1\/3/i)).toBeInTheDocument();
     expect(screen.getByText('What is 2 + 2?')).toBeInTheDocument();
+  });
+
+  it.each(['paused', 'blocked'] as const)(
+    'marks the dimmed content inert (unreachable by keyboard/screen reader) while %s',
+    (status) => {
+      (useAttemptQuery as jest.Mock).mockReturnValue({
+        data: { ...attemptState, status, webcamViolationCount: 3 },
+        isError: false,
+      });
+
+      render(<CandidateExamPage />);
+
+      expect(screen.getByTestId('dimmable-content')).toHaveAttribute('inert');
+    },
+  );
+
+  it('does not mark the content inert while in progress', () => {
+    render(<CandidateExamPage />);
+
+    expect(screen.getByTestId('dimmable-content')).not.toHaveAttribute('inert');
   });
 });

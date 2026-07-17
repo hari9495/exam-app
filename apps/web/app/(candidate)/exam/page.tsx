@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import Editor from '@monaco-editor/react';
-import { Bookmark, Play } from 'lucide-react';
+import { Bookmark, ChevronDown, ChevronLeft, ChevronRight, Play } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '../../../components/ui';
 import { CandidateButton } from '../components/CandidateButton';
@@ -109,11 +109,11 @@ export default function CandidateExamPage() {
   const unansweredCount = questions.length - answeredCount;
 
   if (isError || !attemptState) {
-    return <p className="p-8 text-sm text-gray-500">Loading…</p>;
+    return <p className="p-8 text-sm text-candidate-text-tertiary">Loading…</p>;
   }
 
   if (!question || isTerminal) {
-    return <p className="p-8 text-sm text-gray-500">Loading…</p>;
+    return <p className="p-8 text-sm text-candidate-text-tertiary">Loading…</p>;
   }
 
   function toggleOption(optionId: string) {
@@ -181,14 +181,24 @@ export default function CandidateExamPage() {
         />
       ) : null}
       {isBlocked ? <ProctoringBlockOverlay /> : null}
-      <div className={clsx('mx-auto max-w-4xl p-4', (isPaused || isBlocked) && 'pointer-events-none blur-sm select-none')}>
+      <div
+        data-testid="dimmable-content"
+        // @types/react's stable release doesn't type the `inert` DOM attribute yet (only
+        // experimental.d.ts does) — cast bridges that gap so keyboard/screen-reader users
+        // can't reach the dimmed content while an overlay covers it.
+        {...(((isPaused || isBlocked) ? { inert: '' } : {}) as React.HTMLAttributes<HTMLDivElement>)}
+        className={clsx('mx-auto max-w-4xl p-4', (isPaused || isBlocked) && 'pointer-events-none blur-sm select-none')}
+      >
       <div className="mb-4 rounded-lg border border-candidate-border bg-white px-4 py-3 shadow-sm">
         <div className="mb-2 flex items-center justify-between">
           <button
             onClick={() => setNavigatorOpen((open) => !open)}
             className="rounded-full bg-candidate-primary-light px-3 py-1 text-xs font-bold text-candidate-primary lg:hidden"
           >
-            Q{currentIndex + 1}/{questions.length} ▾
+            <span className="inline-flex items-center gap-1">
+              Q{currentIndex + 1}/{questions.length}
+              <ChevronDown className="h-3 w-3" aria-hidden="true" />
+            </span>
           </button>
           <span className="hidden text-sm font-bold text-candidate-text lg:inline">{attemptState.exam.title}</span>
         </div>
@@ -210,7 +220,7 @@ export default function CandidateExamPage() {
               </span>
             </button>
           </div>
-          <p className="mb-4 text-sm text-gray-800">{question.text}</p>
+          <p className="mb-4 text-sm text-candidate-text">{question.text}</p>
           {question.type === 'code' ? (
             <>
               <div className="overflow-hidden rounded-t-md">
@@ -230,7 +240,7 @@ export default function CandidateExamPage() {
               </div>
               {question.allowStdin ? (
                 <div className="mt-2 flex flex-col gap-1">
-                  <label htmlFor="stdin-input" className="text-xs font-medium text-gray-600">
+                  <label htmlFor="stdin-input" className="text-xs font-medium text-candidate-text-secondary">
                     Standard input (optional)
                   </label>
                   <textarea
@@ -238,7 +248,7 @@ export default function CandidateExamPage() {
                     aria-label="Standard input (optional)"
                     value={stdinValue}
                     onChange={(e) => setStdinValues((prev) => ({ ...prev, [question.id]: e.target.value }))}
-                    className="rounded border border-gray-300 px-2 py-1 font-mono text-xs"
+                    className="rounded border border-candidate-border px-2 py-1 font-mono text-xs"
                     rows={2}
                   />
                 </div>
@@ -250,6 +260,7 @@ export default function CandidateExamPage() {
                     {runCode.isPending ? 'Running…' : 'Run'}
                   </span>
                 </CandidateButton>
+                {runResult ? <span className="text-xs text-candidate-text-faint">{runResult.runsRemaining} runs left</span> : null}
               </div>
               <CodeOutputPanel result={runResult} error={runError} />
             </>
@@ -276,10 +287,18 @@ export default function CandidateExamPage() {
           )}
           <div className="mt-4 flex justify-between">
             <CandidateButton variant="secondary" disabled={currentIndex === 0} onClick={() => setCurrentIndex((i) => i - 1)}>
-              ← Previous
+              <span className="inline-flex items-center gap-1">
+                <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                Previous
+              </span>
             </CandidateButton>
             {currentIndex < questions.length - 1 ? (
-              <CandidateButton onClick={() => setCurrentIndex((i) => i + 1)}>Next →</CandidateButton>
+              <CandidateButton onClick={() => setCurrentIndex((i) => i + 1)}>
+                <span className="inline-flex items-center gap-1">
+                  Next
+                  <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+                </span>
+              </CandidateButton>
             ) : (
               <CandidateButton onClick={() => setConfirmOpen(true)}>Review & Submit</CandidateButton>
             )}
@@ -295,7 +314,7 @@ export default function CandidateExamPage() {
       </div>
 
       {navigatorOpen && (
-        <div className="fixed inset-0 z-10 flex items-end bg-black/30 lg:hidden" onClick={() => setNavigatorOpen(false)}>
+        <div className="fixed inset-0 z-10 flex items-end bg-candidate-text/30 lg:hidden" onClick={() => setNavigatorOpen(false)}>
           <div className="w-full rounded-t-xl bg-candidate-bg p-4" onClick={(event) => event.stopPropagation()}>
             <QuestionNavigator
               sections={attemptState.sections}

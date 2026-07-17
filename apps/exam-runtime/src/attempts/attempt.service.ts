@@ -288,7 +288,7 @@ export class AttemptService {
     });
   }
 
-  async runCode(session: CandidateSession, dto: RunCodeDto): Promise<PistonExecuteResult> {
+  async runCode(session: CandidateSession, dto: RunCodeDto): Promise<PistonExecuteResult & { runsRemaining: number }> {
     const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
 
     const { question } = await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
@@ -312,7 +312,7 @@ export class AttemptService {
       return { question };
     });
 
-    const { allowed } = await this.runLimiter.checkAndIncrement(invitation.id, dto.questionId);
+    const { allowed, remaining } = await this.runLimiter.checkAndIncrement(invitation.id, dto.questionId);
     if (!allowed) {
       throw new HttpException('You have used all 30 runs for this question', HttpStatus.TOO_MANY_REQUESTS);
     }
@@ -323,12 +323,13 @@ export class AttemptService {
     }
 
     try {
-      return await this.pistonClient.execute({
+      const result = await this.pistonClient.execute({
         language: languageEntry.language,
         version: languageEntry.version,
         code: dto.code,
         stdin: question.allowStdin ? dto.stdin : undefined,
       });
+      return { ...result, runsRemaining: remaining };
     } catch (error) {
       // Logged before translating to the generic candidate-facing message below — otherwise a
       // real misconfiguration (e.g. Piston's own run_timeout cap set lower than RUN_TIMEOUT_MS
