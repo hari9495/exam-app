@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { Plus, Search, MoreHorizontal } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { useQuestions } from '../../../lib/hooks/useQuestions';
 import { Table, StatusBadge, Button, type Column, type StatusTone } from '../../../components/ui';
 import { Question, QuestionType, Difficulty } from '../../../lib/types';
@@ -51,9 +51,6 @@ export default function QuestionsPage() {
           <Link href={`/questions/${q.id}/edit`} className="text-xs font-medium text-primary">
             Edit
           </Link>
-          <button type="button" aria-label="More actions" className="rounded p-1 text-recruiter-text-tertiary hover:bg-recruiter-bg-subtle">
-            <MoreHorizontal size={16} />
-          </button>
         </div>
       ),
     },
