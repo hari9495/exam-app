@@ -43,7 +43,7 @@ test('recruiter sees a candidate go live on the exam Live tab as they start thei
 
   await page.getByRole('link', { name: 'Candidates' }).click();
   const candidateEmail = `live-path-${Date.now()}@example.com`;
-  await page.getByLabel('Name').fill('Live Path Candidate');
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Live Path Candidate');
   await page.getByLabel('Email').fill(candidateEmail);
   await page.getByRole('button', { name: 'Add candidate' }).click();
   await expect(page.getByText(candidateEmail)).toBeVisible();

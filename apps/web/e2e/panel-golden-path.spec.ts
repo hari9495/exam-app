@@ -7,7 +7,7 @@ const PANEL_EMAIL = process.env.E2E_PANEL_EMAIL ?? 'panel@demo-org.test';
 const PANEL_PASSWORD = process.env.E2E_PANEL_PASSWORD ?? 'Passw0rd!2026';
 
 async function inviteCandidate(page: import('@playwright/test').Page, name: string, email: string, examTitle: string) {
-  await page.getByLabel('Name').fill(name);
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill(name);
   await page.getByLabel('Email').fill(email);
   await page.getByRole('button', { name: 'Add candidate' }).click();
   await expect(page.getByText(email)).toBeVisible();

@@ -47,7 +47,7 @@ test('candidate is blocked before the window opens and can start once the recrui
 
   await page.getByRole('link', { name: 'Candidates' }).click();
   const candidateEmail = `scheduling-golden-path-${Date.now()}@example.com`;
-  await page.getByLabel('Name').fill('Scheduling Candidate');
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Scheduling Candidate');
   await page.getByLabel('Email').fill(candidateEmail);
   await page.getByRole('button', { name: 'Add candidate' }).click();
   await expect(page.getByText(candidateEmail)).toBeVisible();
