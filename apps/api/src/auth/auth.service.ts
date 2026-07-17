@@ -110,7 +110,12 @@ export class AuthService {
 
     const passwordHash = await argon2.hash(dto.newPassword);
 
-    await this.prisma.$transaction(async (tx) => {
+    // Routed through forTenant (super_admin bypass): the caller has proven identity via
+    // a validated reset token, not via an org-scoped session, so there is no tenant
+    // context to set otherwise -- and without one, RLS's secure-by-default predicate
+    // silently matches zero rows on `users`, making tx.user.update() a no-op. Same
+    // pattern as the reuse-detection branch in refresh() below.
+    await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {
       await tx.user.update({ where: { id: resetToken.userId }, data: { passwordHash } });
       await tx.passwordResetToken.update({ where: { id: resetToken.id }, data: { usedAt: new Date() } });
       await tx.refreshToken.updateMany({
@@ -119,7 +124,9 @@ export class AuthService {
       });
     });
 
-    const user = await this.prisma.user.findUnique({ where: { id: resetToken.userId } });
+    const user = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
+      tx.user.findUnique({ where: { id: resetToken.userId } }),
+    );
     await this.audit.record(
       { organizationId: user?.organizationId ?? null, isSuperAdmin: user?.role === 'super_admin' },
       { actorUserId: resetToken.userId, action: 'password.reset', entityType: 'user', entityId: resetToken.userId },

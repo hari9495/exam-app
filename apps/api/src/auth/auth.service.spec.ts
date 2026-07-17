@@ -31,7 +31,13 @@ describe('AuthService', () => {
       passwordResetToken: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
       $transaction: jest.fn(async (callback: (tx: unknown) => unknown) => callback(prisma)),
     };
-    tenantPrisma = { forTenant: jest.fn() };
+    // Default: actually invoke the callback against the same `prisma` mock, mirroring
+    // the $transaction mock above -- otherwise tests that rely on tenantPrisma.forTenant
+    // running its callback (e.g. resetPassword's RLS-safe writes) would vacuously pass
+    // without exercising the tx.user.update/etc. calls at all. Tests that need forTenant
+    // to resolve directly to a value (login, forgotPassword) override this per-call via
+    // mockResolvedValue(Once).
+    tenantPrisma = { forTenant: jest.fn(async (_context: unknown, fn: (tx: unknown) => unknown) => fn(prisma)) };
     audit = { record: jest.fn() };
     emailService = { send: jest.fn().mockResolvedValue({ success: true }) };
 
@@ -226,7 +232,13 @@ describe('AuthService', () => {
 
       await service.resetPassword({ token: 'raw-token', newPassword: 'NewPassw0rd!' });
 
-      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      // Writes and the follow-up lookup must go through forTenant's super_admin bypass,
+      // not a bare prisma.$transaction -- otherwise RLS silently drops the user.update.
+      expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(2);
+      expect(tenantPrisma.forTenant).toHaveBeenCalledWith(
+        { organizationId: null, isSuperAdmin: true },
+        expect.any(Function),
+      );
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: 'user-1' },
         data: { passwordHash: expect.any(String) },
