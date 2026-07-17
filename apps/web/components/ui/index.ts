@@ -10,3 +10,4 @@ export { ToastProvider, useToast } from './Toast';
 export { Tabs, TabsList, TabsTrigger, TabsContent } from './Tabs';
 export { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from './DropdownMenu';
 export { Table, type Column } from './Table';
+export { StatusBadge, type StatusTone } from './StatusBadge';
