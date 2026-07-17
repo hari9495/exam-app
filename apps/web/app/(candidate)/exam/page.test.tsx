@@ -453,4 +453,19 @@ describe('CandidateExamPage', () => {
 
     expect(screen.getByText(/#3/)).toBeInTheDocument();
   });
+
+  it('stops leaderboard polling while paused', () => {
+    const leaderboardSpy = jest.spyOn(useAttemptModule, 'useLeaderboard').mockReturnValue({
+      data: { you: { rank: 3, correctCount: 2 }, top: [] },
+      isLoading: false,
+    } as any);
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: { ...attemptState, status: 'paused', webcamViolationCount: 1 },
+      isError: false,
+    });
+
+    render(<CandidateExamPage />);
+
+    expect(leaderboardSpy).toHaveBeenCalledWith(false);
+  });
 });

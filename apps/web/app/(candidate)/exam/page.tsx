@@ -201,7 +201,7 @@ export default function CandidateExamPage() {
               <ChevronDown className="h-3 w-3" aria-hidden="true" />
             </span>
           </button>
-          <LeaderboardWidget />
+          <LeaderboardWidget enabled={started} />
           <span className="hidden text-sm font-bold text-candidate-text lg:inline">{attemptState.exam.title}</span>
         </div>
         <TimerBar remainingSeconds={remainingSeconds} totalSeconds={totalSecondsRef.current ?? remainingSeconds} />

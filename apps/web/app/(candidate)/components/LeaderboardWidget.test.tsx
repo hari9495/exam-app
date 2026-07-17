@@ -12,7 +12,7 @@ describe('LeaderboardWidget', () => {
       isLoading: false,
     } as any);
 
-    render(<LeaderboardWidget />);
+    render(<LeaderboardWidget enabled />);
 
     expect(screen.getByText(/#12/)).toBeInTheDocument();
   });
@@ -29,7 +29,7 @@ describe('LeaderboardWidget', () => {
       isLoading: false,
     } as any);
 
-    render(<LeaderboardWidget />);
+    render(<LeaderboardWidget enabled />);
     await userEvent.click(screen.getByRole('button', { name: /leaderboard/i }));
 
     expect(screen.getByText('Candidate 1')).toBeInTheDocument();
@@ -39,8 +39,19 @@ describe('LeaderboardWidget', () => {
   it('renders nothing while loading with no cached data', () => {
     jest.spyOn(useAttemptModule, 'useLeaderboard').mockReturnValue({ data: undefined, isLoading: true } as any);
 
-    const { container } = render(<LeaderboardWidget />);
+    const { container } = render(<LeaderboardWidget enabled />);
 
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('passes the enabled prop through to useLeaderboard instead of always polling', () => {
+    const spy = jest.spyOn(useAttemptModule, 'useLeaderboard').mockReturnValue({
+      data: { you: { rank: 12, correctCount: 4 }, top: [] },
+      isLoading: false,
+    } as any);
+
+    render(<LeaderboardWidget enabled={false} />);
+
+    expect(spy).toHaveBeenCalledWith(false);
   });
 });

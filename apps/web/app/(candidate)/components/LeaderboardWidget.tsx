@@ -4,9 +4,9 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLeaderboard } from '../../../lib/hooks/useAttempt';
 
-export function LeaderboardWidget() {
+export function LeaderboardWidget({ enabled }: { enabled: boolean }) {
   const [expanded, setExpanded] = useState(false);
-  const { data, isLoading } = useLeaderboard(true);
+  const { data, isLoading } = useLeaderboard(enabled);
 
   if (isLoading && !data) {
     return null;
