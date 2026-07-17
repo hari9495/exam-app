@@ -65,6 +65,10 @@ test('candidate redeems an invitation, takes an exam, and submits', async ({ pag
       value: { getUserMedia: async () => ({ getTracks: () => [{ stop: () => undefined }] }) },
       configurable: true,
     });
+    // The mock above isn't a real MediaStream, so useWebcamMonitor's video.srcObject
+    // assignment would throw and fail-safe into reporting a real violation on any
+    // long-running spec — this flag tells it to skip monitoring entirely in e2e runs.
+    (window as unknown as { __DISABLE_WEBCAM_MONITOR__?: boolean }).__DISABLE_WEBCAM_MONITOR__ = true;
   });
   await page.goto(`/start?token=${token}`);
   await expect(page).toHaveURL(/\/welcome$/);
@@ -148,6 +152,10 @@ test('candidate sees the pause and block overlays when the backend reports pause
       value: { getUserMedia: async () => ({ getTracks: () => [{ stop: () => undefined }] }) },
       configurable: true,
     });
+    // The mock above isn't a real MediaStream, so useWebcamMonitor's video.srcObject
+    // assignment would throw and fail-safe into reporting a real violation on any
+    // long-running spec — this flag tells it to skip monitoring entirely in e2e runs.
+    (window as unknown as { __DISABLE_WEBCAM_MONITOR__?: boolean }).__DISABLE_WEBCAM_MONITOR__ = true;
   });
 
   let mockedStatus: 'paused' | 'blocked' = 'paused';

@@ -36,6 +36,10 @@ async function settleAttempt(page: import('@playwright/test').Page, token: strin
       value: { getUserMedia: async () => ({ getTracks: () => [{ stop: () => undefined }] }) },
       configurable: true,
     });
+    // The mock above isn't a real MediaStream, so useWebcamMonitor's video.srcObject
+    // assignment would throw and fail-safe into reporting a real violation on any
+    // long-running spec — this flag tells it to skip monitoring entirely in e2e runs.
+    (window as unknown as { __DISABLE_WEBCAM_MONITOR__?: boolean }).__DISABLE_WEBCAM_MONITOR__ = true;
   });
   await page.goto(`/start?token=${token}`);
   await expect(page).toHaveURL(/\/welcome$/);

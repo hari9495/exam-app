@@ -17,6 +17,14 @@ export function useWebcamMonitor(enabled: boolean): void {
 
   useEffect(() => {
     if (!enabled) return;
+    // E2E specs mock navigator.mediaDevices with a plain object, not a real MediaStream —
+    // assigning it to video.srcObject throws, and setup()'s fail-safe below would then flag
+    // a real webcam violation on every long-running spec. Playwright's init scripts set this
+    // flag to skip webcam monitoring entirely in that environment; the rest of each spec's
+    // flow (answering, running code, submitting) still exercises the real, unmocked behavior.
+    if (typeof window !== 'undefined' && (window as unknown as { __DISABLE_WEBCAM_MONITOR__?: boolean }).__DISABLE_WEBCAM_MONITOR__) {
+      return;
+    }
 
     let cancelled = false;
     let stream: MediaStream | null = null;
