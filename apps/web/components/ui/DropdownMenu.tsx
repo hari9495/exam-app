@@ -1,15 +1,21 @@
 'use client';
 
 import * as RadixDropdown from '@radix-ui/react-dropdown-menu';
-import { ReactNode } from 'react';
+import { ComponentPropsWithoutRef, ReactNode } from 'react';
 
 export function DropdownMenu({ children }: { children: ReactNode }) {
   return <RadixDropdown.Root>{children}</RadixDropdown.Root>;
 }
 
-export function DropdownMenuTrigger({ children }: { children: ReactNode }) {
+type DropdownMenuTriggerProps = { children: ReactNode } & ComponentPropsWithoutRef<typeof RadixDropdown.Trigger>;
+
+export function DropdownMenuTrigger({ children, className, ...props }: DropdownMenuTriggerProps) {
   return (
-    <RadixDropdown.Trigger asChild={false} className="rounded border border-recruiter-border px-3 py-2 text-sm">
+    <RadixDropdown.Trigger
+      asChild={false}
+      className={className ?? 'rounded border border-recruiter-border px-3 py-2 text-sm'}
+      {...props}
+    >
       {children}
     </RadixDropdown.Trigger>
   );

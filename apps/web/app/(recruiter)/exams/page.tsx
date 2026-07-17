@@ -5,7 +5,18 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Plus, Search, MoreHorizontal } from 'lucide-react';
 import { useExams, useDuplicateExam } from '../../../lib/hooks/useExams';
-import { Table, StatusBadge, Button, useToast, type Column, type StatusTone } from '../../../components/ui';
+import {
+  Table,
+  StatusBadge,
+  Button,
+  useToast,
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  type Column,
+  type StatusTone,
+} from '../../../components/ui';
 import { Exam, ExamStatus } from '../../../lib/types';
 
 const STATUS_TONE: Record<ExamStatus, StatusTone> = {
@@ -85,19 +96,22 @@ export default function ExamsPage() {
       key: 'actions',
       header: '',
       render: (exam) => (
-        <div className="flex items-center justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="flex items-center justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
           <Link href={`/exams/${exam.id}/edit`} className="text-xs font-medium text-primary">
             Edit
           </Link>
-          <button
-            type="button"
-            onClick={() => handleDuplicate(exam.id)}
-            disabled={duplicateExam.isPending}
-            aria-label="More actions"
-            className="rounded p-1 text-recruiter-text-tertiary hover:bg-recruiter-bg-subtle"
-          >
-            <MoreHorizontal size={16} />
-          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              disabled={duplicateExam.isPending}
+              aria-label="More actions"
+              className="rounded p-1 text-recruiter-text-tertiary hover:bg-recruiter-bg-subtle"
+            >
+              <MoreHorizontal size={16} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem onSelect={() => handleDuplicate(exam.id)}>Duplicate</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       ),
     },

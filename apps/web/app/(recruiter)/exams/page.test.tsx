@@ -1,4 +1,5 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import ExamsPage from './page';
 import { AuthProvider } from '../../../lib/auth-context';
 import { QueryProvider } from '../../../lib/query-provider';
@@ -127,7 +128,8 @@ describe('ExamsPage', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Backend Round')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await userEvent.click(await screen.findByText('Duplicate'));
 
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/exams/exam-2/edit'));
   });
@@ -160,7 +162,8 @@ describe('ExamsPage', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Backend Round')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await userEvent.click(await screen.findByText('Duplicate'));
 
     await waitFor(() => expect(screen.getByText('Exam not found')).toBeInTheDocument());
     expect(mockPush).not.toHaveBeenCalled();
