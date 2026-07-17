@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
-import { LeaderboardService, AUTO_GRADABLE_QUESTION_TYPES } from '../leaderboard/leaderboard.service';
+import { LeaderboardService, AUTO_GRADABLE_QUESTION_TYPES, CandidateLeaderboardResponse } from '../leaderboard/leaderboard.service';
 import { CandidateSession } from '../candidate-auth/current-candidate.decorator';
 import { AnswerDto } from './dto/answer.dto';
 import { StartAttemptDto } from './dto/start-attempt.dto';
@@ -412,6 +412,11 @@ export class AttemptService {
       const { attempt: updated, strike } = await this.attemptSettlement.registerWebcamViolation(tx, attempt, dto.reason, dto.snapshot);
       return { strike, status: updated.status };
     });
+  }
+
+  async getLeaderboard(session: CandidateSession): Promise<CandidateLeaderboardResponse> {
+    const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
+    return this.leaderboardService.computeCandidateView({ organizationId, isSuperAdmin: false }, exam.id, invitation.id);
   }
 
   async webcamResume(session: CandidateSession): Promise<{ status: string }> {

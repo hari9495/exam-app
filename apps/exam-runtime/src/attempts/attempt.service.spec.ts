@@ -972,6 +972,28 @@ describe('AttemptService', () => {
     });
   });
 
+  describe('getLeaderboard', () => {
+    it('delegates to LeaderboardService.computeCandidateView with the resolved organizationId, exam id, and invitation id', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce(() => Promise.resolve(invitationRecord));
+      leaderboardService.computeCandidateView.mockResolvedValue({
+        you: { rank: 5, correctCount: 3 },
+        top: [{ rank: 1, correctCount: 4, label: 'Candidate 1', isYou: false }],
+      });
+
+      const result = await service.getLeaderboard(session);
+
+      expect(leaderboardService.computeCandidateView).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        'exam-1',
+        'inv-1',
+      );
+      expect(result).toEqual({
+        you: { rank: 5, correctCount: 3 },
+        top: [{ rank: 1, correctCount: 4, label: 'Candidate 1', isYou: false }],
+      });
+    });
+  });
+
   describe('webcamResume', () => {
     it('throws BadRequestException when the attempt is not paused', async () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'blocked' }) } };

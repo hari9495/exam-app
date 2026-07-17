@@ -58,6 +58,11 @@ export class AttemptController {
     return this.attemptService.webcamResume(candidate);
   }
 
+  @Get('leaderboard')
+  getLeaderboard(@CurrentCandidate() candidate: CandidateSession) {
+    return this.attemptService.getLeaderboard(candidate);
+  }
+
   @Post('run-code')
   @Throttle(STRICT_CODE_RUN_THROTTLE)
   runCode(@CurrentCandidate() candidate: CandidateSession, @Body() dto: RunCodeDto) {
