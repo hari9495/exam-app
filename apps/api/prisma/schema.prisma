@@ -46,9 +46,10 @@ model User {
   role           String
   status         String         @default("active")
   lastLoginAt    DateTime?      @map("last_login_at")
-  createdAt      DateTime       @default(now()) @map("created_at")
-  refreshTokens  RefreshToken[]
-  auditLogs      AuditLog[]
+  createdAt           DateTime            @default(now()) @map("created_at")
+  refreshTokens       RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
+  auditLogs           AuditLog[]
 
   @@unique([organizationId, email])
   @@map("users")
@@ -85,6 +86,19 @@ model RefreshToken {
 
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.UniqueIdentifier
+  userId    String    @map("user_id") @db.UniqueIdentifier
+  user      User      @relation(fields: [userId], references: [id])
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("password_reset_tokens")
 }
 
 model AuditLog {
