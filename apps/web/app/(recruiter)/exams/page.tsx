@@ -17,7 +17,7 @@ import {
   type Column,
   type StatusTone,
 } from '../../../components/ui';
-import { Exam, ExamStatus } from '../../../lib/types';
+import { ExamListItem, ExamStatus } from '../../../lib/types';
 
 const STATUS_TONE: Record<ExamStatus, StatusTone> = {
   draft: 'neutral',
@@ -48,7 +48,7 @@ export default function ExamsPage() {
     });
   }
 
-  const columns: Column<Exam>[] = [
+  const columns: Column<ExamListItem>[] = [
     {
       key: 'title',
       header: 'Exam',

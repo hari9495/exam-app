@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../api-client';
-import { Exam } from '../types';
+import { Exam, ExamListItem } from '../types';
 import { useAuth } from '../auth-context';
 
 export function useExams(status?: string) {
   const { accessToken } = useAuth();
-  return useQuery<Exam[]>({
+  return useQuery<ExamListItem[]>({
     queryKey: ['exams', status ?? 'default'],
     queryFn: () => apiFetch(`/exams${status ? `?status=${status}` : ''}`, {}, accessToken ?? undefined),
     enabled: Boolean(accessToken),

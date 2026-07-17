@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useExams } from '../../../lib/hooks/useExams';
 import { Table, Badge, type Column } from '../../../components/ui';
-import { Exam, ExamStatus } from '../../../lib/types';
+import { ExamListItem, ExamStatus } from '../../../lib/types';
 
 const STATUS_VARIANT: Record<ExamStatus, 'default' | 'success' | 'warning'> = {
   draft: 'warning',
@@ -11,7 +11,7 @@ const STATUS_VARIANT: Record<ExamStatus, 'default' | 'success' | 'warning'> = {
   archived: 'default',
 };
 
-const columns: Column<Exam>[] = [
+const columns: Column<ExamListItem>[] = [
   {
     key: 'title',
     header: 'Title',

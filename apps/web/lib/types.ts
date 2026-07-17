@@ -101,6 +101,10 @@ export interface Exam {
   availabilityWindowEnd: string | null;
   createdAt: string;
   sections: ExamSection[];
+}
+
+// GET /exams (list) returns counts but not sections — GET /exams/:id (detail) is the reverse.
+export interface ExamListItem extends Omit<Exam, 'sections'> {
   invitationCount: number;
   attemptSettledCount: number;
   attemptTotalCount: number;
