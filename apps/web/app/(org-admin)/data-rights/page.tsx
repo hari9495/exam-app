@@ -10,6 +10,7 @@ export default function DataRightsPage() {
   const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [exportData, setExportData] = useState<CandidateDataExport | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmEmail, setConfirmEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const lookupCandidate = useLookupCandidate();
   const exportCandidate = useExportCandidate();
@@ -49,6 +50,16 @@ export default function DataRightsPage() {
     URL.revokeObjectURL(url);
   }
 
+  function handleOpenConfirm() {
+    setConfirmEmail('');
+    setConfirmOpen(true);
+  }
+
+  function handleCloseConfirm() {
+    setConfirmOpen(false);
+    setConfirmEmail('');
+  }
+
   function handleErase() {
     if (!candidate) return;
     eraseCandidate.mutate(candidate.id, {
@@ -56,35 +67,38 @@ export default function DataRightsPage() {
         setError(null);
         setCandidate({ ...candidate, erasedAt: result.erasedAt });
         setConfirmOpen(false);
+        setConfirmEmail('');
         toast('Candidate data erased.');
       },
       onError: (err) => setError(err instanceof Error ? err.message : 'Failed to erase candidate'),
     });
   }
 
+  const eraseConfirmed = candidate !== null && confirmEmail.trim() === candidate.email;
+
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-semibold">Candidate Data Rights</h1>
+      <h1 className="mb-6 text-2xl font-semibold text-recruiter-text">Candidate Data Rights</h1>
       <form onSubmit={handleLookup} className="mb-6 flex items-end gap-2">
         <Input label="Candidate email" type="email" value={email} onChange={setEmail} required />
         <Button type="submit">Look up</Button>
       </form>
       {error && (
-        <p role="alert" className="mb-4 text-sm text-red-600">
+        <p role="alert" className="mb-4 text-sm text-status-danger">
           {error}
         </p>
       )}
       {candidate && (
         <Card className="mb-6">
-          <p className="font-medium">{candidate.name}</p>
-          <p className="text-sm text-gray-600">{candidate.email}</p>
-          {candidate.phone && <p className="text-sm text-gray-600">{candidate.phone}</p>}
+          <p className="font-medium text-recruiter-text">{candidate.name}</p>
+          <p className="text-sm text-recruiter-text-secondary">{candidate.email}</p>
+          {candidate.phone && <p className="text-sm text-recruiter-text-secondary">{candidate.phone}</p>}
           {candidate.erasedAt ? (
-            <p className="mt-2 text-sm text-gray-500">Erased at {new Date(candidate.erasedAt).toLocaleString()}</p>
+            <p className="mt-2 text-sm text-recruiter-text-tertiary">Erased at {new Date(candidate.erasedAt).toLocaleString()}</p>
           ) : (
             <div className="mt-4 flex gap-2">
               <Button onClick={handleExport}>Export data</Button>
-              <Button variant="secondary" onClick={() => setConfirmOpen(true)}>
+              <Button variant="secondary" onClick={handleOpenConfirm}>
                 Erase candidate
               </Button>
             </div>
@@ -94,20 +108,20 @@ export default function DataRightsPage() {
       {exportData && (
         <Card>
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Export data</h2>
+            <h2 className="text-lg font-semibold text-recruiter-text">Export data</h2>
             <Button variant="secondary" onClick={handleDownload}>
               Download JSON
             </Button>
           </div>
           <section className="mb-4">
-            <h3 className="font-medium">Profile</h3>
-            <p className="text-sm text-gray-600">
+            <h3 className="font-medium text-recruiter-text">Profile</h3>
+            <p className="text-sm text-recruiter-text-secondary">
               {exportData.candidate.name} — {exportData.candidate.email}
             </p>
           </section>
           <section className="mb-4">
-            <h3 className="font-medium">Invitations ({exportData.invitations.length})</h3>
-            <ul className="text-sm text-gray-600">
+            <h3 className="font-medium text-recruiter-text">Invitations ({exportData.invitations.length})</h3>
+            <ul className="text-sm text-recruiter-text-secondary">
               {exportData.invitations.map((invitation) => (
                 <li key={invitation.id}>
                   {invitation.examTitle} — {invitation.status}
@@ -116,8 +130,8 @@ export default function DataRightsPage() {
             </ul>
           </section>
           <section>
-            <h3 className="font-medium">Attempts ({exportData.attempts.length})</h3>
-            <ul className="text-sm text-gray-600">
+            <h3 className="font-medium text-recruiter-text">Attempts ({exportData.attempts.length})</h3>
+            <ul className="text-sm text-recruiter-text-secondary">
               {exportData.attempts.map((attempt) => (
                 <li key={attempt.id}>
                   {attempt.examTitle} —{' '}
@@ -128,18 +142,28 @@ export default function DataRightsPage() {
           </section>
         </Card>
       )}
-      <Modal open={confirmOpen} title="Erase candidate data?" onClose={() => setConfirmOpen(false)}>
-        <p className="mb-4 text-sm text-gray-600">This permanently redacts {candidate?.name}&apos;s personal data. This cannot be undone.</p>
+      <Modal open={confirmOpen} title="Erase candidate data?" onClose={handleCloseConfirm}>
+        <p className="mb-4 text-sm text-recruiter-text-secondary">
+          This permanently redacts {candidate?.name}&apos;s personal data. This cannot be undone.
+        </p>
+        <div className="mb-4">
+          <Input
+            label="Type the candidate's email to confirm"
+            value={confirmEmail}
+            onChange={setConfirmEmail}
+            placeholder={candidate?.email}
+          />
+        </div>
         {error && (
-          <p role="alert" className="mb-4 text-sm text-red-600">
+          <p role="alert" className="mb-4 text-sm text-status-danger">
             {error}
           </p>
         )}
         <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={() => setConfirmOpen(false)}>
+          <Button variant="secondary" onClick={handleCloseConfirm}>
             Cancel
           </Button>
-          <Button variant="danger" onClick={handleErase}>
+          <Button variant="danger" onClick={handleErase} disabled={!eraseConfirmed}>
             Confirm erase
           </Button>
         </div>
