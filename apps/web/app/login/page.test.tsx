@@ -122,4 +122,16 @@ describe('LoginPage', () => {
     await userEvent.click(screen.getByRole('button', { name: /hide characters/i }));
     expect(passwordInput).toHaveAttribute('type', 'password');
   });
+
+  it('links to the forgot-password page', async () => {
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <LoginPage />
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    expect(screen.getByRole('link', { name: 'Forgot password?' })).toHaveAttribute('href', '/forgot-password');
+  });
 });

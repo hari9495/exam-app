@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Building2, Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
@@ -104,6 +105,9 @@ export default function LoginPage() {
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
+            <Link href="/forgot-password" className="text-right text-sm font-medium text-primary hover:underline">
+              Forgot password?
+            </Link>
             <Button type="submit" loading={submitting}>
               Log in
             </Button>
