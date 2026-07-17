@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import Editor from '@monaco-editor/react';
+import { Play } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '../../../components/ui';
 import { CandidateButton } from '../components/CandidateButton';
+import { CodeOutputPanel } from '../components/CodeOutputPanel';
 import { QuestionNavigator, flattenQuestions } from '../components/QuestionNavigator';
 import { ProctoringWarningOverlay, ProctoringBlockOverlay } from '../components/ProctoringOverlay';
 import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode, useWebcamResume, RunCodeResult } from '../../../lib/hooks/useAttempt';
@@ -204,13 +206,21 @@ export default function CandidateExamPage() {
           <p className="mb-4 text-sm text-gray-800">{question.text}</p>
           {question.type === 'code' ? (
             <>
-              <Editor
-                height="400px"
-                language={question.codeLanguage ?? 'plaintext'}
-                value={codeValue}
-                onChange={handleCodeChange}
-                options={{ minimap: { enabled: false }, fontSize: 13 }}
-              />
+              <div className="overflow-hidden rounded-t-md">
+                <div className="flex items-center justify-between bg-[#1E1E1E] px-3 py-1.5">
+                  <span className="rounded bg-[#2D2D2D] px-2 py-0.5 text-[11px] font-semibold text-candidate-text-faint">
+                    {question.codeLanguage ?? 'plaintext'}
+                  </span>
+                </div>
+                <Editor
+                  height="400px"
+                  language={question.codeLanguage ?? 'plaintext'}
+                  value={codeValue}
+                  onChange={handleCodeChange}
+                  options={{ minimap: { enabled: false }, fontSize: 13 }}
+                  theme="vs-dark"
+                />
+              </div>
               {question.allowStdin ? (
                 <div className="mt-2 flex flex-col gap-1">
                   <label htmlFor="stdin-input" className="text-xs font-medium text-gray-600">
@@ -228,25 +238,13 @@ export default function CandidateExamPage() {
               ) : null}
               <div className="mt-2 flex items-center gap-2">
                 <CandidateButton variant="secondary" onClick={handleRun} disabled={runCode.isPending}>
-                  {runCode.isPending ? 'Running…' : 'Run'}
+                  <span className="inline-flex items-center gap-1.5">
+                    <Play className="h-3.5 w-3.5" aria-hidden="true" />
+                    {runCode.isPending ? 'Running…' : 'Run'}
+                  </span>
                 </CandidateButton>
               </div>
-              {runError ? (
-                <div className="mt-2 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">{runError}</div>
-              ) : runResult ? (
-                <div className="mt-2 rounded border border-gray-200 bg-gray-50 p-2 font-mono text-xs">
-                  {runResult.compileError ? (
-                    <div className="text-red-700">{runResult.compileError}</div>
-                  ) : (
-                    <>
-                      {runResult.stdout ? <div className="whitespace-pre-wrap">{runResult.stdout}</div> : null}
-                      {runResult.stderr ? <div className="whitespace-pre-wrap text-red-700">{runResult.stderr}</div> : null}
-                      {runResult.timedOut ? <div className="text-amber-700">Your program was stopped for taking too long.</div> : null}
-                    </>
-                  )}
-                  <div className="mt-1 text-gray-500">Exit code: {runResult.exitCode}</div>
-                </div>
-              ) : null}
+              <CodeOutputPanel result={runResult} error={runError} />
             </>
           ) : (
             <div className="flex flex-col gap-2">
