@@ -1,8 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { TenantPrismaService, TenantContext } from '@exam-platform/shared';
-import { ExamsService, ExamResultRow } from '../exams/exams.service';
-
-export const SETTLED_ATTEMPT_STATUSES = ['submitted', 'auto_submitted', 'force_submitted'];
+import { ExamsService, ExamResultRow, SETTLED_ATTEMPT_STATUSES } from '../exams/exams.service';
 
 const SCORE_DISTRIBUTION_BUCKETS = [
   { rangeLabel: '0-20', min: 0, max: 20 },

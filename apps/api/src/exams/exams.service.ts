@@ -4,7 +4,6 @@ import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
-import { SETTLED_ATTEMPT_STATUSES } from '../reports/reports.service';
 import { CreateExamDto } from './dto/create-exam.dto';
 import { UpdateExamDto } from './dto/update-exam.dto';
 import { CreateExamSectionDto } from './dto/create-exam-section.dto';
@@ -18,6 +17,8 @@ type ExamSectionWithQuestions = ExamSection & {
 interface ExamFilters {
   status?: string;
 }
+
+export const SETTLED_ATTEMPT_STATUSES = ['submitted', 'auto_submitted', 'force_submitted'];
 
 export interface ExamResultRow {
   candidateId: string;
