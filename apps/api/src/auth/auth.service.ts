@@ -1,4 +1,4 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { randomBytes, createHash, randomUUID } from 'crypto';
@@ -8,6 +8,7 @@ import { LoginDto } from './dto/login.dto';
 import { AuditService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 interface TokenPair {
   accessToken: string;
@@ -97,6 +98,32 @@ export class AuthService {
       subject: 'Reset your password',
       html: `<p>Click the link below to reset your password. This link expires in 15 minutes.</p><p><a href="${link}">${link}</a></p>`,
     });
+  }
+
+  async resetPassword(dto: ResetPasswordDto): Promise<void> {
+    const tokenHash = createHash('sha256').update(dto.token).digest('hex');
+    const resetToken = await this.prisma.passwordResetToken.findUnique({ where: { tokenHash } });
+
+    if (!resetToken || resetToken.usedAt || resetToken.expiresAt < new Date()) {
+      throw new BadRequestException('This reset link is invalid or has expired');
+    }
+
+    const passwordHash = await argon2.hash(dto.newPassword);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: resetToken.userId }, data: { passwordHash } });
+      await tx.passwordResetToken.update({ where: { id: resetToken.id }, data: { usedAt: new Date() } });
+      await tx.refreshToken.updateMany({
+        where: { userId: resetToken.userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    });
+
+    const user = await this.prisma.user.findUnique({ where: { id: resetToken.userId } });
+    await this.audit.record(
+      { organizationId: user?.organizationId ?? null, isSuperAdmin: user?.role === 'super_admin' },
+      { actorUserId: resetToken.userId, action: 'password.reset', entityType: 'user', entityId: resetToken.userId },
+    );
   }
 
   async refresh(refreshToken: string): Promise<TokenPair> {

@@ -5,6 +5,7 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 
 const REFRESH_COOKIE = 'refresh_token';
@@ -28,6 +29,14 @@ export class AuthController {
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
     await this.authService.forgotPassword(dto);
     return { message: 'If an account with that organization and email exists, a reset link has been sent.' };
+  }
+
+  @Post('reset-password')
+  @HttpCode(200)
+  @Throttle(STRICT_AUTH_THROTTLE)
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    await this.authService.resetPassword(dto);
+    return { success: true };
   }
 
   @Post('refresh')

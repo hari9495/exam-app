@@ -14,7 +14,7 @@ describe('AuthService', () => {
   let prisma: {
     organization: { findUnique: jest.Mock };
     refreshToken: { create: jest.Mock; findFirst: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
-    user: { findUnique: jest.Mock };
+    user: { findUnique: jest.Mock; update: jest.Mock };
     passwordResetToken: { create: jest.Mock; findUnique: jest.Mock; update: jest.Mock };
     $transaction: jest.Mock;
   };
@@ -27,7 +27,7 @@ describe('AuthService', () => {
     prisma = {
       organization: { findUnique: jest.fn() },
       refreshToken: { create: jest.fn(), findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
-      user: { findUnique: jest.fn() },
+      user: { findUnique: jest.fn(), update: jest.fn() },
       passwordResetToken: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
       $transaction: jest.fn(async (callback: (tx: unknown) => unknown) => callback(prisma)),
     };
@@ -186,6 +186,68 @@ describe('AuthService', () => {
 
       expect(prisma.passwordResetToken.create).not.toHaveBeenCalled();
       expect(emailService.send).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resetPassword', () => {
+    it('rejects a token that does not exist', async () => {
+      prisma.passwordResetToken.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.resetPassword({ token: 'no-such-token', newPassword: 'NewPassw0rd!' }),
+      ).rejects.toThrow('This reset link is invalid or has expired');
+    });
+
+    it('rejects an expired token', async () => {
+      prisma.passwordResetToken.findUnique.mockResolvedValue({
+        id: 'prt-1', userId: 'user-1', usedAt: null, expiresAt: new Date(Date.now() - 1000),
+      });
+
+      await expect(
+        service.resetPassword({ token: 'raw-token', newPassword: 'NewPassw0rd!' }),
+      ).rejects.toThrow('This reset link is invalid or has expired');
+    });
+
+    it('rejects an already-used token', async () => {
+      prisma.passwordResetToken.findUnique.mockResolvedValue({
+        id: 'prt-1', userId: 'user-1', usedAt: new Date(), expiresAt: new Date(Date.now() + 60_000),
+      });
+
+      await expect(
+        service.resetPassword({ token: 'raw-token', newPassword: 'NewPassw0rd!' }),
+      ).rejects.toThrow('This reset link is invalid or has expired');
+    });
+
+    it('updates the password, marks the token used, revokes other sessions, and audits the reset on a valid token', async () => {
+      prisma.passwordResetToken.findUnique.mockResolvedValue({
+        id: 'prt-1', userId: 'user-1', usedAt: null, expiresAt: new Date(Date.now() + 60_000),
+      });
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-1', organizationId: 'org-1', role: 'recruiter' });
+
+      await service.resetPassword({ token: 'raw-token', newPassword: 'NewPassw0rd!' });
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: { passwordHash: expect.any(String) },
+      });
+      // The weaker expect.any(String) check above would also pass for a hash of the
+      // wrong password (or garbage) -- verify the stored hash actually verifies against
+      // the newPassword that was submitted.
+      const storedPasswordHash = prisma.user.update.mock.calls[0][0].data.passwordHash;
+      expect(await argon2.verify(storedPasswordHash, 'NewPassw0rd!')).toBe(true);
+      expect(prisma.passwordResetToken.update).toHaveBeenCalledWith({
+        where: { id: 'prt-1' },
+        data: { usedAt: expect.any(Date) },
+      });
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1', revokedAt: null },
+        data: { revokedAt: expect.any(Date) },
+      });
+      expect(audit.record).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        { actorUserId: 'user-1', action: 'password.reset', entityType: 'user', entityId: 'user-1' },
+      );
     });
   });
 });
