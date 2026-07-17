@@ -73,9 +73,14 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
                   className={clsx(
                     'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium',
                     isActive
-                      ? 'border-l-[3px] border-primary bg-primary/10 pl-[7px] font-semibold text-primary'
+                      ? 'border-l-[3px] border-primary pl-[7px] font-semibold text-primary'
                       : 'text-recruiter-text-secondary hover:bg-recruiter-bg-subtle',
                   )}
+                  style={
+                    isActive
+                      ? { backgroundColor: 'color-mix(in srgb, var(--color-primary, #1a73e8) 12%, white)' }
+                      : undefined
+                  }
                 >
                   <Icon size={16} />
                   {item.label}
@@ -85,7 +90,7 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
           })}
         </ul>
         <div className="flex items-center gap-2 border-t border-recruiter-border px-3.5 py-3">
-          <div className="flex h-6.5 w-6.5 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-white">
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-white">
             {initials}
           </div>
           <div className="min-w-0">
