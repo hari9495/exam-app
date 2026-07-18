@@ -55,7 +55,40 @@ describe('IntegrationsSettingsPage', () => {
         '/organizations/integrations/smtp',
         expect.objectContaining({
           method: 'PATCH',
-          body: JSON.stringify({ host: 'smtp.customer.test', port: 587, user: 'customer-user', password: 'customer-pass', fromAddress: '' }),
+          body: JSON.stringify({ host: 'smtp.customer.test', port: 587, user: 'customer-user', password: 'customer-pass' }),
+        }),
+        'token',
+      ),
+    );
+    const [, options] = mockedApiFetch.mock.calls.find(([path]) => path === '/organizations/integrations/smtp')!;
+    expect('fromAddress' in JSON.parse(options.body as string)).toBe(false);
+  });
+
+  it('includes fromAddress in the request body when the admin provides one', async () => {
+    renderPage();
+    await screen.findByLabelText('SMTP host');
+
+    fireEvent.change(screen.getByLabelText('SMTP host'), { target: { value: 'smtp.customer.test' } });
+    fireEvent.change(screen.getByLabelText('SMTP port'), { target: { value: '587' } });
+    fireEvent.change(screen.getByLabelText('SMTP username'), { target: { value: 'customer-user' } });
+    fireEvent.change(screen.getByLabelText('SMTP password'), { target: { value: 'customer-pass' } });
+    fireEvent.change(screen.getByLabelText('From address (optional)'), { target: { value: 'noreply@customer.test' } });
+
+    mockedApiFetch.mockResolvedValueOnce({ smtpConfigured: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Save SMTP settings' }));
+
+    await waitFor(() =>
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        '/organizations/integrations/smtp',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({
+            host: 'smtp.customer.test',
+            port: 587,
+            user: 'customer-user',
+            password: 'customer-pass',
+            fromAddress: 'noreply@customer.test',
+          }),
         }),
         'token',
       ),

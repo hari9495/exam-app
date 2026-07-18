@@ -17,7 +17,7 @@ interface UpdateSmtpInput {
   port: number;
   user: string;
   password: string;
-  fromAddress: string;
+  fromAddress?: string;
 }
 
 export function useUpdateSmtpSettings() {

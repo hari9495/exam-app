@@ -24,7 +24,7 @@ export default function IntegrationsSettingsPage() {
     e.preventDefault();
     setSmtpError(null);
     updateSmtp.mutate(
-      { host: smtpHost, port: parseInt(smtpPort, 10), user: smtpUser, password: smtpPassword, fromAddress },
+      { host: smtpHost, port: parseInt(smtpPort, 10), user: smtpUser, password: smtpPassword, fromAddress: fromAddress || undefined },
       {
         onSuccess: () => {
           toast('SMTP settings saved.');
