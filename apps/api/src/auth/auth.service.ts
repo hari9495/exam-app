@@ -86,17 +86,18 @@ export class AuthService {
     // Fire-and-forget, matching the invitation-email pattern in InvitationsService:
     // email delivery is a notification side effect, not something the caller should
     // wait on (or that should make forgotPassword() throw on SMTP failure).
-    this.dispatchResetEmail(user.email, rawToken).catch((error) =>
+    this.dispatchResetEmail(user.email, rawToken, org.id).catch((error) =>
       this.logger.error(`Failed to dispatch password reset email to ${user.email}`, error as Error),
     );
   }
 
-  private async dispatchResetEmail(email: string, rawToken: string): Promise<void> {
+  private async dispatchResetEmail(email: string, rawToken: string, organizationId: string): Promise<void> {
     const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/reset-password/${rawToken}`;
     await this.emailService.send({
       to: email,
       subject: 'Reset your password',
       html: `<p>Click the link below to reset your password. This link expires in 15 minutes.</p><p><a href="${link}">${link}</a></p>`,
+      organizationId,
     });
   }
 

@@ -1,11 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
+import { PrismaService, OrgSecretsCryptoService } from '@exam-platform/shared';
 
 export interface SendEmailInput {
   to: string;
   subject: string;
   html: string;
+  organizationId?: string;
 }
 
 export interface SendEmailResult {
@@ -13,16 +15,24 @@ export interface SendEmailResult {
   previewUrl?: string;
 }
 
+const PLATFORM_FROM_ADDRESS = 'no-reply@exam-platform.test';
+const PLATFORM_CACHE_KEY = '__platform__';
+
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private transporterPromise: Promise<Transporter> | null = null;
+  private readonly transporterPromises = new Map<string, Promise<Transporter>>();
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cryptoService: OrgSecretsCryptoService,
+  ) {}
 
   async send(input: SendEmailInput): Promise<SendEmailResult> {
     try {
-      const transporter = await this.getTransporter();
+      const { transporter, fromAddress } = await this.resolveTransporter(input.organizationId);
       const info = await transporter.sendMail({
-        from: 'no-reply@exam-platform.test',
+        from: fromAddress,
         to: input.to,
         subject: input.subject,
         html: input.html,
@@ -38,17 +48,42 @@ export class EmailService {
     }
   }
 
-  private async getTransporter(): Promise<Transporter> {
-    if (!this.transporterPromise) {
-      this.transporterPromise = this.createTransporter().catch((error) => {
-        this.transporterPromise = null;
-        throw error;
+  private async resolveTransporter(organizationId: string | undefined): Promise<{ transporter: Transporter; fromAddress: string }> {
+    if (organizationId) {
+      const org = await this.prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { smtpHost: true, smtpPort: true, smtpUser: true, smtpPasswordEncrypted: true, emailFromAddress: true },
       });
+      if (org?.smtpHost && org.smtpUser && org.smtpPasswordEncrypted) {
+        const transporter = await this.getOrBuildTransporter(organizationId, () =>
+          Promise.resolve(
+            nodemailer.createTransport({
+              host: org.smtpHost as string,
+              port: org.smtpPort ?? 587,
+              auth: { user: org.smtpUser as string, pass: this.cryptoService.decrypt(org.smtpPasswordEncrypted as string) },
+            }),
+          ),
+        );
+        return { transporter, fromAddress: org.emailFromAddress ?? PLATFORM_FROM_ADDRESS };
+      }
     }
-    return this.transporterPromise;
+    const transporter = await this.getOrBuildTransporter(PLATFORM_CACHE_KEY, () => this.createPlatformTransporter());
+    return { transporter, fromAddress: PLATFORM_FROM_ADDRESS };
   }
 
-  private async createTransporter(): Promise<Transporter> {
+  private async getOrBuildTransporter(cacheKey: string, build: () => Promise<Transporter>): Promise<Transporter> {
+    let promise = this.transporterPromises.get(cacheKey);
+    if (!promise) {
+      promise = build().catch((error) => {
+        this.transporterPromises.delete(cacheKey);
+        throw error;
+      });
+      this.transporterPromises.set(cacheKey, promise);
+    }
+    return promise;
+  }
+
+  private async createPlatformTransporter(): Promise<Transporter> {
     if (process.env.SMTP_HOST) {
       return nodemailer.createTransport({
         host: process.env.SMTP_HOST,

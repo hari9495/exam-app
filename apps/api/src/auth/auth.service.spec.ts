@@ -171,6 +171,17 @@ describe('AuthService', () => {
       expect(computedHash).toBe(createCall.data.tokenHash);
     });
 
+    it("passes the organization's id through to EmailService.send so org-specific SMTP can be used", async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
+      tenantPrisma.forTenant.mockResolvedValue({ id: 'user-1', email: 'admin@demo-org.test', organizationId: 'org-1' });
+      prisma.passwordResetToken.create.mockResolvedValue({});
+
+      await service.forgotPassword({ organizationSlug: 'demo-org', email: 'admin@demo-org.test' });
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ organizationId: 'org-1' }));
+    });
+
     it('does not create a token or send an email when the org slug does not resolve, and does not throw', async () => {
       prisma.organization.findUnique.mockResolvedValue(null);
 
