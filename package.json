@@ -10,7 +10,7 @@
   },
   "scripts": {
     "dev:api": "npm run start:dev --workspace=apps/api",
-    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:web": "npm run dev --workspace=apps/web --",
     "dev:exam-runtime": "npm run start:dev --workspace=apps/exam-runtime",
     "test:api": "npm run test --workspace=apps/api --",
     "test:api:e2e": "npm run test:e2e --workspace=apps/api --",
