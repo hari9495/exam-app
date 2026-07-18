@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
@@ -39,12 +39,14 @@ export class UsersController {
   }
 
   @Post('me/change-password')
-  changePassword(
+  @HttpCode(200)
+  async changePassword(
     @CurrentTenant() tenant: TenantContext,
     @CurrentUserId() userId: string,
     @Body() dto: ChangePasswordDto,
     @Req() req: Request,
   ) {
-    return this.usersService.changePassword(tenant, userId, dto, req.cookies?.['refresh_token']);
+    await this.usersService.changePassword(tenant, userId, dto, req.cookies?.['refresh_token']);
+    return { success: true };
   }
 }
