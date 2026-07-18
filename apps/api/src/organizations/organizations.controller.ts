@@ -23,6 +23,12 @@ export class OrganizationsController {
     return this.organizationsService.create(tenant, userId, dto);
   }
 
+  @Get()
+  @RequirePermissions('platform:manage_organizations')
+  list() {
+    return this.organizationsService.list();
+  }
+
   @Get('branding')
   @RequirePermissions('org:manage_settings')
   getBranding(@CurrentTenant() tenant: TenantContext) {

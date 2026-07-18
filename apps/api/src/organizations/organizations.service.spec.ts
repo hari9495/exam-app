@@ -13,12 +13,12 @@ import { PrismaService, TenantPrismaService, AuditService } from '@exam-platform
 
 describe('OrganizationsService', () => {
   let service: OrganizationsService;
-  let prisma: { organization: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock } };
+  let prisma: { organization: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock; findMany: jest.Mock } };
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
 
   beforeEach(async () => {
-    prisma = { organization: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn() } };
+    prisma = { organization: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), findMany: jest.fn() } };
     tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
     const moduleRef = await Test.createTestingModule({
@@ -54,6 +54,20 @@ describe('OrganizationsService', () => {
     await expect(
       service.create({ organizationId: null, isSuperAdmin: true }, 'user-1', { name: 'Acme 2', slug: 'acme', region: 'us', planId: 'plan-1' }),
     ).rejects.toThrow(ConflictException);
+  });
+
+  describe('list', () => {
+    it('returns all organizations ordered by newest first', async () => {
+      prisma.organization.findMany.mockResolvedValue([
+        { id: 'org-2', name: 'Beta', slug: 'beta', region: 'eu', createdAt: new Date('2026-01-02') },
+        { id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', createdAt: new Date('2026-01-01') },
+      ]);
+
+      const result = await service.list();
+
+      expect(result).toHaveLength(2);
+      expect(prisma.organization.findMany).toHaveBeenCalledWith({ orderBy: { createdAt: 'desc' } });
+    });
   });
 
   describe('getBranding', () => {

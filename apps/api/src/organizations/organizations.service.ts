@@ -53,6 +53,10 @@ export class OrganizationsService {
     return org;
   }
 
+  async list(): Promise<Organization[]> {
+    return this.prisma.organization.findMany({ orderBy: { createdAt: 'desc' } });
+  }
+
   async getBranding(context: TenantContext): Promise<BrandingResponse> {
     const organizationId = this.requireOrganizationId(context);
     const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
