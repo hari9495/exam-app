@@ -6,6 +6,7 @@ import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis'
 import { PrismaModule, AuditModule } from '@exam-platform/shared';
 import { RbacModule } from './rbac/rbac.module';
 import { AuthModule } from './auth/auth.module';
+import { SetupModule } from './setup/setup.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { StaticUploadsModule } from './organizations/static-uploads.module';
 import { UsersModule } from './users/users.module';
@@ -42,6 +43,7 @@ import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
     AuditModule,
     AuditQueryModule,
     AuthModule,
+    SetupModule,
     OrganizationsModule,
     UsersModule,
     QuestionsModule,
