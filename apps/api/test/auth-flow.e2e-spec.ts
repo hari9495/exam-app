@@ -24,8 +24,10 @@ describe('Full Phase 0 flow: create org -> create user -> login -> protected rou
     prisma = moduleRef.get(PrismaService);
     tenantPrisma = moduleRef.get(TenantPrismaService);
 
+    // OrganizationsService.create() now looks up a plan named 'trial' by name (not by a
+    // caller-supplied planId) -- this must match that literal name for org creation to work.
     const plan = await prisma.plan.create({
-      data: { name: `e2e-plan-${randomUUID()}`, candidateLimit: 10, aiCreditLimit: 1, proctoringMinutesLimit: 1 },
+      data: { name: 'trial', candidateLimit: 10, aiCreditLimit: 1, proctoringMinutesLimit: 1 },
     });
     planId = plan.id;
   });
@@ -97,10 +99,14 @@ describe('Full Phase 0 flow: create org -> create user -> login -> protected rou
       .expect(200);
     const superAccessToken = superLogin.body.accessToken;
 
+    // adminEmail is distinct from the org_admin created manually below -- POST /organizations
+    // now creates its own locked first-admin account as part of org creation (a separate user
+    // from this test's own bootstrap admin), so reusing the same email would collide on the
+    // organizationId+email unique constraint.
     const createOrgResponse = await request(app.getHttpServer())
       .post('/api/v1/organizations')
       .set('Authorization', `Bearer ${superAccessToken}`)
-      .send({ name: 'E2E Org', slug: orgSlug, region: 'us', planId })
+      .send({ name: 'E2E Org', slug: orgSlug, region: 'us', adminEmail: `bootstrap-admin-${randomUUID()}@e2e-org.test` })
       .expect(201);
     orgId = createOrgResponse.body.id;
 
