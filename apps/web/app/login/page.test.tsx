@@ -77,6 +77,33 @@ describe('LoginPage', () => {
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/users'));
   });
 
+  it('redirects super_admin to /organizations after login', async () => {
+    const superAdminToken = fakeJwt({ sub: 'u1', organizationId: null, role: 'super_admin' });
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ message: 'no session' }), { status: 401 });
+      }
+      if (String(url).endsWith('/auth/staff/login')) {
+        return new Response(JSON.stringify({ accessToken: superAdminToken }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <LoginPage />
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    await userEvent.type(screen.getByLabelText(/email/i), 'super@platform.test');
+    await userEvent.type(screen.getByLabelText(/password/i), 'DevSuperAdmin123!');
+    await userEvent.click(screen.getByRole('button', { name: 'Log in' }));
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/organizations'));
+  });
+
   it('shows an error banner when login fails', async () => {
     global.fetch = jest.fn(async (url) => {
       if (String(url).endsWith('/auth/refresh')) {

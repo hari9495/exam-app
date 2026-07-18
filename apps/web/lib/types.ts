@@ -136,6 +136,14 @@ export interface BulkInviteResult {
   skipped: { candidateId: string; reason: string }[];
 }
 
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  region: string;
+  createdAt: string;
+}
+
 export interface BrandingResponse {
   logoUrl: string | null;
   primaryColor: string | null;
