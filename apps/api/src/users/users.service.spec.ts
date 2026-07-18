@@ -1,27 +1,31 @@
 import { Test } from '@nestjs/testing';
-import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { UsersService } from './users.service';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
+import { EmailService } from '../email/email.service';
 
 describe('UsersService', () => {
   let service: UsersService;
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
   let jwt: { verify: jest.Mock };
+  let emailService: { send: jest.Mock };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
     jwt = { verify: jest.fn() };
+    emailService = { send: jest.fn().mockResolvedValue({ success: true }) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         UsersService,
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: AuditService, useValue: audit },
         { provide: JwtService, useValue: jwt },
+        { provide: EmailService, useValue: emailService },
       ],
     }).compile();
     service = moduleRef.get(UsersService);
@@ -187,6 +191,140 @@ describe('UsersService', () => {
     expect(audit.record).toHaveBeenCalledWith(
       { organizationId: 'org-1', isSuperAdmin: false },
       { actorUserId: 'user-1', action: 'password.changed', entityType: 'user', entityId: 'user-1' },
+    );
+  });
+
+  it('listSuperAdmins returns only super_admin users via the bypass context', async () => {
+    tenantPrisma.forTenant.mockResolvedValue([
+      { id: 'sa-1', email: 'super1@platform.test', createdAt: new Date('2026-01-01T00:00:00.000Z') },
+    ]);
+
+    const result = await service.listSuperAdmins({ organizationId: null, isSuperAdmin: true });
+
+    expect(result).toHaveLength(1);
+    expect(tenantPrisma.forTenant).toHaveBeenCalledWith(
+      { organizationId: null, isSuperAdmin: true },
+      expect.any(Function),
+    );
+  });
+
+  it('inviteSuperAdmin rejects an email that already has a platform account', async () => {
+    tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
+      fn({ user: { findFirst: async () => ({ id: 'existing-sa' }) } }),
+    );
+
+    await expect(
+      service.inviteSuperAdmin({ organizationId: null, isSuperAdmin: true }, 'actor-1', { email: 'dup@platform.test' }),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('inviteSuperAdmin creates a null-org super_admin user and records an audit event', async () => {
+    let createCall: unknown;
+    let tokenCreateCall: unknown;
+    tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
+      fn({
+        user: {
+          findFirst: async () => null,
+          create: async (args: unknown) => {
+            createCall = args;
+            return { id: 'new-sa', email: 'new@platform.test', createdAt: new Date('2026-01-01T00:00:00.000Z') };
+          },
+        },
+        passwordResetToken: {
+          create: async (args: unknown) => {
+            tokenCreateCall = args;
+            return {};
+          },
+        },
+      }),
+    );
+
+    const result = await service.inviteSuperAdmin(
+      { organizationId: null, isSuperAdmin: true },
+      'actor-1',
+      { email: 'new@platform.test' },
+    );
+
+    expect(result.email).toBe('new@platform.test');
+    expect(createCall).toEqual(
+      expect.objectContaining({ data: expect.objectContaining({ organizationId: null, email: 'new@platform.test', role: 'super_admin' }) }),
+    );
+    expect(tokenCreateCall).toEqual(
+      expect.objectContaining({ data: expect.objectContaining({ userId: 'new-sa' }) }),
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      { organizationId: null, isSuperAdmin: true },
+      { actorUserId: 'actor-1', action: 'user.super_admin_invited', entityType: 'user', entityId: 'new-sa' },
+    );
+  });
+
+  it('promoteSuperAdmin rejects when no user matches the email', async () => {
+    tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
+      fn({ user: { findMany: async () => [] } }),
+    );
+
+    await expect(
+      service.promoteSuperAdmin({ organizationId: null, isSuperAdmin: true }, 'actor-1', { email: 'nobody@x.test' }),
+    ).rejects.toThrow(NotFoundException);
+  });
+
+  it('promoteSuperAdmin rejects when the email matches more than one account across orgs', async () => {
+    tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
+      fn({
+        user: {
+          findMany: async () => [
+            { id: 'u-1', role: 'recruiter' },
+            { id: 'u-2', role: 'org_admin' },
+          ],
+        },
+      }),
+    );
+
+    await expect(
+      service.promoteSuperAdmin({ organizationId: null, isSuperAdmin: true }, 'actor-1', { email: 'shared@x.test' }),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('promoteSuperAdmin rejects a user who is already a super_admin', async () => {
+    tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
+      fn({ user: { findMany: async () => [{ id: 'u-1', role: 'super_admin' }] } }),
+    );
+
+    await expect(
+      service.promoteSuperAdmin({ organizationId: null, isSuperAdmin: true }, 'actor-1', { email: 'already@x.test' }),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('promoteSuperAdmin clears organizationId and sets role on the matched user', async () => {
+    let updateCall: unknown;
+    tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
+      fn({
+        user: {
+          findMany: async () => [{ id: 'u-1', role: 'org_admin' }],
+          update: async (args: unknown) => {
+            updateCall = args;
+            return { id: 'u-1', email: 'promote@x.test', createdAt: new Date('2026-01-01T00:00:00.000Z') };
+          },
+        },
+      }),
+    );
+
+    const result = await service.promoteSuperAdmin(
+      { organizationId: null, isSuperAdmin: true },
+      'actor-1',
+      { email: 'promote@x.test' },
+    );
+
+    expect(result.id).toBe('u-1');
+    expect(updateCall).toEqual(
+      expect.objectContaining({
+        where: { id: 'u-1' },
+        data: expect.objectContaining({ organizationId: null, role: 'super_admin' }),
+      }),
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      { organizationId: null, isSuperAdmin: true },
+      { actorUserId: 'actor-1', action: 'user.super_admin_promoted', entityType: 'user', entityId: 'u-1' },
     );
   });
 });

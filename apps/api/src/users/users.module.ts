@@ -3,9 +3,10 @@ import { JwtModule } from '@nestjs/jwt';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 import { AuditModule } from '@exam-platform/shared';
+import { EmailModule } from '../email/email.module';
 
 @Module({
-  imports: [JwtModule.register({}), AuditModule],
+  imports: [JwtModule.register({}), AuditModule, EmailModule],
   controllers: [UsersController],
   providers: [UsersService],
   exports: [UsersService],

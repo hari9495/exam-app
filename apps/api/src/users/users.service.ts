@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { User } from '@prisma/client';
 import * as argon2 from 'argon2';
@@ -8,6 +8,9 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuditService } from '@exam-platform/shared';
+import { randomBytes, createHash } from 'crypto';
+import { EmailService } from '../email/email.service';
+import { SuperAdminEmailDto } from './dto/super-admin-email.dto';
 
 /**
  * A User record with `passwordHash` (and any other sensitive fields) excluded.
@@ -27,12 +30,24 @@ const SAFE_USER_SELECT = {
   createdAt: true,
 } as const;
 
+const SUPER_ADMIN_SELECT = { id: true, email: true, createdAt: true } as const;
+
+export type SuperAdminRecord = Pick<User, 'id' | 'email' | 'createdAt'>;
+
+// Mirrors OrganizationsService's PASSWORD_RESET_EXPIRY_MINUTES (apps/api/src/organizations/organizations.service.ts)
+// -- same policy, reused verbatim rather than shared cross-module, matching this codebase's existing pattern
+// of each service owning its own small local constants.
+const PASSWORD_RESET_EXPIRY_MINUTES = 15;
+
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly audit: AuditService,
     private readonly jwt: JwtService,
+    private readonly emailService: EmailService,
   ) {}
 
   async create(context: TenantContext, dto: CreateUserDto): Promise<SafeUser> {
@@ -131,6 +146,113 @@ export class UsersService {
       action: 'password.changed',
       entityType: 'user',
       entityId: userId,
+    });
+  }
+
+  async listSuperAdmins(context: TenantContext): Promise<SuperAdminRecord[]> {
+    return this.tenantPrisma.forTenant(context, (tx) =>
+      tx.user.findMany({
+        where: { role: 'super_admin' },
+        select: SUPER_ADMIN_SELECT,
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
+  }
+
+  async inviteSuperAdmin(context: TenantContext, actorUserId: string, dto: SuperAdminEmailDto): Promise<SuperAdminRecord> {
+    const existing = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.user.findFirst({ where: { organizationId: null, email: dto.email } }),
+    );
+    if (existing) {
+      throw new ConflictException(`A platform account for "${dto.email}" already exists`);
+    }
+
+    const passwordHash = await argon2.hash(randomBytes(32).toString('hex'));
+    const newAdmin = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.user.create({
+        data: { organizationId: null, email: dto.email, passwordHash, role: 'super_admin' },
+        select: SUPER_ADMIN_SELECT,
+      }),
+    );
+
+    const rawToken = randomBytes(32).toString('hex');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.passwordResetToken.create({
+        data: {
+          userId: newAdmin.id,
+          tokenHash,
+          expiresAt: new Date(Date.now() + PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000),
+        },
+      }),
+    );
+
+    this.dispatchInviteEmail(dto.email, rawToken).catch((error) =>
+      this.logger.error(`Failed to dispatch super_admin invite email to ${dto.email}`, error as Error),
+    );
+
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'user.super_admin_invited',
+      entityType: 'user',
+      entityId: newAdmin.id,
+    });
+    return newAdmin;
+  }
+
+  async promoteSuperAdmin(context: TenantContext, actorUserId: string, dto: SuperAdminEmailDto): Promise<SuperAdminRecord> {
+    // The (organizationId, email) unique index allows the same email string to exist under
+    // multiple different orgs, so a plain findFirst could silently promote the wrong account.
+    // findMany + an explicit ambiguity check makes that impossible instead of picking arbitrarily.
+    const matches = await this.tenantPrisma.forTenant(context, (tx) => tx.user.findMany({ where: { email: dto.email } }));
+    if (matches.length === 0) {
+      throw new NotFoundException(`No user found with email "${dto.email}"`);
+    }
+    if (matches.length > 1) {
+      throw new ConflictException(
+        `"${dto.email}" matches ${matches.length} accounts across organizations; promotion requires a globally unique email`,
+      );
+    }
+    const [user] = matches;
+    if (user.role === 'super_admin') {
+      throw new ConflictException(`"${dto.email}" is already a super_admin`);
+    }
+
+    const promoted = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.user.update({
+        where: { id: user.id },
+        data: { organizationId: null, role: 'super_admin' },
+        select: SUPER_ADMIN_SELECT,
+      }),
+    );
+
+    this.dispatchPromotionEmail(dto.email).catch((error) =>
+      this.logger.error(`Failed to dispatch super_admin promotion email to ${dto.email}`, error as Error),
+    );
+
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'user.super_admin_promoted',
+      entityType: 'user',
+      entityId: promoted.id,
+    });
+    return promoted;
+  }
+
+  private async dispatchInviteEmail(email: string, rawToken: string): Promise<void> {
+    const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/reset-password/${rawToken}`;
+    await this.emailService.send({
+      to: email,
+      subject: 'Welcome — set up your platform administrator account',
+      html: `<p>You've been invited as a platform administrator on the Examination Platform. Click the link below to set your password and get started. This link expires in 15 minutes.</p><p><a href="${link}">${link}</a></p>`,
+    });
+  }
+
+  private async dispatchPromotionEmail(email: string): Promise<void> {
+    await this.emailService.send({
+      to: email,
+      subject: 'Your account now has platform administrator access',
+      html: `<p>Your account on the Examination Platform has been granted platform administrator access. No action is needed — sign in as usual with your existing password.</p>`,
     });
   }
 }
