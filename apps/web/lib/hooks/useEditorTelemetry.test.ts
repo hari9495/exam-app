@@ -2,10 +2,12 @@ import { act, renderHook } from '@testing-library/react';
 import * as useAttemptModule from './useAttempt';
 import { useEditorTelemetry, MonacoEditor } from './useEditorTelemetry';
 
-function createMockEditor() {
+function createMockEditor(initialValue = '') {
   let pasteListener: ((event: unknown) => void) | undefined;
-  let changeListener: ((event: { changes: { text: string }[] }) => void) | undefined;
+  let changeListener: ((event: { changes: { text: string; rangeLength: number }[] }) => void) | undefined;
+  let value = initialValue;
   const editor: MonacoEditor = {
+    getValue: () => value,
     onDidPaste: (listener) => {
       pasteListener = listener;
     },
@@ -16,7 +18,20 @@ function createMockEditor() {
   return {
     editor,
     firePaste: () => pasteListener?.({}),
-    fireChange: (text: string) => changeListener?.({ changes: [{ text }] }),
+    // Simulates typing/pasting `text` in place of `rangeLength` existing chars.
+    // Keeps `value` (what getValue()/a future mount would see) in sync so tests
+    // can chain multiple edits realistically.
+    fireChange: (text: string, rangeLength = 0) => {
+      value = text;
+      changeListener?.({ changes: [{ text, rangeLength }] });
+    },
+    // Simulates Monaco's own synthetic full-model-range replace: a single change
+    // whose rangeLength equals the entire current model content length.
+    fireFullReplace: (text: string) => {
+      const rangeLength = value.length;
+      value = text;
+      changeListener?.({ changes: [{ text, rangeLength }] });
+    },
   };
 }
 
@@ -167,5 +182,87 @@ describe('useEditorTelemetry', () => {
 
     rerender({ questionId: 'q1' });
     expect(result.current.snapshot()).toMatchObject({ keystrokeChars: 2 });
+  });
+
+  // Regression coverage for the false-paste-on-question-switch bug: the single
+  // shared Monaco model persists across questions, and switching questions makes
+  // @monaco-editor/react sync the new `value` in via a synthetic full-range
+  // executeEdits() replace, which fires onDidChangeModelContent just like a real
+  // edit. These tests pin down that the hook tells that synthetic sync apart from
+  // real typing/pasting.
+  describe('programmatic value-swap on question switch', () => {
+    it('ignores a synthetic full-range replace: no pasteCount/pastedChars, no proctoring event, no secondsToFirstEdit', () => {
+      const mock = createMockEditor('x'.repeat(50)); // starter code already loaded in the model
+      const { result, rerender } = renderHook(({ questionId }) => useEditorTelemetry(questionId), {
+        initialProps: { questionId: 'q1' as string | null },
+      });
+      act(() => result.current.onEditorMount(mock.editor));
+
+      rerender({ questionId: 'q2' });
+      act(() => {
+        mock.fireFullReplace('y'.repeat(500));
+      });
+
+      expect(result.current.snapshot()).toMatchObject({
+        pasteCount: 0,
+        pastedChars: 0,
+        keystrokeChars: 0,
+        secondsToFirstEdit: 0,
+      });
+      expect(report).not.toHaveBeenCalled();
+    });
+
+    it('does not swallow a real paste when the expected synthetic swap never fires (flag never eats more than one event)', () => {
+      const mock = createMockEditor('x'.repeat(50));
+      const { result, rerender } = renderHook(({ questionId }) => useEditorTelemetry(questionId), {
+        initialProps: { questionId: 'q1' as string | null },
+      });
+      act(() => result.current.onEditorMount(mock.editor));
+
+      // Switch questions but the library never emits a sync event (e.g. old and
+      // new values happened to be identical) — the very next event is real.
+      rerender({ questionId: 'q2' });
+      act(() => {
+        mock.firePaste();
+        mock.fireChange('a'.repeat(300), 0);
+      });
+
+      expect(result.current.snapshot()).toMatchObject({ pastedChars: 300, pasteCount: 1, largestPasteChars: 300 });
+      expect(report).toHaveBeenCalledWith('editor_paste', { chars: 300, questionId: 'q2' });
+    });
+
+    it('still counts a real paste >= 200 chars on the same question when there is no switch', () => {
+      const mock = createMockEditor('x'.repeat(50));
+      const { result } = renderHook(() => useEditorTelemetry('q1'));
+      act(() => result.current.onEditorMount(mock.editor));
+
+      act(() => {
+        mock.firePaste();
+        mock.fireChange('b'.repeat(250), 0);
+      });
+
+      expect(result.current.snapshot()).toMatchObject({ pastedChars: 250, pasteCount: 1 });
+      expect(report).toHaveBeenCalledWith('editor_paste', { chars: 250, questionId: 'q1' });
+    });
+
+    it('sets secondsToFirstEdit for the new question from its own open time, unaffected by the ignored synthetic swap', () => {
+      const mock = createMockEditor('x'.repeat(50));
+      const { result, rerender } = renderHook(({ questionId }) => useEditorTelemetry(questionId), {
+        initialProps: { questionId: 'q1' as string | null },
+      });
+      act(() => result.current.onEditorMount(mock.editor));
+
+      rerender({ questionId: 'q2' });
+      act(() => {
+        mock.fireFullReplace('y'.repeat(500)); // swallowed — must not set firstEditAt
+      });
+
+      act(() => {
+        jest.advanceTimersByTime(4000);
+        mock.fireChange('z', 0); // candidate's first real keystroke on q2
+      });
+
+      expect(result.current.snapshot()).toMatchObject({ secondsToFirstEdit: 4 });
+    });
   });
 });
