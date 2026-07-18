@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import clsx from 'clsx';
-import { Users, History, ShieldCheck, Settings, LogOut } from 'lucide-react';
+import { Users, History, ShieldCheck, Settings, Plug, LogOut } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
 import { useBranding } from '../../lib/hooks/useBranding';
 import { useCurrentUser } from '../../lib/hooks/useCurrentUser';
@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { href: '/audit-log', label: 'Audit Log', icon: History },
   { href: '/data-rights', label: 'Candidate Data Rights', icon: ShieldCheck },
   { href: '/settings/branding', label: 'Org Settings', icon: Settings },
+  { href: '/settings/integrations', label: 'Integrations', icon: Plug },
 ];
 
 export default function OrgAdminLayout({ children }: { children: React.ReactNode }) {

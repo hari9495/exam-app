@@ -156,6 +156,14 @@ export interface BrandingResponse {
   accentColor: string | null;
 }
 
+export interface IntegrationsResponse {
+  smtpConfigured: boolean;
+  aiKeyConfigured: boolean;
+  smtpHost: string | null;
+  smtpPort: number | null;
+  emailFromAddress: string | null;
+}
+
 export type ProctoringEventType =
   | 'tab_switch'
   | 'fullscreen_exit'
