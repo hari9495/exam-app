@@ -17,6 +17,7 @@ const SAFE_USER_SELECT = {
   id: true,
   organizationId: true,
   email: true,
+  name: true,
   role: true,
   status: true,
   lastLoginAt: true,

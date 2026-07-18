@@ -69,4 +69,24 @@ describe('UsersService', () => {
 
     expect(result).not.toHaveProperty('passwordHash');
   });
+
+  it('includes name in the created user response', async () => {
+    tenantPrisma.forTenant.mockResolvedValue({
+      id: 'user-1',
+      email: 'a@b.com',
+      name: null,
+      organizationId: 'org-1',
+      role: 'recruiter',
+      status: 'active',
+      lastLoginAt: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    const result = await service.create(
+      { organizationId: 'org-1', isSuperAdmin: false },
+      { email: 'a@b.com', password: 'password1', role: 'recruiter' },
+    );
+
+    expect(result).toHaveProperty('name', null);
+  });
 });
