@@ -36,6 +36,9 @@ describe('ReportsService', () => {
       passFail: null,
       submittedAt: null,
       proctoringAnalysis: null,
+      integrityAnalysis: null,
+      integrityLevel: null,
+      integrityFlagCount: 0,
       ...overrides,
     };
   }
@@ -275,9 +278,52 @@ describe('ReportsService', () => {
       expect(detail).toEqual({
         candidateId: 'cand-2', candidateName: 'Bob', status: 'invited',
         score: null, maxScore: null, percentage: null, passFail: null, submittedAt: null,
-        proctoringAnalysis: null, sections: [],
+        proctoringAnalysis: null, integrityAnalysis: null, sections: [],
       });
       expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+    });
+
+    it('includes a parsed integrityAnalysis with its flags for a candidate with no attempt yet', async () => {
+      examsService.getResults.mockResolvedValue([
+        row({
+          candidateId: 'cand-2', candidateName: 'Bob', attemptId: null, status: 'invited',
+          integrityAnalysis: {
+            status: 'flagged',
+            level: 'high_risk',
+            flagsJson: JSON.stringify([
+              { type: 'tab_switch', severity: 'medium', detail: 'Left the exam tab 3 times' },
+              { type: 'similarity', severity: 'high', detail: 'Matches another candidate', counterpartAttemptId: 'a9', similarity: 0.92 },
+            ]),
+            narrative: 'Two integrity flags raised.',
+          },
+        }),
+      ]);
+
+      const detail = await service.getCandidateDetail(context, 'exam-1', 'cand-2');
+
+      expect(detail.integrityAnalysis).toEqual({
+        status: 'flagged',
+        level: 'high_risk',
+        narrative: 'Two integrity flags raised.',
+        flags: [
+          { type: 'tab_switch', severity: 'medium', detail: 'Left the exam tab 3 times' },
+          { type: 'similarity', severity: 'high', detail: 'Matches another candidate', counterpartAttemptId: 'a9', similarity: 0.92 },
+        ],
+      });
+      expect(detail.integrityAnalysis!.flags).toHaveLength(2);
+    });
+
+    it('degrades a malformed flagsJson to an empty flags array instead of throwing', async () => {
+      examsService.getResults.mockResolvedValue([
+        row({
+          candidateId: 'cand-2', candidateName: 'Bob', attemptId: null, status: 'invited',
+          integrityAnalysis: { status: 'flagged', level: 'medium_risk', flagsJson: 'not-valid-json{', narrative: null },
+        }),
+      ]);
+
+      const detail = await service.getCandidateDetail(context, 'exam-1', 'cand-2');
+
+      expect(detail.integrityAnalysis).toEqual({ status: 'flagged', level: 'medium_risk', narrative: null, flags: [] });
     });
 
     it('throws NotFoundException when the candidate was never invited to this exam', async () => {
@@ -365,7 +411,7 @@ describe('ReportsService', () => {
       expect(comparison[0]).toEqual({
         candidateId: 'cand-1', candidateName: 'Alice', status: 'invited',
         score: null, maxScore: null, percentage: null, passFail: null,
-        proctoringAnalysis: null, sectionScores: [],
+        proctoringAnalysis: null, integrityAnalysis: null, sectionScores: [],
       });
     });
 

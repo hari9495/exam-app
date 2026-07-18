@@ -10,6 +10,8 @@ const COLUMNS = [
   { header: 'Pass/Fail', key: 'passFail', width: 10 },
   { header: 'Submitted At', key: 'submittedAt', width: 22 },
   { header: 'Duration (min)', key: 'durationMinutes', width: 14 },
+  { header: 'Integrity level', key: 'integrityLevel', width: 16 },
+  { header: 'Integrity flags', key: 'integrityFlagCount', width: 14 },
 ];
 
 export async function exportResultsToXlsx(rows: ExportResultRow[]): Promise<Buffer> {
@@ -26,6 +28,8 @@ export async function exportResultsToXlsx(rows: ExportResultRow[]): Promise<Buff
       passFail: row.passFail,
       submittedAt: row.submittedAt ? row.submittedAt.toISOString() : '',
       durationMinutes: row.durationMinutes,
+      integrityLevel: row.integrityLevel ?? '',
+      integrityFlagCount: row.integrityFlagCount ?? 0,
     });
   });
   const arrayBuffer = await workbook.xlsx.writeBuffer();

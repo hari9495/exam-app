@@ -65,6 +65,22 @@ interface CandidateDetailSection extends SectionScore {
   questions: CandidateDetailQuestion[];
 }
 
+export interface IntegrityFlagDto {
+  type: string;
+  severity: string;
+  detail: string;
+  questionId?: string;
+  counterpartAttemptId?: string;
+  similarity?: number;
+}
+
+export type IntegritySummary = {
+  status: string;
+  level: string | null;
+  flags: IntegrityFlagDto[];
+  narrative: string | null;
+} | null;
+
 export interface CandidateDetail {
   candidateId: string;
   candidateName: string;
@@ -75,6 +91,7 @@ export interface CandidateDetail {
   passFail: string | null;
   submittedAt: Date | null;
   proctoringAnalysis: { status: string; riskLevel: string | null; summary: string | null } | null;
+  integrityAnalysis: IntegritySummary;
   sections: CandidateDetailSection[];
 }
 
@@ -87,6 +104,7 @@ export interface CandidateComparisonRow {
   percentage: number | null;
   passFail: string | null;
   proctoringAnalysis: { status: string; riskLevel: string | null; summary: string | null } | null;
+  integrityAnalysis: IntegritySummary;
   sectionScores: SectionScore[];
 }
 
@@ -267,6 +285,7 @@ export class ReportsService {
       passFail: row.passFail,
       submittedAt: row.submittedAt,
       proctoringAnalysis: row.proctoringAnalysis,
+      integrityAnalysis: this.toIntegritySummary(row),
     };
 
     if (!row.attemptId) {
@@ -353,6 +372,7 @@ export class ReportsService {
         percentage: row.percentage,
         passFail: row.passFail,
         proctoringAnalysis: row.proctoringAnalysis,
+        integrityAnalysis: this.toIntegritySummary(row),
         sectionScores: [],
       }));
     }
@@ -384,6 +404,7 @@ export class ReportsService {
           percentage: row.percentage,
           passFail: row.passFail,
           proctoringAnalysis: row.proctoringAnalysis,
+          integrityAnalysis: this.toIntegritySummary(row),
         };
         const attempt = row.attemptId ? attemptById.get(row.attemptId) : undefined;
         if (!attempt) {
@@ -397,6 +418,29 @@ export class ReportsService {
         return { ...base, sectionScores };
       });
     });
+  }
+
+  // Parses flagsJson defensively — it's LLM-produced, so a malformed row must degrade to
+  // an empty flags list rather than 500 the report.
+  private toIntegritySummary(row: ExamResultRow): IntegritySummary {
+    if (!row.integrityAnalysis) {
+      return null;
+    }
+    let flags: IntegrityFlagDto[] = [];
+    try {
+      const parsed = JSON.parse(row.integrityAnalysis.flagsJson ?? '[]');
+      if (Array.isArray(parsed)) {
+        flags = parsed;
+      }
+    } catch {
+      flags = [];
+    }
+    return {
+      status: row.integrityAnalysis.status,
+      level: row.integrityAnalysis.level,
+      flags,
+      narrative: row.integrityAnalysis.narrative,
+    };
   }
 
   // Floors each section's score at 0, matching computeResult()'s own floor for the overall

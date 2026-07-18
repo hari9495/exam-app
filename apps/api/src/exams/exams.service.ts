@@ -32,6 +32,22 @@ export interface ExamResultRow {
   passFail: string | null;
   submittedAt: Date | null;
   proctoringAnalysis: { status: string; riskLevel: string | null; summary: string | null } | null;
+  integrityAnalysis: { status: string; level: string | null; flagsJson: string | null; narrative: string | null } | null;
+  integrityLevel: string | null;
+  integrityFlagCount: number;
+}
+
+// ponytail: flagsJson is LLM-produced, unlike the app's own JSON blobs — guard against malformed content.
+function countIntegrityFlags(flagsJson: string | null): number {
+  if (!flagsJson) {
+    return 0;
+  }
+  try {
+    const parsed = JSON.parse(flagsJson);
+    return Array.isArray(parsed) ? parsed.length : 0;
+  } catch {
+    return 0;
+  }
 }
 
 export interface PendingGradingCodeQuestion {
@@ -482,7 +498,7 @@ export class ExamsService {
 
       return tx.invitation.findMany({
         where: { examId },
-        include: { candidate: true, attempt: { include: { result: true, proctoringAnalysis: true } } },
+        include: { candidate: true, attempt: { include: { result: true, proctoringAnalysis: true, integrityAnalysis: true } } },
         orderBy: [{ invitedAt: 'desc' }, { id: 'desc' }],
       });
     });
@@ -500,7 +516,7 @@ export class ExamsService {
     const settledAttempts = await this.tenantPrisma.forTenant(context, async (tx) => {
       const attempts = await tx.attempt.findMany({
         where: { id: { in: attemptIdsToSettle } },
-        include: { result: true, proctoringAnalysis: true },
+        include: { result: true, proctoringAnalysis: true, integrityAnalysis: true },
       });
       return new Map(attempts.map((attempt) => [attempt.id, attempt]));
     });
@@ -555,6 +571,7 @@ export class ExamsService {
           submittedAt: Date | null;
           result: { score: number; maxScore: number; percentage: number; passFail: string | null } | null;
           proctoringAnalysis: { status: string; riskLevel: string | null; summary: string | null } | null;
+          integrityAnalysis?: { status: string; level: string | null; flagsJson: string | null; narrative: string | null } | null;
         }
       | null
       | undefined,
@@ -573,6 +590,16 @@ export class ExamsService {
       proctoringAnalysis: attempt?.proctoringAnalysis
         ? { status: attempt.proctoringAnalysis.status, riskLevel: attempt.proctoringAnalysis.riskLevel, summary: attempt.proctoringAnalysis.summary }
         : null,
+      integrityAnalysis: attempt?.integrityAnalysis
+        ? {
+            status: attempt.integrityAnalysis.status,
+            level: attempt.integrityAnalysis.level,
+            flagsJson: attempt.integrityAnalysis.flagsJson,
+            narrative: attempt.integrityAnalysis.narrative,
+          }
+        : null,
+      integrityLevel: attempt?.integrityAnalysis?.level ?? null,
+      integrityFlagCount: countIntegrityFlags(attempt?.integrityAnalysis?.flagsJson ?? null),
     };
   }
 }

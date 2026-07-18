@@ -9,6 +9,7 @@ describe('exportResultsToXlsx', () => {
         candidateId: 'cand-1', candidateName: 'Alice', invitationId: 'inv-1', attemptId: 'a1',
         status: 'submitted', score: 10, maxScore: 10, percentage: 100, passFail: 'pass',
         submittedAt: new Date('2026-01-01T00:20:00Z'), proctoringAnalysis: null, durationMinutes: 20,
+        integrityAnalysis: null, integrityLevel: 'high_risk', integrityFlagCount: 3,
       },
     ];
 
@@ -21,7 +22,11 @@ describe('exportResultsToXlsx', () => {
     const dataRow = sheet.getRow(2).values as unknown[];
 
     expect(headerRow).toContain('Candidate Name');
+    expect(headerRow).toContain('Integrity level');
+    expect(headerRow).toContain('Integrity flags');
     expect(dataRow).toContain('Alice');
     expect(dataRow).toContain(100);
+    expect(dataRow).toContain('high_risk');
+    expect(dataRow).toContain(3);
   });
 });

@@ -952,7 +952,7 @@ describe('ExamsService', () => {
         {
           candidateId: 'cand-1', candidateName: 'Alice', invitationId: 'inv-1', attemptId: null,
           status: 'invited', score: null, maxScore: null, percentage: null, passFail: null, submittedAt: null,
-          proctoringAnalysis: null,
+          proctoringAnalysis: null, integrityAnalysis: null, integrityLevel: null, integrityFlagCount: 0,
         },
       ]);
     });
@@ -983,7 +983,7 @@ describe('ExamsService', () => {
         {
           candidateId: 'cand-1', candidateName: 'Alice', invitationId: 'inv-1', attemptId: 'attempt-1',
           status: 'submitted', score: 8, maxScore: 10, percentage: 80, passFail: 'pass', submittedAt,
-          proctoringAnalysis: null,
+          proctoringAnalysis: null, integrityAnalysis: null, integrityLevel: null, integrityFlagCount: 0,
         },
       ]);
       expect(examRuntime.settleIfExpiredBatch).not.toHaveBeenCalled();
@@ -1020,7 +1020,7 @@ describe('ExamsService', () => {
       expect(examRuntime.settleIfExpiredBatch).toHaveBeenCalledWith([inProgressAttempt.id]);
       expect(tx.attempt.findMany).toHaveBeenCalledWith({
         where: { id: { in: [inProgressAttempt.id] } },
-        include: { result: true, proctoringAnalysis: true },
+        include: { result: true, proctoringAnalysis: true, integrityAnalysis: true },
       });
       expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(2);
       expect(result[0].status).toBe('auto_submitted');
@@ -1103,6 +1103,48 @@ describe('ExamsService', () => {
 
       expect(result[0].proctoringAnalysis).toEqual({ status: 'completed', riskLevel: 'low', summary: 'Nothing notable.' });
       expect(result[1].proctoringAnalysis).toBeNull();
+    });
+
+    it('includes the integrity analysis and a flattened level/flag count for a settled attempt, and null/0 when none exists yet', async () => {
+      const exam = { id: 'exam-1', passCriteriaPercent: 40 };
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue(exam) },
+        invitation: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' },
+              attempt: {
+                id: 'attempt-1', status: 'submitted', submittedAt: new Date(),
+                result: { score: 5, maxScore: 5, percentage: 100, passFail: 'pass' },
+                proctoringAnalysis: null,
+                integrityAnalysis: {
+                  status: 'flagged', level: 'high_risk',
+                  flagsJson: JSON.stringify([{ type: 'tab_switch', severity: 'medium', detail: 'x' }, { type: 'copy_paste', severity: 'low', detail: 'y' }]),
+                  narrative: 'Two flags raised.',
+                },
+              },
+            },
+            {
+              id: 'inv-2', candidateId: 'cand-2', status: 'invited', candidate: { name: 'Bob' },
+              attempt: null,
+            },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getResults(context, 'exam-1');
+
+      expect(result[0].integrityLevel).toBe('high_risk');
+      expect(result[0].integrityFlagCount).toBe(2);
+      expect(result[0].integrityAnalysis).toEqual({
+        status: 'flagged', level: 'high_risk',
+        flagsJson: JSON.stringify([{ type: 'tab_switch', severity: 'medium', detail: 'x' }, { type: 'copy_paste', severity: 'low', detail: 'y' }]),
+        narrative: 'Two flags raised.',
+      });
+      expect(result[1].integrityAnalysis).toBeNull();
+      expect(result[1].integrityLevel).toBeNull();
+      expect(result[1].integrityFlagCount).toBe(0);
     });
   });
 });

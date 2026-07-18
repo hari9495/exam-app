@@ -21,6 +21,8 @@ export function exportResultsToPdf(rows: ExportResultRow[]): Promise<Buffer> {
         row.percentage !== null ? `${row.percentage}%` : '-',
         row.passFail ?? '-',
         row.durationMinutes !== null ? `${Math.round(row.durationMinutes)} min` : '-',
+        row.integrityLevel ?? '-',
+        `${row.integrityFlagCount ?? 0} flags`,
       ].join('   ');
       doc.text(line);
     });
