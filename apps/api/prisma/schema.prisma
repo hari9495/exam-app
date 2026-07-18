@@ -28,6 +28,12 @@ model Organization {
   logoPath     String?    @map("logo_path")
   primaryColor String?    @map("primary_color")
   accentColor  String?    @map("accent_color")
+  smtpHost              String?    @map("smtp_host")
+  smtpPort              Int?       @map("smtp_port")
+  smtpUser              String?    @map("smtp_user")
+  smtpPasswordEncrypted String?    @map("smtp_password_encrypted")
+  emailFromAddress      String?    @map("email_from_address")
+  aiApiKeyEncrypted     String?    @map("ai_api_key_encrypted")
   planId       String     @map("plan_id") @db.UniqueIdentifier
   plan         Plan       @relation(fields: [planId], references: [id])
   createdAt    DateTime   @default(now()) @map("created_at")
