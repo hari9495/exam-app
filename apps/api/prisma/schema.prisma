@@ -20,40 +20,40 @@ model Plan {
 }
 
 model Organization {
-  id           String     @id @default(uuid()) @db.UniqueIdentifier
-  name         String
-  slug         String     @unique
-  region       String     @default("us")
-  status       String     @default("active")
-  logoPath     String?    @map("logo_path")
-  primaryColor String?    @map("primary_color")
-  accentColor  String?    @map("accent_color")
+  id                    String     @id @default(uuid()) @db.UniqueIdentifier
+  name                  String
+  slug                  String     @unique
+  region                String     @default("us")
+  status                String     @default("active")
+  logoPath              String?    @map("logo_path")
+  primaryColor          String?    @map("primary_color")
+  accentColor           String?    @map("accent_color")
   smtpHost              String?    @map("smtp_host")
   smtpPort              Int?       @map("smtp_port")
   smtpUser              String?    @map("smtp_user")
   smtpPasswordEncrypted String?    @map("smtp_password_encrypted")
   emailFromAddress      String?    @map("email_from_address")
   aiApiKeyEncrypted     String?    @map("ai_api_key_encrypted")
-  planId       String     @map("plan_id") @db.UniqueIdentifier
-  plan         Plan       @relation(fields: [planId], references: [id])
-  createdAt    DateTime   @default(now()) @map("created_at")
-  users        User[]
-  auditLogs    AuditLog[]
+  planId                String     @map("plan_id") @db.UniqueIdentifier
+  plan                  Plan       @relation(fields: [planId], references: [id])
+  createdAt             DateTime   @default(now()) @map("created_at")
+  users                 User[]
+  auditLogs             AuditLog[]
 
   @@map("organizations")
 }
 
 model User {
-  id             String         @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String?        @map("organization_id") @db.UniqueIdentifier
-  organization   Organization?  @relation(fields: [organizationId], references: [id])
-  email          String
-  name           String?
-  passwordHash   String         @map("password_hash")
-  role           String
-  status         String         @default("active")
-  lastLoginAt    DateTime?      @map("last_login_at")
-  createdAt           DateTime            @default(now()) @map("created_at")
+  id                  String               @id @default(uuid()) @db.UniqueIdentifier
+  organizationId      String?              @map("organization_id") @db.UniqueIdentifier
+  organization        Organization?        @relation(fields: [organizationId], references: [id])
+  email               String
+  name                String?
+  passwordHash        String               @map("password_hash")
+  role                String
+  status              String               @default("active")
+  lastLoginAt         DateTime?            @map("last_login_at")
+  createdAt           DateTime             @default(now()) @map("created_at")
   refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
   auditLogs           AuditLog[]
@@ -203,21 +203,21 @@ model QuestionTag {
 }
 
 model Exam {
-  id                  String        @id @default(uuid()) @db.UniqueIdentifier
-  organizationId      String        @map("organization_id") @db.UniqueIdentifier
-  title               String
-  instructions        String?       @db.NVarChar(Max)
-  status              String        @default("draft")
-  durationMinutes     Int           @default(60) @map("duration_minutes")
-  passCriteriaPercent Int           @default(40) @map("pass_criteria_percent")
-  randomizeOrder      Boolean       @default(false) @map("randomize_order")
-  schedulingEnabled   Boolean       @default(false) @map("scheduling_enabled")
-  availabilityWindowStart DateTime? @map("availability_window_start")
-  availabilityWindowEnd   DateTime? @map("availability_window_end")
-  createdBy           String        @map("created_by") @db.UniqueIdentifier
-  createdAt           DateTime      @default(now()) @map("created_at")
-  sections            ExamSection[]
-  invitations         Invitation[]
+  id                      String        @id @default(uuid()) @db.UniqueIdentifier
+  organizationId          String        @map("organization_id") @db.UniqueIdentifier
+  title                   String
+  instructions            String?       @db.NVarChar(Max)
+  status                  String        @default("draft")
+  durationMinutes         Int           @default(60) @map("duration_minutes")
+  passCriteriaPercent     Int           @default(40) @map("pass_criteria_percent")
+  randomizeOrder          Boolean       @default(false) @map("randomize_order")
+  schedulingEnabled       Boolean       @default(false) @map("scheduling_enabled")
+  availabilityWindowStart DateTime?     @map("availability_window_start")
+  availabilityWindowEnd   DateTime?     @map("availability_window_end")
+  createdBy               String        @map("created_by") @db.UniqueIdentifier
+  createdAt               DateTime      @default(now()) @map("created_at")
+  sections                ExamSection[]
+  invitations             Invitation[]
 
   @@index([organizationId, status])
   @@map("exams")
@@ -309,46 +309,49 @@ model Notification {
 }
 
 model Attempt {
-  id                  String              @id @default(uuid()) @db.UniqueIdentifier
-  invitationId        String              @unique @map("invitation_id") @db.UniqueIdentifier
-  candidateId         String              @map("candidate_id") @db.UniqueIdentifier
-  examId              String              @map("exam_id") @db.UniqueIdentifier
-  status              String              @default("in_progress")
-  questionOrderJson   String              @map("question_order_json") @db.NVarChar(Max)
-  sectionSnapshotJson String              @map("section_snapshot_json") @db.NVarChar(Max)
-  optionOrderJson     String?             @map("option_order_json") @db.NVarChar(Max)
-  startedAt           DateTime            @default(now()) @map("started_at")
-  submittedAt         DateTime?           @map("submitted_at")
-  deviceFingerprint   String?             @map("device_fingerprint")
-  lastSeenAt          DateTime?           @map("last_seen_at")
-  webcamViolationCount Int                @default(0) @map("webcam_violation_count")
-  pausedAt            DateTime?           @map("paused_at")
-  pausedDurationMs    Int                 @default(0) @map("paused_duration_ms")
-  invitation          Invitation          @relation(fields: [invitationId], references: [id], onDelete: Cascade)
-  answers             Answer[]
-  result              Result?
-  proctoringEvents    ProctoringEvent[]
-  messages            CandidateMessage[]
-  proctoringAnalysis  ProctoringAnalysis?
-  insight             AttemptInsight?
+  id                   String              @id @default(uuid()) @db.UniqueIdentifier
+  invitationId         String              @unique @map("invitation_id") @db.UniqueIdentifier
+  candidateId          String              @map("candidate_id") @db.UniqueIdentifier
+  examId               String              @map("exam_id") @db.UniqueIdentifier
+  status               String              @default("in_progress")
+  questionOrderJson    String              @map("question_order_json") @db.NVarChar(Max)
+  sectionSnapshotJson  String              @map("section_snapshot_json") @db.NVarChar(Max)
+  optionOrderJson      String?             @map("option_order_json") @db.NVarChar(Max)
+  startedAt            DateTime            @default(now()) @map("started_at")
+  submittedAt          DateTime?           @map("submitted_at")
+  deviceFingerprint    String?             @map("device_fingerprint")
+  lastSeenAt           DateTime?           @map("last_seen_at")
+  webcamViolationCount Int                 @default(0) @map("webcam_violation_count")
+  pausedAt             DateTime?           @map("paused_at")
+  pausedDurationMs     Int                 @default(0) @map("paused_duration_ms")
+  consentAt            DateTime?           @map("consent_at")
+  invitation           Invitation          @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  answers              Answer[]
+  result               Result?
+  proctoringEvents     ProctoringEvent[]
+  messages             CandidateMessage[]
+  proctoringAnalysis   ProctoringAnalysis?
+  insight              AttemptInsight?
+  integrityAnalysis    IntegrityAnalysis?
 
   @@index([examId, status])
   @@map("attempts")
 }
 
 model Answer {
-  id                    String   @id @default(uuid()) @db.UniqueIdentifier
-  attemptId             String   @map("attempt_id") @db.UniqueIdentifier
-  questionId            String   @map("question_id") @db.UniqueIdentifier
-  selectedOptionIdsJson String   @map("selected_option_ids_json") @db.NVarChar(Max)
-  isMarkedForReview     Boolean  @default(false) @map("is_marked_for_review")
-  answeredAt            DateTime @default(now()) @map("answered_at")
-  isCorrect             Boolean? @map("is_correct")
-  marksAwarded          Int?     @map("marks_awarded")
-  answerText            String?  @map("answer_text") @db.NVarChar(Max)
-  gradingFeedback       String?  @map("grading_feedback") @db.NVarChar(Max)
-  attempt               Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
-  question              Question @relation(fields: [questionId], references: [id])
+  id                    String            @id @default(uuid()) @db.UniqueIdentifier
+  attemptId             String            @map("attempt_id") @db.UniqueIdentifier
+  questionId            String            @map("question_id") @db.UniqueIdentifier
+  selectedOptionIdsJson String            @map("selected_option_ids_json") @db.NVarChar(Max)
+  isMarkedForReview     Boolean           @default(false) @map("is_marked_for_review")
+  answeredAt            DateTime          @default(now()) @map("answered_at")
+  isCorrect             Boolean?          @map("is_correct")
+  marksAwarded          Int?              @map("marks_awarded")
+  answerText            String?           @map("answer_text") @db.NVarChar(Max)
+  gradingFeedback       String?           @map("grading_feedback") @db.NVarChar(Max)
+  telemetryJson         String?           @map("telemetry_json") @db.NVarChar(Max)
+  attempt               Attempt           @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question              Question          @relation(fields: [questionId], references: [id])
   codeReview            CodeAnswerReview?
 
   @@unique([attemptId, questionId])
@@ -432,13 +435,26 @@ model ProctoringAnalysis {
   @@map("proctoring_analyses")
 }
 
+model IntegrityAnalysis {
+  id         String   @id @default(uuid()) @db.UniqueIdentifier
+  attemptId  String   @unique @map("attempt_id") @db.UniqueIdentifier
+  status     String
+  level      String?
+  flagsJson  String?  @map("flags_json") @db.NVarChar(Max)
+  narrative  String?  @db.NVarChar(Max)
+  analyzedAt DateTime @default(now()) @map("analyzed_at")
+  attempt    Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@map("integrity_analyses")
+}
+
 model AiJob {
   id             String   @id @default(uuid()) @db.UniqueIdentifier
   organizationId String   @map("organization_id") @db.UniqueIdentifier
   type           String
   status         String   @default("pending")
-  inputJson      String   @db.NVarChar(Max) @map("input_json")
-  outputJson     String?  @db.NVarChar(Max) @map("output_json")
+  inputJson      String   @map("input_json") @db.NVarChar(Max)
+  outputJson     String?  @map("output_json") @db.NVarChar(Max)
   error          String?  @db.NVarChar(Max)
   createdBy      String   @map("created_by") @db.UniqueIdentifier
   createdAt      DateTime @default(now()) @map("created_at")
