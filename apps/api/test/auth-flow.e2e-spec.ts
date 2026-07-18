@@ -14,6 +14,7 @@ describe('Full Phase 0 flow: create org -> create user -> login -> protected rou
   let planId: string;
   let orgId: string;
   let orgSlug: string;
+  let superAdminId: string;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -69,6 +70,24 @@ describe('Full Phase 0 flow: create org -> create user -> login -> protected rou
         .forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => tx.organization.delete({ where: { id: orgId } }))
         .catch(() => undefined);
     }
+    // The bootstrap super_admin created at the top of the test (organizationId: null) is
+    // never touched by the orgId cleanup above -- it isn't scoped to orgId, and the org's
+    // own delete cascade only nulls out organization_id on ITS users, it doesn't reach a
+    // user that was already null-org to begin with. Left alone, every run leaves one more
+    // permanent `super-<uuid>@platform.test` row (plus the RefreshToken issued by its
+    // login call) in the database -- this is exactly the leak that produced 196 stray
+    // super_admin rows in the dev DB before this cleanup was added. Same forTenant
+    // super-admin bypass as above: dbo.users' RLS filter predicate hides null-org rows
+    // from an unscoped session, so both the refresh-token lookup (which joins through
+    // users) and the user delete itself need it, or they silently match zero rows.
+    if (superAdminId) {
+      await tenantPrisma
+        .forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => tx.refreshToken.deleteMany({ where: { userId: superAdminId } }))
+        .catch(() => undefined);
+      await tenantPrisma
+        .forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => tx.user.deleteMany({ where: { id: superAdminId } }))
+        .catch(() => undefined);
+    }
     await prisma.plan.delete({ where: { id: planId } }).catch(() => undefined);
     await app.close();
   });
@@ -92,6 +111,7 @@ describe('Full Phase 0 flow: create org -> create user -> login -> protected rou
         },
       }),
     );
+    superAdminId = superAdmin.id;
 
     const superLogin = await request(app.getHttpServer())
       .post('/api/v1/auth/staff/login')
