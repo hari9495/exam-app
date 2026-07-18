@@ -89,4 +89,48 @@ describe('UsersService', () => {
 
     expect(result).toHaveProperty('name', null);
   });
+
+  it('getMe returns the caller\'s own user record', async () => {
+    tenantPrisma.forTenant.mockResolvedValue({
+      id: 'user-1',
+      email: 'a@b.com',
+      name: 'Jane Recruiter',
+      organizationId: 'org-1',
+      role: 'recruiter',
+      status: 'active',
+      lastLoginAt: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    const result = await service.getMe({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1');
+
+    expect(result.name).toBe('Jane Recruiter');
+    expect(tenantPrisma.forTenant).toHaveBeenCalledWith(
+      { organizationId: 'org-1', isSuperAdmin: false },
+      expect.any(Function),
+    );
+  });
+
+  it('updateMe updates only the name field', async () => {
+    tenantPrisma.forTenant.mockResolvedValue({
+      id: 'user-1',
+      email: 'a@b.com',
+      name: 'New Name',
+      organizationId: 'org-1',
+      role: 'recruiter',
+      status: 'active',
+      lastLoginAt: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    const result = await service.updateMe({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', {
+      name: 'New Name',
+    });
+
+    expect(result.name).toBe('New Name');
+    expect(tenantPrisma.forTenant).toHaveBeenCalledWith(
+      { organizationId: 'org-1', isSuperAdmin: false },
+      expect.any(Function),
+    );
+  });
 });

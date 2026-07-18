@@ -4,6 +4,7 @@ import * as argon2 from 'argon2';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { AuditService } from '@exam-platform/shared';
 
 /**
@@ -63,6 +64,18 @@ export class UsersService {
         where: { organizationId: context.organizationId },
         select: SAFE_USER_SELECT,
       }),
+    );
+  }
+
+  async getMe(context: TenantContext, userId: string): Promise<SafeUser> {
+    return this.tenantPrisma.forTenant(context, (tx) =>
+      tx.user.findUniqueOrThrow({ where: { id: userId }, select: SAFE_USER_SELECT }),
+    );
+  }
+
+  async updateMe(context: TenantContext, userId: string, dto: UpdateProfileDto): Promise<SafeUser> {
+    return this.tenantPrisma.forTenant(context, (tx) =>
+      tx.user.update({ where: { id: userId }, data: { name: dto.name }, select: SAFE_USER_SELECT }),
     );
   }
 }
