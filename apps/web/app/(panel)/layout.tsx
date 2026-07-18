@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import clsx from 'clsx';
+import { LogOut } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
 import { useBranding } from '../../lib/hooks/useBranding';
 
@@ -12,7 +13,7 @@ const NAV_ITEMS = [{ href: '/reports', label: 'Exams' }];
 export default function PanelLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { accessToken, organizationSlug, role, isLoading } = useAuth();
+  const { accessToken, organizationSlug, role, isLoading, logout } = useAuth();
   const { data: branding } = useBranding(organizationSlug);
 
   useEffect(() => {
@@ -32,11 +33,28 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
     return <p className="p-8 text-sm text-gray-500">Loading…</p>;
   }
 
+  async function handleLogout() {
+    await logout();
+    router.push('/login');
+  }
+
+  // ponytail: useAuth() has no userName field yet; always render the 'Panel' fallback
+  // rather than widening the auth contract (out of scope for this task) — matches the
+  // recruiter/org-admin shells' identical fallback for the same reason.
+  const initials = 'Panel'
+    .split(' ')
+    .map((part) => part[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+
   return (
     <div style={themeStyle} className="flex min-h-screen">
-      <nav className="w-56 shrink-0 border-r border-gray-200 bg-gray-50 p-4">
-        {branding?.logoUrl && <img src={branding.logoUrl} alt="Organization logo" className="mb-4 max-h-10" />}
-        <ul className="flex flex-col gap-1">
+      <nav className="flex w-56 shrink-0 flex-col border-r border-gray-200 bg-gray-50">
+        <div className="p-4">
+          {branding?.logoUrl && <img src={branding.logoUrl} alt="Organization logo" className="mb-4 max-h-10" />}
+        </div>
+        <ul className="flex flex-1 flex-col gap-1 px-4">
           {NAV_ITEMS.map((item) => (
             <li key={item.href}>
               <Link
@@ -51,6 +69,25 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
             </li>
           ))}
         </ul>
+        <div className="flex items-center justify-between gap-2 border-t border-gray-200 px-3.5 py-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-white">
+              {initials}
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-xs font-semibold text-gray-900">Panel</p>
+              <p className="text-[10.5px] text-gray-500">Panel</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            aria-label="Log out"
+            onClick={handleLogout}
+            className="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+          >
+            <LogOut size={16} />
+          </button>
+        </div>
       </nav>
       <main className="flex-1 p-8">{children}</main>
     </div>
