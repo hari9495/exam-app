@@ -1,10 +1,12 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { User } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuditService } from '@exam-platform/shared';
 
 /**
@@ -30,6 +32,7 @@ export class UsersService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly audit: AuditService,
+    private readonly jwt: JwtService,
   ) {}
 
   async create(context: TenantContext, dto: CreateUserDto): Promise<SafeUser> {
@@ -77,5 +80,57 @@ export class UsersService {
     return this.tenantPrisma.forTenant(context, (tx) =>
       tx.user.update({ where: { id: userId }, data: { name: dto.name }, select: SAFE_USER_SELECT }),
     );
+  }
+
+  async changePassword(
+    context: TenantContext,
+    userId: string,
+    dto: ChangePasswordDto,
+    currentRefreshToken: string | undefined,
+  ): Promise<void> {
+    const user = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.user.findUniqueOrThrow({ where: { id: userId } }),
+    );
+
+    if (!(await argon2.verify(user.passwordHash, dto.currentPassword))) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    const passwordHash = await argon2.hash(dto.newPassword);
+
+    // Preserve the session making this request: decode its own refresh-token
+    // family so the revoke-others write below can exclude it. A voluntary
+    // in-session password change shouldn't log the requester out, unlike the
+    // forgot-password reset flow (which has no "current session" to keep).
+    let currentFamilyId: string | null = null;
+    if (currentRefreshToken) {
+      try {
+        const payload = this.jwt.verify<{ sub: string; familyId: string }>(currentRefreshToken, {
+          secret: process.env.JWT_REFRESH_SECRET,
+        });
+        currentFamilyId = payload.familyId;
+      } catch {
+        currentFamilyId = null;
+      }
+    }
+
+    await this.tenantPrisma.forTenant(context, async (tx) => {
+      await tx.user.update({ where: { id: userId }, data: { passwordHash } });
+      await tx.refreshToken.updateMany({
+        where: {
+          userId,
+          revokedAt: null,
+          ...(currentFamilyId ? { familyId: { not: currentFamilyId } } : {}),
+        },
+        data: { revokedAt: new Date() },
+      });
+    });
+
+    await this.audit.record(context, {
+      actorUserId: userId,
+      action: 'password.changed',
+      entityType: 'user',
+      entityId: userId,
+    });
   }
 }
