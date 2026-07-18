@@ -10,6 +10,7 @@ import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { SuperAdminEmailDto } from './dto/super-admin-email.dto';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -26,6 +27,24 @@ export class UsersController {
   @RequirePermissions('org:view')
   list(@CurrentTenant() tenant: TenantContext) {
     return this.usersService.list(tenant);
+  }
+
+  @Get('super-admins')
+  @RequirePermissions('platform:manage_organizations')
+  listSuperAdmins(@CurrentTenant() tenant: TenantContext) {
+    return this.usersService.listSuperAdmins(tenant);
+  }
+
+  @Post('super-admins/invite')
+  @RequirePermissions('platform:manage_organizations')
+  inviteSuperAdmin(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: SuperAdminEmailDto) {
+    return this.usersService.inviteSuperAdmin(tenant, userId, dto);
+  }
+
+  @Post('super-admins/promote')
+  @RequirePermissions('platform:manage_organizations')
+  promoteSuperAdmin(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: SuperAdminEmailDto) {
+    return this.usersService.promoteSuperAdmin(tenant, userId, dto);
   }
 
   @Get('me')
