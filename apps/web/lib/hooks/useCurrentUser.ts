@@ -25,3 +25,20 @@ export function useUpdateProfile() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['currentUser'] }),
   });
 }
+
+interface ChangePasswordInput {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export function useChangePassword() {
+  const { accessToken } = useAuth();
+  return useMutation({
+    mutationFn: (input: ChangePasswordInput) =>
+      apiFetch(
+        '/users/me/change-password',
+        { method: 'POST', body: JSON.stringify(input) },
+        accessToken ?? undefined,
+      ),
+  });
+}
