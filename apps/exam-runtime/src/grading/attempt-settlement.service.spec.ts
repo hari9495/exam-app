@@ -3,22 +3,26 @@ import { AttemptSettlementService } from './attempt-settlement.service';
 import { AttemptStatusBroadcaster } from '../monitoring/attempt-status-broadcaster';
 import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
 import { AttemptInsightService } from '../attempt-insight/attempt-insight.service';
+import { IntegrityAnalysisService } from '../integrity/integrity-analysis.service';
 
 describe('AttemptSettlementService', () => {
   let service: AttemptSettlementService;
   let broadcaster: { emitAttemptStatus: jest.Mock; emitMessageSent: jest.Mock };
   let attemptAnalysis: { analyze: jest.Mock };
   let attemptInsight: { analyze: jest.Mock };
+  let integrityAnalysis: { analyze: jest.Mock };
   const exam = { id: 'exam-1', organizationId: 'org-1', durationMinutes: 30, passCriteriaPercent: 50 };
 
   beforeEach(() => {
     broadcaster = { emitAttemptStatus: jest.fn().mockResolvedValue(undefined), emitMessageSent: jest.fn().mockResolvedValue(undefined) };
     attemptAnalysis = { analyze: jest.fn().mockResolvedValue(undefined) };
     attemptInsight = { analyze: jest.fn().mockResolvedValue(undefined) };
+    integrityAnalysis = { analyze: jest.fn().mockResolvedValue(undefined) };
     service = new AttemptSettlementService(
       broadcaster as unknown as AttemptStatusBroadcaster,
       attemptAnalysis as unknown as AttemptAnalysisService,
       attemptInsight as unknown as AttemptInsightService,
+      integrityAnalysis as unknown as IntegrityAnalysisService,
     );
   });
 
@@ -237,6 +241,68 @@ describe('AttemptSettlementService', () => {
       await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
 
       expect(attemptAnalysis.analyze).toHaveBeenCalledWith('attempt-1');
+    });
+
+    it('triggers integrity analysis for the finalized attempt without awaiting it', async () => {
+      const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
+      const tx = {
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
+        answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
+        result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+        attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+        auditLog: { create: jest.fn() },
+      };
+
+      await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(integrityAnalysis.analyze).toHaveBeenCalledWith('attempt-1');
+    });
+
+    it('triggers integrity analysis even when the attempt is pending_manual_grade (unlike insight, which is skipped)', async () => {
+      const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1', 'q2']) };
+      const tx = {
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'q1', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] },
+            { id: 'q2', type: 'code', marks: 10, negativeMarks: 0, options: [] },
+          ]),
+        },
+        answer: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'answer-1', questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']) },
+            { id: 'answer-2', questionId: 'q2', selectedOptionIdsJson: JSON.stringify([]), answerText: 'print("hi")', marksAwarded: null },
+          ]),
+          update: jest.fn(),
+          create: jest.fn(),
+        },
+        result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+        attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'pending_manual_grade' }) },
+        auditLog: { create: jest.fn() },
+      };
+
+      await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(integrityAnalysis.analyze).toHaveBeenCalledWith('attempt-1');
+      expect(attemptInsight.analyze).not.toHaveBeenCalled();
+    });
+
+    it('does not let a rejected integrity analysis trigger propagate out of finalize', async () => {
+      integrityAnalysis.analyze.mockRejectedValue(new Error('should never surface'));
+      const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
+      const tx = {
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
+        answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
+        result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+        attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+        auditLog: { create: jest.fn() },
+      };
+
+      await expect(
+        service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted'),
+      ).resolves.toBeDefined();
+      await new Promise((resolve) => setImmediate(resolve));
     });
 
     it('does not let a rejected analysis trigger propagate out of finalize', async () => {
@@ -626,6 +692,35 @@ describe('AttemptSettlementService', () => {
       await new Promise((resolve) => setImmediate(resolve));
 
       expect(attemptInsight.analyze).toHaveBeenCalledWith('attempt-1');
+    });
+
+    it('re-runs integrity analysis once the final grade is known, so no_iteration can be evaluated with real marksAwarded', async () => {
+      const attempt = {
+        id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', status: 'pending_manual_grade',
+        questionOrderJson: JSON.stringify(['q1', 'q2']),
+      };
+      const tx = {
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'q1', type: 'single_mcq', marks: 5 },
+            { id: 'q2', type: 'code', marks: 10 },
+          ]),
+        },
+        answer: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'answer-1', questionId: 'q1', marksAwarded: 5 },
+            { id: 'answer-2', questionId: 'q2', marksAwarded: 8 },
+          ]),
+        },
+        result: { update: jest.fn() },
+        attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+        auditLog: { create: jest.fn() },
+      };
+
+      await service.finalizeManualGrade(tx as unknown as Prisma.TransactionClient, exam, attempt as any);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(integrityAnalysis.analyze).toHaveBeenCalledWith('attempt-1');
     });
   });
 

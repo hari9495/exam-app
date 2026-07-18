@@ -4,6 +4,7 @@ import { gradeAnswer, computeResult, computeRemainingSeconds } from './grading';
 import { ATTEMPT_STATUS_BROADCASTER, AttemptStatusBroadcaster } from '../monitoring/attempt-status-broadcaster';
 import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
 import { AttemptInsightService } from '../attempt-insight/attempt-insight.service';
+import { IntegrityAnalysisService } from '../integrity/integrity-analysis.service';
 import { WebcamViolationReason } from '../attempts/dto/webcam-violation.dto';
 
 export interface SettlementExam {
@@ -21,6 +22,7 @@ export class AttemptSettlementService {
     @Inject(ATTEMPT_STATUS_BROADCASTER) private readonly broadcaster: AttemptStatusBroadcaster,
     private readonly attemptAnalysis: AttemptAnalysisService,
     private readonly attemptInsight: AttemptInsightService,
+    private readonly integrityAnalysis: IntegrityAnalysisService,
   ) {}
 
   remainingSeconds(
@@ -133,6 +135,13 @@ export class AttemptSettlementService {
       } catch (error) {
         this.logger.error('Proctoring analysis failed to start', error as Error);
       }
+      // Integrity analysis runs unconditionally (unlike insight below) — telemetry, paste, and
+      // similarity evidence don't depend on grading, so it's useful even for pending_manual_grade.
+      try {
+        await this.integrityAnalysis.analyze(finalized.id);
+      } catch (error) {
+        this.logger.error('Integrity analysis failed to start', error as Error);
+      }
       // Skip insight generation for attempts pending manual grading — at this point the Result
       // is computed from MCQ-only scoredQuestions (code questions excluded) and passFail is null,
       // so an insight generated now would reflect an artificially skewed percentage. It's
@@ -190,6 +199,13 @@ export class AttemptSettlementService {
       .emitAttemptStatus(attempt.examId, { attemptId: finalized.id, candidateId: attempt.candidateId, status: finalized.status })
       .catch((error) => this.logger.error('Failed to broadcast attempt status', error as Error));
     void (async () => {
+      // Re-run integrity analysis now that marks are final — no_iteration depends on marksAwarded,
+      // which is only known once manual grading completes. The upsert makes re-running safe.
+      try {
+        await this.integrityAnalysis.analyze(finalized.id);
+      } catch (error) {
+        this.logger.error('Integrity analysis failed to start', error as Error);
+      }
       try {
         await this.attemptInsight.analyze(finalized.id);
       } catch (error) {
