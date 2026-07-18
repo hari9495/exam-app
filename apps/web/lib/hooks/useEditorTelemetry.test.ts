@@ -2,12 +2,10 @@ import { act, renderHook } from '@testing-library/react';
 import * as useAttemptModule from './useAttempt';
 import { useEditorTelemetry, MonacoEditor } from './useEditorTelemetry';
 
-function createMockEditor(initialValue = '') {
+function createMockEditor() {
   let pasteListener: ((event: unknown) => void) | undefined;
-  let changeListener: ((event: { changes: { text: string; rangeLength: number }[] }) => void) | undefined;
-  let value = initialValue;
+  let changeListener: ((event: { changes: { text: string }[] }) => void) | undefined;
   const editor: MonacoEditor = {
-    getValue: () => value,
     onDidPaste: (listener) => {
       pasteListener = listener;
     },
@@ -18,18 +16,59 @@ function createMockEditor(initialValue = '') {
   return {
     editor,
     firePaste: () => pasteListener?.({}),
-    // Simulates typing/pasting `text` in place of `rangeLength` existing chars.
-    // Keeps `value` (what getValue()/a future mount would see) in sync so tests
-    // can chain multiple edits realistically.
-    fireChange: (text: string, rangeLength = 0) => {
-      value = text;
-      changeListener?.({ changes: [{ text, rangeLength }] });
+    fireChange: (text: string) => {
+      changeListener?.({ changes: [{ text }] });
     },
-    // Simulates Monaco's own synthetic full-model-range replace: a single change
-    // whose rangeLength equals the entire current model content length.
-    fireFullReplace: (text: string) => {
-      const rangeLength = value.length;
-      value = text;
+  };
+}
+
+// Fakes the two separate effects @monaco-editor/react's <Editor> runs internally when
+// given a `path` prop (verified against node_modules/@monaco-editor/react/dist/index.mjs,
+// v4.7.0):
+//   1. model effect (deps: [path]) — h(monaco, value, language, path), which is
+//      `getModel(uri) ?? createModel(value, language, uri)`, then `editor.setModel(model)`.
+//      setModel() never fires onDidChangeModelContent.
+//   2. value-sync effect (deps: [value]) — only calls `executeEdits(...)` (which DOES
+//      emit onDidChangeModelContent) when `value !== model.getValue()`.
+// A brand-new path's model is created with that path's own current value, and a
+// revisited path's model already holds content the app kept in sync via onChange —
+// so step 2's guard is false on every bare question switch, and no event ever fires.
+// This is the mechanism `path={question.id}` in page.tsx relies on (replacing the
+// single shared model the previous suppress-flag heuristic had to work around).
+function createPathAwareMockEditor() {
+  const modelsByPath = new Map<string, string>();
+  let currentPath: string | undefined;
+  let pasteListener: ((event: unknown) => void) | undefined;
+  let changeListener: ((event: { changes: { text: string; rangeLength: number }[] }) => void) | undefined;
+
+  const editor: MonacoEditor = {
+    onDidPaste: (listener) => {
+      pasteListener = listener;
+    },
+    onDidChangeModelContent: (listener) => {
+      changeListener = listener;
+    },
+  };
+
+  return {
+    editor,
+    firePaste: () => pasteListener?.({}),
+    // Mirrors the model effect then the value-sync effect firing in sequence for a
+    // question switch (or the initial mount).
+    switchQuestion: (path: string, value: string) => {
+      if (!modelsByPath.has(path)) modelsByPath.set(path, value); // createModel(value)
+      currentPath = path; // setModel() — no event
+      const current = modelsByPath.get(path)!;
+      if (value !== current) {
+        const rangeLength = current.length;
+        modelsByPath.set(path, value);
+        changeListener?.({ changes: [{ text: value, rangeLength }] });
+      }
+    },
+    // A real user edit (typed or pasted) on whichever question is current.
+    fireChange: (text: string, rangeLength = 0) => {
+      const prior = modelsByPath.get(currentPath!) ?? '';
+      modelsByPath.set(currentPath!, prior + text);
       changeListener?.({ changes: [{ text, rangeLength }] });
     },
   };
@@ -184,24 +223,23 @@ describe('useEditorTelemetry', () => {
     expect(result.current.snapshot()).toMatchObject({ keystrokeChars: 2 });
   });
 
-  // Regression coverage for the false-paste-on-question-switch bug: the single
-  // shared Monaco model persists across questions, and switching questions makes
-  // @monaco-editor/react sync the new `value` in via a synthetic full-range
-  // executeEdits() replace, which fires onDidChangeModelContent just like a real
-  // edit. These tests pin down that the hook tells that synthetic sync apart from
-  // real typing/pasting.
-  describe('programmatic value-swap on question switch', () => {
-    it('ignores a synthetic full-range replace: no pasteCount/pastedChars, no proctoring event, no secondsToFirstEdit', () => {
-      const mock = createMockEditor('x'.repeat(50)); // starter code already loaded in the model
+  // Regression coverage for the false-paste-on-question-switch bug. The fix is
+  // structural (page.tsx gives <Editor> a `path={question.id}` prop, so each
+  // question gets its own Monaco model — see createPathAwareMockEditor above for
+  // the library-source evidence), so these tests exercise the hook against a fake
+  // that reproduces that per-path model behavior rather than any suppress-flag
+  // heuristic in the hook itself (there no longer is one).
+  describe('question switch with per-path Monaco models', () => {
+    it('a question switch with differing content fires no change event and is not counted', () => {
+      const mock = createPathAwareMockEditor();
       const { result, rerender } = renderHook(({ questionId }) => useEditorTelemetry(questionId), {
         initialProps: { questionId: 'q1' as string | null },
       });
       act(() => result.current.onEditorMount(mock.editor));
+      act(() => mock.switchQuestion('q1', 'starter code for q1'));
 
       rerender({ questionId: 'q2' });
-      act(() => {
-        mock.fireFullReplace('y'.repeat(500));
-      });
+      act(() => mock.switchQuestion('q2', 'completely different starter code for q2'));
 
       expect(result.current.snapshot()).toMatchObject({
         pasteCount: 0,
@@ -212,29 +250,34 @@ describe('useEditorTelemetry', () => {
       expect(report).not.toHaveBeenCalled();
     });
 
-    it('does not swallow a real paste when the expected synthetic swap never fires (flag never eats more than one event)', () => {
-      const mock = createMockEditor('x'.repeat(50));
+    it('a select-all-paste immediately after a question switch IS counted as a paste and reported', () => {
+      const mock = createPathAwareMockEditor();
       const { result, rerender } = renderHook(({ questionId }) => useEditorTelemetry(questionId), {
         initialProps: { questionId: 'q1' as string | null },
       });
       act(() => result.current.onEditorMount(mock.editor));
+      act(() => mock.switchQuestion('q1', 'x'.repeat(50)));
 
-      // Switch questions but the library never emits a sync event (e.g. old and
-      // new values happened to be identical) — the very next event is real.
       rerender({ questionId: 'q2' });
+      act(() => mock.switchQuestion('q2', 'y'.repeat(50))); // q2's own starter code, no event
+
+      // Candidate selects all 50 starter chars and pastes 250 chars over them —
+      // a single change whose rangeLength equals the entire prior content, the
+      // exact shape the old heuristic mistook for a programmatic swap.
       act(() => {
         mock.firePaste();
-        mock.fireChange('a'.repeat(300), 0);
+        mock.fireChange('z'.repeat(250), 50);
       });
 
-      expect(result.current.snapshot()).toMatchObject({ pastedChars: 300, pasteCount: 1, largestPasteChars: 300 });
-      expect(report).toHaveBeenCalledWith('editor_paste', { chars: 300, questionId: 'q2' });
+      expect(result.current.snapshot()).toMatchObject({ pastedChars: 250, pasteCount: 1, largestPasteChars: 250 });
+      expect(report).toHaveBeenCalledWith('editor_paste', { chars: 250, questionId: 'q2' });
     });
 
-    it('still counts a real paste >= 200 chars on the same question when there is no switch', () => {
-      const mock = createMockEditor('x'.repeat(50));
+    it('a real paste on the same question (no switch) is still counted', () => {
+      const mock = createPathAwareMockEditor();
       const { result } = renderHook(() => useEditorTelemetry('q1'));
       act(() => result.current.onEditorMount(mock.editor));
+      act(() => mock.switchQuestion('q1', ''));
 
       act(() => {
         mock.firePaste();
@@ -245,17 +288,16 @@ describe('useEditorTelemetry', () => {
       expect(report).toHaveBeenCalledWith('editor_paste', { chars: 250, questionId: 'q1' });
     });
 
-    it('sets secondsToFirstEdit for the new question from its own open time, unaffected by the ignored synthetic swap', () => {
-      const mock = createMockEditor('x'.repeat(50));
+    it('secondsToFirstEdit for the new question is measured from its own open time', () => {
+      const mock = createPathAwareMockEditor();
       const { result, rerender } = renderHook(({ questionId }) => useEditorTelemetry(questionId), {
         initialProps: { questionId: 'q1' as string | null },
       });
       act(() => result.current.onEditorMount(mock.editor));
+      act(() => mock.switchQuestion('q1', 'x'.repeat(50)));
 
       rerender({ questionId: 'q2' });
-      act(() => {
-        mock.fireFullReplace('y'.repeat(500)); // swallowed — must not set firstEditAt
-      });
+      act(() => mock.switchQuestion('q2', 'y'.repeat(50))); // no event, no firstEditAt set
 
       act(() => {
         jest.advanceTimersByTime(4000);

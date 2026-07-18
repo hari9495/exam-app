@@ -236,6 +236,7 @@ export default function CandidateExamPage() {
                 </div>
                 <Editor
                   height="400px"
+                  path={question.id}
                   language={question.codeLanguage ?? 'plaintext'}
                   value={codeValue}
                   onChange={handleCodeChange}

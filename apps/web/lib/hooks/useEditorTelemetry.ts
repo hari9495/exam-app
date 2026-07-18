@@ -9,9 +9,8 @@ const PASTE_EVENT_THRESHOLD_CHARS = 200;
 // ponytail: minimal shape of the monaco editor instance we actually touch —
 // avoids pulling the full monaco-editor type package in as a dependency.
 export interface MonacoEditor {
-  getValue: () => string;
   onDidPaste: (listener: (event: unknown) => void) => void;
-  onDidChangeModelContent: (listener: (event: { changes: { text: string; rangeLength: number }[] }) => void) => void;
+  onDidChangeModelContent: (listener: (event: { changes: { text: string }[] }) => void) => void;
 }
 
 interface TelemetryRecord {
@@ -40,19 +39,15 @@ function emptyRecord(): TelemetryRecord {
   };
 }
 
+// Note: the exam page gives the Monaco <Editor> a `path={question.id}` prop,
+// so @monaco-editor/react keeps a separate model per question (getModel(uri)
+// || createModel(...)) instead of pushing new content into one shared model.
+// Switching questions therefore never fires onDidChangeModelContent — no
+// synthetic edit ever reaches this hook, so there's nothing to suppress.
 export function useEditorTelemetry(questionId: string | null) {
   const records = useRef<Record<string, TelemetryRecord>>({});
   const questionIdRef = useRef(questionId);
   const pasteFlagRef = useRef(false);
-  // Single shared Monaco model persists across question navigation (one <Editor>
-  // instance, controlled `value`). Switching questions makes the library push the
-  // new value in via a synthetic executeEdits() full-range replace, which fires
-  // onDidChangeModelContent same as a real edit. These two refs let the next
-  // change event be identified as that synthetic swap (rather than a real paste/
-  // keystroke) so it isn't counted or attributed to the question being left.
-  const expectProgrammaticSwapRef = useRef(false);
-  const modelLengthRef = useRef(0);
-  const previousQuestionIdRef = useRef<string | null | undefined>(undefined);
   const reportEvent = useReportProctoringEvent();
   const reportEventRef = useRef(reportEvent);
   reportEventRef.current = reportEvent;
@@ -64,11 +59,6 @@ export function useEditorTelemetry(questionId: string | null) {
 
   useEffect(() => {
     if (questionId) getOrCreateRecord(questionId);
-    // undefined sentinel = first render; a real switch is any change after that.
-    if (previousQuestionIdRef.current !== undefined && previousQuestionIdRef.current !== questionId) {
-      expectProgrammaticSwapRef.current = true;
-    }
-    previousQuestionIdRef.current = questionId;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [questionId]);
 
@@ -82,28 +72,10 @@ export function useEditorTelemetry(questionId: string | null) {
   }, []);
 
   function onEditorMount(editor: MonacoEditor) {
-    // Seed with the model's actual starting length (e.g. starter code already
-    // loaded) so the very first question switch's full-range-replace check has
-    // a real baseline to compare rangeLength against, not an assumed 0.
-    modelLengthRef.current = editor.getValue().length;
     editor.onDidPaste(() => {
       pasteFlagRef.current = true;
     });
     editor.onDidChangeModelContent((event) => {
-      const changes = event.changes ?? [];
-      const priorModelLength = modelLengthRef.current;
-      modelLengthRef.current = changes.reduce((len, change) => len - change.rangeLength + change.text.length, priorModelLength);
-
-      if (expectProgrammaticSwapRef.current) {
-        expectProgrammaticSwapRef.current = false; // never swallow more than one event
-        // Monaco's controlled-value sync signature: one change whose rangeLength
-        // covers everything that was in the model before this edit landed.
-        const isFullRangeReplace = priorModelLength > 0 && changes.length === 1 && changes[0].rangeLength === priorModelLength;
-        if (isFullRangeReplace) return; // programmatic swap: don't count it, don't touch firstEditAt
-        // Flag was set but this doesn't look synthetic (e.g. old/new values were
-        // identical so no sync fired) — fall through and treat it as a real edit.
-      }
-
       const qid = questionIdRef.current;
       if (!qid) return;
       const record = getOrCreateRecord(qid);
@@ -112,6 +84,7 @@ export function useEditorTelemetry(questionId: string | null) {
         record.secondsToFirstEdit = Math.round((record.firstEditAt - record.openedAt) / 1000);
       }
 
+      const changes = event.changes ?? [];
       const insertedChars = changes.reduce((sum, change) => sum + change.text.length, 0);
       const isPaste = pasteFlagRef.current;
       pasteFlagRef.current = false;
