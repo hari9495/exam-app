@@ -144,6 +144,12 @@ export interface Organization {
   createdAt: string;
 }
 
+export interface SuperAdminSummary {
+  id: string;
+  email: string;
+  createdAt: string;
+}
+
 export interface BrandingResponse {
   logoUrl: string | null;
   primaryColor: string | null;
