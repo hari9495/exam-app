@@ -4,3 +4,6 @@ export * from './prisma/tenant-prisma.service';
 export * from './prisma/tenant-context';
 export * from './audit/audit.module';
 export * from './audit/audit.service';
+export * from './crypto/crypto.module';
+export * from './crypto/org-secrets-crypto.service';
+export * from './crypto/ai-api-key-resolver.service';
