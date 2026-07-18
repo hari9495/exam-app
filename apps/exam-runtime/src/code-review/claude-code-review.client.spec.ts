@@ -12,7 +12,6 @@ describe('ClaudeCodeReviewClient', () => {
     (Anthropic as unknown as jest.Mock).mockImplementation(() => ({
       messages: { create: mockCreate },
     }));
-    process.env.ANTHROPIC_API_KEY = 'test-key';
     client = new ClaudeCodeReviewClient();
   });
 
@@ -29,7 +28,7 @@ describe('ClaudeCodeReviewClient', () => {
       content: [{ type: 'tool_use', name: 'report_code_review', input: { suggestedMarks: 7, summary: 'Correct logic, minor style issues.' } }],
     });
 
-    const result = await client.review(input);
+    const result = await client.review(input, 'test-key');
 
     expect(result).toEqual({ suggestedMarks: 7, summary: 'Correct logic, minor style issues.' });
   });
@@ -39,7 +38,7 @@ describe('ClaudeCodeReviewClient', () => {
       content: [{ type: 'tool_use', name: 'report_code_review', input: { suggestedMarks: 7, summary: 'Solid solution.' } }],
     });
 
-    await client.review(input);
+    await client.review(input, 'test-key');
 
     expect(mockCreate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -54,7 +53,7 @@ describe('ClaudeCodeReviewClient', () => {
     mockCreate.mockResolvedValue({ content: [{ type: 'text', text: 'no tool call' }] });
 
     await expect(
-      client.review({ questionText: 'x', starterCode: null, codeLanguage: 'python', answerText: 'y', marks: 5 }),
+      client.review({ questionText: 'x', starterCode: null, codeLanguage: 'python', answerText: 'y', marks: 5 }, 'test-key'),
     ).rejects.toThrow('Claude did not return a valid report_code_review tool call');
   });
 
@@ -62,13 +61,13 @@ describe('ClaudeCodeReviewClient', () => {
     mockCreate.mockResolvedValue({ content: [{ type: 'tool_use', name: 'report_code_review', input: { suggestedMarks: 'seven', summary: 'ok' } }] });
 
     await expect(
-      client.review({ questionText: 'x', starterCode: null, codeLanguage: 'python', answerText: 'y', marks: 5 }),
+      client.review({ questionText: 'x', starterCode: null, codeLanguage: 'python', answerText: 'y', marks: 5 }, 'test-key'),
     ).rejects.toThrow('Claude returned a malformed code review');
   });
 
   it('propagates an error thrown by the Anthropic API call', async () => {
     mockCreate.mockRejectedValue(new Error('rate limited'));
 
-    await expect(client.review(input)).rejects.toThrow('rate limited');
+    await expect(client.review(input, 'test-key')).rejects.toThrow('rate limited');
   });
 });

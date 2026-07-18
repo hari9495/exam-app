@@ -29,14 +29,9 @@ const VALID_RISK_LEVELS = ['low', 'medium', 'high'];
 
 @Injectable()
 export class ClaudeProctoringClient {
-  private readonly client: Anthropic;
-
-  constructor() {
-    this.client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  }
-
-  async assessRisk(events: ProctoringTimelineEvent[]): Promise<RiskAssessment> {
-    const response = await this.client.messages.create({
+  async assessRisk(events: ProctoringTimelineEvent[], apiKey: string): Promise<RiskAssessment> {
+    const client = new Anthropic({ apiKey });
+    const response = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 512,
       tools: [RISK_ASSESSMENT_TOOL],

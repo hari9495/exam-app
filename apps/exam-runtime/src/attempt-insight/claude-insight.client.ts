@@ -37,18 +37,13 @@ const REPORT_INSIGHT_TOOL = {
 
 @Injectable()
 export class ClaudeInsightClient {
-  private readonly client: Anthropic;
-
-  constructor() {
-    this.client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  }
-
-  async generate(input: InsightInput): Promise<string> {
+  async generate(input: InsightInput, apiKey: string): Promise<string> {
+    const client = new Anthropic({ apiKey });
     const proctoringLine = input.proctoring
       ? `\n\nProctoring risk assessment: ${input.proctoring.riskLevel} risk. ${input.proctoring.summary}`
       : '';
 
-    const response = await this.client.messages.create({
+    const response = await client.messages.create({
       model: 'claude-sonnet-5',
       max_tokens: 512,
       tools: [REPORT_INSIGHT_TOOL],

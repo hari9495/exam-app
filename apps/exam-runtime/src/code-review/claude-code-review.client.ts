@@ -35,14 +35,9 @@ const REPORT_CODE_REVIEW_TOOL = {
 
 @Injectable()
 export class ClaudeCodeReviewClient {
-  private readonly client: Anthropic;
-
-  constructor() {
-    this.client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  }
-
-  async review(input: CodeReviewInput): Promise<CodeReviewResult> {
-    const response = await this.client.messages.create({
+  async review(input: CodeReviewInput, apiKey: string): Promise<CodeReviewResult> {
+    const client = new Anthropic({ apiKey });
+    const response = await client.messages.create({
       model: 'claude-sonnet-5',
       max_tokens: 512,
       tools: [REPORT_CODE_REVIEW_TOOL],

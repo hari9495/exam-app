@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { TenantPrismaService } from '@exam-platform/shared';
+import { TenantPrismaService, AiApiKeyResolverService } from '@exam-platform/shared';
 import { ClaudeCodeReviewClient } from './claude-code-review.client';
 
 @Injectable()
@@ -9,6 +9,7 @@ export class CodeReviewService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly claudeCodeReviewClient: ClaudeCodeReviewClient,
+    private readonly aiApiKeyResolver: AiApiKeyResolverService,
   ) {}
 
   async analyze(answerId: string): Promise<void> {
@@ -29,13 +30,17 @@ export class CodeReviewService {
       result = { status: 'completed', suggestedMarks: 0, summary: 'No code was submitted for this question.' };
     } else {
       try {
-        const review = await this.claudeCodeReviewClient.review({
-          questionText: answer.question.text,
-          starterCode: answer.question.starterCode,
-          codeLanguage: answer.question.codeLanguage ?? 'plaintext',
-          answerText: answer.answerText,
-          marks: answer.question.marks,
-        });
+        const apiKey = await this.aiApiKeyResolver.resolve(organizationId);
+        const review = await this.claudeCodeReviewClient.review(
+          {
+            questionText: answer.question.text,
+            starterCode: answer.question.starterCode,
+            codeLanguage: answer.question.codeLanguage ?? 'plaintext',
+            answerText: answer.answerText,
+            marks: answer.question.marks,
+          },
+          apiKey,
+        );
         result = { status: 'completed', suggestedMarks: review.suggestedMarks, summary: review.summary };
         chargeCredit = true;
       } catch (error) {

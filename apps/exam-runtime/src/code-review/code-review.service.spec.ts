@@ -18,11 +18,18 @@ describe('CodeReviewService', () => {
     const claudeClient = {
       review: claudeResult instanceof Error ? jest.fn().mockRejectedValue(claudeResult) : jest.fn().mockResolvedValue(claudeResult),
     };
-    return { service: new CodeReviewService(tenantPrisma as never, claudeClient as never), tx, tenantPrisma, claudeClient };
+    const aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue('test-api-key') };
+    return {
+      service: new CodeReviewService(tenantPrisma as never, claudeClient as never, aiApiKeyResolver as never),
+      tx,
+      tenantPrisma,
+      claudeClient,
+      aiApiKeyResolver,
+    };
   }
 
   it('generates a review, upserts CodeAnswerReview as completed, and records AI credit usage', async () => {
-    const { service, tx } = buildService({ suggestedMarks: 8, summary: 'Solid solution.' });
+    const { service, tx, claudeClient } = buildService({ suggestedMarks: 8, summary: 'Solid solution.' });
 
     await service.analyze('answer-1');
 
@@ -34,6 +41,7 @@ describe('CodeReviewService', () => {
     expect(tx.aiCreditUsage.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ source: 'code_review', sourceId: 'answer-1' }) }),
     );
+    expect(claudeClient.review).toHaveBeenCalledWith(expect.anything(), 'test-api-key');
   });
 
   it('upserts CodeAnswerReview as failed and records no credit usage when Claude throws', async () => {

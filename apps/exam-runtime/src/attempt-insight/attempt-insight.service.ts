@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { TenantPrismaService } from '@exam-platform/shared';
+import { TenantPrismaService, AiApiKeyResolverService } from '@exam-platform/shared';
 import { ClaudeInsightClient, TopicBreakdownEntry } from './claude-insight.client';
 
 @Injectable()
@@ -9,6 +9,7 @@ export class AttemptInsightService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly claudeInsightClient: ClaudeInsightClient,
+    private readonly aiApiKeyResolver: AiApiKeyResolverService,
   ) {}
 
   async analyze(attemptId: string): Promise<void> {
@@ -41,14 +42,18 @@ export class AttemptInsightService {
 
       let result: { status: string; summary: string | null };
       try {
-        const summary = await this.claudeInsightClient.generate({
-          percentage: attempt.result.percentage,
-          // ponytail: Result.passFail can now be null (pending manual grade of a code question);
-          // insight generation is narrative-only, so fall back to a plain label rather than gating it.
-          passFail: attempt.result.passFail ?? 'pending',
-          topicBreakdown,
-          proctoring,
-        });
+        const apiKey = await this.aiApiKeyResolver.resolve(organizationId);
+        const summary = await this.claudeInsightClient.generate(
+          {
+            percentage: attempt.result.percentage,
+            // ponytail: Result.passFail can now be null (pending manual grade of a code question);
+            // insight generation is narrative-only, so fall back to a plain label rather than gating it.
+            passFail: attempt.result.passFail ?? 'pending',
+            topicBreakdown,
+            proctoring,
+          },
+          apiKey,
+        );
         result = { status: 'completed', summary };
       } catch (error) {
         this.logger.error(`Insight generation failed for attempt ${attemptId}`, error as Error);

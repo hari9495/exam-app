@@ -1,12 +1,13 @@
 import { Test } from '@nestjs/testing';
 import { AttemptAnalysisService } from './attempt-analysis.service';
 import { ClaudeProctoringClient } from './claude-proctoring.client';
-import { TenantPrismaService } from '@exam-platform/shared';
+import { TenantPrismaService, AiApiKeyResolverService } from '@exam-platform/shared';
 
 describe('AttemptAnalysisService', () => {
   let service: AttemptAnalysisService;
   let tenantPrisma: { forTenant: jest.Mock };
   let claudeClient: { assessRisk: jest.Mock };
+  let aiApiKeyResolver: { resolve: jest.Mock };
 
   const startedAt = new Date('2026-07-09T10:00:00Z');
   const attemptWithExam = {
@@ -18,11 +19,13 @@ describe('AttemptAnalysisService', () => {
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
     claudeClient = { assessRisk: jest.fn() };
+    aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue('test-api-key') };
     const moduleRef = await Test.createTestingModule({
       providers: [
         AttemptAnalysisService,
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: ClaudeProctoringClient, useValue: claudeClient },
+        { provide: AiApiKeyResolverService, useValue: aiApiKeyResolver },
       ],
     }).compile();
     service = moduleRef.get(AttemptAnalysisService);
@@ -67,7 +70,7 @@ describe('AttemptAnalysisService', () => {
 
     await service.analyze('attempt-1');
 
-    expect(claudeClient.assessRisk).toHaveBeenCalledWith([{ eventType: 'tab_switch', severity: 'medium', elapsedSeconds: 120 }]);
+    expect(claudeClient.assessRisk).toHaveBeenCalledWith([{ eventType: 'tab_switch', severity: 'medium', elapsedSeconds: 120 }], 'test-api-key');
     expect(persistTx.proctoringAnalysis.upsert).toHaveBeenCalledWith({
       where: { attemptId: 'attempt-1' },
       create: { attemptId: 'attempt-1', status: 'completed', riskLevel: 'medium', summary: 'One tab switch.' },

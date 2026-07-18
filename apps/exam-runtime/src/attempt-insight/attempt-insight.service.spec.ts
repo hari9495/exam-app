@@ -1,12 +1,13 @@
 import { Test } from '@nestjs/testing';
 import { AttemptInsightService } from './attempt-insight.service';
 import { ClaudeInsightClient } from './claude-insight.client';
-import { TenantPrismaService } from '@exam-platform/shared';
+import { TenantPrismaService, AiApiKeyResolverService } from '@exam-platform/shared';
 
 describe('AttemptInsightService', () => {
   let service: AttemptInsightService;
   let tenantPrisma: { forTenant: jest.Mock };
   let claudeClient: { generate: jest.Mock };
+  let aiApiKeyResolver: { resolve: jest.Mock };
 
   const attemptWithResult = {
     id: 'attempt-1',
@@ -17,11 +18,13 @@ describe('AttemptInsightService', () => {
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
     claudeClient = { generate: jest.fn() };
+    aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue('test-api-key') };
     const moduleRef = await Test.createTestingModule({
       providers: [
         AttemptInsightService,
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: ClaudeInsightClient, useValue: claudeClient },
+        { provide: AiApiKeyResolverService, useValue: aiApiKeyResolver },
       ],
     }).compile();
     service = moduleRef.get(AttemptInsightService);
@@ -64,12 +67,15 @@ describe('AttemptInsightService', () => {
 
     await service.analyze('attempt-1');
 
-    expect(claudeClient.generate).toHaveBeenCalledWith({
-      percentage: 80,
-      passFail: 'pass',
-      topicBreakdown: [{ topic: 'SQL', correct: 1, total: 2 }],
-      proctoring: null,
-    });
+    expect(claudeClient.generate).toHaveBeenCalledWith(
+      {
+        percentage: 80,
+        passFail: 'pass',
+        topicBreakdown: [{ topic: 'SQL', correct: 1, total: 2 }],
+        proctoring: null,
+      },
+      'test-api-key',
+    );
     expect(persistTx.attemptInsight.upsert).toHaveBeenCalledWith({
       where: { attemptId: 'attempt-1' },
       create: { attemptId: 'attempt-1', status: 'completed', summary: 'Solid SQL performance.' },
@@ -131,6 +137,7 @@ describe('AttemptInsightService', () => {
 
     expect(claudeClient.generate).toHaveBeenCalledWith(
       expect.objectContaining({ proctoring: { riskLevel: 'medium', summary: 'One tab switch.' } }),
+      'test-api-key',
     );
   });
 

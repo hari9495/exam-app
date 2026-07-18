@@ -12,7 +12,6 @@ describe('ClaudeProctoringClient', () => {
     (Anthropic as unknown as jest.Mock).mockImplementation(() => ({
       messages: { create: mockCreate },
     }));
-    process.env.ANTHROPIC_API_KEY = 'test-key';
     client = new ClaudeProctoringClient();
   });
 
@@ -23,7 +22,7 @@ describe('ClaudeProctoringClient', () => {
       content: [{ type: 'tool_use', name: 'report_risk_assessment', input: { riskLevel: 'medium', summary: 'One tab switch mid-exam.' } }],
     });
 
-    const result = await client.assessRisk(events);
+    const result = await client.assessRisk(events, 'test-key');
 
     expect(result).toEqual({ riskLevel: 'medium', summary: 'One tab switch mid-exam.' });
   });
@@ -33,7 +32,7 @@ describe('ClaudeProctoringClient', () => {
       content: [{ type: 'tool_use', name: 'report_risk_assessment', input: { riskLevel: 'low', summary: 'Nothing notable.' } }],
     });
 
-    await client.assessRisk(events);
+    await client.assessRisk(events, 'test-key');
 
     expect(mockCreate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -46,7 +45,7 @@ describe('ClaudeProctoringClient', () => {
   it('throws when the response contains no tool_use block', async () => {
     mockCreate.mockResolvedValue({ content: [{ type: 'text', text: 'I cannot help with that.' }] });
 
-    await expect(client.assessRisk(events)).rejects.toThrow('Claude did not return a valid report_risk_assessment tool call');
+    await expect(client.assessRisk(events, 'test-key')).rejects.toThrow('Claude did not return a valid report_risk_assessment tool call');
   });
 
   it('throws when the tool_use input has an invalid riskLevel', async () => {
@@ -54,7 +53,7 @@ describe('ClaudeProctoringClient', () => {
       content: [{ type: 'tool_use', name: 'report_risk_assessment', input: { riskLevel: 'extreme', summary: 'Bad value.' } }],
     });
 
-    await expect(client.assessRisk(events)).rejects.toThrow('Claude returned a malformed risk assessment');
+    await expect(client.assessRisk(events, 'test-key')).rejects.toThrow('Claude returned a malformed risk assessment');
   });
 
   it('throws when the tool_use input is missing a summary', async () => {
@@ -62,12 +61,12 @@ describe('ClaudeProctoringClient', () => {
       content: [{ type: 'tool_use', name: 'report_risk_assessment', input: { riskLevel: 'high' } }],
     });
 
-    await expect(client.assessRisk(events)).rejects.toThrow('Claude returned a malformed risk assessment');
+    await expect(client.assessRisk(events, 'test-key')).rejects.toThrow('Claude returned a malformed risk assessment');
   });
 
   it('propagates an error thrown by the Anthropic API call', async () => {
     mockCreate.mockRejectedValue(new Error('rate limited'));
 
-    await expect(client.assessRisk(events)).rejects.toThrow('rate limited');
+    await expect(client.assessRisk(events, 'test-key')).rejects.toThrow('rate limited');
   });
 });
