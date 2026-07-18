@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch, setUnauthorizedHandler } from './api-client';
 import { decodeJwtPayload } from './jwt';
 
@@ -24,6 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const accessTokenRef = useRef<string | null>(null);
   accessTokenRef.current = accessToken;
+  const queryClient = useQueryClient();
 
   function applyToken(token: string | null) {
     setAccessToken(token);
@@ -68,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (typeof window !== 'undefined') {
       window.sessionStorage.removeItem(SLUG_STORAGE_KEY);
     }
+    queryClient.removeQueries({ queryKey: ['currentUser'] });
   }
 
   return (
