@@ -10,6 +10,8 @@ import { TenantContext } from '@exam-platform/shared';
 import { OrganizationsService } from './organizations.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateBrandingColorsDto } from './dto/update-branding-colors.dto';
+import { UpdateSmtpSettingsDto } from './dto/update-smtp-settings.dto';
+import { UpdateAiKeyDto } from './dto/update-ai-key.dto';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 
 @Controller('organizations')
@@ -39,6 +41,24 @@ export class OrganizationsController {
   @RequirePermissions('org:manage_settings')
   getUsage(@CurrentTenant() tenant: TenantContext) {
     return this.organizationsService.getUsage(tenant);
+  }
+
+  @Get('integrations')
+  @RequirePermissions('org:manage_settings')
+  getIntegrations(@CurrentTenant() tenant: TenantContext) {
+    return this.organizationsService.getIntegrations(tenant);
+  }
+
+  @Patch('integrations/smtp')
+  @RequirePermissions('org:manage_settings')
+  updateSmtpSettings(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateSmtpSettingsDto) {
+    return this.organizationsService.updateSmtpSettings(tenant, userId, dto);
+  }
+
+  @Patch('integrations/ai-key')
+  @RequirePermissions('org:manage_settings')
+  updateAiKey(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateAiKeyDto) {
+    return this.organizationsService.updateAiKey(tenant, userId, dto);
   }
 
   @Patch('branding')

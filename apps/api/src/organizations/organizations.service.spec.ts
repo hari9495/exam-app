@@ -1,3 +1,11 @@
+const mockTransporterVerify = jest.fn();
+jest.mock('nodemailer', () => ({
+  createTransport: () => ({ verify: mockTransporterVerify }),
+}));
+
+const mockAnthropicCreate = jest.fn();
+jest.mock('@anthropic-ai/sdk', () => jest.fn().mockImplementation(() => ({ messages: { create: mockAnthropicCreate } })));
+
 jest.mock('fs/promises', () => ({
   mkdir: jest.fn(),
   writeFile: jest.fn(),
@@ -10,7 +18,7 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { sep } from 'path';
 import { createHash } from 'crypto';
 import { OrganizationsService } from './organizations.service';
-import { PrismaService, TenantPrismaService, AuditService } from '@exam-platform/shared';
+import { PrismaService, TenantPrismaService, AuditService, OrgSecretsCryptoService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 
 describe('OrganizationsService', () => {
@@ -22,8 +30,11 @@ describe('OrganizationsService', () => {
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
   let emailService: { send: jest.Mock };
+  let cryptoService: { encrypt: jest.Mock; decrypt: jest.Mock };
 
   beforeEach(async () => {
+    mockTransporterVerify.mockReset();
+    mockAnthropicCreate.mockReset();
     prisma = {
       organization: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), findMany: jest.fn() },
       plan: { findFirst: jest.fn() },
@@ -31,6 +42,7 @@ describe('OrganizationsService', () => {
     tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
     emailService = { send: jest.fn().mockResolvedValue({ success: true }) };
+    cryptoService = { encrypt: jest.fn(), decrypt: jest.fn() };
     const moduleRef = await Test.createTestingModule({
       providers: [
         OrganizationsService,
@@ -38,6 +50,7 @@ describe('OrganizationsService', () => {
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: AuditService, useValue: audit },
         { provide: EmailService, useValue: emailService },
+        { provide: OrgSecretsCryptoService, useValue: cryptoService },
       ],
     }).compile();
     service = moduleRef.get(OrganizationsService);
@@ -321,6 +334,128 @@ describe('OrganizationsService', () => {
         where: { organizationId: 'org-1' },
         _sum: { credits: true },
       });
+    });
+  });
+
+  describe('getIntegrations', () => {
+    it('reports both as unconfigured for an org with nothing set', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        smtpHost: null, smtpPort: null, emailFromAddress: null, aiApiKeyEncrypted: null, smtpPasswordEncrypted: null,
+      });
+
+      const result = await service.getIntegrations({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result).toEqual({
+        smtpConfigured: false, aiKeyConfigured: false, smtpHost: null, smtpPort: null, emailFromAddress: null,
+      });
+    });
+
+    it('reports configured booleans and the non-secret SMTP fields, never the secrets themselves', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        smtpHost: 'smtp.customer.test', smtpPort: 465, emailFromAddress: 'no-reply@customer.test',
+        aiApiKeyEncrypted: 'encrypted-blob', smtpPasswordEncrypted: 'also-encrypted',
+      });
+
+      const result = await service.getIntegrations({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result).toEqual({
+        smtpConfigured: true, aiKeyConfigured: true,
+        smtpHost: 'smtp.customer.test', smtpPort: 465, emailFromAddress: 'no-reply@customer.test',
+      });
+      expect(result).not.toHaveProperty('smtpPasswordEncrypted');
+      expect(result).not.toHaveProperty('aiApiKeyEncrypted');
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(service.getIntegrations({ organizationId: null, isSuperAdmin: true })).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('updateSmtpSettings', () => {
+    const dto = { host: 'smtp.customer.test', port: 587, user: 'customer-user', password: 'customer-pass', fromAddress: 'no-reply@customer.test' };
+
+    it('validates via a real transporter.verify() call, then encrypts and persists on success', async () => {
+      mockTransporterVerify.mockResolvedValue(true);
+      cryptoService.encrypt.mockReturnValue('encrypted-password-blob');
+      prisma.organization.update.mockResolvedValue({});
+
+      const result = await service.updateSmtpSettings({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', dto);
+
+      expect(mockTransporterVerify).toHaveBeenCalledTimes(1);
+      expect(cryptoService.encrypt).toHaveBeenCalledWith('customer-pass');
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: {
+          smtpHost: 'smtp.customer.test', smtpPort: 587, smtpUser: 'customer-user',
+          smtpPasswordEncrypted: 'encrypted-password-blob', emailFromAddress: 'no-reply@customer.test',
+        },
+      });
+      expect(audit.record).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        { actorUserId: 'user-1', action: 'organization.smtp_configured', entityType: 'organization', entityId: 'org-1' },
+      );
+      expect(result).toEqual({ smtpConfigured: true });
+    });
+
+    it('rejects with BadRequestException and persists nothing when verify() fails', async () => {
+      mockTransporterVerify.mockRejectedValue(new Error('Invalid login'));
+
+      await expect(
+        service.updateSmtpSettings({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', dto),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(
+        service.updateSmtpSettings({ organizationId: null, isSuperAdmin: true }, 'user-1', dto),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockTransporterVerify).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('updateAiKey', () => {
+    const dto = { apiKey: 'sk-ant-customer-key' };
+
+    it('validates via a real minimal messages.create() call, then encrypts and persists on success', async () => {
+      mockAnthropicCreate.mockResolvedValue({ content: [] });
+      cryptoService.encrypt.mockReturnValue('encrypted-key-blob');
+      prisma.organization.update.mockResolvedValue({});
+
+      const result = await service.updateAiKey({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', dto);
+
+      expect(mockAnthropicCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ max_tokens: 1, messages: [{ role: 'user', content: 'Hi' }] }),
+      );
+      expect(cryptoService.encrypt).toHaveBeenCalledWith('sk-ant-customer-key');
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { aiApiKeyEncrypted: 'encrypted-key-blob' },
+      });
+      expect(audit.record).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        { actorUserId: 'user-1', action: 'organization.ai_key_configured', entityType: 'organization', entityId: 'org-1' },
+      );
+      expect(result).toEqual({ aiKeyConfigured: true });
+    });
+
+    it('rejects with BadRequestException and persists nothing when the API call fails', async () => {
+      mockAnthropicCreate.mockRejectedValue(new Error('authentication_error'));
+
+      await expect(
+        service.updateAiKey({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', dto),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(
+        service.updateAiKey({ organizationId: null, isSuperAdmin: true }, 'user-1', dto),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockAnthropicCreate).not.toHaveBeenCalled();
     });
   });
 });

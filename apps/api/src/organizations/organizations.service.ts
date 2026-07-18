@@ -4,12 +4,17 @@ import { randomBytes, createHash } from 'crypto';
 import * as argon2 from 'argon2';
 import { dirname, join } from 'path';
 import * as fs from 'fs/promises';
+import * as nodemailer from 'nodemailer';
+import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
+import { OrgSecretsCryptoService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateBrandingColorsDto } from './dto/update-branding-colors.dto';
+import { UpdateSmtpSettingsDto } from './dto/update-smtp-settings.dto';
+import { UpdateAiKeyDto } from './dto/update-ai-key.dto';
 import { UPLOADS_ROOT } from './uploads-path';
 
 export interface BrandingResponse {
@@ -22,6 +27,14 @@ export interface AiCreditUsageResponse {
   aiCreditLimit: number;
   totalUsed: number;
   breakdown: { questionGeneration: number; insightGeneration: number };
+}
+
+export interface IntegrationsResponse {
+  smtpConfigured: boolean;
+  aiKeyConfigured: boolean;
+  smtpHost: string | null;
+  smtpPort: number | null;
+  emailFromAddress: string | null;
 }
 
 const ALLOWED_LOGO_MIME_TYPES: Record<string, string> = {
@@ -45,6 +58,7 @@ export class OrganizationsService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly audit: AuditService,
     private readonly emailService: EmailService,
+    private readonly cryptoService: OrgSecretsCryptoService,
   ) {}
 
   async create(context: TenantContext, actorUserId: string, dto: CreateOrganizationDto): Promise<Organization> {
@@ -190,6 +204,77 @@ export class OrganizationsService {
       totalUsed: breakdown.questionGeneration + breakdown.insightGeneration,
       breakdown,
     };
+  }
+
+  async getIntegrations(context: TenantContext): Promise<IntegrationsResponse> {
+    const organizationId = this.requireOrganizationId(context);
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { smtpHost: true, smtpPort: true, emailFromAddress: true, aiApiKeyEncrypted: true, smtpPasswordEncrypted: true },
+    });
+    return {
+      smtpConfigured: Boolean(org?.smtpPasswordEncrypted),
+      aiKeyConfigured: Boolean(org?.aiApiKeyEncrypted),
+      smtpHost: org?.smtpHost ?? null,
+      smtpPort: org?.smtpPort ?? null,
+      emailFromAddress: org?.emailFromAddress ?? null,
+    };
+  }
+
+  async updateSmtpSettings(context: TenantContext, actorUserId: string, dto: UpdateSmtpSettingsDto): Promise<{ smtpConfigured: boolean }> {
+    const organizationId = this.requireOrganizationId(context);
+
+    const transporter = nodemailer.createTransport({
+      host: dto.host,
+      port: dto.port,
+      auth: { user: dto.user, pass: dto.password },
+    });
+    try {
+      await transporter.verify();
+    } catch (error) {
+      throw new BadRequestException(`Could not connect to that SMTP server: ${(error as Error).message}`);
+    }
+
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: {
+        smtpHost: dto.host,
+        smtpPort: dto.port,
+        smtpUser: dto.user,
+        smtpPasswordEncrypted: this.cryptoService.encrypt(dto.password),
+        emailFromAddress: dto.fromAddress ?? null,
+      },
+    });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'organization.smtp_configured',
+      entityType: 'organization',
+      entityId: organizationId,
+    });
+    return { smtpConfigured: true };
+  }
+
+  async updateAiKey(context: TenantContext, actorUserId: string, dto: UpdateAiKeyDto): Promise<{ aiKeyConfigured: boolean }> {
+    const organizationId = this.requireOrganizationId(context);
+
+    try {
+      const client = new Anthropic({ apiKey: dto.apiKey });
+      await client.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 1, messages: [{ role: 'user', content: 'Hi' }] });
+    } catch (error) {
+      throw new BadRequestException(`That API key was rejected by Anthropic: ${(error as Error).message}`);
+    }
+
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { aiApiKeyEncrypted: this.cryptoService.encrypt(dto.apiKey) },
+    });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'organization.ai_key_configured',
+      entityType: 'organization',
+      entityId: organizationId,
+    });
+    return { aiKeyConfigured: true };
   }
 
   private requireOrganizationId(context: TenantContext): string {
