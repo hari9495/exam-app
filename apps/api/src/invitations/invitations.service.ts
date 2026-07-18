@@ -296,6 +296,7 @@ export class InvitationsService {
       to: candidate.email,
       subject: "You've been invited to an exam",
       html: `<p>You have been invited to take "${examTitle}".</p><p><a href="${link}">${link}</a></p>`,
+      organizationId: context.organizationId ?? undefined,
     });
     await this.tenantPrisma.forTenant(context, (tx) =>
       tx.notification.create({

@@ -51,7 +51,7 @@ describe('InvitationsService', () => {
     await new Promise((resolve) => setImmediate(resolve));
 
     expect(emailService.send).toHaveBeenCalledWith(
-      expect.objectContaining({ to: 'a@test.com', subject: "You've been invited to an exam" }),
+      expect.objectContaining({ to: 'a@test.com', subject: "You've been invited to an exam", organizationId: 'org-1' }),
     );
     expect(notifTx.notification.create).toHaveBeenCalledWith({
       data: { invitationId: 'inv-1', status: 'sent', sentAt: expect.any(Date) },
