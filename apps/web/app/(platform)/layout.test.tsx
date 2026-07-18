@@ -6,7 +6,10 @@ import { QueryProvider } from '../../lib/query-provider';
 import { fakeJwt } from '../../lib/test-utils/fake-jwt';
 
 const mockPush = jest.fn();
-jest.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush }) }));
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: mockPush }),
+  usePathname: () => '/organizations',
+}));
 
 describe('Platform layout', () => {
   const originalFetch = global.fetch;
