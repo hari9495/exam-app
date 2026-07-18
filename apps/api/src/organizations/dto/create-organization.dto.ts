@@ -1,4 +1,4 @@
-import { IsIn, IsString, Matches, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsString, Matches, MinLength } from 'class-validator';
 
 export class CreateOrganizationDto {
   @IsString()
@@ -12,6 +12,6 @@ export class CreateOrganizationDto {
   @IsIn(['us', 'eu'])
   region!: string;
 
-  @IsString()
-  planId!: string;
+  @IsEmail()
+  adminEmail!: string;
 }

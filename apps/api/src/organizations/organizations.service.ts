@@ -1,10 +1,13 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Organization } from '@prisma/client';
+import { randomBytes, createHash } from 'crypto';
+import * as argon2 from 'argon2';
 import { dirname, join } from 'path';
 import * as fs from 'fs/promises';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
+import { EmailService } from '../email/email.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateBrandingColorsDto } from './dto/update-branding-colors.dto';
 import { UPLOADS_ROOT } from './uploads-path';
@@ -28,12 +31,20 @@ const ALLOWED_LOGO_MIME_TYPES: Record<string, string> = {
 };
 const MAX_LOGO_SIZE_BYTES = 2 * 1024 * 1024;
 
+// Mirrors AuthService's PASSWORD_RESET_EXPIRY_MINUTES (apps/api/src/auth/auth.service.ts) --
+// same policy, reused verbatim rather than shared cross-module, matching this codebase's
+// existing pattern of each service owning its own small local constants.
+const PASSWORD_RESET_EXPIRY_MINUTES = 15;
+
 @Injectable()
 export class OrganizationsService {
+  private readonly logger = new Logger(OrganizationsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly audit: AuditService,
+    private readonly emailService: EmailService,
   ) {}
 
   async create(context: TenantContext, actorUserId: string, dto: CreateOrganizationDto): Promise<Organization> {
@@ -41,9 +52,43 @@ export class OrganizationsService {
     if (existing) {
       throw new ConflictException(`Organization slug "${dto.slug}" is already taken`);
     }
+
+    const trialPlan = await this.prisma.plan.findFirst({ where: { name: 'trial' } });
+    if (!trialPlan) {
+      throw new Error('No trial plan is configured for this environment');
+    }
+
     const org = await this.prisma.organization.create({
-      data: { name: dto.name, slug: dto.slug, region: dto.region, planId: dto.planId },
+      data: { name: dto.name, slug: dto.slug, region: dto.region, planId: trialPlan.id },
     });
+
+    // The new org has no pre-existing tenant session to scope to, so admin creation
+    // and the token that lets them set their own password are both routed through
+    // forTenant's super-admin bypass -- same idiom the password-reset flow already
+    // established for "identity proven by other means, not an org-scoped session".
+    const passwordHash = await argon2.hash(randomBytes(32).toString('hex'));
+    const admin = await this.tenantPrisma.forTenant({ organizationId: org.id, isSuperAdmin: true }, (tx) =>
+      tx.user.create({
+        data: { organizationId: org.id, email: dto.adminEmail, passwordHash, role: 'org_admin' },
+      }),
+    );
+
+    const rawToken = randomBytes(32).toString('hex');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    await this.tenantPrisma.forTenant({ organizationId: org.id, isSuperAdmin: true }, (tx) =>
+      tx.passwordResetToken.create({
+        data: {
+          userId: admin.id,
+          tokenHash,
+          expiresAt: new Date(Date.now() + PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000),
+        },
+      }),
+    );
+
+    this.dispatchWelcomeEmail(dto.adminEmail, rawToken).catch((error) =>
+      this.logger.error(`Failed to dispatch welcome email to ${dto.adminEmail}`, error as Error),
+    );
+
     await this.audit.record(context, {
       actorUserId,
       action: 'organization.created',
@@ -51,6 +96,15 @@ export class OrganizationsService {
       entityId: org.id,
     });
     return org;
+  }
+
+  private async dispatchWelcomeEmail(email: string, rawToken: string): Promise<void> {
+    const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/reset-password/${rawToken}`;
+    await this.emailService.send({
+      to: email,
+      subject: 'Welcome — set up your account',
+      html: `<p>An organization has been created for you on the Examination Platform. Click the link below to set your password and get started. This link expires in 15 minutes.</p><p><a href="${link}">${link}</a></p>`,
+    });
   }
 
   async list(): Promise<Organization[]> {

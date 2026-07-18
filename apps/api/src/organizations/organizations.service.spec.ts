@@ -8,52 +8,158 @@ import * as fs from 'fs/promises';
 import { Test } from '@nestjs/testing';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { sep } from 'path';
+import { createHash } from 'crypto';
 import { OrganizationsService } from './organizations.service';
 import { PrismaService, TenantPrismaService, AuditService } from '@exam-platform/shared';
+import { EmailService } from '../email/email.service';
 
 describe('OrganizationsService', () => {
   let service: OrganizationsService;
-  let prisma: { organization: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock; findMany: jest.Mock } };
+  let prisma: {
+    organization: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock; findMany: jest.Mock };
+    plan: { findFirst: jest.Mock };
+  };
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
+  let emailService: { send: jest.Mock };
 
   beforeEach(async () => {
-    prisma = { organization: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), findMany: jest.fn() } };
+    prisma = {
+      organization: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), findMany: jest.fn() },
+      plan: { findFirst: jest.fn() },
+    };
     tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
+    emailService = { send: jest.fn().mockResolvedValue({ success: true }) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         OrganizationsService,
         { provide: PrismaService, useValue: prisma },
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: AuditService, useValue: audit },
+        { provide: EmailService, useValue: emailService },
       ],
     }).compile();
     service = moduleRef.get(OrganizationsService);
   });
 
-  it('creates an organization when the slug is free', async () => {
-    prisma.organization.findUnique.mockResolvedValue(null);
-    prisma.organization.create.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', planId: 'plan-1' });
+  describe('create', () => {
+    it('creates an organization, its first org_admin, and a password-reset token', async () => {
+      prisma.organization.findUnique.mockResolvedValue(null);
+      prisma.plan.findFirst.mockResolvedValue({ id: 'trial-plan-1', name: 'trial' });
+      prisma.organization.create.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', planId: 'trial-plan-1' });
+      tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
+        fn({
+          user: { create: jest.fn().mockResolvedValue({ id: 'admin-1', email: 'admin@acme.test', role: 'org_admin' }) },
+          passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'token-1' }) },
+        }),
+      );
 
-    const result = await service.create({ organizationId: null, isSuperAdmin: true }, 'user-1', { name: 'Acme', slug: 'acme', region: 'us', planId: 'plan-1' });
+      const result = await service.create(
+        { organizationId: null, isSuperAdmin: true },
+        'super-1',
+        { name: 'Acme', slug: 'acme', region: 'us', adminEmail: 'admin@acme.test' },
+      );
 
-    expect(result.slug).toBe('acme');
-    expect(prisma.organization.create).toHaveBeenCalledWith({
-      data: { name: 'Acme', slug: 'acme', region: 'us', planId: 'plan-1' },
+      expect(result.slug).toBe('acme');
+      expect(prisma.plan.findFirst).toHaveBeenCalledWith({ where: { name: 'trial' } });
+      expect(prisma.organization.create).toHaveBeenCalledWith({
+        data: { name: 'Acme', slug: 'acme', region: 'us', planId: 'trial-plan-1' },
+      });
+      expect(tenantPrisma.forTenant).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: true },
+        expect.any(Function),
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        { organizationId: null, isSuperAdmin: true },
+        { actorUserId: 'super-1', action: 'organization.created', entityType: 'organization', entityId: 'org-1' },
+      );
     });
-    expect(audit.record).toHaveBeenCalledWith(
-      { organizationId: null, isSuperAdmin: true },
-      { actorUserId: 'user-1', action: 'organization.created', entityType: 'organization', entityId: 'org-1' },
-    );
-  });
 
-  it('rejects a duplicate slug', async () => {
-    prisma.organization.findUnique.mockResolvedValue({ id: 'existing-org' });
+    it('creates the first admin with role org_admin and a genuinely hashed random password', async () => {
+      prisma.organization.findUnique.mockResolvedValue(null);
+      prisma.plan.findFirst.mockResolvedValue({ id: 'trial-plan-1', name: 'trial' });
+      prisma.organization.create.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', planId: 'trial-plan-1' });
+      const userCreate = jest.fn().mockResolvedValue({ id: 'admin-1', email: 'admin@acme.test', role: 'org_admin' });
+      tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
+        fn({ user: { create: userCreate }, passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'token-1' }) } }),
+      );
 
-    await expect(
-      service.create({ organizationId: null, isSuperAdmin: true }, 'user-1', { name: 'Acme 2', slug: 'acme', region: 'us', planId: 'plan-1' }),
-    ).rejects.toThrow(ConflictException);
+      await service.create(
+        { organizationId: null, isSuperAdmin: true },
+        'super-1',
+        { name: 'Acme', slug: 'acme', region: 'us', adminEmail: 'admin@acme.test' },
+      );
+
+      expect(userCreate).toHaveBeenCalledWith({
+        data: expect.objectContaining({ organizationId: 'org-1', email: 'admin@acme.test', role: 'org_admin' }),
+      });
+      const passwordHash = userCreate.mock.calls[0][0].data.passwordHash;
+      expect(passwordHash).toMatch(/^\$argon2/);
+    });
+
+    it('creates a password-reset token and emails a reset-password link whose token hashes to the stored value', async () => {
+      prisma.organization.findUnique.mockResolvedValue(null);
+      prisma.plan.findFirst.mockResolvedValue({ id: 'trial-plan-1', name: 'trial' });
+      prisma.organization.create.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', planId: 'trial-plan-1' });
+      const tokenCreate = jest.fn().mockResolvedValue({ id: 'token-1' });
+      tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
+        fn({
+          user: { create: jest.fn().mockResolvedValue({ id: 'admin-1', email: 'admin@acme.test', role: 'org_admin' }) },
+          passwordResetToken: { create: tokenCreate },
+        }),
+      );
+
+      await service.create(
+        { organizationId: null, isSuperAdmin: true },
+        'super-1',
+        { name: 'Acme', slug: 'acme', region: 'us', adminEmail: 'admin@acme.test' },
+      );
+      // dispatchWelcomeEmail is fire-and-forget; flush microtasks so it has run.
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(tokenCreate).toHaveBeenCalledWith({
+        data: expect.objectContaining({ userId: 'admin-1', expiresAt: expect.any(Date) }),
+      });
+      const storedTokenHash = tokenCreate.mock.calls[0][0].data.tokenHash;
+
+      expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'admin@acme.test' }));
+      const htmlContent = emailService.send.mock.calls[0][0].html as string;
+      const match = htmlContent.match(/\/reset-password\/([a-f0-9]+)/);
+      expect(match).not.toBeNull();
+      const rawTokenFromEmail = match![1];
+      expect(createHash('sha256').update(rawTokenFromEmail).digest('hex')).toBe(storedTokenHash);
+    });
+
+    it('rejects a duplicate slug without creating any user or token', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'existing-org' });
+
+      await expect(
+        service.create({ organizationId: null, isSuperAdmin: true }, 'super-1', {
+          name: 'Acme 2',
+          slug: 'acme',
+          region: 'us',
+          adminEmail: 'admin@acme.test',
+        }),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.organization.create).not.toHaveBeenCalled();
+      expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+    });
+
+    it('throws if no trial plan is configured', async () => {
+      prisma.organization.findUnique.mockResolvedValue(null);
+      prisma.plan.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.create({ organizationId: null, isSuperAdmin: true }, 'super-1', {
+          name: 'Acme',
+          slug: 'acme',
+          region: 'us',
+          adminEmail: 'admin@acme.test',
+        }),
+      ).rejects.toThrow();
+      expect(prisma.organization.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('list', () => {
