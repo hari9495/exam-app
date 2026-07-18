@@ -7,6 +7,7 @@ import clsx from 'clsx';
 import { Users, History, ShieldCheck, Settings, LogOut } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
 import { useBranding } from '../../lib/hooks/useBranding';
+import { useCurrentUser } from '../../lib/hooks/useCurrentUser';
 
 const NAV_ITEMS = [
   { href: '/users', label: 'Staff Users', icon: Users },
@@ -20,6 +21,7 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
   const pathname = usePathname();
   const { accessToken, organizationSlug, role, isLoading, logout } = useAuth();
   const { data: branding } = useBranding(organizationSlug);
+  const { data: currentUser } = useCurrentUser();
 
   useEffect(() => {
     if (!isLoading && !accessToken) {
@@ -43,10 +45,10 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
     return <p className="p-8 text-sm text-recruiter-text-tertiary">Loading…</p>;
   }
 
-  // ponytail: useAuth() has no userName field yet; always render the 'Org Admin' fallback
-  // rather than widening the auth contract (out of scope for this task) — matches the
-  // recruiter shell's identical fallback for the same reason.
-  const initials = 'Org Admin'
+  // Real name from useCurrentUser() once loaded; falls back to a per-role
+  // placeholder only while loading or if the user has never set one.
+  const displayName = currentUser?.name || 'Org Admin';
+  const initials = displayName
     .split(' ')
     .map((part) => part[0])
     .slice(0, 2)
@@ -96,15 +98,18 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
           })}
         </ul>
         <div className="flex items-center justify-between gap-2 border-t border-recruiter-border px-3.5 py-3">
-          <div className="flex min-w-0 items-center gap-2">
+          <Link
+            href="/profile"
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-0.5 hover:bg-recruiter-bg-subtle"
+          >
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-white">
               {initials}
             </div>
             <div className="min-w-0">
-              <p className="truncate text-xs font-semibold text-recruiter-text">Org Admin</p>
+              <p className="truncate text-xs font-semibold text-recruiter-text">{displayName}</p>
               <p className="text-[10.5px] text-recruiter-text-tertiary">Org Admin</p>
             </div>
-          </div>
+          </Link>
           <button
             type="button"
             aria-label="Log out"

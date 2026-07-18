@@ -18,11 +18,16 @@ function getReactStyleProp(el: Element): CSSProperties | undefined {
   return key ? (el as unknown as Record<string, { style?: CSSProperties }>)[key].style : undefined;
 }
 
-function renderLayout({ pathname = '/dashboard' }: { pathname?: string } = {}) {
+function renderLayout({ pathname = '/dashboard', userName = null }: { pathname?: string; userName?: string | null } = {}) {
   mockPathname = pathname;
   global.fetch = jest.fn(async (url) => {
     if (String(url).endsWith('/auth/refresh')) {
       return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+    }
+    if (String(url).endsWith('/users/me')) {
+      return new Response(JSON.stringify({ id: 'u1', email: 'a@b.com', name: userName, role: 'recruiter' }), {
+        status: 200,
+      });
     }
     return new Response(JSON.stringify({}), { status: 200 });
   }) as unknown as typeof fetch;
@@ -108,5 +113,16 @@ describe('Recruiter layout', () => {
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/login'));
     const logoutCall = (global.fetch as jest.Mock).mock.calls.find(([url]) => String(url).endsWith('/auth/logout'));
     expect(logoutCall).toBeDefined();
+  });
+
+  it('renders the real name from /users/me when one is set', async () => {
+    renderLayout({ userName: 'Jane Recruiter' });
+    expect(await screen.findByText('Jane Recruiter')).toBeInTheDocument();
+  });
+
+  it('links the avatar/name block to /profile', async () => {
+    renderLayout();
+    const profileLink = await screen.findByRole('link', { name: /Recruiter/i });
+    expect(profileLink).toHaveAttribute('href', '/profile');
   });
 });

@@ -7,6 +7,7 @@ import clsx from 'clsx';
 import { LogOut } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
 import { useBranding } from '../../lib/hooks/useBranding';
+import { useCurrentUser } from '../../lib/hooks/useCurrentUser';
 
 const NAV_ITEMS = [{ href: '/reports', label: 'Exams' }];
 
@@ -15,6 +16,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const { accessToken, organizationSlug, role, isLoading, logout } = useAuth();
   const { data: branding } = useBranding(organizationSlug);
+  const { data: currentUser } = useCurrentUser();
 
   useEffect(() => {
     if (!isLoading && !accessToken) {
@@ -38,10 +40,10 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
     router.push('/login');
   }
 
-  // ponytail: useAuth() has no userName field yet; always render the 'Panel' fallback
-  // rather than widening the auth contract (out of scope for this task) — matches the
-  // recruiter/org-admin shells' identical fallback for the same reason.
-  const initials = 'Panel'
+  // Real name from useCurrentUser() once loaded; falls back to a per-role
+  // placeholder only while loading or if the user has never set one.
+  const displayName = currentUser?.name || 'Panel';
+  const initials = displayName
     .split(' ')
     .map((part) => part[0])
     .slice(0, 2)
@@ -70,15 +72,15 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
           ))}
         </ul>
         <div className="flex items-center justify-between gap-2 border-t border-gray-200 px-3.5 py-3">
-          <div className="flex min-w-0 items-center gap-2">
+          <Link href="/profile" className="flex min-w-0 items-center gap-2 rounded-md px-1 py-0.5 hover:bg-gray-100">
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-white">
               {initials}
             </div>
             <div className="min-w-0">
-              <p className="truncate text-xs font-semibold text-gray-900">Panel</p>
+              <p className="truncate text-xs font-semibold text-gray-900">{displayName}</p>
               <p className="text-[10.5px] text-gray-500">Panel</p>
             </div>
-          </div>
+          </Link>
           <button
             type="button"
             aria-label="Log out"

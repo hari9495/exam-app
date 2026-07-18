@@ -56,4 +56,54 @@ describe('Panel layout', () => {
     const logoutCall = (global.fetch as jest.Mock).mock.calls.find(([url]) => String(url).endsWith('/auth/logout'));
     expect(logoutCall).toBeDefined();
   });
+
+  it('renders the real name from /users/me when one is set', async () => {
+    const token = fakeJwt({ sub: 'u1', organizationId: 'org1', role: 'panel' });
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: token }), { status: 200 });
+      }
+      if (String(url).endsWith('/users/me')) {
+        return new Response(JSON.stringify({ id: 'u1', email: 'a@b.com', name: 'Jane Panel', role: 'panel' }), {
+          status: 200,
+        });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <PanelLayout>
+            <p>Page content</p>
+          </PanelLayout>
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    expect(await screen.findByText('Jane Panel')).toBeInTheDocument();
+  });
+
+  it('links the avatar/name block to /profile', async () => {
+    const token = fakeJwt({ sub: 'u1', organizationId: 'org1', role: 'panel' });
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: token }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <PanelLayout>
+            <p>Page content</p>
+          </PanelLayout>
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    const profileLink = await screen.findByRole('link', { name: /Panel/i });
+    expect(profileLink).toHaveAttribute('href', '/profile');
+  });
 });

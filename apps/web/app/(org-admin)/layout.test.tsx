@@ -114,4 +114,54 @@ describe('Org admin layout', () => {
     const logoutCall = (global.fetch as jest.Mock).mock.calls.find(([url]) => String(url).endsWith('/auth/logout'));
     expect(logoutCall).toBeDefined();
   });
+
+  it('renders the real name from /users/me when one is set', async () => {
+    const orgAdminToken = fakeJwt({ sub: 'u1', organizationId: 'org1', role: 'org_admin' });
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: orgAdminToken }), { status: 200 });
+      }
+      if (String(url).endsWith('/users/me')) {
+        return new Response(JSON.stringify({ id: 'u1', email: 'a@b.com', name: 'Jane Admin', role: 'org_admin' }), {
+          status: 200,
+        });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <OrgAdminLayout>
+            <p>Page content</p>
+          </OrgAdminLayout>
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    expect(await screen.findByText('Jane Admin')).toBeInTheDocument();
+  });
+
+  it('links the avatar/name block to /profile', async () => {
+    const orgAdminToken = fakeJwt({ sub: 'u1', organizationId: 'org1', role: 'org_admin' });
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: orgAdminToken }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <OrgAdminLayout>
+            <p>Page content</p>
+          </OrgAdminLayout>
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    const profileLink = await screen.findByRole('link', { name: /Org Admin/i });
+    expect(profileLink).toHaveAttribute('href', '/profile');
+  });
 });

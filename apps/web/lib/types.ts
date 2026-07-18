@@ -15,6 +15,7 @@ export interface StaffUser {
   id: string;
   organizationId: string | null;
   email: string;
+  name: string | null;
   role: string;
   status: string;
   lastLoginAt: string | null;
