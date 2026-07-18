@@ -33,6 +33,10 @@ describe('getProctoringEventSeverity', () => {
     expect(getProctoringEventSeverity('copy_paste')).toBe('medium');
   });
 
+  it('maps editor_paste to medium', () => {
+    expect(getProctoringEventSeverity('editor_paste')).toBe('medium');
+  });
+
   it('maps right_click to low', () => {
     expect(getProctoringEventSeverity('right_click')).toBe('low');
   });

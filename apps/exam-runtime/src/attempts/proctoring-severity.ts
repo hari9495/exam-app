@@ -6,6 +6,7 @@ export const CLIENT_REPORTABLE_EVENT_TYPES = [
   'dev_tools_detected',
   'refresh_warning',
   'idle_timeout',
+  'editor_paste',
 ] as const;
 
 type Severity = 'low' | 'medium' | 'high';
@@ -16,6 +17,7 @@ const SEVERITY_BY_EVENT_TYPE: Record<string, Severity> = {
   tab_switch: 'medium',
   fullscreen_exit: 'medium',
   copy_paste: 'medium',
+  editor_paste: 'medium',
   right_click: 'low',
   refresh_warning: 'low',
   idle_timeout: 'low',

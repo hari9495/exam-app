@@ -235,7 +235,7 @@ describe('AttemptService', () => {
       };
       mockBootstrapThenScoped(tx);
 
-      const result = await service.start(session);
+      const result = await service.start(session, { consent: true });
 
       expect(result).toEqual({ id: 'attempt-1', status: 'in_progress' });
       expect(tx.attempt.create).toHaveBeenCalledWith({
@@ -245,6 +245,7 @@ describe('AttemptService', () => {
           sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', targetDurationMinutes: null, questionIds: ['q1', 'q2'] }]),
           optionOrderJson: null,
           deviceFingerprint: undefined,
+          consentAt: expect.any(Date),
         },
       });
     });
@@ -260,7 +261,7 @@ describe('AttemptService', () => {
       };
       mockBootstrapThenScoped(tx);
 
-      await service.start(session, { deviceFingerprint: 'fp-abc123' });
+      await service.start(session, { deviceFingerprint: 'fp-abc123', consent: true });
 
       expect(tx.attempt.create).toHaveBeenCalledWith({
         data: {
@@ -269,6 +270,7 @@ describe('AttemptService', () => {
           sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', targetDurationMinutes: null, questionIds: ['q1'] }]),
           optionOrderJson: null,
           deviceFingerprint: 'fp-abc123',
+          consentAt: expect.any(Date),
         },
       });
     });
@@ -284,7 +286,7 @@ describe('AttemptService', () => {
       };
       mockBootstrapThenScoped(tx);
 
-      await service.start(session);
+      await service.start(session, { consent: true });
 
       expect(tenantPrisma.forTenant).toHaveBeenNthCalledWith(
         1,
@@ -320,7 +322,7 @@ describe('AttemptService', () => {
       };
       mockBootstrapThenScoped(tx);
 
-      await service.start(session);
+      await service.start(session, { consent: true });
 
       expect(monitoringGateway.emitAttemptStatus).toHaveBeenCalledWith('exam-1', {
         attemptId: 'attempt-1', candidateId: 'cand-1', status: 'in_progress',
@@ -348,7 +350,7 @@ describe('AttemptService', () => {
       };
       mockBootstrapThenScoped(tx);
 
-      await service.start(session);
+      await service.start(session, { consent: true });
 
       expect(tx.attempt.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ questionOrderJson: JSON.stringify(['q1', 'q2', 'q3']) }) }),
@@ -367,7 +369,7 @@ describe('AttemptService', () => {
       };
       mockBootstrapThenScoped(tx);
 
-      await service.start(session);
+      await service.start(session, { consent: true });
 
       const createdData = tx.attempt.create.mock.calls[0][0].data;
       const snapshot = JSON.parse(createdData.sectionSnapshotJson);
@@ -391,7 +393,7 @@ describe('AttemptService', () => {
       };
       mockBootstrapThenScoped(tx);
 
-      await service.start(session);
+      await service.start(session, { consent: true });
 
       expect(tx.question.findMany).toHaveBeenCalledWith({
         where: {
@@ -423,7 +425,7 @@ describe('AttemptService', () => {
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: randomizedExam }))
         .mockImplementationOnce((_ctx, fn) => fn(tx));
 
-      await service.start(session);
+      await service.start(session, { consent: true });
 
       const createdData = tx.attempt.create.mock.calls[0][0].data;
       expect(createdData.optionOrderJson).not.toBeNull();
@@ -442,10 +444,58 @@ describe('AttemptService', () => {
       };
       mockBootstrapThenScoped(tx);
 
-      await service.start(session);
+      await service.start(session, { consent: true });
 
       const createdData = tx.attempt.create.mock.calls[0][0].data;
       expect(createdData.optionOrderJson).toBeNull();
+    });
+
+    it('rejects with BadRequestException mentioning consent when starting a new attempt without consent', async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+      };
+      mockBootstrapThenScoped(tx);
+
+      await expect(service.start(session, {})).rejects.toThrow(/consent/i);
+    });
+
+    it('does not call tx.attempt.create when consent is missing', async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+      };
+      mockBootstrapThenScoped(tx);
+
+      await expect(service.start(session, {})).rejects.toThrow(BadRequestException);
+      expect(tx.attempt.create).not.toHaveBeenCalled();
+    });
+
+    it('sets consentAt on the attempt when consent is true', async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
+        examSection: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'section-1', title: 'Section One', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: null, poolTags: [], questions: [{ questionId: 'q1' }] },
+          ]),
+        },
+      };
+      mockBootstrapThenScoped(tx);
+
+      await service.start(session, { consent: true });
+
+      expect(tx.attempt.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ consentAt: expect.any(Date) }) }),
+      );
+    });
+
+    it('returns the existing attempt regardless of consent when one already exists', async () => {
+      const existing = { id: 'attempt-1', status: 'in_progress' };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(existing), create: jest.fn() } };
+      mockBootstrapThenScoped(tx);
+
+      const result = await service.start(session, {});
+
+      expect(result).toEqual({ id: 'attempt-1', status: 'in_progress' });
+      expect(tx.attempt.create).not.toHaveBeenCalled();
     });
   });
 
@@ -525,7 +575,7 @@ describe('AttemptService', () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() } };
       mockInvitationWithExam(tx, notYetOpenExam);
 
-      await expect(service.start(session, {})).rejects.toThrow(
+      await expect(service.start(session, { consent: true })).rejects.toThrow(
         'This exam is not open yet — check back during its scheduled window.',
       );
       expect(tx.attempt.create).not.toHaveBeenCalled();
@@ -535,7 +585,7 @@ describe('AttemptService', () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() } };
       mockInvitationWithExam(tx, closedExam);
 
-      await expect(service.start(session, {})).rejects.toThrow("This exam's availability window has closed.");
+      await expect(service.start(session, { consent: true })).rejects.toThrow("This exam's availability window has closed.");
       expect(tx.attempt.create).not.toHaveBeenCalled();
     });
 
@@ -550,7 +600,7 @@ describe('AttemptService', () => {
       };
       mockInvitationWithExam(tx, openExam);
 
-      const result = await service.start(session, {});
+      const result = await service.start(session, { consent: true });
 
       expect(result).toEqual({ id: 'attempt-1', status: 'in_progress' });
     });
@@ -707,6 +757,60 @@ describe('AttemptService', () => {
           answeredAt: expect.any(Date),
         },
       });
+    });
+
+    it('persists telemetryJson on the code-question upsert when telemetry is provided', async () => {
+      const codeAttempt = { ...attempt, questionOrderJson: JSON.stringify(['code-question-1']) };
+      const codeQuestion = { id: 'code-question-1', type: 'code', options: [] };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(codeAttempt) },
+        question: { findFirstOrThrow: jest.fn().mockResolvedValue(codeQuestion) },
+        answer: { upsert: jest.fn().mockResolvedValue({}) },
+      };
+      settlement.settleIfExpired.mockResolvedValue(codeAttempt);
+      mockBootstrapThenScoped(tx);
+      const telemetry = { keystrokeChars: 10, pastedChars: 500, pasteCount: 1, largestPasteChars: 500, secondsToFirstEdit: 5, activeSeconds: 60, runCount: 2 };
+
+      await service.answer(session, { questionId: 'code-question-1', selectedOptionIds: [], answerText: 'print(1)', telemetry });
+
+      expect(tx.answer.upsert).toHaveBeenCalledWith({
+        where: { attemptId_questionId: { attemptId: 'attempt-1', questionId: 'code-question-1' } },
+        create: {
+          attemptId: 'attempt-1',
+          questionId: 'code-question-1',
+          selectedOptionIdsJson: JSON.stringify([]),
+          answerText: 'print(1)',
+          isMarkedForReview: false,
+          telemetryJson: JSON.stringify(telemetry),
+        },
+        update: {
+          answerText: 'print(1)',
+          isMarkedForReview: false,
+          answeredAt: expect.any(Date),
+          telemetryJson: JSON.stringify(telemetry),
+        },
+      });
+    });
+
+    it('omits telemetryJson from the code-question upsert when telemetry is not provided', async () => {
+      const codeAttempt = { ...attempt, questionOrderJson: JSON.stringify(['code-question-1']) };
+      const codeQuestion = { id: 'code-question-1', type: 'code', options: [] };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(codeAttempt) },
+        question: { findFirstOrThrow: jest.fn().mockResolvedValue(codeQuestion) },
+        answer: { upsert: jest.fn().mockResolvedValue({}) },
+      };
+      settlement.settleIfExpired.mockResolvedValue(codeAttempt);
+      mockBootstrapThenScoped(tx);
+
+      await service.answer(session, { questionId: 'code-question-1', selectedOptionIds: [], answerText: 'print(1)' });
+
+      expect(tx.answer.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.not.objectContaining({ telemetryJson: expect.anything() }),
+          update: expect.not.objectContaining({ telemetryJson: expect.anything() }),
+        }),
+      );
     });
 
     it('recomputes and broadcasts the leaderboard after an auto-gradable answer is saved', async () => {

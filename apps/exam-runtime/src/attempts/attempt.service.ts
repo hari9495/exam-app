@@ -149,6 +149,10 @@ export class AttemptService {
         return { id: existing.id, status: existing.status };
       }
 
+      if (dto.consent !== true) {
+        throw new BadRequestException('You must consent to exam monitoring before starting.');
+      }
+
       const windowState = this.getSchedulingWindowState(exam);
       if (windowState === 'not_open') {
         throw new BadRequestException('This exam is not open yet — check back during its scheduled window.');
@@ -213,6 +217,7 @@ export class AttemptService {
           sectionSnapshotJson: JSON.stringify(sectionSnapshot),
           optionOrderJson,
           deviceFingerprint: dto.deviceFingerprint,
+          consentAt: new Date(),
         },
       });
       this.monitoringGateway.emitAttemptStatus(exam.id, {
@@ -248,6 +253,7 @@ export class AttemptService {
       const isMarkedForReview = dto.markedForReview ?? false;
 
       if (question.type === 'code') {
+        const telemetryPatch = dto.telemetry ? { telemetryJson: JSON.stringify(dto.telemetry) } : {};
         await tx.answer.upsert({
           where: { attemptId_questionId: { attemptId: settled.id, questionId: dto.questionId } },
           create: {
@@ -256,11 +262,13 @@ export class AttemptService {
             selectedOptionIdsJson: JSON.stringify([]),
             answerText: dto.answerText ?? null,
             isMarkedForReview,
+            ...telemetryPatch,
           },
           update: {
             answerText: dto.answerText ?? null,
             isMarkedForReview,
             answeredAt: new Date(),
+            ...telemetryPatch,
           },
         });
         return {
