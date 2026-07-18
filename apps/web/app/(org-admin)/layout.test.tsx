@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import OrgAdminLayout from './layout';
 import { AuthProvider } from '../../lib/auth-context';
 import { QueryProvider } from '../../lib/query-provider';
@@ -85,5 +86,32 @@ describe('Org admin layout', () => {
     expect(usersLink.className).toContain('text-primary');
     const auditLink = screen.getByRole('link', { name: 'Audit Log' });
     expect(auditLink.className).not.toContain('text-primary');
+  });
+
+  it('logs out and redirects to /login when the logout button is clicked', async () => {
+    const orgAdminToken = fakeJwt({ sub: 'u1', organizationId: 'org1', role: 'org_admin' });
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: orgAdminToken }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <OrgAdminLayout>
+            <p>Page content</p>
+          </OrgAdminLayout>
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    const logoutButton = await screen.findByRole('button', { name: 'Log out' });
+    await userEvent.click(logoutButton);
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/login'));
+    const logoutCall = (global.fetch as jest.Mock).mock.calls.find(([url]) => String(url).endsWith('/auth/logout'));
+    expect(logoutCall).toBeDefined();
   });
 });
