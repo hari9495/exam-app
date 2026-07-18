@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import RecruiterLayout from './layout';
 import { AuthProvider } from '../../lib/auth-context';
 import { QueryProvider } from '../../lib/query-provider';
@@ -96,5 +97,16 @@ describe('Recruiter layout', () => {
     const avatar = document.querySelector('.rounded-full');
     expect(avatar?.className).toContain('h-7');
     expect(avatar?.className).toContain('w-7');
+  });
+
+  it('logs out and redirects to /login when the logout button is clicked', async () => {
+    renderLayout();
+    const logoutButton = await screen.findByRole('button', { name: 'Log out' });
+
+    await userEvent.click(logoutButton);
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/login'));
+    const logoutCall = (global.fetch as jest.Mock).mock.calls.find(([url]) => String(url).endsWith('/auth/logout'));
+    expect(logoutCall).toBeDefined();
   });
 });

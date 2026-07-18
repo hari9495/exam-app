@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import clsx from 'clsx';
-import { LayoutDashboard, FileText, BookOpen, Users } from 'lucide-react';
+import { LayoutDashboard, FileText, BookOpen, Users, LogOut } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
 import { useBranding } from '../../lib/hooks/useBranding';
 
@@ -18,7 +18,7 @@ const NAV_ITEMS = [
 export default function RecruiterLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { accessToken, organizationSlug, role, isLoading } = useAuth();
+  const { accessToken, organizationSlug, role, isLoading, logout } = useAuth();
   const { data: branding } = useBranding(organizationSlug);
 
   useEffect(() => {
@@ -33,6 +33,11 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
     ...(branding?.primaryColor ? { '--color-primary': branding.primaryColor } : {}),
     ...(branding?.accentColor ? { '--color-accent': branding.accentColor } : {}),
   } as React.CSSProperties;
+
+  async function handleLogout() {
+    await logout();
+    router.push('/login');
+  }
 
   if (isLoading || !accessToken || (role !== null && role !== 'recruiter')) {
     return <p className="p-8 text-sm text-recruiter-text-tertiary">Loading…</p>;
@@ -89,14 +94,24 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
             );
           })}
         </ul>
-        <div className="flex items-center gap-2 border-t border-recruiter-border px-3.5 py-3">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-white">
-            {initials}
+        <div className="flex items-center justify-between gap-2 border-t border-recruiter-border px-3.5 py-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-white">
+              {initials}
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-xs font-semibold text-recruiter-text">Recruiter</p>
+              <p className="text-[10.5px] text-recruiter-text-tertiary">Recruiter</p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="truncate text-xs font-semibold text-recruiter-text">Recruiter</p>
-            <p className="text-[10.5px] text-recruiter-text-tertiary">Recruiter</p>
-          </div>
+          <button
+            type="button"
+            aria-label="Log out"
+            onClick={handleLogout}
+            className="shrink-0 rounded-md p-1.5 text-recruiter-text-tertiary hover:bg-recruiter-bg-subtle hover:text-recruiter-text"
+          >
+            <LogOut size={16} />
+          </button>
         </div>
       </nav>
       <main className="flex-1 p-8">{children}</main>
