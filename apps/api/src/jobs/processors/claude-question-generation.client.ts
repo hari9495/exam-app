@@ -50,14 +50,9 @@ function buildGenerateQuestionsTool(count: number) {
 
 @Injectable()
 export class ClaudeQuestionGenerationClient {
-  private readonly client: Anthropic;
-
-  constructor() {
-    this.client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  }
-
-  async generate(topic: string, difficulty: string, questionTypes: string[], count: number): Promise<GeneratedQuestion[]> {
-    const response = await this.client.messages.create({
+  async generate(topic: string, difficulty: string, questionTypes: string[], count: number, apiKey: string): Promise<GeneratedQuestion[]> {
+    const client = new Anthropic({ apiKey });
+    const response = await client.messages.create({
       model: 'claude-sonnet-5',
       max_tokens: 4096,
       tools: [buildGenerateQuestionsTool(count)],

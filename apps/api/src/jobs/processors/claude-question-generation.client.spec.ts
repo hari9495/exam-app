@@ -12,7 +12,6 @@ describe('ClaudeQuestionGenerationClient', () => {
     (Anthropic as unknown as jest.Mock).mockImplementation(() => ({
       messages: { create: mockCreate },
     }));
-    process.env.ANTHROPIC_API_KEY = 'test-key';
     client = new ClaudeQuestionGenerationClient();
   });
 
@@ -32,7 +31,7 @@ describe('ClaudeQuestionGenerationClient', () => {
       content: [{ type: 'tool_use', name: 'report_generated_questions', input: { questions: validQuestions } }],
     });
 
-    const result = await client.generate('arithmetic', 'easy', ['single_mcq'], 1);
+    const result = await client.generate('arithmetic', 'easy', ['single_mcq'], 1, 'test-key');
 
     expect(result).toEqual(validQuestions);
   });
@@ -42,7 +41,7 @@ describe('ClaudeQuestionGenerationClient', () => {
       content: [{ type: 'tool_use', name: 'report_generated_questions', input: { questions: validQuestions } }],
     });
 
-    await client.generate('arithmetic', 'easy', ['single_mcq'], 1);
+    await client.generate('arithmetic', 'easy', ['single_mcq'], 1, 'test-key');
 
     expect(mockCreate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -58,7 +57,7 @@ describe('ClaudeQuestionGenerationClient', () => {
       content: [{ type: 'tool_use', name: 'report_generated_questions', input: { questions: validQuestions } }],
     });
 
-    await client.generate('arithmetic', 'easy', ['single_mcq'], 7);
+    await client.generate('arithmetic', 'easy', ['single_mcq'], 7, 'test-key');
 
     expect(mockCreate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -78,7 +77,7 @@ describe('ClaudeQuestionGenerationClient', () => {
   it('throws when the response contains no tool_use block', async () => {
     mockCreate.mockResolvedValue({ content: [{ type: 'text', text: 'I cannot help with that.' }] });
 
-    await expect(client.generate('arithmetic', 'easy', ['single_mcq'], 1)).rejects.toThrow(
+    await expect(client.generate('arithmetic', 'easy', ['single_mcq'], 1, 'test-key')).rejects.toThrow(
       'Claude did not return a valid report_generated_questions tool call',
     );
   });
@@ -88,7 +87,7 @@ describe('ClaudeQuestionGenerationClient', () => {
       content: [{ type: 'tool_use', name: 'report_generated_questions', input: {} }],
     });
 
-    await expect(client.generate('arithmetic', 'easy', ['single_mcq'], 1)).rejects.toThrow(
+    await expect(client.generate('arithmetic', 'easy', ['single_mcq'], 1, 'test-key')).rejects.toThrow(
       'Claude returned malformed generated questions',
     );
   });
@@ -96,6 +95,6 @@ describe('ClaudeQuestionGenerationClient', () => {
   it('propagates an error thrown by the Anthropic API call', async () => {
     mockCreate.mockRejectedValue(new Error('rate limited'));
 
-    await expect(client.generate('arithmetic', 'easy', ['single_mcq'], 1)).rejects.toThrow('rate limited');
+    await expect(client.generate('arithmetic', 'easy', ['single_mcq'], 1, 'test-key')).rejects.toThrow('rate limited');
   });
 });

@@ -4,13 +4,15 @@ describe('AiQuestionGenerationProcessor', () => {
   let processor: AiQuestionGenerationProcessor;
   let claudeClient: { generate: jest.Mock };
   let tenantPrisma: { forTenant: jest.Mock };
+  let aiApiKeyResolver: { resolve: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
   const input = { topic: 'JavaScript closures', difficulty: 'medium', questionTypes: ['single_mcq', 'true_false'], count: 2, requestedBy: 'user-1' };
 
   beforeEach(() => {
     claudeClient = { generate: jest.fn() };
     tenantPrisma = { forTenant: jest.fn() };
-    processor = new AiQuestionGenerationProcessor(claudeClient as any, tenantPrisma as any);
+    aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue('test-api-key') };
+    processor = new AiQuestionGenerationProcessor(claudeClient as any, tenantPrisma as any, aiApiKeyResolver as any);
   });
 
   it('inserts every valid generated question as a draft, ai-generated row', async () => {

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { TenantContext, TenantPrismaService, AiApiKeyResolverService } from '@exam-platform/shared';
 import { JobProcessor } from './job-processor.interface';
 import { ClaudeQuestionGenerationClient, GeneratedQuestion } from './claude-question-generation.client';
 import { validateQuestionPayload } from '../../questions/question-validation';
@@ -30,12 +30,14 @@ export class AiQuestionGenerationProcessor implements JobProcessor {
   constructor(
     private readonly claudeClient: ClaudeQuestionGenerationClient,
     private readonly tenantPrisma: TenantPrismaService,
+    private readonly aiApiKeyResolver: AiApiKeyResolverService,
   ) {}
 
   async process(input: unknown, context: TenantContext): Promise<AiQuestionGenerationOutput> {
     const { topic, difficulty, questionTypes, count, requestedBy } = input as AiQuestionGenerationInput;
 
-    const generated = (await this.claudeClient.generate(topic, difficulty, questionTypes, count)).slice(0, count);
+    const apiKey = await this.aiApiKeyResolver.resolve(context.organizationId as string);
+    const generated = (await this.claudeClient.generate(topic, difficulty, questionTypes, count, apiKey)).slice(0, count);
 
     const valid: GeneratedQuestion[] = [];
     const dropped: DroppedQuestion[] = [];

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CryptoModule } from '@exam-platform/shared';
 import { REDIS_CONNECTION, createRedisConnection } from './redis-connection';
 import { AI_JOBS_QUEUE, createAiJobsQueue } from './ai-jobs.queue';
 import { AI_JOB_PROCESSORS } from './processors/job-processor.interface';
@@ -10,6 +11,7 @@ import { JobsService } from './jobs.service';
 import { JobsController } from './jobs.controller';
 
 @Module({
+  imports: [CryptoModule],
   controllers: [JobsController],
   providers: [
     { provide: REDIS_CONNECTION, useFactory: createRedisConnection },
