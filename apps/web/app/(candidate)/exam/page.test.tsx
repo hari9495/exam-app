@@ -17,6 +17,7 @@ jest.mock('../../../lib/hooks/useAttempt', () => ({
   useRunCode: jest.fn(),
   useWebcamResume: jest.fn(),
   useLeaderboard: jest.fn(),
+  useReportProctoringEvent: jest.fn(() => jest.fn()),
 }));
 jest.mock('../../../lib/hooks/useCountdown', () => ({ useCountdown: jest.fn() }));
 jest.mock('../../../lib/hooks/useProctoringMonitor', () => ({ useProctoringMonitor: jest.fn() }));
@@ -232,7 +233,7 @@ describe('CandidateExamPage', () => {
     render(<CandidateExamPage />);
     await userEvent.type(screen.getByLabelText('code-editor'), 'x');
 
-    expect(saveAnswer).toHaveBeenCalledWith('q1', [], undefined, expect.any(String));
+    expect(saveAnswer).toHaveBeenCalledWith('q1', [], undefined, expect.any(String), expect.any(Object));
   });
 
   it('does not wipe answerText when toggling mark-for-review on a code question', async () => {
@@ -244,7 +245,7 @@ describe('CandidateExamPage', () => {
     render(<CandidateExamPage />);
     await userEvent.click(screen.getByRole('button', { name: /Mark for review/ }));
 
-    expect(saveAnswer).toHaveBeenCalledWith('q1', [], true, 'function add(a, b) { return a + b; }');
+    expect(saveAnswer).toHaveBeenCalledWith('q1', [], true, 'function add(a, b) { return a + b; }', expect.any(Object));
   });
 
   it('preserves just-typed code when mark-for-review is toggled before the debounced save fires', async () => {
@@ -266,7 +267,7 @@ describe('CandidateExamPage', () => {
     await userEvent.click(screen.getByRole('button', { name: /Mark for review/ }));
 
     const lastCall = saveAnswer.mock.calls[saveAnswer.mock.calls.length - 1];
-    expect(lastCall).toEqual(['q1', [], true, 'function add(a, b) { return a + b; }']);
+    expect(lastCall).toEqual(['q1', [], true, 'function add(a, b) { return a + b; }', expect.any(Object)]);
   });
 
   it('counts a code question as unanswered until it has non-empty answerText', async () => {

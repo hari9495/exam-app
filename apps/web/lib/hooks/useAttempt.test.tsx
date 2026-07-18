@@ -2,7 +2,7 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastProvider } from '../../components/ui';
 import { CandidateAuthProvider } from '../candidate-auth-context';
-import { useAttemptQuery, useAnswerMutation, useRunCode } from './useAttempt';
+import { useAttemptQuery, useAnswerMutation, useRunCode, useStartAttempt } from './useAttempt';
 
 const mockToast = jest.fn();
 jest.mock('../../components/ui', () => {
@@ -47,6 +47,36 @@ describe('useAttemptQuery', () => {
 
     render(<AttemptProbe />, { wrapper });
     await waitFor(() => expect(screen.getByText('preview:Preview Exam')).toBeInTheDocument());
+  });
+});
+
+describe('useStartAttempt', () => {
+  const originalFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('posts consent: true to /attempt/start', async () => {
+    const calls: { url: string; body: unknown }[] = [];
+    global.fetch = jest.fn(async (url, options) => {
+      if (String(url).endsWith('/candidate-auth/refresh')) {
+        return new Response(JSON.stringify({ message: 'none' }), { status: 401 });
+      }
+      calls.push({ url: String(url), body: JSON.parse((options as RequestInit).body as string) });
+      return new Response(JSON.stringify({ id: 'attempt-1', status: 'in_progress' }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    let hook: ReturnType<typeof useStartAttempt> | undefined;
+    function Probe() {
+      hook = useStartAttempt();
+      return null;
+    }
+    render(<Probe />, { wrapper });
+
+    await hook!.mutateAsync();
+
+    expect(calls[0].url).toContain('/attempt/start');
+    expect(calls[0].body).toEqual({ consent: true });
   });
 });
 

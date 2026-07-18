@@ -20,6 +20,10 @@ function mockCameraGranted() {
   Object.defineProperty(global.navigator, 'mediaDevices', { value: { getUserMedia }, configurable: true });
 }
 
+async function checkConsent() {
+  await userEvent.click(screen.getByRole('checkbox', { name: /i understand and consent to monitoring/i }));
+}
+
 describe('CandidateWelcomePage', () => {
   const push = jest.fn();
 
@@ -56,6 +60,7 @@ describe('CandidateWelcomePage', () => {
 
     render(<CandidateWelcomePage />);
     await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
+    await checkConsent();
     await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
@@ -73,6 +78,7 @@ describe('CandidateWelcomePage', () => {
 
     render(<CandidateWelcomePage />);
     await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
+    await checkConsent();
     await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
@@ -248,5 +254,34 @@ describe('CandidateWelcomePage', () => {
 
     expect(await screen.findByText('Camera connected')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Start exam' })).toBeInTheDocument();
+  });
+
+  it('keeps Start exam disabled when camera is granted but consent is unchecked', async () => {
+    mockCameraGranted();
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 } },
+      isLoading: false,
+    });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+
+    render(<CandidateWelcomePage />);
+    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
+
+    expect(await screen.findByRole('button', { name: 'Start exam' })).toBeDisabled();
+  });
+
+  it('enables Start exam once both camera is granted and consent is checked', async () => {
+    mockCameraGranted();
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 } },
+      isLoading: false,
+    });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+
+    render(<CandidateWelcomePage />);
+    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
+    await checkConsent();
+
+    expect(await screen.findByRole('button', { name: 'Start exam' })).toBeEnabled();
   });
 });

@@ -171,7 +171,18 @@ export type ProctoringEventType =
   | 'right_click'
   | 'dev_tools_detected'
   | 'refresh_warning'
-  | 'idle_timeout';
+  | 'idle_timeout'
+  | 'editor_paste';
+
+export interface AnswerTelemetry {
+  keystrokeChars: number;
+  pastedChars: number;
+  pasteCount: number;
+  largestPasteChars: number;
+  secondsToFirstEdit: number;
+  activeSeconds: number;
+  runCount: number;
+}
 
 export interface AttemptQuestionOption {
   id: string;

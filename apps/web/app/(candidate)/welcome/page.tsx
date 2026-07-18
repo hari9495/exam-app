@@ -16,6 +16,7 @@ export default function CandidateWelcomePage() {
   const startAttempt = useStartAttempt();
   const { toast } = useToast();
   const [cameraStatus, setCameraStatus] = useState<'idle' | 'checking' | 'granted' | 'denied'>('idle');
+  const [consentChecked, setConsentChecked] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !accessToken) {
@@ -78,16 +79,33 @@ export default function CandidateWelcomePage() {
             ) : null}
 
             <div className="mb-4 rounded-md border border-candidate-border p-3">
-              <h2 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-candidate-text-secondary">Camera monitoring</h2>
+              <h2 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-candidate-text-secondary">Monitoring &amp; consent</h2>
+              <p className="mb-2 text-xs text-candidate-text-secondary">This exam is monitored. While you take it, we collect:</p>
+              <ul className="mb-2 list-disc pl-4 text-xs text-candidate-text-secondary">
+                <li>Webcam snapshots and face-presence checks</li>
+                <li>Browser activity (tab switches, fullscreen exits, copy/paste, right-click, developer tools)</li>
+                <li>Code-editor activity (paste sizes, typing-volume aggregates)</li>
+              </ul>
               <p className="mb-3 text-xs text-candidate-text-secondary">
-                This exam is monitored. Tab switches, exiting fullscreen, copy/paste, right-click, developer tools, and your
-                webcam will be reported.
+                Seen by the hiring organization&apos;s staff and stored with your attempt.
               </p>
               <CameraPreview status={cameraStatus} onEnable={handleEnableCamera} />
+              <label className="mt-3 flex items-start gap-2 text-xs text-candidate-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={consentChecked}
+                  onChange={(event) => setConsentChecked(event.target.checked)}
+                  className="mt-0.5"
+                />
+                I understand and consent to monitoring during this exam
+              </label>
+              <p className="mt-1 text-xs text-candidate-text-tertiary">
+                If you do not consent, close this page and contact your recruiter.
+              </p>
             </div>
 
             {cameraStatus === 'granted' ? (
-              <CandidateButton onClick={handleStart} disabled={startAttempt.isPending} className="w-full">
+              <CandidateButton onClick={handleStart} disabled={startAttempt.isPending || !consentChecked} className="w-full">
                 {startAttempt.isPending ? 'Starting…' : 'Start exam'}
               </CandidateButton>
             ) : null}

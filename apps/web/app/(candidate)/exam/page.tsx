@@ -14,6 +14,7 @@ import { ProctoringWarningOverlay, ProctoringBlockOverlay } from '../components/
 import { TimerBar } from '../components/TimerBar';
 import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode, useWebcamResume, RunCodeResult } from '../../../lib/hooks/useAttempt';
 import { useCountdown } from '../../../lib/hooks/useCountdown';
+import { useEditorTelemetry } from '../../../lib/hooks/useEditorTelemetry';
 import { useProctoringMonitor } from '../../../lib/hooks/useProctoringMonitor';
 import { useWebcamMonitor } from '../../../lib/hooks/useWebcamMonitor';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
@@ -94,6 +95,7 @@ export default function CandidateExamPage() {
 
   const questions = useMemo(() => (attemptState ? flattenQuestions(attemptState.sections) : []), [attemptState]);
   const question = questions[currentIndex];
+  const editorTelemetry = useEditorTelemetry(question?.type === 'code' ? question.id : null);
   const answers: AttemptAnswerSummary[] = attemptState?.answers ?? [];
   const existingAnswer = answers.find((answer) => answer.questionId === question?.id);
   const selectedOptionIds = question ? localSelections[question.id] ?? existingAnswer?.selectedOptionIds ?? [] : [];
@@ -130,7 +132,7 @@ export default function CandidateExamPage() {
 
   function toggleMarkForReview() {
     if (question!.type === 'code') {
-      saveAnswer(question!.id, [], !existingAnswer?.isMarkedForReview, codeValue);
+      saveAnswer(question!.id, [], !existingAnswer?.isMarkedForReview, codeValue, editorTelemetry.snapshot());
     } else {
       saveAnswer(question!.id, selectedOptionIds, !existingAnswer?.isMarkedForReview);
     }
@@ -139,12 +141,13 @@ export default function CandidateExamPage() {
   function handleCodeChange(value: string | undefined) {
     const next = value ?? '';
     setLocalCodeValues((prev) => ({ ...prev, [question!.id]: next }));
-    saveAnswer(question!.id, [], existingAnswer?.isMarkedForReview, next);
+    saveAnswer(question!.id, [], existingAnswer?.isMarkedForReview, next, editorTelemetry.snapshot());
   }
 
   function handleRun() {
     if (!question) return;
     const questionId = question.id;
+    editorTelemetry.recordRun();
     setRunErrors((prev) => {
       const next = { ...prev };
       delete next[questionId];
@@ -236,6 +239,7 @@ export default function CandidateExamPage() {
                   language={question.codeLanguage ?? 'plaintext'}
                   value={codeValue}
                   onChange={handleCodeChange}
+                  onMount={(editor) => editorTelemetry.onEditorMount(editor)}
                   options={{ minimap: { enabled: false }, fontSize: 13 }}
                   theme="vs-dark"
                 />

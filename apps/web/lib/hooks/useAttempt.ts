@@ -3,7 +3,7 @@ import { useRef } from 'react';
 import { candidateApiFetch } from '../candidate-api-client';
 import { useCandidateAuth } from '../candidate-auth-context';
 import { useToast } from '../../components/ui';
-import { AttemptCurrent, ProctoringEventType, CandidateLeaderboardResponse } from '../types';
+import { AttemptCurrent, ProctoringEventType, CandidateLeaderboardResponse, AnswerTelemetry } from '../types';
 
 const ANSWER_DEBOUNCE_MS = 800;
 const RETRY_ATTEMPTS = 3;
@@ -42,7 +42,7 @@ export function useStartAttempt() {
   const { accessToken } = useCandidateAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => candidateApiFetch('/attempt/start', { method: 'POST', body: JSON.stringify({}) }, accessToken ?? undefined),
+    mutationFn: () => candidateApiFetch('/attempt/start', { method: 'POST', body: JSON.stringify({ consent: true }) }, accessToken ?? undefined),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] }),
   });
 }
@@ -51,6 +51,7 @@ interface PendingAnswer {
   selectedOptionIds: string[];
   answerText?: string;
   markedForReview?: boolean;
+  telemetry?: AnswerTelemetry;
 }
 
 export function useAnswerMutation() {
@@ -80,8 +81,14 @@ export function useAnswerMutation() {
       .catch(() => toast("Couldn't save your last answer — please check your connection.", 'error'));
   }
 
-  function saveAnswer(questionId: string, selectedOptionIds: string[], markedForReview?: boolean, answerText?: string) {
-    pending.current[questionId] = { selectedOptionIds, markedForReview, answerText };
+  function saveAnswer(
+    questionId: string,
+    selectedOptionIds: string[],
+    markedForReview?: boolean,
+    answerText?: string,
+    telemetry?: AnswerTelemetry,
+  ) {
+    pending.current[questionId] = { selectedOptionIds, markedForReview, answerText, telemetry };
     if (timers.current[questionId]) {
       clearTimeout(timers.current[questionId]);
     }
