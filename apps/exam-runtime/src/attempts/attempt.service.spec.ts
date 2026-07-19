@@ -71,8 +71,16 @@ describe('AttemptService', () => {
       await expect(service.getCurrent(session)).rejects.toThrow(UnauthorizedException);
     });
 
-    it('returns an exam preview with no questions when no attempt has been started yet', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) } };
+    it('returns an exam preview with a section/question-count breakdown when no attempt has been started yet', async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(null) },
+        examSection: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'section-1', title: 'Section One', selectionMode: 'fixed', poolSize: null, questions: [{ id: 'q1' }, { id: 'q2' }] },
+            { id: 'section-2', title: 'Section Two', selectionMode: 'pool', poolSize: 5, questions: [] },
+          ]),
+        },
+      };
       mockBootstrapThenScoped(tx);
 
       const result = await service.getCurrent(session);
@@ -83,11 +91,31 @@ describe('AttemptService', () => {
           schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null,
         },
         schedulingWindowState: null,
+        sections: [
+          { title: 'Section One', questionCount: 2 },
+          { title: 'Section Two', questionCount: 5 },
+        ],
       });
     });
 
+    it('falls back to 0 questions for a pool section with poolSize unset', async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(null) },
+        examSection: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'section-1', title: 'Section One', selectionMode: 'pool', poolSize: null, questions: [] },
+          ]),
+        },
+      };
+      mockBootstrapThenScoped(tx);
+
+      const result = await service.getCurrent(session);
+
+      expect(result.sections).toEqual([{ title: 'Section One', questionCount: 0 }]);
+    });
+
     it('returns the effective duration (exam duration + extraTimePercent) when the invitation has an accommodation', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) } };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, extraTimePercent: 50 }))
         .mockImplementationOnce((_ctx, fn) => fn(tx));
@@ -224,7 +252,7 @@ describe('AttemptService', () => {
     });
 
     it('resolves tenant context via an unscoped bootstrap lookup followed by a properly scoped call', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) } };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
       mockBootstrapThenScoped(tx);
 
       await service.getCurrent(session);
@@ -545,7 +573,7 @@ describe('AttemptService', () => {
     }
 
     it('getCurrent() returns schedulingWindowState "not_open" before the window opens, with no attempt created', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() } };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
       mockInvitationWithExam(tx, notYetOpenExam);
 
       const result = await service.getCurrent(session);
@@ -558,36 +586,37 @@ describe('AttemptService', () => {
           availabilityWindowEnd: notYetOpenExam.availabilityWindowEnd,
         },
         schedulingWindowState: 'not_open',
+        sections: [],
       });
       expect(tx.attempt.create).not.toHaveBeenCalled();
     });
 
     it('getCurrent() returns schedulingWindowState "closed" after the window has passed, with no attempt created', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() } };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
       mockInvitationWithExam(tx, closedExam);
 
       const result = await service.getCurrent(session);
 
-      expect(result).toEqual(expect.objectContaining({ schedulingWindowState: 'closed' }));
+      expect(result).toEqual(expect.objectContaining({ schedulingWindowState: 'closed', sections: [] }));
       expect(tx.attempt.create).not.toHaveBeenCalled();
     });
 
     it('getCurrent() returns schedulingWindowState "open" within the window', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) } };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
       mockInvitationWithExam(tx, openExam);
 
       const result = await service.getCurrent(session);
 
-      expect(result).toEqual(expect.objectContaining({ schedulingWindowState: 'open' }));
+      expect(result).toEqual(expect.objectContaining({ schedulingWindowState: 'open', sections: [] }));
     });
 
     it('getCurrent() returns schedulingWindowState null for a non-scheduled exam', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) } };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
       mockBootstrapThenScoped(tx);
 
       const result = await service.getCurrent(session);
 
-      expect(result).toEqual(expect.objectContaining({ schedulingWindowState: null }));
+      expect(result).toEqual(expect.objectContaining({ schedulingWindowState: null, sections: [] }));
     });
 
     it('start() rejects with "not open yet" before the window opens', async () => {

@@ -59,6 +59,11 @@ interface AttemptMessageSummary {
   sentAt: Date;
 }
 
+interface AttemptSectionSummary {
+  title: string;
+  questionCount: number;
+}
+
 interface AttemptPreviewResponse {
   exam: {
     title: string;
@@ -69,6 +74,7 @@ interface AttemptPreviewResponse {
     availabilityWindowEnd: Date | null;
   };
   schedulingWindowState: 'not_open' | 'open' | 'closed' | null;
+  sections: AttemptSectionSummary[];
 }
 
 interface AttemptStateResponse {
@@ -102,6 +108,11 @@ export class AttemptService {
     return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
       const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
       if (!attempt) {
+        const sections = await tx.examSection.findMany({
+          where: { examId: exam.id },
+          orderBy: { orderIndex: 'asc' },
+          include: { questions: true },
+        });
         return {
           exam: {
             title: exam.title,
@@ -112,6 +123,10 @@ export class AttemptService {
             availabilityWindowEnd: exam.availabilityWindowEnd,
           },
           schedulingWindowState: this.getSchedulingWindowState(exam),
+          sections: sections.map((section) => ({
+            title: section.title,
+            questionCount: section.selectionMode === 'pool' ? (section.poolSize ?? 0) : section.questions.length,
+          })),
         };
       }
 
