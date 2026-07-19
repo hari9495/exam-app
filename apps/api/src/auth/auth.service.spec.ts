@@ -273,4 +273,25 @@ describe('AuthService', () => {
       );
     });
   });
+
+  describe('issueTokensForSso', () => {
+    it('issues an access/refresh token pair for the given user, matching the same shape login() produces', async () => {
+      jwt.sign = jest.fn()
+        .mockReturnValueOnce('signed-access-token')
+        .mockReturnValueOnce('signed-refresh-token');
+      prisma.refreshToken.create.mockResolvedValue({ id: 'rt-1' });
+
+      const result = await service.issueTokensForSso('user-1', 'org-1', 'recruiter');
+
+      expect(result).toEqual({ accessToken: 'signed-access-token', refreshToken: 'signed-refresh-token' });
+      expect(jwt.sign).toHaveBeenNthCalledWith(
+        1,
+        { sub: 'user-1', organizationId: 'org-1', role: 'recruiter' },
+        expect.objectContaining({ secret: process.env.JWT_ACCESS_SECRET }),
+      );
+      expect(prisma.refreshToken.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ userId: 'user-1' }) }),
+      );
+    });
+  });
 });

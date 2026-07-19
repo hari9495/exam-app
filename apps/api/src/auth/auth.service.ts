@@ -199,6 +199,10 @@ export class AuthService {
     });
   }
 
+  async issueTokensForSso(userId: string, organizationId: string | null, role: string): Promise<TokenPair> {
+    return this.issueTokenPair(userId, organizationId, role);
+  }
+
   private async issueTokenPair(
     userId: string,
     organizationId: string | null,
