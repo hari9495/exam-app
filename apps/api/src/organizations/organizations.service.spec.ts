@@ -341,19 +341,25 @@ describe('OrganizationsService', () => {
     it('reports both as unconfigured for an org with nothing set', async () => {
       prisma.organization.findUnique.mockResolvedValue({
         smtpHost: null, smtpPort: null, emailFromAddress: null, aiApiKeyEncrypted: null, smtpPasswordEncrypted: null,
+        apiKeyHash: null, apiKeyPrefix: null, apiKeyCreatedAt: null, webhookUrl: null,
       });
 
       const result = await service.getIntegrations({ organizationId: 'org-1', isSuperAdmin: false });
 
       expect(result).toEqual({
         smtpConfigured: false, aiKeyConfigured: false, smtpHost: null, smtpPort: null, emailFromAddress: null,
+        apiKeyConfigured: false, apiKeyPrefix: null, apiKeyCreatedAt: null,
+        webhookConfigured: false, webhookUrl: null,
       });
     });
 
     it('reports configured booleans and the non-secret SMTP fields, never the secrets themselves', async () => {
+      const apiKeyCreatedAt = new Date('2026-01-01');
       prisma.organization.findUnique.mockResolvedValue({
         smtpHost: 'smtp.customer.test', smtpPort: 465, emailFromAddress: 'no-reply@customer.test',
         aiApiKeyEncrypted: 'encrypted-blob', smtpPasswordEncrypted: 'also-encrypted',
+        apiKeyHash: 'hashed-key', apiKeyPrefix: 'pk_live_abcd', apiKeyCreatedAt,
+        webhookUrl: 'https://customer.test/webhook',
       });
 
       const result = await service.getIntegrations({ organizationId: 'org-1', isSuperAdmin: false });
@@ -361,9 +367,12 @@ describe('OrganizationsService', () => {
       expect(result).toEqual({
         smtpConfigured: true, aiKeyConfigured: true,
         smtpHost: 'smtp.customer.test', smtpPort: 465, emailFromAddress: 'no-reply@customer.test',
+        apiKeyConfigured: true, apiKeyPrefix: 'pk_live_abcd', apiKeyCreatedAt,
+        webhookConfigured: true, webhookUrl: 'https://customer.test/webhook',
       });
       expect(result).not.toHaveProperty('smtpPasswordEncrypted');
       expect(result).not.toHaveProperty('aiApiKeyEncrypted');
+      expect(result).not.toHaveProperty('apiKeyHash');
     });
 
     it('throws BadRequestException when the caller has no organization context', async () => {
@@ -413,6 +422,70 @@ describe('OrganizationsService', () => {
         service.updateSmtpSettings({ organizationId: null, isSuperAdmin: true }, 'user-1', dto),
       ).rejects.toThrow(BadRequestException);
       expect(mockTransporterVerify).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('generateApiKey', () => {
+    it('stores a hashed key and returns the full key exactly once', async () => {
+      prisma.organization.update.mockResolvedValue({ id: 'org-1' });
+
+      const result = await service.generateApiKey({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1');
+
+      expect(result.apiKey).toMatch(/^pk_live_[0-9a-f]{64}$/);
+      expect(result.apiKeyPrefix).toBe(result.apiKey.slice(0, 12));
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: expect.objectContaining({
+          apiKeyHash: expect.any(String),
+          apiKeyPrefix: result.apiKeyPrefix,
+          apiKeyCreatedAt: expect.any(Date),
+        }),
+      });
+      const writtenHash = prisma.organization.update.mock.calls[0][0].data.apiKeyHash;
+      expect(writtenHash).not.toBe(result.apiKey);
+      expect(writtenHash).toHaveLength(64);
+      expect(audit.record).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        expect.objectContaining({ action: 'organization.api_key_generated' }),
+      );
+    });
+
+    it('overwrites a previous key on regeneration, invalidating it', async () => {
+      prisma.organization.update.mockResolvedValue({ id: 'org-1' });
+
+      const first = await service.generateApiKey({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1');
+      const second = await service.generateApiKey({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1');
+
+      expect(first.apiKey).not.toBe(second.apiKey);
+      expect(prisma.organization.update).toHaveBeenCalledTimes(2);
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(service.generateApiKey({ organizationId: null, isSuperAdmin: true }, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('revokeApiKey', () => {
+    it('clears the stored key', async () => {
+      prisma.organization.update.mockResolvedValue({ id: 'org-1' });
+
+      const result = await service.revokeApiKey({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1');
+
+      expect(result).toEqual({ apiKeyConfigured: false });
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { apiKeyHash: null, apiKeyPrefix: null, apiKeyCreatedAt: null },
+      });
+      expect(audit.record).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        expect.objectContaining({ action: 'organization.api_key_revoked' }),
+      );
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(service.revokeApiKey({ organizationId: null, isSuperAdmin: true }, 'user-1')).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
     });
   });
 

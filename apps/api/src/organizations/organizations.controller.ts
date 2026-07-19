@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Post, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Patch, Post, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -59,6 +59,18 @@ export class OrganizationsController {
   @RequirePermissions('org:manage_settings')
   updateAiKey(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateAiKeyDto) {
     return this.organizationsService.updateAiKey(tenant, userId, dto);
+  }
+
+  @Post('integrations/api-key')
+  @RequirePermissions('org:manage_settings')
+  generateApiKey(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
+    return this.organizationsService.generateApiKey(tenant, userId);
+  }
+
+  @Delete('integrations/api-key')
+  @RequirePermissions('org:manage_settings')
+  revokeApiKey(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
+    return this.organizationsService.revokeApiKey(tenant, userId);
   }
 
   @Patch('branding')

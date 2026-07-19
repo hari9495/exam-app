@@ -35,6 +35,11 @@ export interface IntegrationsResponse {
   smtpHost: string | null;
   smtpPort: number | null;
   emailFromAddress: string | null;
+  apiKeyConfigured: boolean;
+  apiKeyPrefix: string | null;
+  apiKeyCreatedAt: Date | null;
+  webhookConfigured: boolean;
+  webhookUrl: string | null;
 }
 
 const ALLOWED_LOGO_MIME_TYPES: Record<string, string> = {
@@ -210,7 +215,10 @@ export class OrganizationsService {
     const organizationId = this.requireOrganizationId(context);
     const org = await this.prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { smtpHost: true, smtpPort: true, emailFromAddress: true, aiApiKeyEncrypted: true, smtpPasswordEncrypted: true },
+      select: {
+        smtpHost: true, smtpPort: true, emailFromAddress: true, aiApiKeyEncrypted: true, smtpPasswordEncrypted: true,
+        apiKeyHash: true, apiKeyPrefix: true, apiKeyCreatedAt: true, webhookUrl: true,
+      },
     });
     return {
       smtpConfigured: Boolean(org?.smtpPasswordEncrypted),
@@ -218,7 +226,52 @@ export class OrganizationsService {
       smtpHost: org?.smtpHost ?? null,
       smtpPort: org?.smtpPort ?? null,
       emailFromAddress: org?.emailFromAddress ?? null,
+      apiKeyConfigured: org?.apiKeyHash !== null && org?.apiKeyHash !== undefined,
+      apiKeyPrefix: org?.apiKeyPrefix ?? null,
+      apiKeyCreatedAt: org?.apiKeyCreatedAt ?? null,
+      webhookConfigured: org?.webhookUrl !== null && org?.webhookUrl !== undefined,
+      webhookUrl: org?.webhookUrl ?? null,
     };
+  }
+
+  async generateApiKey(context: TenantContext, actorUserId: string): Promise<{ apiKey: string; apiKeyPrefix: string }> {
+    const organizationId = this.requireOrganizationId(context);
+    const { apiKey, apiKeyPrefix, apiKeyHash } = this.generateApiKeyValue();
+
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { apiKeyHash, apiKeyPrefix, apiKeyCreatedAt: new Date() },
+    });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'organization.api_key_generated',
+      entityType: 'organization',
+      entityId: organizationId,
+    });
+    return { apiKey, apiKeyPrefix };
+  }
+
+  async revokeApiKey(context: TenantContext, actorUserId: string): Promise<{ apiKeyConfigured: boolean }> {
+    const organizationId = this.requireOrganizationId(context);
+
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { apiKeyHash: null, apiKeyPrefix: null, apiKeyCreatedAt: null },
+    });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'organization.api_key_revoked',
+      entityType: 'organization',
+      entityId: organizationId,
+    });
+    return { apiKeyConfigured: false };
+  }
+
+  private generateApiKeyValue(): { apiKey: string; apiKeyPrefix: string; apiKeyHash: string } {
+    const apiKey = `pk_live_${randomBytes(32).toString('hex')}`;
+    const apiKeyPrefix = apiKey.slice(0, 12);
+    const apiKeyHash = createHash('sha256').update(apiKey).digest('hex');
+    return { apiKey, apiKeyPrefix, apiKeyHash };
   }
 
   async updateSmtpSettings(context: TenantContext, actorUserId: string, dto: UpdateSmtpSettingsDto): Promise<{ smtpConfigured: boolean }> {
