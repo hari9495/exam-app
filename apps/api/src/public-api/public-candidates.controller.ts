@@ -7,10 +7,12 @@ import { PublicApiService } from './public-api.service';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { TenantContext } from '@exam-platform/shared';
 import { PUBLIC_API_THROTTLE } from '../rate-limit-tiers';
+import { SkipGlobalThrottle } from '../fail-open-throttler.guard';
 
 @Controller('public/candidates')
 @UseGuards(ApiKeyAuthGuard, PublicApiThrottlerGuard)
 @Throttle(PUBLIC_API_THROTTLE)
+@SkipGlobalThrottle()
 export class PublicCandidatesController {
   constructor(private readonly publicApiService: PublicApiService) {}
 

@@ -8,6 +8,7 @@ import { PublicApiService } from './public-api.service';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { TenantContext } from '@exam-platform/shared';
 import { PUBLIC_API_THROTTLE } from '../rate-limit-tiers';
+import { SkipGlobalThrottle } from '../fail-open-throttler.guard';
 
 // The global ValidationPipe runs with { whitelist: true, forbidNonWhitelisted: true }
 // (apps/api/src/main.ts) -- any query key without a validation decorator is rejected
@@ -30,6 +31,7 @@ class ListInvitationsQueryDto extends PaginationQueryDto {
 @Controller('public/invitations')
 @UseGuards(ApiKeyAuthGuard, PublicApiThrottlerGuard)
 @Throttle(PUBLIC_API_THROTTLE)
+@SkipGlobalThrottle()
 export class PublicInvitationsController {
   constructor(private readonly publicApiService: PublicApiService) {}
 
