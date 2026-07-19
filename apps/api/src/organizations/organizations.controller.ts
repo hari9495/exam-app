@@ -12,6 +12,7 @@ import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateBrandingColorsDto } from './dto/update-branding-colors.dto';
 import { UpdateSmtpSettingsDto } from './dto/update-smtp-settings.dto';
 import { UpdateAiKeyDto } from './dto/update-ai-key.dto';
+import { UpdateWebhookUrlDto } from './dto/update-webhook-url.dto';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 
 @Controller('organizations')
@@ -71,6 +72,24 @@ export class OrganizationsController {
   @RequirePermissions('org:manage_settings')
   revokeApiKey(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
     return this.organizationsService.revokeApiKey(tenant, userId);
+  }
+
+  @Patch('integrations/webhook')
+  @RequirePermissions('org:manage_settings')
+  updateWebhookUrl(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateWebhookUrlDto) {
+    return this.organizationsService.updateWebhookUrl(tenant, userId, dto);
+  }
+
+  @Post('integrations/webhook-secret')
+  @RequirePermissions('org:manage_settings')
+  generateWebhookSecret(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
+    return this.organizationsService.generateWebhookSecret(tenant, userId);
+  }
+
+  @Get('integrations/webhook-deliveries')
+  @RequirePermissions('org:manage_settings')
+  listWebhookDeliveries(@CurrentTenant() tenant: TenantContext) {
+    return this.organizationsService.listWebhookDeliveries(tenant);
   }
 
   @Patch('branding')

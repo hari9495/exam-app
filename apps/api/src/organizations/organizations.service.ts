@@ -15,6 +15,7 @@ import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateBrandingColorsDto } from './dto/update-branding-colors.dto';
 import { UpdateSmtpSettingsDto } from './dto/update-smtp-settings.dto';
 import { UpdateAiKeyDto } from './dto/update-ai-key.dto';
+import { UpdateWebhookUrlDto } from './dto/update-webhook-url.dto';
 import { UPLOADS_ROOT } from './uploads-path';
 
 export interface BrandingResponse {
@@ -328,6 +329,46 @@ export class OrganizationsService {
       entityId: organizationId,
     });
     return { aiKeyConfigured: true };
+  }
+
+  async updateWebhookUrl(context: TenantContext, actorUserId: string, dto: UpdateWebhookUrlDto): Promise<{ webhookUrl: string }> {
+    const organizationId = this.requireOrganizationId(context);
+
+    await this.prisma.organization.update({ where: { id: organizationId }, data: { webhookUrl: dto.url } });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'organization.webhook_url_updated',
+      entityType: 'organization',
+      entityId: organizationId,
+    });
+    return { webhookUrl: dto.url };
+  }
+
+  async generateWebhookSecret(context: TenantContext, actorUserId: string): Promise<{ webhookSecret: string }> {
+    const organizationId = this.requireOrganizationId(context);
+    const webhookSecret = randomBytes(32).toString('hex');
+
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { webhookSecretEncrypted: this.cryptoService.encrypt(webhookSecret) },
+    });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'organization.webhook_secret_generated',
+      entityType: 'organization',
+      entityId: organizationId,
+    });
+    return { webhookSecret };
+  }
+
+  async listWebhookDeliveries(context: TenantContext): Promise<{ id: string; eventType: string; status: string; httpStatusCode: number | null; createdAt: Date }[]> {
+    const organizationId = this.requireOrganizationId(context);
+    return this.prisma.webhookDelivery.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: { id: true, eventType: true, status: true, httpStatusCode: true, createdAt: true },
+    });
   }
 
   private requireOrganizationId(context: TenantContext): string {

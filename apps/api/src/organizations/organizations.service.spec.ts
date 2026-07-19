@@ -26,6 +26,7 @@ describe('OrganizationsService', () => {
   let prisma: {
     organization: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock; findMany: jest.Mock };
     plan: { findFirst: jest.Mock };
+    webhookDelivery: { findMany: jest.Mock };
   };
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
@@ -38,6 +39,7 @@ describe('OrganizationsService', () => {
     prisma = {
       organization: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), findMany: jest.fn() },
       plan: { findFirst: jest.fn() },
+      webhookDelivery: { findMany: jest.fn() },
     };
     tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
@@ -529,6 +531,79 @@ describe('OrganizationsService', () => {
         service.updateAiKey({ organizationId: null, isSuperAdmin: true }, 'user-1', dto),
       ).rejects.toThrow(BadRequestException);
       expect(mockAnthropicCreate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('updateWebhookUrl', () => {
+    it('saves the URL and audits the change', async () => {
+      prisma.organization.update.mockResolvedValue({ id: 'org-1' });
+
+      const result = await service.updateWebhookUrl(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        'user-1',
+        { url: 'https://example.com/hook' },
+      );
+
+      expect(result).toEqual({ webhookUrl: 'https://example.com/hook' });
+      expect(prisma.organization.update).toHaveBeenCalledWith({ where: { id: 'org-1' }, data: { webhookUrl: 'https://example.com/hook' } });
+      expect(audit.record).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        expect.objectContaining({ action: 'organization.webhook_url_updated' }),
+      );
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(
+        service.updateWebhookUrl({ organizationId: null, isSuperAdmin: true }, 'user-1', { url: 'https://example.com/hook' }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('generateWebhookSecret', () => {
+    it('encrypts and stores a new secret, returning the plaintext once', async () => {
+      prisma.organization.update.mockResolvedValue({ id: 'org-1' });
+      cryptoService.encrypt.mockReturnValue('encrypted-blob');
+
+      const result = await service.generateWebhookSecret({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1');
+
+      expect(result.webhookSecret).toMatch(/^[0-9a-f]{64}$/);
+      expect(cryptoService.encrypt).toHaveBeenCalledWith(result.webhookSecret);
+      expect(prisma.organization.update).toHaveBeenCalledWith({ where: { id: 'org-1' }, data: { webhookSecretEncrypted: 'encrypted-blob' } });
+      expect(audit.record).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        expect.objectContaining({ action: 'organization.webhook_secret_generated' }),
+      );
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(
+        service.generateWebhookSecret({ organizationId: null, isSuperAdmin: true }, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listWebhookDeliveries', () => {
+    it('returns the most recent 50 deliveries for the org', async () => {
+      prisma.webhookDelivery.findMany.mockResolvedValue([{ id: 'delivery-1', eventType: 'invitation.created', status: 'delivered', httpStatusCode: 200, createdAt: new Date() }]);
+
+      const result = await service.listWebhookDeliveries({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result).toHaveLength(1);
+      expect(prisma.webhookDelivery.findMany).toHaveBeenCalledWith({
+        where: { organizationId: 'org-1' },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+        select: { id: true, eventType: true, status: true, httpStatusCode: true, createdAt: true },
+      });
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(
+        service.listWebhookDeliveries({ organizationId: null, isSuperAdmin: true }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.webhookDelivery.findMany).not.toHaveBeenCalled();
     });
   });
 });
