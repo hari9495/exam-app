@@ -237,6 +237,20 @@ export interface AttemptPreview {
   sections: AttemptSectionSummary[];
 }
 
+export interface AttemptSectionFeedback {
+  title: string;
+  score: number;
+  maxScore: number;
+}
+
+export interface AttemptFeedback {
+  status: 'pending_review' | 'settled';
+  visibility: 'none' | 'pass_fail' | 'score' | 'breakdown';
+  passFail: 'pass' | 'fail' | null;
+  percentage: number | null;
+  sections: AttemptSectionFeedback[] | null;
+}
+
 export interface AttemptState {
   status: string;
   remainingSeconds: number;
@@ -245,6 +259,7 @@ export interface AttemptState {
   sections: AttemptSection[];
   answers: AttemptAnswerSummary[];
   messages: AttemptMessageSummary[];
+  feedback: AttemptFeedback | null;
 }
 
 export type AttemptCurrent = AttemptPreview | AttemptState;
