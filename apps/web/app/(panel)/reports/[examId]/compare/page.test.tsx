@@ -17,11 +17,11 @@ describe('PanelComparePage', () => {
       data: [
         {
           candidateId: 'c1', candidateName: 'Alice', status: 'submitted', score: 8, maxScore: 10, percentage: 80, passFail: 'pass',
-          proctoringAnalysis: null, sectionScores: [{ sectionId: 's1', title: 'Section One', score: 8, maxScore: 10 }],
+          proctoringAnalysis: null, integrityAnalysis: null, sectionScores: [{ sectionId: 's1', title: 'Section One', score: 8, maxScore: 10 }],
         },
         {
           candidateId: 'c2', candidateName: 'Bob', status: 'submitted', score: 4, maxScore: 10, percentage: 40, passFail: 'fail',
-          proctoringAnalysis: null, sectionScores: [{ sectionId: 's1', title: 'Section One', score: 4, maxScore: 10 }],
+          proctoringAnalysis: null, integrityAnalysis: null, sectionScores: [{ sectionId: 's1', title: 'Section One', score: 4, maxScore: 10 }],
         },
       ],
       isLoading: false,
@@ -33,6 +33,32 @@ describe('PanelComparePage', () => {
     expect(screen.getByText('Bob')).toBeInTheDocument();
     expect(screen.getByText('80.0%')).toBeInTheDocument();
     expect(screen.getByText('40.0%')).toBeInTheDocument();
+  });
+
+  it('renders an Integrity row with a badge per candidate reflecting each one\'s level', () => {
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('candidateIds=c1,c2'));
+    (useCandidateComparison as jest.Mock).mockReturnValue({
+      data: [
+        {
+          candidateId: 'c1', candidateName: 'Alice', status: 'submitted', score: 8, maxScore: 10, percentage: 80, passFail: 'pass',
+          proctoringAnalysis: null,
+          integrityAnalysis: { status: 'completed', level: 'high_concern', flags: [], narrative: null },
+          sectionScores: [{ sectionId: 's1', title: 'Section One', score: 8, maxScore: 10 }],
+        },
+        {
+          candidateId: 'c2', candidateName: 'Bob', status: 'submitted', score: 4, maxScore: 10, percentage: 40, passFail: 'fail',
+          proctoringAnalysis: null, integrityAnalysis: null,
+          sectionScores: [{ sectionId: 's1', title: 'Section One', score: 4, maxScore: 10 }],
+        },
+      ],
+      isLoading: false,
+    });
+
+    render(<PanelComparePage />);
+
+    expect(screen.getByText('Integrity')).toBeInTheDocument();
+    expect(screen.getByText('Integrity: High concern')).toBeInTheDocument();
+    expect(screen.getByText('Integrity: —')).toBeInTheDocument();
   });
 
   it('shows an inline message instead of calling the API when fewer than 2 candidateIds are given', () => {

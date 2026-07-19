@@ -2,6 +2,7 @@
 
 import { useParams, useSearchParams } from 'next/navigation';
 import { useCandidateComparison } from '../../../../../lib/hooks/usePanelReports';
+import { IntegrityBadge } from '../../../../../components/ui';
 
 export default function PanelComparePage() {
   const { examId } = useParams<{ examId: string }>();
@@ -59,6 +60,14 @@ export default function PanelComparePage() {
               {rows.map((row) => (
                 <td key={row.candidateId} className="px-3 py-2">
                   {row.passFail ?? '—'}
+                </td>
+              ))}
+            </tr>
+            <tr className="border-b border-gray-100">
+              <td className="px-3 py-2 font-medium">Integrity</td>
+              {rows.map((row) => (
+                <td key={row.candidateId} className="px-3 py-2">
+                  <IntegrityBadge level={row.integrityAnalysis?.level} />
                 </td>
               ))}
             </tr>

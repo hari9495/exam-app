@@ -364,6 +364,7 @@ export interface CandidateComparisonRow {
   percentage: number | null;
   passFail: string | null;
   proctoringAnalysis: ProctoringAnalysisSummary | null;
+  integrityAnalysis: IntegritySummary | null;
   sectionScores: SectionScore[];
 }
 
