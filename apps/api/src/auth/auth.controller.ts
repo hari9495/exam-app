@@ -2,7 +2,7 @@ import { Body, Controller, HttpCode, Post, Req, Res, UnauthorizedException } fro
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { createHash } from 'crypto';
-import { PrismaService } from '@exam-platform/shared';
+import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
@@ -18,6 +18,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly prisma: PrismaService,
+    private readonly tenantPrisma: TenantPrismaService,
   ) {}
 
   @Post('staff/login')
@@ -63,10 +64,17 @@ export class AuthController {
   @Throttle(STRICT_AUTH_THROTTLE)
   async ssoExchange(@Body() dto: SsoExchangeDto, @Res({ passthrough: true }) res: Response) {
     const codeHash = createHash('sha256').update(dto.code).digest('hex');
-    const record = await this.prisma.ssoLoginCode.findUnique({
-      where: { codeHash },
-      include: { user: true },
-    });
+    // `sso_login_codes` itself carries no RLS policy (it's not org-scoped --
+    // the code is the only credential at this point), so this plain lookup is
+    // fine. Its `user` relation, however, points at `users`, which IS
+    // RLS-protected; resolving it via Prisma's `include` on this
+    // tenant-unscoped `this.prisma` would hit the RLS block predicate (no
+    // session context set) and Prisma would throw "Field user is required to
+    // return data, got null instead" instead of the intended 401 -- so the
+    // user is looked up separately below, through the same super_admin
+    // bypass AuthService.refresh() already uses for this exact "caller has
+    // proven identity via a token/code, not an org-scoped session yet" case.
+    const record = await this.prisma.ssoLoginCode.findUnique({ where: { codeHash } });
 
     // Single-use: delete on every lookup attempt, regardless of outcome.
     if (record) {
@@ -76,7 +84,14 @@ export class AuthController {
       throw new UnauthorizedException('This sign-in link is invalid or has expired');
     }
 
-    const tokens = await this.authService.issueTokensForSso(record.user.id, record.user.organizationId, record.user.role);
+    const user = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
+      tx.user.findUnique({ where: { id: record.userId } }),
+    );
+    if (!user) {
+      throw new UnauthorizedException('This sign-in link is invalid or has expired');
+    }
+
+    const tokens = await this.authService.issueTokensForSso(user.id, user.organizationId, user.role);
     res.cookie(REFRESH_COOKIE, tokens.refreshToken, { httpOnly: true, sameSite: 'lax', secure: false });
     return { accessToken: tokens.accessToken };
   }
