@@ -3,24 +3,28 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { InvitationsService } from './invitations.service';
 import { TenantPrismaService, AuditService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
+import { WebhooksService } from '../webhooks/webhooks.service';
 
 describe('InvitationsService', () => {
   let service: InvitationsService;
   let tenantPrisma: { forTenant: jest.Mock };
   let emailService: { send: jest.Mock };
   let audit: { record: jest.Mock };
+  let webhooksService: { enqueue: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
     emailService = { send: jest.fn().mockResolvedValue({ success: true, previewUrl: 'https://ethereal.email/x' }) };
     audit = { record: jest.fn() };
+    webhooksService = { enqueue: jest.fn() };
     const moduleRef = await Test.createTestingModule({
       providers: [
         InvitationsService,
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: EmailService, useValue: emailService },
         { provide: AuditService, useValue: audit },
+        { provide: WebhooksService, useValue: webhooksService },
       ],
     }).compile();
     service = moduleRef.get(InvitationsService);
@@ -214,6 +218,50 @@ describe('InvitationsService', () => {
     await service.bulkInvite(context, 'exam-1', ['cand-1']);
 
     expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it('enqueues an invitation.created webhook after successfully inviting candidates', async () => {
+    const createTx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', title: 'Backend Round', status: 'published' }) },
+      candidate: { findMany: jest.fn().mockResolvedValue([{ id: 'cand-1', email: 'a@test.com', name: 'Alice', erasedAt: null }]) },
+      invitation: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited' }),
+      },
+    };
+    const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) } };
+    tenantPrisma.forTenant
+      .mockImplementationOnce((_ctx, fn) => fn(createTx))
+      .mockImplementationOnce((_ctx, fn) => fn(notifTx));
+
+    await service.bulkInvite(context, 'exam-1', ['cand-1']);
+
+    expect(webhooksService.enqueue).toHaveBeenCalledWith(
+      'org-1',
+      'invitation.created',
+      expect.objectContaining({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1' }),
+    );
+  });
+
+  it('does not enqueue a webhook when no invitations were actually created', async () => {
+    // Real bulkInvite() throws NotFoundException before reaching createdWithCandidate
+    // if a requested candidateId doesn't resolve at all (see the "throws NotFoundException
+    // when a candidateId does not resolve" test above) -- so the only non-throwing path
+    // to zero created invitations is every candidate being skipped as already-invited,
+    // matching the "skips a candidate who already has a live invitation" test's fixture.
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', title: 'Backend Round', status: 'published' }) },
+      candidate: { findMany: jest.fn().mockResolvedValue([{ id: 'cand-1', email: 'a@test.com', name: 'Alice', erasedAt: null }]) },
+      invitation: {
+        findMany: jest.fn().mockResolvedValue([{ candidateId: 'cand-1' }]),
+        create: jest.fn(),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.bulkInvite(context, 'exam-1', ['cand-1']);
+
+    expect(webhooksService.enqueue).not.toHaveBeenCalled();
   });
 
   it('lists invitations for an exam, including extraTimePercent and whether an attempt exists', async () => {

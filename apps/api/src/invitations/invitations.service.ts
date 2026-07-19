@@ -5,6 +5,7 @@ import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
+import { WebhooksService } from '../webhooks/webhooks.service';
 import {
   parseBulkInviteFile,
   detectFileKind,
@@ -51,6 +52,7 @@ export class InvitationsService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly emailService: EmailService,
     private readonly audit: AuditService,
+    private readonly webhooks: WebhooksService,
   ) {}
 
   async bulkInvite(context: TenantContext, examId: string, candidateIds: string[]): Promise<BulkInviteResult> {
@@ -126,6 +128,14 @@ export class InvitationsService {
         entityType: 'invitation',
         metadata: { count: createdWithCandidate.length, examTitle },
       });
+      for (const { invitation } of createdWithCandidate) {
+        await this.webhooks.enqueue(context.organizationId as string, 'invitation.created', {
+          id: invitation.id,
+          examId: invitation.examId,
+          candidateId: invitation.candidateId,
+          status: invitation.status,
+        });
+      }
     }
 
     return { created: createdWithCandidate.map((c) => c.invitation), skipped };
