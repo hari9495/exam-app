@@ -1,8 +1,18 @@
 'use client';
 
-import { useState } from 'react';
-import { useIntegrations, useUpdateSmtpSettings, useUpdateAiKey } from '../../../../lib/hooks/useIntegrations';
-import { Input, Button, Card, useToast } from '../../../../components/ui';
+import { useEffect, useState } from 'react';
+import {
+  useIntegrations,
+  useUpdateSmtpSettings,
+  useUpdateAiKey,
+  useGenerateApiKey,
+  useRevokeApiKey,
+  useUpdateWebhookUrl,
+  useGenerateWebhookSecret,
+  useWebhookDeliveries,
+} from '../../../../lib/hooks/useIntegrations';
+import { Input, Button, Card, Table, useToast } from '../../../../components/ui';
+import { WebhookDeliveryRow } from '../../../../lib/types';
 
 export default function IntegrationsSettingsPage() {
   const { data: integrations } = useIntegrations();
@@ -19,6 +29,22 @@ export default function IntegrationsSettingsPage() {
 
   const [aiApiKey, setAiApiKey] = useState('');
   const [aiKeyError, setAiKeyError] = useState<string | null>(null);
+
+  const [revealedApiKey, setRevealedApiKey] = useState<string | null>(null);
+  const [revealedWebhookSecret, setRevealedWebhookSecret] = useState<string | null>(null);
+  const [webhookUrlInput, setWebhookUrlInput] = useState(integrations?.webhookUrl ?? '');
+
+  // integrations loads asynchronously, so the useState initializer above only
+  // catches an already-cached value — sync once the fetch resolves.
+  useEffect(() => {
+    if (integrations?.webhookUrl != null) setWebhookUrlInput(integrations.webhookUrl);
+  }, [integrations?.webhookUrl]);
+
+  const generateApiKey = useGenerateApiKey();
+  const revokeApiKey = useRevokeApiKey();
+  const updateWebhookUrl = useUpdateWebhookUrl();
+  const generateWebhookSecret = useGenerateWebhookSecret();
+  const { data: deliveries } = useWebhookDeliveries();
 
   function handleSmtpSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -97,6 +123,89 @@ export default function IntegrationsSettingsPage() {
             {aiKeyError}
           </p>
         )}
+      </Card>
+
+      <Card className="max-w-md">
+        <h2 className="mb-1 text-lg font-semibold text-recruiter-text">Public API</h2>
+        <p className="mb-4 text-sm text-recruiter-text-secondary">
+          {integrations?.apiKeyConfigured
+            ? `Active key: ${integrations.apiKeyPrefix}… (created ${new Date(integrations.apiKeyCreatedAt as string).toLocaleDateString()})`
+            : 'No API key generated'}
+        </p>
+        {revealedApiKey && (
+          <div className="mb-4 rounded-md bg-status-warning-bg p-3">
+            <p className="mb-1 break-all font-mono text-sm text-status-warning">{revealedApiKey}</p>
+            <p className="text-xs text-status-warning">Copy this now &mdash; it won&apos;t be shown again.</p>
+          </div>
+        )}
+        <div className="flex gap-2">
+          <Button
+            loading={generateApiKey.isPending}
+            onClick={() =>
+              generateApiKey.mutate(undefined, {
+                onSuccess: (result: { apiKey: string; apiKeyPrefix: string }) => setRevealedApiKey(result.apiKey),
+              })
+            }
+          >
+            {integrations?.apiKeyConfigured ? 'Regenerate' : 'Generate'}
+          </Button>
+          {integrations?.apiKeyConfigured && (
+            <Button
+              variant="secondary"
+              loading={revokeApiKey.isPending}
+              onClick={() => revokeApiKey.mutate(undefined, { onSuccess: () => setRevealedApiKey(null) })}
+            >
+              Revoke
+            </Button>
+          )}
+        </div>
+      </Card>
+
+      <Card className="max-w-md">
+        <h2 className="mb-1 text-lg font-semibold text-recruiter-text">Webhooks</h2>
+        <div className="flex flex-col gap-3">
+          <Input
+            label="Webhook URL"
+            value={webhookUrlInput}
+            onChange={setWebhookUrlInput}
+            placeholder="https://your-ats.example.com/webhooks/exam-platform"
+          />
+          <Button loading={updateWebhookUrl.isPending} onClick={() => updateWebhookUrl.mutate(webhookUrlInput)} className="self-start">
+            Save URL
+          </Button>
+        </div>
+
+        {revealedWebhookSecret && (
+          <div className="mt-4 rounded-md bg-status-warning-bg p-3">
+            <p className="mb-1 break-all font-mono text-sm text-status-warning">{revealedWebhookSecret}</p>
+            <p className="text-xs text-status-warning">Copy this now &mdash; it won&apos;t be shown again.</p>
+          </div>
+        )}
+        <Button
+          className="mt-3"
+          variant="secondary"
+          loading={generateWebhookSecret.isPending}
+          onClick={() =>
+            generateWebhookSecret.mutate(undefined, {
+              onSuccess: (result: { webhookSecret: string }) => setRevealedWebhookSecret(result.webhookSecret),
+            })
+          }
+        >
+          {integrations?.webhookConfigured ? 'Regenerate signing secret' : 'Generate signing secret'}
+        </Button>
+
+        <h3 className="mb-2 mt-5 text-sm font-semibold text-recruiter-text">Recent deliveries</h3>
+        <Table<WebhookDeliveryRow>
+          columns={[
+            { key: 'eventType', header: 'Event', render: (row) => row.eventType },
+            { key: 'status', header: 'Status', render: (row) => row.status },
+            { key: 'httpStatusCode', header: 'HTTP', render: (row) => row.httpStatusCode ?? '—' },
+            { key: 'createdAt', header: 'When', render: (row) => new Date(row.createdAt).toLocaleString() },
+          ]}
+          rows={deliveries ?? []}
+          rowKey={(row) => row.id}
+          emptyMessage="No deliveries yet."
+        />
       </Card>
     </div>
   );

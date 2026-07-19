@@ -167,6 +167,19 @@ export interface IntegrationsResponse {
   smtpHost: string | null;
   smtpPort: number | null;
   emailFromAddress: string | null;
+  apiKeyConfigured: boolean;
+  apiKeyPrefix: string | null;
+  apiKeyCreatedAt: string | null;
+  webhookConfigured: boolean;
+  webhookUrl: string | null;
+}
+
+export interface WebhookDeliveryRow {
+  id: string;
+  eventType: string;
+  status: string;
+  httpStatusCode: number | null;
+  createdAt: string;
 }
 
 export type ProctoringEventType =
