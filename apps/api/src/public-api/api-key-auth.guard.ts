@@ -10,7 +10,9 @@ export class ApiKeyAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const authHeader = request.headers['authorization'];
     if (typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Missing or malformed API key');
+      // Same message as the no-match case below -- don't let callers distinguish
+      // "bad format" from "well-formed but wrong key" (see plan's Error Handling section).
+      throw new UnauthorizedException('Invalid API key');
     }
     const apiKey = authHeader.slice('Bearer '.length);
     const apiKeyHash = createHash('sha256').update(apiKey).digest('hex');

@@ -16,7 +16,7 @@ export class PublicCandidatesController {
 
   @Get()
   list(@CurrentApiKeyOrg() tenant: TenantContext, @Query() query: PaginationQueryDto) {
-    return this.publicApiService.listCandidates(tenant, query.page ?? 1, query.pageSize ?? 50);
+    return this.publicApiService.listCandidates(tenant, Number(query.page ?? 1), Number(query.pageSize ?? 50));
   }
 
   @Get(':id')

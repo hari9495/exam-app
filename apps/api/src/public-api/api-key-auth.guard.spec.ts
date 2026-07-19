@@ -31,6 +31,26 @@ describe('ApiKeyAuthGuard', () => {
     expect(tenantPrisma.forTenant).toHaveBeenCalledWith({ organizationId: null, isSuperAdmin: true }, expect.any(Function));
   });
 
+  it('uses the same rejection message for a malformed header and a non-matching key', async () => {
+    tenantPrisma.forTenant.mockResolvedValue(null);
+
+    let malformedMessage: string | undefined;
+    let noMatchMessage: string | undefined;
+    try {
+      await guard.canActivate(contextWithHeader('Basic abc123'));
+    } catch (err) {
+      malformedMessage = (err as UnauthorizedException).message;
+    }
+    try {
+      await guard.canActivate(contextWithHeader('Bearer pk_live_wrongkey'));
+    } catch (err) {
+      noMatchMessage = (err as UnauthorizedException).message;
+    }
+
+    expect(malformedMessage).toBeDefined();
+    expect(malformedMessage).toBe(noMatchMessage);
+  });
+
   it('attaches request.apiKeyOrg and returns true on a valid key', async () => {
     tenantPrisma.forTenant.mockResolvedValue({ id: 'org-1' });
     const request: any = { headers: { authorization: 'Bearer pk_live_realkey' } };

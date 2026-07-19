@@ -16,7 +16,7 @@ export class PublicExamsController {
 
   @Get()
   list(@CurrentApiKeyOrg() tenant: TenantContext, @Query() query: PaginationQueryDto) {
-    return this.publicApiService.listExams(tenant, query.page ?? 1, query.pageSize ?? 50);
+    return this.publicApiService.listExams(tenant, Number(query.page ?? 1), Number(query.pageSize ?? 50));
   }
 
   @Get(':id')
