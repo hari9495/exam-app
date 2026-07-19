@@ -286,8 +286,50 @@ describe('IntegrityAnalysisService', () => {
           },
         ]),
         level: 'high_concern',
+        narrative: null,
       },
     });
+  });
+
+  it('similarity: nulls out a counterpart\'s narrative even when the counterpart previously had a non-null narrative, since it no longer reflects the added flag', async () => {
+    const currentAnswer = {
+      answerText: LONG_CODE,
+      marksAwarded: null,
+      telemetryJson: null,
+      question: { id: 'q1', type: 'code', marks: 10 },
+    };
+    const counterpartAnswer = { answerText: LONG_CODE, attempt: { id: 'attempt-2' } };
+    const readTx = {
+      answer: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([currentAnswer])
+          .mockResolvedValueOnce([counterpartAnswer]),
+      },
+      proctoringEvent: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const write = persistTx();
+    const counterpartTx = {
+      integrityAnalysis: {
+        findUnique: jest.fn().mockResolvedValue({
+          flagsJson: '[]',
+          narrative: 'No integrity concerns detected.',
+        }),
+        update: jest.fn(),
+      },
+    };
+    tenantPrisma.forTenant
+      .mockResolvedValueOnce(attemptWithExam)
+      .mockImplementationOnce((_ctx, fn) => fn(readTx))
+      .mockImplementationOnce((_ctx, fn) => fn(write))
+      .mockImplementationOnce((_ctx, fn) => fn(counterpartTx));
+    claudeClient.writeNarrative.mockResolvedValue('High code similarity detected with another candidate.');
+
+    await service.analyze('attempt-1');
+
+    expect(counterpartTx.integrityAnalysis.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ narrative: null }) }),
+    );
   });
 
   it('similarity: skips the counterpart update silently when the counterpart has no analysis yet', async () => {

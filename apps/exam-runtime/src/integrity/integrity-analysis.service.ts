@@ -200,7 +200,10 @@ export class IntegrityAnalysisService {
 
           await tx.integrityAnalysis.update({
             where: { attemptId: counterpartAttemptId },
-            data: { flagsJson: JSON.stringify(updatedFlags), level: deriveLevel(updatedFlags) },
+            // Narrative was written before this flag existed, so it no longer reflects the
+            // full evidence -- null it out rather than leave a stale sentence (e.g. "No
+            // integrity concerns detected") contradicting the just-updated level.
+            data: { flagsJson: JSON.stringify(updatedFlags), level: deriveLevel(updatedFlags), narrative: null },
           });
         });
       }
