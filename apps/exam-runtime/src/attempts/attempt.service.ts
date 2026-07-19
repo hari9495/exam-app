@@ -457,6 +457,18 @@ export class AttemptService {
 
   async getLeaderboard(session: CandidateSession): Promise<CandidateLeaderboardResponse> {
     const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
+    const attempt = await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
+      tx.attempt.findUnique({ where: { invitationId: invitation.id } }),
+    );
+    // Live, in-exam ranking stays always-on (accepted trade-off from the original Live
+    // Leaderboard design). Once the attempt is no longer live, this is post-submission
+    // result data -- only show it if the exam's feedback level already permits the
+    // candidate to see their own score, mirroring buildFeedback()'s enforcement.
+    const isLive = !attempt || attempt.status === 'in_progress' || attempt.status === 'paused' || attempt.status === 'blocked';
+    const canSeeOwnScore = exam.feedbackVisibility === 'score' || exam.feedbackVisibility === 'breakdown';
+    if (!isLive && !canSeeOwnScore) {
+      return { you: null, top: [] };
+    }
     return this.leaderboardService.computeCandidateView({ organizationId, isSuperAdmin: false }, exam.id, invitation.id);
   }
 

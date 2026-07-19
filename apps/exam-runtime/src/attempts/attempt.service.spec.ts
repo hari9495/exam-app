@@ -1295,8 +1295,11 @@ describe('AttemptService', () => {
   });
 
   describe('getLeaderboard', () => {
-    it('delegates to LeaderboardService.computeCandidateView with the resolved organizationId, exam id, and invitation id', async () => {
-      tenantPrisma.forTenant.mockImplementationOnce(() => Promise.resolve(invitationRecord));
+    it('delegates to LeaderboardService.computeCandidateView while the attempt is in_progress, regardless of feedbackVisibility', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) } };
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: { ...exam, feedbackVisibility: 'none' } }))
+        .mockImplementationOnce((_ctx, fn) => fn(tx));
       leaderboardService.computeCandidateView.mockResolvedValue({
         you: { rank: 5, correctCount: 3 },
         top: [{ rank: 1, correctCount: 4, label: 'Candidate 1', isYou: false }],
@@ -1313,6 +1316,58 @@ describe('AttemptService', () => {
         you: { rank: 5, correctCount: 3 },
         top: [{ rank: 1, correctCount: 4, label: 'Candidate 1', isYou: false }],
       });
+    });
+
+    it('delegates to LeaderboardService.computeCandidateView when no attempt exists yet (pre-start)', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: { ...exam, feedbackVisibility: 'none' } }))
+        .mockImplementationOnce((_ctx, fn) => fn(tx));
+      leaderboardService.computeCandidateView.mockResolvedValue({ you: null, top: [] });
+
+      await service.getLeaderboard(session);
+
+      expect(leaderboardService.computeCandidateView).toHaveBeenCalled();
+    });
+
+    it('blocks leaderboard data once submitted when feedbackVisibility is none', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) } };
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: { ...exam, feedbackVisibility: 'none' } }))
+        .mockImplementationOnce((_ctx, fn) => fn(tx));
+
+      const result = await service.getLeaderboard(session);
+
+      expect(result).toEqual({ you: null, top: [] });
+      expect(leaderboardService.computeCandidateView).not.toHaveBeenCalled();
+    });
+
+    it('blocks leaderboard data once pending_manual_grade when feedbackVisibility is pass_fail', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'pending_manual_grade' }) } };
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: { ...exam, feedbackVisibility: 'pass_fail' } }))
+        .mockImplementationOnce((_ctx, fn) => fn(tx));
+
+      const result = await service.getLeaderboard(session);
+
+      expect(result).toEqual({ you: null, top: [] });
+      expect(leaderboardService.computeCandidateView).not.toHaveBeenCalled();
+    });
+
+    it('still returns leaderboard data after submission when feedbackVisibility is score', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'auto_submitted' }) } };
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: { ...exam, feedbackVisibility: 'score' } }))
+        .mockImplementationOnce((_ctx, fn) => fn(tx));
+      leaderboardService.computeCandidateView.mockResolvedValue({
+        you: { rank: 2, correctCount: 8 },
+        top: [],
+      });
+
+      const result = await service.getLeaderboard(session);
+
+      expect(leaderboardService.computeCandidateView).toHaveBeenCalled();
+      expect(result).toEqual({ you: { rank: 2, correctCount: 8 }, top: [] });
     });
   });
 
