@@ -120,6 +120,16 @@ describe('IntegrationsSettingsPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('That API key was rejected by Anthropic: authentication_error');
   });
 
+  it('shows an inline error when generating the API key fails', async () => {
+    renderPage();
+    await screen.findByText('No API key generated');
+
+    mockedApiFetch.mockRejectedValueOnce(new Error('Failed to reach the server'));
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Failed to reach the server');
+  });
+
   it('shows "No API key generated" when none exists, and a Generate button', async () => {
     renderPage();
     expect(await screen.findByText('No API key generated')).toBeInTheDocument();

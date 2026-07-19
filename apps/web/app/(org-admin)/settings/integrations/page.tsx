@@ -31,8 +31,10 @@ export default function IntegrationsSettingsPage() {
   const [aiKeyError, setAiKeyError] = useState<string | null>(null);
 
   const [revealedApiKey, setRevealedApiKey] = useState<string | null>(null);
+  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   const [revealedWebhookSecret, setRevealedWebhookSecret] = useState<string | null>(null);
   const [webhookUrlInput, setWebhookUrlInput] = useState(integrations?.webhookUrl ?? '');
+  const [webhookError, setWebhookError] = useState<string | null>(null);
 
   // integrations loads asynchronously, so the useState initializer above only
   // catches an already-cached value — sync once the fetch resolves.
@@ -74,6 +76,37 @@ export default function IntegrationsSettingsPage() {
         setAiApiKey('');
       },
       onError: (err) => setAiKeyError(err instanceof Error ? err.message : 'Failed to save AI API key'),
+    });
+  }
+
+  function handleGenerateApiKey() {
+    setApiKeyError(null);
+    generateApiKey.mutate(undefined, {
+      onSuccess: (result: { apiKey: string; apiKeyPrefix: string }) => setRevealedApiKey(result.apiKey),
+      onError: (err) => setApiKeyError(err instanceof Error ? err.message : 'Failed to generate API key'),
+    });
+  }
+
+  function handleRevokeApiKey() {
+    setApiKeyError(null);
+    revokeApiKey.mutate(undefined, {
+      onSuccess: () => setRevealedApiKey(null),
+      onError: (err) => setApiKeyError(err instanceof Error ? err.message : 'Failed to revoke API key'),
+    });
+  }
+
+  function handleSaveWebhookUrl() {
+    setWebhookError(null);
+    updateWebhookUrl.mutate(webhookUrlInput, {
+      onError: (err) => setWebhookError(err instanceof Error ? err.message : 'Failed to save webhook URL'),
+    });
+  }
+
+  function handleGenerateWebhookSecret() {
+    setWebhookError(null);
+    generateWebhookSecret.mutate(undefined, {
+      onSuccess: (result: { webhookSecret: string }) => setRevealedWebhookSecret(result.webhookSecret),
+      onError: (err) => setWebhookError(err instanceof Error ? err.message : 'Failed to generate webhook secret'),
     });
   }
 
@@ -139,26 +172,20 @@ export default function IntegrationsSettingsPage() {
           </div>
         )}
         <div className="flex gap-2">
-          <Button
-            loading={generateApiKey.isPending}
-            onClick={() =>
-              generateApiKey.mutate(undefined, {
-                onSuccess: (result: { apiKey: string; apiKeyPrefix: string }) => setRevealedApiKey(result.apiKey),
-              })
-            }
-          >
+          <Button loading={generateApiKey.isPending} onClick={handleGenerateApiKey}>
             {integrations?.apiKeyConfigured ? 'Regenerate' : 'Generate'}
           </Button>
           {integrations?.apiKeyConfigured && (
-            <Button
-              variant="secondary"
-              loading={revokeApiKey.isPending}
-              onClick={() => revokeApiKey.mutate(undefined, { onSuccess: () => setRevealedApiKey(null) })}
-            >
+            <Button variant="secondary" loading={revokeApiKey.isPending} onClick={handleRevokeApiKey}>
               Revoke
             </Button>
           )}
         </div>
+        {apiKeyError && (
+          <p role="alert" className="mt-3 text-sm text-status-danger">
+            {apiKeyError}
+          </p>
+        )}
       </Card>
 
       <Card className="max-w-md">
@@ -170,7 +197,7 @@ export default function IntegrationsSettingsPage() {
             onChange={setWebhookUrlInput}
             placeholder="https://your-ats.example.com/webhooks/exam-platform"
           />
-          <Button loading={updateWebhookUrl.isPending} onClick={() => updateWebhookUrl.mutate(webhookUrlInput)} className="self-start">
+          <Button loading={updateWebhookUrl.isPending} onClick={handleSaveWebhookUrl} className="self-start">
             Save URL
           </Button>
         </div>
@@ -185,14 +212,15 @@ export default function IntegrationsSettingsPage() {
           className="mt-3"
           variant="secondary"
           loading={generateWebhookSecret.isPending}
-          onClick={() =>
-            generateWebhookSecret.mutate(undefined, {
-              onSuccess: (result: { webhookSecret: string }) => setRevealedWebhookSecret(result.webhookSecret),
-            })
-          }
+          onClick={handleGenerateWebhookSecret}
         >
           {integrations?.webhookConfigured ? 'Regenerate signing secret' : 'Generate signing secret'}
         </Button>
+        {webhookError && (
+          <p role="alert" className="mt-3 text-sm text-status-danger">
+            {webhookError}
+          </p>
+        )}
 
         <h3 className="mb-2 mt-5 text-sm font-semibold text-recruiter-text">Recent deliveries</h3>
         <Table<WebhookDeliveryRow>
