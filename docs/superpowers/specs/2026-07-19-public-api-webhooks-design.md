@@ -93,6 +93,18 @@ Extends the existing Integrations settings page (`apps/web/app/(org-admin)/setti
 - **Webhook**: a URL input + save button. Once a URL is saved, a "Generate signing secret" (or "Regenerate") button reveals the secret once, same UX as the API key.
 - **Delivery log**: a read-only table below, the last 50 `WebhookDelivery` rows for the org (event type, timestamp, status, HTTP status code), newest first. No pagination, no manual redeliver action — a v1 debugging aid, not a full operations console.
 
+## 5. API reference documentation
+
+A plain markdown reference doc (`docs/public-api.md`) is a required deliverable of this feature, not optional polish — without it, no external integrator (or internal team member) can use the API at all. Written alongside the implementation, one section per piece as it's built, covering:
+
+- **Authentication**: how to generate a key in org-admin, the `Authorization: Bearer pk_live_...` header format, what a 401 means.
+- **Every endpoint**: method, path, query params, response shape, one worked example (request + response) each, for all five `GET /public/*` routes.
+- **Pagination**: the `page`/`pageSize`/`total` envelope, defaults and max.
+- **Rate limits**: the 60 req/min per-org ceiling, the 429 + `Retry-After` behavior.
+- **Webhooks**: how to configure a URL + generate a signing secret in org-admin, the payload envelope shape for each of the two event types with a real example body, and a worked signature-verification example (pseudocode or a short Node snippet computing HMAC-SHA256 over the raw body and comparing to `X-Webhook-Signature`) — this is the one piece that's actively unsafe to leave to guesswork, since an integrator who verifies signatures wrong either rejects everything or (worse) accepts unsigned requests.
+
+This is intentionally lightweight — a single hand-written markdown file, not generated tooling. Auto-generated interactive documentation (OpenAPI/Swagger UI, a hosted docs site) stays out of scope per below; this reference doc is what makes the feature usable in the meantime, and remains useful as the source content for that tooling later.
+
 ## Error handling
 
 - Missing/invalid/revoked API key on a public-API request → 401, no further detail (don't confirm/deny whether a key format was merely wrong vs a real key was revoked, to avoid aiding credential-guessing).
@@ -114,6 +126,6 @@ Extends the existing Integrations settings page (`apps/web/app/(org-admin)/setti
 - A manual "redeliver" button for failed webhook deliveries.
 - Webhook event types beyond `invitation.created` and `attempt.settled`.
 - A "test webhook" button in org-admin (send a synthetic event on demand).
-- Published API documentation (OpenAPI/Swagger) — a natural fast-follow once the surface is stable, but a documentation concern separate from the runtime feature itself.
+- Auto-generated/interactive API documentation (OpenAPI spec generation, Swagger UI, a hosted docs site) — a natural fast-follow once the surface is stable. The hand-written `docs/public-api.md` reference described above is in scope and required; this bullet only excludes the generated-tooling layer on top of it.
 - Automated alerting on repeated webhook delivery failures.
 - Named ATS connectors (Greenhouse, Lever) — this spec is the general-purpose prerequisite; a specific connector is a later feature.
