@@ -70,7 +70,7 @@ describe('MonitoringService', () => {
         exam: { findFirst: jest.fn().mockResolvedValue(exam) },
         invitation: {
           findMany: jest.fn().mockResolvedValue([
-            { id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' }, attempt },
+            { id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' }, extraTimePercent: 0, attempt },
           ]),
         },
         answer: { count: jest.fn().mockResolvedValue(2) },
@@ -83,6 +83,29 @@ describe('MonitoringService', () => {
         candidateId: 'cand-1', candidateName: 'Alice', invitationId: 'inv-1', attemptId: 'attempt-1',
         status: 'in_progress', online: true, remainingSeconds: expect.any(Number), answeredCount: 2, totalQuestions: 3,
       });
+    });
+
+    it('applies the invitation\'s extra-time accommodation to remainingSeconds for an in-progress attempt', async () => {
+      const startedAt = new Date(Date.now() - 60 * 60_000);
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue(exam) },
+        invitation: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' }, extraTimePercent: 50,
+              attempt: { id: 'attempt-1', status: 'in_progress', startedAt, lastSeenAt: new Date(), questionOrderJson: '["q1"]' },
+            },
+          ]),
+        },
+        answer: { count: jest.fn().mockResolvedValue(0) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const [row] = await service.getRosterSnapshot(context, 'exam-1');
+
+      // exam.durationMinutes is 60; +50% = 90 effective minutes, 60 elapsed -> ~30 min (1800s) left.
+      expect(row.remainingSeconds).toBeGreaterThan(1750);
+      expect(row.remainingSeconds).toBeLessThanOrEqual(1800);
     });
 
     it('reports offline and no remainingSeconds for a submitted attempt', async () => {

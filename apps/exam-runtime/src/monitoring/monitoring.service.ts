@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
-import { computeRemainingSeconds } from '../grading/grading';
+import { computeRemainingSeconds, effectiveDurationMinutes } from '../grading/grading';
 
 const ONLINE_THRESHOLD_MS = 30_000;
 
@@ -52,7 +52,10 @@ export class MonitoringService {
           totalQuestions = (JSON.parse(attempt.questionOrderJson) as string[]).length;
           answeredCount = await tx.answer.count({ where: { attemptId: attempt.id } });
           if (attempt.status === 'in_progress') {
-            remainingSeconds = computeRemainingSeconds(exam.durationMinutes, attempt.startedAt);
+            remainingSeconds = computeRemainingSeconds(
+              effectiveDurationMinutes(exam.durationMinutes, invitation.extraTimePercent),
+              attempt.startedAt,
+            );
           }
         }
 

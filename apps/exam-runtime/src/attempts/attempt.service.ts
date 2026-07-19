@@ -10,6 +10,7 @@ import { StartAttemptDto } from './dto/start-attempt.dto';
 import { getProctoringEventSeverity } from './proctoring-severity';
 import { ReportProctoringEventDto } from './dto/report-proctoring-event.dto';
 import { shuffle } from './shuffle';
+import { effectiveDurationMinutes } from '../grading/grading';
 import { PistonClient, PistonExecuteResult } from '../code-execution/piston-client';
 import { RunLimiter } from '../code-execution/run-limiter';
 import { PISTON_LANGUAGE_MAP } from '../code-execution/piston-languages';
@@ -468,7 +469,11 @@ export class AttemptService {
     if (!invitation || !invitation.exam) {
       throw new UnauthorizedException('Invalid candidate session');
     }
-    return { organizationId: invitation.exam.organizationId, exam: invitation.exam, invitation };
+    const exam = {
+      ...invitation.exam,
+      durationMinutes: effectiveDurationMinutes(invitation.exam.durationMinutes, invitation.extraTimePercent),
+    };
+    return { organizationId: exam.organizationId, exam, invitation };
   }
 
   private getSchedulingWindowState(exam: {

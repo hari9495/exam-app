@@ -43,6 +43,10 @@ export function computeResult(
   return { score, maxScore, percentage, passFail };
 }
 
+export function effectiveDurationMinutes(durationMinutes: number, extraTimePercent: number): number {
+  return Math.round(durationMinutes * (1 + extraTimePercent / 100));
+}
+
 export function computeRemainingSeconds(
   durationMinutes: number,
   startedAt: Date,

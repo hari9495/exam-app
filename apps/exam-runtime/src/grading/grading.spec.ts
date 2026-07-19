@@ -1,4 +1,4 @@
-import { gradeAnswer, computeResult, computeRemainingSeconds } from './grading';
+import { gradeAnswer, computeResult, computeRemainingSeconds, effectiveDurationMinutes } from './grading';
 
 describe('gradeAnswer', () => {
   it('awards full marks for an exact single-option match', () => {
@@ -102,5 +102,19 @@ describe('computeRemainingSeconds', () => {
     const secondsAgain = computeRemainingSeconds(30, startedAt, 0, frozenAt);
     expect(seconds).toBe(secondsAgain);
     expect(seconds).toBe(25 * 60); // 30 min duration - 5 min elapsed at the moment it froze
+  });
+});
+
+describe('effectiveDurationMinutes', () => {
+  it('returns the raw duration when extraTimePercent is 0', () => {
+    expect(effectiveDurationMinutes(60, 0)).toBe(60);
+  });
+
+  it('applies a percentage bonus', () => {
+    expect(effectiveDurationMinutes(60, 50)).toBe(90);
+  });
+
+  it('rounds to the nearest whole minute', () => {
+    expect(effectiveDurationMinutes(45, 33)).toBe(60);
   });
 });

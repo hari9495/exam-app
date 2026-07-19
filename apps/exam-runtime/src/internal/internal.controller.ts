@@ -6,6 +6,7 @@ import { AttemptInsightService } from '../attempt-insight/attempt-insight.servic
 import { CodeReviewService } from '../code-review/code-review.service';
 import { ATTEMPT_STATUS_BROADCASTER, AttemptStatusBroadcaster } from '../monitoring/attempt-status-broadcaster';
 import { InternalAuthGuard } from './internal-auth.guard';
+import { effectiveDurationMinutes } from '../grading/grading';
 import { NotifyMessageSentDto } from './dto/notify-message-sent.dto';
 import { SettleIfExpiredBatchDto } from './dto/settle-if-expired-batch.dto';
 import { GradeCodeAnswerDto } from './dto/grade-code-answer.dto';
@@ -118,7 +119,11 @@ export class InternalController {
         include: { invitation: { include: { exam: true } } },
       });
       for (const attempt of attempts) {
-        await this.attemptSettlement.settleIfExpired(tx, attempt.invitation.exam, attempt);
+        const exam = {
+          ...attempt.invitation.exam,
+          durationMinutes: effectiveDurationMinutes(attempt.invitation.exam.durationMinutes, attempt.invitation.extraTimePercent),
+        };
+        await this.attemptSettlement.settleIfExpired(tx, exam, attempt);
       }
     });
   }

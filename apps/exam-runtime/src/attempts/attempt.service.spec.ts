@@ -28,7 +28,7 @@ describe('AttemptService', () => {
     id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false,
     schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null,
   };
-  const invitationRecord = { id: 'inv-1', candidateId: 'cand-1', examId: 'exam-1', exam };
+  const invitationRecord = { id: 'inv-1', candidateId: 'cand-1', examId: 'exam-1', exam, extraTimePercent: 0 };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
@@ -80,6 +80,25 @@ describe('AttemptService', () => {
       expect(result).toEqual({
         exam: {
           title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60,
+          schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null,
+        },
+        schedulingWindowState: null,
+      });
+    });
+
+    it('returns the effective duration (exam duration + extraTimePercent) when the invitation has an accommodation', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, extraTimePercent: 50 }))
+        .mockImplementationOnce((_ctx, fn) => fn(tx));
+
+      const result = await service.getCurrent(session);
+
+      // toMatchObject, not toEqual: Task 3 (later in this plan) adds a `sections` field to this
+      // same pre-start response shape — this test only cares about the duration math.
+      expect(result).toMatchObject({
+        exam: {
+          title: 'Backend Round', instructions: 'Be honest', durationMinutes: 90,
           schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null,
         },
         schedulingWindowState: null,

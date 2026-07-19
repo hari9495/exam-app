@@ -188,10 +188,10 @@ describe('InternalController', () => {
   });
 
   describe('settleIfExpiredBatch', () => {
-    it('settles every attempt found for the given ids', async () => {
+    it('settles every attempt found for the given ids, applying each invitation\'s extra-time accommodation', async () => {
       const exam1 = { id: 'exam-1', durationMinutes: 30, passCriteriaPercent: 40 };
-      const attempt1 = { id: 'attempt-1', status: 'in_progress', invitation: { exam: exam1 } };
-      const attempt2 = { id: 'attempt-2', status: 'in_progress', invitation: { exam: exam1 } };
+      const attempt1 = { id: 'attempt-1', status: 'in_progress', invitation: { exam: exam1, extraTimePercent: 0 } };
+      const attempt2 = { id: 'attempt-2', status: 'in_progress', invitation: { exam: exam1, extraTimePercent: 50 } };
       const tx = { attempt: { findMany: jest.fn().mockResolvedValue([attempt1, attempt2]) } };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
@@ -203,8 +203,8 @@ describe('InternalController', () => {
         include: { invitation: { include: { exam: true } } },
       });
       expect(attemptSettlement.settleIfExpired).toHaveBeenCalledTimes(2);
-      expect(attemptSettlement.settleIfExpired).toHaveBeenNthCalledWith(1, tx, exam1, attempt1);
-      expect(attemptSettlement.settleIfExpired).toHaveBeenNthCalledWith(2, tx, exam1, attempt2);
+      expect(attemptSettlement.settleIfExpired).toHaveBeenNthCalledWith(1, tx, { ...exam1, durationMinutes: 30 }, attempt1);
+      expect(attemptSettlement.settleIfExpired).toHaveBeenNthCalledWith(2, tx, { ...exam1, durationMinutes: 45 }, attempt2);
     });
 
     it('settles nothing when no matching attempts are found', async () => {
