@@ -161,4 +161,57 @@ describe('LoginPage', () => {
 
     expect(screen.getByRole('link', { name: 'Forgot password?' })).toHaveAttribute('href', '/forgot-password');
   });
+
+  it('shows a "Log in with SSO" button once the org slug resolves to an SSO-enabled org', async () => {
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ message: 'no session' }), { status: 401 });
+      }
+      if (String(url).includes('/auth/saml/')) {
+        return new Response(JSON.stringify({ enabled: true }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <LoginPage />
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    await userEvent.type(screen.getByLabelText(/organization slug/i), 'acme');
+    await userEvent.tab();
+
+    expect(await screen.findByRole('link', { name: /log in with sso/i })).toHaveAttribute(
+      'href',
+      expect.stringContaining('/auth/saml/acme/login'),
+    );
+  });
+
+  it('does not show the SSO button when the org has no SSO configured', async () => {
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ message: 'no session' }), { status: 401 });
+      }
+      if (String(url).includes('/auth/saml/')) {
+        return new Response(JSON.stringify({ enabled: false }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <LoginPage />
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    await userEvent.type(screen.getByLabelText(/organization slug/i), 'acme');
+    await userEvent.tab();
+
+    expect(screen.queryByRole('link', { name: /log in with sso/i })).not.toBeInTheDocument();
+  });
 });

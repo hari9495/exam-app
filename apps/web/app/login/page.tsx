@@ -19,10 +19,24 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [ssoEnabled, setSsoEnabled] = useState(false);
   const { data: branding } = useBranding(organizationSlug || null);
 
   const primaryColor = branding?.primaryColor ?? undefined;
   const accentColor = branding?.accentColor ?? undefined;
+
+  async function handleSlugBlur() {
+    if (!organizationSlug) {
+      setSsoEnabled(false);
+      return;
+    }
+    try {
+      const result = await apiFetch(`/auth/saml/${organizationSlug}/status`);
+      setSsoEnabled(result.enabled);
+    } catch {
+      setSsoEnabled(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -92,6 +106,7 @@ export default function LoginPage() {
               label="Organization slug"
               value={organizationSlug}
               onChange={setOrganizationSlug}
+              onBlur={handleSlugBlur}
               icon={<Building2 size={16} />}
             />
             <Input label="Email" type="email" value={email} onChange={setEmail} required icon={<Mail size={16} />} />
@@ -116,6 +131,14 @@ export default function LoginPage() {
             <Link href="/forgot-password" className="text-right text-sm font-medium text-primary hover:underline">
               Forgot password?
             </Link>
+            {ssoEnabled && (
+              <a
+                href={`${process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001/api/v1'}/auth/saml/${organizationSlug}/login`}
+                className="flex items-center justify-center rounded-md border border-recruiter-border py-2 text-sm font-medium text-recruiter-text hover:bg-recruiter-bg-subtle"
+              >
+                Log in with SSO
+              </a>
+            )}
             <Button type="submit" loading={submitting}>
               Log in
             </Button>
