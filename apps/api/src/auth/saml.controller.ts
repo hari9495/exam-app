@@ -51,16 +51,22 @@ export class SamlController {
       return;
     }
     if (!user) {
-      res.redirect(`${frontendUrl}/sso/callback?ssoError=${info?.message ?? 'not_provisioned'}`);
+      // Hardcode the literal, not info?.message -- the redirect must never leak
+      // which specific validation step failed, regardless of what a collaborator sends.
+      res.redirect(`${frontendUrl}/sso/callback?ssoError=not_provisioned`);
       return;
     }
 
-    const rawCode = randomBytes(32).toString('hex');
-    const codeHash = createHash('sha256').update(rawCode).digest('hex');
-    const expiresAt = new Date(Date.now() + SSO_LOGIN_CODE_EXPIRY_SECONDS * 1000);
+    try {
+      const rawCode = randomBytes(32).toString('hex');
+      const codeHash = createHash('sha256').update(rawCode).digest('hex');
+      const expiresAt = new Date(Date.now() + SSO_LOGIN_CODE_EXPIRY_SECONDS * 1000);
 
-    await this.prisma.ssoLoginCode.create({ data: { userId: user.id, codeHash, expiresAt } });
+      await this.prisma.ssoLoginCode.create({ data: { userId: user.id, codeHash, expiresAt } });
 
-    res.redirect(`${frontendUrl}/sso/callback?code=${rawCode}`);
+      res.redirect(`${frontendUrl}/sso/callback?code=${rawCode}`);
+    } catch {
+      res.redirect(`${frontendUrl}/sso/callback?ssoError=invalid_response`);
+    }
   }
 }
