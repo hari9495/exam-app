@@ -26,7 +26,7 @@ describe('AttemptService', () => {
   const session = { invitationId: 'inv-1' };
   const exam = {
     id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false,
-    schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null,
+    schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null, feedbackVisibility: 'breakdown',
   };
   const invitationRecord = { id: 'inv-1', candidateId: 'cand-1', examId: 'exam-1', exam, extraTimePercent: 0 };
 
@@ -165,6 +165,7 @@ describe('AttemptService', () => {
         ],
         answers: [{ questionId: 'q1', selectedOptionIds: ['opt-a'], isMarkedForReview: false }],
         messages: [],
+        feedback: null,
       });
       expect((result as any).sections[0].questions[0]).not.toHaveProperty('isCorrect');
     });
@@ -267,6 +268,175 @@ describe('AttemptService', () => {
         { organizationId: 'org-1', isSuperAdmin: false },
         expect.any(Function),
       );
+    });
+
+    it('returns feedback: null while the attempt is still in_progress', async () => {
+      const attempt = {
+        id: 'attempt-1', status: 'in_progress', startedAt: new Date(),
+        questionOrderJson: JSON.stringify(['q1']),
+        sectionSnapshotJson: JSON.stringify([{ sectionId: 's1', title: 'Section One', targetDurationMinutes: null, questionIds: ['q1'] }]),
+        optionOrderJson: null,
+      };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'single_mcq', marks: 5, options: [] }]) },
+        answer: { findMany: jest.fn().mockResolvedValue([]) },
+        candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+      };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      settlement.remainingSeconds.mockReturnValue(100);
+      mockBootstrapThenScoped(tx);
+
+      const result = await service.getCurrent(session);
+
+      expect(result).toMatchObject({ feedback: null });
+    });
+
+    it('returns a pending_review feedback status for an attempt awaiting manual grading, regardless of feedbackVisibility', async () => {
+      const attempt = {
+        id: 'attempt-1', status: 'pending_manual_grade', startedAt: new Date(),
+        questionOrderJson: JSON.stringify(['q1']),
+        sectionSnapshotJson: JSON.stringify([{ sectionId: 's1', title: 'Section One', targetDurationMinutes: null, questionIds: ['q1'] }]),
+        optionOrderJson: null,
+      };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'code', marks: 10, options: [] }]) },
+        answer: { findMany: jest.fn().mockResolvedValue([]) },
+        candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+        result: { findUnique: jest.fn().mockResolvedValue({ score: 0, maxScore: 10, percentage: 0, passFail: null }) },
+      };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      settlement.remainingSeconds.mockReturnValue(0);
+      mockBootstrapThenScoped(tx);
+
+      const result = await service.getCurrent(session);
+
+      expect((result as any).feedback).toEqual({ status: 'pending_review', visibility: 'breakdown', passFail: null, percentage: null, sections: null });
+    });
+
+    it('returns pass/fail only when feedbackVisibility is pass_fail', async () => {
+      const attempt = {
+        id: 'attempt-1', status: 'submitted', startedAt: new Date(),
+        questionOrderJson: JSON.stringify(['q1']),
+        sectionSnapshotJson: JSON.stringify([{ sectionId: 's1', title: 'Section One', targetDurationMinutes: null, questionIds: ['q1'] }]),
+        optionOrderJson: null,
+      };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'single_mcq', marks: 5, options: [] }]) },
+        answer: { findMany: jest.fn().mockResolvedValue([]) },
+        candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+        result: { findUnique: jest.fn().mockResolvedValue({ score: 5, maxScore: 5, percentage: 100, passFail: 'pass' }) },
+      };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      settlement.remainingSeconds.mockReturnValue(0);
+      mockBootstrapThenScoped(tx);
+      const examWithVisibility = { ...invitationRecord, exam: { ...exam, feedbackVisibility: 'pass_fail' } };
+      tenantPrisma.forTenant.mockReset();
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve(examWithVisibility))
+        .mockImplementationOnce((_ctx, fn) => fn(tx));
+
+      const result = await service.getCurrent(session);
+
+      expect((result as any).feedback).toEqual({ status: 'settled', visibility: 'pass_fail', passFail: 'pass', percentage: null, sections: null });
+    });
+
+    it('returns no result data when feedbackVisibility is none', async () => {
+      const attempt = {
+        id: 'attempt-1', status: 'submitted', startedAt: new Date(),
+        questionOrderJson: JSON.stringify(['q1']),
+        sectionSnapshotJson: JSON.stringify([{ sectionId: 's1', title: 'Section One', targetDurationMinutes: null, questionIds: ['q1'] }]),
+        optionOrderJson: null,
+      };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'single_mcq', marks: 5, options: [] }]) },
+        answer: { findMany: jest.fn().mockResolvedValue([]) },
+        candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+        result: { findUnique: jest.fn().mockResolvedValue({ score: 5, maxScore: 5, percentage: 100, passFail: 'pass' }) },
+      };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      settlement.remainingSeconds.mockReturnValue(0);
+      const examWithVisibility = { ...invitationRecord, exam: { ...exam, feedbackVisibility: 'none' } };
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve(examWithVisibility))
+        .mockImplementationOnce((_ctx, fn) => fn(tx));
+
+      const result = await service.getCurrent(session);
+
+      expect((result as any).feedback).toEqual({ status: 'settled', visibility: 'none', passFail: null, percentage: null, sections: null });
+    });
+
+    it('returns pass/fail and percentage, but no section breakdown, when feedbackVisibility is score', async () => {
+      const attempt = {
+        id: 'attempt-1', status: 'submitted', startedAt: new Date(),
+        questionOrderJson: JSON.stringify(['q1']),
+        sectionSnapshotJson: JSON.stringify([{ sectionId: 's1', title: 'Section One', targetDurationMinutes: null, questionIds: ['q1'] }]),
+        optionOrderJson: null,
+      };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'single_mcq', marks: 5, options: [] }]) },
+        answer: { findMany: jest.fn().mockResolvedValue([]) },
+        candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+        result: { findUnique: jest.fn().mockResolvedValue({ score: 3, maxScore: 5, percentage: 60, passFail: 'fail' }) },
+      };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      settlement.remainingSeconds.mockReturnValue(0);
+      const examWithVisibility = { ...invitationRecord, exam: { ...exam, feedbackVisibility: 'score' } };
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve(examWithVisibility))
+        .mockImplementationOnce((_ctx, fn) => fn(tx));
+
+      const result = await service.getCurrent(session);
+
+      expect((result as any).feedback).toEqual({ status: 'settled', visibility: 'score', passFail: 'fail', percentage: 60, sections: null });
+    });
+
+    it('returns section-level scores when feedbackVisibility is breakdown', async () => {
+      const attempt = {
+        id: 'attempt-1', status: 'submitted', startedAt: new Date(),
+        questionOrderJson: JSON.stringify(['q1', 'q2']),
+        sectionSnapshotJson: JSON.stringify([{ sectionId: 's1', title: 'Section One', targetDurationMinutes: null, questionIds: ['q1', 'q2'] }]),
+        optionOrderJson: null,
+      };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        question: {
+          findMany: jest.fn()
+            .mockResolvedValueOnce([
+              { id: 'q1', text: 'Q1', type: 'single_mcq', marks: 5, options: [] },
+              { id: 'q2', text: 'Q2', type: 'single_mcq', marks: 5, options: [] },
+            ])
+            .mockResolvedValueOnce([{ id: 'q1', marks: 5 }, { id: 'q2', marks: 5 }]),
+        },
+        answer: {
+          findMany: jest.fn()
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([
+              { questionId: 'q1', marksAwarded: 5 },
+              { questionId: 'q2', marksAwarded: 0 },
+            ]),
+        },
+        candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+        result: { findUnique: jest.fn().mockResolvedValue({ score: 5, maxScore: 10, percentage: 50, passFail: 'fail' }) },
+      };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      settlement.remainingSeconds.mockReturnValue(0);
+      const examWithVisibility = { ...invitationRecord, exam: { ...exam, feedbackVisibility: 'breakdown' } };
+      tenantPrisma.forTenant.mockReset();
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve(examWithVisibility))
+        .mockImplementationOnce((_ctx, fn) => fn(tx));
+
+      const result = await service.getCurrent(session);
+
+      expect((result as any).feedback).toEqual({
+        status: 'settled', visibility: 'breakdown', passFail: 'fail', percentage: 50,
+        sections: [{ title: 'Section One', score: 5, maxScore: 10 }],
+      });
     });
   });
 

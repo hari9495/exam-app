@@ -77,6 +77,20 @@ interface AttemptPreviewResponse {
   sections: AttemptSectionSummary[];
 }
 
+interface AttemptSectionFeedback {
+  title: string;
+  score: number;
+  maxScore: number;
+}
+
+interface AttemptFeedback {
+  status: 'pending_review' | 'settled';
+  visibility: string;
+  passFail: 'pass' | 'fail' | null;
+  percentage: number | null;
+  sections: AttemptSectionFeedback[] | null;
+}
+
 interface AttemptStateResponse {
   status: string;
   remainingSeconds: number;
@@ -85,6 +99,7 @@ interface AttemptStateResponse {
   sections: AttemptSection[];
   answers: AttemptAnswerSummary[];
   messages: AttemptMessageSummary[];
+  feedback: AttemptFeedback | null;
 }
 
 export type AttemptCurrentResponse = AttemptPreviewResponse | AttemptStateResponse;
@@ -138,6 +153,7 @@ export class AttemptService {
       if (unreadMessages.length > 0) {
         await tx.candidateMessage.updateMany({ where: { attemptId: settled.id, readAt: null }, data: { readAt: new Date() } });
       }
+      const feedback = await this.buildFeedback(tx, exam, settled);
 
       return {
         status: settled.status,
@@ -152,6 +168,7 @@ export class AttemptService {
           isMarkedForReview: answer.isMarkedForReview,
         })),
         messages: unreadMessages.map((message) => ({ id: message.id, body: message.body, sentAt: message.sentAt })),
+        feedback,
       };
     });
   }
@@ -555,6 +572,46 @@ export class AttemptService {
           };
         }),
     }));
+  }
+
+  private async buildFeedback(
+    tx: Prisma.TransactionClient,
+    exam: { feedbackVisibility: string },
+    attempt: { id: string; status: string; sectionSnapshotJson: string },
+  ): Promise<AttemptFeedback | null> {
+    if (attempt.status === 'in_progress' || attempt.status === 'paused' || attempt.status === 'blocked') {
+      return null;
+    }
+    if (attempt.status === 'pending_manual_grade') {
+      return { status: 'pending_review', visibility: exam.feedbackVisibility, passFail: null, percentage: null, sections: null };
+    }
+
+    const result = await tx.result.findUnique({ where: { attemptId: attempt.id } });
+    const visibility = exam.feedbackVisibility;
+    const passFail =
+      visibility === 'pass_fail' || visibility === 'score' || visibility === 'breakdown'
+        ? ((result?.passFail ?? null) as 'pass' | 'fail' | null)
+        : null;
+    const percentage = visibility === 'score' || visibility === 'breakdown' ? (result?.percentage ?? null) : null;
+
+    let sections: AttemptSectionFeedback[] | null = null;
+    if (visibility === 'breakdown') {
+      const snapshot: SectionSnapshotEntry[] = JSON.parse(attempt.sectionSnapshotJson);
+      const allQuestionIds = snapshot.flatMap((section) => section.questionIds);
+      const [questions, answers] = await Promise.all([
+        tx.question.findMany({ where: { id: { in: allQuestionIds } }, select: { id: true, marks: true } }),
+        tx.answer.findMany({ where: { attemptId: attempt.id }, select: { questionId: true, marksAwarded: true } }),
+      ]);
+      const marksByQuestion = new Map(questions.map((question) => [question.id, question.marks]));
+      const awardedByQuestion = new Map(answers.map((answer) => [answer.questionId, answer.marksAwarded ?? 0]));
+      sections = snapshot.map((section) => ({
+        title: section.title,
+        score: section.questionIds.reduce((sum, id) => sum + (awardedByQuestion.get(id) ?? 0), 0),
+        maxScore: section.questionIds.reduce((sum, id) => sum + (marksByQuestion.get(id) ?? 0), 0),
+      }));
+    }
+
+    return { status: 'settled', visibility, passFail, percentage, sections };
   }
 
   private async broadcastLeaderboard(organizationId: string, examId: string): Promise<void> {
