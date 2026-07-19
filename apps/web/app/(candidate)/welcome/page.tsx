@@ -82,7 +82,10 @@ export default function CandidateWelcomePage() {
               ))}
             </ul>
             <p className="mt-1.5 text-xs text-candidate-text-tertiary">
-              {current.sections.reduce((sum, section) => sum + section.questionCount, 0)} questions total
+              {(() => {
+                const total = current.sections.reduce((sum, section) => sum + section.questionCount, 0);
+                return `${total} question${total === 1 ? '' : 's'} total`;
+              })()}
             </p>
           </div>
         ) : null}

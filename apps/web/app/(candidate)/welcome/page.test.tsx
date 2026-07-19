@@ -330,4 +330,20 @@ describe('CandidateWelcomePage', () => {
     expect(screen.getByText('2 questions')).toBeInTheDocument();
     expect(screen.getByText('7 questions total')).toBeInTheDocument();
   });
+
+  it('uses singular "question total" when the breakdown totals exactly one question', async () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: {
+        exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 },
+        sections: [{ title: 'General Knowledge', questionCount: 1 }],
+      },
+      isLoading: false,
+    });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+
+    render(<CandidateWelcomePage />);
+    await skipPractice();
+
+    expect(screen.getByText('1 question total')).toBeInTheDocument();
+  });
 });
