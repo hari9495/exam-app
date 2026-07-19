@@ -133,7 +133,7 @@ describe('Session Enforcement & Anti-Cheat HTTP flow', () => {
     const startResponse = await request(runtimeHttp)
       .post('/api/v1/attempt/start')
       .set('Authorization', `Bearer ${firstAccessToken}`)
-      .send({ deviceFingerprint: 'fp-first-device' })
+      .send({ deviceFingerprint: 'fp-first-device', consent: true })
       .expect(201);
     const attemptId = startResponse.body.id;
 
@@ -162,7 +162,7 @@ describe('Session Enforcement & Anti-Cheat HTTP flow', () => {
   it('records client-reported proctoring events with server-computed severity, and rejects a client-submitted multi_login', async () => {
     const token = await inviteAndGetToken('bob@ci-anticheat.test', 'Bob');
     const accessToken = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
-    const attemptId = (await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).expect(201)).body.id;
+    const attemptId = (await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({ consent: true }).expect(201)).body.id;
 
     await request(runtimeHttp)
       .post('/api/v1/attempt/proctoring-event')
@@ -192,7 +192,7 @@ describe('Session Enforcement & Anti-Cheat HTTP flow', () => {
   it('force-submits an in-progress attempt and records an audit log entry', async () => {
     const token = await inviteAndGetToken('carol@ci-anticheat.test', 'Carol');
     const accessToken = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
-    const attemptId = (await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).expect(201)).body.id;
+    const attemptId = (await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({ consent: true }).expect(201)).body.id;
 
     const forceSubmitResponse = await request(adminHttp)
       .post(`/api/v1/attempts/${attemptId}/force-submit`)
@@ -218,7 +218,7 @@ describe('Session Enforcement & Anti-Cheat HTTP flow', () => {
     await request(runtimeHttp)
       .post('/api/v1/attempt/start')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({})
+      .send({ consent: true })
       .expect(201);
   });
 });

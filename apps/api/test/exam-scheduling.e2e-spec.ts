@@ -157,7 +157,7 @@ describe('Exam scheduling HTTP flow', () => {
     const startBeforeOpen = await request(runtimeHttp)
       .post('/api/v1/attempt/start')
       .set('Authorization', `Bearer ${aliceAccessToken}`)
-      .send({})
+      .send({ consent: true })
       .expect(400);
     expect(startBeforeOpen.body.message).toContain('not open yet');
 
@@ -184,7 +184,7 @@ describe('Exam scheduling HTTP flow', () => {
     const startResponse = await request(runtimeHttp)
       .post('/api/v1/attempt/start')
       .set('Authorization', `Bearer ${aliceAccessToken}`)
-      .send({})
+      .send({ consent: true })
       .expect(201);
     const attemptId = startResponse.body.id;
     expect(startResponse.body.status).toBe('in_progress');
@@ -206,7 +206,7 @@ describe('Exam scheduling HTTP flow', () => {
     const startAgainResponse = await request(runtimeHttp)
       .post('/api/v1/attempt/start')
       .set('Authorization', `Bearer ${aliceAccessToken}`)
-      .send({})
+      .send({ consent: true })
       .expect(201);
     expect(startAgainResponse.body.id).toBe(attemptId);
 

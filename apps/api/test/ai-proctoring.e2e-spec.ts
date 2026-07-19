@@ -132,7 +132,7 @@ describe('AI Proctoring flow', () => {
 
     const token = await inviteAndGetToken('alice@ci-ai-proctoring.test', 'Alice');
     const accessToken = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
-    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({}).expect(201);
+    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({ consent: true }).expect(201);
     await request(runtimeHttp)
       .post('/api/v1/attempt/proctoring-event')
       .set('Authorization', `Bearer ${accessToken}`)
@@ -151,7 +151,7 @@ describe('AI Proctoring flow', () => {
   it('records skipped_clean without ever calling the LLM for an attempt with no proctoring events', async () => {
     const token = await inviteAndGetToken('bob@ci-ai-proctoring.test', 'Bob');
     const accessToken = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
-    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({}).expect(201);
+    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({ consent: true }).expect(201);
     fakeClaudeProctoringClient.assessRisk.mockClear();
 
     await request(runtimeHttp).post('/api/v1/attempt/submit').set('Authorization', `Bearer ${accessToken}`).expect(201);
@@ -167,7 +167,7 @@ describe('AI Proctoring flow', () => {
 
     const token = await inviteAndGetToken('carol@ci-ai-proctoring.test', 'Carol');
     const accessToken = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
-    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({}).expect(201);
+    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({ consent: true }).expect(201);
     await request(runtimeHttp)
       .post('/api/v1/attempt/proctoring-event')
       .set('Authorization', `Bearer ${accessToken}`)

@@ -119,7 +119,7 @@ describe('Code Run Execution HTTP flow', () => {
     const token = inviteResponse.body.created[0].token;
 
     accessToken = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
-    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({}).expect(201);
+    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({ consent: true }).expect(201);
   });
 
   afterAll(async () => {

@@ -121,7 +121,7 @@ describe('Candidate data subject rights (GDPR export + erasure)', () => {
       await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token: inviteResponse.body.created[0].token }).expect(200)
     ).body.accessToken;
 
-    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${candidateAccessToken}`).expect(201);
+    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${candidateAccessToken}`).send({ consent: true }).expect(201);
     const correctOptionId = questionOptions.find((option) => option.text === '4')!.id;
     await request(runtimeHttp)
       .post('/api/v1/attempt/answer')

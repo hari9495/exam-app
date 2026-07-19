@@ -181,6 +181,7 @@ describe('Exam-Taking Runtime HTTP flow', () => {
     const startResponse = await request(runtimeHttp)
       .post('/api/v1/attempt/start')
       .set('Authorization', `Bearer ${candidateAccessToken}`)
+      .send({ consent: true })
       .expect(201);
     expect(startResponse.body.status).toBe('in_progress');
 
@@ -277,7 +278,7 @@ describe('Exam-Taking Runtime HTTP flow', () => {
     const bobAccess = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token: bobTokens.token }).expect(200)).body.accessToken;
     const carolAccess = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token: carolTokens.token }).expect(200)).body.accessToken;
 
-    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${bobAccess}`).expect(201);
+    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${bobAccess}`).send({ consent: true }).expect(201);
 
     const carolState = await request(runtimeHttp)
       .get('/api/v1/attempt/current')
@@ -293,6 +294,7 @@ describe('Exam-Taking Runtime HTTP flow', () => {
     const startResponse = await request(runtimeHttp)
       .post('/api/v1/attempt/start')
       .set('Authorization', `Bearer ${daveAccess}`)
+      .send({ consent: true })
       .expect(201);
 
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) =>
@@ -402,7 +404,7 @@ describe('Exam-Taking Runtime HTTP flow', () => {
     const frankRedeem = await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token: frankToken }).expect(200);
     const frankAccessToken = frankRedeem.body.accessToken;
 
-    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${frankAccessToken}`).expect(201);
+    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${frankAccessToken}`).send({ consent: true }).expect(201);
 
     const correctEasyOptionId = easyQuestion.body.options.find((o: { text: string }) => o.text === 'Tokyo').id;
     const wrongHardOptionId = hardQuestion.body.options.find((o: { text: string }) => o.text === 'O(n)').id;
@@ -491,7 +493,7 @@ describe('Exam-Taking Runtime HTTP flow', () => {
       await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token: graceInvite.body.created[0].token }).expect(200)
     ).body.accessToken;
 
-    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${graceAccessToken}`).expect(201);
+    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${graceAccessToken}`).send({ consent: true }).expect(201);
 
     const stateResponse = await request(runtimeHttp)
       .get('/api/v1/attempt/current')
@@ -555,7 +557,7 @@ describe('Exam-Taking Runtime HTTP flow', () => {
       await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token: henryInvite.body.created[0].token }).expect(200)
     ).body.accessToken;
 
-    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${henryAccessToken}`).expect(201);
+    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${henryAccessToken}`).send({ consent: true }).expect(201);
 
     const firstRead = await request(runtimeHttp).get('/api/v1/attempt/current').set('Authorization', `Bearer ${henryAccessToken}`).expect(200);
     const secondRead = await request(runtimeHttp).get('/api/v1/attempt/current').set('Authorization', `Bearer ${henryAccessToken}`).expect(200);
@@ -614,7 +616,7 @@ describe('Exam-Taking Runtime HTTP flow', () => {
       await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token: ivyInvite.body.created[0].token }).expect(200)
     ).body.accessToken;
 
-    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${ivyAccessToken}`).expect(201);
+    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${ivyAccessToken}`).send({ consent: true }).expect(201);
 
     const stateResponse = await request(runtimeHttp)
       .get('/api/v1/attempt/current')

@@ -127,7 +127,7 @@ describe('Exam code-grading HTTP flow', () => {
     const token = inviteResponse.body.created[0].token;
 
     const accessToken = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
-    const startResponse = await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({}).expect(201);
+    const startResponse = await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({ consent: true }).expect(201);
     const attemptId = startResponse.body.id;
 
     const submittedCode = 'function reverse(str) {\n  return str.split("").reverse().join("");\n}';
@@ -198,7 +198,7 @@ describe('Exam code-grading HTTP flow', () => {
     const token = inviteResponse.body.created[0].token;
 
     const accessToken = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
-    const startResponse = await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({}).expect(201);
+    const startResponse = await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({ consent: true }).expect(201);
     const attemptId = startResponse.body.id;
 
     // Candidate submits without ever answering the code question — no POST /attempt/answer call for it.

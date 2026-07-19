@@ -128,7 +128,7 @@ describe('AI Code Review flow', () => {
     const token = inviteResponse.body.created[0].token;
 
     const accessToken = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
-    const startResponse = await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({}).expect(201);
+    const startResponse = await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({ consent: true }).expect(201);
     const attemptId = startResponse.body.id;
 
     await request(runtimeHttp)

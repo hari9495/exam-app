@@ -127,7 +127,7 @@ describe('Exam Reporting HTTP flow', () => {
     }
 
     const aliceAccessToken = await inviteAndRedeem('alice@ci-reporting.test', 'Alice');
-    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${aliceAccessToken}`).expect(201);
+    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${aliceAccessToken}`).send({ consent: true }).expect(201);
     await request(runtimeHttp)
       .post('/api/v1/attempt/answer')
       .set('Authorization', `Bearer ${aliceAccessToken}`)
@@ -136,7 +136,7 @@ describe('Exam Reporting HTTP flow', () => {
     await request(runtimeHttp).post('/api/v1/attempt/submit').set('Authorization', `Bearer ${aliceAccessToken}`).expect(201);
 
     const bobAccessToken = await inviteAndRedeem('bob@ci-reporting.test', 'Bob');
-    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${bobAccessToken}`).expect(201);
+    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${bobAccessToken}`).send({ consent: true }).expect(201);
     await request(runtimeHttp)
       .post('/api/v1/attempt/answer')
       .set('Authorization', `Bearer ${bobAccessToken}`)
@@ -145,7 +145,7 @@ describe('Exam Reporting HTTP flow', () => {
     await request(runtimeHttp).post('/api/v1/attempt/submit').set('Authorization', `Bearer ${bobAccessToken}`).expect(201);
 
     const carolAccessToken = await inviteAndRedeem('carol@ci-reporting.test', 'Carol');
-    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${carolAccessToken}`).expect(201);
+    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${carolAccessToken}`).send({ consent: true }).expect(201);
 
     await inviteAndRedeem('dave@ci-reporting.test', 'Dave');
   });

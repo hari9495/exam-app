@@ -135,7 +135,7 @@ describe('Live Monitoring WebSocket flow', () => {
     const startResponse = await request(runtimeHttp)
       .post('/api/v1/attempt/start')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({})
+      .send({ consent: true })
       .expect(201);
     const attemptStatus = await attemptStatusPromise;
     expect(attemptStatus).toEqual({ attemptId: startResponse.body.id, candidateId: expect.any(String), status: 'in_progress' });
@@ -155,7 +155,7 @@ describe('Live Monitoring WebSocket flow', () => {
   it('delivers a recruiter message to the candidate on their next poll, and notifies the room', async () => {
     const token = await inviteAndGetToken('bob@ci-monitoring.test', 'Bob');
     const accessToken = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
-    const attemptId = (await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({}).expect(201)).body.id;
+    const attemptId = (await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({ consent: true }).expect(201)).body.id;
 
     const socket = connectRecruiterSocket();
     await waitForEvent(socket, 'connect');
@@ -189,7 +189,7 @@ describe('Live Monitoring WebSocket flow', () => {
   it('force-submits an attempt, pushing attempt:status to the room exactly once', async () => {
     const token = await inviteAndGetToken('carol@ci-monitoring.test', 'Carol');
     const accessToken = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
-    const attemptId = (await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({}).expect(201)).body.id;
+    const attemptId = (await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({ consent: true }).expect(201)).body.id;
 
     const socket = connectRecruiterSocket();
     await waitForEvent(socket, 'connect');
@@ -265,7 +265,7 @@ describe('Live Monitoring WebSocket flow', () => {
     expect(snapshot.find((entry: any) => entry.candidateName === 'Dana')).toBeUndefined();
 
     const accessToken = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
-    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({}).expect(201);
+    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({ consent: true }).expect(201);
 
     const current = await request(runtimeHttp).get('/api/v1/attempt/current').set('Authorization', `Bearer ${accessToken}`).expect(200);
     const questionId = current.body.sections[0].questions[0].id;

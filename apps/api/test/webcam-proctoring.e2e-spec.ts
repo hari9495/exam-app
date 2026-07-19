@@ -105,7 +105,7 @@ describe('Webcam proctoring pause/block/unblock flow', () => {
   it('pauses on strikes 1-2 with self-resume, blocks on strike 3, and only a recruiter can unblock', async () => {
     const token = await inviteAndGetToken('carol@ci-webcam.test', 'Carol');
     const accessToken = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
-    const attemptId = (await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({}).expect(201)).body.id;
+    const attemptId = (await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({ consent: true }).expect(201)).body.id;
 
     // Strike 1: pauses.
     const strike1 = await request(runtimeHttp)

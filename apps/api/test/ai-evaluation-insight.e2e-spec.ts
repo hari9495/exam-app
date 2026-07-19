@@ -135,7 +135,7 @@ describe('AI Evaluation Insight flow', () => {
     const token = inviteResponse.body.created[0].token;
 
     const accessToken = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
-    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({}).expect(201);
+    await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({ consent: true }).expect(201);
     // Answer the single true/false question correctly so the attempt has a non-empty
     // topicBreakdown to assert on — the settlement flow only scores answered questions.
     await request(runtimeHttp)
