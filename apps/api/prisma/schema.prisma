@@ -20,27 +20,49 @@ model Plan {
 }
 
 model Organization {
-  id                    String     @id @default(uuid()) @db.UniqueIdentifier
-  name                  String
-  slug                  String     @unique
-  region                String     @default("us")
-  status                String     @default("active")
-  logoPath              String?    @map("logo_path")
-  primaryColor          String?    @map("primary_color")
-  accentColor           String?    @map("accent_color")
-  smtpHost              String?    @map("smtp_host")
-  smtpPort              Int?       @map("smtp_port")
-  smtpUser              String?    @map("smtp_user")
-  smtpPasswordEncrypted String?    @map("smtp_password_encrypted")
-  emailFromAddress      String?    @map("email_from_address")
-  aiApiKeyEncrypted     String?    @map("ai_api_key_encrypted")
-  planId                String     @map("plan_id") @db.UniqueIdentifier
-  plan                  Plan       @relation(fields: [planId], references: [id])
-  createdAt             DateTime   @default(now()) @map("created_at")
-  users                 User[]
-  auditLogs             AuditLog[]
+  id                      String              @id @default(uuid()) @db.UniqueIdentifier
+  name                    String
+  slug                    String              @unique
+  region                  String              @default("us")
+  status                  String              @default("active")
+  logoPath                String?             @map("logo_path")
+  primaryColor            String?             @map("primary_color")
+  accentColor             String?             @map("accent_color")
+  smtpHost                String?             @map("smtp_host")
+  smtpPort                Int?                @map("smtp_port")
+  smtpUser                String?             @map("smtp_user")
+  smtpPasswordEncrypted   String?             @map("smtp_password_encrypted")
+  emailFromAddress        String?             @map("email_from_address")
+  aiApiKeyEncrypted       String?             @map("ai_api_key_encrypted")
+  apiKeyHash              String?             @map("api_key_hash")
+  apiKeyPrefix            String?             @map("api_key_prefix")
+  apiKeyCreatedAt         DateTime?           @map("api_key_created_at")
+  webhookUrl              String?             @map("webhook_url")
+  webhookSecretEncrypted  String?             @map("webhook_secret_encrypted")
+  planId                  String              @map("plan_id") @db.UniqueIdentifier
+  plan                    Plan                @relation(fields: [planId], references: [id])
+  createdAt               DateTime            @default(now()) @map("created_at")
+  users                   User[]
+  auditLogs               AuditLog[]
+  webhookDeliveries       WebhookDelivery[]
 
   @@map("organizations")
+}
+
+model WebhookDelivery {
+  id             String       @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String       @map("organization_id") @db.UniqueIdentifier
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  eventType      String       @map("event_type")
+  payloadJson    String       @map("payload_json") @db.NVarChar(Max)
+  status         String       @default("pending")
+  httpStatusCode Int?         @map("http_status_code")
+  attemptCount   Int          @default(0) @map("attempt_count")
+  lastAttemptAt  DateTime?    @map("last_attempt_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@index([organizationId, createdAt])
+  @@map("webhook_deliveries")
 }
 
 model User {
