@@ -11,6 +11,7 @@ import { TenantContext } from '@exam-platform/shared';
 import { InvitationsService } from './invitations.service';
 import { CreateInvitationsDto } from './dto/create-invitations.dto';
 import { BulkUploadInviteDto } from './dto/bulk-upload-invite.dto';
+import { UpdateAccommodationDto } from './dto/update-accommodation.dto';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import { generateBulkInviteTemplate } from '../candidates/bulk-invite-template';
 
@@ -58,6 +59,12 @@ export class InvitationsController {
   @RequirePermissions('candidate:manage')
   resend(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.invitationsService.resend(tenant, id);
+  }
+
+  @Post('invitations/:id/accommodation')
+  @RequirePermissions('candidate:manage')
+  updateAccommodation(@CurrentTenant() tenant: TenantContext, @Param('id') id: string, @Body() dto: UpdateAccommodationDto) {
+    return this.invitationsService.updateAccommodation(tenant, id, dto.extraTimePercent);
   }
 
   @Post('invitations/:id/revoke')

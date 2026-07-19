@@ -211,7 +211,7 @@ export class InvitationsService {
     };
   }
 
-  async list(context: TenantContext, examId: string): Promise<(Omit<Invitation, 'token'> & { candidate: Candidate })[]> {
+  async list(context: TenantContext, examId: string): Promise<(Omit<Invitation, 'token'> & { candidate: Candidate; attempt: { id: string } | null })[]> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({ where: { id: examId, organizationId: context.organizationId as string } });
       if (!exam) {
@@ -224,11 +224,13 @@ export class InvitationsService {
           examId: true,
           candidateId: true,
           status: true,
+          extraTimePercent: true,
           invitedAt: true,
           expiresAt: true,
           revokedAt: true,
           activeSessionFamilyId: true,
           candidate: true,
+          attempt: { select: { id: true } },
         },
         orderBy: [{ invitedAt: 'desc' }, { id: 'desc' }],
       });
@@ -258,6 +260,22 @@ export class InvitationsService {
       this.logger.error(`Failed to dispatch invitation email for invitation ${invitation.id}`, error as Error),
     );
     return invitation;
+  }
+
+  async updateAccommodation(context: TenantContext, invitationId: string, extraTimePercent: number): Promise<Invitation> {
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const existing = await tx.invitation.findFirst({
+        where: { id: invitationId, exam: { organizationId: context.organizationId as string } },
+        include: { attempt: true },
+      });
+      if (!existing) {
+        throw new NotFoundException(`Invitation ${invitationId} not found`);
+      }
+      if (existing.attempt) {
+        throw new BadRequestException(`Invitation ${invitationId} already has an attempt — extra time can no longer be changed`);
+      }
+      return tx.invitation.update({ where: { id: invitationId }, data: { extraTimePercent } });
+    });
   }
 
   async revoke(context: TenantContext, actorUserId: string, invitationId: string): Promise<Invitation> {

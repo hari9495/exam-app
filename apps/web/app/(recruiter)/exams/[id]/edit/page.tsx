@@ -7,6 +7,7 @@ import { ExamSectionsPanel } from '../../../../../components/ExamSectionsPanel';
 import { LiveMonitoringPanel } from '../../../../../components/LiveMonitoringPanel';
 import { GradingQueuePanel } from '../../../../../components/GradingQueuePanel';
 import { LeaderboardPanel } from '../../../../../components/LeaderboardPanel';
+import { CandidatesPanel } from '../../../../../components/CandidatesPanel';
 import { useExam, useUpdateExam, usePublishExam } from '../../../../../lib/hooks/useExams';
 import { Tabs, TabsList, TabsTrigger, TabsContent, Button, useToast } from '../../../../../components/ui';
 
@@ -50,6 +51,7 @@ export default function EditExamPage() {
         <TabsList>
           <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="sections">Sections &amp; Questions</TabsTrigger>
+          <TabsTrigger value="candidates">Candidates</TabsTrigger>
           <TabsTrigger value="live">Live</TabsTrigger>
           <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
           <TabsTrigger value="grading">Grading</TabsTrigger>
@@ -70,6 +72,9 @@ export default function EditExamPage() {
         </TabsContent>
         <TabsContent value="sections">
           <ExamSectionsPanel examId={exam.id} />
+        </TabsContent>
+        <TabsContent value="candidates">
+          <CandidatesPanel examId={exam.id} />
         </TabsContent>
         <TabsContent value="live">
           <LiveMonitoringPanel examId={exam.id} />

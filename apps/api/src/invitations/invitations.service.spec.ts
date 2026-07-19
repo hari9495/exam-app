@@ -216,23 +216,30 @@ describe('InvitationsService', () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
-  it('lists invitations for an exam', async () => {
+  it('lists invitations for an exam, including extraTimePercent and whether an attempt exists', async () => {
     const tx = {
       exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
-      invitation: { findMany: jest.fn().mockResolvedValue([{ id: 'inv-1' }]) },
+      invitation: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', extraTimePercent: 50, attempt: { id: 'attempt-1' }, candidate: { id: 'cand-1' } },
+          { id: 'inv-2', examId: 'exam-1', candidateId: 'cand-2', status: 'invited', extraTimePercent: 0, attempt: null, candidate: { id: 'cand-2' } },
+        ]),
+      },
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
     const result = await service.list(context, 'exam-1');
 
-    expect(result).toHaveLength(1);
+    expect(result).toHaveLength(2);
     expect(tx.invitation.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        select: expect.objectContaining({ candidate: true }),
+        select: expect.objectContaining({ candidate: true, extraTimePercent: true, attempt: { select: { id: true } } }),
       }),
     );
     const selectArg = tx.invitation.findMany.mock.calls[0][0].select;
     expect(selectArg).not.toHaveProperty('token');
+    expect(result[0]).toMatchObject({ extraTimePercent: 50, attempt: { id: 'attempt-1' } });
+    expect(result[1]).toMatchObject({ extraTimePercent: 0, attempt: null });
   });
 
   it('throws NotFoundException when listing invitations for an exam that does not exist', async () => {
@@ -365,6 +372,43 @@ describe('InvitationsService', () => {
 
     await expect(service.revoke(context, 'user-1', 'missing-inv')).rejects.toThrow(NotFoundException);
     expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  describe('updateAccommodation', () => {
+    it('updates extraTimePercent when the invitation has no attempt yet', async () => {
+      const tx = {
+        invitation: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'inv-1', exam: { organizationId: 'org-1' }, attempt: null }),
+          update: jest.fn().mockResolvedValue({ id: 'inv-1', extraTimePercent: 50 }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.updateAccommodation(context, 'inv-1', 50);
+
+      expect(tx.invitation.update).toHaveBeenCalledWith({ where: { id: 'inv-1' }, data: { extraTimePercent: 50 } });
+      expect(result.extraTimePercent).toBe(50);
+    });
+
+    it('throws BadRequestException when the invitation already has an attempt', async () => {
+      const tx = {
+        invitation: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'inv-1', exam: { organizationId: 'org-1' }, attempt: { id: 'attempt-1' } }),
+          update: jest.fn(),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.updateAccommodation(context, 'inv-1', 50)).rejects.toThrow(BadRequestException);
+      expect(tx.invitation.update).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when the invitation does not exist in this organization', async () => {
+      const tx = { invitation: { findFirst: jest.fn().mockResolvedValue(null), update: jest.fn() } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.updateAccommodation(context, 'missing', 50)).rejects.toThrow(NotFoundException);
+    });
   });
 
   describe('bulkUploadAndInvite', () => {

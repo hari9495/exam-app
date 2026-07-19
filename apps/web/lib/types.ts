@@ -128,6 +128,8 @@ export interface Invitation {
   examId: string;
   candidateId: string;
   status: InvitationStatus;
+  extraTimePercent: number;
+  attempt: { id: string } | null;
   invitedAt: string;
   expiresAt: string;
   revokedAt: string | null;
