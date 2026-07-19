@@ -14,6 +14,12 @@ jest.mock('../../../components/ui', () => {
   const actual = jest.requireActual('../../../components/ui');
   return { ...actual, useToast: () => ({ toast: mockToast }) };
 });
+jest.mock('@monaco-editor/react', () => ({
+  __esModule: true,
+  default: ({ defaultValue }: { defaultValue?: string }) => (
+    <textarea aria-label="code-editor" defaultValue={defaultValue} />
+  ),
+}));
 
 function mockCameraGranted() {
   const getUserMedia = jest.fn().mockResolvedValue({ getTracks: () => [{ stop: jest.fn() }] });
@@ -22,6 +28,10 @@ function mockCameraGranted() {
 
 async function checkConsent() {
   await userEvent.click(screen.getByRole('checkbox', { name: /i understand and consent to monitoring/i }));
+}
+
+async function skipPractice() {
+  await userEvent.click(screen.getByRole('button', { name: /skip practice/i }));
 }
 
 describe('CandidateWelcomePage', () => {
@@ -34,14 +44,15 @@ describe('CandidateWelcomePage', () => {
     (useCandidateAuth as jest.Mock).mockReturnValue({ accessToken: 'token-1', isLoading: false });
   });
 
-  it('shows exam title, duration, instructions, and a monitoring disclosure before start', () => {
+  it('shows exam title, duration, instructions, and a monitoring disclosure before start', async () => {
     (useAttemptQuery as jest.Mock).mockReturnValue({
-      data: { exam: { title: 'Backend Screening', instructions: 'Answer all questions.', durationMinutes: 45 } },
+      data: { exam: { title: 'Backend Screening', instructions: 'Answer all questions.', durationMinutes: 45 }, sections: [] },
       isLoading: false,
     });
     (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
 
     render(<CandidateWelcomePage />);
+    await skipPractice();
 
     expect(screen.getByText('Backend Screening')).toBeInTheDocument();
     expect(screen.getByText(/45 minutes/)).toBeInTheDocument();
@@ -52,13 +63,14 @@ describe('CandidateWelcomePage', () => {
   it('starts the attempt and navigates to /exam', async () => {
     const mutateAsync = jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' });
     (useAttemptQuery as jest.Mock).mockReturnValue({
-      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 } },
+      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 }, sections: [] },
       isLoading: false,
     });
     (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync, isPending: false });
     mockCameraGranted();
 
     render(<CandidateWelcomePage />);
+    await skipPractice();
     await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
     await checkConsent();
     await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
@@ -70,13 +82,14 @@ describe('CandidateWelcomePage', () => {
   it('shows a toast and does not navigate when starting the attempt fails', async () => {
     const mutateAsync = jest.fn().mockRejectedValue(new Error('network error'));
     (useAttemptQuery as jest.Mock).mockReturnValue({
-      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 } },
+      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 }, sections: [] },
       isLoading: false,
     });
     (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync, isPending: false });
     mockCameraGranted();
 
     render(<CandidateWelcomePage />);
+    await skipPractice();
     await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
     await checkConsent();
     await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
@@ -130,7 +143,7 @@ describe('CandidateWelcomePage', () => {
     expect(push).toHaveBeenCalledWith('/session-ended');
   });
 
-  it('shows a waiting message with the open time when schedulingWindowState is not_open', () => {
+  it('shows a waiting message with the open time when schedulingWindowState is not_open', async () => {
     (useAttemptQuery as jest.Mock).mockReturnValue({
       data: {
         exam: {
@@ -138,18 +151,20 @@ describe('CandidateWelcomePage', () => {
           schedulingEnabled: true, availabilityWindowStart: '2026-07-20T09:00:00.000Z', availabilityWindowEnd: '2026-07-27T18:00:00.000Z',
         },
         schedulingWindowState: 'not_open',
+        sections: [],
       },
       isLoading: false, isError: false,
     });
     (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
 
     render(<CandidateWelcomePage />);
+    await skipPractice();
 
     expect(screen.getByText(/opens on/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Start exam' })).not.toBeInTheDocument();
   });
 
-  it('shows a closed message when schedulingWindowState is closed', () => {
+  it('shows a closed message when schedulingWindowState is closed', async () => {
     (useAttemptQuery as jest.Mock).mockReturnValue({
       data: {
         exam: {
@@ -157,12 +172,14 @@ describe('CandidateWelcomePage', () => {
           schedulingEnabled: true, availabilityWindowStart: '2026-07-01T09:00:00.000Z', availabilityWindowEnd: '2026-07-02T18:00:00.000Z',
         },
         schedulingWindowState: 'closed',
+        sections: [],
       },
       isLoading: false, isError: false,
     });
     (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
 
     render(<CandidateWelcomePage />);
+    await skipPractice();
 
     expect(screen.getByText(/availability window has closed/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Start exam' })).not.toBeInTheDocument();
@@ -176,6 +193,7 @@ describe('CandidateWelcomePage', () => {
           schedulingEnabled: true, availabilityWindowStart: '2026-07-01T09:00:00.000Z', availabilityWindowEnd: '2026-12-31T18:00:00.000Z',
         },
         schedulingWindowState: 'open',
+        sections: [],
       },
       isLoading: false, isError: false,
     });
@@ -183,6 +201,7 @@ describe('CandidateWelcomePage', () => {
     mockCameraGranted();
 
     render(<CandidateWelcomePage />);
+    await skipPractice();
     await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
 
     expect(await screen.findByRole('button', { name: 'Start exam' })).toBeInTheDocument();
@@ -193,6 +212,7 @@ describe('CandidateWelcomePage', () => {
       data: {
         exam: { title: 'Normal Exam', instructions: null, durationMinutes: 60, schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null },
         schedulingWindowState: null,
+        sections: [],
       },
       isLoading: false, isError: false,
     });
@@ -200,6 +220,7 @@ describe('CandidateWelcomePage', () => {
     mockCameraGranted();
 
     render(<CandidateWelcomePage />);
+    await skipPractice();
     await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
 
     expect(await screen.findByRole('button', { name: 'Start exam' })).toBeInTheDocument();
@@ -209,12 +230,13 @@ describe('CandidateWelcomePage', () => {
     const getUserMedia = jest.fn().mockResolvedValue({ getTracks: () => [{ stop: jest.fn() }] });
     Object.defineProperty(global.navigator, 'mediaDevices', { value: { getUserMedia }, configurable: true });
     (useAttemptQuery as jest.Mock).mockReturnValue({
-      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 } },
+      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 }, sections: [] },
       isLoading: false,
     });
     (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
 
     render(<CandidateWelcomePage />);
+    await skipPractice();
 
     expect(screen.queryByRole('button', { name: /start exam/i })).not.toBeInTheDocument();
     const enableButton = screen.getByRole('button', { name: /enable camera/i });
@@ -228,12 +250,13 @@ describe('CandidateWelcomePage', () => {
     const getUserMedia = jest.fn().mockRejectedValue(new Error('denied'));
     Object.defineProperty(global.navigator, 'mediaDevices', { value: { getUserMedia }, configurable: true });
     (useAttemptQuery as jest.Mock).mockReturnValue({
-      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 } },
+      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 }, sections: [] },
       isLoading: false,
     });
     (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
 
     render(<CandidateWelcomePage />);
+    await skipPractice();
     await userEvent.click(screen.getByRole('button', { name: /enable camera/i }));
 
     expect(await screen.findByText('Camera access blocked')).toBeInTheDocument();
@@ -244,12 +267,13 @@ describe('CandidateWelcomePage', () => {
   it('shows Start exam once the camera is granted', async () => {
     mockCameraGranted();
     (useAttemptQuery as jest.Mock).mockReturnValue({
-      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 } },
+      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 }, sections: [] },
       isLoading: false,
     });
     (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
 
     render(<CandidateWelcomePage />);
+    await skipPractice();
     await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
 
     expect(await screen.findByText('Camera connected')).toBeInTheDocument();
@@ -259,12 +283,13 @@ describe('CandidateWelcomePage', () => {
   it('keeps Start exam disabled when camera is granted but consent is unchecked', async () => {
     mockCameraGranted();
     (useAttemptQuery as jest.Mock).mockReturnValue({
-      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 } },
+      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 }, sections: [] },
       isLoading: false,
     });
     (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
 
     render(<CandidateWelcomePage />);
+    await skipPractice();
     await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
 
     expect(await screen.findByRole('button', { name: 'Start exam' })).toBeDisabled();
@@ -273,15 +298,36 @@ describe('CandidateWelcomePage', () => {
   it('enables Start exam once both camera is granted and consent is checked', async () => {
     mockCameraGranted();
     (useAttemptQuery as jest.Mock).mockReturnValue({
-      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 } },
+      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 }, sections: [] },
       isLoading: false,
     });
     (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
 
     render(<CandidateWelcomePage />);
+    await skipPractice();
     await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
     await checkConsent();
 
     expect(await screen.findByRole('button', { name: 'Start exam' })).toBeEnabled();
+  });
+
+  it('shows a section/question-count breakdown when the preview includes sections', async () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: {
+        exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 },
+        sections: [{ title: 'Aptitude', questionCount: 5 }, { title: 'Coding', questionCount: 2 }],
+      },
+      isLoading: false,
+    });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+
+    render(<CandidateWelcomePage />);
+    await skipPractice();
+
+    expect(screen.getByText('Aptitude')).toBeInTheDocument();
+    expect(screen.getByText('5 questions')).toBeInTheDocument();
+    expect(screen.getByText('Coding')).toBeInTheDocument();
+    expect(screen.getByText('2 questions')).toBeInTheDocument();
+    expect(screen.getByText('7 questions total')).toBeInTheDocument();
   });
 });

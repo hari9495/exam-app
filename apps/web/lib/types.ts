@@ -219,6 +219,11 @@ export interface AttemptMessageSummary {
   sentAt: string;
 }
 
+export interface AttemptSectionSummary {
+  title: string;
+  questionCount: number;
+}
+
 export interface AttemptPreview {
   exam: {
     title: string;
@@ -229,6 +234,7 @@ export interface AttemptPreview {
     availabilityWindowEnd: string | null;
   };
   schedulingWindowState: 'not_open' | 'open' | 'closed' | null;
+  sections: AttemptSectionSummary[];
 }
 
 export interface AttemptState {

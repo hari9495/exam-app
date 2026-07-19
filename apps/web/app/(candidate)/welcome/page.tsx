@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CandidateButton } from '../components/CandidateButton';
 import { CameraPreview } from '../components/CameraPreview';
+import { PracticeStep } from '../components/PracticeStep';
 import { useAttemptQuery, useStartAttempt } from '../../../lib/hooks/useAttempt';
 import { isAttemptStarted } from '../../../lib/types';
 import { useToast } from '../../../components/ui';
@@ -17,6 +18,7 @@ export default function CandidateWelcomePage() {
   const { toast } = useToast();
   const [cameraStatus, setCameraStatus] = useState<'idle' | 'checking' | 'granted' | 'denied'>('idle');
   const [consentChecked, setConsentChecked] = useState(false);
+  const [step, setStep] = useState<'practice' | 'consent'>('practice');
 
   useEffect(() => {
     if (!authLoading && !accessToken) {
@@ -32,6 +34,14 @@ export default function CandidateWelcomePage() {
 
   if (isLoading || isError || !current || isAttemptStarted(current)) {
     return <p className="p-8 text-sm text-candidate-text-tertiary">Loading…</p>;
+  }
+
+  if (step === 'practice') {
+    return (
+      <div className="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-6 p-8">
+        <PracticeStep onDone={() => setStep('consent')} />
+      </div>
+    );
   }
 
   async function handleEnableCamera() {
@@ -60,6 +70,22 @@ export default function CandidateWelcomePage() {
         <p className="mb-1 text-xs font-bold uppercase tracking-wide text-candidate-primary">You&apos;re invited to</p>
         <h1 className="mb-3 text-xl font-bold text-candidate-text">{current.exam.title}</h1>
         <p className="mb-4 text-sm text-candidate-text-secondary">Duration: {current.exam.durationMinutes} minutes</p>
+        {current.sections.length > 0 ? (
+          <div className="mb-4 rounded-md border border-candidate-border p-3">
+            <h2 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-candidate-text-secondary">What&apos;s in this exam</h2>
+            <ul className="text-sm text-candidate-text-secondary">
+              {current.sections.map((section) => (
+                <li key={section.title} className="flex justify-between py-0.5">
+                  <span>{section.title}</span>
+                  <span>{section.questionCount} question{section.questionCount === 1 ? '' : 's'}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1.5 text-xs text-candidate-text-tertiary">
+              {current.sections.reduce((sum, section) => sum + section.questionCount, 0)} questions total
+            </p>
+          </div>
+        ) : null}
 
         {current.schedulingWindowState === 'not_open' ? (
           <div className="rounded-md border border-candidate-border bg-candidate-bg p-3 text-sm text-candidate-text-secondary">
