@@ -24,6 +24,18 @@ describe('CandidatesPanel', () => {
     expect(mutate).toHaveBeenCalledWith({ invitationId: 'inv-1', extraTimePercent: 50 });
   });
 
+  it('shows a visible % unit next to the editable extra-time input', () => {
+    (useExamInvitations as jest.Mock).mockReturnValue({
+      data: [{ id: 'inv-1', extraTimePercent: 0, attempt: null, candidate: { id: 'cand-1', name: 'Alice', email: 'alice@example.com' } }],
+      isLoading: false,
+    });
+    (useUpdateAccommodation as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
+
+    render(<CandidatesPanel examId="exam-1" />);
+
+    expect(screen.getByText('%')).toBeInTheDocument();
+  });
+
   it('shows the extra time as read-only once an attempt exists', () => {
     (useExamInvitations as jest.Mock).mockReturnValue({
       data: [{ id: 'inv-1', extraTimePercent: 50, attempt: { id: 'attempt-1' }, candidate: { id: 'cand-1', name: 'Bob', email: 'bob@example.com' } }],

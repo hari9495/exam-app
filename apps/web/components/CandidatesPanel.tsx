@@ -23,6 +23,7 @@ function AccommodationCell({ invitation, onSave, isPending }: { invitation: Invi
         aria-label={`Extra time (%) for ${invitation.candidate.name}`}
         className="w-16 rounded border border-recruiter-border px-2 py-1 text-sm"
       />
+      <span className="text-sm text-gray-500">%</span>
       <button
         type="button"
         disabled={isPending}
@@ -45,7 +46,7 @@ export function CandidatesPanel({ examId }: { examId: string }) {
     { key: 'status', header: 'Status', render: (row) => row.status },
     {
       key: 'extraTime',
-      header: 'Extra time',
+      header: 'Extra time (%)',
       render: (row) => (
         <AccommodationCell
           invitation={row}
