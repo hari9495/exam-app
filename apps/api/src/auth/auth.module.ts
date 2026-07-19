@@ -4,12 +4,21 @@ import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
+import { SamlStrategy } from './saml.strategy';
+import { SamlCacheProvider } from './saml-cache.provider';
 import { AuditModule } from '@exam-platform/shared';
 import { EmailModule } from '../email/email.module';
+import { REDIS_CONNECTION, createRedisConnection } from '../jobs/redis-connection';
 
 @Module({
   imports: [PassportModule, JwtModule.register({}), AuditModule, EmailModule],
-  providers: [AuthService, JwtStrategy],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    SamlStrategy,
+    SamlCacheProvider,
+    { provide: REDIS_CONNECTION, useFactory: createRedisConnection },
+  ],
   controllers: [AuthController],
   exports: [AuthService],
 })
