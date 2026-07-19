@@ -12,7 +12,7 @@ export function ResultSummary({ feedback }: { feedback: AttemptFeedback }) {
       {feedback.passFail ? (
         <p className="font-semibold text-candidate-text">{feedback.passFail === 'pass' ? 'Pass' : 'Fail'}</p>
       ) : null}
-      {feedback.percentage !== null ? <p>{feedback.percentage}%</p> : null}
+      {feedback.percentage !== null ? <p>{feedback.percentage.toFixed(1)}%</p> : null}
       {feedback.sections ? (
         <ul className="mt-1 flex flex-col gap-1">
           {feedback.sections.map((section) => (
