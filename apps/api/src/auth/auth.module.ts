@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
+import { SamlController } from './saml.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { SamlStrategy } from './saml.strategy';
 import { SamlCacheProvider } from './saml-cache.provider';
@@ -19,7 +20,7 @@ import { REDIS_CONNECTION, createRedisConnection } from '../jobs/redis-connectio
     SamlCacheProvider,
     { provide: REDIS_CONNECTION, useFactory: createRedisConnection },
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, SamlController],
   exports: [AuthService],
 })
 export class AuthModule {}
