@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { SamlController } from './saml.controller';
 import { PrismaService } from '@exam-platform/shared';
+import { SamlStrategy } from './saml.strategy';
 import { randomBytes, createHash } from 'crypto';
 
 jest.mock('crypto', () => ({
@@ -11,12 +12,17 @@ jest.mock('crypto', () => ({
 describe('SamlController', () => {
   let controller: SamlController;
   let prisma: { organization: { findUnique: jest.Mock }; ssoLoginCode: { create: jest.Mock } };
+  let samlStrategy: { generateMetadata: jest.Mock };
 
   beforeEach(async () => {
     prisma = { organization: { findUnique: jest.fn() }, ssoLoginCode: { create: jest.fn() } };
+    samlStrategy = { generateMetadata: jest.fn() };
     const moduleRef = await Test.createTestingModule({
       controllers: [SamlController],
-      providers: [{ provide: PrismaService, useValue: prisma }],
+      providers: [
+        { provide: PrismaService, useValue: prisma },
+        { provide: SamlStrategy, useValue: samlStrategy },
+      ],
     }).compile();
     controller = moduleRef.get(SamlController);
   });
@@ -94,6 +100,30 @@ describe('SamlController', () => {
       ).resolves.toBeUndefined();
 
       expect(res.redirect).toHaveBeenCalledWith(expect.stringContaining('ssoError=invalid_response'));
+    });
+  });
+
+  describe('metadata', () => {
+    it('returns the generated SP metadata XML with an XML content type', () => {
+      samlStrategy.generateMetadata.mockImplementation((_req, callback) => callback(null, '<EntityDescriptor />'));
+      const req = { params: { organizationSlug: 'acme' } };
+      const res = { set: jest.fn(), send: jest.fn(), status: jest.fn().mockReturnThis() };
+
+      controller.metadata(req as any, res as any);
+
+      expect(res.set).toHaveBeenCalledWith('Content-Type', 'application/xml');
+      expect(res.send).toHaveBeenCalledWith('<EntityDescriptor />');
+    });
+
+    it('responds 400 when metadata generation fails', () => {
+      samlStrategy.generateMetadata.mockImplementation((_req, callback) => callback(new Error('boom')));
+      const req = { params: { organizationSlug: 'acme' } };
+      const res = { set: jest.fn(), send: jest.fn(), status: jest.fn().mockReturnThis() };
+
+      controller.metadata(req as any, res as any);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.send).toHaveBeenCalledWith('Could not generate metadata for this organization');
     });
   });
 });

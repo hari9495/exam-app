@@ -1,7 +1,17 @@
 import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { MultiSamlStrategy, Profile, ValidateInResponseTo, VerifyWithRequest } from '@node-saml/passport-saml';
 import type { PassportSamlConfig } from '@node-saml/passport-saml';
-import * as passport from 'passport';
+// `import * as passport` compiles (via TS's esModuleInterop `__importStar`
+// helper) to a shallow copy of `passport`'s OWN enumerable properties only.
+// The `passport` package exports a singleton `new Passport()` instance whose
+// `use`/`authenticate`/etc. methods live on the prototype, not as own
+// properties -- so a namespace import silently loses them, and
+// `passport.use(...)` below would be `undefined` at runtime. Import-equals
+// compiles straight to `const passport = require('passport')` with no
+// wrapper, keeping the real object (and, since @types/passport uses
+// `export =`, still gives the merged namespace type used for `passport
+// .Strategy` below).
+import passport = require('passport');
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { SamlCacheProvider } from './saml-cache.provider';
 
@@ -55,6 +65,13 @@ function getSlugParam(req: SamlRequestLike): string {
 // startup-time side effects (see StaticUploadsModule, SetupService).
 @Injectable()
 export class SamlStrategy implements OnModuleInit {
+  // Populated by onModuleInit(). NestJS calls lifecycle hooks in
+  // module-registration order before any request can reach a controller, so
+  // this is always set by the time a real request needs it; the undefined
+  // case only matters for the theoretical pre-init edge case handled in
+  // generateMetadata() below.
+  private passportStrategy: MultiSamlStrategy | undefined;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
@@ -93,6 +110,29 @@ export class SamlStrategy implements OnModuleInit {
     // type -- a duplicate-@types artifact of this monorepo's install layout, not
     // a real incompatibility. Passport itself is duck-typed at runtime.
     passport.use('saml', strategy as unknown as passport.Strategy);
+    this.passportStrategy = strategy;
+  }
+
+  // SP metadata generation lives on the real MultiSamlStrategy instance built
+  // in onModuleInit(), not on this class (see the file-level comment on why
+  // SamlStrategy can't extend MultiSamlStrategy itself). This delegates to it.
+  //
+  // `req` only needs to carry `params.organizationSlug` here -- see
+  // getSlugParam() -- so SamlRequestLike is enough and this stays clear of the
+  // duplicate @types/express mismatch described above; the cast on the call
+  // below bridges to the library's own (structurally identical) Request type,
+  // the same workaround `passport.use` above already relies on.
+  generateMetadata(req: SamlRequestLike, callback: (err: Error | null, metadataXml?: string) => void): void {
+    if (!this.passportStrategy) {
+      callback(new Error('SAML strategy has not finished initializing'));
+      return;
+    }
+    this.passportStrategy.generateServiceProviderMetadata(
+      req as unknown as Parameters<MultiSamlStrategy['generateServiceProviderMetadata']>[0],
+      null,
+      null,
+      callback,
+    );
   }
 
   async resolveOrgSamlConfig(organizationSlug: string): Promise<Partial<PassportSamlConfig>> {

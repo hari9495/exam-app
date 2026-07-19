@@ -72,4 +72,29 @@ describe('SamlStrategy', () => {
       expect(done).toHaveBeenCalledWith(null, false, { message: 'not_provisioned' });
     });
   });
+
+  describe('generateMetadata', () => {
+    it('delegates to the underlying MultiSamlStrategy instance once onModuleInit has run', () => {
+      strategy.onModuleInit();
+      const req = { params: { organizationSlug: 'acme' } };
+      const callback = jest.fn();
+      const generateServiceProviderMetadata = jest.fn();
+      // The real MultiSamlStrategy instance is only reachable via the private
+      // field onModuleInit populates -- swap its method for a spy the same way
+      // the rest of this file reaches into constructed collaborators.
+      (strategy as any).passportStrategy.generateServiceProviderMetadata = generateServiceProviderMetadata;
+
+      strategy.generateMetadata(req as any, callback);
+
+      expect(generateServiceProviderMetadata).toHaveBeenCalledWith(req, null, null, callback);
+    });
+
+    it('calls back with an error instead of throwing when called before onModuleInit has run', () => {
+      const callback = jest.fn();
+
+      strategy.generateMetadata({ params: {} } as any, callback);
+
+      expect(callback).toHaveBeenCalledWith(expect.any(Error));
+    });
+  });
 });

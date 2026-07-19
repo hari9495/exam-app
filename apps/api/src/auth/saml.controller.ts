@@ -4,13 +4,16 @@ import { Request, Response } from 'express';
 import * as passport from 'passport';
 import { randomBytes, createHash } from 'crypto';
 import { PrismaService } from '@exam-platform/shared';
-import { SsoUser } from './saml.strategy';
+import { SsoUser, SamlStrategy } from './saml.strategy';
 
 const SSO_LOGIN_CODE_EXPIRY_SECONDS = 60;
 
 @Controller('auth/saml')
 export class SamlController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly samlStrategy: SamlStrategy,
+  ) {}
 
   @Get(':organizationSlug/status')
   async status(@Param('organizationSlug') organizationSlug: string): Promise<{ enabled: boolean }> {
@@ -19,6 +22,18 @@ export class SamlController {
       select: { samlEnabled: true },
     });
     return { enabled: org?.samlEnabled ?? false };
+  }
+
+  @Get(':organizationSlug/metadata')
+  metadata(@Req() req: Request, @Res() res: Response): void {
+    this.samlStrategy.generateMetadata(req, (err, metadataXml) => {
+      if (err || !metadataXml) {
+        res.status(400).send('Could not generate metadata for this organization');
+        return;
+      }
+      res.set('Content-Type', 'application/xml');
+      res.send(metadataXml);
+    });
   }
 
   @Get(':organizationSlug/login')
