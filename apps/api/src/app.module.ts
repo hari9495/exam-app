@@ -19,6 +19,7 @@ import { ReportsModule } from './reports/reports.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { JobsModule } from './jobs/jobs.module';
 import { AuditQueryModule } from './audit/audit-query.module';
+import { PublicApiModule } from './public-api/public-api.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
 import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
 
@@ -54,6 +55,7 @@ import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
     ReportsModule,
     DashboardModule,
     JobsModule,
+    PublicApiModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: FailOpenThrottlerGuard }],
 })

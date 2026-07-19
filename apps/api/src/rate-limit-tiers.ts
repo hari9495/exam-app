@@ -15,3 +15,4 @@ export const DEFAULT_THROTTLE_LIMIT = isTest ? 10_000 : 100;
 export const STRICT_AUTH_THROTTLE = { default: { limit: isTest ? 10_000 : 5, ttl: seconds(60) } };
 export const STRICT_AI_GENERATE_THROTTLE = { default: { limit: isTest ? 10_000 : 10, ttl: seconds(60) } };
 export const MODERATE_UPLOAD_THROTTLE = { default: { limit: isTest ? 10_000 : 10, ttl: seconds(60) } };
+export const PUBLIC_API_THROTTLE = { default: { limit: isTest ? 10_000 : 60, ttl: seconds(60) } };
