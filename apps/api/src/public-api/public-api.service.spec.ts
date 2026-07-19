@@ -1,16 +1,23 @@
 import { Test } from '@nestjs/testing';
 import { PublicApiService } from './public-api.service';
 import { TenantPrismaService } from '@exam-platform/shared';
+import { ExamsService } from '../exams/exams.service';
 
 describe('PublicApiService', () => {
   let service: PublicApiService;
   let tenantPrisma: { forTenant: jest.Mock };
+  let examsService: { getResults: jest.Mock };
   const tenant = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
+    examsService = { getResults: jest.fn() };
     const moduleRef = await Test.createTestingModule({
-      providers: [PublicApiService, { provide: TenantPrismaService, useValue: tenantPrisma }],
+      providers: [
+        PublicApiService,
+        { provide: TenantPrismaService, useValue: tenantPrisma },
+        { provide: ExamsService, useValue: examsService },
+      ],
     }).compile();
     service = moduleRef.get(PublicApiService);
   });
@@ -82,6 +89,74 @@ describe('PublicApiService', () => {
           select: { id: true, title: true, status: true, durationMinutes: true, passCriteriaPercent: true, createdAt: true },
         }),
       );
+    });
+  });
+
+  describe('listInvitations', () => {
+    it('scopes by organization via the exam relation, and supports optional filters', async () => {
+      const tx = {
+        invitation: {
+          findMany: jest.fn().mockResolvedValue([{ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', invitedAt: new Date('2026-01-01'), expiresAt: new Date('2026-01-08') }]),
+          count: jest.fn().mockResolvedValue(1),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.listInvitations(tenant, 1, 50, { examId: 'exam-1' });
+
+      expect(result.total).toBe(1);
+      expect(tx.invitation.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { exam: { organizationId: 'org-1' }, examId: 'exam-1' } }),
+      );
+    });
+
+    it('omits absent filters from the where clause', async () => {
+      const tx = { invitation: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.listInvitations(tenant, 1, 50, {});
+
+      expect(tx.invitation.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { exam: { organizationId: 'org-1' } } }));
+    });
+  });
+
+  describe('getExamResults', () => {
+    it('strips proctoring and integrity data from the staff-facing result rows', async () => {
+      examsService.getResults.mockResolvedValue([
+        {
+          candidateId: 'cand-1', candidateName: 'Alice', invitationId: 'inv-1', attemptId: 'attempt-1', status: 'submitted',
+          score: 8, maxScore: 10, percentage: 80, passFail: 'pass', submittedAt: new Date('2026-01-01'),
+          proctoringAnalysis: { status: 'completed', riskLevel: 'low', summary: 'ok' },
+          integrityAnalysis: { status: 'completed', level: 'none', flagsJson: '[]', narrative: null },
+          integrityLevel: 'none', integrityFlagCount: 0,
+        },
+      ]);
+
+      const result = await service.getExamResults(tenant, 'exam-1', 1, 50);
+
+      expect(result.data[0]).toEqual({
+        candidateId: 'cand-1', candidateName: 'Alice', status: 'submitted',
+        score: 8, maxScore: 10, percentage: 80, passFail: 'pass', submittedAt: new Date('2026-01-01'),
+      });
+      expect(result.data[0]).not.toHaveProperty('proctoringAnalysis');
+      expect(result.data[0]).not.toHaveProperty('integrityAnalysis');
+      expect(result.data[0]).not.toHaveProperty('integrityLevel');
+      expect(examsService.getResults).toHaveBeenCalledWith(tenant, 'exam-1');
+    });
+
+    it('paginates the already-fetched result rows in-memory', async () => {
+      const rows = Array.from({ length: 5 }, (_, i) => ({
+        candidateId: `cand-${i}`, candidateName: `C${i}`, invitationId: `inv-${i}`, attemptId: null, status: 'submitted',
+        score: 1, maxScore: 1, percentage: 100, passFail: 'pass', submittedAt: new Date(),
+        proctoringAnalysis: null, integrityAnalysis: null, integrityLevel: null, integrityFlagCount: 0,
+      }));
+      examsService.getResults.mockResolvedValue(rows);
+
+      const result = await service.getExamResults(tenant, 'exam-1', 2, 2);
+
+      expect(result).toMatchObject({ page: 2, pageSize: 2, total: 5 });
+      expect(result.data).toHaveLength(2);
+      expect(result.data[0].candidateId).toBe('cand-2');
     });
   });
 });

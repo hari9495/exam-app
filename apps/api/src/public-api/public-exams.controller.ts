@@ -27,4 +27,9 @@ export class PublicExamsController {
     }
     return exam;
   }
+
+  @Get(':id/results')
+  results(@CurrentApiKeyOrg() tenant: TenantContext, @Param('id') id: string, @Query() query: PaginationQueryDto) {
+    return this.publicApiService.getExamResults(tenant, id, Number(query.page ?? 1), Number(query.pageSize ?? 50));
+  }
 }
