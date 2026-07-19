@@ -3,6 +3,10 @@ import { SamlController } from './saml.controller';
 import { PrismaService } from '@exam-platform/shared';
 import { SamlStrategy } from './saml.strategy';
 import { randomBytes, createHash } from 'crypto';
+// Imported the same way saml.controller.ts imports it, to prove that import
+// style actually preserves `passport.authenticate` (see the comment on that
+// import in saml.controller.ts / saml.strategy.ts).
+import passport = require('passport');
 
 jest.mock('crypto', () => ({
   ...jest.requireActual('crypto'),
@@ -100,6 +104,36 @@ describe('SamlController', () => {
       ).resolves.toBeUndefined();
 
       expect(res.redirect).toHaveBeenCalledWith(expect.stringContaining('ssoError=invalid_response'));
+    });
+  });
+
+  describe('callback (passport.authenticate wiring)', () => {
+    it('imports passport.authenticate as a real function, not undefined', () => {
+      // Regression test: `import * as passport` compiles to a namespace copy
+      // that drops methods living on passport's prototype (see the import
+      // comment). If that regression reappears, this fails before the
+      // route handler even runs.
+      expect(typeof passport.authenticate).toBe('function');
+    });
+
+    it('does not throw "passport.authenticate is not a function" when the route handler runs', async () => {
+      const req = { params: { organizationSlug: 'acme' } };
+      const res = { redirect: jest.fn() };
+
+      // A bare mock req/res has no registered 'saml' strategy or passport
+      // session state, so this cannot complete a full SSO handshake -- the
+      // point is only to prove `passport.authenticate(...)` is callable via
+      // this file's import, not to exercise a successful SAML login.
+      let caught: unknown;
+      try {
+        await controller.callback(req as any, res as any);
+      } catch (err) {
+        caught = err;
+      }
+
+      if (caught instanceof TypeError) {
+        expect(caught.message).not.toMatch(/passport\.authenticate is not a function/);
+      }
     });
   });
 

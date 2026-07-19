@@ -1,7 +1,10 @@
 import { Controller, Get, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Request, Response } from 'express';
-import * as passport from 'passport';
+// `import * as passport` silently drops `authenticate`/`use` (they live on
+// the singleton's prototype, not as own properties) -- see saml.strategy.ts
+// for the full explanation. Import-equals keeps the real object.
+import passport = require('passport');
 import { randomBytes, createHash } from 'crypto';
 import { PrismaService } from '@exam-platform/shared';
 import { SsoUser, SamlStrategy } from './saml.strategy';
