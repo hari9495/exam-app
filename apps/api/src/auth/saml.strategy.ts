@@ -1,5 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
-import { MultiSamlStrategy, Profile, ValidateInResponseTo, VerifyWithRequest } from '@node-saml/passport-saml';
+import {
+  MultiSamlStrategy,
+  Profile,
+  ValidateInResponseTo,
+  VerifyWithRequest,
+  generateServiceProviderMetadata,
+} from '@node-saml/passport-saml';
 import type { PassportSamlConfig } from '@node-saml/passport-saml';
 // `import * as passport` compiles (via TS's esModuleInterop `__importStar`
 // helper) to a shallow copy of `passport`'s OWN enumerable properties only.
@@ -65,13 +71,6 @@ function getSlugParam(req: SamlRequestLike): string {
 // startup-time side effects (see StaticUploadsModule, SetupService).
 @Injectable()
 export class SamlStrategy implements OnModuleInit {
-  // Populated by onModuleInit(). NestJS calls lifecycle hooks in
-  // module-registration order before any request can reach a controller, so
-  // this is always set by the time a real request needs it; the undefined
-  // case only matters for the theoretical pre-init edge case handled in
-  // generateMetadata() below.
-  private passportStrategy: MultiSamlStrategy | undefined;
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
@@ -110,29 +109,58 @@ export class SamlStrategy implements OnModuleInit {
     // type -- a duplicate-@types artifact of this monorepo's install layout, not
     // a real incompatibility. Passport itself is duck-typed at runtime.
     passport.use('saml', strategy as unknown as passport.Strategy);
-    this.passportStrategy = strategy;
   }
 
-  // SP metadata generation lives on the real MultiSamlStrategy instance built
-  // in onModuleInit(), not on this class (see the file-level comment on why
-  // SamlStrategy can't extend MultiSamlStrategy itself). This delegates to it.
+  // SP metadata (this SP's own entity ID/issuer + ACS callback URL) is
+  // derived purely from API_ORIGIN + the org slug -- it does NOT depend on
+  // anything the IdP admin configures. Confirmed by reading the installed
+  // @node-saml/node-saml@5.1.0 source (lib/metadata.js):
+  // `generateServiceProviderMetadata` destructures only `issuer`/`callbackUrl`
+  // (required) plus optional SP-side signing/decryption/contact fields this
+  // app never sets -- it never reads `entryPoint` or `idpCert`.
   //
-  // `req` only needs to carry `params.organizationSlug` here -- see
-  // getSlugParam() -- so SamlRequestLike is enough and this stays clear of the
-  // duplicate @types/express mismatch described above; the cast on the call
-  // below bridges to the library's own (structurally identical) Request type,
-  // the same workaround `passport.use` above already relies on.
+  // Deliberately NOT routed through the MultiSamlStrategy instance built in
+  // onModuleInit(): `MultiSamlStrategy.generateServiceProviderMetadata()`
+  // calls `getSamlOptions` -> `resolveOrgSamlConfig()` under the hood, which
+  // throws unless samlEnabled + all IdP fields are set. That would make the
+  // "give this metadata URL to your IdP admin" onboarding step (see
+  // saml.controller.ts / the org-admin settings page) impossible before SSO
+  // is already fully configured and enabled -- backwards, since IdP admins
+  // commonly need the SP's metadata FIRST. Calling the library's standalone
+  // `generateServiceProviderMetadata(params)` directly with just this org's
+  // issuer/callbackUrl sidesteps that guard entirely, and needs nothing from
+  // onModuleInit (no more pre-init edge case to handle here).
   generateMetadata(req: SamlRequestLike, callback: (err: Error | null, metadataXml?: string) => void): void {
-    if (!this.passportStrategy) {
-      callback(new Error('SAML strategy has not finished initializing'));
-      return;
+    this.resolveSpMetadataConfig(getSlugParam(req))
+      .then((config) => callback(null, generateServiceProviderMetadata(config)))
+      .catch((error) => callback(error as Error));
+  }
+
+  // Metadata-only config: just needs the org to exist, so the SP-side
+  // issuer/callbackUrl can be built from its slug. No samlEnabled or IdP
+  // field checks here -- see the comment on generateMetadata() above for why.
+  // `@node-saml/node-saml`'s `GenerateServiceProviderMetadataParams` type
+  // exists (lib/types.d.ts) but isn't part of that package's public named
+  // exports (lib/index.d.ts), so it can't be imported by name here -- this
+  // return type is written out structurally instead. It's exactly what
+  // `generateServiceProviderMetadata()` requires (issuer + callbackUrl are
+  // its only mandatory fields; see the comment on generateMetadata() above).
+  async resolveSpMetadataConfig(organizationSlug: string): Promise<{ issuer: string; callbackUrl: string }> {
+    const org = await this.prisma.organization.findUnique({ where: { slug: organizationSlug } });
+    if (!org) {
+      throw new NotFoundException(`Organization "${organizationSlug}" not found`);
     }
-    this.passportStrategy.generateServiceProviderMetadata(
-      req as unknown as Parameters<MultiSamlStrategy['generateServiceProviderMetadata']>[0],
-      null,
-      null,
-      callback,
-    );
+    return this.spUrls(organizationSlug);
+  }
+
+  // Shared by resolveOrgSamlConfig (full auth config) and
+  // resolveSpMetadataConfig (metadata-only config) -- both need the same
+  // org-scoped SP issuer/ACS callback URLs, and only that.
+  private spUrls(organizationSlug: string): { issuer: string; callbackUrl: string } {
+    return {
+      issuer: `${process.env.API_ORIGIN}/api/v1/auth/saml/${organizationSlug}/metadata`,
+      callbackUrl: `${process.env.API_ORIGIN}/api/v1/auth/saml/${organizationSlug}/callback`,
+    };
   }
 
   async resolveOrgSamlConfig(organizationSlug: string): Promise<Partial<PassportSamlConfig>> {
@@ -147,11 +175,25 @@ export class SamlStrategy implements OnModuleInit {
     return {
       entryPoint: org.samlIdpSsoUrl,
       idpCert: org.samlIdpCertificate,
-      issuer: `${process.env.API_ORIGIN}/api/v1/auth/saml/${organizationSlug}/metadata`,
-      callbackUrl: `${process.env.API_ORIGIN}/api/v1/auth/saml/${organizationSlug}/callback`,
-      // The IdP's own entity ID is validated implicitly by idpCert matching --
-      // this codebase's design keeps SP-side request signing out of scope (see
-      // the plan's Global Constraints), so no privateKey/publicCert here.
+      ...this.spUrls(organizationSlug),
+      // NOTE: `idpIssuer` here is NOT what enforces the entity-ID check on
+      // login. Confirmed by reading the installed @node-saml/node-saml@5.1.0
+      // source (lib/saml.js): `idpIssuer` is only read by `verifyIssuer()`,
+      // which is only called from `verifyLogoutRequest`/`verifyLogoutResponse`
+      // -- the Single Logout message path this app doesn't implement (no SLO
+      // route; `logoutVerify` above unconditionally errors). The normal
+      // sign-on path (`validatePostResponseAsync` ->
+      // `processValidlySignedAssertionAsync`) never calls `verifyIssuer` --
+      // it just copies the assertion's `<Issuer>` into `profile.issuer`
+      // without checking it against anything. So the real entity-ID
+      // enforcement for login lives in `validate()` below, which compares
+      // `profile.issuer` to `org.samlIdpEntityId` itself. `idpIssuer` is set
+      // here anyway so it's correct if SLO support is ever added, and so this
+      // config isn't silently missing a field the type otherwise supports --
+      // but on its own it validates nothing for the flows this app uses.
+      idpIssuer: org.samlIdpEntityId,
+      // SP-side request signing is out of scope (see the plan's Global
+      // Constraints), so no privateKey/publicCert here.
       validateInResponseTo: ValidateInResponseTo.always,
       cacheProvider: this.cacheProvider,
     };
@@ -162,6 +204,18 @@ export class SamlStrategy implements OnModuleInit {
     const org = await this.prisma.organization.findUnique({ where: { slug: organizationSlug } });
     if (!org || !profile) {
       done(null, false, { message: 'not_provisioned' });
+      return;
+    }
+
+    // The installed node-saml library does not check the assertion's
+    // <Issuer> against anything on the normal sign-on path (see the comment
+    // in resolveOrgSamlConfig() above) -- it just hands it back as
+    // `profile.issuer`. This is the actual entity-ID check the org-admin's
+    // configured samlIdpEntityId exists to enforce: reject any assertion
+    // whose issuer doesn't match, so a cert that validates a signature from
+    // some other issuer entirely can't be used to impersonate this org's IdP.
+    if (profile.issuer !== org.samlIdpEntityId) {
+      done(null, false, { message: 'issuer_mismatch' });
       return;
     }
 

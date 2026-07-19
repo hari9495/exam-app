@@ -27,6 +27,7 @@ describe('SamlStrategy', () => {
         expect.objectContaining({
           entryPoint: 'https://idp.example.com/sso',
           idpCert: '-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----',
+          idpIssuer: 'https://idp.example.com/entity',
           validateInResponseTo: 'always',
         }),
       );
@@ -46,13 +47,13 @@ describe('SamlStrategy', () => {
   });
 
   describe('validate', () => {
-    it('resolves to the matching pre-provisioned user for the assertion email', async () => {
+    it('resolves to the matching pre-provisioned user for the assertion email when the issuer matches', async () => {
       const req = { params: { organizationSlug: 'acme' } };
-      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', samlEnabled: true });
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', samlEnabled: true, samlIdpEntityId: 'https://idp.example.com/entity' });
       tenantPrisma.forTenant.mockResolvedValue({ id: 'user-1', email: 'alice@acme.test', role: 'recruiter', organizationId: 'org-1' });
       const done = jest.fn();
 
-      await strategy.validate(req as any, { nameID: 'alice@acme.test' } as any, done);
+      await strategy.validate(req as any, { nameID: 'alice@acme.test', issuer: 'https://idp.example.com/entity' } as any, done);
 
       expect(tenantPrisma.forTenant).toHaveBeenCalledWith(
         { organizationId: 'org-1', isSuperAdmin: false },
@@ -63,36 +64,64 @@ describe('SamlStrategy', () => {
 
     it('calls done with user:false and a not_provisioned info flag when no user matches', async () => {
       const req = { params: { organizationSlug: 'acme' } };
-      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', samlEnabled: true });
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', samlEnabled: true, samlIdpEntityId: 'https://idp.example.com/entity' });
       tenantPrisma.forTenant.mockResolvedValue(null);
       const done = jest.fn();
 
-      await strategy.validate(req as any, { nameID: 'nobody@acme.test' } as any, done);
+      await strategy.validate(req as any, { nameID: 'nobody@acme.test', issuer: 'https://idp.example.com/entity' } as any, done);
 
       expect(done).toHaveBeenCalledWith(null, false, { message: 'not_provisioned' });
     });
+
+    // Regression test for the finding that samlIdpEntityId was collected and
+    // required-to-enable but never actually checked against the SAML
+    // response's Issuer -- see the comment above this check in validate().
+    it('rejects the assertion when the profile issuer does not match the org-configured entity ID', async () => {
+      const req = { params: { organizationSlug: 'acme' } };
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', samlEnabled: true, samlIdpEntityId: 'https://idp.example.com/entity' });
+      const done = jest.fn();
+
+      await strategy.validate(req as any, { nameID: 'alice@acme.test', issuer: 'https://attacker.example.com/entity' } as any, done);
+
+      expect(done).toHaveBeenCalledWith(null, false, { message: 'issuer_mismatch' });
+      expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+    });
   });
 
-  describe('generateMetadata', () => {
-    it('delegates to the underlying MultiSamlStrategy instance once onModuleInit has run', () => {
-      strategy.onModuleInit();
+  describe('generateMetadata / resolveSpMetadataConfig', () => {
+    it('builds SP metadata for an org that exists but has not enabled SSO yet (no IdP fields set)', async () => {
+      // Regression test: SP metadata (this SP's own issuer + ACS callback
+      // URL) must not require samlEnabled or any IdP field, since org-admins
+      // need to hand this URL to their IdP admin BEFORE SSO can be fully
+      // configured and enabled -- see the comment on generateMetadata().
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', samlEnabled: false, samlIdpEntityId: null, samlIdpSsoUrl: null, samlIdpCertificate: null });
       const req = { params: { organizationSlug: 'acme' } };
       const callback = jest.fn();
-      const generateServiceProviderMetadata = jest.fn();
-      // The real MultiSamlStrategy instance is only reachable via the private
-      // field onModuleInit populates -- swap its method for a spy the same way
-      // the rest of this file reaches into constructed collaborators.
-      (strategy as any).passportStrategy.generateServiceProviderMetadata = generateServiceProviderMetadata;
 
       strategy.generateMetadata(req as any, callback);
+      await new Promise((resolve) => setImmediate(resolve));
 
-      expect(generateServiceProviderMetadata).toHaveBeenCalledWith(req, null, null, callback);
+      expect(callback).toHaveBeenCalledWith(null, expect.any(String));
+      const metadataXml = callback.mock.calls[0][1] as string;
+      expect(metadataXml).toContain('EntityDescriptor');
     });
 
-    it('calls back with an error instead of throwing when called before onModuleInit has run', () => {
+    it('does not require onModuleInit to have run first', async () => {
+      const callback = jest.fn();
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1' });
+
+      strategy.generateMetadata({ params: { organizationSlug: 'acme' } } as any, callback);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(callback).toHaveBeenCalledWith(null, expect.any(String));
+    });
+
+    it('calls back with an error instead of throwing when the org does not exist', async () => {
+      prisma.organization.findUnique.mockResolvedValue(null);
       const callback = jest.fn();
 
-      strategy.generateMetadata({ params: {} } as any, callback);
+      strategy.generateMetadata({ params: { organizationSlug: 'unknown-org' } } as any, callback);
+      await new Promise((resolve) => setImmediate(resolve));
 
       expect(callback).toHaveBeenCalledWith(expect.any(Error));
     });
