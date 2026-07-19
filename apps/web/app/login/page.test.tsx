@@ -190,6 +190,36 @@ describe('LoginPage', () => {
     );
   });
 
+  it('stashes the org slug in sessionStorage before following the SSO link', async () => {
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ message: 'no session' }), { status: 401 });
+      }
+      if (String(url).includes('/auth/saml/')) {
+        return new Response(JSON.stringify({ enabled: true }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <LoginPage />
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    await userEvent.type(screen.getByLabelText(/organization slug/i), 'acme');
+    await userEvent.tab();
+
+    const ssoLink = await screen.findByRole('link', { name: /log in with sso/i });
+    expect(window.sessionStorage.getItem('ssoPendingOrganizationSlug')).toBeNull();
+
+    await userEvent.click(ssoLink);
+
+    expect(window.sessionStorage.getItem('ssoPendingOrganizationSlug')).toBe('acme');
+  });
+
   it('does not show the SSO button when the org has no SSO configured', async () => {
     global.fetch = jest.fn(async (url) => {
       if (String(url).endsWith('/auth/refresh')) {

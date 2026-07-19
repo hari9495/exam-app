@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch } from '../../../lib/api-client';
-import { useAuth } from '../../../lib/auth-context';
+import { useAuth, SSO_PENDING_SLUG_KEY } from '../../../lib/auth-context';
 import { decodeJwtPayload } from '../../../lib/jwt';
 
 const GENERIC_ERROR = 'Sign-in failed. Please try again or use your password.';
@@ -34,8 +34,11 @@ function SsoCallbackRedeemer() {
 
     apiFetch('/auth/sso/exchange', { method: 'POST', body: JSON.stringify({ code }) })
       .then((result) => {
-        // SSO sessions are always org-scoped by definition; the slug isn't needed for a role-based redirect.
-        login('', result.accessToken);
+        // The org slug was stashed in sessionStorage by the login page right before it
+        // navigated to the IdP, since that in-memory form state doesn't survive the redirect.
+        const stashedSlug = window.sessionStorage.getItem(SSO_PENDING_SLUG_KEY) ?? '';
+        window.sessionStorage.removeItem(SSO_PENDING_SLUG_KEY);
+        login(stashedSlug, result.accessToken);
         const payload = decodeJwtPayload(result.accessToken);
         router.push(payload?.role === 'org_admin' ? '/users' : payload?.role === 'panel' ? '/reports' : '/dashboard');
       })

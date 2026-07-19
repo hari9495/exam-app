@@ -18,6 +18,14 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const SLUG_STORAGE_KEY = 'organizationSlug';
 
+// Stashed by the login page right before it navigates to the SP-initiated SSO redirect, so the
+// slug survives the round trip to the IdP and back. Deliberately a separate key from
+// SLUG_STORAGE_KEY: that key represents an *authenticated* session's slug (set on login, cleared
+// on logout, read on mount to restore UI before silentRefresh resolves) and is written even when
+// the SSO attempt fails or is abandoned, which would otherwise leave a stale slug marked as if a
+// real session existed.
+export const SSO_PENDING_SLUG_KEY = 'ssoPendingOrganizationSlug';
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);

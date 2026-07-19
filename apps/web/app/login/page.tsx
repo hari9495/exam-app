@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Building2, Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { apiFetch } from '../../lib/api-client';
-import { useAuth } from '../../lib/auth-context';
+import { useAuth, SSO_PENDING_SLUG_KEY } from '../../lib/auth-context';
 import { decodeJwtPayload } from '../../lib/jwt';
 import { Button, Input } from '../../components/ui';
 import { useBranding } from '../../lib/hooks/useBranding';
@@ -134,6 +134,7 @@ export default function LoginPage() {
             {ssoEnabled && (
               <a
                 href={`${process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001/api/v1'}/auth/saml/${organizationSlug}/login`}
+                onClick={() => window.sessionStorage.setItem(SSO_PENDING_SLUG_KEY, organizationSlug)}
                 className="flex items-center justify-center rounded-md border border-recruiter-border py-2 text-sm font-medium text-recruiter-text hover:bg-recruiter-bg-subtle"
               >
                 Log in with SSO

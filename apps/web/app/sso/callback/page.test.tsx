@@ -7,7 +7,10 @@ import SsoCallbackPage from './page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), useSearchParams: jest.fn() }));
 jest.mock('../../../lib/api-client', () => ({ apiFetch: jest.fn() }));
-jest.mock('../../../lib/auth-context', () => ({ useAuth: jest.fn() }));
+jest.mock('../../../lib/auth-context', () => ({
+  useAuth: jest.fn(),
+  SSO_PENDING_SLUG_KEY: 'ssoPendingOrganizationSlug',
+}));
 
 describe('SsoCallbackPage', () => {
   const push = jest.fn();
@@ -19,9 +22,11 @@ describe('SsoCallbackPage', () => {
     (apiFetch as jest.Mock).mockReset();
     (useRouter as jest.Mock).mockReturnValue({ push });
     (useAuth as jest.Mock).mockReturnValue({ login });
+    window.sessionStorage.clear();
   });
 
-  it('exchanges a code for tokens, logs the session in via useAuth().login, and redirects by role', async () => {
+  it('exchanges a code for tokens, logs the session in via useAuth().login with the stashed org slug, and redirects by role', async () => {
+    window.sessionStorage.setItem('ssoPendingOrganizationSlug', 'acme');
     (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('code=abc123'));
     const accessToken = fakeJwt({ sub: 'u1', role: 'recruiter' });
     (apiFetch as jest.Mock).mockResolvedValue({ accessToken });
@@ -33,6 +38,18 @@ describe('SsoCallbackPage', () => {
       method: 'POST',
       body: JSON.stringify({ code: 'abc123' }),
     });
+    expect(login).toHaveBeenCalledWith('acme', accessToken);
+    expect(window.sessionStorage.getItem('ssoPendingOrganizationSlug')).toBeNull();
+  });
+
+  it('logs in with an empty slug when no slug was stashed (e.g. direct navigation)', async () => {
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('code=abc123'));
+    const accessToken = fakeJwt({ sub: 'u1', role: 'recruiter' });
+    (apiFetch as jest.Mock).mockResolvedValue({ accessToken });
+
+    render(<SsoCallbackPage />);
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/dashboard'));
     expect(login).toHaveBeenCalledWith('', accessToken);
   });
 
