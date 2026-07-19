@@ -39,6 +39,10 @@ model Organization {
   apiKeyCreatedAt         DateTime?           @map("api_key_created_at")
   webhookUrl              String?             @map("webhook_url")
   webhookSecretEncrypted  String?             @map("webhook_secret_encrypted")
+  samlEnabled             Boolean             @default(false) @map("saml_enabled")
+  samlIdpEntityId         String?             @map("saml_idp_entity_id")
+  samlIdpSsoUrl           String?             @map("saml_idp_sso_url")
+  samlIdpCertificate      String?             @map("saml_idp_certificate") @db.NVarChar(Max)
   planId                  String              @map("plan_id") @db.UniqueIdentifier
   plan                    Plan                @relation(fields: [planId], references: [id])
   createdAt               DateTime            @default(now()) @map("created_at")
@@ -65,6 +69,17 @@ model WebhookDelivery {
   @@map("webhook_deliveries")
 }
 
+model SsoLoginCode {
+  id        String   @id @default(uuid()) @db.UniqueIdentifier
+  codeHash  String   @unique @map("code_hash")
+  userId    String   @map("user_id") @db.UniqueIdentifier
+  user      User     @relation(fields: [userId], references: [id])
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("sso_login_codes")
+}
+
 model User {
   id                  String               @id @default(uuid()) @db.UniqueIdentifier
   organizationId      String?              @map("organization_id") @db.UniqueIdentifier
@@ -78,6 +93,7 @@ model User {
   createdAt           DateTime             @default(now()) @map("created_at")
   refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
+  ssoLoginCodes       SsoLoginCode[]
   auditLogs           AuditLog[]
 
   @@unique([organizationId, email])
