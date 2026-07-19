@@ -584,6 +584,77 @@ describe('OrganizationsService', () => {
     });
   });
 
+  describe('getSsoSettings', () => {
+    it('returns the current SSO config for the org', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        samlEnabled: true, samlIdpEntityId: 'https://idp.test/entity', samlIdpSsoUrl: 'https://idp.test/sso',
+        samlIdpCertificate: '-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----',
+      });
+
+      const result = await service.getSsoSettings({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result).toEqual({
+        samlEnabled: true, samlIdpEntityId: 'https://idp.test/entity', samlIdpSsoUrl: 'https://idp.test/sso',
+        samlIdpCertificate: '-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----',
+      });
+    });
+  });
+
+  describe('updateSsoSettings', () => {
+    const context = { organizationId: 'org-1', isSuperAdmin: false };
+
+    it('rejects an invalid SSO URL', async () => {
+      await expect(
+        service.updateSsoSettings(context, 'user-1', { samlIdpSsoUrl: 'not-a-url' }),
+      ).rejects.toThrow();
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects a malformed certificate', async () => {
+      await expect(
+        service.updateSsoSettings(context, 'user-1', { samlIdpCertificate: 'not a real cert' }),
+      ).rejects.toThrow();
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects enabling SSO when the three IdP fields are not all present', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ samlIdpEntityId: null, samlIdpSsoUrl: null, samlIdpCertificate: null });
+
+      await expect(service.updateSsoSettings(context, 'user-1', { samlEnabled: true })).rejects.toThrow();
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+
+    it('saves valid partial IdP fields and audits the change', async () => {
+      prisma.organization.update.mockResolvedValue({
+        samlEnabled: false, samlIdpEntityId: 'https://idp.test/entity', samlIdpSsoUrl: null, samlIdpCertificate: null,
+      });
+
+      const result = await service.updateSsoSettings(context, 'user-1', { samlIdpEntityId: 'https://idp.test/entity' });
+
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { samlIdpEntityId: 'https://idp.test/entity' },
+      });
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'organization.sso_configured' }));
+      expect(result.samlIdpEntityId).toBe('https://idp.test/entity');
+    });
+
+    it('accepts enabling SSO once all three IdP fields are present after the update', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        samlIdpEntityId: 'https://idp.test/entity', samlIdpSsoUrl: 'https://idp.test/sso',
+        samlIdpCertificate: '-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----',
+      });
+      prisma.organization.update.mockResolvedValue({
+        samlEnabled: true, samlIdpEntityId: 'https://idp.test/entity', samlIdpSsoUrl: 'https://idp.test/sso',
+        samlIdpCertificate: '-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----',
+      });
+
+      const result = await service.updateSsoSettings(context, 'user-1', { samlEnabled: true });
+
+      expect(result.samlEnabled).toBe(true);
+    });
+  });
+
   describe('listWebhookDeliveries', () => {
     it('returns the most recent 50 deliveries for the org', async () => {
       prisma.webhookDelivery.findMany.mockResolvedValue([{ id: 'delivery-1', eventType: 'invitation.created', status: 'delivered', httpStatusCode: 200, createdAt: new Date() }]);

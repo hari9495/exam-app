@@ -13,6 +13,7 @@ import { UpdateBrandingColorsDto } from './dto/update-branding-colors.dto';
 import { UpdateSmtpSettingsDto } from './dto/update-smtp-settings.dto';
 import { UpdateAiKeyDto } from './dto/update-ai-key.dto';
 import { UpdateWebhookUrlDto } from './dto/update-webhook-url.dto';
+import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 
 @Controller('organizations')
@@ -90,6 +91,18 @@ export class OrganizationsController {
   @RequirePermissions('org:manage_settings')
   listWebhookDeliveries(@CurrentTenant() tenant: TenantContext) {
     return this.organizationsService.listWebhookDeliveries(tenant);
+  }
+
+  @Get('sso')
+  @RequirePermissions('org:manage_settings')
+  getSsoSettings(@CurrentTenant() tenant: TenantContext) {
+    return this.organizationsService.getSsoSettings(tenant);
+  }
+
+  @Patch('sso')
+  @RequirePermissions('org:manage_settings')
+  updateSsoSettings(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateSsoSettingsDto) {
+    return this.organizationsService.updateSsoSettings(tenant, userId, dto);
   }
 
   @Patch('branding')

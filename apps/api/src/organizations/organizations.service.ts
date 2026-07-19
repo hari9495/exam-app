@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Organization } from '@prisma/client';
-import { randomBytes, createHash } from 'crypto';
+import { randomBytes, createHash, X509Certificate } from 'crypto';
 import * as argon2 from 'argon2';
 import { dirname, join } from 'path';
 import * as fs from 'fs/promises';
@@ -16,6 +16,7 @@ import { UpdateBrandingColorsDto } from './dto/update-branding-colors.dto';
 import { UpdateSmtpSettingsDto } from './dto/update-smtp-settings.dto';
 import { UpdateAiKeyDto } from './dto/update-ai-key.dto';
 import { UpdateWebhookUrlDto } from './dto/update-webhook-url.dto';
+import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
 import { UPLOADS_ROOT } from './uploads-path';
 
 export interface BrandingResponse {
@@ -41,6 +42,13 @@ export interface IntegrationsResponse {
   apiKeyCreatedAt: Date | null;
   webhookConfigured: boolean;
   webhookUrl: string | null;
+}
+
+export interface SsoSettingsResponse {
+  samlEnabled: boolean;
+  samlIdpEntityId: string | null;
+  samlIdpSsoUrl: string | null;
+  samlIdpCertificate: string | null;
 }
 
 const ALLOWED_LOGO_MIME_TYPES: Record<string, string> = {
@@ -342,6 +350,78 @@ export class OrganizationsService {
       entityId: organizationId,
     });
     return { webhookUrl: dto.url };
+  }
+
+  async getSsoSettings(context: TenantContext): Promise<SsoSettingsResponse> {
+    const organizationId = this.requireOrganizationId(context);
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { samlEnabled: true, samlIdpEntityId: true, samlIdpSsoUrl: true, samlIdpCertificate: true },
+    });
+    return {
+      samlEnabled: org?.samlEnabled ?? false,
+      samlIdpEntityId: org?.samlIdpEntityId ?? null,
+      samlIdpSsoUrl: org?.samlIdpSsoUrl ?? null,
+      samlIdpCertificate: org?.samlIdpCertificate ?? null,
+    };
+  }
+
+  async updateSsoSettings(context: TenantContext, actorUserId: string, dto: UpdateSsoSettingsDto): Promise<SsoSettingsResponse> {
+    const organizationId = this.requireOrganizationId(context);
+
+    // Defense-in-depth: @IsUrl on the DTO only fires behind the global ValidationPipe
+    // (HTTP boundary). Re-check here so the service is safe to call directly too.
+    if (dto.samlIdpSsoUrl !== undefined) {
+      try {
+        new URL(dto.samlIdpSsoUrl);
+      } catch {
+        throw new BadRequestException('That does not look like a valid SSO URL');
+      }
+    }
+
+    if (dto.samlIdpCertificate !== undefined) {
+      try {
+        // eslint-disable-next-line no-new
+        new X509Certificate(dto.samlIdpCertificate);
+      } catch {
+        throw new BadRequestException('That does not look like a valid X.509 certificate (PEM format)');
+      }
+    }
+
+    if (dto.samlEnabled === true) {
+      const current = await this.prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { samlIdpEntityId: true, samlIdpSsoUrl: true, samlIdpCertificate: true },
+      });
+      const entityId = dto.samlIdpEntityId ?? current?.samlIdpEntityId;
+      const ssoUrl = dto.samlIdpSsoUrl ?? current?.samlIdpSsoUrl;
+      const certificate = dto.samlIdpCertificate ?? current?.samlIdpCertificate;
+      if (!entityId || !ssoUrl || !certificate) {
+        throw new BadRequestException('Cannot enable SSO until the IdP entity ID, SSO URL, and certificate are all set');
+      }
+    }
+
+    const org = await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: {
+        ...(dto.samlEnabled !== undefined && { samlEnabled: dto.samlEnabled }),
+        ...(dto.samlIdpEntityId !== undefined && { samlIdpEntityId: dto.samlIdpEntityId }),
+        ...(dto.samlIdpSsoUrl !== undefined && { samlIdpSsoUrl: dto.samlIdpSsoUrl }),
+        ...(dto.samlIdpCertificate !== undefined && { samlIdpCertificate: dto.samlIdpCertificate }),
+      },
+    });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'organization.sso_configured',
+      entityType: 'organization',
+      entityId: organizationId,
+    });
+    return {
+      samlEnabled: org.samlEnabled,
+      samlIdpEntityId: org.samlIdpEntityId,
+      samlIdpSsoUrl: org.samlIdpSsoUrl,
+      samlIdpCertificate: org.samlIdpCertificate,
+    };
   }
 
   async generateWebhookSecret(context: TenantContext, actorUserId: string): Promise<{ webhookSecret: string }> {
