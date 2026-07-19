@@ -174,6 +174,13 @@ export interface IntegrationsResponse {
   webhookUrl: string | null;
 }
 
+export interface SsoSettingsResponse {
+  samlEnabled: boolean;
+  samlIdpEntityId: string | null;
+  samlIdpSsoUrl: string | null;
+  samlIdpCertificate: string | null;
+}
+
 export interface WebhookDeliveryRow {
   id: string;
   eventType: string;
