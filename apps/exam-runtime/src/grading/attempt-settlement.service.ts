@@ -6,6 +6,7 @@ import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.
 import { AttemptInsightService } from '../attempt-insight/attempt-insight.service';
 import { IntegrityAnalysisService } from '../integrity/integrity-analysis.service';
 import { WebcamViolationReason } from '../attempts/dto/webcam-violation.dto';
+import { ApiInternalClient } from '../api-internal-client/api-internal.client';
 
 export interface SettlementExam {
   id: string;
@@ -23,6 +24,7 @@ export class AttemptSettlementService {
     private readonly attemptAnalysis: AttemptAnalysisService,
     private readonly attemptInsight: AttemptInsightService,
     private readonly integrityAnalysis: IntegrityAnalysisService,
+    private readonly apiInternalClient: ApiInternalClient,
   ) {}
 
   remainingSeconds(
@@ -152,6 +154,20 @@ export class AttemptSettlementService {
         } catch (error) {
           this.logger.error('Insight generation failed to start', error as Error);
         }
+      }
+      try {
+        await this.apiInternalClient.dispatchWebhook(exam.organizationId, 'attempt.settled', {
+          attemptId: finalized.id,
+          examId: finalized.examId,
+          candidateId: finalized.candidateId,
+          status: finalized.status,
+          score: summary.score,
+          maxScore: summary.maxScore,
+          percentage: summary.percentage,
+          passFail: summary.passFail,
+        });
+      } catch (error) {
+        this.logger.error('Webhook dispatch failed to start', error as Error);
       }
     })();
     return finalized;

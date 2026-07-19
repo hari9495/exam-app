@@ -4,6 +4,7 @@ import { AttemptStatusBroadcaster } from '../monitoring/attempt-status-broadcast
 import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
 import { AttemptInsightService } from '../attempt-insight/attempt-insight.service';
 import { IntegrityAnalysisService } from '../integrity/integrity-analysis.service';
+import { ApiInternalClient } from '../api-internal-client/api-internal.client';
 
 describe('AttemptSettlementService', () => {
   let service: AttemptSettlementService;
@@ -11,6 +12,7 @@ describe('AttemptSettlementService', () => {
   let attemptAnalysis: { analyze: jest.Mock };
   let attemptInsight: { analyze: jest.Mock };
   let integrityAnalysis: { analyze: jest.Mock };
+  let apiInternalClient: { dispatchWebhook: jest.Mock };
   const exam = { id: 'exam-1', organizationId: 'org-1', durationMinutes: 30, passCriteriaPercent: 50 };
 
   beforeEach(() => {
@@ -18,11 +20,13 @@ describe('AttemptSettlementService', () => {
     attemptAnalysis = { analyze: jest.fn().mockResolvedValue(undefined) };
     attemptInsight = { analyze: jest.fn().mockResolvedValue(undefined) };
     integrityAnalysis = { analyze: jest.fn().mockResolvedValue(undefined) };
+    apiInternalClient = { dispatchWebhook: jest.fn().mockResolvedValue(undefined) };
     service = new AttemptSettlementService(
       broadcaster as unknown as AttemptStatusBroadcaster,
       attemptAnalysis as unknown as AttemptAnalysisService,
       attemptInsight as unknown as AttemptInsightService,
       integrityAnalysis as unknown as IntegrityAnalysisService,
+      apiInternalClient as unknown as ApiInternalClient,
     );
   });
 
@@ -257,6 +261,28 @@ describe('AttemptSettlementService', () => {
       await new Promise((resolve) => setImmediate(resolve));
 
       expect(integrityAnalysis.analyze).toHaveBeenCalledWith('attempt-1');
+    });
+
+    it('calls ApiInternalClient.dispatchWebhook with the settled attempt summary', async () => {
+      const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
+      const tx = {
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
+        answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
+        result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+        attempt: {
+          update: jest.fn().mockResolvedValue({ id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', status: 'submitted' }),
+        },
+        auditLog: { create: jest.fn() },
+      };
+
+      await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
+      await new Promise((resolve) => setImmediate(resolve)); // let the fire-and-forget block run
+
+      expect(apiInternalClient.dispatchWebhook).toHaveBeenCalledWith(
+        exam.organizationId,
+        'attempt.settled',
+        expect.objectContaining({ attemptId: expect.any(String), examId: attempt.examId, candidateId: attempt.candidateId }),
+      );
     });
 
     it('triggers integrity analysis even when the attempt is pending_manual_grade (unlike insight, which is skipped)', async () => {
