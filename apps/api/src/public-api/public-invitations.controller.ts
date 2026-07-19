@@ -1,5 +1,6 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import { IsOptional, IsString } from 'class-validator';
 import { ApiKeyAuthGuard } from './api-key-auth.guard';
 import { PublicApiThrottlerGuard } from './public-api-throttler.guard';
 import { CurrentApiKeyOrg } from './current-api-key-org.decorator';
@@ -8,9 +9,21 @@ import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { TenantContext } from '@exam-platform/shared';
 import { PUBLIC_API_THROTTLE } from '../rate-limit-tiers';
 
+// The global ValidationPipe runs with { whitelist: true, forbidNonWhitelisted: true }
+// (apps/api/src/main.ts) -- any query key without a validation decorator is rejected
+// as extraneous with a 400, so examId/candidateId/status each need one even though
+// the service just passes them through as opaque strings.
 class ListInvitationsQueryDto extends PaginationQueryDto {
+  @IsOptional()
+  @IsString()
   examId?: string;
+
+  @IsOptional()
+  @IsString()
   candidateId?: string;
+
+  @IsOptional()
+  @IsString()
   status?: string;
 }
 
