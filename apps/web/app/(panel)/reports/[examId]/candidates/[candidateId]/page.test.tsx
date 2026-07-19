@@ -1,7 +1,12 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useParams, useSearchParams } from 'next/navigation';
-import { useCandidateReport, useAttemptInsight, useRegenerateAttemptInsight } from '../../../../../../lib/hooks/usePanelReports';
+import {
+  useCandidateReport,
+  useAttemptInsight,
+  useRegenerateAttemptInsight,
+  useResultsList,
+} from '../../../../../../lib/hooks/usePanelReports';
 import PanelCandidateDetailPage from './page';
 
 jest.mock('next/navigation', () => ({ useParams: jest.fn(), useSearchParams: jest.fn() }));
@@ -9,6 +14,7 @@ jest.mock('../../../../../../lib/hooks/usePanelReports', () => ({
   useCandidateReport: jest.fn(),
   useAttemptInsight: jest.fn(),
   useRegenerateAttemptInsight: jest.fn(),
+  useResultsList: jest.fn(),
 }));
 
 const candidateDetail = {
@@ -21,6 +27,7 @@ const candidateDetail = {
   passFail: 'pass',
   submittedAt: null,
   proctoringAnalysis: null,
+  integrityAnalysis: null,
   sections: [
     {
       sectionId: 's1',
@@ -54,6 +61,7 @@ describe('PanelCandidateDetailPage', () => {
     (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('attemptId=a1'));
     (useCandidateReport as jest.Mock).mockReturnValue({ data: candidateDetail, isLoading: false });
     (useRegenerateAttemptInsight as jest.Mock).mockReturnValue({ mutateAsync, isPending: false });
+    (useResultsList as jest.Mock).mockReturnValue({ data: [], isLoading: false });
   });
 
   it('renders the candidate score, pass/fail, and per-question breakdown', () => {
@@ -102,5 +110,47 @@ describe('PanelCandidateDetailPage', () => {
     render(<PanelCandidateDetailPage />);
 
     expect(screen.queryByText('AI Insight')).not.toBeInTheDocument();
+  });
+
+  it('shows the gray placeholder integrity badge when there is no integrity analysis', () => {
+    (useAttemptInsight as jest.Mock).mockReturnValue({ data: null, isLoading: false });
+    render(<PanelCandidateDetailPage />);
+
+    expect(screen.getByText('Integrity: —')).toBeInTheDocument();
+  });
+
+  it('shows the integrity badge, narrative, and one evidence item per flag', () => {
+    (useAttemptInsight as jest.Mock).mockReturnValue({ data: null, isLoading: false });
+    (useCandidateReport as jest.Mock).mockReturnValue({
+      data: {
+        ...candidateDetail,
+        integrityAnalysis: {
+          status: 'completed',
+          level: 'high_concern',
+          narrative: 'Multiple signals suggest this attempt warrants review.',
+          flags: [
+            { type: 'copy_paste', severity: 'medium', detail: 'Pasted content into the code editor.', questionId: 'q1' },
+            { type: 'similarity_match', severity: 'high', detail: 'Answers closely match another candidate.', counterpartAttemptId: 'a2', similarity: 0.94 },
+          ],
+        },
+      },
+      isLoading: false,
+    });
+    (useResultsList as jest.Mock).mockReturnValue({
+      data: [
+        { candidateId: 'c2', candidateName: 'Bob', invitationId: 'i2', attemptId: 'a2', status: 'submitted', score: 6, maxScore: 10, percentage: 60, passFail: 'pass', submittedAt: null, proctoringAnalysis: null, integrityLevel: 'high_concern', integrityFlagCount: 1 },
+      ],
+      isLoading: false,
+    });
+
+    render(<PanelCandidateDetailPage />);
+
+    expect(screen.getByText('Integrity: High concern')).toBeInTheDocument();
+    expect(screen.getByText('Multiple signals suggest this attempt warrants review.')).toBeInTheDocument();
+    expect(screen.getByText('Pasted content into the code editor.')).toBeInTheDocument();
+    expect(screen.getByText('Question: What is 2 + 2?')).toBeInTheDocument();
+    expect(screen.getByText('Answers closely match another candidate.')).toBeInTheDocument();
+    const counterpartLink = screen.getByRole('link', { name: /Bob/ });
+    expect(counterpartLink).toHaveAttribute('href', '/reports/exam-1/candidates/c2?attemptId=a2');
   });
 });

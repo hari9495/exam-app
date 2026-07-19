@@ -15,8 +15,8 @@ jest.mock('../../../../lib/hooks/usePanelReports', () => ({
 }));
 
 const resultRows = [
-  { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'submitted', score: 8, maxScore: 10, percentage: 80, passFail: 'pass', submittedAt: null, proctoringAnalysis: null },
-  { candidateId: 'c2', candidateName: 'Bob', invitationId: 'i2', attemptId: 'a2', status: 'submitted', score: 4, maxScore: 10, percentage: 40, passFail: 'fail', submittedAt: null, proctoringAnalysis: null },
+  { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'submitted', score: 8, maxScore: 10, percentage: 80, passFail: 'pass', submittedAt: null, proctoringAnalysis: null, integrityLevel: 'clear', integrityFlagCount: 0 },
+  { candidateId: 'c2', candidateName: 'Bob', invitationId: 'i2', attemptId: 'a2', status: 'submitted', score: 4, maxScore: 10, percentage: 40, passFail: 'fail', submittedAt: null, proctoringAnalysis: null, integrityLevel: 'high_concern', integrityFlagCount: 2 },
 ];
 
 describe('PanelExamResultsPage', () => {
@@ -61,6 +61,26 @@ describe('PanelExamResultsPage', () => {
 
     await userEvent.click(compareButton);
     expect(push).toHaveBeenCalledWith('/reports/exam-1/compare?candidateIds=c1,c2');
+  });
+
+  it('renders an integrity badge per candidate row', () => {
+    render(<PanelExamResultsPage />);
+
+    expect(screen.getByText('Integrity: Clear')).toBeInTheDocument();
+    expect(screen.getByText('Integrity: High concern')).toBeInTheDocument();
+  });
+
+  it('filters the candidate rows by the selected integrity level', async () => {
+    render(<PanelExamResultsPage />);
+
+    expect(screen.getByRole('link', { name: 'Alice' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Bob' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Integrity' }));
+    await userEvent.click(screen.getByRole('option', { name: 'High concern' }));
+
+    expect(screen.queryByRole('link', { name: 'Alice' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Bob' })).toBeInTheDocument();
   });
 
   it('triggers an export download when an export format button is clicked', async () => {

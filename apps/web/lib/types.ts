@@ -285,6 +285,22 @@ export interface ProctoringAnalysisSummary {
   summary: string | null;
 }
 
+export interface IntegrityFlag {
+  type: string;
+  severity: string;
+  detail: string;
+  questionId?: string | null;
+  counterpartAttemptId?: string | null;
+  similarity?: number | null;
+}
+
+export interface IntegritySummary {
+  status: string;
+  level: string | null;
+  flags: IntegrityFlag[];
+  narrative: string | null;
+}
+
 export interface ExamResultRow {
   candidateId: string;
   candidateName: string;
@@ -297,6 +313,8 @@ export interface ExamResultRow {
   passFail: string | null;
   submittedAt: string | null;
   proctoringAnalysis: ProctoringAnalysisSummary | null;
+  integrityLevel: string | null;
+  integrityFlagCount: number;
 }
 
 export interface SectionScore {
@@ -333,6 +351,7 @@ export interface CandidateDetail {
   passFail: string | null;
   submittedAt: string | null;
   proctoringAnalysis: ProctoringAnalysisSummary | null;
+  integrityAnalysis: IntegritySummary | null;
   sections: CandidateDetailSection[];
 }
 

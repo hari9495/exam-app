@@ -5,10 +5,17 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useExam } from '../../../../lib/hooks/useExams';
 import { useResultsSummary, useQuestionAccuracy, useResultsList, useResultsExport } from '../../../../lib/hooks/usePanelReports';
-import { Table, Badge, Button, Checkbox, Card, type Column } from '../../../../components/ui';
+import { Table, Badge, Button, Checkbox, Card, Select, IntegrityBadge, type Column } from '../../../../components/ui';
 import { ExamResultRow, QuestionAccuracyRow } from '../../../../lib/types';
 
 const PASS_FAIL_VARIANT: Record<string, 'success' | 'danger'> = { pass: 'success', fail: 'danger' };
+
+const INTEGRITY_FILTER_OPTIONS = [
+  { value: 'all', label: 'All integrity levels' },
+  { value: 'clear', label: 'Clear' },
+  { value: 'review', label: 'Review recommended' },
+  { value: 'high_concern', label: 'High concern' },
+];
 
 export default function PanelExamResultsPage() {
   const { examId } = useParams<{ examId: string }>();
@@ -19,6 +26,7 @@ export default function PanelExamResultsPage() {
   const { data: results, isLoading: resultsLoading } = useResultsList(examId);
   const exportMutation = useResultsExport(examId);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [integrityFilter, setIntegrityFilter] = useState('all');
 
   function toggleSelected(candidateId: string) {
     setSelectedIds((current) =>
@@ -71,6 +79,11 @@ export default function PanelExamResultsPage() {
       key: 'passFail',
       header: 'Result',
       render: (row) => (row.passFail ? <Badge variant={PASS_FAIL_VARIANT[row.passFail] ?? 'default'}>{row.passFail}</Badge> : '—'),
+    },
+    {
+      key: 'integrity',
+      header: 'Integrity',
+      render: (row) => <IntegrityBadge level={row.integrityLevel} />,
     },
   ];
 
@@ -129,7 +142,8 @@ export default function PanelExamResultsPage() {
       <div>
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-lg font-medium">Candidates</h2>
-          <div className="flex gap-2">
+          <div className="flex items-end gap-2">
+            <Select label="Integrity" value={integrityFilter} onChange={setIntegrityFilter} options={INTEGRITY_FILTER_OPTIONS} />
             <Button variant="secondary" onClick={() => handleExport('csv')} disabled={exportMutation.isPending}>
               Export CSV
             </Button>
@@ -150,7 +164,12 @@ export default function PanelExamResultsPage() {
         {resultsLoading ? (
           <p className="text-sm text-gray-500">Loading…</p>
         ) : (
-          <Table columns={columns} rows={results ?? []} rowKey={(row) => row.candidateId} emptyMessage="No candidates invited yet." />
+          <Table
+            columns={columns}
+            rows={(results ?? []).filter((row) => integrityFilter === 'all' || row.integrityLevel === integrityFilter)}
+            rowKey={(row) => row.candidateId}
+            emptyMessage="No candidates invited yet."
+          />
         )}
       </div>
     </div>

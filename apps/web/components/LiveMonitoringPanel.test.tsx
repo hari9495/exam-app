@@ -45,11 +45,32 @@ describe('LiveMonitoringPanel', () => {
     renderPanel();
 
     expect(screen.getByText('Online now')).toBeInTheDocument();
-    // All four stat tiles happen to compute to 1 in this fixture (online, in-progress, submitted, recent alerts).
-    expect(screen.getAllByText('1', { exact: true })).toHaveLength(4);
+    // The four stat tiles (online, in-progress, submitted, recent alerts) plus the
+    // per-row integrity alert chip for a1 (one medium alert) all compute to 1.
+    expect(screen.getAllByText('1', { exact: true })).toHaveLength(5);
     expect(screen.getByText('In progress')).toBeInTheDocument();
     expect(screen.getByText('Submitted')).toBeInTheDocument();
     expect(screen.getByText('Alerts (last 5 min)')).toBeInTheDocument();
+  });
+
+  it('shows a per-row integrity alert chip counting medium/high severity alerts for that attemptId', () => {
+    (useExamMonitoring as jest.Mock).mockReturnValue({
+      roster: [
+        { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'in_progress', online: true, remainingSeconds: 120, answeredCount: 2, totalQuestions: 5 },
+      ],
+      alerts: [
+        { attemptId: 'a1', candidateId: 'c1', eventType: 'tab_switch', severity: 'medium', occurredAt: '2026-01-01T00:08:00Z' },
+        { attemptId: 'a1', candidateId: 'c1', eventType: 'copy_paste', severity: 'medium', occurredAt: '2026-01-01T00:09:00Z' },
+        { attemptId: 'a1', candidateId: 'c1', eventType: 'right_click', severity: 'low', occurredAt: '2026-01-01T00:09:30Z' },
+      ],
+      connectionStatus: 'connected',
+      joinError: null,
+    });
+
+    renderPanel();
+
+    expect(screen.getByText('Integrity alerts')).toBeInTheDocument();
+    expect(screen.getByText('2')).toBeInTheDocument();
   });
 
   it('renders the roster table with candidate rows', () => {

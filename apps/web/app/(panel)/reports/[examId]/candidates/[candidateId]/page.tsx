@@ -1,10 +1,17 @@
 'use client';
 
+import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
-import { useCandidateReport, useAttemptInsight, useRegenerateAttemptInsight } from '../../../../../../lib/hooks/usePanelReports';
-import { Badge, Button, Card } from '../../../../../../components/ui';
+import {
+  useCandidateReport,
+  useAttemptInsight,
+  useRegenerateAttemptInsight,
+  useResultsList,
+} from '../../../../../../lib/hooks/usePanelReports';
+import { Badge, Button, Card, StatusBadge, IntegrityBadge, type StatusTone } from '../../../../../../components/ui';
 
 const PASS_FAIL_VARIANT: Record<string, 'success' | 'danger'> = { pass: 'success', fail: 'danger' };
+const SEVERITY_TONE: Record<string, StatusTone> = { high: 'danger', medium: 'warning', low: 'neutral' };
 
 export default function PanelCandidateDetailPage() {
   const { examId, candidateId } = useParams<{ examId: string; candidateId: string }>();
@@ -12,18 +19,62 @@ export default function PanelCandidateDetailPage() {
   const attemptId = searchParams.get('attemptId') || null;
   const { data: candidate, isLoading } = useCandidateReport(examId, candidateId);
   const { data: insight, isLoading: insightLoading } = useAttemptInsight(attemptId);
+  const { data: results } = useResultsList(examId);
   const regenerate = useRegenerateAttemptInsight();
 
   if (isLoading || !candidate) {
     return <p className="p-8 text-sm text-gray-500">Loading…</p>;
   }
 
+  const integrity = candidate.integrityAnalysis;
+  const questionTextById = new Map(
+    candidate.sections.flatMap((section) => section.questions.map((question) => [question.questionId, question.questionText] as const)),
+  );
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">{candidate.candidateName}</h1>
-        {candidate.passFail && <Badge variant={PASS_FAIL_VARIANT[candidate.passFail] ?? 'default'}>{candidate.passFail}</Badge>}
+        <div className="flex items-center gap-2">
+          {candidate.passFail && <Badge variant={PASS_FAIL_VARIANT[candidate.passFail] ?? 'default'}>{candidate.passFail}</Badge>}
+          <IntegrityBadge level={integrity?.level} />
+        </div>
       </div>
+
+      {integrity && (integrity.narrative || integrity.flags.length > 0) && (
+        <div className="mb-6">
+          <h2 className="mb-2 text-lg font-medium">Integrity analysis</h2>
+          {integrity.narrative && <p className="mb-3 text-sm text-gray-700">{integrity.narrative}</p>}
+          {integrity.flags.length > 0 && (
+            <ul className="flex flex-col gap-2">
+              {integrity.flags.map((flag, index) => {
+                const questionText = flag.questionId ? questionTextById.get(flag.questionId) : undefined;
+                const counterpart =
+                  flag.type === 'similarity_match' && flag.counterpartAttemptId
+                    ? results?.find((row) => row.attemptId === flag.counterpartAttemptId)
+                    : undefined;
+                return (
+                  <li key={index} className="rounded border border-gray-200 p-3 text-sm">
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <span>{flag.detail}</span>
+                      <StatusBadge tone={SEVERITY_TONE[flag.severity] ?? 'neutral'}>{flag.severity}</StatusBadge>
+                    </div>
+                    {questionText && <p className="text-xs text-gray-500">Question: {questionText}</p>}
+                    {counterpart && (
+                      <Link
+                        href={`/reports/${examId}/candidates/${counterpart.candidateId}?attemptId=${counterpart.attemptId ?? ''}`}
+                        className="text-xs font-medium text-primary"
+                      >
+                        View {counterpart.candidateName}&rsquo;s report
+                      </Link>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
 
       <Card className="mb-6">
         <p className="text-xs text-gray-500">Score</p>

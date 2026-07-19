@@ -64,6 +64,16 @@ export function LiveMonitoringPanel({ examId }: { examId: string }) {
       render: (row) => (row.answeredCount !== null && row.totalQuestions !== null ? `${row.answeredCount} / ${row.totalQuestions}` : '—'),
     },
     {
+      key: 'integrityAlerts',
+      header: 'Integrity alerts',
+      render: (row) => {
+        const count = alerts.filter(
+          (alert) => alert.attemptId === row.attemptId && (alert.severity === 'medium' || alert.severity === 'high'),
+        ).length;
+        return count > 0 ? <Badge variant="danger">{count}</Badge> : <span className="text-gray-400">0</span>;
+      },
+    },
+    {
       key: 'actions',
       header: '',
       render: (row) =>
