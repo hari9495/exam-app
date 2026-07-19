@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Input } from '../components/ui';
-import { Exam } from '../lib/types';
+import { Button, Input, Select } from '../components/ui';
+import { Exam, FeedbackVisibility } from '../lib/types';
 
 export interface ExamDetailsValue {
   title: string;
@@ -10,6 +10,7 @@ export interface ExamDetailsValue {
   durationMinutes: number;
   passCriteriaPercent: number;
   randomizeOrder: boolean;
+  feedbackVisibility: FeedbackVisibility;
   schedulingEnabled: boolean;
   availabilityWindowStart?: string;
   availabilityWindowEnd?: string;
@@ -33,6 +34,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel }: ExamDeta
   const [durationMinutes, setDurationMinutes] = useState(String(initialExam?.durationMinutes ?? 60));
   const [passCriteriaPercent, setPassCriteriaPercent] = useState(String(initialExam?.passCriteriaPercent ?? 40));
   const [randomizeOrder, setRandomizeOrder] = useState(initialExam?.randomizeOrder ?? false);
+  const [feedbackVisibility, setFeedbackVisibility] = useState<FeedbackVisibility>(initialExam?.feedbackVisibility ?? 'pass_fail');
   const [schedulingEnabled, setSchedulingEnabled] = useState(initialExam?.schedulingEnabled ?? false);
   const [availabilityWindowStart, setAvailabilityWindowStart] = useState(
     initialExam?.availabilityWindowStart ? toDatetimeLocalValue(initialExam.availabilityWindowStart) : '',
@@ -59,6 +61,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel }: ExamDeta
       durationMinutes: Number(durationMinutes),
       passCriteriaPercent: Number(passCriteriaPercent),
       randomizeOrder,
+      feedbackVisibility,
       schedulingEnabled,
       availabilityWindowStart: schedulingEnabled ? new Date(availabilityWindowStart).toISOString() : undefined,
       availabilityWindowEnd: schedulingEnabled ? new Date(availabilityWindowEnd).toISOString() : undefined,
@@ -86,6 +89,17 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel }: ExamDeta
         <input type="checkbox" checked={randomizeOrder} onChange={(e) => setRandomizeOrder(e.target.checked)} />
         Randomize question order for candidates
       </label>
+      <Select
+        label="Candidate feedback"
+        value={feedbackVisibility}
+        onChange={(value) => setFeedbackVisibility(value as FeedbackVisibility)}
+        options={[
+          { value: 'none', label: 'None — candidates just see "submitted"' },
+          { value: 'pass_fail', label: 'Pass/fail only' },
+          { value: 'score', label: 'Score percentage' },
+          { value: 'breakdown', label: 'Per-section breakdown' },
+        ]}
+      />
       <label className="flex items-center gap-2 text-sm text-gray-700">
         <input type="checkbox" checked={schedulingEnabled} onChange={(e) => setSchedulingEnabled(e.target.checked)} />
         Enable scheduling

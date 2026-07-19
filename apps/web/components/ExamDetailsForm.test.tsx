@@ -82,7 +82,7 @@ describe('ExamDetailsForm', () => {
   it('pre-fills the window inputs from an existing scheduled exam', () => {
     const scheduledExam = {
       id: 'exam-1', title: 'Existing', instructions: null, status: 'draft' as const, durationMinutes: 60,
-      passCriteriaPercent: 40, randomizeOrder: false, schedulingEnabled: true,
+      passCriteriaPercent: 40, randomizeOrder: false, feedbackVisibility: 'pass_fail' as const, schedulingEnabled: true,
       availabilityWindowStart: '2026-07-20T09:00:00.000Z', availabilityWindowEnd: '2026-07-27T18:00:00.000Z',
       createdAt: '2026-07-01T00:00:00.000Z', sections: [],
     };
@@ -96,5 +96,32 @@ describe('ExamDetailsForm', () => {
 
     expect(screen.getByLabelText('Enable scheduling')).toBeChecked();
     expect(screen.getByLabelText('Window opens')).toHaveValue(expectedValue);
+  });
+
+  it('includes feedbackVisibility in the submitted value, defaulting to pass_fail for a new exam', async () => {
+    const onSubmit = jest.fn();
+    render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Save details" />);
+
+    await userEvent.type(screen.getByLabelText('Title'), 'New Exam');
+    await userEvent.click(screen.getByRole('button', { name: 'Save details' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ feedbackVisibility: 'pass_fail' }));
+  });
+
+  it('lets the recruiter change the candidate feedback level', async () => {
+    const onSubmit = jest.fn();
+    render(
+      <ExamDetailsForm
+        initialExam={{ title: 'Exam', durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false, feedbackVisibility: 'pass_fail', schedulingEnabled: false } as any}
+        onSubmit={onSubmit}
+        submitLabel="Save details"
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('combobox', { name: /candidate feedback/i }));
+    await userEvent.click(screen.getByRole('option', { name: /score/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save details' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ feedbackVisibility: 'score' }));
   });
 });

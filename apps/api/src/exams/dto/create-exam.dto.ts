@@ -1,4 +1,6 @@
-import { IsBoolean, IsInt, IsISO8601, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsISO8601, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
+
+const FEEDBACK_VISIBILITY_VALUES = ['none', 'pass_fail', 'score', 'breakdown'] as const;
 
 export class CreateExamDto {
   @IsString()
@@ -23,6 +25,10 @@ export class CreateExamDto {
   @IsOptional()
   @IsBoolean()
   randomizeOrder?: boolean;
+
+  @IsOptional()
+  @IsIn(FEEDBACK_VISIBILITY_VALUES)
+  feedbackVisibility?: string;
 
   @IsOptional()
   @IsBoolean()

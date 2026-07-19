@@ -89,6 +89,8 @@ export interface ExamSection {
   questions: { questionId: string }[];
 }
 
+export type FeedbackVisibility = 'none' | 'pass_fail' | 'score' | 'breakdown';
+
 export interface Exam {
   id: string;
   title: string;
@@ -97,6 +99,7 @@ export interface Exam {
   durationMinutes: number;
   passCriteriaPercent: number;
   randomizeOrder: boolean;
+  feedbackVisibility: FeedbackVisibility;
   schedulingEnabled: boolean;
   availabilityWindowStart: string | null;
   availabilityWindowEnd: string | null;

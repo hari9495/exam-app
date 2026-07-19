@@ -50,6 +50,7 @@ describe('ExamsService', () => {
         durationMinutes: 45,
         passCriteriaPercent: 60,
         randomizeOrder: undefined,
+        feedbackVisibility: undefined,
         schedulingEnabled: false,
         availabilityWindowStart: null,
         availabilityWindowEnd: null,
@@ -72,12 +73,40 @@ describe('ExamsService', () => {
         durationMinutes: undefined,
         passCriteriaPercent: undefined,
         randomizeOrder: undefined,
+        feedbackVisibility: undefined,
         schedulingEnabled: false,
         availabilityWindowStart: null,
         availabilityWindowEnd: null,
         createdBy: 'user-1',
       },
     });
+  });
+
+  it('persists feedbackVisibility on create when provided', async () => {
+    const tx = { exam: { create: jest.fn().mockResolvedValue({ id: 'exam-1' }) } };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.create(context, 'user-1', { title: 'Exam', feedbackVisibility: 'score' });
+
+    expect(tx.exam.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ feedbackVisibility: 'score' }) }),
+    );
+  });
+
+  it('updates feedbackVisibility when provided', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null }),
+        update: jest.fn().mockResolvedValue({ id: 'exam-1', feedbackVisibility: 'breakdown', schedulingEnabled: false }),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.update(context, 'exam-1', { title: 'Exam', feedbackVisibility: 'breakdown' });
+
+    expect(tx.exam.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ feedbackVisibility: 'breakdown' }) }),
+    );
   });
 
   it('creates a scheduled exam with schedulingEnabled true and a valid window', async () => {
@@ -793,6 +822,7 @@ describe('ExamsService', () => {
             durationMinutes: 45,
             passCriteriaPercent: 60,
             randomizeOrder: true,
+            feedbackVisibility: 'score',
             schedulingEnabled: true,
             availabilityWindowStart: new Date('2026-07-20T09:00:00.000Z'),
             availabilityWindowEnd: new Date('2026-07-27T18:00:00.000Z'),
@@ -814,6 +844,7 @@ describe('ExamsService', () => {
           durationMinutes: 45,
           passCriteriaPercent: 60,
           randomizeOrder: true,
+          feedbackVisibility: 'score',
           schedulingEnabled: false,
           availabilityWindowStart: null,
           availabilityWindowEnd: null,
