@@ -1,3 +1,11 @@
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
 export type QuestionType = 'single_mcq' | 'multi_mcq' | 'true_false' | 'code';
 export type Difficulty = 'easy' | 'medium' | 'hard';
 export type ExamStatus = 'draft' | 'published' | 'archived';

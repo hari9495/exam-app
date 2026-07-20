@@ -12,3 +12,4 @@ export { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 export { Table, type Column } from './Table';
 export { StatusBadge, type StatusTone } from './StatusBadge';
 export { IntegrityBadge, type IntegrityLevel } from './IntegrityBadge';
+export { Pagination } from './Pagination';
