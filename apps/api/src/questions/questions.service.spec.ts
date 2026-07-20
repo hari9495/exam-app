@@ -140,24 +140,56 @@ describe('QuestionsService', () => {
 
   it('lists questions scoped to the caller\'s organization, defaulting to active status', async () => {
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
-      fn({ question: { findMany: jest.fn().mockResolvedValue([{ id: 'q-1', status: 'active', tags: [] }]) } }),
+      fn({
+        question: {
+          findMany: jest.fn().mockResolvedValue([{ id: 'q-1', status: 'active', tags: [] }]),
+          count: jest.fn().mockResolvedValue(1),
+        },
+      }),
     );
 
     const result = await service.list(context, {});
 
-    expect(result).toHaveLength(1);
+    expect(result.data).toHaveLength(1);
+    expect(result.total).toBe(1);
+    expect(result.page).toBe(1);
+    expect(result.pageSize).toBe(20);
+    expect(result.totalPages).toBe(1);
     expect(tenantPrisma.forTenant).toHaveBeenCalledWith(context, expect.any(Function));
   });
 
   it('filters the list by tagId when provided', async () => {
     const findMany = jest.fn().mockResolvedValue([]);
-    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ question: { findMany } }));
+    const count = jest.fn().mockResolvedValue(0);
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ question: { findMany, count } }));
 
     await service.list(context, { tagId: 'tag-1' });
 
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ tags: { some: { tagId: 'tag-1' } } }) }),
     );
+  });
+
+  it('paginates and filters by search on question text', async () => {
+    const tx = {
+      question: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'q-2', text: 'Reverse a linked list', options: [], tags: [] }]),
+        count: jest.fn().mockResolvedValue(1),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    const result = await service.list(context, { page: '1', pageSize: '10', search: 'linked list' });
+
+    expect(tx.question.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ text: { contains: 'linked list' } }),
+        skip: 0,
+        take: 10,
+      }),
+    );
+    expect(result.total).toBe(1);
+    expect(result.data).toHaveLength(1);
   });
 
   it('throws NotFoundException when findOne cannot find the question', async () => {

@@ -60,10 +60,11 @@ export class QuestionsController {
     @Query('difficulty') difficulty?: string,
     @Query('status') status?: string,
     @Query('tagId') tagId?: string,
-    @Query('limit') limit?: string,
-    @Query('cursor') cursor?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('search') search?: string,
   ) {
-    return this.questionsService.list(tenant, { topic, difficulty, status, tagId, limit: limit ? parseInt(limit, 10) : undefined, cursor });
+    return this.questionsService.list(tenant, { topic, difficulty, status, tagId, page, pageSize, search });
   }
 
   @Get(':id')

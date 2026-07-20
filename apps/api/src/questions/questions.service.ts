@@ -7,6 +7,7 @@ import { UpdateQuestionDto } from './dto/update-question.dto';
 import { validateQuestionPayload } from './question-validation';
 import { JobsService } from '../jobs/jobs.service';
 import { AiGenerateQuestionsDto } from './dto/ai-generate-questions.dto';
+import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
 import {
   parseBulkQuestionFile,
   detectFileKind,
@@ -24,8 +25,9 @@ interface QuestionFilters {
   difficulty?: string;
   status?: string;
   tagId?: string;
-  limit?: number;
-  cursor?: string;
+  page?: string;
+  pageSize?: string;
+  search?: string;
 }
 
 export interface BulkUploadResult {
@@ -79,24 +81,30 @@ export class QuestionsService {
     return this.toResponse(question as QuestionWithRelations);
   }
 
-  async list(context: TenantContext, filters: QuestionFilters): Promise<QuestionResponse[]> {
-    const limit = filters.limit && filters.limit > 0 && filters.limit <= 100 ? filters.limit : 20;
-    const questions = await this.tenantPrisma.forTenant(context, (tx) =>
-      tx.question.findMany({
-        where: {
-          organizationId: context.organizationId as string,
-          ...(filters.topic ? { topic: filters.topic } : {}),
-          ...(filters.difficulty ? { difficulty: filters.difficulty } : {}),
-          ...(filters.tagId ? { tags: { some: { tagId: filters.tagId } } } : {}),
-          status: filters.status ?? 'active',
-        },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        take: limit,
-        ...(filters.cursor ? { cursor: { id: filters.cursor }, skip: 1 } : {}),
-        include: { tags: { include: { tag: true } } },
-      }),
-    );
-    return questions.map((q) => this.toResponse(q as unknown as QuestionWithRelations));
+  async list(context: TenantContext, filters: QuestionFilters): Promise<PaginatedResponse<QuestionResponse>> {
+    const { page, pageSize, skip, take } = resolvePaginationParams(filters.page, filters.pageSize);
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const where = {
+        organizationId: context.organizationId as string,
+        ...(filters.topic ? { topic: filters.topic } : {}),
+        ...(filters.difficulty ? { difficulty: filters.difficulty } : {}),
+        ...(filters.tagId ? { tags: { some: { tagId: filters.tagId } } } : {}),
+        status: filters.status ?? 'active',
+        ...(filters.search ? { text: { contains: filters.search } } : {}),
+      };
+      const [questions, total] = await Promise.all([
+        tx.question.findMany({
+          where,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          skip,
+          take,
+          include: { tags: { include: { tag: true } } },
+        }),
+        tx.question.count({ where }),
+      ]);
+      const data = questions.map((q) => this.toResponse(q as unknown as QuestionWithRelations));
+      return buildPaginatedResponse(data, total, page, pageSize);
+    });
   }
 
   async findOne(context: TenantContext, id: string): Promise<QuestionResponse> {
