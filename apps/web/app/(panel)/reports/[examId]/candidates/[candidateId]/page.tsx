@@ -8,7 +8,7 @@ import {
   useRegenerateAttemptInsight,
   useResultsList,
 } from '../../../../../../lib/hooks/usePanelReports';
-import { Badge, Button, Card, StatusBadge, IntegrityBadge, type StatusTone } from '../../../../../../components/ui';
+import { Badge, Button, Card, StatusBadge, IntegrityBadge, useToast, type StatusTone } from '../../../../../../components/ui';
 
 const PASS_FAIL_VARIANT: Record<string, 'success' | 'danger'> = { pass: 'success', fail: 'danger' };
 const SEVERITY_TONE: Record<string, StatusTone> = { high: 'danger', medium: 'warning', low: 'neutral' };
@@ -21,6 +21,14 @@ export default function PanelCandidateDetailPage() {
   const { data: insight, isLoading: insightLoading } = useAttemptInsight(attemptId);
   const { data: results } = useResultsList(examId);
   const regenerate = useRegenerateAttemptInsight();
+  const { toast } = useToast();
+
+  const handleRegenerate = () => {
+    if (!attemptId) return;
+    regenerate.mutateAsync(attemptId).catch((error) => {
+      toast(error instanceof Error ? error.message : 'Failed to generate AI insight.', 'error');
+    });
+  };
 
   if (isLoading || !candidate) {
     return <p className="p-8 text-sm text-gray-500">Loading…</p>;
@@ -97,10 +105,17 @@ export default function PanelCandidateDetailPage() {
             <Card>
               <p className="text-sm text-gray-700">{insight.summary}</p>
             </Card>
+          ) : insight?.status === 'failed' ? (
+            <Card>
+              <p className="mb-3 text-sm text-red-700">Generation failed. This is usually temporary — try again.</p>
+              <Button variant="secondary" disabled={regenerate.isPending} onClick={handleRegenerate}>
+                Retry
+              </Button>
+            </Card>
           ) : (
             <Card>
               <p className="mb-3 text-sm text-gray-500">Not yet generated</p>
-              <Button variant="secondary" disabled={regenerate.isPending} onClick={() => regenerate.mutateAsync(attemptId)}>
+              <Button variant="secondary" disabled={regenerate.isPending} onClick={handleRegenerate}>
                 Regenerate
               </Button>
             </Card>
