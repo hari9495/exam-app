@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Patch, Post, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Patch, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -29,8 +29,12 @@ export class OrganizationsController {
 
   @Get()
   @RequirePermissions('platform:manage_organizations')
-  list() {
-    return this.organizationsService.list();
+  list(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.organizationsService.list({ page, pageSize, search });
   }
 
   @Get('branding')

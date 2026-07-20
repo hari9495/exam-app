@@ -1,13 +1,28 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../api-client';
-import { Organization } from '../types';
+import { Organization, PaginatedResponse } from '../types';
 import { useAuth } from '../auth-context';
 
-export function useOrganizations() {
+interface UseOrganizationsParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+}
+
+function buildOrganizationsQuery(params: UseOrganizationsParams): string {
+  const query = new URLSearchParams();
+  if (params.page) query.set('page', String(params.page));
+  if (params.pageSize) query.set('pageSize', String(params.pageSize));
+  if (params.search) query.set('search', params.search);
+  const queryString = query.toString();
+  return queryString ? `?${queryString}` : '';
+}
+
+export function useOrganizations(params: UseOrganizationsParams = {}) {
   const { accessToken } = useAuth();
-  return useQuery<Organization[]>({
-    queryKey: ['organizations'],
-    queryFn: () => apiFetch('/organizations', {}, accessToken ?? undefined),
+  return useQuery<PaginatedResponse<Organization>>({
+    queryKey: ['organizations', params],
+    queryFn: () => apiFetch(`/organizations${buildOrganizationsQuery(params)}`, {}, accessToken ?? undefined),
     enabled: Boolean(accessToken),
   });
 }

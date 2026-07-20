@@ -24,7 +24,7 @@ import { EmailService } from '../email/email.service';
 describe('OrganizationsService', () => {
   let service: OrganizationsService;
   let prisma: {
-    organization: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock; findMany: jest.Mock };
+    organization: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock; findMany: jest.Mock; count: jest.Mock };
     plan: { findFirst: jest.Mock };
     webhookDelivery: { findMany: jest.Mock };
   };
@@ -37,7 +37,7 @@ describe('OrganizationsService', () => {
     mockTransporterVerify.mockReset();
     mockAnthropicCreate.mockReset();
     prisma = {
-      organization: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), findMany: jest.fn() },
+      organization: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), findMany: jest.fn(), count: jest.fn() },
       plan: { findFirst: jest.fn() },
       webhookDelivery: { findMany: jest.fn() },
     };
@@ -178,16 +178,37 @@ describe('OrganizationsService', () => {
   });
 
   describe('list', () => {
-    it('returns all organizations ordered by newest first', async () => {
+    it('returns a paginated page of organizations ordered by newest first', async () => {
       prisma.organization.findMany.mockResolvedValue([
         { id: 'org-2', name: 'Beta', slug: 'beta', region: 'eu', createdAt: new Date('2026-01-02') },
         { id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', createdAt: new Date('2026-01-01') },
       ]);
+      prisma.organization.count.mockResolvedValue(2);
 
       const result = await service.list();
 
-      expect(result).toHaveLength(2);
-      expect(prisma.organization.findMany).toHaveBeenCalledWith({ orderBy: { createdAt: 'desc' } });
+      expect(result).toEqual({
+        data: expect.arrayContaining([expect.objectContaining({ id: 'org-2' }), expect.objectContaining({ id: 'org-1' })]),
+        total: 2,
+        page: 1,
+        pageSize: 20,
+        totalPages: 1,
+      });
+      expect(prisma.organization.findMany).toHaveBeenCalledWith({ where: {}, orderBy: { createdAt: 'desc' }, skip: 0, take: 20 });
+    });
+
+    it('filters by name or slug when search is provided', async () => {
+      prisma.organization.findMany.mockResolvedValue([{ id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', createdAt: new Date('2026-01-01') }]);
+      prisma.organization.count.mockResolvedValue(1);
+
+      await service.list({ search: 'acm' });
+
+      expect(prisma.organization.findMany).toHaveBeenCalledWith({
+        where: { OR: [{ name: { contains: 'acm' } }, { slug: { contains: 'acm' } }] },
+        orderBy: { createdAt: 'desc' },
+        skip: 0,
+        take: 20,
+      });
     });
   });
 

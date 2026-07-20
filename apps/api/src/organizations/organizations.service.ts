@@ -11,6 +11,7 @@ import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { OrgSecretsCryptoService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
+import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateBrandingColorsDto } from './dto/update-branding-colors.dto';
 import { UpdateSmtpSettingsDto } from './dto/update-smtp-settings.dto';
@@ -135,8 +136,16 @@ export class OrganizationsService {
     });
   }
 
-  async list(): Promise<Organization[]> {
-    return this.prisma.organization.findMany({ orderBy: { createdAt: 'desc' } });
+  async list(filters: { page?: string; pageSize?: string; search?: string } = {}): Promise<PaginatedResponse<Organization>> {
+    const { page, pageSize, skip, take } = resolvePaginationParams(filters.page, filters.pageSize);
+    const where = filters.search
+      ? { OR: [{ name: { contains: filters.search } }, { slug: { contains: filters.search } }] }
+      : {};
+    const [organizations, total] = await Promise.all([
+      this.prisma.organization.findMany({ where, orderBy: { createdAt: 'desc' }, skip, take }),
+      this.prisma.organization.count({ where }),
+    ]);
+    return buildPaginatedResponse(organizations, total, page, pageSize);
   }
 
   async getBranding(context: TenantContext): Promise<BrandingResponse> {

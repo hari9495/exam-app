@@ -24,9 +24,15 @@ describe('useOrganizations', () => {
       if (String(url).endsWith('/auth/refresh')) {
         return new Response(JSON.stringify({ accessToken: token }), { status: 200 });
       }
-      if (String(url).endsWith('/organizations')) {
+      if (String(url).includes('/organizations')) {
         return new Response(
-          JSON.stringify([{ id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', createdAt: '2026-01-01T00:00:00.000Z' }]),
+          JSON.stringify({
+            data: [{ id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', createdAt: '2026-01-01T00:00:00.000Z' }],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+            totalPages: 1,
+          }),
           { status: 200 },
         );
       }
@@ -35,6 +41,6 @@ describe('useOrganizations', () => {
 
     const { result } = renderHook(() => useOrganizations(), { wrapper });
 
-    await waitFor(() => expect(result.current.data?.[0]?.name).toBe('Acme'));
+    await waitFor(() => expect(result.current.data?.data[0]?.name).toBe('Acme'));
   });
 });

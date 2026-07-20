@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useOrganizations, useCreateOrganization } from '../../../lib/hooks/useOrganizations';
-import { Table, Input, Select, Button, Card, useToast, type Column } from '../../../components/ui';
+import { Table, Input, Select, Button, Card, useToast, Pagination, type Column } from '../../../components/ui';
 import { Organization } from '../../../lib/types';
 
 const REGION_OPTIONS = [
@@ -11,7 +11,9 @@ const REGION_OPTIONS = [
 ];
 
 export default function OrganizationsPage() {
-  const { data: organizations, isLoading, isError } = useOrganizations();
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const { data: organizationsResponse, isLoading, isError } = useOrganizations({ page, pageSize: 20, search: search || undefined });
   const createOrganization = useCreateOrganization();
   const { toast } = useToast();
   const [name, setName] = useState('');
@@ -68,6 +70,15 @@ export default function OrganizationsPage() {
           </p>
         )}
       </Card>
+      <Input
+        label="Search organizations"
+        placeholder="Name or slug…"
+        value={search}
+        onChange={(value) => {
+          setSearch(value);
+          setPage(1);
+        }}
+      />
       {isLoading && <p className="text-sm text-gray-500">Loading organizations…</p>}
       {isError && (
         <p role="alert" className="text-sm text-status-danger">
@@ -75,7 +86,10 @@ export default function OrganizationsPage() {
         </p>
       )}
       {!isLoading && !isError && (
-        <Table columns={columns} rows={organizations ?? []} rowKey={(org) => org.id} emptyMessage="No organizations yet." />
+        <>
+          <Table columns={columns} rows={organizationsResponse?.data ?? []} rowKey={(org) => org.id} emptyMessage="No organizations yet." />
+          <Pagination page={organizationsResponse?.page ?? 1} totalPages={organizationsResponse?.totalPages ?? 1} onPageChange={setPage} />
+        </>
       )}
     </div>
   );

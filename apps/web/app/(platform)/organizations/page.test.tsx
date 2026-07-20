@@ -12,9 +12,15 @@ function renderPage() {
     if (String(url).endsWith('/auth/refresh')) {
       return new Response(JSON.stringify({ accessToken: token }), { status: 200 });
     }
-    if (String(url).endsWith('/organizations') && (!options || options.method === undefined)) {
+    if (String(url).includes('/organizations') && (!options || options.method === undefined)) {
       return new Response(
-        JSON.stringify([{ id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', createdAt: '2026-01-01T00:00:00.000Z' }]),
+        JSON.stringify({
+          data: [{ id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', createdAt: '2026-01-01T00:00:00.000Z' }],
+          total: 1,
+          page: 1,
+          pageSize: 20,
+          totalPages: 1,
+        }),
         { status: 200 },
       );
     }
