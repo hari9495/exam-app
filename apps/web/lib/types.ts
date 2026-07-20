@@ -268,6 +268,7 @@ export interface AttemptPreview {
   };
   schedulingWindowState: 'not_open' | 'open' | 'closed' | null;
   sections: AttemptSectionSummary[];
+  organizationLogoUrl: string | null;
 }
 
 export interface AttemptSectionFeedback {
@@ -293,6 +294,7 @@ export interface AttemptState {
   answers: AttemptAnswerSummary[];
   messages: AttemptMessageSummary[];
   feedback: AttemptFeedback | null;
+  organizationLogoUrl: string | null;
 }
 
 export type AttemptCurrent = AttemptPreview | AttemptState;

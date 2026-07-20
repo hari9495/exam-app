@@ -64,6 +64,16 @@ describe('AttemptService', () => {
       .mockImplementationOnce((_ctx, fn) => fn(scopedTx));
   }
 
+  // getCurrent additionally looks up the org's logo (for candidate-facing branding) via a
+  // third bootstrap-scoped forTenant call, sandwiched between the invitation lookup and the
+  // scoped attempt-data call that the other methods' mockBootstrapThenScoped doesn't need.
+  function mockBootstrapWithLogoThenScoped(scopedTx: unknown, logoPath: string | null = null) {
+    tenantPrisma.forTenant
+      .mockImplementationOnce(() => Promise.resolve(invitationRecord))
+      .mockImplementationOnce(() => Promise.resolve({ logoPath }))
+      .mockImplementationOnce((_ctx, fn) => fn(scopedTx));
+  }
+
   describe('getCurrent', () => {
     it('throws UnauthorizedException when the invitation no longer resolves', async () => {
       tenantPrisma.forTenant.mockImplementationOnce(() => Promise.resolve(null));
@@ -81,7 +91,7 @@ describe('AttemptService', () => {
           ]),
         },
       };
-      mockBootstrapThenScoped(tx);
+      mockBootstrapWithLogoThenScoped(tx);
 
       const result = await service.getCurrent(session);
 
@@ -95,6 +105,7 @@ describe('AttemptService', () => {
           { title: 'Section One', questionCount: 2 },
           { title: 'Section Two', questionCount: 5 },
         ],
+        organizationLogoUrl: null,
       });
     });
 
@@ -107,7 +118,7 @@ describe('AttemptService', () => {
           ]),
         },
       };
-      mockBootstrapThenScoped(tx);
+      mockBootstrapWithLogoThenScoped(tx);
 
       const result = await service.getCurrent(session);
 
@@ -118,6 +129,7 @@ describe('AttemptService', () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, extraTimePercent: 50 }))
+        .mockImplementationOnce(() => Promise.resolve({ logoPath: null }))
         .mockImplementationOnce((_ctx, fn) => fn(tx));
 
       const result = await service.getCurrent(session);
@@ -152,7 +164,7 @@ describe('AttemptService', () => {
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(3300);
-      mockBootstrapThenScoped(tx);
+      mockBootstrapWithLogoThenScoped(tx);
 
       const result = await service.getCurrent(session);
 
@@ -166,6 +178,7 @@ describe('AttemptService', () => {
         answers: [{ questionId: 'q1', selectedOptionIds: ['opt-a'], isMarkedForReview: false }],
         messages: [],
         feedback: null,
+        organizationLogoUrl: null,
       });
       expect((result as any).sections[0].questions[0]).not.toHaveProperty('isCorrect');
     });
@@ -189,7 +202,7 @@ describe('AttemptService', () => {
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(3300);
-      mockBootstrapThenScoped(tx);
+      mockBootstrapWithLogoThenScoped(tx);
 
       const result = await service.getCurrent(session);
 
@@ -219,7 +232,7 @@ describe('AttemptService', () => {
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(3300);
-      mockBootstrapThenScoped(tx);
+      mockBootstrapWithLogoThenScoped(tx);
 
       const result = await service.getCurrent(session);
 
@@ -240,7 +253,7 @@ describe('AttemptService', () => {
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(1000);
-      mockBootstrapThenScoped(tx);
+      mockBootstrapWithLogoThenScoped(tx);
 
       const result = await service.getCurrent(session);
 
@@ -252,9 +265,9 @@ describe('AttemptService', () => {
       });
     });
 
-    it('resolves tenant context via an unscoped bootstrap lookup followed by a properly scoped call', async () => {
+    it('resolves tenant context via an unscoped bootstrap lookup, an unscoped logo lookup, then a properly scoped call', async () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
-      mockBootstrapThenScoped(tx);
+      mockBootstrapWithLogoThenScoped(tx);
 
       await service.getCurrent(session);
 
@@ -265,6 +278,11 @@ describe('AttemptService', () => {
       );
       expect(tenantPrisma.forTenant).toHaveBeenNthCalledWith(
         2,
+        { organizationId: null, isSuperAdmin: true },
+        expect.any(Function),
+      );
+      expect(tenantPrisma.forTenant).toHaveBeenNthCalledWith(
+        3,
         { organizationId: 'org-1', isSuperAdmin: false },
         expect.any(Function),
       );
@@ -285,7 +303,7 @@ describe('AttemptService', () => {
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(100);
-      mockBootstrapThenScoped(tx);
+      mockBootstrapWithLogoThenScoped(tx);
 
       const result = await service.getCurrent(session);
 
@@ -308,7 +326,7 @@ describe('AttemptService', () => {
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(0);
-      mockBootstrapThenScoped(tx);
+      mockBootstrapWithLogoThenScoped(tx);
 
       const result = await service.getCurrent(session);
 
@@ -336,6 +354,7 @@ describe('AttemptService', () => {
       tenantPrisma.forTenant.mockReset();
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve(examWithVisibility))
+        .mockImplementationOnce(() => Promise.resolve({ logoPath: null }))
         .mockImplementationOnce((_ctx, fn) => fn(tx));
 
       const result = await service.getCurrent(session);
@@ -362,6 +381,7 @@ describe('AttemptService', () => {
       const examWithVisibility = { ...invitationRecord, exam: { ...exam, feedbackVisibility: 'none' } };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve(examWithVisibility))
+        .mockImplementationOnce(() => Promise.resolve({ logoPath: null }))
         .mockImplementationOnce((_ctx, fn) => fn(tx));
 
       const result = await service.getCurrent(session);
@@ -388,6 +408,7 @@ describe('AttemptService', () => {
       const examWithVisibility = { ...invitationRecord, exam: { ...exam, feedbackVisibility: 'score' } };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve(examWithVisibility))
+        .mockImplementationOnce(() => Promise.resolve({ logoPath: null }))
         .mockImplementationOnce((_ctx, fn) => fn(tx));
 
       const result = await service.getCurrent(session);
@@ -429,6 +450,7 @@ describe('AttemptService', () => {
       tenantPrisma.forTenant.mockReset();
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve(examWithVisibility))
+        .mockImplementationOnce(() => Promise.resolve({ logoPath: null }))
         .mockImplementationOnce((_ctx, fn) => fn(tx));
 
       const result = await service.getCurrent(session);
@@ -736,15 +758,24 @@ describe('AttemptService', () => {
       availabilityWindowEnd: new Date(Date.now() + 60 * 60 * 1000),
     };
 
+    // Shared by both getCurrent() tests (which look up the org logo) and start() tests (which
+    // don't) - callers that need the logo call insert it themselves before calling this.
     function mockInvitationWithExam(scopedTx: unknown, scheduledExam: Record<string, unknown>) {
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: scheduledExam }))
         .mockImplementationOnce((_ctx, fn) => fn(scopedTx));
     }
 
+    function mockInvitationWithExamAndLogo(scopedTx: unknown, scheduledExam: Record<string, unknown>) {
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: scheduledExam }))
+        .mockImplementationOnce(() => Promise.resolve({ logoPath: null }))
+        .mockImplementationOnce((_ctx, fn) => fn(scopedTx));
+    }
+
     it('getCurrent() returns schedulingWindowState "not_open" before the window opens, with no attempt created', async () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
-      mockInvitationWithExam(tx, notYetOpenExam);
+      mockInvitationWithExamAndLogo(tx, notYetOpenExam);
 
       const result = await service.getCurrent(session);
 
@@ -757,13 +788,14 @@ describe('AttemptService', () => {
         },
         schedulingWindowState: 'not_open',
         sections: [],
+        organizationLogoUrl: null,
       });
       expect(tx.attempt.create).not.toHaveBeenCalled();
     });
 
     it('getCurrent() returns schedulingWindowState "closed" after the window has passed, with no attempt created', async () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
-      mockInvitationWithExam(tx, closedExam);
+      mockInvitationWithExamAndLogo(tx, closedExam);
 
       const result = await service.getCurrent(session);
 
@@ -773,7 +805,7 @@ describe('AttemptService', () => {
 
     it('getCurrent() returns schedulingWindowState "open" within the window', async () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
-      mockInvitationWithExam(tx, openExam);
+      mockInvitationWithExamAndLogo(tx, openExam);
 
       const result = await service.getCurrent(session);
 
@@ -782,7 +814,7 @@ describe('AttemptService', () => {
 
     it('getCurrent() returns schedulingWindowState null for a non-scheduled exam', async () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
-      mockBootstrapThenScoped(tx);
+      mockBootstrapWithLogoThenScoped(tx);
 
       const result = await service.getCurrent(session);
 

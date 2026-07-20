@@ -75,6 +75,7 @@ interface AttemptPreviewResponse {
   };
   schedulingWindowState: 'not_open' | 'open' | 'closed' | null;
   sections: AttemptSectionSummary[];
+  organizationLogoUrl: string | null;
 }
 
 interface AttemptSectionFeedback {
@@ -100,6 +101,7 @@ interface AttemptStateResponse {
   answers: AttemptAnswerSummary[];
   messages: AttemptMessageSummary[];
   feedback: AttemptFeedback | null;
+  organizationLogoUrl: string | null;
 }
 
 export type AttemptCurrentResponse = AttemptPreviewResponse | AttemptStateResponse;
@@ -119,6 +121,7 @@ export class AttemptService {
 
   async getCurrent(session: CandidateSession): Promise<AttemptCurrentResponse> {
     const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
+    const organizationLogoUrl = await this.getOrganizationLogoUrl(organizationId);
 
     return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
       const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
@@ -142,6 +145,7 @@ export class AttemptService {
             title: section.title,
             questionCount: section.selectionMode === 'pool' ? (section.poolSize ?? 0) : section.questions.length,
           })),
+          organizationLogoUrl,
         };
       }
 
@@ -169,6 +173,7 @@ export class AttemptService {
         })),
         messages: unreadMessages.map((message) => ({ id: message.id, body: message.body, sentAt: message.sentAt })),
         feedback,
+        organizationLogoUrl,
       };
     });
   }
@@ -518,6 +523,13 @@ export class AttemptService {
       durationMinutes: effectiveDurationMinutes(invitation.exam.durationMinutes, invitation.extraTimePercent),
     };
     return { organizationId: exam.organizationId, exam, invitation };
+  }
+
+  private async getOrganizationLogoUrl(organizationId: string): Promise<string | null> {
+    const organization = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
+      tx.organization.findUnique({ where: { id: organizationId }, select: { logoPath: true } }),
+    );
+    return organization?.logoPath ? `${process.env.API_ORIGIN}/uploads/${organization.logoPath}` : null;
   }
 
   private getSchedulingWindowState(exam: {
