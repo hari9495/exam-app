@@ -14,6 +14,9 @@ interface SectionQuestionPickerProps {
 }
 
 export function SectionQuestionPicker({ examId, sectionId, open, onClose, existingQuestionIds }: SectionQuestionPickerProps) {
+  // ponytail: pageSize:100 is the server's max -- an org with >100 active
+  // questions silently can't attach #101+ here. Upgrade path: replace with a
+  // real paginated/typeahead picker if this becomes a real constraint.
   const { data: questionsResponse } = useQuestions({ pageSize: 100 });
   const questions = questionsResponse?.data;
   const replaceQuestions = useReplaceSectionQuestions(examId, sectionId);

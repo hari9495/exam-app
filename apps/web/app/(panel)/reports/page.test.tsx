@@ -30,7 +30,7 @@ describe('PanelReportsPage', () => {
 
   it('shows an empty state when there are no exams', () => {
     (useExams as jest.Mock).mockReturnValue({
-      data: { data: [], total: 0, page: 1, pageSize: 100, totalPages: 0 },
+      data: { data: [], total: 0, page: 1, pageSize: 100, totalPages: 1 },
       isLoading: false,
       isError: false,
     });

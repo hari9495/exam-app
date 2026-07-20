@@ -14,6 +14,9 @@ export default function CandidatesPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const { data: candidatesResponse, isLoading, isError } = useCandidates({ page, pageSize: 20, search: search || undefined });
+  // ponytail: pageSize:100 is the server's max -- an org with >100 published
+  // exams silently omits #101+ from this invite dropdown. Upgrade path:
+  // replace with a real paginated/typeahead picker if this becomes a real constraint.
   const { data: publishedExamsResponse } = useExams('published', { pageSize: 100 });
   const publishedExams = publishedExamsResponse?.data;
   const createCandidate = useCreateCandidate();

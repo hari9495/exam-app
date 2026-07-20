@@ -13,6 +13,9 @@ export default function BulkUploadInviteCandidatesPage() {
   const [examId, setExamId] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<BulkUploadInviteResult | null>(null);
+  // ponytail: pageSize:100 is the server's max -- an org with >100 published
+  // exams silently can't invite candidates to exam #101+ here. Upgrade path:
+  // replace with a real paginated/typeahead picker if this becomes a real constraint.
   const { data: publishedExamsResponse } = useExams('published', { pageSize: 100 });
   const publishedExams = publishedExamsResponse?.data;
   const { toast } = useToast();

@@ -22,6 +22,9 @@ const columns: Column<ExamListItem>[] = [
 ];
 
 export default function PanelReportsPage() {
+  // ponytail: pageSize:100 is the server's max -- an org with >100 exams
+  // silently omits #101+ from this report list. Upgrade path: replace with a
+  // real paginated/typeahead picker if this becomes a real constraint.
   const { data: examsResponse, isLoading, isError } = useExams(undefined, { pageSize: 100 });
   const exams = examsResponse?.data;
 
