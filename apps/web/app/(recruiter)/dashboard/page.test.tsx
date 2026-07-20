@@ -62,6 +62,23 @@ describe('DashboardPage', () => {
 
     await waitFor(() => expect(screen.getByText(/Backend Round — Python/)).toBeInTheDocument());
     expect(screen.getByText('6')).toBeInTheDocument();
+    expect(screen.getByText(/Backend Round — Python/).closest('a')).toHaveAttribute('href', '/exams/exam-1/edit');
+  });
+
+  it('links proctoring-flag attention items to their exam', async () => {
+    mockSummaryFetch({
+      stats: { totalCandidates: 0, invitationsSent: 0, attemptsInProgress: 0, pendingGradingCount: 0 },
+      attention: {
+        pendingGrading: [],
+        recentProctoringFlags: [{ examId: 'exam-2', examTitle: 'Frontend Round — React', occurredAt: '2026-07-17T10:00:00Z' }],
+        staleInvitationCount: 0,
+      },
+      activity: [],
+    });
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText(/Frontend Round — React/)).toBeInTheDocument());
+    expect(screen.getByText(/Frontend Round — React/).closest('a')).toHaveAttribute('href', '/exams/exam-2/edit');
   });
 
   it('renders the recent activity feed', async () => {

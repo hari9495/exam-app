@@ -81,20 +81,30 @@ export default function DashboardPage() {
           ) : (
             <ul>
               {summary.attention.pendingGrading.map((item) => (
-                <li key={item.examId} className="flex items-center gap-2.5 border-b border-recruiter-border py-2.5 text-sm last:border-0">
-                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-status-danger" />
-                  <span className="flex-1 text-recruiter-text">
-                    {item.examTitle} <span className="text-recruiter-text-tertiary">has {item.count} answer{item.count === 1 ? '' : 's'} awaiting manual grading</span>
-                  </span>
-                  <span className="rounded-full bg-recruiter-bg-subtle px-2 py-0.5 text-xs font-bold text-recruiter-text-secondary">{item.count}</span>
+                <li key={item.examId} className="border-b border-recruiter-border last:border-0">
+                  <Link
+                    href={`/exams/${item.examId}/edit`}
+                    className="flex items-center gap-2.5 py-2.5 text-sm hover:bg-recruiter-bg-subtle"
+                  >
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-status-danger" />
+                    <span className="flex-1 text-recruiter-text">
+                      {item.examTitle} <span className="text-recruiter-text-tertiary">has {item.count} answer{item.count === 1 ? '' : 's'} awaiting manual grading</span>
+                    </span>
+                    <span className="rounded-full bg-recruiter-bg-subtle px-2 py-0.5 text-xs font-bold text-recruiter-text-secondary">{item.count}</span>
+                  </Link>
                 </li>
               ))}
               {summary.attention.recentProctoringFlags.map((flag, index) => (
-                <li key={`${flag.examId}-${index}`} className="flex items-center gap-2.5 border-b border-recruiter-border py-2.5 text-sm last:border-0">
-                  <AlertTriangle size={13} className="shrink-0 text-status-warning" />
-                  <span className="flex-1 text-recruiter-text">
-                    {flag.examTitle} <span className="text-recruiter-text-tertiary">flagged a proctoring violation</span>
-                  </span>
+                <li key={`${flag.examId}-${index}`} className="border-b border-recruiter-border last:border-0">
+                  <Link
+                    href={`/exams/${flag.examId}/edit`}
+                    className="flex items-center gap-2.5 py-2.5 text-sm hover:bg-recruiter-bg-subtle"
+                  >
+                    <AlertTriangle size={13} className="shrink-0 text-status-warning" />
+                    <span className="flex-1 text-recruiter-text">
+                      {flag.examTitle} <span className="text-recruiter-text-tertiary">flagged a proctoring violation</span>
+                    </span>
+                  </Link>
                 </li>
               ))}
               {summary.attention.staleInvitationCount > 0 && (
