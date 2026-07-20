@@ -178,8 +178,8 @@ describe('Candidates & Invitations HTTP flow', () => {
       .get('/api/v1/candidates')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
-    expect(listResponse.body).toHaveLength(5);
-    const updatedAlice = listResponse.body.find((c: { id: string }) => c.id === aliceId);
+    expect(listResponse.body.data).toHaveLength(5);
+    const updatedAlice = listResponse.body.data.find((c: { id: string }) => c.id === aliceId);
     expect(updatedAlice.name).toBe('Alice Updated');
 
     const examResponse = await request(app.getHttpServer())
@@ -236,7 +236,7 @@ describe('Candidates & Invitations HTTP flow', () => {
       .get('/api/v1/candidates')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
-    const candidateIds = candidatesResponse.body.map((c: { id: string }) => c.id);
+    const candidateIds = candidatesResponse.body.data.map((c: { id: string }) => c.id);
     expect(candidateIds).toHaveLength(5);
 
     const inviteResponse = await request(app.getHttpServer())
@@ -311,9 +311,9 @@ describe('Candidates & Invitations HTTP flow', () => {
       .get('/api/v1/candidates')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
-    const frank = listResponse.body.find((c: { email: string }) => c.email === 'frank@ci-http.test');
+    const frank = listResponse.body.data.find((c: { email: string }) => c.email === 'frank@ci-http.test');
     expect(frank).toBeDefined();
-    const alice = listResponse.body.find((c: { email: string }) => c.email === 'alice@ci-http.test');
+    const alice = listResponse.body.data.find((c: { email: string }) => c.email === 'alice@ci-http.test');
     expect(alice.name).toBe('Alice Renamed');
   });
 

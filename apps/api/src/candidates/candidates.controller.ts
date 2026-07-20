@@ -22,8 +22,13 @@ export class CandidatesController {
 
   @Get()
   @RequirePermissions('candidate:manage')
-  list(@CurrentTenant() tenant: TenantContext, @Query('limit') limit?: string, @Query('cursor') cursor?: string) {
-    return this.candidatesService.list(tenant, { limit: limit ? parseInt(limit, 10) : undefined, cursor });
+  list(
+    @CurrentTenant() tenant: TenantContext,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.candidatesService.list(tenant, { page, pageSize, search });
   }
 
   @Get('lookup')

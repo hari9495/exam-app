@@ -49,12 +49,42 @@ describe('CandidatesService', () => {
   });
 
   it("lists candidates scoped to the caller's organization", async () => {
-    tenantPrisma.forTenant.mockResolvedValue([{ id: 'cand-1' }]);
+    const tx = {
+      candidate: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'cand-1' }]),
+        count: jest.fn().mockResolvedValue(1),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
     const result = await service.list(context, {});
 
-    expect(result).toHaveLength(1);
+    expect(result.data).toHaveLength(1);
+    expect(result.total).toBe(1);
     expect(tenantPrisma.forTenant).toHaveBeenCalledWith(context, expect.any(Function));
+  });
+
+  it('paginates and filters by search on name or email', async () => {
+    const tx = {
+      candidate: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'cand-2', name: 'Alice Smith', email: 'alice@test.com' }]),
+        count: jest.fn().mockResolvedValue(1),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    const result = await service.list(context, { page: '1', pageSize: '10', search: 'alice' });
+
+    expect(tx.candidate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [{ name: { contains: 'alice' } }, { email: { contains: 'alice' } }],
+        }),
+        skip: 0,
+        take: 10,
+      }),
+    );
+    expect(result.data).toHaveLength(1);
   });
 
   it('creates new candidates and updates existing ones from a CSV bulk upload, reporting row errors', async () => {

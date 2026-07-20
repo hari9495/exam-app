@@ -200,7 +200,7 @@ describe('Candidate data subject rights (GDPR export + erasure)', () => {
       .get('/api/v1/candidates')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
-    const erased = listResponse.body.find((row: { id: string }) => row.id === candidateId);
+    const erased = listResponse.body.data.find((row: { id: string }) => row.id === candidateId);
     expect(erased.name).toBe('Redacted');
     expect(erased.email).toBe(`erased-${candidateId}@redacted.invalid`);
     expect(erased.phone).toBeNull();

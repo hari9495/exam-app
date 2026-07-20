@@ -5,10 +5,12 @@ import { TenantContext } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { CreateCandidateDto } from './dto/create-candidate.dto';
 import { parseCandidateCsv } from './csv-parser';
+import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
 
 interface CandidateFilters {
-  limit?: number;
-  cursor?: string;
+  page?: string;
+  pageSize?: string;
+  search?: string;
 }
 
 export interface BulkUploadResult {
@@ -59,16 +61,19 @@ export class CandidatesService {
     });
   }
 
-  async list(context: TenantContext, filters: CandidateFilters): Promise<Candidate[]> {
-    const limit = filters.limit && filters.limit > 0 && filters.limit <= 100 ? filters.limit : 20;
-    return this.tenantPrisma.forTenant(context, (tx) =>
-      tx.candidate.findMany({
-        where: { organizationId: context.organizationId as string },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        take: limit,
-        ...(filters.cursor ? { cursor: { id: filters.cursor }, skip: 1 } : {}),
-      }),
-    );
+  async list(context: TenantContext, filters: CandidateFilters): Promise<PaginatedResponse<Candidate>> {
+    const { page, pageSize, skip, take } = resolvePaginationParams(filters.page, filters.pageSize);
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const where = {
+        organizationId: context.organizationId as string,
+        ...(filters.search ? { OR: [{ name: { contains: filters.search } }, { email: { contains: filters.search } }] } : {}),
+      };
+      const [candidates, total] = await Promise.all([
+        tx.candidate.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip, take }),
+        tx.candidate.count({ where }),
+      ]);
+      return buildPaginatedResponse(candidates, total, page, pageSize);
+    });
   }
 
   async lookupByEmail(context: TenantContext, email: string): Promise<Candidate> {
