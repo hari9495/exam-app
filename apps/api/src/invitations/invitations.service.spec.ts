@@ -39,9 +39,11 @@ describe('InvitationsService', () => {
         create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited' }),
       },
     };
+    const orgTx = { organization: { findUnique: jest.fn().mockResolvedValue({ logoPath: null }) } };
     const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) } };
     tenantPrisma.forTenant
       .mockImplementationOnce((_ctx, fn) => fn(createTx))
+      .mockImplementationOnce((_ctx, fn) => fn(orgTx))
       .mockImplementationOnce((_ctx, fn) => fn(notifTx));
 
     const result = await service.bulkInvite(context, 'exam-1', ['cand-1']);
@@ -57,9 +59,37 @@ describe('InvitationsService', () => {
     expect(emailService.send).toHaveBeenCalledWith(
       expect.objectContaining({ to: 'a@test.com', subject: "You've been invited to an exam", organizationId: 'org-1' }),
     );
+    // No logo uploaded for this org (orgTx resolves logoPath: null) -- the email should
+    // not contain an <img> tag at all rather than a broken/empty src.
+    expect(emailService.send.mock.calls[0][0].html).not.toContain('<img');
     expect(notifTx.notification.create).toHaveBeenCalledWith({
       data: { invitationId: 'inv-1', status: 'sent', sentAt: expect.any(Date) },
     });
+  });
+
+  it('includes the organization logo in the invitation email when one has been uploaded', async () => {
+    const createTx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', title: 'Backend Round', status: 'published' }) },
+      candidate: { findMany: jest.fn().mockResolvedValue([{ id: 'cand-1', email: 'a@test.com', name: 'Alice', erasedAt: null }]) },
+      invitation: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited' }),
+      },
+    };
+    const orgTx = { organization: { findUnique: jest.fn().mockResolvedValue({ logoPath: 'logos/org-1.png' }) } };
+    const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) } };
+    tenantPrisma.forTenant
+      .mockImplementationOnce((_ctx, fn) => fn(createTx))
+      .mockImplementationOnce((_ctx, fn) => fn(orgTx))
+      .mockImplementationOnce((_ctx, fn) => fn(notifTx));
+
+    await service.bulkInvite(context, 'exam-1', ['cand-1']);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(orgTx.organization.findUnique).toHaveBeenCalledWith({ where: { id: 'org-1' }, select: { logoPath: true } });
+    expect(emailService.send.mock.calls[0][0].html).toContain(
+      `<img src="${process.env.API_ORIGIN}/uploads/logos/org-1.png" alt="Organization logo" height="40" />`,
+    );
   });
 
   it('rejects inviting an erased candidate', async () => {
@@ -311,9 +341,11 @@ describe('InvitationsService', () => {
         update: jest.fn().mockResolvedValue(updated),
       },
     };
+    const orgTx = { organization: { findUnique: jest.fn().mockResolvedValue({ logoPath: null }) } };
     const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-2' }) } };
     tenantPrisma.forTenant
       .mockImplementationOnce((_ctx, fn) => fn(resendTx))
+      .mockImplementationOnce((_ctx, fn) => fn(orgTx))
       .mockImplementationOnce((_ctx, fn) => fn(notifTx));
 
     const result = await service.resend(context, 'inv-1');

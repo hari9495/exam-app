@@ -320,10 +320,15 @@ export class InvitationsService {
     candidate: Candidate,
   ): Promise<void> {
     const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/invite/${invitation.token}`;
+    const organization = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.organization.findUnique({ where: { id: context.organizationId as string }, select: { logoPath: true } }),
+    );
+    const logoUrl = organization?.logoPath ? `${process.env.API_ORIGIN}/uploads/${organization.logoPath}` : null;
+    const logoHtml = logoUrl ? `<p><img src="${logoUrl}" alt="Organization logo" height="40" /></p>` : '';
     const result = await this.emailService.send({
       to: candidate.email,
       subject: "You've been invited to an exam",
-      html: `<p>You have been invited to take "${examTitle}".</p><p><a href="${link}">${link}</a></p>`,
+      html: `${logoHtml}<p>You have been invited to take "${examTitle}".</p><p><a href="${link}">${link}</a></p>`,
       organizationId: context.organizationId ?? undefined,
     });
     await this.tenantPrisma.forTenant(context, (tx) =>
