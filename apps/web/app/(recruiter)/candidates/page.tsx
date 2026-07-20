@@ -47,6 +47,7 @@ export default function CandidatesPage() {
         toast(`Invited ${result.created.length} candidate(s).${result.skipped.length ? ` ${result.skipped.length} skipped.` : ''}`);
         setSelectedIds([]);
       },
+      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to send invitations.', 'error'),
     });
   }
 
@@ -112,7 +113,14 @@ export default function CandidatesPage() {
         </Link>
       </div>
       <div className="mb-6">
-        <CandidateInviteForm onSubmit={(input) => createCandidate.mutate(input)} />
+        <CandidateInviteForm
+          onSubmit={(input) =>
+            createCandidate.mutate(input, {
+              onSuccess: () => toast('Candidate added.'),
+              onError: (error) => toast(error instanceof Error ? error.message : 'Failed to add candidate.', 'error'),
+            })
+          }
+        />
       </div>
       <div className="mb-3 flex items-end gap-2">
         <div className="relative max-w-xs flex-1">

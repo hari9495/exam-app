@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useQuestions } from '../lib/hooks/useQuestions';
 import { useReplaceSectionQuestions } from '../lib/hooks/useExamSections';
-import { Modal, Checkbox, Button } from '../components/ui';
+import { Modal, Checkbox, Button, useToast } from '../components/ui';
 
 interface SectionQuestionPickerProps {
   examId: string;
@@ -21,6 +21,7 @@ export function SectionQuestionPicker({ examId, sectionId, open, onClose, existi
   const questions = questionsResponse?.data;
   const replaceQuestions = useReplaceSectionQuestions(examId, sectionId);
   const [selectedIds, setSelectedIds] = useState<string[]>(existingQuestionIds);
+  const { toast } = useToast();
 
   useEffect(() => {
     setSelectedIds(existingQuestionIds);
@@ -31,7 +32,10 @@ export function SectionQuestionPicker({ examId, sectionId, open, onClose, existi
   }
 
   function handleSave() {
-    replaceQuestions.mutate(selectedIds, { onSuccess: onClose });
+    replaceQuestions.mutate(selectedIds, {
+      onSuccess: onClose,
+      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to save questions.', 'error'),
+    });
   }
 
   return (

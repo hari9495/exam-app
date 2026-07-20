@@ -4,18 +4,25 @@ import { useState } from 'react';
 import { useExam } from '../lib/hooks/useExams';
 import { useCreateSection } from '../lib/hooks/useExamSections';
 import { SectionQuestionPicker } from './SectionQuestionPicker';
-import { Button, Input, Card } from '../components/ui';
+import { Button, Input, Card, useToast } from '../components/ui';
 
 export function ExamSectionsPanel({ examId }: { examId: string }) {
   const { data: exam } = useExam(examId);
   const createSection = useCreateSection(examId);
   const [newTitle, setNewTitle] = useState('');
   const [pickerSectionId, setPickerSectionId] = useState<string | null>(null);
+  const { toast } = useToast();
 
   function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!newTitle.trim()) return;
-    createSection.mutate({ title: newTitle }, { onSuccess: () => setNewTitle('') });
+    createSection.mutate(
+      { title: newTitle },
+      {
+        onSuccess: () => setNewTitle(''),
+        onError: (error) => toast(error instanceof Error ? error.message : 'Failed to add section.', 'error'),
+      },
+    );
   }
 
   return (

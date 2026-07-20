@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { useParams, useRouter } from 'next/navigation';
 import { useExam } from '../../../../lib/hooks/useExams';
 import { useResultsSummary, useQuestionAccuracy, useResultsList, useResultsExport } from '../../../../lib/hooks/usePanelReports';
+import { ToastProvider } from '../../../../components/ui';
 import PanelExamResultsPage from './page';
 
 jest.mock('next/navigation', () => ({ useParams: jest.fn(), useRouter: jest.fn() }));
@@ -18,6 +19,14 @@ const resultRows = [
   { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'submitted', score: 8, maxScore: 10, percentage: 80, passFail: 'pass', submittedAt: null, proctoringAnalysis: null, integrityLevel: 'clear', integrityFlagCount: 0 },
   { candidateId: 'c2', candidateName: 'Bob', invitationId: 'i2', attemptId: 'a2', status: 'submitted', score: 4, maxScore: 10, percentage: 40, passFail: 'fail', submittedAt: null, proctoringAnalysis: null, integrityLevel: 'high_concern', integrityFlagCount: 2 },
 ];
+
+function renderPage() {
+  render(
+    <ToastProvider>
+      <PanelExamResultsPage />
+    </ToastProvider>,
+  );
+}
 
 describe('PanelExamResultsPage', () => {
   const push = jest.fn();
@@ -39,7 +48,7 @@ describe('PanelExamResultsPage', () => {
   });
 
   it('renders the exam title, summary stats, and candidate rows with links', () => {
-    render(<PanelExamResultsPage />);
+    renderPage();
 
     expect(screen.getByText('Backend Screening')).toBeInTheDocument();
     expect(screen.getByText('50.0%')).toBeInTheDocument();
@@ -48,7 +57,7 @@ describe('PanelExamResultsPage', () => {
   });
 
   it('enables Compare selected only once at least 2 candidates are checked, then navigates with the selected ids', async () => {
-    render(<PanelExamResultsPage />);
+    renderPage();
 
     const compareButton = screen.getByRole('button', { name: 'Compare selected' });
     expect(compareButton).toBeDisabled();
@@ -64,14 +73,14 @@ describe('PanelExamResultsPage', () => {
   });
 
   it('renders an integrity badge per candidate row', () => {
-    render(<PanelExamResultsPage />);
+    renderPage();
 
     expect(screen.getByText('Integrity: Clear')).toBeInTheDocument();
     expect(screen.getByText('Integrity: High concern')).toBeInTheDocument();
   });
 
   it('filters the candidate rows by the selected integrity level', async () => {
-    render(<PanelExamResultsPage />);
+    renderPage();
 
     expect(screen.getByRole('link', { name: 'Alice' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Bob' })).toBeInTheDocument();
@@ -89,7 +98,7 @@ describe('PanelExamResultsPage', () => {
     global.URL.createObjectURL = createObjectURL;
     global.URL.revokeObjectURL = revokeObjectURL;
 
-    render(<PanelExamResultsPage />);
+    renderPage();
     await userEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
 
     expect(mutateAsync).toHaveBeenCalledWith('csv');

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { ExamSectionsPanel } from './ExamSectionsPanel';
 import { AuthProvider } from '../lib/auth-context';
 import { QueryProvider } from '../lib/query-provider';
+import { ToastProvider } from './ui';
 
 jest.mock('./SectionQuestionPicker', () => ({
   SectionQuestionPicker: ({ existingQuestionIds }: { existingQuestionIds: string[] }) => (
@@ -61,9 +62,11 @@ describe('ExamSectionsPanel', () => {
 
     render(
       <QueryProvider>
-        <AuthProvider>
-          <ExamSectionsPanel examId="exam-1" />
-        </AuthProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ExamSectionsPanel examId="exam-1" />
+          </AuthProvider>
+        </ToastProvider>
       </QueryProvider>,
     );
 
@@ -115,9 +118,11 @@ describe('ExamSectionsPanel', () => {
 
     render(
       <QueryProvider>
-        <AuthProvider>
-          <ExamSectionsPanel examId="exam-1" />
-        </AuthProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ExamSectionsPanel examId="exam-1" />
+          </AuthProvider>
+        </ToastProvider>
       </QueryProvider>,
     );
 

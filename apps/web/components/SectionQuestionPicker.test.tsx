@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { SectionQuestionPicker } from './SectionQuestionPicker';
 import { AuthProvider } from '../lib/auth-context';
 import { QueryProvider } from '../lib/query-provider';
+import { ToastProvider } from './ui';
 
 describe('SectionQuestionPicker', () => {
   const originalFetch = global.fetch;
@@ -38,9 +39,11 @@ describe('SectionQuestionPicker', () => {
 
     render(
       <QueryProvider>
-        <AuthProvider>
-          <SectionQuestionPicker examId="exam-1" sectionId="s-1" open onClose={() => {}} existingQuestionIds={[]} />
-        </AuthProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <SectionQuestionPicker examId="exam-1" sectionId="s-1" open onClose={() => {}} existingQuestionIds={[]} />
+          </AuthProvider>
+        </ToastProvider>
       </QueryProvider>,
     );
 

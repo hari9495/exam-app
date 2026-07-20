@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useExam } from '../../../../lib/hooks/useExams';
 import { useResultsSummary, useQuestionAccuracy, useResultsList, useResultsExport } from '../../../../lib/hooks/usePanelReports';
-import { Table, Badge, Button, Checkbox, Card, Select, IntegrityBadge, type Column } from '../../../../components/ui';
+import { Table, Badge, Button, Checkbox, Card, Select, IntegrityBadge, useToast, type Column } from '../../../../components/ui';
 import { ExamResultRow, QuestionAccuracyRow } from '../../../../lib/types';
 
 const PASS_FAIL_VARIANT: Record<string, 'success' | 'danger'> = { pass: 'success', fail: 'danger' };
@@ -27,6 +27,7 @@ export default function PanelExamResultsPage() {
   const exportMutation = useResultsExport(examId);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [integrityFilter, setIntegrityFilter] = useState('all');
+  const { toast } = useToast();
 
   function toggleSelected(candidateId: string) {
     setSelectedIds((current) =>
@@ -35,15 +36,19 @@ export default function PanelExamResultsPage() {
   }
 
   async function handleExport(format: 'csv' | 'xlsx' | 'pdf') {
-    const { blob, filename } = await exportMutation.mutateAsync(format);
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename ?? `exam-${examId}-results.${format}`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    try {
+      const { blob, filename } = await exportMutation.mutateAsync(format);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename ?? `exam-${examId}-results.${format}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Failed to export results.', 'error');
+    }
   }
 
   const columns: Column<ExamResultRow>[] = [

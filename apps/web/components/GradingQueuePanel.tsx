@@ -19,8 +19,20 @@ function CodeQuestionGrader({ attemptId, question }: { attemptId: string; questi
       toast(`Marks must be between 0 and ${question.marks}.`, 'error');
       return;
     }
-    await gradeAnswer.mutateAsync({ questionId: question.questionId, marksAwarded, feedback: feedback || undefined });
-    toast('Grade saved.');
+    try {
+      await gradeAnswer.mutateAsync({ questionId: question.questionId, marksAwarded, feedback: feedback || undefined });
+      toast('Grade saved.');
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Failed to save grade.', 'error');
+    }
+  }
+
+  async function handleGenerateReview() {
+    try {
+      await regenerateReview.mutateAsync({ attemptId, questionId: question.questionId });
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Failed to generate AI review.', 'error');
+    }
   }
 
   return (
@@ -40,7 +52,7 @@ function CodeQuestionGrader({ attemptId, question }: { attemptId: string; questi
             type="button"
             variant="secondary"
             disabled={regenerateReview.isPending}
-            onClick={() => regenerateReview.mutateAsync({ attemptId, questionId: question.questionId })}
+            onClick={handleGenerateReview}
           >
             Generate AI Review
           </Button>
@@ -78,8 +90,12 @@ function AttemptGrader({ row }: { row: PendingGradingRow }) {
   const allGraded = row.codeQuestions.every((question) => question.marksAwarded !== null);
 
   async function handleFinalize() {
-    await finalizeManualGrade.mutateAsync(row.attemptId);
-    toast('Attempt finalized.');
+    try {
+      await finalizeManualGrade.mutateAsync(row.attemptId);
+      toast('Attempt finalized.');
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Failed to finalize attempt.', 'error');
+    }
   }
 
   return (

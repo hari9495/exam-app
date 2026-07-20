@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Table, type Column } from './ui';
+import { Table, useToast, type Column } from './ui';
 import { useExamInvitations, useUpdateAccommodation } from '../lib/hooks/useInvitations';
 import { Invitation } from '../lib/types';
 
@@ -39,6 +39,7 @@ function AccommodationCell({ invitation, onSave, isPending }: { invitation: Invi
 export function CandidatesPanel({ examId }: { examId: string }) {
   const { data: invitations, isLoading } = useExamInvitations(examId);
   const updateAccommodation = useUpdateAccommodation(examId);
+  const { toast } = useToast();
 
   const columns: Column<Invitation>[] = [
     { key: 'name', header: 'Candidate', render: (row) => row.candidate.name },
@@ -51,7 +52,15 @@ export function CandidatesPanel({ examId }: { examId: string }) {
         <AccommodationCell
           invitation={row}
           isPending={updateAccommodation.isPending}
-          onSave={(extraTimePercent) => updateAccommodation.mutate({ invitationId: row.id, extraTimePercent })}
+          onSave={(extraTimePercent) =>
+            updateAccommodation.mutate(
+              { invitationId: row.id, extraTimePercent },
+              {
+                onSuccess: () => toast('Extra time saved.'),
+                onError: (error) => toast(error instanceof Error ? error.message : 'Failed to save extra time.', 'error'),
+              },
+            )
+          }
         />
       ),
     },
