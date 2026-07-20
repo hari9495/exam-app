@@ -22,7 +22,7 @@ describe('ExamsPage', () => {
       }
       if (String(url).includes('/exams')) {
         return new Response(
-          JSON.stringify([{ id: 'exam-1', title: 'Backend Round', status: 'draft', sections: [] }]),
+          JSON.stringify({ data: [{ id: 'exam-1', title: 'Backend Round', status: 'draft', sections: [] }], total: 1, page: 1, pageSize: 20, totalPages: 1 }),
           { status: 200 },
         );
       }
@@ -54,7 +54,7 @@ describe('ExamsPage', () => {
       }
       if (String(url).includes('/exams')) {
         await examsPromise;
-        return new Response(JSON.stringify([]), { status: 200 });
+        return new Response(JSON.stringify({ data: [], total: 0, page: 1, pageSize: 20, totalPages: 0 }), { status: 200 });
       }
       return new Response(JSON.stringify({}), { status: 200 });
     }) as unknown as typeof fetch;
@@ -110,7 +110,7 @@ describe('ExamsPage', () => {
       }
       if (String(url).includes('/exams')) {
         return new Response(
-          JSON.stringify([{ id: 'exam-1', title: 'Backend Round', status: 'draft', sections: [] }]),
+          JSON.stringify({ data: [{ id: 'exam-1', title: 'Backend Round', status: 'draft', sections: [] }], total: 1, page: 1, pageSize: 20, totalPages: 1 }),
           { status: 200 },
         );
       }
@@ -144,7 +144,7 @@ describe('ExamsPage', () => {
       }
       if (String(url).includes('/exams')) {
         return new Response(
-          JSON.stringify([{ id: 'exam-1', title: 'Backend Round', status: 'draft', sections: [] }]),
+          JSON.stringify({ data: [{ id: 'exam-1', title: 'Backend Round', status: 'draft', sections: [] }], total: 1, page: 1, pageSize: 20, totalPages: 1 }),
           { status: 200 },
         );
       }
@@ -176,17 +176,23 @@ describe('ExamsPage', () => {
       }
       if (String(url).includes('/exams')) {
         return new Response(
-          JSON.stringify([
-            {
-              id: 'exam-1',
-              title: 'Backend Round',
-              status: 'published',
-              sections: [],
-              invitationCount: 20,
-              attemptSettledCount: 14,
-              attemptTotalCount: 17,
-            },
-          ]),
+          JSON.stringify({
+            data: [
+              {
+                id: 'exam-1',
+                title: 'Backend Round',
+                status: 'published',
+                sections: [],
+                invitationCount: 20,
+                attemptSettledCount: 14,
+                attemptTotalCount: 17,
+              },
+            ],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+            totalPages: 1,
+          }),
           { status: 200 },
         );
       }
@@ -207,5 +213,42 @@ describe('ExamsPage', () => {
     expect(screen.getByText('Published')).toBeInTheDocument();
     expect(screen.getByText('14/17')).toBeInTheDocument();
     expect(screen.getByText('20')).toBeInTheDocument();
+  });
+
+  it('sends the typed search text to the server as a query param instead of filtering client-side', async () => {
+    const fetchMock = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/exams')) {
+        return new Response(
+          JSON.stringify({ data: [{ id: 'exam-1', title: 'Backend Round', status: 'draft', sections: [] }], total: 1, page: 1, pageSize: 20, totalPages: 1 }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ExamsPage />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Backend Round')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText('Search exams'), { target: { value: 'onboarding' } });
+
+    // If page.tsx reverted to filtering an already-fetched array client-side,
+    // no request carrying the typed text would ever be made -- this fails in
+    // that case, unlike an assertion that only checks the rendered rows.
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/exams') && String(call[0]).includes('search=onboarding'))).toBe(true),
+    );
   });
 });

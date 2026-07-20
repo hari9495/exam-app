@@ -24,8 +24,17 @@ describe('CandidatesPage', () => {
           { status: 201 },
         );
       }
-      if (String(url).endsWith('/exams?status=published')) {
-        return new Response(JSON.stringify([{ id: 'exam-1', title: 'Backend Round', status: 'published', sections: [] }]), { status: 200 });
+      if (String(url).endsWith('/exams?status=published&pageSize=100')) {
+        return new Response(
+          JSON.stringify({
+            data: [{ id: 'exam-1', title: 'Backend Round', status: 'published', sections: [] }],
+            total: 1,
+            page: 1,
+            pageSize: 100,
+            totalPages: 1,
+          }),
+          { status: 200 },
+        );
       }
       if (String(url).includes('/candidates')) {
         return new Response(
@@ -67,12 +76,18 @@ describe('CandidatesPage', () => {
           { status: 201 },
         );
       }
-      if (String(url).endsWith('/exams?status=published')) {
+      if (String(url).endsWith('/exams?status=published&pageSize=100')) {
         return new Response(
-          JSON.stringify([
-            { id: 'exam-1', title: 'Backend Round', status: 'published', sections: [] },
-            { id: 'exam-2', title: 'Frontend Round', status: 'published', sections: [] },
-          ]),
+          JSON.stringify({
+            data: [
+              { id: 'exam-1', title: 'Backend Round', status: 'published', sections: [] },
+              { id: 'exam-2', title: 'Frontend Round', status: 'published', sections: [] },
+            ],
+            total: 2,
+            page: 1,
+            pageSize: 100,
+            totalPages: 1,
+          }),
           { status: 200 },
         );
       }
@@ -182,7 +197,7 @@ describe('CandidatesPage', () => {
         return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
       }
       if (String(url).includes('/exams')) {
-        return new Response(JSON.stringify([]), { status: 200 });
+        return new Response(JSON.stringify({ data: [], total: 0, page: 1, pageSize: 100, totalPages: 0 }), { status: 200 });
       }
       if (String(url).includes('/candidates')) {
         return new Response(

@@ -22,7 +22,8 @@ const columns: Column<ExamListItem>[] = [
 ];
 
 export default function PanelReportsPage() {
-  const { data: exams, isLoading, isError } = useExams();
+  const { data: examsResponse, isLoading, isError } = useExams(undefined, { pageSize: 100 });
+  const exams = examsResponse?.data;
 
   if (isLoading) {
     return (

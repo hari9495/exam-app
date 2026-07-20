@@ -30,8 +30,11 @@ describe('BulkUploadInviteCandidatesPage', () => {
       if (String(url).endsWith('/auth/refresh')) {
         return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
       }
-      if (String(url).endsWith('/exams?status=published')) {
-        return new Response(JSON.stringify([{ id: 'exam-1', title: 'Backend Round', status: 'published' }]), { status: 200 });
+      if (String(url).endsWith('/exams?status=published&pageSize=100')) {
+        return new Response(
+          JSON.stringify({ data: [{ id: 'exam-1', title: 'Backend Round', status: 'published' }], total: 1, page: 1, pageSize: 100, totalPages: 1 }),
+          { status: 200 },
+        );
       }
       if (String(url).endsWith('/candidates/bulk-upload-invite') && options?.method === 'POST') {
         return new Response(
@@ -67,8 +70,11 @@ describe('BulkUploadInviteCandidatesPage', () => {
       if (String(url).endsWith('/auth/refresh')) {
         return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
       }
-      if (String(url).endsWith('/exams?status=published')) {
-        return new Response(JSON.stringify([{ id: 'exam-1', title: 'Backend Round', status: 'published' }]), { status: 200 });
+      if (String(url).endsWith('/exams?status=published&pageSize=100')) {
+        return new Response(
+          JSON.stringify({ data: [{ id: 'exam-1', title: 'Backend Round', status: 'published' }], total: 1, page: 1, pageSize: 100, totalPages: 1 }),
+          { status: 200 },
+        );
       }
       if (String(url).endsWith('/candidates/bulk-upload-invite') && options?.method === 'POST') {
         return new Response(JSON.stringify({ message: 'File must be 5MB or smaller' }), { status: 400 });

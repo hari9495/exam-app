@@ -1,13 +1,29 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../api-client';
-import { Exam, ExamListItem } from '../types';
+import { Exam, ExamListItem, PaginatedResponse } from '../types';
 import { useAuth } from '../auth-context';
 
-export function useExams(status?: string) {
+interface UseExamsParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+}
+
+function buildExamsQuery(status: string | undefined, params: UseExamsParams): string {
+  const query = new URLSearchParams();
+  if (status) query.set('status', status);
+  if (params.page) query.set('page', String(params.page));
+  if (params.pageSize) query.set('pageSize', String(params.pageSize));
+  if (params.search) query.set('search', params.search);
+  const queryString = query.toString();
+  return queryString ? `?${queryString}` : '';
+}
+
+export function useExams(status?: string, params: UseExamsParams = {}) {
   const { accessToken } = useAuth();
-  return useQuery<ExamListItem[]>({
-    queryKey: ['exams', status ?? 'default'],
-    queryFn: () => apiFetch(`/exams${status ? `?status=${status}` : ''}`, {}, accessToken ?? undefined),
+  return useQuery<PaginatedResponse<ExamListItem>>({
+    queryKey: ['exams', status ?? 'default', params],
+    queryFn: () => apiFetch(`/exams${buildExamsQuery(status, params)}`, {}, accessToken ?? undefined),
     enabled: Boolean(accessToken),
   });
 }

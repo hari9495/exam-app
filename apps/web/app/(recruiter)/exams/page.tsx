@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  Pagination,
   type Column,
   type StatusTone,
 } from '../../../components/ui';
@@ -32,11 +33,12 @@ const STATUS_LABEL: Record<ExamStatus, string> = {
 };
 
 export default function ExamsPage() {
-  const { data: exams, isLoading, isError } = useExams();
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const { data: examsResponse, isLoading, isError } = useExams(undefined, { page, pageSize: 20, search: search || undefined });
   const router = useRouter();
   const { toast } = useToast();
   const duplicateExam = useDuplicateExam();
-  const [search, setSearch] = useState('');
 
   function handleDuplicate(examId: string) {
     duplicateExam.mutate(examId, {
@@ -137,8 +139,6 @@ export default function ExamsPage() {
     );
   }
 
-  const filtered = (exams ?? []).filter((exam) => exam.title.toLowerCase().includes(search.toLowerCase()));
-
   return (
     <div>
       <div className="mb-4.5 flex items-center justify-between">
@@ -156,14 +156,18 @@ export default function ExamsPage() {
           <input
             type="search"
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(1);
+            }}
             placeholder="Search exams…"
             aria-label="Search exams"
             className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
           />
         </div>
       </div>
-      <Table columns={columns} rows={filtered} rowKey={(exam) => exam.id} emptyMessage="No exams yet." />
+      <Table columns={columns} rows={examsResponse?.data ?? []} rowKey={(exam) => exam.id} emptyMessage="No exams yet." />
+      <Pagination page={examsResponse?.page ?? 1} totalPages={examsResponse?.totalPages ?? 1} onPageChange={setPage} />
     </div>
   );
 }

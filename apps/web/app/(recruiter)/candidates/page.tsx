@@ -12,7 +12,8 @@ import { Candidate } from '../../../lib/types';
 
 export default function CandidatesPage() {
   const { data: candidates, isLoading, isError } = useCandidates();
-  const { data: publishedExams } = useExams('published');
+  const { data: publishedExamsResponse } = useExams('published', { pageSize: 100 });
+  const publishedExams = publishedExamsResponse?.data;
   const createCandidate = useCreateCandidate();
   const { toast } = useToast();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);

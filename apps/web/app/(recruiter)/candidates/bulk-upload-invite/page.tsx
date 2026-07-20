@@ -13,7 +13,8 @@ export default function BulkUploadInviteCandidatesPage() {
   const [examId, setExamId] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<BulkUploadInviteResult | null>(null);
-  const { data: publishedExams } = useExams('published');
+  const { data: publishedExamsResponse } = useExams('published', { pageSize: 100 });
+  const publishedExams = publishedExamsResponse?.data;
   const { toast } = useToast();
   const bulkUploadInvite = useBulkUploadInvite();
   const downloadTemplate = useDownloadBulkUploadInviteTemplate();

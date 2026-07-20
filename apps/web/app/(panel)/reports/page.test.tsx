@@ -7,10 +7,16 @@ jest.mock('../../../lib/hooks/useExams', () => ({ useExams: jest.fn() }));
 describe('PanelReportsPage', () => {
   it('renders the exam list with a link into each exam', () => {
     (useExams as jest.Mock).mockReturnValue({
-      data: [
-        { id: 'exam-1', title: 'Backend Screening', status: 'published' },
-        { id: 'exam-2', title: 'Draft Exam', status: 'draft' },
-      ],
+      data: {
+        data: [
+          { id: 'exam-1', title: 'Backend Screening', status: 'published' },
+          { id: 'exam-2', title: 'Draft Exam', status: 'draft' },
+        ],
+        total: 2,
+        page: 1,
+        pageSize: 100,
+        totalPages: 1,
+      },
       isLoading: false,
       isError: false,
     });
@@ -23,7 +29,11 @@ describe('PanelReportsPage', () => {
   });
 
   it('shows an empty state when there are no exams', () => {
-    (useExams as jest.Mock).mockReturnValue({ data: [], isLoading: false, isError: false });
+    (useExams as jest.Mock).mockReturnValue({
+      data: { data: [], total: 0, page: 1, pageSize: 100, totalPages: 0 },
+      isLoading: false,
+      isError: false,
+    });
     render(<PanelReportsPage />);
     expect(screen.getByText('No exams yet.')).toBeInTheDocument();
   });
