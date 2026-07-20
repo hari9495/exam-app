@@ -194,18 +194,54 @@ describe('UsersService', () => {
     );
   });
 
-  it('listSuperAdmins returns only super_admin users via the bypass context', async () => {
-    tenantPrisma.forTenant.mockResolvedValue([
-      { id: 'sa-1', email: 'super1@platform.test', createdAt: new Date('2026-01-01T00:00:00.000Z') },
-    ]);
+  it('listSuperAdmins returns a paginated page of only super_admin users via the bypass context', async () => {
+    tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
+      fn({
+        user: {
+          findMany: async () => [{ id: 'sa-1', email: 'super1@platform.test', createdAt: new Date('2026-01-01T00:00:00.000Z') }],
+          count: async () => 1,
+        },
+      }),
+    );
 
     const result = await service.listSuperAdmins({ organizationId: null, isSuperAdmin: true });
 
-    expect(result).toHaveLength(1);
+    expect(result).toEqual({
+      data: [{ id: 'sa-1', email: 'super1@platform.test', createdAt: new Date('2026-01-01T00:00:00.000Z') }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      totalPages: 1,
+    });
     expect(tenantPrisma.forTenant).toHaveBeenCalledWith(
       { organizationId: null, isSuperAdmin: true },
       expect.any(Function),
     );
+  });
+
+  it('list returns a paginated page of users scoped to the caller\'s organization', async () => {
+    tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
+      fn({
+        user: {
+          findMany: async () => [
+            { id: 'user-1', email: 'a@b.com', organizationId: 'org-1', role: 'recruiter', status: 'active', lastLoginAt: null, createdAt: new Date('2026-01-01T00:00:00.000Z') },
+          ],
+          count: async () => 1,
+        },
+      }),
+    );
+
+    const result = await service.list({ organizationId: 'org-1', isSuperAdmin: false });
+
+    expect(result).toEqual({
+      data: [
+        { id: 'user-1', email: 'a@b.com', organizationId: 'org-1', role: 'recruiter', status: 'active', lastLoginAt: null, createdAt: new Date('2026-01-01T00:00:00.000Z') },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      totalPages: 1,
+    });
   });
 
   it('inviteSuperAdmin rejects an email that already has a platform account', async () => {

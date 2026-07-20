@@ -1,13 +1,28 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../api-client';
-import { StaffUser } from '../types';
+import { StaffUser, PaginatedResponse } from '../types';
 import { useAuth } from '../auth-context';
 
-export function useUsers() {
+interface UseUsersParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+}
+
+function buildUsersQuery(params: UseUsersParams): string {
+  const query = new URLSearchParams();
+  if (params.page) query.set('page', String(params.page));
+  if (params.pageSize) query.set('pageSize', String(params.pageSize));
+  if (params.search) query.set('search', params.search);
+  const queryString = query.toString();
+  return queryString ? `?${queryString}` : '';
+}
+
+export function useUsers(params: UseUsersParams = {}) {
   const { accessToken } = useAuth();
-  return useQuery<StaffUser[]>({
-    queryKey: ['users'],
-    queryFn: () => apiFetch('/users', {}, accessToken ?? undefined),
+  return useQuery<PaginatedResponse<StaffUser>>({
+    queryKey: ['users', params],
+    queryFn: () => apiFetch(`/users${buildUsersQuery(params)}`, {}, accessToken ?? undefined),
     enabled: Boolean(accessToken),
   });
 }

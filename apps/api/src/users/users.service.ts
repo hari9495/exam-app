@@ -11,6 +11,7 @@ import { AuditService } from '@exam-platform/shared';
 import { randomBytes, createHash } from 'crypto';
 import { EmailService } from '../email/email.service';
 import { SuperAdminEmailDto } from './dto/super-admin-email.dto';
+import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
 
 /**
  * A User record with `passwordHash` (and any other sensitive fields) excluded.
@@ -76,13 +77,19 @@ export class UsersService {
     return user;
   }
 
-  async list(context: TenantContext): Promise<SafeUser[]> {
-    return this.tenantPrisma.forTenant(context, (tx) =>
-      tx.user.findMany({
-        where: { organizationId: context.organizationId },
-        select: SAFE_USER_SELECT,
-      }),
-    );
+  async list(context: TenantContext, filters: { page?: string; pageSize?: string; search?: string } = {}): Promise<PaginatedResponse<SafeUser>> {
+    const { page, pageSize, skip, take } = resolvePaginationParams(filters.page, filters.pageSize);
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const where = {
+        organizationId: context.organizationId,
+        ...(filters.search ? { email: { contains: filters.search } } : {}),
+      };
+      const [users, total] = await Promise.all([
+        tx.user.findMany({ where, select: SAFE_USER_SELECT, orderBy: { createdAt: 'desc' }, skip, take }),
+        tx.user.count({ where }),
+      ]);
+      return buildPaginatedResponse(users, total, page, pageSize);
+    });
   }
 
   async getMe(context: TenantContext, userId: string): Promise<SafeUser> {
@@ -149,14 +156,19 @@ export class UsersService {
     });
   }
 
-  async listSuperAdmins(context: TenantContext): Promise<SuperAdminRecord[]> {
-    return this.tenantPrisma.forTenant(context, (tx) =>
-      tx.user.findMany({
-        where: { role: 'super_admin' },
-        select: SUPER_ADMIN_SELECT,
-        orderBy: { createdAt: 'desc' },
-      }),
-    );
+  async listSuperAdmins(
+    context: TenantContext,
+    filters: { page?: string; pageSize?: string; search?: string } = {},
+  ): Promise<PaginatedResponse<SuperAdminRecord>> {
+    const { page, pageSize, skip, take } = resolvePaginationParams(filters.page, filters.pageSize);
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const where = { role: 'super_admin' as const, ...(filters.search ? { email: { contains: filters.search } } : {}) };
+      const [superAdmins, total] = await Promise.all([
+        tx.user.findMany({ where, select: SUPER_ADMIN_SELECT, orderBy: { createdAt: 'desc' }, skip, take }),
+        tx.user.count({ where }),
+      ]);
+      return buildPaginatedResponse(superAdmins, total, page, pageSize);
+    });
   }
 
   async inviteSuperAdmin(context: TenantContext, actorUserId: string, dto: SuperAdminEmailDto): Promise<SuperAdminRecord> {

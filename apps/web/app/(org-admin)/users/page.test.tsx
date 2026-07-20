@@ -18,7 +18,7 @@ describe('UsersPage', () => {
       if (String(url).endsWith('/auth/refresh')) {
         return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
       }
-      if (String(url).endsWith('/users') && options?.method === 'POST') {
+      if (String(url).includes('/users') && options?.method === 'POST') {
         return new Response(
           JSON.stringify({
             id: 'user-2', organizationId: 'org-1', email: 'new@demo-org.test', role: 'recruiter',
@@ -27,14 +27,20 @@ describe('UsersPage', () => {
           { status: 201 },
         );
       }
-      if (String(url).endsWith('/users')) {
+      if (String(url).includes('/users')) {
         return new Response(
-          JSON.stringify([
-            {
-              id: 'user-1', organizationId: 'org-1', email: 'admin@demo-org.test', role: 'org_admin',
-              status: 'active', lastLoginAt: '2026-07-10T00:00:00.000Z', createdAt: '2026-07-01T00:00:00.000Z',
-            },
-          ]),
+          JSON.stringify({
+            data: [
+              {
+                id: 'user-1', organizationId: 'org-1', email: 'admin@demo-org.test', role: 'org_admin',
+                status: 'active', lastLoginAt: '2026-07-10T00:00:00.000Z', createdAt: '2026-07-01T00:00:00.000Z',
+              },
+            ],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+            totalPages: 1,
+          }),
           { status: 200 },
         );
       }
@@ -74,7 +80,7 @@ describe('UsersPage', () => {
       if (String(url).endsWith('/auth/refresh')) {
         return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
       }
-      if (String(url).endsWith('/users')) {
+      if (String(url).includes('/users')) {
         return new Response(JSON.stringify({ message: 'Server error' }), { status: 500 });
       }
       return new Response(JSON.stringify([]), { status: 200 });
@@ -101,20 +107,26 @@ describe('UsersPage', () => {
         if (String(url).endsWith('/auth/refresh')) {
           return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
         }
-        if (String(url).endsWith('/users') && options?.method === 'POST') {
+        if (String(url).includes('/users') && options?.method === 'POST') {
           return new Response(
             JSON.stringify({ message: 'A user with this email already exists' }),
             { status: 409 },
           );
         }
-        if (String(url).endsWith('/users')) {
+        if (String(url).includes('/users')) {
           return new Response(
-            JSON.stringify([
-              {
-                id: 'user-1', organizationId: 'org-1', email: 'admin@demo-org.test', role: 'org_admin',
-                status: 'active', lastLoginAt: '2026-07-10T00:00:00.000Z', createdAt: '2026-07-01T00:00:00.000Z',
-              },
-            ]),
+            JSON.stringify({
+              data: [
+                {
+                  id: 'user-1', organizationId: 'org-1', email: 'admin@demo-org.test', role: 'org_admin',
+                  status: 'active', lastLoginAt: '2026-07-10T00:00:00.000Z', createdAt: '2026-07-01T00:00:00.000Z',
+                },
+              ],
+              total: 1,
+              page: 1,
+              pageSize: 20,
+              totalPages: 1,
+            }),
             { status: 200 },
           );
         }
@@ -155,14 +167,20 @@ describe('UsersPage', () => {
       if (String(url).endsWith('/auth/refresh')) {
         return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
       }
-      if (String(url).endsWith('/users')) {
+      if (String(url).includes('/users')) {
         return new Response(
-          JSON.stringify([
-            {
-              id: 'user-1', organizationId: 'org-1', email: 'admin@demo-org.test', role: 'org_admin',
-              status: 'active', lastLoginAt: null, createdAt: '2026-07-01T00:00:00.000Z',
-            },
-          ]),
+          JSON.stringify({
+            data: [
+              {
+                id: 'user-1', organizationId: 'org-1', email: 'admin@demo-org.test', role: 'org_admin',
+                status: 'active', lastLoginAt: null, createdAt: '2026-07-01T00:00:00.000Z',
+              },
+            ],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+            totalPages: 1,
+          }),
           { status: 200 },
         );
       }

@@ -26,8 +26,14 @@ describe('PlatformAdminsPage', () => {
   beforeEach(() => {
     mockedUseAuth.mockReturnValue({ accessToken: 'token', role: 'super_admin', isLoading: false });
     mockedApiFetch.mockImplementation((path: string) => {
-      if (path === '/users/super-admins') {
-        return Promise.resolve([{ id: 'sa-1', email: 'super@platform.test', createdAt: '2026-01-01T00:00:00.000Z' }]);
+      if (path.split('?')[0] === '/users/super-admins') {
+        return Promise.resolve({
+          data: [{ id: 'sa-1', email: 'super@platform.test', createdAt: '2026-01-01T00:00:00.000Z' }],
+          total: 1,
+          page: 1,
+          pageSize: 20,
+          totalPages: 1,
+        });
       }
       return Promise.resolve({});
     });

@@ -1,13 +1,28 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../api-client';
-import { SuperAdminSummary } from '../types';
+import { SuperAdminSummary, PaginatedResponse } from '../types';
 import { useAuth } from '../auth-context';
 
-export function useSuperAdmins() {
+interface UseSuperAdminsParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+}
+
+function buildSuperAdminsQuery(params: UseSuperAdminsParams): string {
+  const query = new URLSearchParams();
+  if (params.page) query.set('page', String(params.page));
+  if (params.pageSize) query.set('pageSize', String(params.pageSize));
+  if (params.search) query.set('search', params.search);
+  const queryString = query.toString();
+  return queryString ? `?${queryString}` : '';
+}
+
+export function useSuperAdmins(params: UseSuperAdminsParams = {}) {
   const { accessToken } = useAuth();
-  return useQuery<SuperAdminSummary[]>({
-    queryKey: ['superAdmins'],
-    queryFn: () => apiFetch('/users/super-admins', {}, accessToken ?? undefined),
+  return useQuery<PaginatedResponse<SuperAdminSummary>>({
+    queryKey: ['superAdmins', params],
+    queryFn: () => apiFetch(`/users/super-admins${buildSuperAdminsQuery(params)}`, {}, accessToken ?? undefined),
     enabled: Boolean(accessToken),
   });
 }

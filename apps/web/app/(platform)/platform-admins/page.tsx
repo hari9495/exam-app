@@ -2,13 +2,15 @@
 
 import { useState } from 'react';
 import { useSuperAdmins, useInviteSuperAdmin, usePromoteSuperAdmin } from '../../../lib/hooks/useSuperAdmins';
-import { Table, Input, Button, Card, Modal, useToast, type Column } from '../../../components/ui';
+import { Table, Input, Button, Card, Modal, useToast, Pagination, type Column } from '../../../components/ui';
 import { SuperAdminSummary } from '../../../lib/types';
 
 type PendingAction = { kind: 'invite' | 'promote'; email: string } | null;
 
 export default function PlatformAdminsPage() {
-  const { data: superAdmins, isLoading, isError } = useSuperAdmins();
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const { data: superAdminsResponse, isLoading, isError } = useSuperAdmins({ page, pageSize: 20, search: search || undefined });
   const inviteSuperAdmin = useInviteSuperAdmin();
   const promoteSuperAdmin = usePromoteSuperAdmin();
   const { toast } = useToast();
@@ -88,6 +90,16 @@ export default function PlatformAdminsPage() {
         </p>
       )}
 
+      <Input
+        label="Search platform admins"
+        placeholder="Email…"
+        value={search}
+        onChange={(value) => {
+          setSearch(value);
+          setPage(1);
+        }}
+      />
+
       {isLoading && <p className="text-sm text-gray-500">Loading platform admins…</p>}
       {isError && (
         <p role="alert" className="text-sm text-status-danger">
@@ -95,7 +107,10 @@ export default function PlatformAdminsPage() {
         </p>
       )}
       {!isLoading && !isError && (
-        <Table columns={columns} rows={superAdmins ?? []} rowKey={(sa) => sa.id} emptyMessage="No platform admins yet." />
+        <>
+          <Table columns={columns} rows={superAdminsResponse?.data ?? []} rowKey={(sa) => sa.id} emptyMessage="No platform admins yet." />
+          <Pagination page={superAdminsResponse?.page ?? 1} totalPages={superAdminsResponse?.totalPages ?? 1} onPageChange={setPage} />
+        </>
       )}
 
       <Modal open={pending !== null} title="Confirm" onClose={() => setPending(null)}>

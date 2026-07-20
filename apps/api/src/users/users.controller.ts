@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
@@ -25,14 +25,24 @@ export class UsersController {
 
   @Get()
   @RequirePermissions('org:view')
-  list(@CurrentTenant() tenant: TenantContext) {
-    return this.usersService.list(tenant);
+  list(
+    @CurrentTenant() tenant: TenantContext,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.usersService.list(tenant, { page, pageSize, search });
   }
 
   @Get('super-admins')
   @RequirePermissions('platform:manage_organizations')
-  listSuperAdmins(@CurrentTenant() tenant: TenantContext) {
-    return this.usersService.listSuperAdmins(tenant);
+  listSuperAdmins(
+    @CurrentTenant() tenant: TenantContext,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.usersService.listSuperAdmins(tenant, { page, pageSize, search });
   }
 
   @Post('super-admins/invite')

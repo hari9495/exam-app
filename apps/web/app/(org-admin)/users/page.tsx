@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useUsers, useCreateUser } from '../../../lib/hooks/useUsers';
-import { Table, Input, Select, Button, StatusBadge, useToast, type Column, type StatusTone } from '../../../components/ui';
+import { Table, Input, Select, Button, StatusBadge, useToast, Pagination, type Column, type StatusTone } from '../../../components/ui';
 import { StaffUser } from '../../../lib/types';
 
 const ROLE_OPTIONS = [
@@ -35,7 +35,9 @@ function statusLabel(status: string): string {
 }
 
 export default function UsersPage() {
-  const { data: users, isLoading, isError } = useUsers();
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const { data: usersResponse, isLoading, isError } = useUsers({ page, pageSize: 20, search: search || undefined });
   const createUser = useCreateUser();
   const { toast } = useToast();
   const [email, setEmail] = useState('');
@@ -114,7 +116,19 @@ export default function UsersPage() {
           {error}
         </p>
       )}
-      <Table columns={columns} rows={users ?? []} rowKey={(user) => user.id} emptyMessage="No staff users yet." />
+      <div className="mb-3 max-w-xs">
+        <Input
+          label="Search staff users"
+          placeholder="Email…"
+          value={search}
+          onChange={(value) => {
+            setSearch(value);
+            setPage(1);
+          }}
+        />
+      </div>
+      <Table columns={columns} rows={usersResponse?.data ?? []} rowKey={(user) => user.id} emptyMessage="No staff users yet." />
+      <Pagination page={usersResponse?.page ?? 1} totalPages={usersResponse?.totalPages ?? 1} onPageChange={setPage} />
     </div>
   );
 }

@@ -156,7 +156,7 @@ describe('Full Phase 0 flow: create org -> create user -> login -> protected rou
       .get('/api/v1/users')
       .set('Authorization', `Bearer ${orgAdminAccessToken}`)
       .expect(200);
-    expect(listUsersResponse.body.map((u: { email: string }) => u.email)).toEqual(
+    expect(listUsersResponse.body.data.map((u: { email: string }) => u.email)).toEqual(
       expect.arrayContaining(['admin@e2e-org.test', 'recruiter@e2e-org.test']),
     );
 
