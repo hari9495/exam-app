@@ -38,7 +38,13 @@ describe('CandidatesPage', () => {
       }
       if (String(url).includes('/candidates')) {
         return new Response(
-          JSON.stringify([{ id: 'cand-1', email: 'priya@example.com', name: 'Priya Shah', phone: null, createdAt: '2026-01-01T00:00:00.000Z', erasedAt: null }]),
+          JSON.stringify({
+            data: [{ id: 'cand-1', email: 'priya@example.com', name: 'Priya Shah', phone: null, createdAt: '2026-01-01T00:00:00.000Z', erasedAt: null }],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+            totalPages: 1,
+          }),
           { status: 200 },
         );
       }
@@ -93,7 +99,13 @@ describe('CandidatesPage', () => {
       }
       if (String(url).includes('/candidates')) {
         return new Response(
-          JSON.stringify([{ id: 'cand-1', email: 'priya@example.com', name: 'Priya Shah', phone: null, createdAt: '2026-01-01T00:00:00.000Z', erasedAt: null }]),
+          JSON.stringify({
+            data: [{ id: 'cand-1', email: 'priya@example.com', name: 'Priya Shah', phone: null, createdAt: '2026-01-01T00:00:00.000Z', erasedAt: null }],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+            totalPages: 1,
+          }),
           { status: 200 },
         );
       }
@@ -145,7 +157,7 @@ describe('CandidatesPage', () => {
       }
       if (String(url).includes('/candidates')) {
         await candidatesPromise;
-        return new Response(JSON.stringify([]), { status: 200 });
+        return new Response(JSON.stringify({ data: [], total: 0, page: 1, pageSize: 20, totalPages: 0 }), { status: 200 });
       }
       return new Response(JSON.stringify([]), { status: 200 });
     }) as unknown as typeof fetch;
@@ -191,8 +203,8 @@ describe('CandidatesPage', () => {
     expect(screen.getByText('Failed to load candidates.')).toBeInTheDocument();
   });
 
-  it('filters the candidate list by the search box', async () => {
-    global.fetch = jest.fn(async (url) => {
+  it('sends the typed search text to the server as a query param instead of filtering client-side', async () => {
+    const fetchMock = jest.fn(async (url) => {
       if (String(url).endsWith('/auth/refresh')) {
         return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
       }
@@ -201,15 +213,19 @@ describe('CandidatesPage', () => {
       }
       if (String(url).includes('/candidates')) {
         return new Response(
-          JSON.stringify([
-            { id: 'cand-1', email: 'alice@test.com', name: 'Alice Chen', phone: null, createdAt: '2026-07-01T00:00:00Z', erasedAt: null },
-            { id: 'cand-2', email: 'raj@test.com', name: 'Raj Kumar', phone: null, createdAt: '2026-07-02T00:00:00Z', erasedAt: null },
-          ]),
+          JSON.stringify({
+            data: [{ id: 'cand-1', email: 'alice@test.com', name: 'Alice Chen', phone: null, createdAt: '2026-07-01T00:00:00Z', erasedAt: null }],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+            totalPages: 1,
+          }),
           { status: 200 },
         );
       }
       return new Response(JSON.stringify({}), { status: 200 });
-    }) as unknown as typeof fetch;
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
 
     render(
       <QueryProvider>
@@ -222,11 +238,14 @@ describe('CandidatesPage', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Alice Chen')).toBeInTheDocument());
-    expect(screen.getByText('Raj Kumar')).toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText('Search candidates…'), { target: { value: 'alice' } });
 
-    expect(screen.getByText('Alice Chen')).toBeInTheDocument();
-    expect(screen.queryByText('Raj Kumar')).not.toBeInTheDocument();
+    // If page.tsx reverted to filtering an already-fetched array client-side,
+    // no request carrying the typed text would ever be made -- this fails in
+    // that case, unlike an assertion that only checks the rendered rows.
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/candidates') && String(call[0]).includes('search=alice'))).toBe(true),
+    );
   });
 });

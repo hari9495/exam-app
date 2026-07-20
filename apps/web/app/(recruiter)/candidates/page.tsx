@@ -7,18 +7,19 @@ import { useCandidates, useCreateCandidate } from '../../../lib/hooks/useCandida
 import { useExams } from '../../../lib/hooks/useExams';
 import { useBulkInvite } from '../../../lib/hooks/useInvitations';
 import { CandidateInviteForm } from '../../../components/CandidateInviteForm';
-import { Table, Checkbox, Select, Button, useToast, type Column } from '../../../components/ui';
+import { Table, Checkbox, Select, Button, useToast, Pagination, type Column } from '../../../components/ui';
 import { Candidate } from '../../../lib/types';
 
 export default function CandidatesPage() {
-  const { data: candidates, isLoading, isError } = useCandidates();
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const { data: candidatesResponse, isLoading, isError } = useCandidates({ page, pageSize: 20, search: search || undefined });
   const { data: publishedExamsResponse } = useExams('published', { pageSize: 100 });
   const publishedExams = publishedExamsResponse?.data;
   const createCandidate = useCreateCandidate();
   const { toast } = useToast();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [examId, setExamId] = useState<string>('');
-  const [search, setSearch] = useState('');
   const bulkInvite = useBulkInvite(examId);
 
   // ponytail: only auto-select when the choice is unambiguous (exactly one
@@ -99,10 +100,6 @@ export default function CandidatesPage() {
     );
   }
 
-  const filtered = (candidates ?? []).filter(
-    (candidate) => candidate.name.toLowerCase().includes(search.toLowerCase()) || candidate.email.toLowerCase().includes(search.toLowerCase()),
-  );
-
   return (
     <div>
       <div className="mb-4.5 flex items-center justify-between">
@@ -120,7 +117,10 @@ export default function CandidatesPage() {
           <input
             type="search"
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(1);
+            }}
             placeholder="Search candidates…"
             aria-label="Search candidates"
             className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
@@ -137,7 +137,8 @@ export default function CandidatesPage() {
           Send invitations
         </Button>
       </div>
-      <Table columns={columns} rows={filtered} rowKey={(candidate) => candidate.id} emptyMessage="No candidates yet." />
+      <Table columns={columns} rows={candidatesResponse?.data ?? []} rowKey={(candidate) => candidate.id} emptyMessage="No candidates yet." />
+      <Pagination page={candidatesResponse?.page ?? 1} totalPages={candidatesResponse?.totalPages ?? 1} onPageChange={setPage} />
     </div>
   );
 }

@@ -1,13 +1,28 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../api-client';
-import { Candidate } from '../types';
+import { Candidate, PaginatedResponse } from '../types';
 import { useAuth } from '../auth-context';
 
-export function useCandidates() {
+interface UseCandidatesParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+}
+
+function buildCandidatesQuery(params: UseCandidatesParams): string {
+  const query = new URLSearchParams();
+  if (params.page) query.set('page', String(params.page));
+  if (params.pageSize) query.set('pageSize', String(params.pageSize));
+  if (params.search) query.set('search', params.search);
+  const queryString = query.toString();
+  return queryString ? `?${queryString}` : '';
+}
+
+export function useCandidates(params: UseCandidatesParams = {}) {
   const { accessToken } = useAuth();
-  return useQuery<Candidate[]>({
-    queryKey: ['candidates'],
-    queryFn: () => apiFetch('/candidates', {}, accessToken ?? undefined),
+  return useQuery<PaginatedResponse<Candidate>>({
+    queryKey: ['candidates', params],
+    queryFn: () => apiFetch(`/candidates${buildCandidatesQuery(params)}`, {}, accessToken ?? undefined),
     enabled: Boolean(accessToken),
   });
 }
