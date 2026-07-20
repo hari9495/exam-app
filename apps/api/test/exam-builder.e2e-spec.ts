@@ -238,7 +238,7 @@ describe('Exam Builder HTTP flow', () => {
       .get('/api/v1/exams?status=active')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
-    expect(activeListResponse.body.map((e: { id: string }) => e.id)).not.toContain(examId);
+    expect(activeListResponse.body.data.map((e: { id: string }) => e.id)).not.toContain(examId);
   });
 
   it('rejects publishing an exam with an underfilled pool section, then succeeds once enough matching questions exist', async () => {

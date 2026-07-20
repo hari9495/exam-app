@@ -301,7 +301,7 @@ describe('Exam Reporting HTTP flow', () => {
       .get('/api/v1/exams')
       .set('Authorization', `Bearer ${panelAccessToken}`)
       .expect(200);
-    expect(Array.isArray(panelListResponse.body)).toBe(true);
+    expect(Array.isArray(panelListResponse.body.data)).toBe(true);
 
     await request(adminHttp)
       .get(`/api/v1/exams/${examId}`)
@@ -312,7 +312,7 @@ describe('Exam Reporting HTTP flow', () => {
       .get('/api/v1/exams')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
-    expect(Array.isArray(recruiterListResponse.body)).toBe(true);
+    expect(Array.isArray(recruiterListResponse.body.data)).toBe(true);
   });
 
   it('returns full per-candidate detail with section/question breakdown', async () => {

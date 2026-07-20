@@ -122,13 +122,13 @@ describe('AI Question Generation flow', () => {
       .get('/api/v1/questions?status=draft')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
-    expect(draftListResponse.body.map((q: { id: string }) => q.id)).toContain(questionId);
+    expect(draftListResponse.body.data.map((q: { id: string }) => q.id)).toContain(questionId);
 
     const activeListResponse = await request(adminHttp)
       .get('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
-    expect(activeListResponse.body.map((q: { id: string }) => q.id)).not.toContain(questionId);
+    expect(activeListResponse.body.data.map((q: { id: string }) => q.id)).not.toContain(questionId);
 
     const publishResponse = await request(adminHttp)
       .post(`/api/v1/questions/${questionId}/publish`)
@@ -140,7 +140,7 @@ describe('AI Question Generation flow', () => {
       .get('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
-    expect(activeListAfterPublish.body.map((q: { id: string }) => q.id)).toContain(questionId);
+    expect(activeListAfterPublish.body.data.map((q: { id: string }) => q.id)).toContain(questionId);
   });
 
   it('fails the job with zero questions created when the Claude client throws', async () => {

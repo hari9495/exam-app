@@ -208,7 +208,7 @@ describe('Question Bank HTTP flow', () => {
       .get(`/api/v1/questions?tagId=${geographyTagId}`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
-    expect(tagFilteredListResponse.body.map((q: { id: string }) => q.id)).toEqual([taggedCreateResponse.body.id]);
+    expect(tagFilteredListResponse.body.data.map((q: { id: string }) => q.id)).toEqual([taggedCreateResponse.body.id]);
 
     const tagListResponse = await request(app.getHttpServer())
       .get('/api/v1/tags')
@@ -220,7 +220,7 @@ describe('Question Bank HTTP flow', () => {
       .get('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
-    expect(listResponse.body.map((q: { id: string }) => q.id)).toContain(questionId);
+    expect(listResponse.body.data.map((q: { id: string }) => q.id)).toContain(questionId);
 
     const getResponse = await request(app.getHttpServer())
       .get(`/api/v1/questions/${questionId}`)
@@ -255,13 +255,13 @@ describe('Question Bank HTTP flow', () => {
       .get('/api/v1/questions?status=active')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
-    expect(activeListResponse.body.map((q: { id: string }) => q.id)).not.toContain(questionId);
+    expect(activeListResponse.body.data.map((q: { id: string }) => q.id)).not.toContain(questionId);
 
     const archivedListResponse = await request(app.getHttpServer())
       .get('/api/v1/questions?status=archived')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
-    expect(archivedListResponse.body.map((q: { id: string }) => q.id)).toContain(questionId);
+    expect(archivedListResponse.body.data.map((q: { id: string }) => q.id)).toContain(questionId);
   });
 
   it('rejects an invalid question payload with 400', async () => {
@@ -316,7 +316,7 @@ describe('Question Bank HTTP flow', () => {
       .get('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
-    expect(listResponse.body.some((q: { text: string }) => q.text === 'Bulk row one')).toBe(true);
+    expect(listResponse.body.data.some((q: { text: string }) => q.text === 'Bulk row one')).toBe(true);
   });
 
   it('rejects a bulk upload file with an unsupported extension', async () => {
