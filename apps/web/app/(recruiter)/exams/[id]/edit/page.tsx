@@ -39,6 +39,9 @@ export default function EditExamPage() {
                     toast('Exam published.');
                     router.push('/exams');
                   },
+                  onError: (error) => {
+                    toast(error instanceof Error ? error.message : 'Failed to publish exam.', 'error');
+                  },
                 })
               }
             >
