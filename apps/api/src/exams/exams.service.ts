@@ -9,6 +9,7 @@ import { UpdateExamDto } from './dto/update-exam.dto';
 import { CreateExamSectionDto } from './dto/create-exam-section.dto';
 import { UpdateExamSectionDto } from './dto/update-exam-section.dto';
 import { validateSectionQuestionsReplace } from './exam-section-question-validation';
+import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
 
 type ExamSectionWithQuestions = ExamSection & {
   questions: (ExamSectionQuestion & { question: Question & { options: QuestionOption[] } })[];
@@ -16,6 +17,9 @@ type ExamSectionWithQuestions = ExamSection & {
 
 interface ExamFilters {
   status?: string;
+  page?: string;
+  pageSize?: string;
+  search?: string;
 }
 
 export const SETTLED_ATTEMPT_STATUSES = ['submitted', 'auto_submitted', 'force_submitted'];
@@ -116,15 +120,21 @@ export class ExamsService {
     );
   }
 
-  async list(context: TenantContext, filters: ExamFilters): Promise<(Exam & { invitationCount: number; attemptSettledCount: number; attemptTotalCount: number })[]> {
+  async list(
+    context: TenantContext,
+    filters: ExamFilters,
+  ): Promise<PaginatedResponse<Exam & { invitationCount: number; attemptSettledCount: number; attemptTotalCount: number }>> {
+    const { page, pageSize, skip, take } = resolvePaginationParams(filters.page, filters.pageSize);
     return this.tenantPrisma.forTenant(context, async (tx) => {
-      const exams = await tx.exam.findMany({
-        where: {
-          organizationId: context.organizationId as string,
-          ...(filters.status ? { status: filters.status } : { status: { not: 'archived' } }),
-        },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      });
+      const where = {
+        organizationId: context.organizationId as string,
+        ...(filters.status ? { status: filters.status } : { status: { not: 'archived' } }),
+        ...(filters.search ? { title: { contains: filters.search } } : {}),
+      };
+      const [exams, total] = await Promise.all([
+        tx.exam.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip, take }),
+        tx.exam.count({ where }),
+      ]);
       const examIds = exams.map((exam) => exam.id);
 
       const [invitationGroups, attemptGroups] = await Promise.all([
@@ -142,12 +152,13 @@ export class ExamsService {
         }
       }
 
-      return exams.map((exam) => ({
+      const data = exams.map((exam) => ({
         ...exam,
         invitationCount: invitationCountByExam.get(exam.id) ?? 0,
         attemptSettledCount: settledByExam.get(exam.id) ?? 0,
         attemptTotalCount: totalByExam.get(exam.id) ?? 0,
       }));
+      return buildPaginatedResponse(data, total, page, pageSize);
     });
   }
 

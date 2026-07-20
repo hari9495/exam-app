@@ -175,7 +175,10 @@ describe('ExamsService', () => {
 
   it("lists exams scoped to the caller's organization, excluding archived by default", async () => {
     const tx = {
-      exam: { findMany: jest.fn().mockResolvedValue([{ id: 'exam-1', status: 'draft' }]) },
+      exam: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'exam-1', status: 'draft' }]),
+        count: jest.fn().mockResolvedValue(1),
+      },
       invitation: { groupBy: jest.fn().mockResolvedValue([]) },
       attempt: { groupBy: jest.fn().mockResolvedValue([]) },
     };
@@ -183,7 +186,8 @@ describe('ExamsService', () => {
 
     const result = await service.list(context, {});
 
-    expect(result).toHaveLength(1);
+    expect(result.data).toHaveLength(1);
+    expect(result).toEqual(expect.objectContaining({ total: 1, page: 1, pageSize: 20, totalPages: 1 }));
     expect(tx.exam.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ status: { not: 'archived' } }) }),
     );
@@ -191,7 +195,10 @@ describe('ExamsService', () => {
 
   it('lists exams filtered by an explicit status', async () => {
     const tx = {
-      exam: { findMany: jest.fn().mockResolvedValue([{ id: 'exam-1', status: 'published' }]) },
+      exam: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'exam-1', status: 'published' }]),
+        count: jest.fn().mockResolvedValue(1),
+      },
       invitation: { groupBy: jest.fn().mockResolvedValue([]) },
       attempt: { groupBy: jest.fn().mockResolvedValue([]) },
     };
@@ -199,7 +206,7 @@ describe('ExamsService', () => {
 
     const result = await service.list(context, { status: 'published' });
 
-    expect(result).toHaveLength(1);
+    expect(result.data).toHaveLength(1);
     expect(tx.exam.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ status: 'published' }) }),
     );
@@ -209,6 +216,7 @@ describe('ExamsService', () => {
     const tx = {
       exam: {
         findMany: jest.fn().mockResolvedValue([{ id: 'exam-1', title: 'Backend Round', status: 'published', organizationId: 'org-1' }]),
+        count: jest.fn().mockResolvedValue(1),
       },
       invitation: {
         groupBy: jest.fn().mockResolvedValue([{ examId: 'exam-1', _count: { _all: 20 } }]),
@@ -225,7 +233,7 @@ describe('ExamsService', () => {
 
     const result = await service.list(context, {});
 
-    expect(result).toEqual([
+    expect(result.data).toEqual([
       expect.objectContaining({
         id: 'exam-1',
         invitationCount: 20,
@@ -233,6 +241,32 @@ describe('ExamsService', () => {
         attemptTotalCount: 17,
       }),
     ]);
+  });
+
+  it('paginates results and filters by search on title', async () => {
+    const tx = {
+      exam: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'exam-2', title: 'Backend Interview', createdAt: new Date() }]),
+        count: jest.fn().mockResolvedValue(1),
+      },
+      invitation: { groupBy: jest.fn().mockResolvedValue([]) },
+      attempt: { groupBy: jest.fn().mockResolvedValue([]) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    const result = await service.list(context, { page: '2', pageSize: '1', search: 'Backend' });
+
+    expect(tx.exam.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ title: { contains: 'Backend' } }),
+        skip: 1,
+        take: 1,
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({ total: 1, page: 2, pageSize: 1, totalPages: 1 }),
+    );
+    expect(result.data).toHaveLength(1);
   });
 
   it('throws NotFoundException when findOne cannot find the exam', async () => {

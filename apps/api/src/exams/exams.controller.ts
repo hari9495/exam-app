@@ -25,8 +25,14 @@ export class ExamsController {
 
   @Get()
   @RequireAnyPermission('exam:manage', 'results:view')
-  list(@CurrentTenant() tenant: TenantContext, @Query('status') status?: string) {
-    return this.examsService.list(tenant, { status });
+  list(
+    @CurrentTenant() tenant: TenantContext,
+    @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.examsService.list(tenant, { status, page, pageSize, search });
   }
 
   @Get(':id')
