@@ -20,9 +20,15 @@ describe('SectionQuestionPicker', () => {
       }
       if (String(url).includes('/questions')) {
         return new Response(
-          JSON.stringify([
-            { id: 'q-1', type: 'single_mcq', text: 'What is 2+2?', topic: null, category: null, difficulty: 'easy', marks: 5, negativeMarks: 0, status: 'active', aiGenerated: false, createdAt: '2026-01-01T00:00:00.000Z', options: [] },
-          ]),
+          JSON.stringify({
+            data: [
+              { id: 'q-1', type: 'single_mcq', text: 'What is 2+2?', topic: null, category: null, difficulty: 'easy', marks: 5, negativeMarks: 0, status: 'active', aiGenerated: false, createdAt: '2026-01-01T00:00:00.000Z', options: [] },
+            ],
+            total: 1,
+            page: 1,
+            pageSize: 100,
+            totalPages: 1,
+          }),
           { status: 200 },
         );
       }

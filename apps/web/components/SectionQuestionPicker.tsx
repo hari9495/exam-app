@@ -14,7 +14,8 @@ interface SectionQuestionPickerProps {
 }
 
 export function SectionQuestionPicker({ examId, sectionId, open, onClose, existingQuestionIds }: SectionQuestionPickerProps) {
-  const { data: questions } = useQuestions();
+  const { data: questionsResponse } = useQuestions({ pageSize: 100 });
+  const questions = questionsResponse?.data;
   const replaceQuestions = useReplaceSectionQuestions(examId, sectionId);
   const [selectedIds, setSelectedIds] = useState<string[]>(existingQuestionIds);
 

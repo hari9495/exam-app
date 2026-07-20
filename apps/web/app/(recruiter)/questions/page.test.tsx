@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import QuestionsPage from './page';
 import { AuthProvider } from '../../../lib/auth-context';
 import { QueryProvider } from '../../../lib/query-provider';
@@ -19,22 +19,28 @@ describe('QuestionsPage', () => {
       }
       if (String(url).includes('/questions')) {
         return new Response(
-          JSON.stringify([
-            {
-              id: 'q-1',
-              type: 'single_mcq',
-              text: 'What is 2+2?',
-              topic: null,
-              category: null,
-              difficulty: 'easy',
-              marks: 5,
-              negativeMarks: 0,
-              status: 'active',
-              aiGenerated: false,
-              createdAt: '2026-01-01T00:00:00.000Z',
-              options: [],
-            },
-          ]),
+          JSON.stringify({
+            data: [
+              {
+                id: 'q-1',
+                type: 'single_mcq',
+                text: 'What is 2+2?',
+                topic: null,
+                category: null,
+                difficulty: 'easy',
+                marks: 5,
+                negativeMarks: 0,
+                status: 'active',
+                aiGenerated: false,
+                createdAt: '2026-01-01T00:00:00.000Z',
+                options: [],
+              },
+            ],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+            totalPages: 1,
+          }),
           { status: 200 },
         );
       }
@@ -67,7 +73,7 @@ describe('QuestionsPage', () => {
       }
       if (String(url).includes('/questions')) {
         await questionsPromise;
-        return new Response(JSON.stringify([]), { status: 200 });
+        return new Response(JSON.stringify({ data: [], total: 0, page: 1, pageSize: 20, totalPages: 0 }), { status: 200 });
       }
       return new Response(JSON.stringify({}), { status: 200 });
     }) as unknown as typeof fetch;
@@ -116,7 +122,13 @@ describe('QuestionsPage', () => {
       }
       if (String(url).includes('/questions')) {
         return new Response(
-          JSON.stringify([{ id: 'q-1', text: 'Two Sum', type: 'code', difficulty: 'medium', marks: 5 }]),
+          JSON.stringify({
+            data: [{ id: 'q-1', text: 'Two Sum', type: 'code', difficulty: 'medium', marks: 5 }],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+            totalPages: 1,
+          }),
           { status: 200 },
         );
       }
@@ -135,5 +147,63 @@ describe('QuestionsPage', () => {
 
     await waitFor(() => expect(screen.getByText('Two Sum')).toBeInTheDocument());
     expect(screen.getByText('Code')).toBeInTheDocument();
+  });
+
+  it('sends the typed search text to the server as a query param instead of filtering client-side', async () => {
+    const fetchMock = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/questions')) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'q-1',
+                type: 'single_mcq',
+                text: 'What is 2+2?',
+                topic: null,
+                category: null,
+                difficulty: 'easy',
+                marks: 5,
+                negativeMarks: 0,
+                status: 'active',
+                aiGenerated: false,
+                createdAt: '2026-01-01T00:00:00.000Z',
+                options: [],
+              },
+            ],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+            totalPages: 1,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <QuestionsPage />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('What is 2+2?')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText('Search questions'), { target: { value: 'onboarding' } });
+
+    // If page.tsx reverted to filtering an already-fetched array client-side,
+    // no request carrying the typed text would ever be made -- this fails in
+    // that case, unlike an assertion that only checks the rendered rows.
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/questions') && String(call[0]).includes('search=onboarding'))).toBe(true),
+    );
   });
 });

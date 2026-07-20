@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { Plus, Search } from 'lucide-react';
 import { useQuestions } from '../../../lib/hooks/useQuestions';
-import { Table, StatusBadge, Button, type Column, type StatusTone } from '../../../components/ui';
+import { Table, StatusBadge, Button, Pagination, type Column, type StatusTone } from '../../../components/ui';
 import { Question, QuestionType, Difficulty } from '../../../lib/types';
 
 const TYPE_TONE: Record<QuestionType, StatusTone> = {
@@ -35,8 +35,9 @@ function DifficultyDots({ difficulty }: { difficulty: Difficulty }) {
 }
 
 export default function QuestionsPage() {
-  const { data: questions, isLoading, isError } = useQuestions();
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const { data: questions, isLoading, isError } = useQuestions({ page, pageSize: 20, search: search || undefined });
 
   const columns: Column<Question>[] = [
     { key: 'text', header: 'Question', render: (q) => <span className="font-semibold text-recruiter-text">{q.text}</span>, sortValue: (q) => q.text },
@@ -76,8 +77,6 @@ export default function QuestionsPage() {
     );
   }
 
-  const filtered = (questions ?? []).filter((q) => q.text.toLowerCase().includes(search.toLowerCase()));
-
   return (
     <div>
       <div className="mb-4.5 flex items-center justify-between">
@@ -100,14 +99,18 @@ export default function QuestionsPage() {
           <input
             type="search"
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(1);
+            }}
             placeholder="Search questions…"
             aria-label="Search questions"
             className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
           />
         </div>
       </div>
-      <Table columns={columns} rows={filtered} rowKey={(q) => q.id} emptyMessage="No questions yet." />
+      <Table columns={columns} rows={questions?.data ?? []} rowKey={(q) => q.id} emptyMessage="No questions yet." />
+      <Pagination page={questions?.page ?? 1} totalPages={questions?.totalPages ?? 1} onPageChange={setPage} />
     </div>
   );
 }

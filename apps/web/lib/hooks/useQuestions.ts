@@ -1,24 +1,30 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, apiFetchBlob } from '../api-client';
-import { Question, QuestionType, Difficulty, Tag } from '../types';
+import { Question, QuestionType, Difficulty, Tag, PaginatedResponse } from '../types';
 import { useAuth } from '../auth-context';
 
 interface QuestionFilters {
   difficulty?: Difficulty;
   tagId?: string;
+  page?: number;
+  pageSize?: number;
+  search?: string;
 }
 
 function buildQuery(filters: QuestionFilters): string {
   const params = new URLSearchParams();
   if (filters.difficulty) params.set('difficulty', filters.difficulty);
   if (filters.tagId) params.set('tagId', filters.tagId);
+  if (filters.page) params.set('page', String(filters.page));
+  if (filters.pageSize) params.set('pageSize', String(filters.pageSize));
+  if (filters.search) params.set('search', filters.search);
   const query = params.toString();
   return query ? `?${query}` : '';
 }
 
 export function useQuestions(filters: QuestionFilters = {}) {
   const { accessToken } = useAuth();
-  return useQuery<Question[]>({
+  return useQuery<PaginatedResponse<Question>>({
     queryKey: ['questions', filters],
     queryFn: () => apiFetch(`/questions${buildQuery(filters)}`, {}, accessToken ?? undefined),
     enabled: Boolean(accessToken),
