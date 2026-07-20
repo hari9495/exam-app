@@ -30,6 +30,7 @@ export default function EditQuestionPage() {
               toast('Question updated.');
               router.push('/questions');
             },
+            onError: (error) => toast(error instanceof Error ? error.message : 'Failed to update question.', 'error'),
           })
         }
       />

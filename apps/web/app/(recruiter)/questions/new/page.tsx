@@ -23,6 +23,7 @@ export default function NewQuestionPage() {
               toast('Question created.');
               router.push('/questions');
             },
+            onError: (error) => toast(error instanceof Error ? error.message : 'Failed to create question.', 'error'),
           })
         }
       />
