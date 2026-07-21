@@ -16,7 +16,7 @@ import {
 
 const INVITATION_EXPIRY_DAYS = 7;
 
-function generateToken(): string {
+export function generateToken(): string {
   return randomBytes(32).toString('hex');
 }
 
@@ -26,7 +26,7 @@ function addDays(date: Date, days: number): Date {
   return result;
 }
 
-function resolveInvitationExpiry(exam: { schedulingEnabled: boolean; availabilityWindowEnd: Date | null }): Date {
+export function resolveInvitationExpiry(exam: { schedulingEnabled: boolean; availabilityWindowEnd: Date | null }): Date {
   if (exam.schedulingEnabled && exam.availabilityWindowEnd) {
     return exam.availabilityWindowEnd;
   }

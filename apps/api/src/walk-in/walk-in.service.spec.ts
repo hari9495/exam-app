@@ -1,0 +1,160 @@
+import { Test } from '@nestjs/testing';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { WalkInService } from './walk-in.service';
+import { PrismaService, TenantPrismaService, AuditService } from '@exam-platform/shared';
+import { WebhooksService } from '../webhooks/webhooks.service';
+
+describe('WalkInService', () => {
+  let service: WalkInService;
+  let prisma: { organization: { findUnique: jest.Mock } };
+  let tenantPrisma: { forTenant: jest.Mock };
+  let audit: { record: jest.Mock };
+  let webhooksService: { enqueue: jest.Mock };
+
+  beforeEach(async () => {
+    prisma = { organization: { findUnique: jest.fn() } };
+    tenantPrisma = { forTenant: jest.fn() };
+    audit = { record: jest.fn() };
+    webhooksService = { enqueue: jest.fn() };
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        WalkInService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: TenantPrismaService, useValue: tenantPrisma },
+        { provide: AuditService, useValue: audit },
+        { provide: WebhooksService, useValue: webhooksService },
+      ],
+    }).compile();
+    service = moduleRef.get(WalkInService);
+  });
+
+  describe('listExams', () => {
+    it('throws NotFoundException for an unknown org slug', async () => {
+      prisma.organization.findUnique.mockResolvedValue(null);
+      await expect(service.listExams('nope')).rejects.toThrow(NotFoundException);
+    });
+
+    it('returns only published, walk-in-enabled exams for the org', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
+      const tx = {
+        exam: { findMany: jest.fn().mockResolvedValue([{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60 }]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.listExams('demo-org');
+
+      expect(tx.exam.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { organizationId: 'org-1', status: 'published', walkInEnabled: true } }),
+      );
+      expect(result).toEqual([{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60 }]);
+    });
+  });
+
+  describe('register', () => {
+    const dto = { examId: 'exam-1', name: 'Alice', email: 'alice@test.com' };
+
+    it('throws NotFoundException for an unknown org slug', async () => {
+      prisma.organization.findUnique.mockResolvedValue(null);
+      await expect(service.register('nope', dto)).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects when the exam is not walk-in-enabled', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published', walkInEnabled: false }) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.register('demo-org', dto)).rejects.toThrow(BadRequestException);
+    });
+
+    it('creates a new candidate and invitation for a first-time registrant', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1', status: 'published', walkInEnabled: true, schedulingEnabled: false, availabilityWindowEnd: null,
+          }),
+        },
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com' }),
+        },
+        invitation: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'raw-token' }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.register('demo-org', dto);
+
+      expect(tx.candidate.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ organizationId: 'org-1', email: 'alice@test.com', name: 'Alice' }) }),
+      );
+      expect(tx.invitation.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ examId: 'exam-1', candidateId: 'cand-1', source: 'walk_in' }) }),
+      );
+      expect(result).toEqual({ token: 'raw-token' });
+      expect(webhooksService.enqueue).toHaveBeenCalledWith('org-1', 'invitation.created', expect.objectContaining({ id: 'inv-1' }));
+    });
+
+    it('reuses the existing candidate and a live invitation instead of creating a duplicate', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1', status: 'published', walkInEnabled: true, schedulingEnabled: false, availabilityWindowEnd: null,
+          }),
+        },
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com' }),
+          update: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com' }),
+        },
+        invitation: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'existing-token' }),
+          create: jest.fn(),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.register('demo-org', dto);
+
+      expect(tx.invitation.create).not.toHaveBeenCalled();
+      expect(tx.candidate.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'cand-1' } }),
+      );
+      expect(result).toEqual({ token: 'existing-token' });
+    });
+
+    it('issues a new token for an existing candidate whose prior invitation has expired', async () => {
+      // The live-invitation query filters on `expiresAt: { gt: now }`, so an expired invitation
+      // never matches it -- findFirst resolving null here is exactly what "expired" looks like
+      // from this service's point of view, same as "never invited to this exam before".
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1', status: 'published', walkInEnabled: true, schedulingEnabled: false, availabilityWindowEnd: null,
+          }),
+        },
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com' }),
+          update: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com' }),
+        },
+        invitation: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'inv-2', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'fresh-token' }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.register('demo-org', dto);
+
+      expect(tx.invitation.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ candidateId: 'cand-1', source: 'walk_in' }) }),
+      );
+      expect(result).toEqual({ token: 'fresh-token' });
+    });
+  });
+});
