@@ -106,7 +106,23 @@ describe('AttemptService', () => {
           { title: 'Section Two', questionCount: 5 },
         ],
         organizationLogoUrl: null,
+        organizationPrimaryColor: null,
       });
+    });
+
+    it('returns the organization primaryColor alongside the logo when the org has one set', async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(null) },
+        examSection: { findMany: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve(invitationRecord))
+        .mockImplementationOnce(() => Promise.resolve({ logoPath: null, primaryColor: '#B23B3B' }))
+        .mockImplementationOnce((_ctx, fn) => fn(tx));
+
+      const result = await service.getCurrent(session);
+
+      expect((result as any).organizationPrimaryColor).toBe('#B23B3B');
     });
 
     it('falls back to 0 questions for a pool section with poolSize unset', async () => {
@@ -179,6 +195,7 @@ describe('AttemptService', () => {
         messages: [],
         feedback: null,
         organizationLogoUrl: null,
+        organizationPrimaryColor: null,
       });
       expect((result as any).sections[0].questions[0]).not.toHaveProperty('isCorrect');
     });
@@ -789,6 +806,7 @@ describe('AttemptService', () => {
         schedulingWindowState: 'not_open',
         sections: [],
         organizationLogoUrl: null,
+        organizationPrimaryColor: null,
       });
       expect(tx.attempt.create).not.toHaveBeenCalled();
     });

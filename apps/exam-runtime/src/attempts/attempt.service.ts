@@ -76,6 +76,7 @@ interface AttemptPreviewResponse {
   schedulingWindowState: 'not_open' | 'open' | 'closed' | null;
   sections: AttemptSectionSummary[];
   organizationLogoUrl: string | null;
+  organizationPrimaryColor: string | null;
 }
 
 interface AttemptSectionFeedback {
@@ -102,6 +103,7 @@ interface AttemptStateResponse {
   messages: AttemptMessageSummary[];
   feedback: AttemptFeedback | null;
   organizationLogoUrl: string | null;
+  organizationPrimaryColor: string | null;
 }
 
 export type AttemptCurrentResponse = AttemptPreviewResponse | AttemptStateResponse;
@@ -121,7 +123,7 @@ export class AttemptService {
 
   async getCurrent(session: CandidateSession): Promise<AttemptCurrentResponse> {
     const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
-    const organizationLogoUrl = await this.getOrganizationLogoUrl(organizationId);
+    const { logoUrl: organizationLogoUrl, primaryColor: organizationPrimaryColor } = await this.getOrganizationBranding(organizationId);
 
     return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
       const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
@@ -146,6 +148,7 @@ export class AttemptService {
             questionCount: section.selectionMode === 'pool' ? (section.poolSize ?? 0) : section.questions.length,
           })),
           organizationLogoUrl,
+          organizationPrimaryColor,
         };
       }
 
@@ -174,6 +177,7 @@ export class AttemptService {
         messages: unreadMessages.map((message) => ({ id: message.id, body: message.body, sentAt: message.sentAt })),
         feedback,
         organizationLogoUrl,
+        organizationPrimaryColor,
       };
     });
   }
@@ -525,11 +529,14 @@ export class AttemptService {
     return { organizationId: exam.organizationId, exam, invitation };
   }
 
-  private async getOrganizationLogoUrl(organizationId: string): Promise<string | null> {
+  private async getOrganizationBranding(organizationId: string): Promise<{ logoUrl: string | null; primaryColor: string | null }> {
     const organization = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
-      tx.organization.findUnique({ where: { id: organizationId }, select: { logoPath: true } }),
+      tx.organization.findUnique({ where: { id: organizationId }, select: { logoPath: true, primaryColor: true } }),
     );
-    return organization?.logoPath ? `${process.env.API_ORIGIN}/uploads/${organization.logoPath}` : null;
+    return {
+      logoUrl: organization?.logoPath ? `${process.env.API_ORIGIN}/uploads/${organization.logoPath}` : null,
+      primaryColor: organization?.primaryColor ?? null,
+    };
   }
 
   private getSchedulingWindowState(exam: {
