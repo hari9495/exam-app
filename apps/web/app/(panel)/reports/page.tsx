@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useExams } from '../../../lib/hooks/useExams';
-import { Table, Badge, type Column } from '../../../components/ui';
+import { CardGrid, Badge } from '../../../components/ui';
 import { ExamListItem, ExamStatus } from '../../../lib/types';
 
 const STATUS_VARIANT: Record<ExamStatus, 'default' | 'success' | 'warning'> = {
@@ -11,15 +11,16 @@ const STATUS_VARIANT: Record<ExamStatus, 'default' | 'success' | 'warning'> = {
   archived: 'default',
 };
 
-const columns: Column<ExamListItem>[] = [
-  {
-    key: 'title',
-    header: 'Title',
-    render: (exam) => <Link href={`/reports/${exam.id}`}>{exam.title}</Link>,
-    sortValue: (exam) => exam.title,
-  },
-  { key: 'status', header: 'Status', render: (exam) => <Badge variant={STATUS_VARIANT[exam.status]}>{exam.status}</Badge> },
-];
+function renderCard(exam: ExamListItem) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <Link href={`/reports/${exam.id}`} className="truncate text-sm font-semibold text-gray-900 hover:underline">
+        {exam.title}
+      </Link>
+      <Badge variant={STATUS_VARIANT[exam.status]}>{exam.status}</Badge>
+    </div>
+  );
+}
 
 export default function PanelReportsPage() {
   // ponytail: pageSize:100 is the server's max -- an org with >100 exams
@@ -51,7 +52,7 @@ export default function PanelReportsPage() {
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold">Exams</h1>
-      <Table columns={columns} rows={exams ?? []} rowKey={(exam) => exam.id} emptyMessage="No exams yet." />
+      <CardGrid items={exams ?? []} cardKey={(exam) => exam.id} renderCard={renderCard} emptyMessage="No exams yet." />
     </div>
   );
 }
