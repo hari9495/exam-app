@@ -111,6 +111,7 @@ export interface Exam {
   schedulingEnabled: boolean;
   availabilityWindowStart: string | null;
   availabilityWindowEnd: string | null;
+  walkInEnabled: boolean;
   createdAt: string;
   sections: ExamSection[];
 }
@@ -155,6 +156,12 @@ export interface Organization {
   slug: string;
   region: string;
   createdAt: string;
+}
+
+export interface WalkInExamOption {
+  id: string;
+  title: string;
+  durationMinutes: number;
 }
 
 export interface SuperAdminSummary {

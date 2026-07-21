@@ -63,7 +63,10 @@ export default function ExamsPage() {
             <div className="font-semibold text-recruiter-text">{exam.title}</div>
             <div className="text-xs text-recruiter-text-tertiary">{exam.durationMinutes} min</div>
           </div>
-          <StatusBadge tone={STATUS_TONE[exam.status]}>{STATUS_LABEL[exam.status]}</StatusBadge>
+          <div className="flex items-center gap-1.5">
+            {exam.walkInEnabled && <StatusBadge tone="info">Walk-in</StatusBadge>}
+            <StatusBadge tone={STATUS_TONE[exam.status]}>{STATUS_LABEL[exam.status]}</StatusBadge>
+          </div>
         </div>
         {exam.attemptTotalCount > 0 && (
           <div className="mb-2 flex items-center gap-2">

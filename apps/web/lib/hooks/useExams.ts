@@ -46,6 +46,7 @@ interface CreateExamInput {
   schedulingEnabled?: boolean;
   availabilityWindowStart?: string;
   availabilityWindowEnd?: string;
+  walkInEnabled?: boolean;
 }
 
 export function useCreateExam() {

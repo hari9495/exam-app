@@ -84,7 +84,7 @@ describe('ExamDetailsForm', () => {
       id: 'exam-1', title: 'Existing', instructions: null, status: 'draft' as const, durationMinutes: 60,
       passCriteriaPercent: 40, randomizeOrder: false, feedbackVisibility: 'pass_fail' as const, schedulingEnabled: true,
       availabilityWindowStart: '2026-07-20T09:00:00.000Z', availabilityWindowEnd: '2026-07-27T18:00:00.000Z',
-      createdAt: '2026-07-01T00:00:00.000Z', sections: [],
+      walkInEnabled: false, createdAt: '2026-07-01T00:00:00.000Z', sections: [],
     };
     render(<ExamDetailsForm initialExam={scheduledExam} onSubmit={jest.fn()} submitLabel="Save" />);
 
@@ -123,5 +123,26 @@ describe('ExamDetailsForm', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save details' }));
 
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ feedbackVisibility: 'score' }));
+  });
+
+  it('includes walkInEnabled in the submitted value, defaulting to false for a new exam', async () => {
+    const onSubmit = jest.fn();
+    render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Save details" />);
+
+    await userEvent.type(screen.getByLabelText('Title'), 'New Exam');
+    await userEvent.click(screen.getByRole('button', { name: 'Save details' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ walkInEnabled: false }));
+  });
+
+  it('lets the recruiter enable walk-in registration', async () => {
+    const onSubmit = jest.fn();
+    render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Save details" />);
+
+    await userEvent.type(screen.getByLabelText('Title'), 'New Exam');
+    await userEvent.click(screen.getByLabelText('Enable walk-in registration for this exam'));
+    await userEvent.click(screen.getByRole('button', { name: 'Save details' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ walkInEnabled: true }));
   });
 });

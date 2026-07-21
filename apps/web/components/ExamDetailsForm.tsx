@@ -14,6 +14,7 @@ export interface ExamDetailsValue {
   schedulingEnabled: boolean;
   availabilityWindowStart?: string;
   availabilityWindowEnd?: string;
+  walkInEnabled: boolean;
 }
 
 interface ExamDetailsFormProps {
@@ -43,6 +44,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel }: ExamDeta
     initialExam?.availabilityWindowEnd ? toDatetimeLocalValue(initialExam.availabilityWindowEnd) : '',
   );
   const [schedulingError, setSchedulingError] = useState<string | undefined>(undefined);
+  const [walkInEnabled, setWalkInEnabled] = useState(initialExam?.walkInEnabled ?? false);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -65,6 +67,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel }: ExamDeta
       schedulingEnabled,
       availabilityWindowStart: schedulingEnabled ? new Date(availabilityWindowStart).toISOString() : undefined,
       availabilityWindowEnd: schedulingEnabled ? new Date(availabilityWindowEnd).toISOString() : undefined,
+      walkInEnabled,
     });
   }
 
@@ -121,6 +124,10 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel }: ExamDeta
           {schedulingError && <p className="text-xs text-red-600">{schedulingError}</p>}
         </div>
       )}
+      <label className="flex items-center gap-2 text-sm text-gray-700">
+        <input type="checkbox" checked={walkInEnabled} onChange={(e) => setWalkInEnabled(e.target.checked)} />
+        Enable walk-in registration for this exam
+      </label>
       <Button type="submit">{submitLabel}</Button>
     </form>
   );
