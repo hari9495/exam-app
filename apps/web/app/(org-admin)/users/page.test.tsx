@@ -198,8 +198,10 @@ describe('UsersPage', () => {
     );
 
     await waitFor(() => expect(screen.getByText('admin@demo-org.test')).toBeInTheDocument());
-    const table = screen.getByRole('table');
-    expect(within(table).getByText('Org Admin')).toBeInTheDocument();
-    expect(within(table).getByText('Active')).toBeInTheDocument();
+    const emailElement = screen.getByText('admin@demo-org.test');
+    const card = emailElement.closest('.group') as HTMLElement;
+    expect(card).toBeInTheDocument();
+    expect(within(card).getByText('Org Admin')).toBeInTheDocument();
+    expect(within(card).getByText('Active')).toBeInTheDocument();
   });
 });

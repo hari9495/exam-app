@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useUsers, useCreateUser } from '../../../lib/hooks/useUsers';
-import { Table, Input, Select, Button, StatusBadge, useToast, Pagination, type Column, type StatusTone } from '../../../components/ui';
+import { CardGrid, Input, Select, Button, StatusBadge, useToast, Pagination, type StatusTone } from '../../../components/ui';
 import { StaffUser } from '../../../lib/types';
 
 const ROLE_OPTIONS = [
@@ -62,25 +62,20 @@ export default function UsersPage() {
     );
   }
 
-  const columns: Column<StaffUser>[] = [
-    { key: 'email', header: 'Email', render: (user) => user.email, sortValue: (user) => user.email },
-    {
-      key: 'role',
-      header: 'Role',
-      render: (user) => <StatusBadge tone={ROLE_TONE[user.role] ?? 'neutral'}>{ROLE_LABEL[user.role] ?? user.role}</StatusBadge>,
-      sortValue: (user) => user.role,
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      render: (user) => <StatusBadge tone={statusTone(user.status)}>{statusLabel(user.status)}</StatusBadge>,
-    },
-    {
-      key: 'lastLoginAt',
-      header: 'Last login',
-      render: (user) => (user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : 'Never'),
-    },
-  ];
+  function renderCard(user: StaffUser) {
+    return (
+      <div>
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1 truncate font-semibold text-recruiter-text">{user.email}</div>
+          <StatusBadge tone={ROLE_TONE[user.role] ?? 'neutral'}>{ROLE_LABEL[user.role] ?? user.role}</StatusBadge>
+        </div>
+        <div className="flex items-center justify-between border-t border-recruiter-border pt-2.5 text-xs text-recruiter-text-tertiary">
+          <StatusBadge tone={statusTone(user.status)}>{statusLabel(user.status)}</StatusBadge>
+          <span>{user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : 'Never'}</span>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -127,7 +122,7 @@ export default function UsersPage() {
           }}
         />
       </div>
-      <Table columns={columns} rows={usersResponse?.data ?? []} rowKey={(user) => user.id} emptyMessage="No staff users yet." />
+      <CardGrid items={usersResponse?.data ?? []} cardKey={(user) => user.id} renderCard={renderCard} emptyMessage="No staff users yet." />
       <Pagination page={usersResponse?.page ?? 1} totalPages={usersResponse?.totalPages ?? 1} onPageChange={setPage} />
     </div>
   );
