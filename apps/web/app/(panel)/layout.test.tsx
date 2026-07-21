@@ -35,7 +35,7 @@ describe('Panel layout', () => {
     );
   }
 
-  it('renders the sidebar nav links for a panel user', async () => {
+  it('renders the top bar nav link for a panel user', async () => {
     renderLayout();
     expect(await screen.findByRole('link', { name: 'Exams' })).toBeInTheDocument();
   });
