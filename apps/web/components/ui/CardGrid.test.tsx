@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { CardGrid } from './CardGrid';
 
 interface Item {
@@ -25,5 +26,70 @@ describe('CardGrid', () => {
     render(<CardGrid items={[]} cardKey={(item: Item) => item.id} renderCard={(item: Item) => <span>{item.name}</span>} />);
 
     expect(screen.getByText('No results.')).toBeInTheDocument();
+  });
+
+  describe('sorting', () => {
+    const items: Item[] = [
+      { id: '1', name: 'Charlie' },
+      { id: '2', name: 'Alpha' },
+      { id: '3', name: 'Bravo' },
+    ];
+    const sortOptions = [{ key: 'name', label: 'Name', sortValue: (item: Item) => item.name }];
+
+    function renderNames() {
+      return screen.getAllByTestId('card-name').map((el) => el.textContent);
+    }
+
+    it('renders items in original order when no sort field is selected', () => {
+      render(
+        <CardGrid
+          items={items}
+          cardKey={(item) => item.id}
+          renderCard={(item) => <span data-testid="card-name">{item.name}</span>}
+          sortOptions={sortOptions}
+        />,
+      );
+
+      expect(renderNames()).toEqual(['Charlie', 'Alpha', 'Bravo']);
+    });
+
+    it('sorts items ascending when a sort field is selected', async () => {
+      render(
+        <CardGrid
+          items={items}
+          cardKey={(item) => item.id}
+          renderCard={(item) => <span data-testid="card-name">{item.name}</span>}
+          sortOptions={sortOptions}
+        />,
+      );
+
+      await userEvent.click(screen.getByRole('combobox', { name: 'Sort by' }));
+      await userEvent.click(screen.getByRole('option', { name: 'Name' }));
+
+      expect(renderNames()).toEqual(['Alpha', 'Bravo', 'Charlie']);
+    });
+
+    it('reverses order when the direction toggle is clicked', async () => {
+      render(
+        <CardGrid
+          items={items}
+          cardKey={(item) => item.id}
+          renderCard={(item) => <span data-testid="card-name">{item.name}</span>}
+          sortOptions={sortOptions}
+        />,
+      );
+
+      await userEvent.click(screen.getByRole('combobox', { name: 'Sort by' }));
+      await userEvent.click(screen.getByRole('option', { name: 'Name' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Sort ascending' }));
+
+      expect(renderNames()).toEqual(['Charlie', 'Bravo', 'Alpha']);
+    });
+
+    it('does not render a sort toolbar when sortOptions is omitted', () => {
+      render(<CardGrid items={items} cardKey={(item) => item.id} renderCard={(item) => <span>{item.name}</span>} />);
+
+      expect(screen.queryByRole('combobox', { name: 'Sort by' })).not.toBeInTheDocument();
+    });
   });
 });
