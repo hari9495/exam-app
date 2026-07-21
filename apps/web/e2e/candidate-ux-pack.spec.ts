@@ -54,7 +54,7 @@ test('a candidate with a +50% accommodation gets more remaining time than the ex
   await expect(page).toHaveURL(/\/exams$/);
 
   await page.goto(`/exams`);
-  await page.getByRole('row', { name: examTitle }).getByRole('link', { name: 'Edit' }).click();
+  await page.locator('.group', { hasText: examTitle }).getByRole('link', { name: 'Edit' }).click();
   await page.getByRole('link', { name: 'Candidates' }).click();
   const candidateEmail = `ux-pack-${Date.now()}@example.com`;
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('UX Pack Person');
@@ -64,7 +64,7 @@ test('a candidate with a +50% accommodation gets more remaining time than the ex
 
   await page.getByLabel('Exam to invite to').click();
   await page.getByRole('option', { name: examTitle, exact: true }).click();
-  await page.getByRole('row', { name: candidateEmail }).getByRole('checkbox', { name: 'UX Pack Person' }).click();
+  await page.locator('.group', { hasText: candidateEmail }).getByRole('checkbox', { name: 'UX Pack Person' }).click();
   const [inviteResponse] = await Promise.all([
     page.waitForResponse((response) => response.url().includes('/invitations') && response.request().method() === 'POST'),
     page.getByRole('button', { name: 'Send invitations' }).click(),
@@ -73,7 +73,7 @@ test('a candidate with a +50% accommodation gets more remaining time than the ex
   const token: string = inviteBody.created[0].token;
 
   await page.goto('/exams');
-  await page.getByRole('row', { name: examTitle }).getByRole('link', { name: 'Edit' }).click();
+  await page.locator('.group', { hasText: examTitle }).getByRole('link', { name: 'Edit' }).click();
   await page.getByRole('tab', { name: 'Candidates' }).click();
   await page.getByRole('spinbutton', { name: /extra time.*ux pack person/i }).fill('50');
   await page.getByRole('button', { name: /save/i }).click();

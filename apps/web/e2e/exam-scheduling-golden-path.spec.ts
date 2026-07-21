@@ -54,7 +54,7 @@ test('candidate is blocked before the window opens and can start once the recrui
 
   await page.getByLabel('Exam to invite to').click();
   await page.getByRole('option', { name: examTitle, exact: true }).click();
-  await page.getByRole('row', { name: candidateEmail }).getByRole('checkbox', { name: 'Scheduling Candidate' }).click();
+  await page.locator('.group', { hasText: candidateEmail }).getByRole('checkbox', { name: 'Scheduling Candidate' }).click();
   const invitePromise = page.waitForResponse((response) => response.url().includes('/invitations') && response.request().method() === 'POST');
   await page.getByRole('button', { name: 'Send invitations' }).click();
   const inviteResponse = await invitePromise;
@@ -80,7 +80,7 @@ test('candidate is blocked before the window opens and can start once the recrui
   await expect(candidatePage.getByRole('button', { name: 'Start exam' })).not.toBeVisible();
 
   await page.getByRole('link', { name: 'Exams' }).click();
-  await page.getByRole('row', { name: examTitle }).getByRole('link', { name: 'Edit' }).click();
+  await page.locator('.group', { hasText: examTitle }).getByRole('link', { name: 'Edit' }).click();
   await page.getByLabel('Window opens').fill(toLocalInputValue(new Date(Date.now() - 60 * 1000)));
   await page.getByRole('button', { name: 'Save details' }).click();
 

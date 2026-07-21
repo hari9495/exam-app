@@ -50,7 +50,7 @@ test('recruiter sees a candidate go live on the exam Live tab as they start thei
 
   await page.getByLabel('Exam to invite to').click();
   await page.getByRole('option', { name: examTitle, exact: true }).click();
-  await page.getByRole('row', { name: candidateEmail }).getByRole('checkbox', { name: 'Live Path Candidate' }).click();
+  await page.locator('.group', { hasText: candidateEmail }).getByRole('checkbox', { name: 'Live Path Candidate' }).click();
 
   const [inviteResponse] = await Promise.all([
     page.waitForResponse((response) => response.url().includes('/invitations') && response.request().method() === 'POST'),
@@ -61,9 +61,11 @@ test('recruiter sees a candidate go live on the exam Live tab as they start thei
 
   // Recruiter: open the exam's Live tab and wait for the roster to load
   await page.getByRole('link', { name: 'Exams' }).click();
-  await page.getByRole('row', { name: examTitle }).getByRole('link', { name: 'Edit' }).click();
+  await page.locator('.group', { hasText: examTitle }).getByRole('link', { name: 'Edit' }).click();
   await page.getByRole('tab', { name: 'Live' }).click();
   await expect(page.getByText('Live Path Candidate')).toBeVisible();
+  // The Live tab's roster still renders as a real <table> (components/ui/Table.tsx), unlike the
+  // recruiter Candidates/Exams lists (converted to CardGrid) -- role="row"/"cell" is correct here.
   await expect(page.getByRole('row', { name: 'Live Path Candidate' }).getByText('invited')).toBeVisible();
 
   // Candidate: start the exam in a second, independent browser context
@@ -139,7 +141,7 @@ test('recruiter sees the leaderboard update when a candidate answers correctly',
 
   await page.getByLabel('Exam to invite to').click();
   await page.getByRole('option', { name: examTitle, exact: true }).click();
-  await page.getByRole('row', { name: candidateEmail }).getByRole('checkbox', { name: 'Leaderboard Path Candidate' }).click();
+  await page.locator('.group', { hasText: candidateEmail }).getByRole('checkbox', { name: 'Leaderboard Path Candidate' }).click();
 
   const [inviteResponse] = await Promise.all([
     page.waitForResponse((response) => response.url().includes('/invitations') && response.request().method() === 'POST'),
@@ -178,7 +180,7 @@ test('recruiter sees the leaderboard update when a candidate answers correctly',
 
   // Recruiter: open the exam's Leaderboard tab and see the candidate's rank/correct-count update
   await page.getByRole('link', { name: 'Exams' }).click();
-  await page.getByRole('row', { name: examTitle }).getByRole('link', { name: 'Edit' }).click();
+  await page.locator('.group', { hasText: examTitle }).getByRole('link', { name: 'Edit' }).click();
   await page.getByRole('tab', { name: 'Leaderboard' }).click();
   // Scoped to this candidate's row: the leaderboard <li> renders a rank/name group first,
   // then a sibling <span> holding the correct-count, so "> span" targets only that count

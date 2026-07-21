@@ -49,7 +49,7 @@ test('candidate redeems an invitation, takes an exam, and submits', async ({ pag
 
   await page.getByLabel('Exam to invite to').click();
   await page.getByRole('option', { name: examTitle, exact: true }).click();
-  await page.getByRole('row', { name: candidateEmail }).getByRole('checkbox', { name: 'Candidate Path Person' }).click();
+  await page.locator('.group', { hasText: candidateEmail }).getByRole('checkbox', { name: 'Candidate Path Person' }).click();
 
   const [inviteResponse] = await Promise.all([
     page.waitForResponse((response) => response.url().includes('/invitations') && response.request().method() === 'POST'),
@@ -139,7 +139,7 @@ test('candidate sees the pause and block overlays when the backend reports pause
 
   await page.getByLabel('Exam to invite to').click();
   await page.getByRole('option', { name: examTitle, exact: true }).click();
-  await page.getByRole('row', { name: candidateEmail }).getByRole('checkbox', { name: 'Webcam Overlay Person' }).click();
+  await page.locator('.group', { hasText: candidateEmail }).getByRole('checkbox', { name: 'Webcam Overlay Person' }).click();
   const [inviteResponse] = await Promise.all([
     page.waitForResponse((response) => response.url().includes('/invitations') && response.request().method() === 'POST'),
     page.getByRole('button', { name: 'Send invitations' }).click(),

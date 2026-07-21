@@ -52,7 +52,7 @@ test('candidate writes and submits code, recruiter grades and finalizes the atte
 
   await page.getByLabel('Exam to invite to').click();
   await page.getByRole('option', { name: examTitle, exact: true }).click();
-  await page.getByRole('row', { name: candidateEmail }).getByRole('checkbox', { name: 'Code Path Candidate' }).click();
+  await page.locator('.group', { hasText: candidateEmail }).getByRole('checkbox', { name: 'Code Path Candidate' }).click();
   const invitePromise = page.waitForResponse((response) => response.url().includes('/invitations') && response.request().method() === 'POST');
   await page.getByRole('button', { name: 'Send invitations' }).click();
   const inviteResponse = await invitePromise;
@@ -109,7 +109,7 @@ test('candidate writes and submits code, recruiter grades and finalizes the atte
 
   // Recruiter: open the Grading tab, grade the submission, finalize
   await page.getByRole('link', { name: 'Exams' }).click();
-  await page.getByRole('row', { name: examTitle }).getByRole('link', { name: 'Edit' }).click();
+  await page.locator('.group', { hasText: examTitle }).getByRole('link', { name: 'Edit' }).click();
   await page.getByRole('tab', { name: 'Grading' }).click();
   await expect(page.getByText('Code Path Candidate')).toBeVisible();
   await expect(page.getByText(/return str\.split/)).toBeVisible();

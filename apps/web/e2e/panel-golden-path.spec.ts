@@ -14,7 +14,7 @@ async function inviteCandidate(page: import('@playwright/test').Page, name: stri
 
   await page.getByLabel('Exam to invite to').click();
   await page.getByRole('option', { name: examTitle, exact: true }).click();
-  await page.getByRole('row', { name: email }).getByRole('checkbox', { name }).click();
+  await page.locator('.group', { hasText: email }).getByRole('checkbox', { name }).click();
 
   const [inviteResponse] = await Promise.all([
     page.waitForResponse((response) => response.url().includes('/invitations') && response.request().method() === 'POST'),

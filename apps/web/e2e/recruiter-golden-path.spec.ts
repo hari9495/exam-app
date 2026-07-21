@@ -52,13 +52,14 @@ test('recruiter creates an exam, adds a section and question, publishes, adds a 
   await page.getByRole('button', { name: 'Publish' }).click();
   await expect(page).toHaveURL(/\/exams$/);
 
-  await page.getByRole('row', { name: examTitle }).getByRole('button', { name: 'Duplicate' }).click();
+  await page.locator('.group', { hasText: examTitle }).getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name: 'Duplicate' }).click();
   await expect(page).toHaveURL(/\/exams\/.+\/edit$/);
   await expect(page.getByLabel('Title')).toHaveValue(`${examTitle} (Copy)`);
 
   await page.getByRole('link', { name: 'Exams' }).click();
   await expect(page).toHaveURL(/\/exams$/);
-  await expect(page.getByRole('row', { name: `${examTitle} (Copy)` }).getByText('draft')).toBeVisible();
+  await expect(page.locator('.group', { hasText: `${examTitle} (Copy)` }).getByText('Draft')).toBeVisible();
 
   await page.getByRole('link', { name: 'Candidates' }).click();
   const candidateEmail = `golden-${Date.now()}@example.com`;
@@ -69,7 +70,7 @@ test('recruiter creates an exam, adds a section and question, publishes, adds a 
 
   await page.getByLabel('Exam to invite to').click();
   await page.getByRole('option', { name: examTitle, exact: true }).click();
-  await page.getByRole('row', { name: candidateEmail }).getByRole('checkbox', { name: 'Golden Path Candidate' }).click();
+  await page.locator('.group', { hasText: candidateEmail }).getByRole('checkbox', { name: 'Golden Path Candidate' }).click();
   await page.getByRole('button', { name: 'Send invitations' }).click();
   await expect(page.getByText(/Invited 1 candidate/).first()).toBeVisible();
 

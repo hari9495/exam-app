@@ -36,9 +36,9 @@ test('org admin adds a staff member, reviews the audit log, and exports/erases a
   await page.getByLabel('Role').click();
   await page.getByRole('option', { name: 'Recruiter' }).click();
   await page.getByRole('button', { name: 'Add staff member' }).click();
-  // The success toast also renders the email, so scope to the staff table's row/cell
-  // to disambiguate (same technique as recruiter-golden-path.spec.ts row-scoping).
-  await expect(page.getByRole('cell', { name: staffEmail, exact: true })).toBeVisible();
+  // The success toast also renders the email, so scope to the staff card (CardGrid
+  // has no table semantics -- the toast isn't inside a .group card) to disambiguate.
+  await expect(page.locator('.group', { hasText: staffEmail }).getByText(staffEmail, { exact: true })).toBeVisible();
 
   // Confirm the new staff member shows up in the audit log.
   await page.getByRole('link', { name: 'Audit Log' }).click();
