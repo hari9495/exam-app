@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
+import { motion } from 'framer-motion';
 import {
   useCandidateReport,
   useAttemptInsight,
@@ -84,20 +85,27 @@ export default function PanelCandidateDetailPage() {
         </div>
       )}
 
-      <Card className="mb-6">
-        <p className="text-xs text-gray-500">Score</p>
-        <p className="text-2xl font-semibold">
-          {candidate.percentage !== null ? `${candidate.percentage.toFixed(1)}%` : '—'}
-          {candidate.score !== null && candidate.maxScore !== null && (
-            <span className="ml-2 text-sm font-normal text-gray-500">
-              ({candidate.score}/{candidate.maxScore})
-            </span>
-          )}
-        </p>
-      </Card>
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0, ease: 'easeOut' }}>
+        <Card className="mb-6">
+          <p className="text-xs text-gray-500">Score</p>
+          <p className="text-2xl font-semibold">
+            {candidate.percentage !== null ? `${candidate.percentage.toFixed(1)}%` : '—'}
+            {candidate.score !== null && candidate.maxScore !== null && (
+              <span className="ml-2 text-sm font-normal text-gray-500">
+                ({candidate.score}/{candidate.maxScore})
+              </span>
+            )}
+          </p>
+        </Card>
+      </motion.div>
 
       {attemptId && (
-        <div className="mb-6">
+        <motion.div
+          className="mb-6"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.05, ease: 'easeOut' }}
+        >
           <h2 className="mb-2 text-lg font-medium">AI Insight</h2>
           {insightLoading ? (
             <p className="text-sm text-gray-500">Loading…</p>
@@ -120,47 +128,54 @@ export default function PanelCandidateDetailPage() {
               </Button>
             </Card>
           )}
-        </div>
+        </motion.div>
       )}
 
       <div className="flex flex-col gap-4">
-        {candidate.sections.map((section) => (
-          <Card key={section.sectionId}>
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-base font-medium">{section.title}</h3>
-              <span className="text-sm text-gray-500">
-                {section.score}/{section.maxScore}
-              </span>
-            </div>
-            <div className="flex flex-col gap-3">
-              {section.questions.map((question) => (
-                <div key={question.questionId} className="border-t border-gray-100 pt-3 first:border-0 first:pt-0">
-                  <p className="mb-2 text-sm text-gray-800">{question.questionText}</p>
-                  <div className="flex flex-col gap-1">
-                    {question.options.map((option) => {
-                      const wasSelected = question.selectedOptionIds.includes(option.id);
-                      const isCorrectOption = question.correctOptionIds.includes(option.id);
-                      return (
-                        <p
-                          key={option.id}
-                          className={
-                            isCorrectOption
-                              ? 'text-sm font-medium text-green-700'
-                              : wasSelected
-                                ? 'text-sm font-medium text-red-700'
-                                : 'text-sm text-gray-600'
-                          }
-                        >
-                          {wasSelected ? '◉' : '○'} {option.text}
-                          {isCorrectOption ? ' (correct)' : ''}
-                        </p>
-                      );
-                    })}
+        {candidate.sections.map((section, index) => (
+          <motion.div
+            key={section.sectionId}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.1 + Math.min(index, 8) * 0.05, ease: 'easeOut' }}
+          >
+            <Card>
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-base font-medium">{section.title}</h3>
+                <span className="text-sm text-gray-500">
+                  {section.score}/{section.maxScore}
+                </span>
+              </div>
+              <div className="flex flex-col gap-3">
+                {section.questions.map((question) => (
+                  <div key={question.questionId} className="border-t border-gray-100 pt-3 first:border-0 first:pt-0">
+                    <p className="mb-2 text-sm text-gray-800">{question.questionText}</p>
+                    <div className="flex flex-col gap-1">
+                      {question.options.map((option) => {
+                        const wasSelected = question.selectedOptionIds.includes(option.id);
+                        const isCorrectOption = question.correctOptionIds.includes(option.id);
+                        return (
+                          <p
+                            key={option.id}
+                            className={
+                              isCorrectOption
+                                ? 'text-sm font-medium text-green-700'
+                                : wasSelected
+                                  ? 'text-sm font-medium text-red-700'
+                                  : 'text-sm text-gray-600'
+                            }
+                          >
+                            {wasSelected ? '◉' : '○'} {option.text}
+                            {isCorrectOption ? ' (correct)' : ''}
+                          </p>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </Card>
+                ))}
+              </div>
+            </Card>
+          </motion.div>
         ))}
       </div>
     </div>
