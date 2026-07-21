@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { Plus, Search } from 'lucide-react';
 import { useQuestions } from '../../../lib/hooks/useQuestions';
-import { CardGrid, StatusBadge, Button, Pagination, type StatusTone } from '../../../components/ui';
+import { CardGrid, StatusBadge, Button, Pagination, type StatusTone, type SortOption } from '../../../components/ui';
 import { Question, QuestionType, Difficulty } from '../../../lib/types';
 
 const TYPE_TONE: Record<QuestionType, StatusTone> = {
@@ -22,6 +22,12 @@ const TYPE_LABEL: Record<QuestionType, string> = {
 };
 
 const DIFFICULTY_LEVEL: Record<Difficulty, number> = { easy: 1, medium: 2, hard: 3 };
+
+const QUESTION_SORT_OPTIONS: SortOption<Question>[] = [
+  { key: 'text', label: 'Text', sortValue: (q) => q.text },
+  { key: 'difficulty', label: 'Difficulty', sortValue: (q) => DIFFICULTY_LEVEL[q.difficulty] },
+  { key: 'marks', label: 'Marks', sortValue: (q) => q.marks },
+];
 
 function DifficultyDots({ difficulty }: { difficulty: Difficulty }) {
   const level = DIFFICULTY_LEVEL[difficulty];
@@ -112,7 +118,13 @@ export default function QuestionsPage() {
           />
         </div>
       </div>
-      <CardGrid items={questions?.data ?? []} cardKey={(q) => q.id} renderCard={renderCard} emptyMessage="No questions yet." />
+      <CardGrid
+        items={questions?.data ?? []}
+        cardKey={(q) => q.id}
+        renderCard={renderCard}
+        emptyMessage="No questions yet."
+        sortOptions={QUESTION_SORT_OPTIONS}
+      />
       <Pagination page={questions?.page ?? 1} totalPages={questions?.totalPages ?? 1} onPageChange={setPage} />
     </div>
   );
