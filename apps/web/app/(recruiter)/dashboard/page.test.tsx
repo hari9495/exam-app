@@ -6,8 +6,27 @@ import { ToastProvider } from '../../../components/ui';
 
 describe('DashboardPage', () => {
   const originalFetch = global.fetch;
+  const originalResizeObserver = globalThis.ResizeObserver;
+  const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+
+  beforeEach(() => {
+    // Recharts' ResponsiveContainer measures its container via ResizeObserver /
+    // getBoundingClientRect to size its chart. jsdom has no layout engine, so both
+    // report 0x0, which makes Recharts warn on every render. Report a real size so
+    // the chart renders without the "width(0) and height(0)" console.warn noise.
+    globalThis.ResizeObserver = class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    Element.prototype.getBoundingClientRect = () =>
+      ({ width: 400, height: 300, top: 0, left: 0, right: 400, bottom: 300, x: 0, y: 0, toJSON() {} }) as DOMRect;
+  });
+
   afterEach(() => {
     global.fetch = originalFetch;
+    globalThis.ResizeObserver = originalResizeObserver;
+    Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
   });
 
   function mockSummaryFetch(summary: any) {
