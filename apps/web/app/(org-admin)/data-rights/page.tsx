@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import { useLookupCandidate, useExportCandidate, useEraseCandidate } from '../../../lib/hooks/useCandidateDataRights';
 import { Button, Input, Card, Modal, useToast } from '../../../components/ui';
 import { Candidate, CandidateDataExport } from '../../../lib/types';
@@ -89,58 +90,62 @@ export default function DataRightsPage() {
         </p>
       )}
       {candidate && (
-        <Card className="mb-6">
-          <p className="font-medium text-recruiter-text">{candidate.name}</p>
-          <p className="text-sm text-recruiter-text-secondary">{candidate.email}</p>
-          {candidate.phone && <p className="text-sm text-recruiter-text-secondary">{candidate.phone}</p>}
-          {candidate.erasedAt ? (
-            <p className="mt-2 text-sm text-recruiter-text-tertiary">Erased at {new Date(candidate.erasedAt).toLocaleString()}</p>
-          ) : (
-            <div className="mt-4 flex gap-2">
-              <Button onClick={handleExport}>Export data</Button>
-              <Button variant="secondary" onClick={handleOpenConfirm}>
-                Erase candidate
-              </Button>
-            </div>
-          )}
-        </Card>
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: 'easeOut' }}>
+          <Card className="mb-6">
+            <p className="font-medium text-recruiter-text">{candidate.name}</p>
+            <p className="text-sm text-recruiter-text-secondary">{candidate.email}</p>
+            {candidate.phone && <p className="text-sm text-recruiter-text-secondary">{candidate.phone}</p>}
+            {candidate.erasedAt ? (
+              <p className="mt-2 text-sm text-recruiter-text-tertiary">Erased at {new Date(candidate.erasedAt).toLocaleString()}</p>
+            ) : (
+              <div className="mt-4 flex gap-2">
+                <Button onClick={handleExport}>Export data</Button>
+                <Button variant="secondary" onClick={handleOpenConfirm}>
+                  Erase candidate
+                </Button>
+              </div>
+            )}
+          </Card>
+        </motion.div>
       )}
       {exportData && (
-        <Card>
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-recruiter-text">Export data</h2>
-            <Button variant="secondary" onClick={handleDownload}>
-              Download JSON
-            </Button>
-          </div>
-          <section className="mb-4">
-            <h3 className="font-medium text-recruiter-text">Profile</h3>
-            <p className="text-sm text-recruiter-text-secondary">
-              {exportData.candidate.name} — {exportData.candidate.email}
-            </p>
-          </section>
-          <section className="mb-4">
-            <h3 className="font-medium text-recruiter-text">Invitations ({exportData.invitations.length})</h3>
-            <ul className="text-sm text-recruiter-text-secondary">
-              {exportData.invitations.map((invitation) => (
-                <li key={invitation.id}>
-                  {invitation.examTitle} — {invitation.status}
-                </li>
-              ))}
-            </ul>
-          </section>
-          <section>
-            <h3 className="font-medium text-recruiter-text">Attempts ({exportData.attempts.length})</h3>
-            <ul className="text-sm text-recruiter-text-secondary">
-              {exportData.attempts.map((attempt) => (
-                <li key={attempt.id}>
-                  {attempt.examTitle} —{' '}
-                  {attempt.result ? `${attempt.result.score}/${attempt.result.maxScore} (${attempt.result.passFail})` : attempt.status}
-                </li>
-              ))}
-            </ul>
-          </section>
-        </Card>
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.05, ease: 'easeOut' }}>
+          <Card>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-recruiter-text">Export data</h2>
+              <Button variant="secondary" onClick={handleDownload}>
+                Download JSON
+              </Button>
+            </div>
+            <section className="mb-4">
+              <h3 className="font-medium text-recruiter-text">Profile</h3>
+              <p className="text-sm text-recruiter-text-secondary">
+                {exportData.candidate.name} — {exportData.candidate.email}
+              </p>
+            </section>
+            <section className="mb-4">
+              <h3 className="font-medium text-recruiter-text">Invitations ({exportData.invitations.length})</h3>
+              <ul className="text-sm text-recruiter-text-secondary">
+                {exportData.invitations.map((invitation) => (
+                  <li key={invitation.id}>
+                    {invitation.examTitle} — {invitation.status}
+                  </li>
+                ))}
+              </ul>
+            </section>
+            <section>
+              <h3 className="font-medium text-recruiter-text">Attempts ({exportData.attempts.length})</h3>
+              <ul className="text-sm text-recruiter-text-secondary">
+                {exportData.attempts.map((attempt) => (
+                  <li key={attempt.id}>
+                    {attempt.examTitle} —{' '}
+                    {attempt.result ? `${attempt.result.score}/${attempt.result.maxScore} (${attempt.result.passFail})` : attempt.status}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </Card>
+        </motion.div>
       )}
       <Modal open={confirmOpen} title="Erase candidate data?" onClose={handleCloseConfirm}>
         <p className="mb-4 text-sm text-recruiter-text-secondary">
