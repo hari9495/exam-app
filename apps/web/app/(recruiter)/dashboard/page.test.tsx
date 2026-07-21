@@ -39,6 +39,8 @@ describe('DashboardPage', () => {
       stats: { totalCandidates: 248, invitationsSent: 312, attemptsInProgress: 17, pendingGradingCount: 9 },
       attention: { pendingGrading: [], recentProctoringFlags: [], staleInvitationCount: 0 },
       activity: [],
+      funnel: { invited: 312, started: 200, submitted: 180, passed: 90 },
+      upcomingExams: [],
     });
     renderPage();
 
@@ -57,6 +59,8 @@ describe('DashboardPage', () => {
         staleInvitationCount: 6,
       },
       activity: [],
+      funnel: { invited: 0, started: 0, submitted: 0, passed: 0 },
+      upcomingExams: [],
     });
     renderPage();
 
@@ -74,6 +78,8 @@ describe('DashboardPage', () => {
         staleInvitationCount: 0,
       },
       activity: [],
+      funnel: { invited: 0, started: 0, submitted: 0, passed: 0 },
+      upcomingExams: [],
     });
     renderPage();
 
@@ -86,10 +92,39 @@ describe('DashboardPage', () => {
       stats: { totalCandidates: 0, invitationsSent: 0, attemptsInProgress: 0, pendingGradingCount: 0 },
       attention: { pendingGrading: [], recentProctoringFlags: [], staleInvitationCount: 0 },
       activity: [{ id: 'log-1', description: '3 candidates invited to Backend Round', occurredAt: '2026-07-17T10:00:00Z' }],
+      funnel: { invited: 0, started: 0, submitted: 0, passed: 0 },
+      upcomingExams: [],
     });
     renderPage();
 
     await waitFor(() => expect(screen.getByText('3 candidates invited to Backend Round')).toBeInTheDocument());
+  });
+
+  it('renders the candidate funnel and upcoming exams widgets', async () => {
+    mockSummaryFetch({
+      stats: { totalCandidates: 0, invitationsSent: 0, attemptsInProgress: 0, pendingGradingCount: 0 },
+      attention: { pendingGrading: [], recentProctoringFlags: [], staleInvitationCount: 0 },
+      activity: [],
+      funnel: { invited: 100, started: 60, submitted: 55, passed: 22 },
+      upcomingExams: [{ examId: 'exam-3', examTitle: 'Scheduled Round', availabilityWindowStart: '2026-08-01T09:00:00.000Z' }],
+    });
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Scheduled Round')).toBeInTheDocument());
+    expect(screen.getByText(/Scheduled Round/).closest('a')).toHaveAttribute('href', '/exams/exam-3/edit');
+  });
+
+  it('shows an empty-state message when there are no upcoming exams', async () => {
+    mockSummaryFetch({
+      stats: { totalCandidates: 0, invitationsSent: 0, attemptsInProgress: 0, pendingGradingCount: 0 },
+      attention: { pendingGrading: [], recentProctoringFlags: [], staleInvitationCount: 0 },
+      activity: [],
+      funnel: { invited: 0, started: 0, submitted: 0, passed: 0 },
+      upcomingExams: [],
+    });
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('No upcoming exams.')).toBeInTheDocument());
   });
 
   it('shows an error state when the summary fetch fails', async () => {
