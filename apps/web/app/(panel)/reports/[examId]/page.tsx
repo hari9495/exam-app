@@ -143,7 +143,7 @@ export default function PanelExamResultsPage() {
       </div>
 
       <div>
-        <div className="mb-2 flex items-center justify-between">
+        <div className="mb-2 flex items-end justify-between">
           <h2 className="text-lg font-medium">Candidates</h2>
           <div className="flex items-end gap-2">
             <Select label="Integrity" value={integrityFilter} onChange={setIntegrityFilter} options={INTEGRITY_FILTER_OPTIONS} />
