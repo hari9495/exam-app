@@ -16,6 +16,7 @@ import {
   DropdownMenuItem,
   Pagination,
   type StatusTone,
+  type SortOption,
 } from '../../../components/ui';
 import { ExamListItem, ExamStatus } from '../../../lib/types';
 
@@ -30,6 +31,11 @@ const STATUS_LABEL: Record<ExamStatus, string> = {
   published: 'Published',
   archived: 'Archived',
 };
+
+const EXAM_SORT_OPTIONS: SortOption<ExamListItem>[] = [
+  { key: 'title', label: 'Title', sortValue: (exam) => exam.title },
+  { key: 'created', label: 'Created', sortValue: (exam) => exam.createdAt },
+];
 
 export default function ExamsPage() {
   const [page, setPage] = useState(1);
@@ -145,7 +151,13 @@ export default function ExamsPage() {
           />
         </div>
       </div>
-      <CardGrid items={examsResponse?.data ?? []} cardKey={(exam) => exam.id} renderCard={renderCard} emptyMessage="No exams yet." />
+      <CardGrid
+        items={examsResponse?.data ?? []}
+        cardKey={(exam) => exam.id}
+        renderCard={renderCard}
+        emptyMessage="No exams yet."
+        sortOptions={EXAM_SORT_OPTIONS}
+      />
       <Pagination page={examsResponse?.page ?? 1} totalPages={examsResponse?.totalPages ?? 1} onPageChange={setPage} />
     </div>
   );
