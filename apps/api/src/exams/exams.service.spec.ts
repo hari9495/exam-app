@@ -299,6 +299,50 @@ describe('ExamsService', () => {
     });
   });
 
+  it('persists walkInEnabled when provided', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'exam-1',
+          schedulingEnabled: false,
+          availabilityWindowStart: null,
+          availabilityWindowEnd: null,
+          walkInEnabled: false,
+        }),
+        update: jest.fn().mockResolvedValue({ id: 'exam-1', walkInEnabled: true, schedulingEnabled: false }),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.update(context, 'exam-1', { title: 'Exam', walkInEnabled: true });
+
+    expect(tx.exam.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ walkInEnabled: true }) }),
+    );
+  });
+
+  it('leaves walkInEnabled untouched when omitted from the update', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'exam-1',
+          schedulingEnabled: false,
+          availabilityWindowStart: null,
+          availabilityWindowEnd: null,
+          walkInEnabled: true,
+        }),
+        update: jest.fn().mockResolvedValue({ id: 'exam-1', walkInEnabled: true, schedulingEnabled: false }),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.update(context, 'exam-1', { title: 'Exam' });
+
+    expect(tx.exam.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.not.objectContaining({ walkInEnabled: expect.anything() }) }),
+    );
+  });
+
   it('throws NotFoundException when updating an exam that does not exist', async () => {
     const tx = { exam: { findFirst: jest.fn().mockResolvedValue(null) } };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));

@@ -41,4 +41,8 @@ export class CreateExamDto {
   @IsOptional()
   @IsISO8601()
   availabilityWindowEnd?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  walkInEnabled?: boolean;
 }

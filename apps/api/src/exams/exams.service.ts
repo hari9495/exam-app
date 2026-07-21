@@ -208,6 +208,7 @@ export class ExamsService {
           ...(dto.passCriteriaPercent !== undefined ? { passCriteriaPercent: dto.passCriteriaPercent } : {}),
           ...(dto.randomizeOrder !== undefined ? { randomizeOrder: dto.randomizeOrder } : {}),
           ...(dto.feedbackVisibility !== undefined ? { feedbackVisibility: dto.feedbackVisibility } : {}),
+          ...(dto.walkInEnabled !== undefined ? { walkInEnabled: dto.walkInEnabled } : {}),
           schedulingEnabled: scheduling.schedulingEnabled,
           availabilityWindowStart: scheduling.availabilityWindowStart,
           availabilityWindowEnd: scheduling.availabilityWindowEnd,
