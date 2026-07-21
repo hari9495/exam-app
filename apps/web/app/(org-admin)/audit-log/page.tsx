@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useAuditLogs, type AuditLogFilters } from '../../../lib/hooks/useAuditLogs';
-import { Input, Button, Table, StatusBadge, type Column, type StatusTone } from '../../../components/ui';
+import { Input, Button, CardGrid, StatusBadge, type StatusTone } from '../../../components/ui';
 import { AuditLogEntry } from '../../../lib/types';
 
 // Action strings are open-ended ("<entity>.<verb>", e.g. "exam.published",
@@ -40,17 +40,20 @@ export default function AuditLogPage() {
     setCursor(entries[entries.length - 1].id);
   }
 
-  const columns: Column<AuditLogEntry>[] = [
-    {
-      key: 'createdAt',
-      header: 'When',
-      render: (entry) => <span className="text-recruiter-text-tertiary">{new Date(entry.createdAt).toLocaleString()}</span>,
-      sortValue: (entry) => entry.createdAt,
-    },
-    { key: 'actorEmail', header: 'Actor', render: (entry) => entry.actorEmail ?? 'System' },
-    { key: 'action', header: 'Action', render: (entry) => <StatusBadge tone={actionTone(entry.action)}>{entry.action}</StatusBadge> },
-    { key: 'entityType', header: 'Entity', render: (entry) => entry.entityType },
-  ];
+  function renderCard(entry: AuditLogEntry) {
+    return (
+      <div>
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <StatusBadge tone={actionTone(entry.action)}>{entry.action}</StatusBadge>
+          <span className="text-xs text-recruiter-text-tertiary">{new Date(entry.createdAt).toLocaleString()}</span>
+        </div>
+        <div className="flex items-center justify-between border-t border-recruiter-border pt-2.5 text-xs text-recruiter-text-tertiary">
+          <span>{entry.actorEmail ?? 'System'}</span>
+          <span>{entry.entityType}</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -95,7 +98,7 @@ export default function AuditLogPage() {
       ) : (
         !isError && (
           <>
-            <Table columns={columns} rows={entries} rowKey={(entry) => entry.id} emptyMessage="No audit events found." />
+            <CardGrid items={entries} cardKey={(entry) => entry.id} renderCard={renderCard} emptyMessage="No audit events found." />
             {entries.length > 0 && (
               <div className="mt-4">
                 <Button variant="secondary" onClick={handleLoadMore} disabled={isLoading}>
