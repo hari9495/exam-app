@@ -8,7 +8,7 @@ interface CandidateButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANT_CLASSES: Record<Variant, string> = {
-  primary: 'bg-candidate-primary text-white hover:opacity-90',
+  primary: 'bg-candidate-primary text-candidate-on-primary hover:opacity-90',
   secondary: 'bg-white text-candidate-primary border border-candidate-primary hover:bg-candidate-primary-light',
 };
 

@@ -19,4 +19,10 @@ describe('CandidateButton', () => {
     render(<CandidateButton disabled>Next</CandidateButton>);
     expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
   });
+
+  it('uses the contrast-safe on-primary text color for the primary variant', () => {
+    render(<CandidateButton variant="primary">Continue</CandidateButton>);
+    expect(screen.getByRole('button')).toHaveClass('text-candidate-on-primary');
+    expect(screen.getByRole('button')).not.toHaveClass('text-white');
+  });
 });

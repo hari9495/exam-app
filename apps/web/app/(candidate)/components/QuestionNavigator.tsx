@@ -36,7 +36,7 @@ export function QuestionNavigator({ sections, answers, currentIndex, onSelect }:
                 'flex aspect-square items-center justify-center rounded text-xs font-medium',
                 isCurrent && 'border-[1.5px] border-candidate-primary bg-candidate-primary-light text-candidate-primary',
                 !isCurrent && isMarked && 'border border-candidate-review-border bg-candidate-review-bg text-candidate-review',
-                !isCurrent && !isMarked && isAnswered && 'bg-candidate-primary text-white',
+                !isCurrent && !isMarked && isAnswered && 'bg-candidate-primary text-candidate-on-primary',
                 !isCurrent && !isMarked && !isAnswered && 'bg-candidate-bg text-candidate-text-faint',
               )}
             >
