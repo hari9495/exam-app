@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
+import { MotionConfig } from 'framer-motion';
 import clsx from 'clsx';
 import { Users, History, ShieldCheck, Settings, Plug, KeyRound, LogOut } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
@@ -60,6 +61,7 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
   const orgInitial = (organizationSlug ?? 'O')[0]?.toUpperCase();
 
   return (
+    <MotionConfig reducedMotion="user">
     <div style={themeStyle} className="flex min-h-screen">
       <nav className="flex w-56 shrink-0 flex-col border-r border-recruiter-border bg-white">
         <div className="flex items-center gap-2 border-b border-recruiter-border px-4 py-4">
@@ -124,5 +126,6 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
       </nav>
       <main className="flex-1 p-8">{children}</main>
     </div>
+    </MotionConfig>
   );
 }
