@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { motion, MotionConfig } from 'framer-motion';
 import { Building2, Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth, SSO_PENDING_SLUG_KEY } from '../../lib/auth-context';
@@ -65,93 +66,103 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="grid md:min-h-screen md:grid-cols-2">
-      <div
-        className="relative hidden overflow-hidden md:flex md:flex-col md:items-start md:justify-center md:gap-4 md:px-16 md:py-12"
-        style={{
-          backgroundImage: `linear-gradient(135deg, ${primaryColor ?? 'var(--color-primary, #1a73e8)'}, ${accentColor ?? 'var(--color-accent, #fbbc04)'})`,
-        }}
-      >
+    <MotionConfig reducedMotion="user">
+      <main className="grid md:min-h-screen md:grid-cols-2">
         <div
-          className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-white/10"
-          aria-hidden="true"
-        />
-        <div
-          className="pointer-events-none absolute -bottom-32 -left-16 h-96 w-96 rounded-full bg-white/10"
-          aria-hidden="true"
-        />
-        {branding?.logoUrl ? (
-          <img src={branding.logoUrl} alt="Organization logo" className="relative z-10 max-h-14" />
-        ) : (
-          <p className="relative z-10 text-2xl font-bold text-white">Examination Platform</p>
-        )}
-        <p className="relative z-10 max-w-sm text-sm text-white/90">
-          Sign in to manage exams, candidates, and results.
-        </p>
-      </div>
-
-      <div className="flex flex-col items-center justify-center gap-4 bg-white px-6 py-12 md:hidden">
-        {branding?.logoUrl ? (
-          <img src={branding.logoUrl} alt="Organization logo" className="max-h-10" />
-        ) : (
-          <p className="text-lg font-bold text-primary">Examination Platform</p>
-        )}
-      </div>
-
-      <div className="flex flex-1 items-center justify-center bg-white px-6 py-12">
-        <div className="w-full max-w-sm">
-          <h1 className="mb-6 text-xl font-semibold text-gray-900">Staff Login</h1>
-          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-            <Input
-              label="Organization slug"
-              value={organizationSlug}
-              onChange={setOrganizationSlug}
-              onBlur={handleSlugBlur}
-              icon={<Building2 size={16} />}
-            />
-            <Input label="Email" type="email" value={email} onChange={setEmail} required icon={<Mail size={16} />} />
-            <div className="relative">
-              <Input
-                label="Password"
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={setPassword}
-                required
-                icon={<Lock size={16} />}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((prev) => !prev)}
-                aria-label={showPassword ? 'Hide characters' : 'Show characters'}
-                className="absolute bottom-2 right-3 text-gray-400 hover:text-gray-600"
-              >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
-            <Link href="/forgot-password" className="text-right text-sm font-medium text-primary hover:underline">
-              Forgot password?
-            </Link>
-            {ssoEnabled && (
-              <a
-                href={`${process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001/api/v1'}/auth/saml/${organizationSlug}/login`}
-                onClick={() => window.sessionStorage.setItem(SSO_PENDING_SLUG_KEY, organizationSlug)}
-                className="flex items-center justify-center rounded-md border border-recruiter-border py-2 text-sm font-medium text-recruiter-text hover:bg-recruiter-bg-subtle"
-              >
-                Log in with SSO
-              </a>
-            )}
-            <Button type="submit" loading={submitting}>
-              Log in
-            </Button>
-            {error && (
-              <p role="alert" className="flex items-center gap-2 rounded-md bg-status-danger-bg px-3 py-2 text-sm text-status-danger">
-                <AlertCircle size={16} />
-                {error}
-              </p>
-            )}
-          </form>
+          className="relative hidden overflow-hidden md:flex md:flex-col md:items-start md:justify-center md:gap-4 md:px-16 md:py-12"
+          style={{
+            backgroundImage: `linear-gradient(135deg, ${primaryColor ?? 'var(--color-primary, #1a73e8)'}, ${accentColor ?? 'var(--color-accent, #fbbc04)'})`,
+          }}
+        >
+          <div
+            className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-white/10"
+            aria-hidden="true"
+          />
+          <div
+            className="pointer-events-none absolute -bottom-32 -left-16 h-96 w-96 rounded-full bg-white/10"
+            aria-hidden="true"
+          />
+          {branding?.logoUrl ? (
+            <img src={branding.logoUrl} alt="Organization logo" className="relative z-10 max-h-14" />
+          ) : (
+            <p className="relative z-10 text-2xl font-bold text-white">Examination Platform</p>
+          )}
+          <p className="relative z-10 max-w-sm text-sm text-white/90">
+            Sign in to manage exams, candidates, and results.
+          </p>
         </div>
-      </div>
-    </main>
+
+        <div className="flex flex-col items-center justify-center gap-4 bg-white px-6 py-12 md:hidden">
+          {branding?.logoUrl ? (
+            <img src={branding.logoUrl} alt="Organization logo" className="max-h-10" />
+          ) : (
+            <p className="text-lg font-bold text-primary">Examination Platform</p>
+          )}
+        </div>
+
+        <div className="flex flex-1 items-center justify-center bg-white px-6 py-12">
+          <motion.div
+            className="w-full max-w-sm"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, ease: 'easeOut' }}
+          >
+            <h1 className="mb-6 text-xl font-semibold text-recruiter-text">Staff Login</h1>
+            <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+              <Input
+                label="Organization slug"
+                value={organizationSlug}
+                onChange={setOrganizationSlug}
+                onBlur={handleSlugBlur}
+                icon={<Building2 size={16} />}
+              />
+              <Input label="Email" type="email" value={email} onChange={setEmail} required icon={<Mail size={16} />} />
+              <div className="relative">
+                <Input
+                  label="Password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={setPassword}
+                  required
+                  icon={<Lock size={16} />}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? 'Hide characters' : 'Show characters'}
+                  className="absolute bottom-2 right-3 text-recruiter-text-tertiary hover:text-recruiter-text"
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              <Link href="/forgot-password" className="text-right text-sm font-medium text-primary hover:underline">
+                Forgot password?
+              </Link>
+              {ssoEnabled && (
+                <motion.a
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, ease: 'easeOut' }}
+                  href={`${process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001/api/v1'}/auth/saml/${organizationSlug}/login`}
+                  onClick={() => window.sessionStorage.setItem(SSO_PENDING_SLUG_KEY, organizationSlug)}
+                  className="flex items-center justify-center rounded-md border border-recruiter-border py-2 text-sm font-medium text-recruiter-text hover:bg-recruiter-bg-subtle"
+                >
+                  Log in with SSO
+                </motion.a>
+              )}
+              <Button type="submit" loading={submitting}>
+                Log in
+              </Button>
+              {error && (
+                <p role="alert" className="flex items-center gap-2 rounded-md bg-status-danger-bg px-3 py-2 text-sm text-status-danger">
+                  <AlertCircle size={16} />
+                  {error}
+                </p>
+              )}
+            </form>
+          </motion.div>
+        </div>
+      </main>
+    </MotionConfig>
   );
 }
