@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import { useSuperAdmins, useInviteSuperAdmin, usePromoteSuperAdmin } from '../../../lib/hooks/useSuperAdmins';
-import { Table, Input, Button, Card, Modal, useToast, Pagination, type Column } from '../../../components/ui';
+import { CardGrid, Input, Button, Card, Modal, useToast, Pagination } from '../../../components/ui';
 import { SuperAdminSummary } from '../../../lib/types';
 
 type PendingAction = { kind: 'invite' | 'promote'; email: string } | null;
@@ -41,47 +42,58 @@ export default function PlatformAdminsPage() {
     );
   }
 
-  const columns: Column<SuperAdminSummary>[] = [
-    { key: 'email', header: 'Email', render: (sa) => sa.email, sortValue: (sa) => sa.email },
-    {
-      key: 'createdAt',
-      header: 'Created',
-      render: (sa) => new Date(sa.createdAt).toLocaleDateString(),
-      sortValue: (sa) => sa.createdAt,
-    },
-  ];
+  function renderCard(sa: SuperAdminSummary) {
+    return (
+      <div className="flex items-center justify-between gap-2">
+        <p className="truncate text-sm font-semibold text-gray-900">{sa.email}</p>
+        <p className="shrink-0 text-xs text-gray-500">{new Date(sa.createdAt).toLocaleDateString()}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-semibold text-gray-900">Platform Admins</h1>
 
       <div className="grid max-w-3xl grid-cols-1 gap-6 sm:grid-cols-2">
-        <Card>
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">Invite new admin</h2>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              setPending({ kind: 'invite', email: inviteEmail });
-            }}
-            className="flex flex-col gap-3"
-          >
-            <Input label="Invite by email" type="email" value={inviteEmail} onChange={setInviteEmail} required />
-            <Button type="submit">Invite</Button>
-          </form>
-        </Card>
-        <Card>
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">Promote existing user</h2>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              setPending({ kind: 'promote', email: promoteEmail });
-            }}
-            className="flex flex-col gap-3"
-          >
-            <Input label="Promote by email" type="email" value={promoteEmail} onChange={setPromoteEmail} required />
-            <Button type="submit">Promote</Button>
-          </form>
-        </Card>
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0, ease: 'easeOut' }}
+        >
+          <Card>
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">Invite new admin</h2>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                setPending({ kind: 'invite', email: inviteEmail });
+              }}
+              className="flex flex-col gap-3"
+            >
+              <Input label="Invite by email" type="email" value={inviteEmail} onChange={setInviteEmail} required />
+              <Button type="submit">Invite</Button>
+            </form>
+          </Card>
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.05, ease: 'easeOut' }}
+        >
+          <Card>
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">Promote existing user</h2>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                setPending({ kind: 'promote', email: promoteEmail });
+              }}
+              className="flex flex-col gap-3"
+            >
+              <Input label="Promote by email" type="email" value={promoteEmail} onChange={setPromoteEmail} required />
+              <Button type="submit">Promote</Button>
+            </form>
+          </Card>
+        </motion.div>
       </div>
 
       {error && (
@@ -108,7 +120,7 @@ export default function PlatformAdminsPage() {
       )}
       {!isLoading && !isError && (
         <>
-          <Table columns={columns} rows={superAdminsResponse?.data ?? []} rowKey={(sa) => sa.id} emptyMessage="No platform admins yet." />
+          <CardGrid items={superAdminsResponse?.data ?? []} cardKey={(sa) => sa.id} renderCard={renderCard} emptyMessage="No platform admins yet." />
           <Pagination page={superAdminsResponse?.page ?? 1} totalPages={superAdminsResponse?.totalPages ?? 1} onPageChange={setPage} />
         </>
       )}
