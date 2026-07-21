@@ -119,7 +119,7 @@ export default function IntegrationsSettingsPage() {
           <span className="text-xs text-recruiter-text-tertiary">{row.status}</span>
         </div>
         <div className="flex items-center justify-between border-t border-recruiter-border pt-2 text-xs text-recruiter-text-tertiary">
-          <span>HTTP {row.httpStatusCode ?? '—'}</span>
+          <span>HTTP <span>{row.httpStatusCode ?? '—'}</span></span>
           <span>{new Date(row.createdAt).toLocaleString()}</span>
         </div>
       </div>

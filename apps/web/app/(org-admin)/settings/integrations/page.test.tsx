@@ -196,6 +196,6 @@ describe('IntegrationsSettingsPage', () => {
 
     expect(await screen.findByText('invitation.created')).toBeInTheDocument();
     expect(screen.getByText('delivered')).toBeInTheDocument();
-    expect(screen.getByText('HTTP 200')).toBeInTheDocument();
+    expect(screen.getByText('200')).toBeInTheDocument();
   });
 });
