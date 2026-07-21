@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { motion } from 'framer-motion';
 import { useExam } from '../../../../lib/hooks/useExams';
 import { useResultsSummary, useQuestionAccuracy, useResultsList, useResultsExport } from '../../../../lib/hooks/usePanelReports';
-import { Table, Badge, Button, Checkbox, Card, Select, IntegrityBadge, useToast, type Column } from '../../../../components/ui';
+import { CardGrid, Badge, Button, Checkbox, Card, Select, IntegrityBadge, useToast } from '../../../../components/ui';
 import { ExamResultRow, QuestionAccuracyRow } from '../../../../lib/types';
 
 const PASS_FAIL_VARIANT: Record<string, 'success' | 'danger'> = { pass: 'success', fail: 'danger' };
@@ -51,57 +52,46 @@ export default function PanelExamResultsPage() {
     }
   }
 
-  const columns: Column<ExamResultRow>[] = [
-    {
-      key: 'select',
-      header: '',
-      render: (row) => (
-        <Checkbox
-          checked={selectedIds.includes(row.candidateId)}
-          onChange={() => toggleSelected(row.candidateId)}
-          label={`Select ${row.candidateName}`}
-        />
-      ),
-    },
-    {
-      key: 'name',
-      header: 'Candidate',
-      render: (row) => (
-        <Link href={`/reports/${examId}/candidates/${row.candidateId}?attemptId=${row.attemptId ?? ''}`}>
-          {row.candidateName}
-        </Link>
-      ),
-      sortValue: (row) => row.candidateName,
-    },
-    { key: 'status', header: 'Status', render: (row) => row.status },
-    {
-      key: 'percentage',
-      header: 'Score %',
-      render: (row) => (row.percentage !== null ? `${row.percentage.toFixed(1)}%` : '—'),
-      sortValue: (row) => row.percentage ?? -1,
-    },
-    {
-      key: 'passFail',
-      header: 'Result',
-      render: (row) => (row.passFail ? <Badge variant={PASS_FAIL_VARIANT[row.passFail] ?? 'default'}>{row.passFail}</Badge> : '—'),
-    },
-    {
-      key: 'integrity',
-      header: 'Integrity',
-      render: (row) => <IntegrityBadge level={row.integrityLevel} />,
-    },
-  ];
+  function renderCandidateCard(row: ExamResultRow) {
+    return (
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <Checkbox
+            checked={selectedIds.includes(row.candidateId)}
+            onChange={() => toggleSelected(row.candidateId)}
+            label={`Select ${row.candidateName}`}
+            hideLabel
+          />
+          <Link
+            href={`/reports/${examId}/candidates/${row.candidateId}?attemptId=${row.attemptId ?? ''}`}
+            className="flex-1 truncate text-sm font-semibold text-gray-900 hover:underline"
+          >
+            {row.candidateName}
+          </Link>
+          {row.passFail && <Badge variant={PASS_FAIL_VARIANT[row.passFail] ?? 'default'}>{row.passFail}</Badge>}
+        </div>
+        <div className="flex items-center justify-between text-xs text-gray-500">
+          <span>{row.status}</span>
+          <span>{row.percentage !== null ? `${row.percentage.toFixed(1)}%` : '—'}</span>
+          <IntegrityBadge level={row.integrityLevel} />
+        </div>
+      </div>
+    );
+  }
 
-  const accuracyColumns: Column<QuestionAccuracyRow>[] = [
-    { key: 'question', header: 'Question', render: (row) => row.questionText },
-    {
-      key: 'accuracy',
-      header: 'Accuracy',
-      render: (row) => `${row.accuracyPercentage.toFixed(1)}%`,
-      sortValue: (row) => row.accuracyPercentage,
-    },
-    { key: 'attempted', header: 'Attempted / Included', render: (row) => `${row.timesAttempted} / ${row.timesIncluded}` },
-  ];
+  function renderAccuracyCard(row: QuestionAccuracyRow) {
+    return (
+      <div className="flex flex-col gap-1">
+        <p className="text-sm text-gray-800">{row.questionText}</p>
+        <div className="flex items-center justify-between text-xs text-gray-500">
+          <span>{row.accuracyPercentage.toFixed(1)}% accuracy</span>
+          <span>
+            {row.timesAttempted} / {row.timesIncluded}
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -111,22 +101,30 @@ export default function PanelExamResultsPage() {
         <p className="mb-6 text-sm text-gray-500">Loading summary…</p>
       ) : summary ? (
         <div className="mb-6 grid grid-cols-4 gap-4">
-          <Card>
-            <p className="text-xs text-gray-500">Total candidates</p>
-            <p className="text-2xl font-semibold">{summary.totalCandidates}</p>
-          </Card>
-          <Card>
-            <p className="text-xs text-gray-500">Settled</p>
-            <p className="text-2xl font-semibold">{summary.settledCount}</p>
-          </Card>
-          <Card>
-            <p className="text-xs text-gray-500">Pass rate</p>
-            <p className="text-2xl font-semibold">{summary.passRate.toFixed(1)}%</p>
-          </Card>
-          <Card>
-            <p className="text-xs text-gray-500">Average score</p>
-            <p className="text-2xl font-semibold">{summary.averagePercentage.toFixed(1)}%</p>
-          </Card>
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0, ease: 'easeOut' }}>
+            <Card>
+              <p className="text-xs text-gray-500">Total candidates</p>
+              <p className="text-2xl font-semibold">{summary.totalCandidates}</p>
+            </Card>
+          </motion.div>
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.05, ease: 'easeOut' }}>
+            <Card>
+              <p className="text-xs text-gray-500">Settled</p>
+              <p className="text-2xl font-semibold">{summary.settledCount}</p>
+            </Card>
+          </motion.div>
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.1, ease: 'easeOut' }}>
+            <Card>
+              <p className="text-xs text-gray-500">Pass rate</p>
+              <p className="text-2xl font-semibold">{summary.passRate.toFixed(1)}%</p>
+            </Card>
+          </motion.div>
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.15, ease: 'easeOut' }}>
+            <Card>
+              <p className="text-xs text-gray-500">Average score</p>
+              <p className="text-2xl font-semibold">{summary.averagePercentage.toFixed(1)}%</p>
+            </Card>
+          </motion.div>
         </div>
       ) : null}
 
@@ -135,10 +133,10 @@ export default function PanelExamResultsPage() {
         {accuracyLoading ? (
           <p className="text-sm text-gray-500">Loading…</p>
         ) : (
-          <Table
-            columns={accuracyColumns}
-            rows={accuracyRows ?? []}
-            rowKey={(row) => row.questionId}
+          <CardGrid
+            items={accuracyRows ?? []}
+            cardKey={(row) => row.questionId}
+            renderCard={renderAccuracyCard}
             emptyMessage="No settled attempts yet."
           />
         )}
@@ -169,10 +167,10 @@ export default function PanelExamResultsPage() {
         {resultsLoading ? (
           <p className="text-sm text-gray-500">Loading…</p>
         ) : (
-          <Table
-            columns={columns}
-            rows={(results ?? []).filter((row) => integrityFilter === 'all' || row.integrityLevel === integrityFilter)}
-            rowKey={(row) => row.candidateId}
+          <CardGrid
+            items={(results ?? []).filter((row) => integrityFilter === 'all' || row.integrityLevel === integrityFilter)}
+            cardKey={(row) => row.candidateId}
+            renderCard={renderCandidateCard}
             emptyMessage="No candidates invited yet."
           />
         )}
