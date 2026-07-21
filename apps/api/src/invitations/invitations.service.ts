@@ -234,6 +234,7 @@ export class InvitationsService {
           examId: true,
           candidateId: true,
           status: true,
+          source: true,
           extraTimePercent: true,
           invitedAt: true,
           expiresAt: true,

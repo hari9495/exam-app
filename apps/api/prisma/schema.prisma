@@ -253,6 +253,7 @@ model Exam {
   schedulingEnabled       Boolean       @default(false) @map("scheduling_enabled")
   availabilityWindowStart DateTime?     @map("availability_window_start")
   availabilityWindowEnd   DateTime?     @map("availability_window_end")
+  walkInEnabled           Boolean       @default(false) @map("walk_in_enabled")
   createdBy               String        @map("created_by") @db.UniqueIdentifier
   createdAt               DateTime      @default(now()) @map("created_at")
   sections                ExamSection[]
@@ -320,6 +321,7 @@ model Invitation {
   candidateId            String                  @map("candidate_id") @db.UniqueIdentifier
   token                  String                  @unique
   status                 String                  @default("invited")
+  source                 String                  @default("invited") @map("source")
   extraTimePercent       Int                     @default(0) @map("extra_time_percent")
   invitedAt              DateTime                @default(now()) @map("invited_at")
   expiresAt              DateTime                @map("expires_at")
