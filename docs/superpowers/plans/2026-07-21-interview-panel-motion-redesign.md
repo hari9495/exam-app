@@ -797,7 +797,7 @@ to:
 
 Run (from `apps/web`): `npx jest "panel.*candidates/.candidateId./page.test" --verbose`
 
-Expected: `9 passed, 9 total`. None of the 9 existing tests query by structure (table role, DOM nesting) — they all use `getByText`/`getByRole('button'|'link')`, which resolve identically whether or not a `motion.div` wraps the `Card`.
+Expected: `8 passed, 8 total`. None of the 8 existing tests query by structure (table role, DOM nesting) — they all use `getByText`/`getByRole('button'|'link')`, which resolve identically whether or not a `motion.div` wraps the `Card`.
 
 - [ ] **Step 6: Commit**
 
