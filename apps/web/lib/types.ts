@@ -515,4 +515,11 @@ export interface DashboardSummary {
     staleInvitationCount: number;
   };
   activity: { id: string; description: string; occurredAt: string }[];
+  funnel: {
+    invited: number;
+    started: number;
+    submitted: number;
+    passed: number;
+  };
+  upcomingExams: { examId: string; examTitle: string; availabilityWindowStart: string }[];
 }

@@ -5,6 +5,7 @@ const STALE_INVITATION_DAYS = 5;
 const ACTIVITY_ACTIONS = ['exam.published', 'invitation.created', 'attempt.settled', 'attempt.manually_graded'];
 const ACTIVITY_LIMIT = 10;
 const RECENT_PROCTORING_LIMIT = 5;
+const UPCOMING_EXAMS_LIMIT = 5;
 
 export interface DashboardSummary {
   stats: {
@@ -19,6 +20,13 @@ export interface DashboardSummary {
     staleInvitationCount: number;
   };
   activity: { id: string; description: string; occurredAt: string }[];
+  funnel: {
+    invited: number;
+    started: number;
+    submitted: number;
+    passed: number;
+  };
+  upcomingExams: { examId: string; examTitle: string; availabilityWindowStart: string }[];
 }
 
 function describeActivity(action: string, entityId: string | null, metadata: Record<string, unknown> | null, examTitleById: Map<string, string>): string {
@@ -57,14 +65,19 @@ export class DashboardService {
         totalCandidates,
         invitationsSent,
         attemptsInProgress,
+        startedCount,
         pendingGradingGroups,
         staleInvitationCount,
         recentProctoringEvents,
         auditRows,
+        submittedCount,
+        passedCount,
+        upcomingExamRows,
       ] = await Promise.all([
         tx.candidate.count({ where: { organizationId, erasedAt: null } }),
         tx.invitation.count({ where: { examId: { in: examIds } } }),
         tx.attempt.count({ where: { examId: { in: examIds }, status: 'in_progress' } }),
+        tx.attempt.count({ where: { examId: { in: examIds } } }),
         tx.attempt.groupBy({ by: ['examId'], where: { examId: { in: examIds }, status: 'pending_manual_grade' }, _count: { _all: true } }),
         tx.invitation.count({
           where: { examId: { in: examIds }, status: 'invited', invitedAt: { lte: staleThreshold }, attempt: null },
@@ -79,6 +92,14 @@ export class DashboardService {
           where: { organizationId, action: { in: ACTIVITY_ACTIONS } },
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
           take: ACTIVITY_LIMIT,
+        }),
+        tx.attempt.count({ where: { examId: { in: examIds }, submittedAt: { not: null } } }),
+        tx.result.count({ where: { attempt: { examId: { in: examIds } }, passFail: 'pass' } }),
+        tx.exam.findMany({
+          where: { organizationId, schedulingEnabled: true, availabilityWindowStart: { gt: new Date() } },
+          select: { id: true, title: true, availabilityWindowStart: true },
+          orderBy: { availabilityWindowStart: 'asc' },
+          take: UPCOMING_EXAMS_LIMIT,
         }),
       ]);
 
@@ -108,6 +129,17 @@ export class DashboardService {
           id: row.id,
           description: describeActivity(row.action, row.entityId, row.metadataJson ? JSON.parse(row.metadataJson) : null, examTitleById),
           occurredAt: row.createdAt.toISOString(),
+        })),
+        funnel: {
+          invited: invitationsSent,
+          started: startedCount,
+          submitted: submittedCount,
+          passed: passedCount,
+        },
+        upcomingExams: upcomingExamRows.map((exam) => ({
+          examId: exam.id,
+          examTitle: exam.title,
+          availabilityWindowStart: exam.availabilityWindowStart!.toISOString(),
         })),
       };
     });
