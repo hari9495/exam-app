@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { Plus, Search } from 'lucide-react';
 import { useQuestions } from '../../../lib/hooks/useQuestions';
-import { Table, StatusBadge, Button, Pagination, type Column, type StatusTone } from '../../../components/ui';
+import { CardGrid, StatusBadge, Button, Pagination, type StatusTone } from '../../../components/ui';
 import { Question, QuestionType, Difficulty } from '../../../lib/types';
 
 const TYPE_TONE: Record<QuestionType, StatusTone> = {
@@ -39,23 +39,26 @@ export default function QuestionsPage() {
   const [search, setSearch] = useState('');
   const { data: questions, isLoading, isError } = useQuestions({ page, pageSize: 20, search: search || undefined });
 
-  const columns: Column<Question>[] = [
-    { key: 'text', header: 'Question', render: (q) => <span className="font-semibold text-recruiter-text">{q.text}</span>, sortValue: (q) => q.text },
-    { key: 'type', header: 'Type', render: (q) => <StatusBadge tone={TYPE_TONE[q.type]}>{TYPE_LABEL[q.type]}</StatusBadge> },
-    { key: 'difficulty', header: 'Difficulty', render: (q) => <DifficultyDots difficulty={q.difficulty} />, sortValue: (q) => DIFFICULTY_LEVEL[q.difficulty] },
-    { key: 'marks', header: 'Marks', render: (q) => String(q.marks), sortValue: (q) => q.marks },
-    {
-      key: 'actions',
-      header: '',
-      render: (q) => (
-        <div className="flex items-center justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-          <Link href={`/questions/${q.id}/edit`} className="text-xs font-medium text-primary">
+  function renderCard(q: Question) {
+    return (
+      <div>
+        <p className="mb-2.5 font-semibold text-recruiter-text">{q.text}</p>
+        <div className="flex items-center justify-between border-t border-recruiter-border pt-2.5 text-xs">
+          <div className="flex items-center gap-2">
+            <StatusBadge tone={TYPE_TONE[q.type]}>{TYPE_LABEL[q.type]}</StatusBadge>
+            <DifficultyDots difficulty={q.difficulty} />
+            <span className="text-recruiter-text-tertiary">{q.marks} marks</span>
+          </div>
+          <Link
+            href={`/questions/${q.id}/edit`}
+            className="font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+          >
             Edit
           </Link>
         </div>
-      ),
-    },
-  ];
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -109,7 +112,7 @@ export default function QuestionsPage() {
           />
         </div>
       </div>
-      <Table columns={columns} rows={questions?.data ?? []} rowKey={(q) => q.id} emptyMessage="No questions yet." />
+      <CardGrid items={questions?.data ?? []} cardKey={(q) => q.id} renderCard={renderCard} emptyMessage="No questions yet." />
       <Pagination page={questions?.page ?? 1} totalPages={questions?.totalPages ?? 1} onPageChange={setPage} />
     </div>
   );
