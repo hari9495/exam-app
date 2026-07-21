@@ -7,7 +7,7 @@ import { useCandidates, useCreateCandidate } from '../../../lib/hooks/useCandida
 import { useExams } from '../../../lib/hooks/useExams';
 import { useBulkInvite } from '../../../lib/hooks/useInvitations';
 import { CandidateInviteForm } from '../../../components/CandidateInviteForm';
-import { Table, Checkbox, Select, Button, useToast, Pagination, type Column } from '../../../components/ui';
+import { CardGrid, Checkbox, Select, Button, useToast, Pagination } from '../../../components/ui';
 import { Candidate } from '../../../lib/types';
 
 export default function CandidatesPage() {
@@ -51,38 +51,26 @@ export default function CandidatesPage() {
     });
   }
 
-  const columns: Column<Candidate>[] = [
-    {
-      key: 'select',
-      header: '',
-      render: (candidate) => (
+  function renderCard(candidate: Candidate) {
+    return (
+      <div className="flex items-start gap-2.5">
         <Checkbox
           label={candidate.name}
           hideLabel
           checked={selectedIds.includes(candidate.id)}
           onChange={(checked) => toggle(candidate.id, checked)}
         />
-      ),
-    },
-    {
-      key: 'name',
-      header: 'Candidate',
-      render: (candidate) => (
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="font-semibold text-recruiter-text">{candidate.name}</div>
-          <div className="text-xs text-recruiter-text-tertiary">{candidate.email}</div>
+          <div className="truncate text-xs text-recruiter-text-tertiary">{candidate.email}</div>
+          <div className="mt-2 flex items-center justify-between border-t border-recruiter-border pt-2 text-xs text-recruiter-text-tertiary">
+            <span>{candidate.phone ?? '—'}</span>
+            <span>Added {new Date(candidate.createdAt).toLocaleDateString()}</span>
+          </div>
         </div>
-      ),
-      sortValue: (candidate) => candidate.name,
-    },
-    { key: 'phone', header: 'Phone', render: (candidate) => candidate.phone ?? '—' },
-    {
-      key: 'invited',
-      header: 'Added',
-      render: (candidate) => <span className="text-recruiter-text-tertiary">{new Date(candidate.createdAt).toLocaleDateString()}</span>,
-      sortValue: (candidate) => candidate.createdAt,
-    },
-  ];
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -148,7 +136,7 @@ export default function CandidatesPage() {
           Send invitations
         </Button>
       </div>
-      <Table columns={columns} rows={candidatesResponse?.data ?? []} rowKey={(candidate) => candidate.id} emptyMessage="No candidates yet." />
+      <CardGrid items={candidatesResponse?.data ?? []} cardKey={(candidate) => candidate.id} renderCard={renderCard} emptyMessage="No candidates yet." />
       <Pagination page={candidatesResponse?.page ?? 1} totalPages={candidatesResponse?.totalPages ?? 1} onPageChange={setPage} />
     </div>
   );
