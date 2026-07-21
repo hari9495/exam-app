@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import { useOrganizations, useCreateOrganization } from '../../../lib/hooks/useOrganizations';
-import { Table, Input, Select, Button, Card, useToast, Pagination, type Column } from '../../../components/ui';
+import { CardGrid, Input, Select, Button, Card, useToast, Pagination } from '../../../components/ui';
 import { Organization } from '../../../lib/types';
 
 const REGION_OPTIONS = [
@@ -40,36 +41,43 @@ export default function OrganizationsPage() {
     );
   }
 
-  const columns: Column<Organization>[] = [
-    { key: 'name', header: 'Name', render: (org) => org.name, sortValue: (org) => org.name },
-    { key: 'slug', header: 'Slug', render: (org) => org.slug, sortValue: (org) => org.slug },
-    { key: 'region', header: 'Region', render: (org) => org.region.toUpperCase() },
-    {
-      key: 'createdAt',
-      header: 'Created',
-      render: (org) => new Date(org.createdAt).toLocaleDateString(),
-      sortValue: (org) => org.createdAt,
-    },
-  ];
+  function renderCard(org: Organization) {
+    return (
+      <div className="flex flex-col gap-1">
+        <p className="truncate text-sm font-semibold text-gray-900">{org.name}</p>
+        <p className="text-xs text-gray-500">{org.slug}</p>
+        <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
+          <span>{org.region.toUpperCase()}</span>
+          <span>{new Date(org.createdAt).toLocaleDateString()}</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-semibold text-gray-900">Organizations</h1>
-      <Card className="max-w-lg">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">Create organization</h2>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <Input label="Name" value={name} onChange={setName} required />
-          <Input label="Slug" value={slug} onChange={setSlug} required />
-          <Select label="Region" value={region} onChange={setRegion} options={REGION_OPTIONS} />
-          <Input label="Admin email" type="email" value={adminEmail} onChange={setAdminEmail} required />
-          <Button type="submit">Create organization</Button>
-        </form>
-        {error && (
-          <p role="alert" className="mt-3 text-sm text-status-danger">
-            {error}
-          </p>
-        )}
-      </Card>
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, ease: 'easeOut' }}
+      >
+        <Card className="max-w-lg">
+          <h2 className="mb-4 text-lg font-semibold text-gray-900">Create organization</h2>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+            <Input label="Name" value={name} onChange={setName} required />
+            <Input label="Slug" value={slug} onChange={setSlug} required />
+            <Select label="Region" value={region} onChange={setRegion} options={REGION_OPTIONS} />
+            <Input label="Admin email" type="email" value={adminEmail} onChange={setAdminEmail} required />
+            <Button type="submit">Create organization</Button>
+          </form>
+          {error && (
+            <p role="alert" className="mt-3 text-sm text-status-danger">
+              {error}
+            </p>
+          )}
+        </Card>
+      </motion.div>
       <Input
         label="Search organizations"
         placeholder="Name or slug…"
@@ -87,7 +95,7 @@ export default function OrganizationsPage() {
       )}
       {!isLoading && !isError && (
         <>
-          <Table columns={columns} rows={organizationsResponse?.data ?? []} rowKey={(org) => org.id} emptyMessage="No organizations yet." />
+          <CardGrid items={organizationsResponse?.data ?? []} cardKey={(org) => org.id} renderCard={renderCard} emptyMessage="No organizations yet." />
           <Pagination page={organizationsResponse?.page ?? 1} totalPages={organizationsResponse?.totalPages ?? 1} onPageChange={setPage} />
         </>
       )}
