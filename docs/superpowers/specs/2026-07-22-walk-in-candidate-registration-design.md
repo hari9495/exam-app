@@ -49,7 +49,7 @@ Steps:
 3. Validate input: `name` required non-empty, `email` valid format, `phone` format-checked if present — reusing the existing `class-validator` DTO conventions already used for candidate creation.
 4. Upsert `Candidate` by `(organizationId, email)` — create if new, otherwise reuse the existing row (same upsert pattern already used in `bulkUploadAndInvite`).
 5. Duplicate/resume check, mirroring `InvitationsService.bulkInvite`'s existing logic: if a **live** invitation (`status: 'invited'`, `expiresAt > now`) already exists for `(candidateId, examId)`, reuse its token instead of creating a new one — this is what makes a retry/back-button/shared-kiosk resubmission resume seamlessly rather than erroring or duplicating. Otherwise, create a new `Invitation` with `source: 'walk_in'`, using the existing `generateToken()` and `resolveInvitationExpiry(exam)` helpers unchanged.
-6. Return `{ token }`.
+6. Return `{ token }`. Unlike `bulkInvite`, this path never calls `dispatchInvitationEmail` — the candidate is standing at the registration page already, so no email is sent for a walk-in invitation.
 
 No new session/auth logic is introduced. The frontend takes the returned token and hands off entirely to the existing `/start?token=...` page, which already performs redemption, resume-session-kick, and routing to `/welcome` → consent → attempt start, unchanged.
 
