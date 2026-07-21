@@ -7,8 +7,13 @@ import { useCandidates, useCreateCandidate } from '../../../lib/hooks/useCandida
 import { useExams } from '../../../lib/hooks/useExams';
 import { useBulkInvite } from '../../../lib/hooks/useInvitations';
 import { CandidateInviteForm } from '../../../components/CandidateInviteForm';
-import { CardGrid, Checkbox, Select, Button, useToast, Pagination } from '../../../components/ui';
+import { CardGrid, Checkbox, Select, Button, useToast, Pagination, type SortOption } from '../../../components/ui';
 import { Candidate } from '../../../lib/types';
+
+const CANDIDATE_SORT_OPTIONS: SortOption<Candidate>[] = [
+  { key: 'name', label: 'Name', sortValue: (candidate) => candidate.name },
+  { key: 'added', label: 'Added', sortValue: (candidate) => candidate.createdAt },
+];
 
 export default function CandidatesPage() {
   const [page, setPage] = useState(1);
@@ -136,7 +141,13 @@ export default function CandidatesPage() {
           Send invitations
         </Button>
       </div>
-      <CardGrid items={candidatesResponse?.data ?? []} cardKey={(candidate) => candidate.id} renderCard={renderCard} emptyMessage="No candidates yet." />
+      <CardGrid
+        items={candidatesResponse?.data ?? []}
+        cardKey={(candidate) => candidate.id}
+        renderCard={renderCard}
+        emptyMessage="No candidates yet."
+        sortOptions={CANDIDATE_SORT_OPTIONS}
+      />
       <Pagination page={candidatesResponse?.page ?? 1} totalPages={candidatesResponse?.totalPages ?? 1} onPageChange={setPage} />
     </div>
   );
