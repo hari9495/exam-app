@@ -843,7 +843,7 @@ Add the checkbox in the JSX, right after the `schedulingEnabled` block and befor
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `cd apps/web && npx jest ExamDetailsForm.test.tsx --verbose`
-Expected: `PASS` — 9 passed, 9 total (7 pre-existing + 2 new).
+Expected: `PASS` — 10 passed, 10 total (8 pre-existing + 2 new).
 
 - [ ] **Step 7: Add the "Walk-in" badge to the exams list**
 
