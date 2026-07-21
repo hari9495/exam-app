@@ -1,13 +1,10 @@
 import { CandidateAuthProvider } from '../../lib/candidate-auth-context';
-import { CandidateBrandingLogo } from './components/CandidateBrandingLogo';
+import { CandidateThemeProvider } from './components/CandidateThemeProvider';
 
 export default function CandidateLayout({ children }: { children: React.ReactNode }) {
   return (
     <CandidateAuthProvider>
-      <div className="min-h-screen bg-candidate-bg">
-        <CandidateBrandingLogo />
-        {children}
-      </div>
+      <CandidateThemeProvider>{children}</CandidateThemeProvider>
     </CandidateAuthProvider>
   );
 }

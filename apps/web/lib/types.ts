@@ -269,6 +269,7 @@ export interface AttemptPreview {
   schedulingWindowState: 'not_open' | 'open' | 'closed' | null;
   sections: AttemptSectionSummary[];
   organizationLogoUrl: string | null;
+  organizationPrimaryColor: string | null;
 }
 
 export interface AttemptSectionFeedback {
@@ -295,6 +296,7 @@ export interface AttemptState {
   messages: AttemptMessageSummary[];
   feedback: AttemptFeedback | null;
   organizationLogoUrl: string | null;
+  organizationPrimaryColor: string | null;
 }
 
 export type AttemptCurrent = AttemptPreview | AttemptState;

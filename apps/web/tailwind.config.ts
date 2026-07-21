@@ -8,8 +8,9 @@ const config: Config = {
         primary: 'var(--color-primary, #1a73e8)',
         accent: 'var(--color-accent, #fbbc04)',
         candidate: {
-          primary: '#2F6F5E',
-          'primary-light': '#F0F7F4',
+          primary: 'var(--color-candidate-primary, #2F6F5E)',
+          'primary-light': 'var(--color-candidate-primary-light, #F0F7F4)',
+          'on-primary': 'var(--color-candidate-on-primary, #ffffff)',
           bg: '#F4F7F6',
           review: '#B8860B',
           'review-bg': '#FBF3DD',
