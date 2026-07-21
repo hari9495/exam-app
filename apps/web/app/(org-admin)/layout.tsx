@@ -81,7 +81,7 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
                 <Link
                   href={item.href}
                   className={clsx(
-                    'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium',
+                    'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors duration-150',
                     isActive
                       ? 'border-l-[3px] border-primary pl-[7px] font-semibold text-primary'
                       : 'text-recruiter-text-secondary hover:bg-recruiter-bg-subtle',
@@ -102,7 +102,7 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
         <div className="flex items-center justify-between gap-2 border-t border-recruiter-border px-3.5 py-3">
           <Link
             href="/profile"
-            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-0.5 hover:bg-recruiter-bg-subtle"
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-0.5 transition-colors duration-150 hover:bg-recruiter-bg-subtle"
           >
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-white">
               {initials}
@@ -116,7 +116,7 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
             type="button"
             aria-label="Log out"
             onClick={handleLogout}
-            className="shrink-0 rounded-md p-1.5 text-recruiter-text-tertiary hover:bg-recruiter-bg-subtle hover:text-recruiter-text"
+            className="shrink-0 rounded-md p-1.5 text-recruiter-text-tertiary transition-colors duration-150 hover:bg-recruiter-bg-subtle hover:text-recruiter-text"
           >
             <LogOut size={16} />
           </button>
