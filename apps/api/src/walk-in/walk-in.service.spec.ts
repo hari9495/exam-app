@@ -109,7 +109,7 @@ describe('WalkInService', () => {
         },
         candidate: {
           findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com' }),
-          update: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com' }),
+          update: jest.fn(),
         },
         invitation: {
           findFirst: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'existing-token' }),
@@ -121,9 +121,7 @@ describe('WalkInService', () => {
       const result = await service.register('demo-org', dto);
 
       expect(tx.invitation.create).not.toHaveBeenCalled();
-      expect(tx.candidate.update).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: 'cand-1' } }),
-      );
+      expect(tx.candidate.update).not.toHaveBeenCalled();
       expect(result).toEqual({ token: 'existing-token' });
     });
 
@@ -140,7 +138,7 @@ describe('WalkInService', () => {
         },
         candidate: {
           findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com' }),
-          update: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com' }),
+          update: jest.fn(),
         },
         invitation: {
           findFirst: jest.fn().mockResolvedValue(null),
@@ -154,6 +152,7 @@ describe('WalkInService', () => {
       expect(tx.invitation.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ candidateId: 'cand-1', source: 'walk_in' }) }),
       );
+      expect(tx.candidate.update).not.toHaveBeenCalled();
       expect(result).toEqual({ token: 'fresh-token' });
     });
   });

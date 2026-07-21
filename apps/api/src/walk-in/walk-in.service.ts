@@ -49,12 +49,15 @@ export class WalkInService {
         throw new BadRequestException('This exam is not currently open for walk-in registration');
       }
 
+      // Public, unauthenticated endpoint: unlike bulkUploadAndInvite (recruiter-authenticated),
+      // an existing candidate match must NOT be overwritten with request-body name/phone --
+      // anyone who knows a candidate's email could tamper with their stored details.
       const existingCandidate = await tx.candidate.findFirst({ where: { organizationId: org.id, email: dto.email } });
-      const candidate = existingCandidate
-        ? await tx.candidate.update({ where: { id: existingCandidate.id }, data: { name: dto.name, phone: dto.phone } })
-        : await tx.candidate.create({
-            data: { organizationId: org.id, email: dto.email, name: dto.name, phone: dto.phone },
-          });
+      const candidate =
+        existingCandidate ??
+        (await tx.candidate.create({
+          data: { organizationId: org.id, email: dto.email, name: dto.name, phone: dto.phone },
+        }));
 
       const liveInvitation = await tx.invitation.findFirst({
         where: { examId: exam.id, candidateId: candidate.id, status: 'invited', expiresAt: { gt: new Date() } },
