@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { BarChart, Bar, FunnelChart, Funnel, LabelList, ResponsiveContainer } from 'recharts';
 import { Users, Mail, Play, FileEdit, AlertTriangle, Clock, CheckCircle2, FileEdit as FileEditIcon, Plus, CalendarClock } from 'lucide-react';
 import { useDashboardSummary } from '../../../lib/hooks/useDashboard';
@@ -24,9 +24,10 @@ interface StatCardProps {
   sparkline: number[];
   barColor: string;
   delay: number;
+  prefersReducedMotion: boolean;
 }
 
-function StatCard({ icon: Icon, value, label, iconBg, iconColor, accentBorder, sparkline, barColor, delay }: StatCardProps) {
+function StatCard({ icon: Icon, value, label, iconBg, iconColor, accentBorder, sparkline, barColor, delay, prefersReducedMotion }: StatCardProps) {
   const sparkData = sparkline.map((v, i) => ({ i, v }));
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay, ease: 'easeOut' }} whileHover={{ y: -3 }}>
@@ -39,7 +40,7 @@ function StatCard({ icon: Icon, value, label, iconBg, iconColor, accentBorder, s
         <div className="mt-2 h-5 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={sparkData}>
-              <Bar dataKey="v" fill={barColor} radius={[1, 1, 0, 0]} />
+              <Bar dataKey="v" fill={barColor} radius={[1, 1, 0, 0]} isAnimationActive={!prefersReducedMotion} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -50,6 +51,7 @@ function StatCard({ icon: Icon, value, label, iconBg, iconColor, accentBorder, s
 
 export default function DashboardPage() {
   const { data: summary, isLoading, isError } = useDashboardSummary();
+  const prefersReducedMotion = useReducedMotion();
 
   if (isLoading) {
     return (
@@ -96,6 +98,7 @@ export default function DashboardPage() {
           sparkline={[3, 5, 4, 7, 6]}
           barColor="#22c55e"
           delay={0}
+          prefersReducedMotion={!!prefersReducedMotion}
         />
         <StatCard
           icon={Mail}
@@ -107,6 +110,7 @@ export default function DashboardPage() {
           sparkline={[4, 6, 5, 8, 7]}
           barColor="#2955a3"
           delay={0.04}
+          prefersReducedMotion={!!prefersReducedMotion}
         />
         <StatCard
           icon={Play}
@@ -118,6 +122,7 @@ export default function DashboardPage() {
           sparkline={[2, 3, 5, 4, 6]}
           barColor="#8a5a00"
           delay={0.08}
+          prefersReducedMotion={!!prefersReducedMotion}
         />
         <StatCard
           icon={FileEdit}
@@ -129,6 +134,7 @@ export default function DashboardPage() {
           sparkline={[1, 2, 1, 3, 2]}
           barColor="#b23b3b"
           delay={0.12}
+          prefersReducedMotion={!!prefersReducedMotion}
         />
       </div>
 
@@ -139,7 +145,7 @@ export default function DashboardPage() {
             <div className="h-40 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <FunnelChart>
-                  <Funnel dataKey="value" data={funnelData} isAnimationActive>
+                  <Funnel dataKey="value" data={funnelData} isAnimationActive={!prefersReducedMotion}>
                     <LabelList position="right" dataKey="name" fill="#57615B" stroke="none" fontSize={11} />
                   </Funnel>
                 </FunnelChart>
