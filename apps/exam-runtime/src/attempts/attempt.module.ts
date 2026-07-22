@@ -3,14 +3,13 @@ import { AuditModule } from '@exam-platform/shared';
 import { GradingModule } from '../grading/grading.module';
 import { MonitoringModule } from '../monitoring/monitoring.module';
 import { LeaderboardModule } from '../leaderboard/leaderboard.module';
+import { CodeExecutionModule } from '../code-execution/code-execution.module';
 import { AttemptController } from './attempt.controller';
 import { AttemptService } from './attempt.service';
-import { PistonClient } from '../code-execution/piston-client';
-import { RunLimiter } from '../code-execution/run-limiter';
 
 @Module({
-  imports: [GradingModule, MonitoringModule, LeaderboardModule, AuditModule],
+  imports: [GradingModule, MonitoringModule, LeaderboardModule, AuditModule, CodeExecutionModule],
   controllers: [AttemptController],
-  providers: [AttemptService, PistonClient, RunLimiter],
+  providers: [AttemptService],
 })
 export class AttemptModule {}

@@ -65,4 +65,12 @@ export class PistonClient {
       timedOut: body.run.signal === 'SIGKILL',
     };
   }
+
+  async listRuntimes(): Promise<{ language: string; version: string; aliases: string[] }[]> {
+    const response = await fetch(`${this.baseUrl}/api/v2/runtimes`);
+    if (!response.ok) {
+      throw new Error(`Piston runtimes request failed with status ${response.status}`);
+    }
+    return response.json();
+  }
 }
