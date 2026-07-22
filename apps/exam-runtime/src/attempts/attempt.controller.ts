@@ -1,9 +1,11 @@
-import { Body, Controller, Get, Post, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, UseGuards, UseInterceptors } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import type { Request } from 'express';
 import { CandidateJwtAuthGuard } from '../candidate-auth/candidate-jwt-auth.guard';
 import { CurrentCandidate, CandidateSession } from '../candidate-auth/current-candidate.decorator';
 import { LastSeenInterceptor } from './last-seen.interceptor';
 import { AttemptService } from './attempt.service';
+import { resolveClientIp } from '../network/resolve-client-ip';
 import { AnswerDto } from './dto/answer.dto';
 import { StartAttemptDto } from './dto/start-attempt.dto';
 import { ReportProctoringEventDto } from './dto/report-proctoring-event.dto';
@@ -24,8 +26,8 @@ export class AttemptController {
 
   @Post('start')
   @Throttle(MODERATE_ATTEMPT_THROTTLE)
-  start(@CurrentCandidate() candidate: CandidateSession, @Body() dto: StartAttemptDto) {
-    return this.attemptService.start(candidate, dto);
+  start(@CurrentCandidate() candidate: CandidateSession, @Body() dto: StartAttemptDto, @Req() req: Request) {
+    return this.attemptService.start(candidate, dto, resolveClientIp(req));
   }
 
   @Post('answer')

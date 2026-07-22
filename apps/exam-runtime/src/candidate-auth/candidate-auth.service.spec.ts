@@ -1,10 +1,11 @@
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
-import { BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { CandidateAuthService } from './candidate-auth.service';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
+import { AuditService } from '@exam-platform/shared';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 
 describe('CandidateAuthService', () => {
@@ -19,6 +20,7 @@ describe('CandidateAuthService', () => {
   let tenantPrisma: { forTenant: jest.Mock };
   let jwt: JwtService;
   let monitoringGateway: { emitProctoringFlag: jest.Mock };
+  let audit: { record: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -31,6 +33,7 @@ describe('CandidateAuthService', () => {
     prisma.$transaction.mockImplementation((callback: (tx: typeof prisma) => unknown) => callback(prisma));
     tenantPrisma = { forTenant: jest.fn() };
     monitoringGateway = { emitProctoringFlag: jest.fn() };
+    audit = { record: jest.fn().mockResolvedValue(undefined) };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -38,6 +41,7 @@ describe('CandidateAuthService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: MonitoringGateway, useValue: monitoringGateway },
+        { provide: AuditService, useValue: audit },
         JwtService,
       ],
     }).compile();
@@ -52,7 +56,7 @@ describe('CandidateAuthService', () => {
     it('throws NotFoundException when the token does not resolve to an invitation', async () => {
       prisma.invitation.findUnique.mockResolvedValue(null);
 
-      await expect(service.redeem('bad-token')).rejects.toThrow(NotFoundException);
+      await expect(service.redeem('bad-token', '')).rejects.toThrow(NotFoundException);
     });
 
     it('throws BadRequestException when the invitation was revoked', async () => {
@@ -60,7 +64,7 @@ describe('CandidateAuthService', () => {
         id: 'inv-1', status: 'revoked', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1',
       });
 
-      await expect(service.redeem('token')).rejects.toThrow(BadRequestException);
+      await expect(service.redeem('token', '')).rejects.toThrow(BadRequestException);
     });
 
     it('throws BadRequestException when the invitation has expired', async () => {
@@ -68,7 +72,7 @@ describe('CandidateAuthService', () => {
         id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() - 1000), examId: 'exam-1',
       });
 
-      await expect(service.redeem('token')).rejects.toThrow(BadRequestException);
+      await expect(service.redeem('token', '')).rejects.toThrow(BadRequestException);
     });
 
     it('throws BadRequestException when the exam is not published', async () => {
@@ -77,7 +81,7 @@ describe('CandidateAuthService', () => {
       });
       tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'draft' });
 
-      await expect(service.redeem('token')).rejects.toThrow(BadRequestException);
+      await expect(service.redeem('token', '')).rejects.toThrow(BadRequestException);
     });
 
     it('issues a candidate access and refresh token pair for a valid, live invitation to a published exam', async () => {
@@ -87,7 +91,7 @@ describe('CandidateAuthService', () => {
       tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published' });
       prisma.candidateRefreshToken.create.mockResolvedValue({});
 
-      const result = await service.redeem('token');
+      const result = await service.redeem('token', '');
 
       expect(result.accessToken).toEqual(expect.any(String));
       expect(result.refreshToken).toEqual(expect.any(String));
@@ -104,7 +108,7 @@ describe('CandidateAuthService', () => {
       prisma.candidateRefreshToken.create.mockResolvedValue({});
       prisma.invitation.update.mockResolvedValue({});
 
-      await service.redeem('token');
+      await service.redeem('token', '');
 
       expect(prisma.candidateRefreshToken.updateMany).not.toHaveBeenCalled();
       expect(prisma.proctoringEvent.create).not.toHaveBeenCalled();
@@ -124,7 +128,7 @@ describe('CandidateAuthService', () => {
       prisma.candidateRefreshToken.create.mockResolvedValue({});
       prisma.invitation.update.mockResolvedValue({});
 
-      await service.redeem('token');
+      await service.redeem('token', '');
 
       expect(prisma.candidateRefreshToken.updateMany).toHaveBeenCalledWith({
         where: { invitationId: 'inv-1', familyId: 'old-family' },
@@ -144,7 +148,7 @@ describe('CandidateAuthService', () => {
       prisma.candidateRefreshToken.create.mockResolvedValue({});
       prisma.invitation.update.mockResolvedValue({});
 
-      await service.redeem('token');
+      await service.redeem('token', '');
 
       expect(prisma.proctoringEvent.create).toHaveBeenCalledWith({
         data: { attemptId: 'attempt-1', eventType: 'multi_login', severity: 'high' },
@@ -163,7 +167,7 @@ describe('CandidateAuthService', () => {
       prisma.candidateRefreshToken.create.mockResolvedValue({});
       prisma.invitation.update.mockResolvedValue({});
 
-      await service.redeem('token');
+      await service.redeem('token', '');
 
       expect(monitoringGateway.emitProctoringFlag).toHaveBeenCalledWith('exam-1', {
         attemptId: 'attempt-1', candidateId: 'cand-1', eventType: 'multi_login', severity: 'high',
@@ -179,10 +183,65 @@ describe('CandidateAuthService', () => {
       prisma.candidateRefreshToken.create.mockResolvedValue({});
       prisma.invitation.update.mockResolvedValue({});
 
-      const result = await service.redeem('token');
+      const result = await service.redeem('token', '');
 
       const decoded = jwt.decode(result.accessToken) as { familyId: string };
       expect(decoded.familyId).toEqual(expect.any(String));
+    });
+  });
+
+  describe('IP restriction', () => {
+    function mockRestrictedInvitation(allowedIpRange: string | null) {
+      prisma.invitation.findUnique.mockResolvedValue({
+        id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1', activeSessionFamilyId: null,
+      });
+      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', organizationId: 'org-1', status: 'published', allowedIpRange });
+    }
+
+    it('blocks redeem from a disallowed IP with the observed IP in the message, and audit-logs it', async () => {
+      mockRestrictedInvitation('203.0.113.0/24');
+
+      await expect(service.redeem('tok', '198.51.100.7')).rejects.toThrow(
+        'Your network (198.51.100.7) is not approved for this exam. Please contact the exam organizer.',
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: expect.any(String) }),
+        expect.objectContaining({
+          action: 'attempt.blocked_ip',
+          entityType: 'invitation',
+          entityId: 'inv-1',
+          metadata: expect.objectContaining({ observedIp: '198.51.100.7', allowedIpRange: '203.0.113.0/24', phase: 'redeem' }),
+        }),
+      );
+    });
+
+    it('allows redeem from an IP inside the range', async () => {
+      mockRestrictedInvitation('203.0.113.0/24');
+      prisma.candidateRefreshToken.create.mockResolvedValue({});
+      prisma.invitation.update.mockResolvedValue({});
+
+      const result = await service.redeem('tok', '203.0.113.50');
+
+      expect(result.accessToken).toEqual(expect.any(String));
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('skips the check entirely when allowedIpRange is null', async () => {
+      mockRestrictedInvitation(null);
+      prisma.candidateRefreshToken.create.mockResolvedValue({});
+      prisma.invitation.update.mockResolvedValue({});
+
+      const result = await service.redeem('tok', 'anything-goes');
+
+      expect(result.accessToken).toEqual(expect.any(String));
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when the stored range is malformed', async () => {
+      mockRestrictedInvitation('garbage');
+
+      await expect(service.redeem('tok', '203.0.113.50')).rejects.toThrow(ForbiddenException);
+      expect(audit.record).toHaveBeenCalled();
     });
   });
 

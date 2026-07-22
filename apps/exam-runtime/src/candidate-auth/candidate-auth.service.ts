@@ -1,10 +1,11 @@
-import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
+import { AuditService, isIpAllowed } from '@exam-platform/shared';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 
 type PrismaClientOrTransaction = PrismaService | Prisma.TransactionClient;
@@ -21,9 +22,10 @@ export class CandidateAuthService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly jwt: JwtService,
     private readonly monitoringGateway: MonitoringGateway,
+    private readonly audit: AuditService,
   ) {}
 
-  async redeem(token: string): Promise<CandidateTokenPair> {
+  async redeem(token: string, clientIp: string): Promise<CandidateTokenPair> {
     const invitation = await this.prisma.invitation.findUnique({ where: { token } });
     if (!invitation) {
       throw new NotFoundException('This invitation link is invalid');
@@ -41,6 +43,7 @@ export class CandidateAuthService {
     if (exam.status !== 'published') {
       throw new BadRequestException('This exam is not currently available');
     }
+    await this.enforceIpRestriction(exam, invitation.id, clientIp, 'redeem');
 
     const familyId = randomUUID();
 
@@ -139,5 +142,34 @@ export class CandidateAuthService {
     await client.candidateRefreshToken.create({ data: { invitationId, tokenHash, familyId, expiresAt } });
 
     return { accessToken, refreshToken };
+  }
+
+  private async enforceIpRestriction(
+    exam: { id: string; organizationId: string; allowedIpRange: string | null },
+    invitationId: string,
+    clientIp: string,
+    phase: 'redeem' | 'start',
+  ): Promise<void> {
+    if (!exam.allowedIpRange) {
+      return;
+    }
+    if (isIpAllowed(clientIp, exam.allowedIpRange)) {
+      return;
+    }
+    await this.audit
+      .record(
+        { organizationId: exam.organizationId, isSuperAdmin: true },
+        {
+          actorUserId: null,
+          action: 'attempt.blocked_ip',
+          entityType: 'invitation',
+          entityId: invitationId,
+          metadata: { observedIp: clientIp, allowedIpRange: exam.allowedIpRange, phase },
+        },
+      )
+      .catch(() => undefined); // audit is a side effect; never mask the block itself
+    throw new ForbiddenException(
+      `Your network (${clientIp}) is not approved for this exam. Please contact the exam organizer.`,
+    );
   }
 }

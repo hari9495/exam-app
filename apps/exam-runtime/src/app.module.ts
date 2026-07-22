@@ -3,7 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, seconds } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
-import { PrismaModule } from '@exam-platform/shared';
+import { PrismaModule, AuditModule } from '@exam-platform/shared';
 import { CandidateAuthModule } from './candidate-auth/candidate-auth.module';
 import { AttemptModule } from './attempts/attempt.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
@@ -29,6 +29,7 @@ import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
       }),
     }),
     PrismaModule,
+    AuditModule,
     CandidateAuthModule,
     AttemptModule,
     MonitoringModule,

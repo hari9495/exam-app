@@ -1,6 +1,6 @@
-import { BadRequestException, HttpException, HttpStatus, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { TenantPrismaService } from '@exam-platform/shared';
+import { TenantPrismaService, AuditService, isIpAllowed } from '@exam-platform/shared';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { LeaderboardService, AUTO_GRADABLE_QUESTION_TYPES, CandidateLeaderboardResponse } from '../leaderboard/leaderboard.service';
@@ -119,6 +119,7 @@ export class AttemptService {
     private readonly pistonClient: PistonClient,
     private readonly runLimiter: RunLimiter,
     private readonly leaderboardService: LeaderboardService,
+    private readonly audit: AuditService,
   ) {}
 
   async getCurrent(session: CandidateSession): Promise<AttemptCurrentResponse> {
@@ -182,7 +183,7 @@ export class AttemptService {
     });
   }
 
-  async start(session: CandidateSession, dto: StartAttemptDto = {}): Promise<{ id: string; status: string }> {
+  async start(session: CandidateSession, dto: StartAttemptDto = {}, clientIp = ''): Promise<{ id: string; status: string }> {
     const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
 
     return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
@@ -190,6 +191,8 @@ export class AttemptService {
       if (existing) {
         return { id: existing.id, status: existing.status };
       }
+
+      await this.enforceIpRestriction(exam, organizationId, invitation.id, clientIp, 'start');
 
       if (dto.consent !== true) {
         throw new BadRequestException('You must consent to exam monitoring before starting.');
@@ -555,6 +558,36 @@ export class AttemptService {
       return 'closed';
     }
     return 'open';
+  }
+
+  private async enforceIpRestriction(
+    exam: { id: string; allowedIpRange: string | null },
+    organizationId: string,
+    invitationId: string,
+    clientIp: string,
+    phase: 'redeem' | 'start',
+  ): Promise<void> {
+    if (!exam.allowedIpRange) {
+      return;
+    }
+    if (isIpAllowed(clientIp, exam.allowedIpRange)) {
+      return;
+    }
+    await this.audit
+      .record(
+        { organizationId, isSuperAdmin: true },
+        {
+          actorUserId: null,
+          action: 'attempt.blocked_ip',
+          entityType: 'invitation',
+          entityId: invitationId,
+          metadata: { observedIp: clientIp, allowedIpRange: exam.allowedIpRange, phase },
+        },
+      )
+      .catch(() => undefined); // audit is a side effect; never mask the block itself
+    throw new ForbiddenException(
+      `Your network (${clientIp}) is not approved for this exam. Please contact the exam organizer.`,
+    );
   }
 
   private validateSelection(question: { type: string; options: { id: string }[] }, selectedOptionIds: string[]): void {

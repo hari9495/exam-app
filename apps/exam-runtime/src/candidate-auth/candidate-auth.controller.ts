@@ -5,6 +5,7 @@ import { CandidateAuthService } from './candidate-auth.service';
 import { RedeemInvitationDto } from './dto/redeem-invitation.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
+import { resolveClientIp } from '../network/resolve-client-ip';
 
 const CANDIDATE_REFRESH_COOKIE = 'candidate_refresh_token';
 
@@ -15,8 +16,8 @@ export class CandidateAuthController {
   @Post('redeem')
   @HttpCode(200)
   @Throttle(STRICT_AUTH_THROTTLE)
-  async redeem(@Body() dto: RedeemInvitationDto, @Res({ passthrough: true }) res: Response) {
-    const tokens = await this.candidateAuthService.redeem(dto.token);
+  async redeem(@Body() dto: RedeemInvitationDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const tokens = await this.candidateAuthService.redeem(dto.token, resolveClientIp(req));
     res.cookie(CANDIDATE_REFRESH_COOKIE, tokens.refreshToken, { httpOnly: true, sameSite: 'lax', secure: false });
     return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
   }

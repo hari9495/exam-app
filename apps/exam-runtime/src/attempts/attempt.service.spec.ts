@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
-import { BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { AttemptService } from './attempt.service';
-import { TenantPrismaService } from '@exam-platform/shared';
+import { TenantPrismaService, AuditService } from '@exam-platform/shared';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { LeaderboardService } from '../leaderboard/leaderboard.service';
@@ -23,6 +23,7 @@ describe('AttemptService', () => {
   let pistonClient: { execute: jest.Mock };
   let runLimiter: { checkAndIncrement: jest.Mock };
   let leaderboardService: { computeRecruiterView: jest.Mock; computeCandidateView: jest.Mock };
+  let audit: { record: jest.Mock };
   const session = { invitationId: 'inv-1' };
   const exam = {
     id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false,
@@ -43,6 +44,7 @@ describe('AttemptService', () => {
     pistonClient = { execute: jest.fn() };
     runLimiter = { checkAndIncrement: jest.fn() };
     leaderboardService = { computeRecruiterView: jest.fn(), computeCandidateView: jest.fn() };
+    audit = { record: jest.fn().mockResolvedValue(undefined) };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -53,6 +55,7 @@ describe('AttemptService', () => {
         { provide: PistonClient, useValue: pistonClient },
         { provide: RunLimiter, useValue: runLimiter },
         { provide: LeaderboardService, useValue: leaderboardService },
+        { provide: AuditService, useValue: audit },
       ],
     }).compile();
     service = moduleRef.get(AttemptService);
@@ -751,6 +754,84 @@ describe('AttemptService', () => {
       const result = await service.start(session, {});
 
       expect(result).toEqual({ id: 'attempt-1', status: 'in_progress' });
+      expect(tx.attempt.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('start IP restriction', () => {
+    function mockRestrictedInvitation(allowedIpRange: string | null) {
+      tenantPrisma.forTenant.mockImplementationOnce(() =>
+        Promise.resolve({ ...invitationRecord, exam: { ...exam, allowedIpRange } }),
+      );
+    }
+
+    it('blocks redeem from a disallowed IP with the observed IP in the message, and audit-logs it', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() } };
+      mockRestrictedInvitation('203.0.113.0/24');
+      tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+
+      await expect(service.start(session, { consent: true }, '198.51.100.7')).rejects.toThrow(
+        'Your network (198.51.100.7) is not approved for this exam. Please contact the exam organizer.',
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: expect.any(String) }),
+        expect.objectContaining({
+          action: 'attempt.blocked_ip',
+          entityType: 'invitation',
+          entityId: 'inv-1',
+          metadata: expect.objectContaining({ observedIp: '198.51.100.7', allowedIpRange: '203.0.113.0/24', phase: 'start' }),
+        }),
+      );
+      expect(tx.attempt.create).not.toHaveBeenCalled();
+    });
+
+    it('allows start from an IP inside the range', async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
+        examSection: { findMany: jest.fn().mockResolvedValue([]) },
+      };
+      mockRestrictedInvitation('203.0.113.0/24');
+      tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+
+      const result = await service.start(session, { consent: true }, '203.0.113.50');
+
+      expect(result).toEqual({ id: 'attempt-1', status: 'in_progress' });
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('skips the check entirely when allowedIpRange is null', async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
+        examSection: { findMany: jest.fn().mockResolvedValue([]) },
+      };
+      mockRestrictedInvitation(null);
+      tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+
+      const result = await service.start(session, { consent: true }, 'anything-goes');
+
+      expect(result).toEqual({ id: 'attempt-1', status: 'in_progress' });
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when the stored range is malformed', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() } };
+      mockRestrictedInvitation('garbage');
+      tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+
+      await expect(service.start(session, { consent: true }, '203.0.113.50')).rejects.toThrow(ForbiddenException);
+      expect(audit.record).toHaveBeenCalled();
+    });
+
+    it('does not IP-check an already-existing attempt (idempotent resume path)', async () => {
+      const existing = { id: 'attempt-1', status: 'in_progress' };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(existing), create: jest.fn() } };
+      mockRestrictedInvitation('203.0.113.0/24');
+      tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+
+      const result = await service.start(session, {}, '198.51.100.7');
+
+      expect(result).toEqual({ id: 'attempt-1', status: 'in_progress' });
+      expect(audit.record).not.toHaveBeenCalled();
       expect(tx.attempt.create).not.toHaveBeenCalled();
     });
   });
