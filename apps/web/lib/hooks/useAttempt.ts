@@ -154,7 +154,13 @@ export function useReportWebcamViolation() {
   const { accessToken } = useCandidateAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ reason, snapshot }: { reason: 'no_face' | 'head_turned'; snapshot: string }): Promise<WebcamViolationResult> =>
+    mutationFn: ({
+      reason,
+      snapshot,
+    }: {
+      reason: 'no_face' | 'head_turned' | 'multiple_faces';
+      snapshot: string;
+    }): Promise<WebcamViolationResult> =>
       withRetry(() =>
         candidateApiFetch(
           '/attempt/webcam-violation',
