@@ -84,7 +84,7 @@ describe('ExamDetailsForm', () => {
       id: 'exam-1', title: 'Existing', instructions: null, status: 'draft' as const, durationMinutes: 60,
       passCriteriaPercent: 40, randomizeOrder: false, feedbackVisibility: 'pass_fail' as const, schedulingEnabled: true,
       availabilityWindowStart: '2026-07-20T09:00:00.000Z', availabilityWindowEnd: '2026-07-27T18:00:00.000Z',
-      walkInEnabled: false, createdAt: '2026-07-01T00:00:00.000Z', sections: [],
+      walkInEnabled: false, allowedIpRange: null, createdAt: '2026-07-01T00:00:00.000Z', sections: [],
     };
     render(<ExamDetailsForm initialExam={scheduledExam} onSubmit={jest.fn()} submitLabel="Save" />);
 
@@ -144,5 +144,33 @@ describe('ExamDetailsForm', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save details' }));
 
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ walkInEnabled: true }));
+  });
+
+  it('submits a trimmed allowedIpRange and omits it when blank', async () => {
+    const onSubmit = jest.fn();
+    render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Save" />);
+    await userEvent.type(screen.getByLabelText(/allowed ip \/ cidr range/i), '  203.0.113.0/24  ');
+    await userEvent.type(screen.getByLabelText('Title'), 'X');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ allowedIpRange: '203.0.113.0/24' }));
+  });
+
+  it('prefills allowedIpRange from initialExam and sends null when cleared', async () => {
+    const onSubmit = jest.fn();
+    const examWithIpRange = {
+      id: 'exam-1', title: 'Existing', instructions: null, status: 'draft' as const, durationMinutes: 60,
+      passCriteriaPercent: 40, randomizeOrder: false, feedbackVisibility: 'pass_fail' as const, schedulingEnabled: false,
+      availabilityWindowStart: null, availabilityWindowEnd: null, walkInEnabled: false,
+      allowedIpRange: '203.0.113.0/24', createdAt: '2026-07-01T00:00:00.000Z', sections: [],
+    };
+    render(<ExamDetailsForm initialExam={examWithIpRange} onSubmit={onSubmit} submitLabel="Save" />);
+
+    const ipInput = screen.getByLabelText(/allowed ip \/ cidr range/i);
+    expect(ipInput).toHaveValue('203.0.113.0/24');
+
+    await userEvent.clear(ipInput);
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ allowedIpRange: null }));
   });
 });

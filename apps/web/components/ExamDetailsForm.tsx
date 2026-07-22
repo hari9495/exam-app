@@ -15,6 +15,7 @@ export interface ExamDetailsValue {
   availabilityWindowStart?: string;
   availabilityWindowEnd?: string;
   walkInEnabled: boolean;
+  allowedIpRange?: string | null;
 }
 
 interface ExamDetailsFormProps {
@@ -45,6 +46,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel }: ExamDeta
   );
   const [schedulingError, setSchedulingError] = useState<string | undefined>(undefined);
   const [walkInEnabled, setWalkInEnabled] = useState(initialExam?.walkInEnabled ?? false);
+  const [allowedIpRange, setAllowedIpRange] = useState(initialExam?.allowedIpRange ?? '');
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -68,6 +70,11 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel }: ExamDeta
       availabilityWindowStart: schedulingEnabled ? new Date(availabilityWindowStart).toISOString() : undefined,
       availabilityWindowEnd: schedulingEnabled ? new Date(availabilityWindowEnd).toISOString() : undefined,
       walkInEnabled,
+      allowedIpRange: allowedIpRange.trim()
+        ? allowedIpRange.trim()
+        : initialExam?.allowedIpRange
+          ? null
+          : undefined,
     });
   }
 
@@ -128,6 +135,12 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel }: ExamDeta
         <input type="checkbox" checked={walkInEnabled} onChange={(e) => setWalkInEnabled(e.target.checked)} />
         Enable walk-in registration for this exam
       </label>
+      <Input
+        label="Allowed IP / CIDR range (optional)"
+        value={allowedIpRange}
+        onChange={setAllowedIpRange}
+        placeholder="e.g. 203.0.113.4 or 203.0.113.0/24"
+      />
       <Button type="submit">{submitLabel}</Button>
     </form>
   );

@@ -112,6 +112,7 @@ export interface Exam {
   availabilityWindowStart: string | null;
   availabilityWindowEnd: string | null;
   walkInEnabled: boolean;
+  allowedIpRange: string | null;
   createdAt: string;
   sections: ExamSection[];
 }
