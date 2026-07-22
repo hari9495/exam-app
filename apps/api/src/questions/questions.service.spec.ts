@@ -1,5 +1,13 @@
+jest.mock('fs/promises', () => ({
+  mkdir: jest.fn(),
+  writeFile: jest.fn(),
+}));
+
+import * as fs from 'fs/promises';
+
 import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { sep } from 'path';
 import { QuestionsService } from './questions.service';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { JobsService } from '../jobs/jobs.service';
@@ -288,6 +296,39 @@ describe('QuestionsService', () => {
     );
   });
 
+  it('does not persist snippetCode/snippetLanguage/imageUrl for a code question even if sent, on update', async () => {
+    const dto = {
+      type: 'code',
+      text: 'Write a function that reverses a string.',
+      difficulty: 'medium',
+      marks: 10,
+      codeLanguage: 'javascript',
+      starterCode: 'function reverse(str) {}',
+      snippetCode: 'this should be ignored',
+      snippetLanguage: 'python',
+      imageUrl: 'question-images/should-be-ignored.png',
+      options: [],
+    };
+    const tx = {
+      question: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'q-1' }),
+        update: jest.fn().mockResolvedValue({ id: 'q-1', ...dto, tags: [] }),
+      },
+      questionOption: { deleteMany: jest.fn() },
+      questionTag: { deleteMany: jest.fn() },
+      tag: { upsert: jest.fn() },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.update(context, 'q-1', dto);
+
+    expect(tx.question.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ snippetCode: null, snippetLanguage: null, imageUrl: null }),
+      }),
+    );
+  });
+
   it('archives a question by setting status to archived', async () => {
     const tx = {
       question: {
@@ -433,6 +474,8 @@ describe('QuestionsService.uploadImage', () => {
     }).compile();
     service = moduleRef.get(QuestionsService);
     process.env.API_ORIGIN = 'http://localhost:3001';
+    (fs.mkdir as jest.Mock).mockReset().mockResolvedValue(undefined);
+    (fs.writeFile as jest.Mock).mockReset().mockResolvedValue(undefined);
   });
 
   it('writes a valid PNG to question-images/ and returns its URL', async () => {
@@ -441,17 +484,23 @@ describe('QuestionsService.uploadImage', () => {
     const result = await service.uploadImage(file);
 
     expect(result.imageUrl).toMatch(/^http:\/\/localhost:3001\/uploads\/question-images\/[0-9a-f-]+\.png$/);
+    expect(fs.writeFile).toHaveBeenCalledWith(
+      expect.stringMatching(new RegExp(`question-images\\${sep}[0-9a-f-]+\\.png$`)),
+      file.buffer,
+    );
   });
 
   it('rejects a non-image mimetype', async () => {
     const file = { mimetype: 'application/pdf', size: 1024, buffer: Buffer.from('x') } as Express.Multer.File;
 
     await expect(service.uploadImage(file)).rejects.toThrow(BadRequestException);
+    expect(fs.writeFile).not.toHaveBeenCalled();
   });
 
   it('rejects a file over 2MB', async () => {
     const file = { mimetype: 'image/png', size: 2 * 1024 * 1024 + 1, buffer: Buffer.from('x') } as Express.Multer.File;
 
     await expect(service.uploadImage(file)).rejects.toThrow(BadRequestException);
+    expect(fs.writeFile).not.toHaveBeenCalled();
   });
 });
