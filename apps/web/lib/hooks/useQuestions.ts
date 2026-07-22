@@ -58,7 +58,8 @@ export interface QuestionInput {
   marks: number;
   negativeMarks?: number;
   tags?: string[];
-  codeLanguage?: string;
+  languageMode?: string;
+  allowedLanguages?: string[];
   starterCode?: string;
   allowStdin?: boolean;
   snippetCode?: string;
@@ -128,5 +129,15 @@ export function useUploadQuestionImage() {
       formData.append('file', file);
       return apiFetch('/questions/images', { method: 'POST', body: formData }, accessToken ?? undefined);
     },
+  });
+}
+
+export function useCodeLanguages() {
+  const { accessToken } = useAuth();
+  return useQuery<{ language: string; version: string }[]>({
+    queryKey: ['questions', 'code-languages'],
+    queryFn: () => apiFetch('/questions/code-languages', {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken),
+    staleTime: 60 * 60 * 1000,
   });
 }

@@ -1,15 +1,23 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QuestionForm } from './QuestionForm';
-import { useUploadQuestionImage } from '../lib/hooks/useQuestions';
+import { useUploadQuestionImage, useCodeLanguages } from '../lib/hooks/useQuestions';
 
 jest.mock('../lib/hooks/useQuestions', () => ({
   useUploadQuestionImage: jest.fn(),
+  useCodeLanguages: jest.fn(),
 }));
 
 describe('QuestionForm', () => {
   beforeEach(() => {
     (useUploadQuestionImage as jest.Mock).mockReturnValue({ mutate: jest.fn() });
+    (useCodeLanguages as jest.Mock).mockReturnValue({
+      data: [
+        { language: 'python', version: '3.10.0' },
+        { language: 'java', version: '15.0.2' },
+      ],
+      isLoading: false,
+    });
   });
 
   it('submits a single_mcq question with the marked correct option', async () => {
@@ -54,7 +62,8 @@ describe('QuestionForm', () => {
           negativeMarks: 0,
           status: 'active',
           aiGenerated: false,
-          codeLanguage: null,
+          languageMode: 'fixed',
+          allowedLanguages: [],
           starterCode: null,
           allowStdin: false,
           snippetCode: null,
@@ -75,19 +84,18 @@ describe('QuestionForm', () => {
     expect(screen.getByLabelText('Marks')).toHaveValue(2);
   });
 
-  it('submits a code question with codeLanguage, starterCode, and zero options when type is code', async () => {
+  it('submits a code question with languageMode, allowedLanguages, and zero options when type is code', async () => {
     const onSubmit = jest.fn();
     render(<QuestionForm tags={[]} onSubmit={onSubmit} submitLabel="Create" />);
 
     await userEvent.click(screen.getByRole('combobox', { name: 'Question type' }));
     await userEvent.click(screen.getByRole('option', { name: 'Code' }));
     await userEvent.type(screen.getByLabelText('Question text'), 'Reverse a string');
-    await userEvent.click(screen.getByRole('combobox', { name: 'Language' }));
-    await userEvent.click(screen.getByRole('option', { name: 'python' }));
+    await userEvent.click(await screen.findByLabelText('python'));
     await userEvent.click(screen.getByRole('button', { name: 'Create' }));
 
     expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'code', codeLanguage: 'python', options: [] }),
+      expect.objectContaining({ type: 'code', languageMode: 'fixed', allowedLanguages: ['python'], options: [] }),
     );
   });
 
@@ -142,5 +150,48 @@ describe('QuestionForm', () => {
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ snippetCode: undefined, snippetLanguage: undefined, imageUrl: undefined }),
     );
+  });
+
+  it('lets the recruiter pick Fixed mode with specific languages for a code question', async () => {
+    const onSubmit = jest.fn();
+    render(<QuestionForm tags={[]} onSubmit={onSubmit} submitLabel="Create" />);
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Question type' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Code' }));
+    fireEvent.change(screen.getByLabelText('Question text'), { target: { value: 'Reverse a string' } });
+    fireEvent.click(await screen.findByLabelText('python'));
+    fireEvent.click(screen.getByText('Create'));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ languageMode: 'fixed', allowedLanguages: ['python'] }),
+    );
+  });
+
+  it('shows the starter code field only when exactly one fixed language is selected', async () => {
+    render(<QuestionForm tags={[]} onSubmit={jest.fn()} submitLabel="Create" />);
+    await userEvent.click(screen.getByRole('combobox', { name: 'Question type' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Code' }));
+
+    expect(screen.queryByLabelText('Starter code')).not.toBeInTheDocument();
+
+    fireEvent.click(await screen.findByLabelText('python'));
+    expect(screen.getByLabelText('Starter code')).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByLabelText('java'));
+    expect(screen.queryByLabelText('Starter code')).not.toBeInTheDocument();
+  });
+
+  it('lets the recruiter pick Any mode with no language selection required', async () => {
+    const onSubmit = jest.fn();
+    render(<QuestionForm tags={[]} onSubmit={onSubmit} submitLabel="Create" />);
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Question type' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Code' }));
+    fireEvent.change(screen.getByLabelText('Question text'), { target: { value: 'Solve in any language' } });
+    await userEvent.click(screen.getByRole('combobox', { name: 'Language mode' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Any — every language the sandbox supports' }));
+    fireEvent.click(screen.getByText('Create'));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ languageMode: 'any', allowedLanguages: undefined }));
   });
 });

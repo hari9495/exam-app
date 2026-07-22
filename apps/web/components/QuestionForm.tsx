@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Button, Input, Select, Checkbox, RadioGroup, RadioGroupItem } from '../components/ui';
 import { Question, QuestionType, Difficulty, Tag, CodeLanguage, CODE_LANGUAGE_OPTIONS } from '../lib/types';
-import { QuestionInput, useUploadQuestionImage } from '../lib/hooks/useQuestions';
+import { QuestionInput, useUploadQuestionImage, useCodeLanguages } from '../lib/hooks/useQuestions';
 
 const TYPE_OPTIONS = [
   { value: 'single_mcq', label: 'Single-correct MCQ' },
@@ -56,7 +56,8 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
   const [marks, setMarks] = useState(String(initialQuestion?.marks ?? 1));
   const [negativeMarks, setNegativeMarks] = useState(String(initialQuestion?.negativeMarks ?? 0));
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(initialQuestion?.tags?.map((tag) => tag.id) ?? []);
-  const [codeLanguage, setCodeLanguage] = useState<CodeLanguage>(initialQuestion?.codeLanguage ?? 'javascript');
+  const [languageMode, setLanguageMode] = useState<'fixed' | 'any'>(initialQuestion?.languageMode ?? 'fixed');
+  const [allowedLanguages, setAllowedLanguages] = useState<string[]>(initialQuestion?.allowedLanguages ?? []);
   const [starterCode, setStarterCode] = useState(initialQuestion?.starterCode ?? '');
   const [allowStdin, setAllowStdin] = useState(initialQuestion?.allowStdin ?? false);
   const [snippetCode, setSnippetCode] = useState(initialQuestion?.snippetCode ?? '');
@@ -67,6 +68,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
       ? initialQuestion.options.map((option) => ({ text: option.text, isCorrect: option.isCorrect, imageUrl: option.imageUrl ?? undefined }))
       : defaultOptionsFor(type),
   );
+  const codeLanguagesQuery = useCodeLanguages();
 
   function handleTypeChange(nextType: string) {
     const typed = nextType as QuestionType;
@@ -103,8 +105,9 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
       marks: Number(marks),
       negativeMarks: Number(negativeMarks),
       tags: selectedTagIds,
-      codeLanguage: type === 'code' ? codeLanguage : undefined,
-      starterCode: type === 'code' ? starterCode : undefined,
+      languageMode: type === 'code' ? languageMode : undefined,
+      allowedLanguages: type === 'code' && languageMode === 'fixed' ? allowedLanguages : undefined,
+      starterCode: type === 'code' && languageMode === 'fixed' && allowedLanguages.length === 1 ? starterCode : undefined,
       allowStdin: type === 'code' ? allowStdin : undefined,
       snippetCode: type === 'code' ? undefined : snippetCode || undefined,
       snippetLanguage: type === 'code' ? undefined : (snippetCode ? snippetLanguage : undefined),
@@ -137,17 +140,48 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
 
       {type === 'code' ? (
         <div className="flex flex-col gap-2">
-          <Select label="Language" value={codeLanguage} onChange={(value) => setCodeLanguage(value as CodeLanguage)} options={LANGUAGE_OPTIONS} />
-          <div className="flex flex-col gap-1">
-            <span className="text-sm font-medium text-gray-700">Starter code</span>
-            <textarea
-              aria-label="Starter code"
-              value={starterCode}
-              onChange={(e) => setStarterCode(e.target.value)}
-              className="rounded border border-gray-300 px-3 py-2 font-mono text-sm"
-              rows={6}
-            />
-          </div>
+          <Select
+            label="Language mode"
+            value={languageMode}
+            onChange={(value) => setLanguageMode(value as 'fixed' | 'any')}
+            options={[
+              { value: 'fixed', label: 'Fixed — choose specific languages' },
+              { value: 'any', label: 'Any — every language the sandbox supports' },
+            ]}
+          />
+          {languageMode === 'fixed' && (
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-gray-700">Allowed languages</span>
+              {codeLanguagesQuery.isLoading ? (
+                <span className="text-sm text-gray-500">Loading languages…</span>
+              ) : (
+                (codeLanguagesQuery.data ?? []).map((entry) => (
+                  <Checkbox
+                    key={entry.language}
+                    label={entry.language}
+                    checked={allowedLanguages.includes(entry.language)}
+                    onChange={(checked) =>
+                      setAllowedLanguages((current) =>
+                        checked ? [...current, entry.language] : current.filter((lang) => lang !== entry.language),
+                      )
+                    }
+                  />
+                ))
+              )}
+            </div>
+          )}
+          {languageMode === 'fixed' && allowedLanguages.length === 1 && (
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-gray-700">Starter code</span>
+              <textarea
+                aria-label="Starter code"
+                value={starterCode}
+                onChange={(e) => setStarterCode(e.target.value)}
+                className="rounded border border-gray-300 px-3 py-2 font-mono text-sm"
+                rows={6}
+              />
+            </div>
+          )}
           <label className="flex items-center gap-2 text-sm text-gray-700">
             <input
               type="checkbox"

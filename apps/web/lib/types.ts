@@ -78,7 +78,8 @@ export interface Question {
   negativeMarks: number;
   status: 'active' | 'archived';
   aiGenerated: boolean;
-  codeLanguage: CodeLanguage | null;
+  languageMode: 'fixed' | 'any';
+  allowedLanguages: string[];
   starterCode: string | null;
   allowStdin: boolean;
   snippetCode: string | null;
