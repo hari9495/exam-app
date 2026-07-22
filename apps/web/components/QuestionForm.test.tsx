@@ -1,8 +1,17 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QuestionForm } from './QuestionForm';
+import { useUploadQuestionImage } from '../lib/hooks/useQuestions';
+
+jest.mock('../lib/hooks/useQuestions', () => ({
+  useUploadQuestionImage: jest.fn(),
+}));
 
 describe('QuestionForm', () => {
+  beforeEach(() => {
+    (useUploadQuestionImage as jest.Mock).mockReturnValue({ mutate: jest.fn() });
+  });
+
   it('submits a single_mcq question with the marked correct option', async () => {
     const onSubmit = jest.fn();
     render(<QuestionForm tags={[{ id: 'tag-1', name: 'Backend' }]} onSubmit={onSubmit} submitLabel="Create question" />);
@@ -48,10 +57,13 @@ describe('QuestionForm', () => {
           codeLanguage: null,
           starterCode: null,
           allowStdin: false,
+          snippetCode: null,
+          snippetLanguage: null,
+          imageUrl: null,
           createdAt: '2026-01-01T00:00:00.000Z',
           options: [
-            { id: 'o-1', text: 'True', isCorrect: true },
-            { id: 'o-2', text: 'False', isCorrect: false },
+            { id: 'o-1', text: 'True', isCorrect: true, imageUrl: null },
+            { id: 'o-2', text: 'False', isCorrect: false, imageUrl: null },
           ],
         }}
         tags={[]}
@@ -99,5 +111,36 @@ describe('QuestionForm', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Create question' }));
 
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ allowStdin: true }));
+  });
+
+  it('lets the recruiter enter a code snippet and language for a single_mcq question', async () => {
+    const onSubmit = jest.fn();
+    render(<QuestionForm tags={[]} onSubmit={onSubmit} submitLabel="Create" />);
+
+    await userEvent.type(screen.getByLabelText('Question text'), 'What does this print?');
+    await userEvent.type(screen.getByLabelText('Code snippet'), 'print(1+1)');
+    const optionInputs = screen.getAllByLabelText(/Option \d text/);
+    await userEvent.type(optionInputs[0], 'A');
+    await userEvent.type(optionInputs[1], 'B');
+    await userEvent.click(screen.getByLabelText('Option 1 correct'));
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ snippetCode: 'print(1+1)', snippetLanguage: 'javascript' }),
+    );
+  });
+
+  it('omits snippetCode/snippetLanguage/imageUrl for a code (execution) question', async () => {
+    const onSubmit = jest.fn();
+    render(<QuestionForm tags={[]} onSubmit={onSubmit} submitLabel="Create" />);
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Question type' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Code' }));
+    await userEvent.type(screen.getByLabelText('Question text'), 'Reverse a string');
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ snippetCode: undefined, snippetLanguage: undefined, imageUrl: undefined }),
+    );
   });
 });

@@ -61,7 +61,10 @@ export interface QuestionInput {
   codeLanguage?: string;
   starterCode?: string;
   allowStdin?: boolean;
-  options: { text: string; isCorrect: boolean }[];
+  snippetCode?: string;
+  snippetLanguage?: string;
+  imageUrl?: string;
+  options: { text: string; isCorrect: boolean; imageUrl?: string }[];
 }
 
 export function useCreateQuestion() {
@@ -114,5 +117,16 @@ export function useDownloadBulkUploadTemplate() {
   const { accessToken } = useAuth();
   return useMutation({
     mutationFn: () => apiFetchBlob('/questions/bulk-upload/template', {}, accessToken ?? undefined),
+  });
+}
+
+export function useUploadQuestionImage() {
+  const { accessToken } = useAuth();
+  return useMutation({
+    mutationFn: (file: File): Promise<{ imageUrl: string }> => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return apiFetch('/questions/images', { method: 'POST', body: formData }, accessToken ?? undefined);
+    },
   });
 }

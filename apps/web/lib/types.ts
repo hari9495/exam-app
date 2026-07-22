@@ -64,6 +64,7 @@ export interface QuestionOption {
   id: string;
   text: string;
   isCorrect: boolean;
+  imageUrl: string | null;
 }
 
 export interface Question {
@@ -80,6 +81,9 @@ export interface Question {
   codeLanguage: CodeLanguage | null;
   starterCode: string | null;
   allowStdin: boolean;
+  snippetCode: string | null;
+  snippetLanguage: CodeLanguage | null;
+  imageUrl: string | null;
   createdAt: string;
   options: QuestionOption[];
   tags?: Tag[];

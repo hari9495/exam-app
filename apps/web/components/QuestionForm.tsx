@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Button, Input, Select, Checkbox, RadioGroup, RadioGroupItem } from '../components/ui';
 import { Question, QuestionType, Difficulty, Tag, CodeLanguage, CODE_LANGUAGE_OPTIONS } from '../lib/types';
-import { QuestionInput } from '../lib/hooks/useQuestions';
+import { QuestionInput, useUploadQuestionImage } from '../lib/hooks/useQuestions';
 
 const TYPE_OPTIONS = [
   { value: 'single_mcq', label: 'Single-correct MCQ' },
@@ -23,6 +23,7 @@ const LANGUAGE_OPTIONS = CODE_LANGUAGE_OPTIONS.map((value) => ({ value, label: v
 interface OptionDraft {
   text: string;
   isCorrect: boolean;
+  imageUrl?: string;
 }
 
 interface QuestionFormProps {
@@ -58,8 +59,13 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
   const [codeLanguage, setCodeLanguage] = useState<CodeLanguage>(initialQuestion?.codeLanguage ?? 'javascript');
   const [starterCode, setStarterCode] = useState(initialQuestion?.starterCode ?? '');
   const [allowStdin, setAllowStdin] = useState(initialQuestion?.allowStdin ?? false);
+  const [snippetCode, setSnippetCode] = useState(initialQuestion?.snippetCode ?? '');
+  const [snippetLanguage, setSnippetLanguage] = useState<CodeLanguage>(initialQuestion?.snippetLanguage ?? 'javascript');
+  const [imageUrl, setImageUrl] = useState(initialQuestion?.imageUrl ?? '');
   const [options, setOptions] = useState<OptionDraft[]>(
-    initialQuestion ? initialQuestion.options.map((option) => ({ text: option.text, isCorrect: option.isCorrect })) : defaultOptionsFor(type),
+    initialQuestion
+      ? initialQuestion.options.map((option) => ({ text: option.text, isCorrect: option.isCorrect, imageUrl: option.imageUrl ?? undefined }))
+      : defaultOptionsFor(type),
   );
 
   function handleTypeChange(nextType: string) {
@@ -70,6 +76,10 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
 
   function updateOptionText(index: number, value: string) {
     setOptions((current) => current.map((option, i) => (i === index ? { ...option, text: value } : option)));
+  }
+
+  function updateOptionImage(index: number, value: string) {
+    setOptions((current) => current.map((option, i) => (i === index ? { ...option, imageUrl: value || undefined } : option)));
   }
 
   function setSingleCorrect(index: number) {
@@ -96,7 +106,10 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
       codeLanguage: type === 'code' ? codeLanguage : undefined,
       starterCode: type === 'code' ? starterCode : undefined,
       allowStdin: type === 'code' ? allowStdin : undefined,
-      options,
+      snippetCode: type === 'code' ? undefined : snippetCode || undefined,
+      snippetLanguage: type === 'code' ? undefined : (snippetCode ? snippetLanguage : undefined),
+      imageUrl: type === 'code' ? undefined : imageUrl || undefined,
+      options: options.map((option) => ({ text: option.text, isCorrect: option.isCorrect, imageUrl: option.imageUrl })),
     });
   }
 
@@ -147,6 +160,27 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
         </div>
       ) : (
         <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-2">
+              <Select
+                label="Snippet language"
+                value={snippetLanguage}
+                onChange={(value) => setSnippetLanguage(value as CodeLanguage)}
+                options={LANGUAGE_OPTIONS}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-gray-700">Code snippet (optional)</span>
+              <textarea
+                aria-label="Code snippet"
+                value={snippetCode}
+                onChange={(e) => setSnippetCode(e.target.value)}
+                className="rounded border border-gray-300 px-3 py-2 font-mono text-sm"
+                rows={4}
+              />
+            </div>
+            <QuestionImageUpload label="Question image (optional)" value={imageUrl} onChange={setImageUrl} />
+          </div>
           <span className="text-sm font-medium text-gray-700">Options</span>
           {type === 'single_mcq' || type === 'true_false' ? (
             <RadioGroup
@@ -154,28 +188,34 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
               onChange={(value) => setSingleCorrect(Number(value))}
             >
               {options.map((option, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <RadioGroupItem value={String(index)} label={`Option ${index + 1} correct`} />
-                  <input
-                    aria-label={`Option ${index + 1} text`}
-                    value={option.text}
-                    onChange={(e) => updateOptionText(index, e.target.value)}
-                    className="rounded border border-gray-300 px-2 py-1 text-sm"
-                    readOnly={type === 'true_false'}
-                  />
+                <div key={index} className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value={String(index)} label={`Option ${index + 1} correct`} />
+                    <input
+                      aria-label={`Option ${index + 1} text`}
+                      value={option.text}
+                      onChange={(e) => updateOptionText(index, e.target.value)}
+                      className="rounded border border-gray-300 px-2 py-1 text-sm"
+                      readOnly={type === 'true_false'}
+                    />
+                  </div>
+                  <QuestionImageUpload label={`Option ${index + 1} image (optional)`} value={option.imageUrl ?? ''} onChange={(url) => updateOptionImage(index, url)} />
                 </div>
               ))}
             </RadioGroup>
           ) : (
             options.map((option, index) => (
-              <div key={index} className="flex items-center gap-2">
-                <Checkbox label={`Option ${index + 1} correct`} checked={option.isCorrect} onChange={(checked) => toggleMultiCorrect(index, checked)} />
-                <input
-                  aria-label={`Option ${index + 1} text`}
-                  value={option.text}
-                  onChange={(e) => updateOptionText(index, e.target.value)}
-                  className="rounded border border-gray-300 px-2 py-1 text-sm"
-                />
+              <div key={index} className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <Checkbox label={`Option ${index + 1} correct`} checked={option.isCorrect} onChange={(checked) => toggleMultiCorrect(index, checked)} />
+                  <input
+                    aria-label={`Option ${index + 1} text`}
+                    value={option.text}
+                    onChange={(e) => updateOptionText(index, e.target.value)}
+                    className="rounded border border-gray-300 px-2 py-1 text-sm"
+                  />
+                </div>
+                <QuestionImageUpload label={`Option ${index + 1} image (optional)`} value={option.imageUrl ?? ''} onChange={(url) => updateOptionImage(index, url)} />
               </div>
             ))
           )}
@@ -205,5 +245,34 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
 
       <Button type="submit">{submitLabel}</Button>
     </form>
+  );
+}
+
+function QuestionImageUpload({ label, value, onChange }: { label: string; value: string; onChange: (url: string) => void }) {
+  const upload = useUploadQuestionImage();
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs font-medium text-gray-600">{label}</span>
+      <div className="flex items-center gap-2">
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/svg+xml"
+          aria-label={label}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            upload.mutate(file, { onSuccess: (result) => onChange(result.imageUrl) });
+          }}
+        />
+        {value ? (
+          <>
+            <img src={value} alt="" className="h-10 w-10 rounded object-cover" />
+            <Button type="button" variant="secondary" onClick={() => onChange('')}>
+              Remove
+            </Button>
+          </>
+        ) : null}
+      </div>
+    </div>
   );
 }
