@@ -21,6 +21,16 @@ describe('ProctoringWarningOverlay', () => {
     render(<ProctoringWarningOverlay strike={1} onContinue={jest.fn()} continuePending continueError={false} />);
     expect(screen.getByRole('button', { name: /checking/i })).toBeDisabled();
   });
+
+  it('shows the multiple-person message for a multiple_faces reason', () => {
+    render(<ProctoringWarningOverlay strike={1} reason="multiple_faces" onContinue={() => {}} continuePending={false} continueError={false} />);
+    expect(screen.getByText('More than one person detected')).toBeInTheDocument();
+  });
+
+  it('shows the default face-not-visible message for no_face', () => {
+    render(<ProctoringWarningOverlay strike={2} reason="no_face" onContinue={() => {}} continuePending={false} continueError={false} />);
+    expect(screen.getByText('Face not visible')).toBeInTheDocument();
+  });
 });
 
 describe('ProctoringBlockOverlay', () => {

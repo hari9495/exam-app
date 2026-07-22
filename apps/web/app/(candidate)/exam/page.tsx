@@ -57,8 +57,9 @@ export default function CandidateExamPage() {
   const isBlocked = attemptState?.status === 'blocked';
   const isTerminal = Boolean(attemptState && attemptState.status !== 'in_progress' && !isPaused && !isBlocked);
   const started = attemptState?.status === 'in_progress';
+  const [lastViolationReason, setLastViolationReason] = useState<string>('no_face');
   useProctoringMonitor(started);
-  useWebcamMonitor(started);
+  useWebcamMonitor(started, setLastViolationReason);
   const webcamResume = useWebcamResume();
 
   async function finishSubmit() {
@@ -179,6 +180,7 @@ export default function CandidateExamPage() {
       {isPaused ? (
         <ProctoringWarningOverlay
           strike={attemptState.webcamViolationCount}
+          reason={lastViolationReason}
           onContinue={() => webcamResume.mutate()}
           continuePending={webcamResume.isPending}
           continueError={webcamResume.isError}
