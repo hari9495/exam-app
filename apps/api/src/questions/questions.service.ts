@@ -2,6 +2,10 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma, Question, QuestionOption, QuestionTag, Tag } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
+import { randomUUID } from 'crypto';
+import { dirname, join } from 'path';
+import * as fs from 'fs/promises';
+import { UPLOADS_ROOT } from '../organizations/uploads-path';
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
 import { validateQuestionPayload } from './question-validation';
@@ -35,6 +39,13 @@ export interface BulkUploadResult {
   errors: BulkUploadRowError[];
 }
 
+const ALLOWED_QUESTION_IMAGE_MIME_TYPES: Record<string, string> = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/svg+xml': '.svg',
+};
+const MAX_QUESTION_IMAGE_SIZE_BYTES = 2 * 1024 * 1024;
+
 @Injectable()
 export class QuestionsService {
   constructor(
@@ -67,9 +78,12 @@ export class QuestionsService {
           codeLanguage: dto.codeLanguage,
           starterCode: dto.starterCode,
           allowStdin: dto.allowStdin ?? false,
+          snippetCode: dto.type === 'code' ? null : dto.snippetCode ?? null,
+          snippetLanguage: dto.type === 'code' ? null : dto.snippetLanguage ?? null,
+          imageUrl: dto.type === 'code' ? null : dto.imageUrl ?? null,
           createdBy: userId,
           options: {
-            create: dto.options.map((o, index) => ({ text: o.text, isCorrect: o.isCorrect, orderIndex: index })),
+            create: dto.options.map((o, index) => ({ text: o.text, isCorrect: o.isCorrect, orderIndex: index, imageUrl: o.imageUrl })),
           },
           tags: {
             create: tagIds.map((tagId) => ({ tagId })),
@@ -79,6 +93,23 @@ export class QuestionsService {
       });
     });
     return this.toResponse(question as QuestionWithRelations);
+  }
+
+  async uploadImage(file: Express.Multer.File): Promise<{ imageUrl: string }> {
+    const extension = ALLOWED_QUESTION_IMAGE_MIME_TYPES[file.mimetype];
+    if (!extension) {
+      throw new BadRequestException('Image must be a PNG, JPEG, or SVG image');
+    }
+    if (file.size > MAX_QUESTION_IMAGE_SIZE_BYTES) {
+      throw new BadRequestException('Image file must be 2MB or smaller');
+    }
+
+    const imagePath = `question-images/${randomUUID()}${extension}`;
+    const fullPath = join(UPLOADS_ROOT, imagePath);
+    await fs.mkdir(dirname(fullPath), { recursive: true });
+    await fs.writeFile(fullPath, file.buffer);
+
+    return { imageUrl: `${process.env.API_ORIGIN}/uploads/${imagePath}` };
   }
 
   async list(context: TenantContext, filters: QuestionFilters): Promise<PaginatedResponse<QuestionResponse>> {
@@ -154,8 +185,11 @@ export class QuestionsService {
           codeLanguage: dto.codeLanguage,
           starterCode: dto.starterCode,
           allowStdin: dto.allowStdin ?? false,
+          snippetCode: dto.type === 'code' ? null : dto.snippetCode ?? null,
+          snippetLanguage: dto.type === 'code' ? null : dto.snippetLanguage ?? null,
+          imageUrl: dto.type === 'code' ? null : dto.imageUrl ?? null,
           options: {
-            create: dto.options.map((o, index) => ({ text: o.text, isCorrect: o.isCorrect, orderIndex: index })),
+            create: dto.options.map((o, index) => ({ text: o.text, isCorrect: o.isCorrect, orderIndex: index, imageUrl: o.imageUrl })),
           },
           tags: {
             create: tagIds.map((tagId) => ({ tagId })),

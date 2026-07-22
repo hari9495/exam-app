@@ -41,6 +41,14 @@ export class QuestionsController {
     return this.questionsService.bulkUpload(tenant, userId, file);
   }
 
+  @Post('images')
+  @RequirePermissions('question_bank:manage')
+  @UseInterceptors(FileInterceptor('file'))
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  uploadImage(@UploadedFile() file: Express.Multer.File) {
+    return this.questionsService.uploadImage(file);
+  }
+
   @Get('bulk-upload/template')
   @RequirePermissions('question_bank:manage')
   async downloadBulkUploadTemplate(@Res({ passthrough: true }) res: Response): Promise<StreamableFile> {

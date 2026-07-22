@@ -8,6 +8,10 @@ export class QuestionOptionDto {
 
   @IsBoolean()
   isCorrect!: boolean;
+
+  @IsOptional()
+  @IsString()
+  imageUrl?: string;
 }
 
 export class CreateQuestionDto {
@@ -53,6 +57,18 @@ export class CreateQuestionDto {
   @IsOptional()
   @IsBoolean()
   allowStdin?: boolean;
+
+  @IsOptional()
+  @IsString()
+  snippetCode?: string;
+
+  @IsOptional()
+  @IsIn(VALID_CODE_LANGUAGES)
+  snippetLanguage?: string;
+
+  @IsOptional()
+  @IsString()
+  imageUrl?: string;
 
   @IsArray()
   @ValidateNested({ each: true })

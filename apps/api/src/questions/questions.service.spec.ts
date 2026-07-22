@@ -83,6 +83,67 @@ describe('QuestionsService', () => {
     );
   });
 
+  it('persists snippetCode/snippetLanguage/imageUrl and per-option imageUrl for a single_mcq question', async () => {
+    const dto = {
+      type: 'single_mcq',
+      text: 'What does this code print?',
+      difficulty: 'easy',
+      marks: 5,
+      snippetCode: 'x = [1, 2, 3]\nprint(x[::-1])',
+      snippetLanguage: 'python',
+      imageUrl: 'question-images/stem.png',
+      options: [
+        { text: '[3, 2, 1]', isCorrect: true, imageUrl: 'question-images/opt-a.png' },
+        { text: '[1, 2, 3]', isCorrect: false },
+      ],
+    };
+    const questionCreate = jest.fn().mockResolvedValue({ id: 'q-1', organizationId: 'org-1', ...dto, tags: [] });
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ tag: { upsert: jest.fn() }, question: { create: questionCreate } }));
+
+    await service.create(context, 'user-1', dto);
+
+    expect(questionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          snippetCode: 'x = [1, 2, 3]\nprint(x[::-1])',
+          snippetLanguage: 'python',
+          imageUrl: 'question-images/stem.png',
+          options: {
+            create: [
+              { text: '[3, 2, 1]', isCorrect: true, orderIndex: 0, imageUrl: 'question-images/opt-a.png' },
+              { text: '[1, 2, 3]', isCorrect: false, orderIndex: 1, imageUrl: undefined },
+            ],
+          },
+        }),
+      }),
+    );
+  });
+
+  it('does not persist snippetCode/snippetLanguage/imageUrl for a code question even if sent', async () => {
+    const dto = {
+      type: 'code',
+      text: 'Write a function that reverses a string.',
+      difficulty: 'medium',
+      marks: 10,
+      codeLanguage: 'javascript',
+      starterCode: 'function reverse(str) {}',
+      snippetCode: 'this should be ignored',
+      snippetLanguage: 'python',
+      imageUrl: 'question-images/should-be-ignored.png',
+      options: [],
+    };
+    const questionCreate = jest.fn().mockResolvedValue({ id: 'q-1', organizationId: 'org-1', ...dto, tags: [] });
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ tag: { upsert: jest.fn() }, question: { create: questionCreate } }));
+
+    await service.create(context, 'user-1', dto);
+
+    expect(questionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ snippetCode: null, snippetLanguage: null, imageUrl: null }),
+      }),
+    );
+  });
+
   it('passes allowStdin through to the created question', async () => {
     const created = { id: 'q-1', organizationId: 'org-1', ...validDto, allowStdin: true, options: validDto.options, tags: [] };
     const tx = { tag: { upsert: jest.fn() }, question: { create: jest.fn().mockResolvedValue(created) } };
@@ -352,5 +413,45 @@ describe('QuestionsService', () => {
       await expect(service.bulkUpload(context, 'user-1', file)).rejects.toThrow(BadRequestException);
       expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('QuestionsService.uploadImage', () => {
+  let service: QuestionsService;
+  let tenantPrisma: { forTenant: jest.Mock };
+  let jobsService: { enqueue: jest.Mock };
+
+  beforeEach(async () => {
+    tenantPrisma = { forTenant: jest.fn() };
+    jobsService = { enqueue: jest.fn() };
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        QuestionsService,
+        { provide: TenantPrismaService, useValue: tenantPrisma },
+        { provide: JobsService, useValue: jobsService },
+      ],
+    }).compile();
+    service = moduleRef.get(QuestionsService);
+    process.env.API_ORIGIN = 'http://localhost:3001';
+  });
+
+  it('writes a valid PNG to question-images/ and returns its URL', async () => {
+    const file = { mimetype: 'image/png', size: 1024, buffer: Buffer.from('fake-png-bytes') } as Express.Multer.File;
+
+    const result = await service.uploadImage(file);
+
+    expect(result.imageUrl).toMatch(/^http:\/\/localhost:3001\/uploads\/question-images\/[0-9a-f-]+\.png$/);
+  });
+
+  it('rejects a non-image mimetype', async () => {
+    const file = { mimetype: 'application/pdf', size: 1024, buffer: Buffer.from('x') } as Express.Multer.File;
+
+    await expect(service.uploadImage(file)).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects a file over 2MB', async () => {
+    const file = { mimetype: 'image/png', size: 2 * 1024 * 1024 + 1, buffer: Buffer.from('x') } as Express.Multer.File;
+
+    await expect(service.uploadImage(file)).rejects.toThrow(BadRequestException);
   });
 });
