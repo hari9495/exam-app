@@ -96,6 +96,11 @@ export function useWebcamMonitor(enabled: boolean, onViolationReason?: (reason: 
       video.srcObject = stream;
       await video.play();
 
+      if (cancelled) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
       intervalId = setInterval(() => {
         if (video.readyState < 2) return;
 

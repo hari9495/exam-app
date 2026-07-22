@@ -136,6 +136,28 @@ describe('useWebcamMonitor', () => {
     await waitFor(() => expect(mutate).toHaveBeenCalledWith({ reason: 'no_face', snapshot: '' }));
   });
 
+  it('stops the stream and never starts polling if unmounted while getUserMedia is still pending', async () => {
+    let resolveGetUserMedia!: (stream: unknown) => void;
+    (navigator.mediaDevices.getUserMedia as jest.Mock).mockReturnValue(
+      new Promise((resolve) => {
+        resolveGetUserMedia = resolve;
+      }),
+    );
+    const stop = jest.fn();
+
+    const { unmount } = render(<Probe enabled={true} />);
+    await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled());
+
+    unmount(); // cleanup runs while setup() is still suspended awaiting getUserMedia
+    const detectCallsBeforeResolve = mockDetectForVideo.mock.calls.length;
+
+    resolveGetUserMedia({ getTracks: () => [{ stop }] });
+    await waitFor(() => expect(stop).toHaveBeenCalled());
+
+    jest.advanceTimersByTime(SAMPLE_INTERVAL_MS * 10);
+    expect(mockDetectForVideo.mock.calls.length).toBe(detectCallsBeforeResolve); // no interval ever started
+  });
+
   it('ignores the __DISABLE_WEBCAM_MONITOR__ escape hatch in production builds', async () => {
     const originalNodeEnv = process.env.NODE_ENV;
     // NODE_ENV's type is readonly (Next.js's global.d.ts); a real assignment is what next dev/
