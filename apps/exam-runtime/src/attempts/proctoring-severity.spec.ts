@@ -52,4 +52,14 @@ describe('getProctoringEventSeverity', () => {
   it('defaults an unrecognized event type to low rather than throwing', () => {
     expect(getProctoringEventSeverity('something_unmapped')).toBe('low');
   });
+
+  it('accepts window_blur as client-reportable with medium severity', () => {
+    expect(CLIENT_REPORTABLE_EVENT_TYPES).toContain('window_blur');
+    expect(getProctoringEventSeverity('window_blur')).toBe('medium');
+  });
+
+  it('accepts multi_monitor_detected as client-reportable with high severity', () => {
+    expect(CLIENT_REPORTABLE_EVENT_TYPES).toContain('multi_monitor_detected');
+    expect(getProctoringEventSeverity('multi_monitor_detected')).toBe('high');
+  });
 });
