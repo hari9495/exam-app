@@ -75,6 +75,12 @@ export class QuestionsController {
     return this.questionsService.list(tenant, { topic, difficulty, status, tagId, page, pageSize, search });
   }
 
+  @Get('code-languages')
+  @RequirePermissions('question_bank:manage')
+  listCodeLanguages() {
+    return this.questionsService.listAvailableLanguages();
+  }
+
   @Get(':id')
   @RequirePermissions('question_bank:manage')
   findOne(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {

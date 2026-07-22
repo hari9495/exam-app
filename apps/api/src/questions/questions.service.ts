@@ -10,6 +10,7 @@ import { CreateQuestionDto } from './dto/create-question.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
 import { validateQuestionPayload } from './question-validation';
 import { JobsService } from '../jobs/jobs.service';
+import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
 import { AiGenerateQuestionsDto } from './dto/ai-generate-questions.dto';
 import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
 import {
@@ -51,17 +52,31 @@ export class QuestionsService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly jobsService: JobsService,
+    private readonly examRuntime: ExamRuntimeInternalClient,
   ) {}
 
+  private async fetchAvailableLanguagesIfNeeded(type: string, languageMode: string | undefined): Promise<string[]> {
+    if (type !== 'code' || languageMode !== 'fixed') {
+      return [];
+    }
+    const { languages } = await this.examRuntime.listAvailableLanguages();
+    return languages.map((entry) => entry.language);
+  }
+
   async create(context: TenantContext, userId: string, dto: CreateQuestionDto): Promise<QuestionResponse> {
-    validateQuestionPayload({
-      type: dto.type,
-      difficulty: dto.difficulty,
-      marks: dto.marks,
-      negativeMarks: dto.negativeMarks ?? 0,
-      options: dto.options,
-      codeLanguage: dto.codeLanguage,
-    });
+    const availableLanguages = await this.fetchAvailableLanguagesIfNeeded(dto.type, dto.languageMode);
+    validateQuestionPayload(
+      {
+        type: dto.type,
+        difficulty: dto.difficulty,
+        marks: dto.marks,
+        negativeMarks: dto.negativeMarks ?? 0,
+        options: dto.options,
+        languageMode: dto.languageMode,
+        allowedLanguages: dto.allowedLanguages,
+      },
+      availableLanguages,
+    );
 
     const question = await this.tenantPrisma.forTenant(context, async (tx) => {
       const tagIds = await this.resolveTagIds(tx, context.organizationId as string, dto.tags ?? []);
@@ -75,7 +90,8 @@ export class QuestionsService {
           difficulty: dto.difficulty,
           marks: dto.marks,
           negativeMarks: dto.negativeMarks ?? 0,
-          codeLanguage: dto.codeLanguage,
+          languageMode: dto.languageMode ?? 'fixed',
+          allowedLanguages: dto.allowedLanguages ? JSON.stringify(dto.allowedLanguages) : null,
           starterCode: dto.starterCode,
           allowStdin: dto.allowStdin ?? false,
           snippetCode: dto.type === 'code' ? null : dto.snippetCode ?? null,
@@ -110,6 +126,11 @@ export class QuestionsService {
     await fs.writeFile(fullPath, file.buffer);
 
     return { imageUrl: `${process.env.API_ORIGIN}/uploads/${imagePath}` };
+  }
+
+  async listAvailableLanguages(): Promise<{ language: string; version: string }[]> {
+    const { languages } = await this.examRuntime.listAvailableLanguages();
+    return languages;
   }
 
   async list(context: TenantContext, filters: QuestionFilters): Promise<PaginatedResponse<QuestionResponse>> {
@@ -152,14 +173,19 @@ export class QuestionsService {
   }
 
   async update(context: TenantContext, id: string, dto: UpdateQuestionDto): Promise<QuestionResponse> {
-    validateQuestionPayload({
-      type: dto.type,
-      difficulty: dto.difficulty,
-      marks: dto.marks,
-      negativeMarks: dto.negativeMarks ?? 0,
-      options: dto.options,
-      codeLanguage: dto.codeLanguage,
-    });
+    const availableLanguages = await this.fetchAvailableLanguagesIfNeeded(dto.type, dto.languageMode);
+    validateQuestionPayload(
+      {
+        type: dto.type,
+        difficulty: dto.difficulty,
+        marks: dto.marks,
+        negativeMarks: dto.negativeMarks ?? 0,
+        options: dto.options,
+        languageMode: dto.languageMode,
+        allowedLanguages: dto.allowedLanguages,
+      },
+      availableLanguages,
+    );
 
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.question.findFirst({ where: { id, organizationId: context.organizationId as string } });
@@ -182,7 +208,8 @@ export class QuestionsService {
           difficulty: dto.difficulty,
           marks: dto.marks,
           negativeMarks: dto.negativeMarks ?? 0,
-          codeLanguage: dto.codeLanguage,
+          languageMode: dto.languageMode ?? 'fixed',
+          allowedLanguages: dto.allowedLanguages ? JSON.stringify(dto.allowedLanguages) : null,
           starterCode: dto.starterCode,
           allowStdin: dto.allowStdin ?? false,
           snippetCode: dto.type === 'code' ? null : dto.snippetCode ?? null,
@@ -270,16 +297,26 @@ export class QuestionsService {
 
     const validationErrors: BulkUploadRowError[] = [];
     const validRows: BulkQuestionRow[] = [];
+    // ponytail: brief's snippet checked `validRows` here, which is always empty at this point
+    // (it's populated by the loop below) — checking the parsed `rows` instead so a fixed-mode
+    // code row actually gets a non-empty availableLanguages list to validate against.
+    const availableLanguages = rows.some((row) => row.type === 'code')
+      ? (await this.examRuntime.listAvailableLanguages()).languages.map((entry) => entry.language)
+      : [];
     for (const row of rows) {
       try {
-        validateQuestionPayload({
-          type: row.type,
-          difficulty: row.difficulty,
-          marks: row.marks,
-          negativeMarks: row.negativeMarks,
-          options: row.options,
-          codeLanguage: row.codeLanguage,
-        });
+        validateQuestionPayload(
+          {
+            type: row.type,
+            difficulty: row.difficulty,
+            marks: row.marks,
+            negativeMarks: row.negativeMarks,
+            options: row.options,
+            languageMode: row.type === 'code' ? 'fixed' : undefined,
+            allowedLanguages: row.type === 'code' && row.codeLanguage ? [row.codeLanguage] : undefined,
+          },
+          availableLanguages,
+        );
         validRows.push(row);
       } catch (err) {
         validationErrors.push({ row: row.rowNumber, message: err instanceof Error ? err.message : 'Invalid row' });
@@ -300,7 +337,8 @@ export class QuestionsService {
             difficulty: row.difficulty,
             marks: row.marks,
             negativeMarks: row.negativeMarks,
-            codeLanguage: row.codeLanguage,
+            languageMode: 'fixed',
+            allowedLanguages: row.type === 'code' && row.codeLanguage ? JSON.stringify([row.codeLanguage]) : null,
             starterCode: row.starterCode,
             createdBy: userId,
             options: {

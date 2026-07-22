@@ -11,21 +11,25 @@ import { sep } from 'path';
 import { QuestionsService } from './questions.service';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { JobsService } from '../jobs/jobs.service';
+import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
 
 describe('QuestionsService', () => {
   let service: QuestionsService;
   let tenantPrisma: { forTenant: jest.Mock };
   let jobsService: { enqueue: jest.Mock };
+  let examRuntime: { listAvailableLanguages: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
     jobsService = { enqueue: jest.fn() };
+    examRuntime = { listAvailableLanguages: jest.fn().mockResolvedValue({ languages: [{ language: 'javascript', version: '18.15.0' }, { language: 'python', version: '3.10.0' }] }) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         QuestionsService,
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: JobsService, useValue: jobsService },
+        { provide: ExamRuntimeInternalClient, useValue: examRuntime },
       ],
     }).compile();
     service = moduleRef.get(QuestionsService);
@@ -61,22 +65,18 @@ describe('QuestionsService', () => {
     expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
   });
 
-  it('creates a code question with zero options and persists codeLanguage/starterCode', async () => {
+  it('creates a fixed-mode code question with one language and persists languageMode/allowedLanguages/starterCode', async () => {
     const codeDto = {
       type: 'code',
       text: 'Write a function that reverses a string.',
       difficulty: 'medium',
       marks: 10,
-      codeLanguage: 'javascript',
+      languageMode: 'fixed',
+      allowedLanguages: ['javascript'],
       starterCode: 'function reverse(str) {\n  \n}',
       options: [],
     };
-    const created = {
-      id: 'q-1',
-      organizationId: 'org-1',
-      ...codeDto,
-      tags: [],
-    };
+    const created = { id: 'q-1', organizationId: 'org-1', ...codeDto, allowedLanguages: JSON.stringify(['javascript']), tags: [] };
     const questionCreate = jest.fn().mockResolvedValue(created);
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ tag: { upsert: jest.fn() }, question: { create: questionCreate } }));
 
@@ -84,11 +84,52 @@ describe('QuestionsService', () => {
 
     expect(result.type).toBe('code');
     expect(result.options).toEqual([]);
+    expect(examRuntime.listAvailableLanguages).toHaveBeenCalled();
     expect(questionCreate).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ codeLanguage: 'javascript', starterCode: 'function reverse(str) {\n  \n}' }),
+        data: expect.objectContaining({
+          languageMode: 'fixed',
+          allowedLanguages: JSON.stringify(['javascript']),
+          starterCode: 'function reverse(str) {\n  \n}',
+        }),
       }),
     );
+  });
+
+  it('creates an any-mode code question without fetching languages for validation of allowedLanguages, but still stores languageMode', async () => {
+    const codeDto = {
+      type: 'code',
+      text: 'Solve this in any language.',
+      difficulty: 'hard',
+      marks: 15,
+      languageMode: 'any',
+      options: [],
+    };
+    const created = { id: 'q-2', organizationId: 'org-1', ...codeDto, allowedLanguages: null, tags: [] };
+    const questionCreate = jest.fn().mockResolvedValue(created);
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ tag: { upsert: jest.fn() }, question: { create: questionCreate } }));
+
+    const result = await service.create(context, 'user-1', codeDto);
+
+    expect(result.type).toBe('code');
+    expect(questionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ languageMode: 'any', allowedLanguages: null }) }),
+    );
+  });
+
+  it('rejects creating a fixed-mode code question with a language the live Piston list does not have', async () => {
+    const codeDto = {
+      type: 'code',
+      text: 'x',
+      difficulty: 'easy',
+      marks: 5,
+      languageMode: 'fixed',
+      allowedLanguages: ['cobol'],
+      options: [],
+    };
+
+    await expect(service.create(context, 'user-1', codeDto)).rejects.toThrow(BadRequestException);
+    expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
   });
 
   it('persists snippetCode/snippetLanguage/imageUrl and per-option imageUrl for a single_mcq question', async () => {
@@ -133,7 +174,8 @@ describe('QuestionsService', () => {
       text: 'Write a function that reverses a string.',
       difficulty: 'medium',
       marks: 10,
-      codeLanguage: 'javascript',
+      languageMode: 'fixed',
+      allowedLanguages: ['javascript'],
       starterCode: 'function reverse(str) {}',
       snippetCode: 'this should be ignored',
       snippetLanguage: 'python',
@@ -302,7 +344,8 @@ describe('QuestionsService', () => {
       text: 'Write a function that reverses a string.',
       difficulty: 'medium',
       marks: 10,
-      codeLanguage: 'javascript',
+      languageMode: 'fixed',
+      allowedLanguages: ['javascript'],
       starterCode: 'function reverse(str) {}',
       snippetCode: 'this should be ignored',
       snippetLanguage: 'python',
@@ -461,15 +504,18 @@ describe('QuestionsService.uploadImage', () => {
   let service: QuestionsService;
   let tenantPrisma: { forTenant: jest.Mock };
   let jobsService: { enqueue: jest.Mock };
+  let examRuntime: { listAvailableLanguages: jest.Mock };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
     jobsService = { enqueue: jest.fn() };
+    examRuntime = { listAvailableLanguages: jest.fn() };
     const moduleRef = await Test.createTestingModule({
       providers: [
         QuestionsService,
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: JobsService, useValue: jobsService },
+        { provide: ExamRuntimeInternalClient, useValue: examRuntime },
       ],
     }).compile();
     service = moduleRef.get(QuestionsService);

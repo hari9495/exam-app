@@ -47,8 +47,13 @@ export class CreateQuestionDto {
   tags?: string[];
 
   @IsOptional()
-  @IsIn(VALID_CODE_LANGUAGES)
-  codeLanguage?: string;
+  @IsIn(['fixed', 'any'])
+  languageMode?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  allowedLanguages?: string[];
 
   @IsOptional()
   @IsString()

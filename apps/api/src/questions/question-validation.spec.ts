@@ -184,54 +184,99 @@ describe('validateQuestionPayload', () => {
     ).toThrow(BadRequestException);
   });
 
-  it('accepts a code question with zero options and a valid codeLanguage', () => {
+  it('accepts a fixed-mode code question with zero options and an allowed language', () => {
     expect(() =>
-      validateQuestionPayload({
-        type: 'code',
-        difficulty: 'medium',
-        marks: 10,
-        negativeMarks: 0,
-        options: [],
-        codeLanguage: 'python',
-      }),
+      validateQuestionPayload(
+        {
+          type: 'code',
+          difficulty: 'medium',
+          marks: 10,
+          negativeMarks: 0,
+          options: [],
+          languageMode: 'fixed',
+          allowedLanguages: ['python'],
+        },
+        ['python', 'javascript'],
+      ),
+    ).not.toThrow();
+  });
+
+  it('accepts a fixed-mode code question with multiple allowed languages', () => {
+    expect(() =>
+      validateQuestionPayload(
+        {
+          type: 'code',
+          difficulty: 'medium',
+          marks: 10,
+          negativeMarks: 0,
+          options: [],
+          languageMode: 'fixed',
+          allowedLanguages: ['python', 'java'],
+        },
+        ['python', 'java', 'javascript'],
+      ),
+    ).not.toThrow();
+  });
+
+  it('accepts an any-mode code question with no allowedLanguages', () => {
+    expect(() =>
+      validateQuestionPayload(
+        { type: 'code', difficulty: 'medium', marks: 10, negativeMarks: 0, options: [], languageMode: 'any' },
+        ['python', 'javascript'],
+      ),
     ).not.toThrow();
   });
 
   it('rejects a code question with any options', () => {
     expect(() =>
-      validateQuestionPayload({
-        type: 'code',
-        difficulty: 'medium',
-        marks: 10,
-        negativeMarks: 0,
-        options: [{ text: 'irrelevant', isCorrect: false }],
-        codeLanguage: 'python',
-      }),
+      validateQuestionPayload(
+        {
+          type: 'code',
+          difficulty: 'medium',
+          marks: 10,
+          negativeMarks: 0,
+          options: [{ text: 'irrelevant', isCorrect: false }],
+          languageMode: 'fixed',
+          allowedLanguages: ['python'],
+        },
+        ['python'],
+      ),
     ).toThrow('code questions must not have options');
   });
 
-  it('rejects a code question with a missing codeLanguage', () => {
+  it('rejects a code question with an unknown languageMode', () => {
     expect(() =>
-      validateQuestionPayload({
-        type: 'code',
-        difficulty: 'medium',
-        marks: 10,
-        negativeMarks: 0,
-        options: [],
-      }),
-    ).toThrow('Unknown or missing codeLanguage');
+      validateQuestionPayload(
+        { type: 'code', difficulty: 'medium', marks: 10, negativeMarks: 0, options: [], languageMode: 'sometimes' },
+        ['python'],
+      ),
+    ).toThrow('Unknown languageMode');
   });
 
-  it('rejects a code question with an unsupported codeLanguage', () => {
+  it('rejects a fixed-mode code question with no allowedLanguages', () => {
     expect(() =>
-      validateQuestionPayload({
-        type: 'code',
-        difficulty: 'medium',
-        marks: 10,
-        negativeMarks: 0,
-        options: [],
-        codeLanguage: 'cobol',
-      }),
-    ).toThrow('Unknown or missing codeLanguage');
+      validateQuestionPayload(
+        { type: 'code', difficulty: 'medium', marks: 10, negativeMarks: 0, options: [], languageMode: 'fixed', allowedLanguages: [] },
+        ['python'],
+      ),
+    ).toThrow('Fixed-mode code questions must specify at least one allowed language');
+  });
+
+  it('rejects a fixed-mode code question with a language not on the live Piston list', () => {
+    expect(() =>
+      validateQuestionPayload(
+        { type: 'code', difficulty: 'medium', marks: 10, negativeMarks: 0, options: [], languageMode: 'fixed', allowedLanguages: ['cobol'] },
+        ['python', 'javascript'],
+      ),
+    ).toThrow('Unsupported language(s): cobol');
+  });
+
+  it('rejects an any-mode code question that also specifies allowedLanguages', () => {
+    expect(() =>
+      validateQuestionPayload(
+        { type: 'code', difficulty: 'medium', marks: 10, negativeMarks: 0, options: [], languageMode: 'any', allowedLanguages: ['python'] },
+        ['python'],
+      ),
+    ).toThrow('Any-mode code questions must not specify allowedLanguages');
   });
 });
