@@ -179,7 +179,12 @@ describe('AttemptService', () => {
         attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
         question: {
           findMany: jest.fn().mockResolvedValue([
-            { id: 'q1', text: 'What is 2+2?', type: 'single_mcq', marks: 5, options: [{ id: 'opt-a', text: '4' }, { id: 'opt-b', text: '5' }] },
+            {
+              id: 'q1', text: 'What is 2+2?', type: 'single_mcq', marks: 5,
+              languageMode: 'fixed', allowedLanguages: null,
+              starterCode: null, allowStdin: false, snippetCode: null, snippetLanguage: null, imageUrl: null,
+              options: [{ id: 'opt-a', text: '4', imageUrl: null }, { id: 'opt-b', text: '5', imageUrl: null }],
+            },
           ]),
         },
         answer: { findMany: jest.fn().mockResolvedValue([{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isMarkedForReview: false }]) },
@@ -196,7 +201,15 @@ describe('AttemptService', () => {
         remainingSeconds: 3300,
         exam: { title: 'Backend Round' },
         sections: [
-          { title: 'Section One', targetDurationMinutes: 20, questions: [{ id: 'q1', text: 'What is 2+2?', type: 'single_mcq', marks: 5, options: [{ id: 'opt-a', text: '4' }, { id: 'opt-b', text: '5' }] }] },
+          {
+            title: 'Section One', targetDurationMinutes: 20,
+            questions: [{
+              id: 'q1', text: 'What is 2+2?', type: 'single_mcq', marks: 5,
+              languageMode: 'fixed', allowedLanguages: [],
+              starterCode: null, allowStdin: false, snippetCode: null, snippetLanguage: null, imageUrl: null,
+              options: [{ id: 'opt-a', text: '4', imageUrl: null }, { id: 'opt-b', text: '5', imageUrl: null }],
+            }],
+          },
         ],
         answers: [{ questionId: 'q1', selectedOptionIds: ['opt-a'], isMarkedForReview: false }],
         messages: [],
@@ -207,7 +220,7 @@ describe('AttemptService', () => {
       expect((result as any).sections[0].questions[0]).not.toHaveProperty('isCorrect');
     });
 
-    it('includes codeLanguage and starterCode for a code question so the candidate\'s editor can be configured', async () => {
+    it('includes languageMode and allowedLanguages for a code question so the candidate can pick a language', async () => {
       const attempt = {
         id: 'attempt-1', status: 'in_progress', startedAt: new Date(),
         questionOrderJson: JSON.stringify(['code-q1']),
@@ -218,7 +231,13 @@ describe('AttemptService', () => {
         attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
         question: {
           findMany: jest.fn().mockResolvedValue([
-            { id: 'code-q1', text: 'Reverse a string', type: 'code', marks: 10, codeLanguage: 'python', starterCode: 'def reverse(s):\n    pass', allowStdin: true, options: [] },
+            {
+              id: 'code-q1', text: 'Reverse a string', type: 'code', marks: 10,
+              languageMode: 'fixed', allowedLanguages: JSON.stringify(['python', 'java']),
+              starterCode: 'def reverse(s):\n    pass', allowStdin: true,
+              snippetCode: null, snippetLanguage: null, imageUrl: null,
+              options: [],
+            },
           ]),
         },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
@@ -232,9 +251,44 @@ describe('AttemptService', () => {
 
       expect((result as any).sections[0].questions[0]).toEqual({
         id: 'code-q1', text: 'Reverse a string', type: 'code', marks: 10,
-        codeLanguage: 'python', starterCode: 'def reverse(s):\n    pass', allowStdin: true, options: [],
+        languageMode: 'fixed', allowedLanguages: ['python', 'java'],
+        starterCode: 'def reverse(s):\n    pass', allowStdin: true,
+        snippetCode: null, snippetLanguage: null, imageUrl: null,
+        options: [],
       });
-      expect((result as any).sections[0].questions.find((q: any) => q.type === 'code')?.allowStdin).toBe(true);
+    });
+
+    it('reports an empty allowedLanguages array for an any-mode code question', async () => {
+      const attempt = {
+        id: 'attempt-1', status: 'in_progress', startedAt: new Date(),
+        questionOrderJson: JSON.stringify(['code-q2']),
+        sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', targetDurationMinutes: null, questionIds: ['code-q2'] }]),
+        optionOrderJson: null,
+      };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'code-q2', text: 'Solve in any language', type: 'code', marks: 15,
+              languageMode: 'any', allowedLanguages: null,
+              starterCode: null, allowStdin: false,
+              snippetCode: null, snippetLanguage: null, imageUrl: null,
+              options: [],
+            },
+          ]),
+        },
+        answer: { findMany: jest.fn().mockResolvedValue([]) },
+        candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+      };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      settlement.remainingSeconds.mockReturnValue(3300);
+      mockBootstrapWithLogoThenScoped(tx);
+
+      const result = await service.getCurrent(session);
+
+      expect((result as any).sections[0].questions[0].languageMode).toBe('any');
+      expect((result as any).sections[0].questions[0].allowedLanguages).toEqual([]);
     });
 
     it('includes snippetCode, snippetLanguage, and imageUrl (question + option) for an mcq question', async () => {
@@ -250,7 +304,7 @@ describe('AttemptService', () => {
           findMany: jest.fn().mockResolvedValue([
             {
               id: 'mcq-q1', text: 'What does this code print?', type: 'single_mcq', marks: 5,
-              codeLanguage: null, starterCode: null, allowStdin: false,
+              languageMode: 'fixed', allowedLanguages: null, starterCode: null, allowStdin: false,
               snippetCode: 'x = [1, 2, 3]\nprint(x[::-1])', snippetLanguage: 'python', imageUrl: 'http://localhost:3001/uploads/question-images/stem.png',
               options: [
                 { id: 'opt-a', text: '[3, 2, 1]', imageUrl: 'http://localhost:3001/uploads/question-images/opt-a.png' },
@@ -270,7 +324,7 @@ describe('AttemptService', () => {
 
       expect((result as any).sections[0].questions[0]).toEqual({
         id: 'mcq-q1', text: 'What does this code print?', type: 'single_mcq', marks: 5,
-        codeLanguage: null, starterCode: null, allowStdin: false,
+        languageMode: 'fixed', allowedLanguages: [], starterCode: null, allowStdin: false,
         snippetCode: 'x = [1, 2, 3]\nprint(x[::-1])', snippetLanguage: 'python', imageUrl: 'http://localhost:3001/uploads/question-images/stem.png',
         options: [
           { id: 'opt-a', text: '[3, 2, 1]', imageUrl: 'http://localhost:3001/uploads/question-images/opt-a.png' },
@@ -1144,10 +1198,12 @@ describe('AttemptService', () => {
           questionId: 'code-question-1',
           selectedOptionIdsJson: JSON.stringify([]),
           answerText: 'function reverse(s) { return s; }',
+          codeLanguage: null,
           isMarkedForReview: false,
         },
         update: {
           answerText: 'function reverse(s) { return s; }',
+          codeLanguage: null,
           isMarkedForReview: false,
           answeredAt: expect.any(Date),
         },
@@ -1175,11 +1231,13 @@ describe('AttemptService', () => {
           questionId: 'code-question-1',
           selectedOptionIdsJson: JSON.stringify([]),
           answerText: 'print(1)',
+          codeLanguage: null,
           isMarkedForReview: false,
           telemetryJson: JSON.stringify(telemetry),
         },
         update: {
           answerText: 'print(1)',
+          codeLanguage: null,
           isMarkedForReview: false,
           answeredAt: expect.any(Date),
           telemetryJson: JSON.stringify(telemetry),
@@ -1204,6 +1262,28 @@ describe('AttemptService', () => {
         expect.objectContaining({
           create: expect.not.objectContaining({ telemetryJson: expect.anything() }),
           update: expect.not.objectContaining({ telemetryJson: expect.anything() }),
+        }),
+      );
+    });
+
+    it('persists the candidate\'s chosen codeLanguage on a code answer', async () => {
+      const codeAttempt = { ...attempt, questionOrderJson: JSON.stringify(['code-question-1']) };
+      const codeQuestion = { id: 'code-question-1', type: 'code', options: [] };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(codeAttempt) },
+        question: { findFirstOrThrow: jest.fn().mockResolvedValue(codeQuestion) },
+        answer: { upsert: jest.fn().mockResolvedValue({}) },
+      };
+      settlement.settleIfExpired.mockResolvedValue(codeAttempt);
+      mockBootstrapThenScoped(tx);
+
+      const result = await service.answer(session, { questionId: 'code-question-1', selectedOptionIds: [], answerText: 'print(1)', codeLanguage: 'python' });
+
+      expect(result.answerText).toBe('print(1)');
+      expect(tx.answer.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ codeLanguage: 'python' }),
+          update: expect.objectContaining({ codeLanguage: 'python' }),
         }),
       );
     });
@@ -1362,9 +1442,15 @@ describe('AttemptService', () => {
   });
 
   describe('runCode', () => {
-    const codeQuestion = { id: 'q-code-1', type: 'code', codeLanguage: 'python', allowStdin: false };
+    const codeQuestion = { id: 'q-code-1', type: 'code', languageMode: 'fixed', allowedLanguages: JSON.stringify(['python']), allowStdin: false };
 
-    function setupTx(overrides: Partial<{ status: string; questionOrderJson: string; question: typeof codeQuestion }> = {}) {
+    function setupTx(
+      overrides: Partial<{
+        status: string;
+        questionOrderJson: string;
+        question: { id: string; type: string; languageMode: string; allowedLanguages: string | null; allowStdin: boolean };
+      }> = {},
+    ) {
       const attempt = {
         id: 'attempt-1',
         status: overrides.status ?? 'in_progress',
@@ -1382,8 +1468,9 @@ describe('AttemptService', () => {
       mockBootstrapThenScoped(tx);
       pistonClient.execute.mockResolvedValue({ stdout: 'hi\n', stderr: '', exitCode: 0, compileError: null, timedOut: false });
       runLimiter.checkAndIncrement.mockResolvedValue({ allowed: true, remaining: 29 });
+      pistonRuntimes.resolveLanguage.mockResolvedValue({ language: 'python', version: '3.10.0' });
 
-      const result = await service.runCode(session, { questionId: 'q-code-1', code: 'print("hi")' });
+      const result = await service.runCode(session, { questionId: 'q-code-1', code: 'print("hi")', codeLanguage: 'python' });
 
       expect(result).toEqual({ stdout: 'hi\n', stderr: '', exitCode: 0, compileError: null, timedOut: false, runsRemaining: 29 });
       expect(pistonClient.execute).toHaveBeenCalledWith({ language: 'python', version: '3.10.0', code: 'print("hi")', stdin: undefined });
@@ -1394,7 +1481,7 @@ describe('AttemptService', () => {
       settlement.settleIfExpired.mockResolvedValue({ id: 'attempt-1', status: 'in_progress', questionOrderJson: JSON.stringify(['q-code-1']) });
       mockBootstrapThenScoped(tx);
 
-      await expect(service.runCode(session, { questionId: 'q-code-1', code: 'x' })).rejects.toThrow(BadRequestException);
+      await expect(service.runCode(session, { questionId: 'q-code-1', code: 'x', codeLanguage: 'python' })).rejects.toThrow(BadRequestException);
     });
 
     it('ignores stdin when the question does not allow it', async () => {
@@ -1403,8 +1490,9 @@ describe('AttemptService', () => {
       mockBootstrapThenScoped(tx);
       pistonClient.execute.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, compileError: null, timedOut: false });
       runLimiter.checkAndIncrement.mockResolvedValue({ allowed: true, remaining: 29 });
+      pistonRuntimes.resolveLanguage.mockResolvedValue({ language: 'python', version: '3.10.0' });
 
-      await service.runCode(session, { questionId: 'q-code-1', code: 'x', stdin: 'ignored' });
+      await service.runCode(session, { questionId: 'q-code-1', code: 'x', stdin: 'ignored', codeLanguage: 'python' });
 
       expect(pistonClient.execute).toHaveBeenCalledWith(expect.objectContaining({ stdin: undefined }));
     });
@@ -1415,8 +1503,9 @@ describe('AttemptService', () => {
       mockBootstrapThenScoped(tx);
       pistonClient.execute.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, compileError: null, timedOut: false });
       runLimiter.checkAndIncrement.mockResolvedValue({ allowed: true, remaining: 29 });
+      pistonRuntimes.resolveLanguage.mockResolvedValue({ language: 'python', version: '3.10.0' });
 
-      await service.runCode(session, { questionId: 'q-code-1', code: 'x', stdin: 'Alice' });
+      await service.runCode(session, { questionId: 'q-code-1', code: 'x', stdin: 'Alice', codeLanguage: 'python' });
 
       expect(pistonClient.execute).toHaveBeenCalledWith(expect.objectContaining({ stdin: 'Alice' }));
     });
@@ -1427,7 +1516,7 @@ describe('AttemptService', () => {
       mockBootstrapThenScoped(tx);
       runLimiter.checkAndIncrement.mockResolvedValue({ allowed: false, remaining: 0 });
 
-      await expect(service.runCode(session, { questionId: 'q-code-1', code: 'x' })).rejects.toMatchObject({ status: 429 });
+      await expect(service.runCode(session, { questionId: 'q-code-1', code: 'x', codeLanguage: 'python' })).rejects.toMatchObject({ status: 429 });
       expect(pistonClient.execute).not.toHaveBeenCalled();
     });
 
@@ -1436,7 +1525,7 @@ describe('AttemptService', () => {
       settlement.settleIfExpired.mockResolvedValue({ id: 'attempt-1', status: 'submitted', questionOrderJson: JSON.stringify(['q-code-1']) });
       mockBootstrapThenScoped(tx);
 
-      await expect(service.runCode(session, { questionId: 'q-code-1', code: 'x' })).rejects.toThrow(BadRequestException);
+      await expect(service.runCode(session, { questionId: 'q-code-1', code: 'x', codeLanguage: 'python' })).rejects.toThrow(BadRequestException);
     });
 
     it('translates a Piston failure into a 502 sandbox_unavailable error', async () => {
@@ -1444,9 +1533,49 @@ describe('AttemptService', () => {
       settlement.settleIfExpired.mockResolvedValue({ id: 'attempt-1', status: 'in_progress', questionOrderJson: JSON.stringify(['q-code-1']) });
       mockBootstrapThenScoped(tx);
       runLimiter.checkAndIncrement.mockResolvedValue({ allowed: true, remaining: 29 });
+      pistonRuntimes.resolveLanguage.mockResolvedValue({ language: 'python', version: '3.10.0' });
       pistonClient.execute.mockRejectedValue(new Error('network error'));
 
-      await expect(service.runCode(session, { questionId: 'q-code-1', code: 'x' })).rejects.toMatchObject({ status: 502 });
+      await expect(service.runCode(session, { questionId: 'q-code-1', code: 'x', codeLanguage: 'python' })).rejects.toMatchObject({ status: 502 });
+    });
+
+    it('rejects a run with a language not in the question\'s allowedLanguages (fixed mode)', async () => {
+      const tx = setupTx({ question: codeQuestion });
+      settlement.settleIfExpired.mockResolvedValue({ id: 'attempt-1', status: 'in_progress', questionOrderJson: JSON.stringify(['q-code-1']) });
+      mockBootstrapThenScoped(tx);
+      runLimiter.checkAndIncrement.mockResolvedValue({ allowed: true, remaining: 29 });
+
+      await expect(
+        service.runCode(session, { questionId: 'q-code-1', code: 'x', codeLanguage: 'ruby' }),
+      ).rejects.toThrow('ruby is not an allowed language for this question');
+    });
+
+    it('resolves the language via PistonRuntimesService instead of a static map', async () => {
+      const tx = setupTx({ question: codeQuestion });
+      settlement.settleIfExpired.mockResolvedValue({ id: 'attempt-1', status: 'in_progress', questionOrderJson: JSON.stringify(['q-code-1']) });
+      mockBootstrapThenScoped(tx);
+      runLimiter.checkAndIncrement.mockResolvedValue({ allowed: true, remaining: 29 });
+      pistonRuntimes.resolveLanguage.mockResolvedValue({ language: 'python', version: '3.10.0' });
+      pistonClient.execute.mockResolvedValue({ stdout: 'ok', stderr: '', exitCode: 0, compileError: null, timedOut: false });
+
+      await service.runCode(session, { questionId: 'q-code-1', code: 'print(1)', codeLanguage: 'python' });
+
+      expect(pistonRuntimes.resolveLanguage).toHaveBeenCalledWith('python');
+      expect(pistonClient.execute).toHaveBeenCalledWith(expect.objectContaining({ language: 'python', version: '3.10.0' }));
+    });
+
+    it('allows any language for an any-mode question as long as Piston resolves it', async () => {
+      const anyModeQuestion = { id: 'q-code-2', type: 'code', languageMode: 'any', allowedLanguages: null, allowStdin: false };
+      const tx = setupTx({ question: anyModeQuestion });
+      settlement.settleIfExpired.mockResolvedValue({ id: 'attempt-1', status: 'in_progress', questionOrderJson: JSON.stringify(['q-code-2']) });
+      mockBootstrapThenScoped(tx);
+      runLimiter.checkAndIncrement.mockResolvedValue({ allowed: true, remaining: 29 });
+      pistonRuntimes.resolveLanguage.mockResolvedValue({ language: 'rust', version: '1.68.0' });
+      pistonClient.execute.mockResolvedValue({ stdout: 'ok', stderr: '', exitCode: 0, compileError: null, timedOut: false });
+
+      const result = await service.runCode(session, { questionId: 'q-code-2', code: 'fn main() {}', codeLanguage: 'rust' });
+
+      expect(result.stdout).toBe('ok');
     });
   });
 

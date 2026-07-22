@@ -7,6 +7,9 @@ export class RunCodeDto {
   @IsString()
   code!: string;
 
+  @IsString()
+  codeLanguage!: string;
+
   @IsOptional()
   @IsString()
   stdin?: string;

@@ -45,6 +45,10 @@ export class AnswerDto {
   answerText?: string;
 
   @IsOptional()
+  @IsString()
+  codeLanguage?: string;
+
+  @IsOptional()
   @IsBoolean()
   markedForReview?: boolean;
 

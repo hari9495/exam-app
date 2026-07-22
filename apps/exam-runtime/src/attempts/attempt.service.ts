@@ -14,7 +14,6 @@ import { effectiveDurationMinutes } from '../grading/grading';
 import { PistonClient, PistonExecuteResult } from '../code-execution/piston-client';
 import { PistonRuntimesService } from '../code-execution/piston-runtimes.service';
 import { RunLimiter } from '../code-execution/run-limiter';
-import { PISTON_LANGUAGE_MAP } from '../code-execution/piston-languages';
 import { RunCodeDto } from './dto/run-code.dto';
 import { WebcamViolationDto } from './dto/webcam-violation.dto';
 import { WebcamSnapshotDto } from './dto/webcam-snapshot.dto';
@@ -30,7 +29,8 @@ interface AttemptQuestion {
   text: string;
   type: string;
   marks: number;
-  codeLanguage: string | null;
+  languageMode: string;
+  allowedLanguages: string[];
   starterCode: string | null;
   allowStdin: boolean;
   snippetCode: string | null;
@@ -56,6 +56,7 @@ interface AttemptAnswerSummary {
   questionId: string;
   selectedOptionIds: string[];
   answerText: string | null;
+  codeLanguage: string | null;
   isMarkedForReview: boolean;
 }
 
@@ -180,6 +181,7 @@ export class AttemptService {
           questionId: answer.questionId,
           selectedOptionIds: JSON.parse(answer.selectedOptionIdsJson),
           answerText: answer.answerText,
+          codeLanguage: answer.codeLanguage,
           isMarkedForReview: answer.isMarkedForReview,
         })),
         messages: unreadMessages.map((message) => ({ id: message.id, body: message.body, sentAt: message.sentAt })),
@@ -310,6 +312,9 @@ export class AttemptService {
       const isMarkedForReview = dto.markedForReview ?? false;
 
       if (question.type === 'code') {
+        if (dto.codeLanguage) {
+          this.validateChosenLanguage(question, dto.codeLanguage);
+        }
         const telemetryPatch = dto.telemetry ? { telemetryJson: JSON.stringify(dto.telemetry) } : {};
         await tx.answer.upsert({
           where: { attemptId_questionId: { attemptId: settled.id, questionId: dto.questionId } },
@@ -318,11 +323,13 @@ export class AttemptService {
             questionId: dto.questionId,
             selectedOptionIdsJson: JSON.stringify([]),
             answerText: dto.answerText ?? null,
+            codeLanguage: dto.codeLanguage ?? null,
             isMarkedForReview,
             ...telemetryPatch,
           },
           update: {
             answerText: dto.answerText ?? null,
+            codeLanguage: dto.codeLanguage ?? null,
             isMarkedForReview,
             answeredAt: new Date(),
             ...telemetryPatch,
@@ -402,9 +409,10 @@ export class AttemptService {
       throw new HttpException('You have used all 30 runs for this question', HttpStatus.TOO_MANY_REQUESTS);
     }
 
-    const languageEntry = PISTON_LANGUAGE_MAP[question.codeLanguage as string];
+    this.validateChosenLanguage(question, dto.codeLanguage);
+    const languageEntry = await this.pistonRuntimes.resolveLanguage(dto.codeLanguage);
     if (!languageEntry) {
-      throw new BadRequestException(`Unsupported code language: ${question.codeLanguage}`);
+      throw new BadRequestException(`Unsupported code language: ${dto.codeLanguage}`);
     }
 
     try {
@@ -429,6 +437,15 @@ export class AttemptService {
         { error: 'sandbox_unavailable', message: "Couldn't run your code right now, try again." },
         HttpStatus.BAD_GATEWAY,
       );
+    }
+  }
+
+  private validateChosenLanguage(question: { languageMode: string; allowedLanguages: string | null }, chosen: string): void {
+    if (question.languageMode === 'fixed') {
+      const allowed: string[] = question.allowedLanguages ? JSON.parse(question.allowedLanguages) : [];
+      if (!allowed.includes(chosen)) {
+        throw new BadRequestException(`${chosen} is not an allowed language for this question`);
+      }
     }
   }
 
@@ -653,7 +670,8 @@ export class AttemptService {
             text: question.text,
             type: question.type,
             marks: question.marks,
-            codeLanguage: question.codeLanguage,
+            languageMode: question.languageMode,
+            allowedLanguages: question.allowedLanguages ? JSON.parse(question.allowedLanguages) : [],
             starterCode: question.starterCode,
             allowStdin: question.allowStdin,
             snippetCode: question.snippetCode,
