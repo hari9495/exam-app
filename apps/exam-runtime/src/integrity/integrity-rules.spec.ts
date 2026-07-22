@@ -235,27 +235,34 @@ describe('deriveAttemptFlags: proctoring_events', () => {
     expect(flag!.detail).toBe('0 high-severity and 5 medium-severity proctoring event(s) recorded');
   });
 
-  it('flags high when 5 medium events include a dev_tools_detected event', () => {
+  it('flags high when a dev_tools_detected (high-severity) event is mixed with 4 medium events', () => {
+    // dev_tools_detected is stamped severity 'high' at creation (see proctoring-severity.ts).
     const events = [
-      { eventType: 'dev_tools_detected', severity: 'medium' },
+      { eventType: 'dev_tools_detected', severity: 'high' },
       ...Array.from({ length: 4 }, () => ({ eventType: 'tab_switch', severity: 'medium' })),
     ];
     const flags = deriveAttemptFlags({ webcamViolationCount: 0, blocked: false, events });
     expect(flags.find((f) => f.type === 'proctoring_events')!.severity).toBe('high');
   });
 
-  it('flags on a single high-severity event even without 5 events', () => {
+  it('flags high on a single high-severity event even without 5 events, regardless of eventType', () => {
     const events = [{ eventType: 'window_blur', severity: 'high' }];
     const flags = deriveAttemptFlags({ webcamViolationCount: 0, blocked: false, events });
     const flag = flags.find((f) => f.type === 'proctoring_events');
     expect(flag).toBeDefined();
-    // eventType does not match dev_tools_detected/multi_login, so severity stays medium
-    // even though the trigger condition was a high-severity event.
-    expect(flag!.severity).toBe('medium');
+    // Severity is derived from the stored severity column, not an eventType whitelist --
+    // any high-severity event (whatever its type) yields a high flag.
+    expect(flag!.severity).toBe('high');
   });
 
   it('flags high when the triggering high-severity event is multi_login', () => {
     const events = [{ eventType: 'multi_login', severity: 'high' }];
+    const flags = deriveAttemptFlags({ webcamViolationCount: 0, blocked: false, events });
+    expect(flags.find((f) => f.type === 'proctoring_events')!.severity).toBe('high');
+  });
+
+  it('flags high when the triggering high-severity event is multi_monitor_detected', () => {
+    const events = [{ eventType: 'multi_monitor_detected', severity: 'high' }];
     const flags = deriveAttemptFlags({ webcamViolationCount: 0, blocked: false, events });
     expect(flags.find((f) => f.type === 'proctoring_events')!.severity).toBe('high');
   });

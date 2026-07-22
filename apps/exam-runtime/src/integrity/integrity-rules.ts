@@ -103,9 +103,7 @@ export function deriveAttemptFlags(input: {
   const highEvents = events.filter((e) => e.severity === 'high');
   const mediumEvents = events.filter((e) => e.severity === 'medium');
   if (highEvents.length > 0 || mediumEvents.length >= MEDIUM_EVENT_COUNT_FLAG) {
-    const isHigh = events.some(
-      (e) => e.eventType === 'dev_tools_detected' || e.eventType === 'multi_login',
-    );
+    const isHigh = highEvents.length > 0;
     flags.push({
       type: 'proctoring_events',
       severity: isHigh ? 'high' : 'medium',
