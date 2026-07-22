@@ -85,7 +85,11 @@ test('recruiter sees a candidate go live on the exam Live tab as they start thei
   });
   await candidatePage.goto(`/start?token=${inviteToken}`);
   await expect(candidatePage).toHaveURL(/\/welcome$/);
+  // The welcome page always shows the practice step first -- "Enable camera" only renders
+  // once practice is skipped/completed.
+  await candidatePage.getByRole('button', { name: /skip practice/i }).click();
   await candidatePage.getByRole('button', { name: 'Enable camera' }).click();
+  await candidatePage.getByRole('checkbox', { name: /i understand and consent to monitoring/i }).click();
   await candidatePage.getByRole('button', { name: 'Start exam' }).click();
   await expect(candidatePage).toHaveURL(/\/exam$/);
 
@@ -167,7 +171,11 @@ test('recruiter sees the leaderboard update when a candidate answers correctly',
   });
   await candidatePage.goto(`/start?token=${inviteToken}`);
   await expect(candidatePage).toHaveURL(/\/welcome$/);
+  // The welcome page always shows the practice step first -- "Enable camera" only renders
+  // once practice is skipped/completed.
+  await candidatePage.getByRole('button', { name: /skip practice/i }).click();
   await candidatePage.getByRole('button', { name: 'Enable camera' }).click();
+  await candidatePage.getByRole('checkbox', { name: /i understand and consent to monitoring/i }).click();
   await candidatePage.getByRole('button', { name: 'Start exam' }).click();
   await expect(candidatePage).toHaveURL(/\/exam$/);
 

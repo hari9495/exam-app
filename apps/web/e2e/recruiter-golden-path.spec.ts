@@ -74,7 +74,7 @@ test('recruiter creates an exam, adds a section and question, publishes, adds a 
   await page.getByRole('button', { name: 'Send invitations' }).click();
   await expect(page.getByText(/Invited 1 candidate/).first()).toBeVisible();
 
-  await page.getByRole('link', { name: 'Bulk upload & invite' }).click();
+  await page.getByRole('link', { name: 'Upload & invite' }).click();
   await expect(page).toHaveURL(/\/candidates\/bulk-upload-invite$/);
   await page.getByLabel('Exam to invite to').click();
   await page.getByRole('option', { name: examTitle, exact: true }).click();

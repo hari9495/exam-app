@@ -29,9 +29,13 @@ test('candidate is blocked before the window opens and can start once the recrui
   const examTitle = `Scheduling Golden Path Exam ${Date.now()}`;
   await page.getByLabel('Title').fill(examTitle);
   await page.getByLabel('Enable scheduling').click();
-  const inOneMinute = new Date(Date.now() + 60 * 1000);
+  // 5 minutes, not 1 -- the setup between here and the candidate's "not yet open" check below
+  // (create section, add question, publish, invite, redeem) is itself real page-load time on a
+  // dev server and can eat well over a minute, which would let the window silently open before
+  // the assertion runs.
+  const inFiveMinutes = new Date(Date.now() + 5 * 60 * 1000);
   const inOneHour = new Date(Date.now() + 60 * 60 * 1000);
-  await page.getByLabel('Window opens').fill(toLocalInputValue(inOneMinute));
+  await page.getByLabel('Window opens').fill(toLocalInputValue(inFiveMinutes));
   await page.getByLabel('Window closes').fill(toLocalInputValue(inOneHour));
   await page.getByRole('button', { name: 'Create exam' }).click();
   await expect(page).toHaveURL(/\/exams\/.+\/edit$/);
@@ -76,6 +80,9 @@ test('candidate is blocked before the window opens and can start once the recrui
   });
   await candidatePage.goto(`/start?token=${inviteToken}`);
   await expect(candidatePage).toHaveURL(/\/welcome/);
+  // The welcome page always shows the practice step first (regardless of scheduling state) --
+  // the "opens on"/scheduling-gate message only renders after practice is skipped/completed.
+  await candidatePage.getByRole('button', { name: /skip practice/i }).click();
   await expect(candidatePage.getByText(/opens on/i)).toBeVisible();
   await expect(candidatePage.getByRole('button', { name: 'Start exam' })).not.toBeVisible();
 
@@ -86,8 +93,11 @@ test('candidate is blocked before the window opens and can start once the recrui
 
   await candidatePage.waitForTimeout(31_000);
   await candidatePage.reload();
+  // The reload resets the welcome page's local `step` state back to 'practice' -- skip it again.
+  await candidatePage.getByRole('button', { name: /skip practice/i }).click();
   await expect(candidatePage.getByRole('button', { name: 'Enable camera' })).toBeVisible({ timeout: 10_000 });
   await candidatePage.getByRole('button', { name: 'Enable camera' }).click();
+  await candidatePage.getByRole('checkbox', { name: /i understand and consent to monitoring/i }).click();
   await candidatePage.getByRole('button', { name: 'Start exam' }).click();
   await expect(candidatePage).toHaveURL(/\/exam/);
 

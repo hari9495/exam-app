@@ -54,6 +54,9 @@ test('org admin adds a staff member, reviews the audit log, and exports/erases a
   await page.getByRole('button', { name: 'Export data' }).click();
   await expect(page.getByText('Profile')).toBeVisible();
   await page.getByRole('button', { name: 'Erase candidate' }).click();
+  // "Confirm erase" stays disabled until the candidate's email is typed into the
+  // confirmation field (apps/web/app/(org-admin)/data-rights/page.tsx's eraseConfirmed check).
+  await page.getByLabel("Type the candidate's email to confirm").fill(candidateEmail);
   await page.getByRole('button', { name: 'Confirm erase' }).click();
   await expect(page.getByText(/Erased at/)).toBeVisible();
 });

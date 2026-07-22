@@ -43,8 +43,12 @@ async function settleAttempt(page: import('@playwright/test').Page, token: strin
   });
   await page.goto(`/start?token=${token}`);
   await expect(page).toHaveURL(/\/welcome$/);
+  // The welcome page always shows the practice step first -- the exam title/Enable camera
+  // only render once practice is skipped/completed.
+  await page.getByRole('button', { name: /skip practice/i }).click();
   await expect(page.getByText(examTitle)).toBeVisible();
   await page.getByRole('button', { name: 'Enable camera' }).click();
+  await page.getByRole('checkbox', { name: /i understand and consent to monitoring/i }).click();
   await page.getByRole('button', { name: 'Start exam' }).click();
   await expect(page).toHaveURL(/\/exam$/);
 
