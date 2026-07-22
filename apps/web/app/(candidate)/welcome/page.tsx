@@ -19,6 +19,7 @@ export default function CandidateWelcomePage() {
   const [cameraStatus, setCameraStatus] = useState<'idle' | 'checking' | 'granted' | 'denied'>('idle');
   const [consentChecked, setConsentChecked] = useState(false);
   const [step, setStep] = useState<'practice' | 'consent'>('practice');
+  const [multiMonitorBlocked, setMultiMonitorBlocked] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !accessToken) {
@@ -56,6 +57,14 @@ export default function CandidateWelcomePage() {
   }
 
   async function handleStart() {
+    // Re-checked on every click: unplugging the display then clicking again proceeds.
+    // undefined (Firefox/Safari) can't be detected -- fail open, matching the
+    // platform's client-side proctoring posture.
+    if ((window.screen as Screen & { isExtended?: boolean }).isExtended === true) {
+      setMultiMonitorBlocked(true);
+      return;
+    }
+    setMultiMonitorBlocked(false);
     try {
       await startAttempt.mutateAsync();
       router.push('/exam');
@@ -132,6 +141,12 @@ export default function CandidateWelcomePage() {
                 If you do not consent, close this page and contact your recruiter.
               </p>
             </div>
+
+            {multiMonitorBlocked ? (
+              <div className="mb-3 rounded-md border border-candidate-danger-border bg-candidate-danger-bg p-3 text-sm text-candidate-danger">
+                Please disconnect additional displays before starting the exam.
+              </div>
+            ) : null}
 
             {cameraStatus === 'granted' ? (
               <CandidateButton onClick={handleStart} disabled={startAttempt.isPending || !consentChecked} className="w-full">

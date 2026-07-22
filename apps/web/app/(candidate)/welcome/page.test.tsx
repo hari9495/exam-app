@@ -346,4 +346,69 @@ describe('CandidateWelcomePage', () => {
 
     expect(screen.getByText('1 question total')).toBeInTheDocument();
   });
+
+  function setIsExtended(value: boolean | undefined) {
+    Object.defineProperty(window.screen, 'isExtended', { value, configurable: true });
+  }
+
+  it('blocks start and shows the disconnect message while a second display is detected', async () => {
+    setIsExtended(true);
+    const mutateAsync = jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' });
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 }, sections: [] },
+      isLoading: false,
+    });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync, isPending: false });
+    mockCameraGranted();
+
+    render(<CandidateWelcomePage />);
+    await skipPractice();
+    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
+    await checkConsent();
+    await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+
+    expect(screen.getByText('Please disconnect additional displays before starting the exam.')).toBeInTheDocument();
+    expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('proceeds when clicked again after the display is disconnected', async () => {
+    setIsExtended(true);
+    const mutateAsync = jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' });
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 }, sections: [] },
+      isLoading: false,
+    });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync, isPending: false });
+    mockCameraGranted();
+
+    render(<CandidateWelcomePage />);
+    await skipPractice();
+    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
+    await checkConsent();
+    await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+
+    setIsExtended(false);
+    await userEvent.click(screen.getByRole('button', { name: 'Start exam' }));
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
+  });
+
+  it('proceeds normally when isExtended is unsupported (undefined)', async () => {
+    setIsExtended(undefined);
+    const mutateAsync = jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' });
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 }, sections: [] },
+      isLoading: false,
+    });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync, isPending: false });
+    mockCameraGranted();
+
+    render(<CandidateWelcomePage />);
+    await skipPractice();
+    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
+    await checkConsent();
+    await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
+  });
 });
