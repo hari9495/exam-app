@@ -6,6 +6,7 @@ import { AttemptSettlementService } from '../grading/attempt-settlement.service'
 import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
 import { AttemptInsightService } from '../attempt-insight/attempt-insight.service';
 import { CodeReviewService } from '../code-review/code-review.service';
+import { PistonRuntimesService } from '../code-execution/piston-runtimes.service';
 import { ATTEMPT_STATUS_BROADCASTER } from '../monitoring/attempt-status-broadcaster';
 
 describe('InternalController', () => {
@@ -15,6 +16,7 @@ describe('InternalController', () => {
   let attemptAnalysis: { analyze: jest.Mock };
   let attemptInsight: { analyze: jest.Mock };
   let codeReviewService: { analyze: jest.Mock };
+  let pistonRuntimes: { getAvailableLanguages: jest.Mock };
   let broadcaster: { emitMessageSent: jest.Mock };
 
   beforeEach(async () => {
@@ -23,6 +25,7 @@ describe('InternalController', () => {
     attemptAnalysis = { analyze: jest.fn() };
     attemptInsight = { analyze: jest.fn() };
     codeReviewService = { analyze: jest.fn() };
+    pistonRuntimes = { getAvailableLanguages: jest.fn() };
     broadcaster = { emitMessageSent: jest.fn().mockResolvedValue(undefined) };
 
     const moduleRef = await Test.createTestingModule({
@@ -33,6 +36,7 @@ describe('InternalController', () => {
         { provide: AttemptAnalysisService, useValue: attemptAnalysis },
         { provide: AttemptInsightService, useValue: attemptInsight },
         { provide: CodeReviewService, useValue: codeReviewService },
+        { provide: PistonRuntimesService, useValue: pistonRuntimes },
         { provide: ATTEMPT_STATUS_BROADCASTER, useValue: broadcaster },
       ],
     }).compile();
@@ -214,6 +218,16 @@ describe('InternalController', () => {
       await controller.settleIfExpiredBatch({ attemptIds: ['missing-1'] });
 
       expect(attemptSettlement.settleIfExpired).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listCodeLanguages', () => {
+    it('lists available code-execution languages from PistonRuntimesService', async () => {
+      pistonRuntimes.getAvailableLanguages.mockResolvedValue([{ language: 'python', version: '3.10.0' }]);
+
+      const result = await controller.listCodeLanguages();
+
+      expect(result).toEqual({ languages: [{ language: 'python', version: '3.10.0' }] });
     });
   });
 

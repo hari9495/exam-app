@@ -3,6 +3,7 @@ import { GradingModule } from '../grading/grading.module';
 import { ProctoringAnalysisModule } from '../proctoring-analysis/proctoring-analysis.module';
 import { AttemptInsightModule } from '../attempt-insight/attempt-insight.module';
 import { CodeReviewModule } from '../code-review/code-review.module';
+import { CodeExecutionModule } from '../code-execution/code-execution.module';
 import { InternalController } from './internal.controller';
 
 // No MonitoringModule import — this app has no real MonitoringGateway/WebSocket
@@ -10,7 +11,7 @@ import { InternalController } from './internal.controller';
 // and, transitively, AttemptSettlementService inside GradingModule) is supplied
 // globally by RemoteMonitoringBridgeModule at the InternalAppModule level.
 @Module({
-  imports: [GradingModule, ProctoringAnalysisModule, AttemptInsightModule, CodeReviewModule],
+  imports: [GradingModule, ProctoringAnalysisModule, AttemptInsightModule, CodeReviewModule, CodeExecutionModule],
   controllers: [InternalController],
 })
 export class InternalModule {}

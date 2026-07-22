@@ -1,9 +1,10 @@
-import { BadRequestException, Body, Controller, HttpCode, Inject, Logger, NotFoundException, Param, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, Inject, Logger, NotFoundException, Param, Post, UseGuards } from '@nestjs/common';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
 import { AttemptInsightService } from '../attempt-insight/attempt-insight.service';
 import { CodeReviewService } from '../code-review/code-review.service';
+import { PistonRuntimesService } from '../code-execution/piston-runtimes.service';
 import { ATTEMPT_STATUS_BROADCASTER, AttemptStatusBroadcaster } from '../monitoring/attempt-status-broadcaster';
 import { InternalAuthGuard } from './internal-auth.guard';
 import { effectiveDurationMinutes } from '../grading/grading';
@@ -22,6 +23,7 @@ export class InternalController {
     private readonly attemptAnalysis: AttemptAnalysisService,
     private readonly attemptInsight: AttemptInsightService,
     private readonly codeReviewService: CodeReviewService,
+    private readonly pistonRuntimes: PistonRuntimesService,
     @Inject(ATTEMPT_STATUS_BROADCASTER) private readonly broadcaster: AttemptStatusBroadcaster,
   ) {}
 
@@ -126,6 +128,12 @@ export class InternalController {
         await this.attemptSettlement.settleIfExpired(tx, exam, attempt);
       }
     });
+  }
+
+  @Get('code-execution/languages')
+  async listCodeLanguages() {
+    const languages = await this.pistonRuntimes.getAvailableLanguages();
+    return { languages };
   }
 
   @Post('monitoring/message-sent')

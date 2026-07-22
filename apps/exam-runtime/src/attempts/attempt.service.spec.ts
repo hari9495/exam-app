@@ -7,6 +7,7 @@ import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { LeaderboardService } from '../leaderboard/leaderboard.service';
 import { getProctoringEventSeverity } from './proctoring-severity';
 import { PistonClient } from '../code-execution/piston-client';
+import { PistonRuntimesService } from '../code-execution/piston-runtimes.service';
 import { RunLimiter } from '../code-execution/run-limiter';
 
 describe('AttemptService', () => {
@@ -21,6 +22,7 @@ describe('AttemptService', () => {
   };
   let monitoringGateway: { emitAttemptStatus: jest.Mock; emitProctoringFlag: jest.Mock; emitLeaderboardUpdate: jest.Mock };
   let pistonClient: { execute: jest.Mock };
+  let pistonRuntimes: { getAvailableLanguages: jest.Mock; resolveLanguage: jest.Mock };
   let runLimiter: { checkAndIncrement: jest.Mock };
   let leaderboardService: { computeRecruiterView: jest.Mock; computeCandidateView: jest.Mock };
   let audit: { record: jest.Mock };
@@ -42,6 +44,7 @@ describe('AttemptService', () => {
     };
     monitoringGateway = { emitAttemptStatus: jest.fn(), emitProctoringFlag: jest.fn(), emitLeaderboardUpdate: jest.fn() };
     pistonClient = { execute: jest.fn() };
+    pistonRuntimes = { getAvailableLanguages: jest.fn(), resolveLanguage: jest.fn() };
     runLimiter = { checkAndIncrement: jest.fn() };
     leaderboardService = { computeRecruiterView: jest.fn(), computeCandidateView: jest.fn() };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
@@ -53,6 +56,7 @@ describe('AttemptService', () => {
         { provide: AttemptSettlementService, useValue: settlement },
         { provide: MonitoringGateway, useValue: monitoringGateway },
         { provide: PistonClient, useValue: pistonClient },
+        { provide: PistonRuntimesService, useValue: pistonRuntimes },
         { provide: RunLimiter, useValue: runLimiter },
         { provide: LeaderboardService, useValue: leaderboardService },
         { provide: AuditService, useValue: audit },
@@ -1443,6 +1447,16 @@ describe('AttemptService', () => {
       pistonClient.execute.mockRejectedValue(new Error('network error'));
 
       await expect(service.runCode(session, { questionId: 'q-code-1', code: 'x' })).rejects.toMatchObject({ status: 502 });
+    });
+  });
+
+  describe('getCodeLanguages', () => {
+    it('returns the live Piston language list', async () => {
+      pistonRuntimes.getAvailableLanguages.mockResolvedValue([{ language: 'python', version: '3.10.0' }]);
+
+      const result = await service.getCodeLanguages();
+
+      expect(result).toEqual({ languages: [{ language: 'python', version: '3.10.0' }] });
     });
   });
 

@@ -169,6 +169,23 @@ describe('ExamRuntimeInternalClient', () => {
     });
   });
 
+  describe('listAvailableLanguages', () => {
+    it('listAvailableLanguages GETs the internal languages endpoint and returns the parsed result', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: async () => ({ languages: [{ language: 'python', version: '3.10.0' }] }),
+      });
+
+      const result = await client.listAvailableLanguages();
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/internal/code-execution/languages'),
+        expect.objectContaining({ method: 'GET' }),
+      );
+      expect(result).toEqual({ languages: [{ language: 'python', version: '3.10.0' }] });
+    });
+  });
+
   describe('timeout and network-error handling', () => {
     it('aborts and throws ServiceUnavailableException when the request exceeds the default timeout', async () => {
       jest.useFakeTimers();

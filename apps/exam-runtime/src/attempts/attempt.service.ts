@@ -12,6 +12,7 @@ import { ReportProctoringEventDto } from './dto/report-proctoring-event.dto';
 import { shuffle } from './shuffle';
 import { effectiveDurationMinutes } from '../grading/grading';
 import { PistonClient, PistonExecuteResult } from '../code-execution/piston-client';
+import { PistonRuntimesService } from '../code-execution/piston-runtimes.service';
 import { RunLimiter } from '../code-execution/run-limiter';
 import { PISTON_LANGUAGE_MAP } from '../code-execution/piston-languages';
 import { RunCodeDto } from './dto/run-code.dto';
@@ -122,6 +123,7 @@ export class AttemptService {
     private readonly attemptSettlement: AttemptSettlementService,
     private readonly monitoringGateway: MonitoringGateway,
     private readonly pistonClient: PistonClient,
+    private readonly pistonRuntimes: PistonRuntimesService,
     private readonly runLimiter: RunLimiter,
     private readonly leaderboardService: LeaderboardService,
     private readonly audit: AuditService,
@@ -186,6 +188,11 @@ export class AttemptService {
         organizationPrimaryColor,
       };
     });
+  }
+
+  async getCodeLanguages(): Promise<{ languages: { language: string; version: string }[] }> {
+    const languages = await this.pistonRuntimes.getAvailableLanguages();
+    return { languages };
   }
 
   async start(session: CandidateSession, dto: StartAttemptDto = {}, clientIp = ''): Promise<{ id: string; status: string }> {

@@ -26,6 +26,10 @@ interface FinalizeManualGradeResult {
   status: string;
 }
 
+interface ListAvailableLanguagesResult {
+  languages: { language: string; version: string }[];
+}
+
 @Injectable()
 export class ExamRuntimeInternalClient {
   async forceSubmit(attemptId: string): Promise<ForceSubmitResult> {
@@ -105,6 +109,15 @@ export class ExamRuntimeInternalClient {
       body: JSON.stringify(payload),
     });
     await this.throwIfNotOk(response);
+  }
+
+  async listAvailableLanguages(): Promise<ListAvailableLanguagesResult> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/code-execution/languages`, {
+      method: 'GET',
+      headers: this.headers(),
+    });
+    await this.throwIfNotOk(response);
+    return response.json();
   }
 
   private baseUrl(): string {

@@ -72,6 +72,11 @@ export class AttemptController {
     return this.attemptService.getLeaderboard(candidate);
   }
 
+  @Get('code-languages')
+  getCodeLanguages() {
+    return this.attemptService.getCodeLanguages();
+  }
+
   @Post('run-code')
   @Throttle(STRICT_CODE_RUN_THROTTLE)
   runCode(@CurrentCandidate() candidate: CandidateSession, @Body() dto: RunCodeDto) {
