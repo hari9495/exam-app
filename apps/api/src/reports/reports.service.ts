@@ -81,6 +81,14 @@ export type IntegritySummary = {
   narrative: string | null;
 } | null;
 
+export interface WebcamTimelineEntry {
+  occurredAt: string;
+  kind: 'violation' | 'periodic';
+  reason?: string;
+  strike?: number;
+  snapshot: string;
+}
+
 export interface CandidateDetail {
   candidateId: string;
   candidateName: string;
@@ -93,6 +101,7 @@ export interface CandidateDetail {
   proctoringAnalysis: { status: string; riskLevel: string | null; summary: string | null } | null;
   integrityAnalysis: IntegritySummary;
   sections: CandidateDetailSection[];
+  webcamTimeline: WebcamTimelineEntry[];
 }
 
 export interface CandidateComparisonRow {
@@ -289,7 +298,7 @@ export class ReportsService {
     };
 
     if (!row.attemptId) {
-      return { ...base, sections: [] };
+      return { ...base, sections: [], webcamTimeline: [] };
     }
 
     return this.tenantPrisma.forTenant(context, async (tx) => {
@@ -298,8 +307,26 @@ export class ReportsService {
         select: { sectionSnapshotJson: true, answers: true },
       });
       if (!attempt) {
-        return { ...base, sections: [] };
+        return { ...base, sections: [], webcamTimeline: [] };
       }
+
+      const webcamEvents = await tx.proctoringEvent.findMany({
+        where: { attemptId: row.attemptId as string, eventType: { startsWith: 'webcam_' } },
+        orderBy: { occurredAt: 'asc' },
+      });
+      const webcamTimeline: WebcamTimelineEntry[] = webcamEvents.map((e) => {
+        const meta = e.metadataJson ? JSON.parse(e.metadataJson) : {};
+        if (e.eventType === 'webcam_snapshot') {
+          return { occurredAt: e.occurredAt.toISOString(), kind: 'periodic' as const, snapshot: meta.snapshot ?? '' };
+        }
+        return {
+          occurredAt: e.occurredAt.toISOString(),
+          kind: 'violation' as const,
+          reason: e.eventType.replace(/^webcam_/, ''),
+          strike: meta.strike,
+          snapshot: meta.snapshot ?? '',
+        };
+      });
 
       const sectionSnapshot: SectionSnapshotEntryShape[] = JSON.parse(attempt.sectionSnapshotJson);
       const allQuestionIds = sectionSnapshot.flatMap((section) => section.questionIds);
@@ -343,7 +370,7 @@ export class ReportsService {
         };
       });
 
-      return { ...base, sections };
+      return { ...base, sections, webcamTimeline };
     });
   }
 

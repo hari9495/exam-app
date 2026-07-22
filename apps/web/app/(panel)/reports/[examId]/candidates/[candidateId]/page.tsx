@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
@@ -9,10 +10,20 @@ import {
   useRegenerateAttemptInsight,
   useResultsList,
 } from '../../../../../../lib/hooks/usePanelReports';
-import { Badge, Button, Card, StatusBadge, IntegrityBadge, useToast, type StatusTone } from '../../../../../../components/ui';
+import type { WebcamTimelineEntry } from '../../../../../../lib/types';
+import { Badge, Button, Card, Modal, StatusBadge, IntegrityBadge, useToast, type StatusTone } from '../../../../../../components/ui';
 
 const PASS_FAIL_VARIANT: Record<string, 'success' | 'danger'> = { pass: 'success', fail: 'danger' };
 const SEVERITY_TONE: Record<string, StatusTone> = { high: 'danger', medium: 'warning', low: 'neutral' };
+
+function formatSnapshotTime(occurredAt: string): string {
+  return new Date(occurredAt).toLocaleString();
+}
+
+function formatSnapshotModalTitle(entry: WebcamTimelineEntry): string {
+  const time = formatSnapshotTime(entry.occurredAt);
+  return entry.kind === 'violation' ? `${time} — ${entry.reason} — strike ${entry.strike}` : time;
+}
 
 export default function PanelCandidateDetailPage() {
   const { examId, candidateId } = useParams<{ examId: string; candidateId: string }>();
@@ -23,6 +34,7 @@ export default function PanelCandidateDetailPage() {
   const { data: results } = useResultsList(examId);
   const regenerate = useRegenerateAttemptInsight();
   const { toast } = useToast();
+  const [selectedSnapshot, setSelectedSnapshot] = useState<WebcamTimelineEntry | null>(null);
 
   const handleRegenerate = () => {
     if (!attemptId) return;
@@ -98,6 +110,49 @@ export default function PanelCandidateDetailPage() {
           </p>
         </Card>
       </motion.div>
+
+      <div className="mb-6">
+        <h2 className="mb-2 text-lg font-medium">Webcam timeline</h2>
+        {candidate.webcamTimeline.length === 0 ? (
+          <p className="text-sm text-gray-500">No webcam snapshots recorded.</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+            {candidate.webcamTimeline.map((entry, index) => (
+              <button
+                key={index}
+                type="button"
+                onClick={() => setSelectedSnapshot(entry)}
+                aria-label={`Webcam snapshot at ${formatSnapshotTime(entry.occurredAt)}`}
+                className={`rounded border-2 p-2 text-left ${entry.kind === 'violation' ? 'border-red-500' : 'border-gray-200'}`}
+              >
+                {entry.snapshot !== '' ? (
+                  <img src={entry.snapshot} alt="" className="mb-1 h-20 w-full rounded object-cover" />
+                ) : (
+                  <div className="mb-1 flex h-20 w-full items-center justify-center rounded bg-gray-100 text-xs text-gray-400">
+                    No image
+                  </div>
+                )}
+                <p className="text-xs text-gray-500">{formatSnapshotTime(entry.occurredAt)}</p>
+                {entry.kind === 'violation' && (
+                  <p className="text-xs font-medium text-red-700">
+                    {entry.reason} — strike {entry.strike}
+                  </p>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <Modal
+        open={selectedSnapshot !== null}
+        title={selectedSnapshot ? formatSnapshotModalTitle(selectedSnapshot) : ''}
+        onClose={() => setSelectedSnapshot(null)}
+      >
+        {selectedSnapshot && selectedSnapshot.snapshot !== '' && (
+          <img src={selectedSnapshot.snapshot} alt="Webcam snapshot" className="w-full rounded" />
+        )}
+      </Modal>
 
       {attemptId && (
         <motion.div

@@ -410,6 +410,14 @@ export interface CandidateDetailSection extends SectionScore {
   questions: CandidateDetailQuestion[];
 }
 
+export interface WebcamTimelineEntry {
+  occurredAt: string;
+  kind: 'violation' | 'periodic';
+  reason?: string;
+  strike?: number;
+  snapshot: string;
+}
+
 export interface CandidateDetail {
   candidateId: string;
   candidateName: string;
@@ -422,6 +430,7 @@ export interface CandidateDetail {
   proctoringAnalysis: ProctoringAnalysisSummary | null;
   integrityAnalysis: IntegritySummary | null;
   sections: CandidateDetailSection[];
+  webcamTimeline: WebcamTimelineEntry[];
 }
 
 export interface CandidateComparisonRow {

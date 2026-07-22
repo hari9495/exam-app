@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useParams, useSearchParams } from 'next/navigation';
 import {
@@ -29,6 +29,7 @@ const candidateDetail = {
   submittedAt: null,
   proctoringAnalysis: null,
   integrityAnalysis: null,
+  webcamTimeline: [],
   sections: [
     {
       sectionId: 's1',
@@ -172,5 +173,40 @@ describe('PanelCandidateDetailPage', () => {
     expect(screen.getByText('Answers closely match another candidate.')).toBeInTheDocument();
     const counterpartLink = screen.getByRole('link', { name: /Bob/ });
     expect(counterpartLink).toHaveAttribute('href', '/reports/exam-1/candidates/c2?attemptId=a2');
+  });
+
+  describe('webcam timeline', () => {
+    it('renders a tile per entry and opens the Modal with the enlarged image on click', async () => {
+      (useAttemptInsight as jest.Mock).mockReturnValue({ data: null, isLoading: false });
+      (useCandidateReport as jest.Mock).mockReturnValue({
+        data: {
+          ...candidateDetail,
+          webcamTimeline: [
+            { occurredAt: '2026-01-01T00:05:00.000Z', kind: 'violation', reason: 'multiple_faces', strike: 1, snapshot: 'data:image/png;base64,a' },
+            { occurredAt: '2026-01-01T00:10:00.000Z', kind: 'periodic', snapshot: 'data:image/png;base64,b' },
+          ],
+        },
+        isLoading: false,
+      });
+
+      renderPage();
+
+      expect(screen.getByText('Webcam timeline')).toBeInTheDocument();
+      expect(screen.getByText(/multiple_faces — strike 1/)).toBeInTheDocument();
+      const tiles = screen.getAllByRole('button', { name: /webcam snapshot/i });
+      expect(tiles).toHaveLength(2);
+
+      await userEvent.click(tiles[0]);
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      const enlargedImage = within(screen.getByRole('dialog')).getByRole('img');
+      expect(enlargedImage).toHaveAttribute('src', 'data:image/png;base64,a');
+    });
+
+    it('shows the empty state when there is no webcam timeline data', () => {
+      (useAttemptInsight as jest.Mock).mockReturnValue({ data: null, isLoading: false });
+      renderPage();
+
+      expect(screen.getByText('No webcam snapshots recorded.')).toBeInTheDocument();
+    });
   });
 });

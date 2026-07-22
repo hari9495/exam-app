@@ -242,6 +242,7 @@ describe('ReportsService', () => {
             { id: 'q3', text: 'Q3 text', type: 'single_mcq', marks: 3, negativeMarks: 0, options: [{ id: 'opt-c', text: 'C', isCorrect: false }, { id: 'opt-d', text: 'D', isCorrect: true }] },
           ]),
         },
+        proctoringEvent: { findMany: jest.fn().mockResolvedValue([]) },
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
@@ -278,7 +279,7 @@ describe('ReportsService', () => {
       expect(detail).toEqual({
         candidateId: 'cand-2', candidateName: 'Bob', status: 'invited',
         score: null, maxScore: null, percentage: null, passFail: null, submittedAt: null,
-        proctoringAnalysis: null, integrityAnalysis: null, sections: [],
+        proctoringAnalysis: null, integrityAnalysis: null, sections: [], webcamTimeline: [],
       });
       expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
     });
@@ -357,12 +358,61 @@ describe('ReportsService', () => {
             { id: 'q2', text: 'Q2 text', type: 'single_mcq', marks: 5, negativeMarks: 1, options: [{ id: 'opt-c', text: 'C', isCorrect: true }, { id: 'opt-d', text: 'D', isCorrect: false }] },
           ]),
         },
+        proctoringEvent: { findMany: jest.fn().mockResolvedValue([]) },
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
       const detail = await service.getCandidateDetail(context, 'exam-1', 'cand-1');
 
       expect(detail.sections[0]).toMatchObject({ sectionId: 'sec-1', title: 'Section One', score: 0, maxScore: 10 });
+    });
+
+    it('builds a chronological webcamTimeline from webcam_ ProctoringEvents, mapping violation vs periodic snapshot entries', async () => {
+      examsService.getResults.mockResolvedValue([
+        row({
+          candidateId: 'cand-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted',
+          score: 5, maxScore: 5, percentage: 100, passFail: 'pass',
+        }),
+      ]);
+      const tx = {
+        attempt: {
+          findFirst: jest.fn().mockResolvedValue({
+            sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
+            answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5 }],
+          }),
+        },
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'q1', text: 'Q1 text', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', text: 'A', isCorrect: true }] },
+          ]),
+        },
+        proctoringEvent: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              eventType: 'webcam_multiple_faces',
+              occurredAt: new Date('2026-01-01T00:05:00Z'),
+              metadataJson: JSON.stringify({ snapshot: 'a', strike: 1 }),
+            },
+            {
+              eventType: 'webcam_snapshot',
+              occurredAt: new Date('2026-01-01T00:10:00Z'),
+              metadataJson: JSON.stringify({ snapshot: 'b' }),
+            },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const detail = await service.getCandidateDetail(context, 'exam-1', 'cand-1');
+
+      expect(tx.proctoringEvent.findMany).toHaveBeenCalledWith({
+        where: { attemptId: 'a1', eventType: { startsWith: 'webcam_' } },
+        orderBy: { occurredAt: 'asc' },
+      });
+      expect(detail.webcamTimeline).toEqual([
+        { occurredAt: '2026-01-01T00:05:00.000Z', kind: 'violation', reason: 'multiple_faces', strike: 1, snapshot: 'a' },
+        { occurredAt: '2026-01-01T00:10:00.000Z', kind: 'periodic', snapshot: 'b' },
+      ]);
     });
   });
 
