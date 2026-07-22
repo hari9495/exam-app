@@ -11,6 +11,7 @@ import { StartAttemptDto } from './dto/start-attempt.dto';
 import { ReportProctoringEventDto } from './dto/report-proctoring-event.dto';
 import { RunCodeDto } from './dto/run-code.dto';
 import { WebcamViolationDto } from './dto/webcam-violation.dto';
+import { WebcamSnapshotDto } from './dto/webcam-snapshot.dto';
 import { MODERATE_ATTEMPT_THROTTLE, STRICT_CODE_RUN_THROTTLE } from '../rate-limit-tiers';
 
 @Controller('attempt')
@@ -52,6 +53,12 @@ export class AttemptController {
   @Throttle(MODERATE_ATTEMPT_THROTTLE)
   webcamViolation(@CurrentCandidate() candidate: CandidateSession, @Body() dto: WebcamViolationDto) {
     return this.attemptService.webcamViolation(candidate, dto);
+  }
+
+  @Post('webcam-snapshot')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  webcamSnapshot(@CurrentCandidate() candidate: CandidateSession, @Body() dto: WebcamSnapshotDto) {
+    return this.attemptService.webcamSnapshot(candidate, dto);
   }
 
   @Post('webcam-resume')

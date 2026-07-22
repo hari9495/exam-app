@@ -238,7 +238,10 @@ export class AttemptSettlementService {
     snapshot: string,
   ): Promise<{ attempt: Attempt; strike: number }> {
     const strike = attempt.webcamViolationCount + 1;
-    const eventType = reason === 'no_face' ? 'webcam_no_face' : 'webcam_head_turned';
+    const eventType =
+      reason === 'no_face' ? 'webcam_no_face'
+      : reason === 'multiple_faces' ? 'webcam_multiple_faces'
+      : 'webcam_head_turned';
     await tx.proctoringEvent.create({
       data: {
         attemptId: attempt.id,

@@ -62,4 +62,14 @@ describe('getProctoringEventSeverity', () => {
     expect(CLIENT_REPORTABLE_EVENT_TYPES).toContain('multi_monitor_detected');
     expect(getProctoringEventSeverity('multi_monitor_detected')).toBe('high');
   });
+
+  it('accepts looking_down as client-reportable with medium severity', () => {
+    expect(CLIENT_REPORTABLE_EVENT_TYPES).toContain('looking_down');
+    expect(getProctoringEventSeverity('looking_down')).toBe('medium');
+  });
+
+  it('maps webcam_snapshot to low severity (server-stored, not client-reportable)', () => {
+    expect(CLIENT_REPORTABLE_EVENT_TYPES).not.toContain('webcam_snapshot');
+    expect(getProctoringEventSeverity('webcam_snapshot')).toBe('low');
+  });
 });

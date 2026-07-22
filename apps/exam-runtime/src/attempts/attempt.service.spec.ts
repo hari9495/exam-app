@@ -1425,6 +1425,21 @@ describe('AttemptService', () => {
     });
   });
 
+  describe('webcamSnapshot', () => {
+    it('stores a low-severity webcam_snapshot event and does not emit a live flag', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
+      mockBootstrapThenScoped(tx);
+
+      const result = await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,abc' });
+
+      expect(result).toEqual({ ok: true });
+      expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+        data: { attemptId: 'attempt-1', eventType: 'webcam_snapshot', severity: 'low', metadataJson: JSON.stringify({ snapshot: 'data:image/jpeg;base64,abc' }) },
+      });
+      expect(monitoringGateway.emitProctoringFlag).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getLeaderboard', () => {
     it('delegates to LeaderboardService.computeCandidateView while the attempt is in_progress, regardless of feedbackVisibility', async () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) } };

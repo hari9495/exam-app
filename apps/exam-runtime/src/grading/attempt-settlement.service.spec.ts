@@ -785,6 +785,18 @@ describe('AttemptSettlementService', () => {
       expect(tx.proctoringEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: 'webcam_head_turned', severity: 'high' }) }));
       expect(tx.attempt.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'blocked' }) }));
     });
+
+    it('maps multiple_faces to the webcam_multiple_faces event type', async () => {
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', webcamViolationCount: 0 } as any;
+      const tx = {
+        proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
+        attempt: { update: jest.fn().mockResolvedValue({ ...attempt, status: 'paused', webcamViolationCount: 1 }) },
+      } as any;
+
+      await service.registerWebcamViolation(tx, attempt, 'multiple_faces', 'snap');
+
+      expect(tx.proctoringEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: 'webcam_multiple_faces' }) }));
+    });
   });
 
   describe('resumeFromPause', () => {

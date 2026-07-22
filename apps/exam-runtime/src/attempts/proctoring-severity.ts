@@ -9,6 +9,7 @@ export const CLIENT_REPORTABLE_EVENT_TYPES = [
   'editor_paste',
   'window_blur',
   'multi_monitor_detected',
+  'looking_down',
 ] as const;
 
 type Severity = 'low' | 'medium' | 'high';
@@ -22,9 +23,11 @@ const SEVERITY_BY_EVENT_TYPE: Record<string, Severity> = {
   copy_paste: 'medium',
   editor_paste: 'medium',
   window_blur: 'medium',
+  looking_down: 'medium',
   right_click: 'low',
   refresh_warning: 'low',
   idle_timeout: 'low',
+  webcam_snapshot: 'low',
 };
 
 export function getProctoringEventSeverity(eventType: string): Severity {

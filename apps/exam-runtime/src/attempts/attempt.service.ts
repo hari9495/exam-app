@@ -16,6 +16,7 @@ import { RunLimiter } from '../code-execution/run-limiter';
 import { PISTON_LANGUAGE_MAP } from '../code-execution/piston-languages';
 import { RunCodeDto } from './dto/run-code.dto';
 import { WebcamViolationDto } from './dto/webcam-violation.dto';
+import { WebcamSnapshotDto } from './dto/webcam-snapshot.dto';
 
 interface AttemptQuestionOption {
   id: string;
@@ -465,6 +466,18 @@ export class AttemptService {
       const { attempt: updated, strike } = await this.attemptSettlement.registerWebcamViolation(tx, attempt, dto.reason, dto.snapshot);
       return { strike, status: updated.status };
     });
+  }
+
+  async webcamSnapshot(session: CandidateSession, dto: WebcamSnapshotDto): Promise<{ ok: true }> {
+    const { organizationId, invitation } = await this.resolveContext(session.invitationId);
+    await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
+      if (!attempt) return;
+      await tx.proctoringEvent.create({
+        data: { attemptId: attempt.id, eventType: 'webcam_snapshot', severity: 'low', metadataJson: JSON.stringify({ snapshot: dto.snapshot }) },
+      });
+    });
+    return { ok: true };
   }
 
   async getLeaderboard(session: CandidateSession): Promise<CandidateLeaderboardResponse> {
