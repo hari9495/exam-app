@@ -228,6 +228,19 @@ export default function CandidateExamPage() {
             </button>
           </div>
           <p className="mb-4 text-sm text-candidate-text">{question.text}</p>
+          {question.imageUrl ? (
+            <img src={question.imageUrl} alt="Question illustration" className="mb-4 max-h-64 rounded-lg object-contain" />
+          ) : null}
+          {question.snippetCode ? (
+            <div className="mb-4 overflow-hidden rounded-md">
+              <div className="bg-[#1E1E1E] px-3 py-1.5">
+                <span className="rounded bg-[#2D2D2D] px-2 py-0.5 text-[11px] font-semibold text-candidate-text-faint">
+                  {question.snippetLanguage ?? 'plaintext'}
+                </span>
+              </div>
+              <pre className="overflow-x-auto bg-[#1E1E1E] px-3 py-2 font-mono text-xs text-candidate-text-faint">{question.snippetCode}</pre>
+            </div>
+          ) : null}
           {question.type === 'code' ? (
             <>
               <div className="overflow-hidden rounded-t-md">
@@ -287,6 +300,9 @@ export default function CandidateExamPage() {
                         )}
                         aria-hidden="true"
                       />
+                      {option.imageUrl ? (
+                        <img src={option.imageUrl} alt="Option illustration" className="h-10 w-10 rounded object-cover" />
+                      ) : null}
                       {option.text}
                     </span>
                   </button>

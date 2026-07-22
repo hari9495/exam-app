@@ -455,6 +455,50 @@ describe('CandidateExamPage', () => {
     expect(screen.getByText(/#3/)).toBeInTheDocument();
   });
 
+  it('renders the code snippet, question image, and option images when present', () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: {
+        status: 'in_progress',
+        remainingSeconds: 600,
+        webcamViolationCount: 0,
+        exam: { title: 'Sample Exam' },
+        sections: [
+          {
+            title: 'Section 1',
+            targetDurationMinutes: null,
+            questions: [
+              {
+                id: 'q1', text: 'What does this code print?', type: 'single_mcq', marks: 5,
+                codeLanguage: null, starterCode: null, allowStdin: false,
+                snippetCode: 'x = [1, 2, 3]\nprint(x[::-1])', snippetLanguage: 'python', imageUrl: 'http://localhost:3001/uploads/question-images/stem.png',
+                options: [
+                  { id: 'opt-a', text: '[3, 2, 1]', imageUrl: 'http://localhost:3001/uploads/question-images/opt-a.png' },
+                  { id: 'opt-b', text: '[1, 2, 3]', imageUrl: null },
+                ],
+              },
+            ],
+          },
+        ],
+        answers: [],
+        messages: [],
+        feedback: null,
+        organizationLogoUrl: null,
+        organizationPrimaryColor: null,
+      },
+      isError: false,
+    });
+
+    render(<CandidateExamPage />);
+
+    // exact: false — the <pre> node's full text also includes the second line, and RTL's
+    // default text normalization collapses the snippet's newline to a space, so an exact
+    // match against just the first line would never match the node's full normalized text.
+    expect(screen.getByText('x = [1, 2, 3]', { exact: false })).toBeInTheDocument();
+    expect(screen.getByText('python')).toBeInTheDocument();
+    expect(screen.getByAltText('Question illustration')).toHaveAttribute('src', 'http://localhost:3001/uploads/question-images/stem.png');
+    expect(screen.getByAltText('Option illustration')).toHaveAttribute('src', 'http://localhost:3001/uploads/question-images/opt-a.png');
+  });
+
   it('stops leaderboard polling while paused', () => {
     const leaderboardSpy = jest.spyOn(useAttemptModule, 'useLeaderboard').mockReturnValue({
       data: { you: { rank: 3, correctCount: 2 }, top: [] },

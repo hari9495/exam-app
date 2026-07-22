@@ -235,6 +235,7 @@ export interface AnswerTelemetry {
 export interface AttemptQuestionOption {
   id: string;
   text: string;
+  imageUrl: string | null;
 }
 
 export interface AttemptQuestion {
@@ -245,6 +246,9 @@ export interface AttemptQuestion {
   codeLanguage: CodeLanguage | null;
   starterCode: string | null;
   allowStdin: boolean;
+  snippetCode: string | null;
+  snippetLanguage: CodeLanguage | null;
+  imageUrl: string | null;
   options: AttemptQuestionOption[];
 }
 
