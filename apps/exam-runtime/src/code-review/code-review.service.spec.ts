@@ -80,4 +80,31 @@ describe('CodeReviewService', () => {
     );
     expect(tx.aiCreditUsage.create).not.toHaveBeenCalled();
   });
+
+  it("sends the candidate's chosen codeLanguage (from the Answer, not the Question) to the review client", async () => {
+    const tx = {
+      answer: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: 'answer-1',
+          answerText: 'print(1)',
+          codeLanguage: 'python',
+          question: { text: 'x', starterCode: null, marks: 10 },
+          attempt: { invitation: { exam: { organizationId: 'org-1' } } },
+        }),
+      },
+      codeAnswerReview: { upsert: jest.fn() },
+      aiCreditUsage: { create: jest.fn() },
+    };
+    const tenantPrisma = { forTenant: jest.fn((_context, callback) => callback(tx)) };
+    const claudeCodeReviewClient = { review: jest.fn().mockResolvedValue({ suggestedMarks: 5, summary: 'ok' }) };
+    const aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue('key') };
+    const service = new CodeReviewService(tenantPrisma as never, claudeCodeReviewClient as never, aiApiKeyResolver as never);
+
+    await service.analyze('answer-1');
+
+    expect(claudeCodeReviewClient.review).toHaveBeenCalledWith(
+      expect.objectContaining({ codeLanguage: 'python' }),
+      'key',
+    );
+  });
 });

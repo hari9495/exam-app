@@ -569,7 +569,7 @@ export class ExamsService {
             questionId: answer.questionId,
             questionText: answer.question.text,
             starterCode: answer.question.starterCode,
-            codeLanguage: answer.question.codeLanguage,
+            codeLanguage: answer.codeLanguage,
             answerText: answer.answerText,
             marks: answer.question.marks,
             marksAwarded: answer.marksAwarded,

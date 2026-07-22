@@ -1099,6 +1099,32 @@ describe('ExamsService', () => {
     });
   });
 
+  describe('getPendingGrading', () => {
+    it("reports the candidate's chosen codeLanguage from the Answer row, not the Question", async () => {
+      const attempt = {
+        id: 'attempt-1',
+        invitation: { candidateId: 'cand-1', candidate: { name: 'Ada' } },
+        answers: [
+          {
+            questionId: 'q-1',
+            answerText: 'print(1)',
+            codeLanguage: 'python',
+            marksAwarded: null,
+            gradingFeedback: null,
+            question: { type: 'code', text: 'x', starterCode: null, marks: 10 },
+          },
+        ],
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
+        fn({ exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) }, attempt: { findMany: jest.fn().mockResolvedValue([attempt]) } }),
+      );
+
+      const result = await service.getPendingGrading(context, 'exam-1');
+
+      expect(result[0].codeQuestions[0].codeLanguage).toBe('python');
+    });
+  });
+
   describe('getResults', () => {
     it('throws NotFoundException when the exam does not exist', async () => {
       const tx = { exam: { findFirst: jest.fn().mockResolvedValue(null) } };

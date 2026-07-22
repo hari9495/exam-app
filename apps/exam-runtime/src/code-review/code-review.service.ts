@@ -35,7 +35,7 @@ export class CodeReviewService {
           {
             questionText: answer.question.text,
             starterCode: answer.question.starterCode,
-            codeLanguage: answer.question.codeLanguage ?? 'plaintext',
+            codeLanguage: answer.codeLanguage ?? 'plaintext',
             answerText: answer.answerText,
             marks: answer.question.marks,
           },
