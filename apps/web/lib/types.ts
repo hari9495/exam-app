@@ -213,7 +213,9 @@ export type ProctoringEventType =
   | 'dev_tools_detected'
   | 'refresh_warning'
   | 'idle_timeout'
-  | 'editor_paste';
+  | 'editor_paste'
+  | 'window_blur'
+  | 'multi_monitor_detected';
 
 export interface AnswerTelemetry {
   keystrokeChars: number;

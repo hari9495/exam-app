@@ -96,4 +96,92 @@ describe('useProctoringMonitor', () => {
     expect(report).toHaveBeenCalledTimes(2);
     expect(report).toHaveBeenNthCalledWith(2, 'tab_switch', undefined);
   });
+
+  describe('window_blur', () => {
+    it('reports on focus return with durationMs when blur happened while visible', () => {
+      render(<Probe enabled={true} />);
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+
+      window.dispatchEvent(new Event('blur'));
+      expect(report).not.toHaveBeenCalled(); // reported on focus-return, not at blur
+
+      act(() => {
+        jest.advanceTimersByTime(7000);
+      });
+      window.dispatchEvent(new Event('focus'));
+
+      expect(report).toHaveBeenCalledWith('window_blur', { durationMs: 7000 });
+    });
+
+    it('suppresses blur that accompanies a tab-hide (visibilityState hidden)', () => {
+      render(<Probe enabled={true} />);
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+
+      window.dispatchEvent(new Event('blur'));
+      act(() => {
+        jest.advanceTimersByTime(3000);
+      });
+      window.dispatchEvent(new Event('focus'));
+
+      expect(report).not.toHaveBeenCalledWith('window_blur', expect.anything());
+    });
+
+    it('debounces rapid blur/focus cycles to one report per 5s window', () => {
+      render(<Probe enabled={true} />);
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+
+      window.dispatchEvent(new Event('blur'));
+      act(() => jest.advanceTimersByTime(1000));
+      window.dispatchEvent(new Event('focus'));
+      window.dispatchEvent(new Event('blur'));
+      act(() => jest.advanceTimersByTime(1000));
+      window.dispatchEvent(new Event('focus'));
+
+      const blurReports = report.mock.calls.filter(([type]: [string]) => type === 'window_blur');
+      expect(blurReports).toHaveLength(1);
+    });
+  });
+
+  describe('multi_monitor_detected', () => {
+    function setIsExtended(value: boolean | undefined) {
+      Object.defineProperty(window.screen, 'isExtended', { value, configurable: true });
+    }
+
+    it('fires once when isExtended transitions false -> true, silent on repeated true ticks', () => {
+      setIsExtended(false);
+      render(<Probe enabled={true} />);
+
+      act(() => jest.advanceTimersByTime(15_000)); // tick: still false
+      expect(report).not.toHaveBeenCalledWith('multi_monitor_detected', undefined);
+
+      setIsExtended(true);
+      act(() => jest.advanceTimersByTime(15_000)); // tick: false -> true edge
+      act(() => jest.advanceTimersByTime(15_000)); // tick: true -> true, silent
+
+      const monitorReports = report.mock.calls.filter(([type]: [string]) => type === 'multi_monitor_detected');
+      expect(monitorReports).toHaveLength(1);
+    });
+
+    it('fires again after removal then re-add', () => {
+      setIsExtended(false);
+      render(<Probe enabled={true} />);
+
+      setIsExtended(true);
+      act(() => jest.advanceTimersByTime(15_000));
+      setIsExtended(false);
+      act(() => jest.advanceTimersByTime(15_000));
+      setIsExtended(true);
+      act(() => jest.advanceTimersByTime(15_000));
+
+      const monitorReports = report.mock.calls.filter(([type]: [string]) => type === 'multi_monitor_detected');
+      expect(monitorReports).toHaveLength(2);
+    });
+
+    it('never fires when isExtended is undefined (unsupported browser)', () => {
+      setIsExtended(undefined);
+      render(<Probe enabled={true} />);
+      act(() => jest.advanceTimersByTime(60_000));
+      expect(report).not.toHaveBeenCalledWith('multi_monitor_detected', expect.anything());
+    });
+  });
 });

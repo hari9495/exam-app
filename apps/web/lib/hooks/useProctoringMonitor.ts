@@ -59,6 +59,35 @@ export function useProctoringMonitor(enabled: boolean): void {
       resetIdleTimer();
     }
 
+    const MULTI_MONITOR_POLL_MS = 15_000;
+    let blurStartedAt: number | null = null;
+
+    function onWindowBlur() {
+      // Focus lost to another app while the exam stays visible -- a real tab
+      // switch hides the document and is already covered by tab_switch.
+      if (document.visibilityState === 'visible') {
+        blurStartedAt = Date.now();
+      }
+    }
+    function onWindowFocus() {
+      if (blurStartedAt !== null) {
+        const durationMs = Date.now() - blurStartedAt;
+        blurStartedAt = null;
+        debouncedReport('window_blur', TAB_SWITCH_DEBOUNCE_MS, { durationMs });
+      }
+      resetIdleTimer();
+    }
+
+    // screen.isExtended is Chromium-only; undefined (Firefox/Safari) never transitions to true.
+    let lastIsExtended = (window.screen as Screen & { isExtended?: boolean }).isExtended === true;
+    const multiMonitorInterval = setInterval(() => {
+      const isExtended = (window.screen as Screen & { isExtended?: boolean }).isExtended === true;
+      if (isExtended && !lastIsExtended) {
+        reportRef.current('multi_monitor_detected');
+      }
+      lastIsExtended = isExtended;
+    }, MULTI_MONITOR_POLL_MS);
+
     document.addEventListener('visibilitychange', onVisibilityChange);
     document.addEventListener('fullscreenchange', onFullscreenChange);
     document.addEventListener('copy', onCopy);
@@ -66,6 +95,8 @@ export function useProctoringMonitor(enabled: boolean): void {
     document.addEventListener('contextmenu', onContextMenu);
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('blur', onWindowBlur);
+    window.addEventListener('focus', onWindowFocus);
     resetIdleTimer();
 
     const devtoolsInterval = setInterval(() => {
@@ -84,7 +115,10 @@ export function useProctoringMonitor(enabled: boolean): void {
       document.removeEventListener('contextmenu', onContextMenu);
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('blur', onWindowBlur);
+      window.removeEventListener('focus', onWindowFocus);
       clearInterval(devtoolsInterval);
+      clearInterval(multiMonitorInterval);
       if (idleTimer.current) clearTimeout(idleTimer.current);
       Object.values(debounceTimers.current).forEach((timer) => clearTimeout(timer));
       debounceTimers.current = {};
