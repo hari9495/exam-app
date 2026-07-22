@@ -172,6 +172,17 @@ export function useReportWebcamViolation() {
   });
 }
 
+export function useReportWebcamSnapshot() {
+  const { accessToken } = useCandidateAuth();
+  return function report(snapshot: string) {
+    candidateApiFetch(
+      '/attempt/webcam-snapshot',
+      { method: 'POST', body: JSON.stringify({ snapshot }) },
+      accessToken ?? undefined,
+    ).catch(() => undefined);
+  };
+}
+
 export function useWebcamResume() {
   const { accessToken } = useCandidateAuth();
   const queryClient = useQueryClient();

@@ -2,6 +2,8 @@ import { render, waitFor } from '@testing-library/react';
 import * as useAttemptModule from './useAttempt';
 import { useWebcamMonitor } from './useWebcamMonitor';
 
+const SAMPLE_INTERVAL_MS = 500;
+
 const mockDetectForVideo = jest.fn();
 const mockClose = jest.fn();
 
@@ -12,18 +14,39 @@ jest.mock('@mediapipe/tasks-vision', () => ({
   },
 }));
 
-function Probe({ enabled }: { enabled: boolean }) {
-  useWebcamMonitor(enabled);
+// A single, forward-facing head -- no violation, no looking-down. Used as the default
+// steady-state detection so tests that don't care about detection content (disabled,
+// periodic snapshot) don't accidentally accumulate votes toward a confirmed violation.
+const CLEAN_RESULT = {
+  faceLandmarks: [[{ x: 0, y: 0, z: 0 }]],
+  facialTransformationMatrixes: [{ data: new Float32Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]) }],
+};
+
+// Pitch tipped past the 45-degree looking-down threshold, yaw kept at 0 so this is never
+// also read as head_turned.
+const LOOKING_DOWN_RESULT = {
+  faceLandmarks: [[{ x: 0, y: 0, z: 0 }]],
+  facialTransformationMatrixes: [{ data: new Float32Array([0, 0, 0, 0, 0, 0, 0, 0, 0, -0.9, 1]) }],
+};
+
+function Probe({ enabled, onViolationReason }: { enabled: boolean; onViolationReason?: (reason: string) => void }) {
+  useWebcamMonitor(enabled, onViolationReason);
   return null;
 }
 
 describe('useWebcamMonitor', () => {
   let mutate: jest.Mock;
+  let reportEvent: jest.Mock;
+  let reportSnapshot: jest.Mock;
 
   beforeEach(() => {
     mutate = jest.fn();
+    reportEvent = jest.fn();
+    reportSnapshot = jest.fn();
     jest.spyOn(useAttemptModule, 'useReportWebcamViolation').mockReturnValue({ mutate } as any);
-    mockDetectForVideo.mockReturnValue({ faceLandmarks: [], facialTransformationMatrixes: [] });
+    jest.spyOn(useAttemptModule, 'useReportProctoringEvent').mockReturnValue(reportEvent);
+    jest.spyOn(useAttemptModule, 'useReportWebcamSnapshot').mockReturnValue(reportSnapshot);
+    mockDetectForVideo.mockReturnValue(CLEAN_RESULT);
     Object.defineProperty(global.navigator, 'mediaDevices', {
       value: { getUserMedia: jest.fn().mockResolvedValue({ getTracks: () => [{ stop: jest.fn() }] }) },
       configurable: true,
@@ -44,27 +67,73 @@ describe('useWebcamMonitor', () => {
     expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
   });
 
-  it('reports a violation only after the condition is sustained for 3 seconds', async () => {
+  it('reports a webcam violation only after the voting window confirms (5 of 8), not on a single frame', async () => {
     render(<Probe enabled={true} />);
     await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled());
 
-    mockDetectForVideo.mockReturnValue({ faceLandmarks: [] }); // no_face, sustained from here on
-    jest.advanceTimersByTime(2_500); // under the 3s threshold
+    mockDetectForVideo.mockReturnValue({ faceLandmarks: [] }); // no_face every tick from here
+    jest.advanceTimersByTime(4 * SAMPLE_INTERVAL_MS); // 4 of 8 -> not confirmed yet
     expect(mutate).not.toHaveBeenCalled();
 
-    jest.advanceTimersByTime(1_000); // now past 3s
+    jest.advanceTimersByTime(SAMPLE_INTERVAL_MS); // 5th of 8 -> confirmed
+    expect(mutate).toHaveBeenCalledTimes(1);
     expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ reason: 'no_face' }));
   });
 
-  it('resets the sustained timer once the face reappears', async () => {
+  it('reports looking_down as a proctoring event, never as a webcam violation', async () => {
     render(<Probe enabled={true} />);
     await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled());
 
-    mockDetectForVideo.mockReturnValue({ faceLandmarks: [] });
-    jest.advanceTimersByTime(2_000);
-    mockDetectForVideo.mockReturnValue({ faceLandmarks: [[{ x: 0, y: 0, z: 0 }]], facialTransformationMatrixes: [{ data: new Float32Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]) }] });
-    jest.advanceTimersByTime(2_000);
+    mockDetectForVideo.mockReturnValue(LOOKING_DOWN_RESULT);
+    jest.advanceTimersByTime(19 * SAMPLE_INTERVAL_MS); // 19 of 24 -> not confirmed yet
+    expect(reportEvent).not.toHaveBeenCalled();
+
+    jest.advanceTimersByTime(SAMPLE_INTERVAL_MS); // 20th of 24 -> confirmed
+    expect(reportEvent).toHaveBeenCalledWith('looking_down');
     expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it('captures a periodic snapshot within the jittered interval and reschedules', async () => {
+    render(<Probe enabled={true} />);
+    await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled());
+
+    jest.advanceTimersByTime(180_000); // past the max 180s jitter bound -> at least one capture
+    expect(reportSnapshot).toHaveBeenCalled();
+
+    const callsAfterFirst = reportSnapshot.mock.calls.length;
+    jest.advanceTimersByTime(180_000); // rescheduled -> at least one more capture
+    expect(reportSnapshot.mock.calls.length).toBeGreaterThan(callsAfterFirst);
+  });
+
+  it('invokes onViolationReason with the confirmed reason when a strike is reported', async () => {
+    const onViolationReason = jest.fn();
+    render(<Probe enabled={true} onViolationReason={onViolationReason} />);
+    await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled());
+
+    mockDetectForVideo.mockReturnValue({ faceLandmarks: [[{ x: 0, y: 0, z: 0 }], [{ x: 1, y: 1, z: 1 }]] }); // multiple_faces
+    jest.advanceTimersByTime(5 * SAMPLE_INTERVAL_MS); // 5 of 8 -> confirmed
+
+    expect(onViolationReason).toHaveBeenCalledWith('multiple_faces');
+    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ reason: 'multiple_faces' }));
+  });
+
+  it('does not fire onViolationReason for looking_down', async () => {
+    const onViolationReason = jest.fn();
+    render(<Probe enabled={true} onViolationReason={onViolationReason} />);
+    await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled());
+
+    mockDetectForVideo.mockReturnValue(LOOKING_DOWN_RESULT);
+    jest.advanceTimersByTime(20 * SAMPLE_INTERVAL_MS); // confirms looking_down
+
+    expect(reportEvent).toHaveBeenCalledWith('looking_down');
+    expect(onViolationReason).not.toHaveBeenCalled();
+  });
+
+  it('reports a no_face violation via the fail-safe when camera/model setup fails', async () => {
+    (navigator.mediaDevices.getUserMedia as jest.Mock).mockRejectedValue(new Error('camera denied'));
+    render(<Probe enabled={true} />);
+
+    await waitFor(() => expect(mutate).toHaveBeenCalledWith({ reason: 'no_face', snapshot: '' }));
   });
 
   it('ignores the __DISABLE_WEBCAM_MONITOR__ escape hatch in production builds', async () => {

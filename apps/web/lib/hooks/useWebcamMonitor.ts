@@ -1,19 +1,40 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { detectViolationReason, ViolationReason } from '../webcam-detection';
-import { useReportWebcamViolation } from './useAttempt';
+import { detectViolationReason, detectLookingDown, ViolationReason } from '../webcam-detection';
+import { createViolationVoter } from '../webcam-voting';
+import { useReportProctoringEvent, useReportWebcamSnapshot, useReportWebcamViolation } from './useAttempt';
 
 const SAMPLE_INTERVAL_MS = 500;
-const SUSTAINED_VIOLATION_MS = 3000;
+const PERIODIC_SNAPSHOT_MIN_MS = 120_000;
+const PERIODIC_SNAPSHOT_MAX_MS = 180_000;
 const MEDIAPIPE_WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
 const FACE_LANDMARKER_MODEL_URL =
   'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
 
-export function useWebcamMonitor(enabled: boolean): void {
+function captureSnapshot(video: HTMLVideoElement): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d')?.drawImage(video, 0, 0);
+  return canvas.toDataURL('image/jpeg', 0.5);
+}
+
+export function useWebcamMonitor(enabled: boolean, onViolationReason?: (reason: string) => void): void {
   const reportViolation = useReportWebcamViolation();
-  const reportRef = useRef(reportViolation.mutate);
-  reportRef.current = reportViolation.mutate;
+  const reportViolationRef = useRef(reportViolation.mutate);
+  reportViolationRef.current = reportViolation.mutate;
+
+  const reportEvent = useReportProctoringEvent();
+  const reportEventRef = useRef(reportEvent);
+  reportEventRef.current = reportEvent;
+
+  const reportSnapshot = useReportWebcamSnapshot();
+  const reportSnapshotRef = useRef(reportSnapshot);
+  reportSnapshotRef.current = reportSnapshot;
+
+  const onViolationRef = useRef(onViolationReason);
+  onViolationRef.current = onViolationReason;
 
   useEffect(() => {
     if (!enabled) return;
@@ -36,13 +57,26 @@ export function useWebcamMonitor(enabled: boolean): void {
     let cancelled = false;
     let stream: MediaStream | null = null;
     let intervalId: ReturnType<typeof setInterval> | undefined;
-    let violationSince: number | null = null;
-    let currentReason: ViolationReason | null = null;
-    let alreadyReported = false;
+    let snapshotTimer: ReturnType<typeof setTimeout> | undefined;
+
+    // Two independent voters debounce raw per-sample detections into confirmed episodes:
+    // strike-worthy violations (8-sample window, 5 to confirm) and report-only looking_down
+    // (24-sample window, 20 to confirm -- much less trigger-happy since a candidate glancing
+    // down briefly is normal).
+    const violationVoter = createViolationVoter({ windowSize: 8, threshold: 5 });
+    const lookingVoter = createViolationVoter({ windowSize: 24, threshold: 20 });
 
     const video = document.createElement('video');
     video.muted = true;
     video.playsInline = true;
+
+    function scheduleSnapshot() {
+      const delay = PERIODIC_SNAPSHOT_MIN_MS + Math.random() * (PERIODIC_SNAPSHOT_MAX_MS - PERIODIC_SNAPSHOT_MIN_MS);
+      snapshotTimer = setTimeout(() => {
+        if (video.readyState >= 2) reportSnapshotRef.current(captureSnapshot(video));
+        scheduleSnapshot();
+      }, delay);
+    }
 
     async function setup() {
       const { FaceLandmarker, FilesetResolver } = await import('@mediapipe/tasks-vision');
@@ -50,7 +84,7 @@ export function useWebcamMonitor(enabled: boolean): void {
       const landmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
         baseOptions: { modelAssetPath: FACE_LANDMARKER_MODEL_URL },
         runningMode: 'VIDEO',
-        numFaces: 1,
+        numFaces: 2,
         outputFacialTransformationMatrixes: true,
       });
       if (cancelled) {
@@ -66,43 +100,34 @@ export function useWebcamMonitor(enabled: boolean): void {
         if (video.readyState < 2) return;
 
         const result = landmarker.detectForVideo(video, performance.now());
-        const reason = detectViolationReason(result);
-        const now = Date.now();
 
-        if (reason === null) {
-          violationSince = null;
-          currentReason = null;
-          alreadyReported = false;
-          return;
+        // Strike-worthy violations and the report-only looking_down signal are voted on
+        // independently from the same frame -- one confirming does not suppress the other.
+        const confirmedViolation = violationVoter.push(detectViolationReason(result));
+        if (confirmedViolation) {
+          reportViolationRef.current({ reason: confirmedViolation as ViolationReason, snapshot: captureSnapshot(video) });
+          onViolationRef.current?.(confirmedViolation);
         }
 
-        if (currentReason !== reason) {
-          currentReason = reason;
-          violationSince = now;
-          alreadyReported = false;
-          return;
-        }
-
-        if (!alreadyReported && violationSince !== null && now - violationSince >= SUSTAINED_VIOLATION_MS) {
-          alreadyReported = true;
-          const canvas = document.createElement('canvas');
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          canvas.getContext('2d')?.drawImage(video, 0, 0);
-          reportRef.current({ reason, snapshot: canvas.toDataURL('image/jpeg', 0.5) });
+        const confirmedLookingDown = lookingVoter.push(detectLookingDown(result) ? 'looking_down' : null);
+        if (confirmedLookingDown) {
+          reportEventRef.current('looking_down');
         }
       }, SAMPLE_INTERVAL_MS);
+
+      scheduleSnapshot();
     }
 
     setup().catch(() => {
-      // Camera/model failure mid-attempt fails safe toward flagging (a sustained "no
-      // face" violation) rather than silently disabling the check.
-      reportRef.current({ reason: 'no_face', snapshot: '' });
+      // Camera/model failure mid-attempt fails safe toward flagging (a "no face" violation)
+      // rather than silently disabling the check.
+      reportViolationRef.current({ reason: 'no_face', snapshot: '' });
     });
 
     return () => {
       cancelled = true;
       if (intervalId) clearInterval(intervalId);
+      if (snapshotTimer) clearTimeout(snapshotTimer);
       stream?.getTracks().forEach((track) => track.stop());
     };
   }, [enabled]);

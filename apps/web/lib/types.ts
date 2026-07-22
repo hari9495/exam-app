@@ -215,7 +215,8 @@ export type ProctoringEventType =
   | 'idle_timeout'
   | 'editor_paste'
   | 'window_blur'
-  | 'multi_monitor_detected';
+  | 'multi_monitor_detected'
+  | 'looking_down';
 
 export interface AnswerTelemetry {
   keystrokeChars: number;
