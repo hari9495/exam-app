@@ -195,6 +195,9 @@ model Question {
   codeLanguage   String?               @map("code_language")
   starterCode    String?               @map("starter_code") @db.NVarChar(Max)
   allowStdin     Boolean               @default(false) @map("allow_stdin")
+  snippetCode    String?               @map("snippet_code") @db.NVarChar(Max)
+  snippetLanguage String?              @map("snippet_language")
+  imageUrl       String?               @map("image_url")
   createdBy      String                @map("created_by") @db.UniqueIdentifier
   createdAt      DateTime              @default(now()) @map("created_at")
   options        QuestionOption[]
@@ -212,6 +215,7 @@ model QuestionOption {
   text       String
   isCorrect  Boolean  @map("is_correct")
   orderIndex Int      @map("order_index")
+  imageUrl   String?  @map("image_url")
   question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@index([questionId])
