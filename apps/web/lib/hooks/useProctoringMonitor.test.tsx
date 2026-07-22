@@ -140,6 +140,22 @@ describe('useProctoringMonitor', () => {
       const blurReports = report.mock.calls.filter(([type]: [string]) => type === 'window_blur');
       expect(blurReports).toHaveLength(1);
     });
+
+    it('does not double-report when visibility goes hidden between blur and focus', () => {
+      render(<Probe enabled={true} />);
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+      window.dispatchEvent(new Event('blur'));
+
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange')); // reports tab_switch
+
+      act(() => jest.advanceTimersByTime(3000));
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+      window.dispatchEvent(new Event('focus'));
+
+      expect(report).toHaveBeenCalledWith('tab_switch', undefined);
+      expect(report).not.toHaveBeenCalledWith('window_blur', expect.anything());
+    });
   });
 
   describe('multi_monitor_detected', () => {

@@ -32,6 +32,9 @@ export function useProctoringMonitor(enabled: boolean): void {
 
     function onVisibilityChange() {
       if (document.visibilityState === 'hidden') {
+        // The document actually hid, so this episode belongs to tab_switch --
+        // clear any pending blur so the later focus doesn't also report window_blur.
+        blurStartedAt = null;
         debouncedReport('tab_switch', TAB_SWITCH_DEBOUNCE_MS);
       }
     }
