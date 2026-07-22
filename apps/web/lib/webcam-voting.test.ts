@@ -33,8 +33,9 @@ describe('createViolationVoter', () => {
     expect(first[4]).toBe('no_face');
     const during = pushAll(v, ['no_face', 'no_face', 'no_face', 'no_face', 'no_face', 'no_face', 'no_face', 'no_face']);
     expect(during.every((r) => r === null)).toBe(true); // still the same episode, no re-confirm
-    const clean = pushAll(v, ['no_face', null, null, null, null, null, null, null]); // one lingering then a fully clean window
-    // after 8 pushes the window holds only nulls -> re-armed; still returns null here (no violation present)
+    const clean = pushAll(v, ['no_face', null, null, null, null, null, null, null]);
+    // the count drops below threshold partway through this phase -> re-armed;
+    // still returns null throughout (no reason ever re-crosses threshold here)
     expect(clean.every((r) => r === null)).toBe(true);
     const again = pushAll(v, ['no_face', 'no_face', 'no_face', 'no_face', 'no_face']); // fresh episode confirms
     expect(again[4]).toBe('no_face');
