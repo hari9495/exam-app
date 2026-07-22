@@ -21,6 +21,7 @@ import { WebcamSnapshotDto } from './dto/webcam-snapshot.dto';
 interface AttemptQuestionOption {
   id: string;
   text: string;
+  imageUrl: string | null;
 }
 
 interface AttemptQuestion {
@@ -31,6 +32,9 @@ interface AttemptQuestion {
   codeLanguage: string | null;
   starterCode: string | null;
   allowStdin: boolean;
+  snippetCode: string | null;
+  snippetLanguage: string | null;
+  imageUrl: string | null;
   options: AttemptQuestionOption[];
 }
 
@@ -645,7 +649,10 @@ export class AttemptService {
             codeLanguage: question.codeLanguage,
             starterCode: question.starterCode,
             allowStdin: question.allowStdin,
-            options: orderedOptions.map((option) => ({ id: option.id, text: option.text })),
+            snippetCode: question.snippetCode,
+            snippetLanguage: question.snippetLanguage,
+            imageUrl: question.imageUrl,
+            options: orderedOptions.map((option) => ({ id: option.id, text: option.text, imageUrl: option.imageUrl })),
           };
         }),
     }));

@@ -233,6 +233,48 @@ describe('AttemptService', () => {
       expect((result as any).sections[0].questions.find((q: any) => q.type === 'code')?.allowStdin).toBe(true);
     });
 
+    it('includes snippetCode, snippetLanguage, and imageUrl (question + option) for an mcq question', async () => {
+      const attempt = {
+        id: 'attempt-1', status: 'in_progress', startedAt: new Date(),
+        questionOrderJson: JSON.stringify(['mcq-q1']),
+        sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', targetDurationMinutes: null, questionIds: ['mcq-q1'] }]),
+        optionOrderJson: null,
+      };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'mcq-q1', text: 'What does this code print?', type: 'single_mcq', marks: 5,
+              codeLanguage: null, starterCode: null, allowStdin: false,
+              snippetCode: 'x = [1, 2, 3]\nprint(x[::-1])', snippetLanguage: 'python', imageUrl: 'http://localhost:3001/uploads/question-images/stem.png',
+              options: [
+                { id: 'opt-a', text: '[3, 2, 1]', imageUrl: 'http://localhost:3001/uploads/question-images/opt-a.png' },
+                { id: 'opt-b', text: '[1, 2, 3]', imageUrl: null },
+              ],
+            },
+          ]),
+        },
+        answer: { findMany: jest.fn().mockResolvedValue([]) },
+        candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+      };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      settlement.remainingSeconds.mockReturnValue(3300);
+      mockBootstrapWithLogoThenScoped(tx);
+
+      const result = await service.getCurrent(session);
+
+      expect((result as any).sections[0].questions[0]).toEqual({
+        id: 'mcq-q1', text: 'What does this code print?', type: 'single_mcq', marks: 5,
+        codeLanguage: null, starterCode: null, allowStdin: false,
+        snippetCode: 'x = [1, 2, 3]\nprint(x[::-1])', snippetLanguage: 'python', imageUrl: 'http://localhost:3001/uploads/question-images/stem.png',
+        options: [
+          { id: 'opt-a', text: '[3, 2, 1]', imageUrl: 'http://localhost:3001/uploads/question-images/opt-a.png' },
+          { id: 'opt-b', text: '[1, 2, 3]', imageUrl: null },
+        ],
+      });
+    });
+
     it('reorders a question\'s options according to optionOrderJson when present', async () => {
       const attempt = {
         id: 'attempt-1', status: 'in_progress', startedAt: new Date(),
