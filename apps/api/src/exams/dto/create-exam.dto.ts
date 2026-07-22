@@ -1,4 +1,5 @@
 import { IsBoolean, IsIn, IsInt, IsISO8601, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsIpOrCidr } from './is-ip-or-cidr.decorator';
 
 const FEEDBACK_VISIBILITY_VALUES = ['none', 'pass_fail', 'score', 'breakdown'] as const;
 
@@ -45,4 +46,9 @@ export class CreateExamDto {
   @IsOptional()
   @IsBoolean()
   walkInEnabled?: boolean;
+
+  // '' means "clear the restriction" (stored as NULL); any other value must be a valid IP/CIDR.
+  @IsOptional()
+  @IsIpOrCidr()
+  allowedIpRange?: string;
 }

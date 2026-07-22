@@ -254,6 +254,7 @@ model Exam {
   availabilityWindowStart DateTime?     @map("availability_window_start")
   availabilityWindowEnd   DateTime?     @map("availability_window_end")
   walkInEnabled           Boolean       @default(false) @map("walk_in_enabled")
+  allowedIpRange          String?       @map("allowed_ip_range")
   createdBy               String        @map("created_by") @db.UniqueIdentifier
   createdAt               DateTime      @default(now()) @map("created_at")
   sections                ExamSection[]

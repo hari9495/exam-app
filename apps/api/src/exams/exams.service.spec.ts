@@ -54,6 +54,7 @@ describe('ExamsService', () => {
         schedulingEnabled: false,
         availabilityWindowStart: null,
         availabilityWindowEnd: null,
+        allowedIpRange: null,
         createdBy: 'user-1',
       },
     });
@@ -77,6 +78,7 @@ describe('ExamsService', () => {
         schedulingEnabled: false,
         availabilityWindowStart: null,
         availabilityWindowEnd: null,
+        allowedIpRange: null,
         createdBy: 'user-1',
       },
     });
@@ -340,6 +342,68 @@ describe('ExamsService', () => {
 
     expect(tx.exam.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.not.objectContaining({ walkInEnabled: expect.anything() }) }),
+    );
+  });
+
+  it('persists allowedIpRange on create', async () => {
+    const tx = { exam: { create: jest.fn().mockResolvedValue({ id: 'exam-1' }) } };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.create(context, 'user-1', { title: 'Exam', allowedIpRange: '203.0.113.0/24' });
+
+    expect(tx.exam.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ allowedIpRange: '203.0.113.0/24' }) }),
+    );
+  });
+
+  it('persists allowedIpRange when provided on update, and clears it with null', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'exam-1',
+          schedulingEnabled: false,
+          availabilityWindowStart: null,
+          availabilityWindowEnd: null,
+          allowedIpRange: '203.0.113.0/24',
+        }),
+        update: jest.fn().mockResolvedValue({ id: 'exam-1', allowedIpRange: null, schedulingEnabled: false }),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.update(context, 'exam-1', { title: 'Exam', allowedIpRange: '198.51.100.5' });
+
+    expect(tx.exam.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ allowedIpRange: '198.51.100.5' }) }),
+    );
+
+    tx.exam.update.mockClear();
+    await service.update(context, 'exam-1', { title: 'Exam', allowedIpRange: '' });
+
+    expect(tx.exam.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ allowedIpRange: null }) }),
+    );
+  });
+
+  it('leaves allowedIpRange untouched when omitted from the update', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'exam-1',
+          schedulingEnabled: false,
+          availabilityWindowStart: null,
+          availabilityWindowEnd: null,
+          allowedIpRange: '203.0.113.0/24',
+        }),
+        update: jest.fn().mockResolvedValue({ id: 'exam-1', allowedIpRange: '203.0.113.0/24', schedulingEnabled: false }),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.update(context, 'exam-1', { title: 'Exam' });
+
+    expect(tx.exam.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.not.objectContaining({ allowedIpRange: expect.anything() }) }),
     );
   });
 
