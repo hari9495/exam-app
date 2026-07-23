@@ -12,7 +12,7 @@ import { LeaderboardWidget } from '../components/LeaderboardWidget';
 import { QuestionNavigator, flattenQuestions } from '../components/QuestionNavigator';
 import { ProctoringWarningOverlay, ProctoringBlockOverlay } from '../components/ProctoringOverlay';
 import { TimerBar } from '../components/TimerBar';
-import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode, useWebcamResume, RunCodeResult } from '../../../lib/hooks/useAttempt';
+import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode, useCodeLanguages, useWebcamResume, RunCodeResult } from '../../../lib/hooks/useAttempt';
 import { useCountdown } from '../../../lib/hooks/useCountdown';
 import { useEditorTelemetry } from '../../../lib/hooks/useEditorTelemetry';
 import { useProctoringMonitor } from '../../../lib/hooks/useProctoringMonitor';
@@ -36,6 +36,24 @@ function optionClasses(selected: boolean) {
   );
 }
 
+const PISTON_TO_MONACO_LANGUAGE: Record<string, string> = {
+  javascript: 'javascript',
+  typescript: 'typescript',
+  python: 'python',
+  java: 'java',
+  csharp: 'csharp',
+  cpp: 'cpp',
+  go: 'go',
+  ruby: 'ruby',
+  // Piston exposes far more runtimes than Monaco has dedicated grammars for — anything not
+  // listed here still executes correctly (this only controls syntax-highlighting), it just
+  // falls back to plaintext coloring.
+};
+
+function monacoLanguageFor(pistonLanguage: string): string {
+  return PISTON_TO_MONACO_LANGUAGE[pistonLanguage] ?? 'plaintext';
+}
+
 export default function CandidateExamPage() {
   const router = useRouter();
   const { accessToken, isLoading: authLoading } = useCandidateAuth();
@@ -51,6 +69,7 @@ export default function CandidateExamPage() {
   const [stdinValues, setStdinValues] = useState<Record<string, string>>({});
   const [runResults, setRunResults] = useState<Record<string, RunCodeResult>>({});
   const [runErrors, setRunErrors] = useState<Record<string, string>>({});
+  const [selectedLanguages, setSelectedLanguages] = useState<Record<string, string>>({});
 
   const attemptState = current && isAttemptStarted(current) ? current : null;
   const isPaused = attemptState?.status === 'paused';
@@ -104,6 +123,16 @@ export default function CandidateExamPage() {
   const stdinValue = question ? stdinValues[question.id] ?? '' : '';
   const runResult = question ? runResults[question.id] ?? null : null;
   const runError = question ? runErrors[question.id] ?? null : null;
+  const currentCodeLanguage =
+    question && question.type === 'code'
+      ? selectedLanguages[question.id] ??
+        (question.languageMode === 'fixed' && question.allowedLanguages.length === 1
+          ? question.allowedLanguages[0]
+          : (existingAnswer?.codeLanguage ?? ''))
+      : '';
+  const needsLanguagePick = question?.type === 'code' && !currentCodeLanguage;
+  const codeLanguagesQuery = useCodeLanguages(Boolean(question && question.type === 'code' && question.languageMode === 'any'));
+  const languageOptions = question?.type === 'code' ? (question.languageMode === 'fixed' ? question.allowedLanguages : (codeLanguagesQuery.data ?? []).map((entry) => entry.language)) : [];
   const answeredCount = questions.filter((q) => {
     const a = answers.find((ans) => ans.questionId === q.id);
     if (q.type === 'code') return Boolean(a && a.answerText && a.answerText.trim() !== '');
@@ -133,7 +162,7 @@ export default function CandidateExamPage() {
 
   function toggleMarkForReview() {
     if (question!.type === 'code') {
-      saveAnswer(question!.id, [], !existingAnswer?.isMarkedForReview, codeValue, editorTelemetry.snapshot());
+      saveAnswer(question!.id, [], !existingAnswer?.isMarkedForReview, codeValue, editorTelemetry.snapshot(), currentCodeLanguage);
     } else {
       saveAnswer(question!.id, selectedOptionIds, !existingAnswer?.isMarkedForReview);
     }
@@ -142,11 +171,11 @@ export default function CandidateExamPage() {
   function handleCodeChange(value: string | undefined) {
     const next = value ?? '';
     setLocalCodeValues((prev) => ({ ...prev, [question!.id]: next }));
-    saveAnswer(question!.id, [], existingAnswer?.isMarkedForReview, next, editorTelemetry.snapshot());
+    saveAnswer(question!.id, [], existingAnswer?.isMarkedForReview, next, editorTelemetry.snapshot(), currentCodeLanguage);
   }
 
   function handleRun() {
-    if (!question) return;
+    if (!question || !currentCodeLanguage) return;
     const questionId = question.id;
     editorTelemetry.recordRun();
     setRunErrors((prev) => {
@@ -155,7 +184,7 @@ export default function CandidateExamPage() {
       return next;
     });
     runCode.mutate(
-      { questionId, code: codeValue, stdin: question.allowStdin ? stdinValue : undefined },
+      { questionId, code: codeValue, codeLanguage: currentCodeLanguage, stdin: question.allowStdin ? stdinValue : undefined },
       {
         onSuccess: (result) => setRunResults((prev) => ({ ...prev, [questionId]: result })),
         // error.message carries the server's real message (e.g. the run-cap or
@@ -243,48 +272,78 @@ export default function CandidateExamPage() {
           ) : null}
           {question.type === 'code' ? (
             <>
-              <div className="overflow-hidden rounded-t-md">
-                <div className="flex items-center justify-between bg-[#1E1E1E] px-3 py-1.5">
-                  <span className="rounded bg-[#2D2D2D] px-2 py-0.5 text-[11px] font-semibold text-candidate-text-faint">
-                    {question.codeLanguage ?? 'plaintext'}
-                  </span>
-                </div>
-                <Editor
-                  height="400px"
-                  path={question.id}
-                  language={question.codeLanguage ?? 'plaintext'}
-                  value={codeValue}
-                  onChange={handleCodeChange}
-                  onMount={(editor) => editorTelemetry.onEditorMount(editor)}
-                  options={{ minimap: { enabled: false }, fontSize: 13 }}
-                  theme="vs-dark"
-                />
-              </div>
-              {question.allowStdin ? (
-                <div className="mt-2 flex flex-col gap-1">
-                  <label htmlFor="stdin-input" className="text-xs font-medium text-candidate-text-secondary">
-                    Standard input (optional)
+              {needsLanguagePick ? (
+                <div className="mb-3 flex flex-col gap-2 rounded-md border border-candidate-border bg-candidate-bg p-3">
+                  <label htmlFor="code-language-select" className="text-xs font-medium text-candidate-text-secondary">
+                    Choose a language before you start
                   </label>
-                  <textarea
-                    id="stdin-input"
-                    aria-label="Standard input (optional)"
-                    value={stdinValue}
-                    onChange={(e) => setStdinValues((prev) => ({ ...prev, [question.id]: e.target.value }))}
-                    className="rounded border border-candidate-border px-2 py-1 font-mono text-xs"
-                    rows={2}
-                  />
+                  <select
+                    id="code-language-select"
+                    aria-label="Choose a language before you start"
+                    className="rounded border border-candidate-border px-2 py-1 text-sm"
+                    value=""
+                    onChange={(e) => {
+                      const lang = e.target.value;
+                      if (!lang) return;
+                      setSelectedLanguages((prev) => ({ ...prev, [question.id]: lang }));
+                    }}
+                  >
+                    <option value="" disabled>
+                      Select a language…
+                    </option>
+                    {languageOptions.map((lang) => (
+                      <option key={lang} value={lang}>
+                        {lang}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              ) : null}
-              <div className="mt-2 flex items-center gap-2">
-                <CandidateButton variant="secondary" onClick={handleRun} disabled={runCode.isPending}>
-                  <span className="inline-flex items-center gap-1.5">
-                    <Play className="h-3.5 w-3.5" aria-hidden="true" />
-                    {runCode.isPending ? 'Running…' : 'Run'}
-                  </span>
-                </CandidateButton>
-                {runResult ? <span className="text-xs text-candidate-text-faint">{runResult.runsRemaining} runs left</span> : null}
-              </div>
-              <CodeOutputPanel result={runResult} error={runError} />
+              ) : (
+                <>
+                  <div className="overflow-hidden rounded-t-md">
+                    <div className="flex items-center justify-between bg-[#1E1E1E] px-3 py-1.5">
+                      <span className="rounded bg-[#2D2D2D] px-2 py-0.5 text-[11px] font-semibold text-candidate-text-faint">
+                        {currentCodeLanguage}
+                      </span>
+                    </div>
+                    <Editor
+                      height="400px"
+                      path={question.id}
+                      language={monacoLanguageFor(currentCodeLanguage)}
+                      value={codeValue}
+                      onChange={handleCodeChange}
+                      onMount={(editor) => editorTelemetry.onEditorMount(editor)}
+                      options={{ minimap: { enabled: false }, fontSize: 13 }}
+                      theme="vs-dark"
+                    />
+                  </div>
+                  {question.allowStdin ? (
+                    <div className="mt-2 flex flex-col gap-1">
+                      <label htmlFor="stdin-input" className="text-xs font-medium text-candidate-text-secondary">
+                        Standard input (optional)
+                      </label>
+                      <textarea
+                        id="stdin-input"
+                        aria-label="Standard input (optional)"
+                        value={stdinValue}
+                        onChange={(e) => setStdinValues((prev) => ({ ...prev, [question.id]: e.target.value }))}
+                        className="rounded border border-candidate-border px-2 py-1 font-mono text-xs"
+                        rows={2}
+                      />
+                    </div>
+                  ) : null}
+                  <div className="mt-2 flex items-center gap-2">
+                    <CandidateButton variant="secondary" onClick={handleRun} disabled={runCode.isPending}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <Play className="h-3.5 w-3.5" aria-hidden="true" />
+                        {runCode.isPending ? 'Running…' : 'Run'}
+                      </span>
+                    </CandidateButton>
+                    {runResult ? <span className="text-xs text-candidate-text-faint">{runResult.runsRemaining} runs left</span> : null}
+                  </div>
+                  <CodeOutputPanel result={runResult} error={runError} />
+                </>
+              )}
             </>
           ) : (
             <div className="flex flex-col gap-2">

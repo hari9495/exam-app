@@ -244,7 +244,8 @@ export interface AttemptQuestion {
   text: string;
   type: QuestionType;
   marks: number;
-  codeLanguage: CodeLanguage | null;
+  languageMode: 'fixed' | 'any';
+  allowedLanguages: string[];
   starterCode: string | null;
   allowStdin: boolean;
   snippetCode: string | null;
@@ -263,6 +264,7 @@ export interface AttemptAnswerSummary {
   questionId: string;
   selectedOptionIds: string[];
   answerText: string | null;
+  codeLanguage: string | null;
   isMarkedForReview: boolean;
 }
 

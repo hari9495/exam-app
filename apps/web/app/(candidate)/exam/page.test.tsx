@@ -1,8 +1,8 @@
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useRouter } from 'next/navigation';
 import * as useAttemptModule from '../../../lib/hooks/useAttempt';
-import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode, useWebcamResume } from '../../../lib/hooks/useAttempt';
+import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode, useWebcamResume, useCodeLanguages } from '../../../lib/hooks/useAttempt';
 import { useCountdown } from '../../../lib/hooks/useCountdown';
 import { useProctoringMonitor } from '../../../lib/hooks/useProctoringMonitor';
 import { useWebcamMonitor } from '../../../lib/hooks/useWebcamMonitor';
@@ -17,8 +17,30 @@ jest.mock('../../../lib/hooks/useAttempt', () => ({
   useRunCode: jest.fn(),
   useWebcamResume: jest.fn(),
   useLeaderboard: jest.fn(),
+  useCodeLanguages: jest.fn(),
   useReportProctoringEvent: jest.fn(() => jest.fn()),
 }));
+
+const mockUseAttemptQuery = useAttemptQuery as jest.Mock;
+
+function renderExamPage() {
+  return render(<CandidateExamPage />);
+}
+
+function attemptStateWithQuestion(question: any) {
+  return {
+    status: 'in_progress',
+    remainingSeconds: 590,
+    webcamViolationCount: 0,
+    exam: { title: 'Test Exam' },
+    sections: [{ title: 'S1', targetDurationMinutes: null, questions: [question] }],
+    answers: [],
+    messages: [],
+    feedback: null,
+    organizationLogoUrl: null,
+    organizationPrimaryColor: null,
+  };
+}
 jest.mock('../../../lib/hooks/useCountdown', () => ({ useCountdown: jest.fn() }));
 jest.mock('../../../lib/hooks/useProctoringMonitor', () => ({ useProctoringMonitor: jest.fn() }));
 jest.mock('../../../lib/hooks/useWebcamMonitor', () => ({ useWebcamMonitor: jest.fn() }));
@@ -61,7 +83,8 @@ const codeAttemptState = {
           text: 'Write a function that adds two numbers.',
           type: 'code',
           marks: 5,
-          codeLanguage: 'javascript',
+          languageMode: 'fixed',
+          allowedLanguages: ['javascript'],
           starterCode: 'function add(a, b) {}',
           options: [],
           allowStdin: false,
@@ -92,7 +115,8 @@ const twoCodeQuestionsAttemptState = {
           text: 'Write a function that adds two numbers.',
           type: 'code',
           marks: 5,
-          codeLanguage: 'javascript',
+          languageMode: 'fixed',
+          allowedLanguages: ['javascript'],
           starterCode: 'function add(a, b) {}',
           options: [],
           allowStdin: false,
@@ -102,7 +126,8 @@ const twoCodeQuestionsAttemptState = {
           text: 'Write a function that subtracts two numbers.',
           type: 'code',
           marks: 5,
-          codeLanguage: 'javascript',
+          languageMode: 'fixed',
+          allowedLanguages: ['javascript'],
           starterCode: 'function subtract(a, b) {}',
           options: [],
           allowStdin: false,
@@ -137,6 +162,7 @@ describe('CandidateExamPage', () => {
     (useRunCode as jest.Mock).mockReturnValue({ mutate: runCodeMutate, isPending: false });
     (useWebcamMonitor as jest.Mock).mockReturnValue(undefined);
     (useWebcamResume as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false, isError: false });
+    (useCodeLanguages as jest.Mock).mockReturnValue({ data: [], isLoading: true });
     jest.spyOn(useAttemptModule, 'useLeaderboard').mockReturnValue({ data: { you: { rank: 3, correctCount: 2 }, top: [] }, isLoading: false } as any);
   });
 
@@ -233,7 +259,7 @@ describe('CandidateExamPage', () => {
     render(<CandidateExamPage />);
     await userEvent.type(screen.getByLabelText('code-editor'), 'x');
 
-    expect(saveAnswer).toHaveBeenCalledWith('q1', [], undefined, expect.any(String), expect.any(Object));
+    expect(saveAnswer).toHaveBeenCalledWith('q1', [], undefined, expect.any(String), expect.any(Object), 'javascript');
   });
 
   it('does not wipe answerText when toggling mark-for-review on a code question', async () => {
@@ -245,7 +271,7 @@ describe('CandidateExamPage', () => {
     render(<CandidateExamPage />);
     await userEvent.click(screen.getByRole('button', { name: /Mark for review/ }));
 
-    expect(saveAnswer).toHaveBeenCalledWith('q1', [], true, 'function add(a, b) { return a + b; }', expect.any(Object));
+    expect(saveAnswer).toHaveBeenCalledWith('q1', [], true, 'function add(a, b) { return a + b; }', expect.any(Object), 'javascript');
   });
 
   it('preserves just-typed code when mark-for-review is toggled before the debounced save fires', async () => {
@@ -267,7 +293,7 @@ describe('CandidateExamPage', () => {
     await userEvent.click(screen.getByRole('button', { name: /Mark for review/ }));
 
     const lastCall = saveAnswer.mock.calls[saveAnswer.mock.calls.length - 1];
-    expect(lastCall).toEqual(['q1', [], true, 'function add(a, b) { return a + b; }', expect.any(Object)]);
+    expect(lastCall).toEqual(['q1', [], true, 'function add(a, b) { return a + b; }', expect.any(Object), 'javascript']);
   });
 
   it('counts a code question as unanswered until it has non-empty answerText', async () => {
@@ -512,5 +538,40 @@ describe('CandidateExamPage', () => {
     render(<CandidateExamPage />);
 
     expect(leaderboardSpy).toHaveBeenCalledWith(false);
+  });
+
+  it('auto-selects the language and shows the editor immediately for a fixed single-language question', () => {
+    mockUseAttemptQuery.mockReturnValue({
+      data: attemptStateWithQuestion({
+        id: 'q1', type: 'code', text: 'Reverse a string', marks: 10,
+        languageMode: 'fixed', allowedLanguages: ['python'],
+        starterCode: 'def reverse(s):\n    pass', allowStdin: false,
+        snippetCode: null, snippetLanguage: null, imageUrl: null, options: [],
+      }),
+      isError: false,
+    });
+
+    renderExamPage();
+
+    expect(screen.getByText('python')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Choose a language before you start')).not.toBeInTheDocument();
+  });
+
+  it('requires a language pick before showing the editor for a fixed multi-language question', () => {
+    mockUseAttemptQuery.mockReturnValue({
+      data: attemptStateWithQuestion({
+        id: 'q1', type: 'code', text: 'Reverse a string', marks: 10,
+        languageMode: 'fixed', allowedLanguages: ['python', 'java'],
+        starterCode: null, allowStdin: false,
+        snippetCode: null, snippetLanguage: null, imageUrl: null, options: [],
+      }),
+      isError: false,
+    });
+
+    renderExamPage();
+
+    expect(screen.getByLabelText('Choose a language before you start')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Choose a language before you start'), { target: { value: 'java' } });
+    expect(screen.getByText('java')).toBeInTheDocument();
   });
 });

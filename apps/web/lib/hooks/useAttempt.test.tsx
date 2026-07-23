@@ -207,10 +207,10 @@ describe('useRunCode', () => {
     }
     render(<Probe />, { wrapper });
 
-    const result = await hook!.mutateAsync({ questionId: 'q-1', code: 'print("hi")', stdin: 'Alice' });
+    const result = await hook!.mutateAsync({ questionId: 'q-1', code: 'print("hi")', codeLanguage: 'python', stdin: 'Alice' });
 
     expect(result).toEqual({ stdout: 'hi\n', stderr: '', exitCode: 0, compileError: null, timedOut: false });
     expect(calls[0].url).toContain('/attempt/run-code');
-    expect(calls[0].body).toEqual({ questionId: 'q-1', code: 'print("hi")', stdin: 'Alice' });
+    expect(calls[0].body).toEqual({ questionId: 'q-1', code: 'print("hi")', codeLanguage: 'python', stdin: 'Alice' });
   });
 });

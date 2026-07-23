@@ -50,6 +50,7 @@ export function useStartAttempt() {
 interface PendingAnswer {
   selectedOptionIds: string[];
   answerText?: string;
+  codeLanguage?: string;
   markedForReview?: boolean;
   telemetry?: AnswerTelemetry;
 }
@@ -87,8 +88,9 @@ export function useAnswerMutation() {
     markedForReview?: boolean,
     answerText?: string,
     telemetry?: AnswerTelemetry,
+    codeLanguage?: string,
   ) {
-    pending.current[questionId] = { selectedOptionIds, markedForReview, answerText, telemetry };
+    pending.current[questionId] = { selectedOptionIds, markedForReview, answerText, telemetry, codeLanguage };
     if (timers.current[questionId]) {
       clearTimeout(timers.current[questionId]);
     }
@@ -129,8 +131,8 @@ export interface RunCodeResult {
 export function useRunCode() {
   const { accessToken } = useCandidateAuth();
   return useMutation({
-    mutationFn: ({ questionId, code, stdin }: { questionId: string; code: string; stdin?: string }): Promise<RunCodeResult> =>
-      candidateApiFetch('/attempt/run-code', { method: 'POST', body: JSON.stringify({ questionId, code, stdin }) }, accessToken ?? undefined),
+    mutationFn: ({ questionId, code, codeLanguage, stdin }: { questionId: string; code: string; codeLanguage: string; stdin?: string }): Promise<RunCodeResult> =>
+      candidateApiFetch('/attempt/run-code', { method: 'POST', body: JSON.stringify({ questionId, code, codeLanguage, stdin }) }, accessToken ?? undefined),
   });
 }
 
@@ -200,5 +202,15 @@ export function useLeaderboard(enabled: boolean) {
     queryFn: () => candidateApiFetch('/attempt/leaderboard', {}, accessToken ?? undefined),
     enabled: Boolean(accessToken) && enabled,
     refetchInterval: 5_000,
+  });
+}
+
+export function useCodeLanguages(enabled: boolean) {
+  const { accessToken } = useCandidateAuth();
+  return useQuery<{ language: string; version: string }[]>({
+    queryKey: ['attempt', 'code-languages'],
+    queryFn: () => candidateApiFetch('/attempt/code-languages', {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken) && enabled,
+    staleTime: 60 * 60 * 1000,
   });
 }
