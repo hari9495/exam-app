@@ -138,12 +138,18 @@ export function useRunCode() {
 
 export function useReportProctoringEvent() {
   const { accessToken } = useCandidateAuth();
+  const queryClient = useQueryClient();
+  const { mutate } = useMutation({
+    mutationFn: ({ eventType, metadata }: { eventType: ProctoringEventType; metadata?: Record<string, unknown> }) =>
+      candidateApiFetch(
+        '/attempt/proctoring-event',
+        { method: 'POST', body: JSON.stringify({ eventType, metadata }) },
+        accessToken ?? undefined,
+      ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] }),
+  });
   return function report(eventType: ProctoringEventType, metadata?: Record<string, unknown>) {
-    candidateApiFetch(
-      '/attempt/proctoring-event',
-      { method: 'POST', body: JSON.stringify({ eventType, metadata }) },
-      accessToken ?? undefined,
-    ).catch(() => undefined);
+    mutate({ eventType, metadata });
   };
 }
 

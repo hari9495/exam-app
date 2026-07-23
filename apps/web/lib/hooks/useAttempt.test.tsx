@@ -2,7 +2,7 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastProvider } from '../../components/ui';
 import { CandidateAuthProvider } from '../candidate-auth-context';
-import { useAttemptQuery, useAnswerMutation, useRunCode, useStartAttempt } from './useAttempt';
+import { useAttemptQuery, useAnswerMutation, useRunCode, useStartAttempt, useReportProctoringEvent } from './useAttempt';
 
 const mockToast = jest.fn();
 jest.mock('../../components/ui', () => {
@@ -212,5 +212,46 @@ describe('useRunCode', () => {
     expect(result).toEqual({ stdout: 'hi\n', stderr: '', exitCode: 0, compileError: null, timedOut: false });
     expect(calls[0].url).toContain('/attempt/run-code');
     expect(calls[0].body).toEqual({ questionId: 'q-1', code: 'print("hi")', codeLanguage: 'python', stdin: 'Alice' });
+  });
+});
+
+describe('useReportProctoringEvent', () => {
+  const originalFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('invalidates attempt/current after a successful report, so a strike is picked up', async () => {
+    let currentCallCount = 0;
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/candidate-auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'tok', refreshToken: 'rt' }), { status: 200 });
+      }
+      if (String(url).endsWith('/attempt/current')) {
+        currentCallCount += 1;
+        const status = currentCallCount === 1 ? 'in_progress' : 'paused';
+        return new Response(JSON.stringify({ status, exam: { title: 'T' }, sections: [], answers: [], messages: [], feedback: null, organizationLogoUrl: null, organizationPrimaryColor: null, webcamViolationCount: 0, browserActivityViolationCount: 1, remainingSeconds: 100 }), { status: 200 });
+      }
+      if (String(url).endsWith('/attempt/proctoring-event')) {
+        return new Response(JSON.stringify({ id: 'evt-1', eventType: 'tab_switch', severity: 'medium', strike: 1, status: 'paused' }), { status: 200 });
+      }
+      throw new Error(`Unexpected fetch to ${url}`);
+    }) as unknown as typeof fetch;
+
+    let report: ReturnType<typeof useReportProctoringEvent> | undefined;
+    function Probe() {
+      report = useReportProctoringEvent();
+      const { data } = useAttemptQuery();
+      return <p>{data && 'status' in data ? `status:${data.status}` : 'loading'}</p>;
+    }
+
+    render(<Probe />, { wrapper });
+    await waitFor(() => expect(screen.getByText('status:in_progress')).toBeInTheDocument());
+
+    act(() => {
+      report!('tab_switch');
+    });
+
+    await waitFor(() => expect(screen.getByText('status:paused')).toBeInTheDocument());
   });
 });
