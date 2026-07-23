@@ -1,12 +1,12 @@
 import { Test } from '@nestjs/testing';
 import { IntegrityAnalysisService } from './integrity-analysis.service';
-import { ClaudeIntegrityClient } from './claude-integrity.client';
+import { IntegrityNarrativeClient } from './integrity-narrative.client';
 import { TenantPrismaService, AiApiKeyResolverService } from '@exam-platform/shared';
 
 describe('IntegrityAnalysisService', () => {
   let service: IntegrityAnalysisService;
   let tenantPrisma: { forTenant: jest.Mock };
-  let claudeClient: { writeNarrative: jest.Mock };
+  let integrityNarrativeClient: { writeNarrative: jest.Mock };
   let aiApiKeyResolver: { resolve: jest.Mock };
 
   const attemptWithExam = {
@@ -22,13 +22,13 @@ describe('IntegrityAnalysisService', () => {
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
-    claudeClient = { writeNarrative: jest.fn() };
+    integrityNarrativeClient = { writeNarrative: jest.fn() };
     aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue('test-api-key') };
     const moduleRef = await Test.createTestingModule({
       providers: [
         IntegrityAnalysisService,
         { provide: TenantPrismaService, useValue: tenantPrisma },
-        { provide: ClaudeIntegrityClient, useValue: claudeClient },
+        { provide: IntegrityNarrativeClient, useValue: integrityNarrativeClient },
         { provide: AiApiKeyResolverService, useValue: aiApiKeyResolver },
       ],
     }).compile();
@@ -59,7 +59,7 @@ describe('IntegrityAnalysisService', () => {
     await expect(service.analyze('missing-attempt')).resolves.toBeUndefined();
 
     expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(1);
-    expect(claudeClient.writeNarrative).not.toHaveBeenCalled();
+    expect(integrityNarrativeClient.writeNarrative).not.toHaveBeenCalled();
   });
 
   it('never throws even if the bootstrap lookup itself rejects', async () => {
@@ -76,7 +76,7 @@ describe('IntegrityAnalysisService', () => {
     await service.analyze('attempt-1');
 
     expect(aiApiKeyResolver.resolve).not.toHaveBeenCalled();
-    expect(claudeClient.writeNarrative).not.toHaveBeenCalled();
+    expect(integrityNarrativeClient.writeNarrative).not.toHaveBeenCalled();
     expect(write.integrityAnalysis.upsert).toHaveBeenCalledWith({
       where: { attemptId: 'attempt-1' },
       create: { attemptId: 'attempt-1', status: 'completed', level: 'clear', flagsJson: '[]', narrative: 'No integrity concerns detected.' },
@@ -97,11 +97,11 @@ describe('IntegrityAnalysisService', () => {
       .mockResolvedValueOnce({ ...attemptWithExam, webcamViolationCount: 1 })
       .mockImplementationOnce((_ctx, fn) => fn(readTxWith([])))
       .mockImplementationOnce((_ctx, fn) => fn(write));
-    claudeClient.writeNarrative.mockResolvedValue('One webcam violation was recorded.');
+    integrityNarrativeClient.writeNarrative.mockResolvedValue('One webcam violation was recorded.');
 
     await service.analyze('attempt-1');
 
-    expect(claudeClient.writeNarrative).toHaveBeenCalledWith(
+    expect(integrityNarrativeClient.writeNarrative).toHaveBeenCalledWith(
       [{ type: 'webcam_violations', severity: 'medium', detail: '1 webcam violation(s) recorded' }],
       { examTitle: 'Backend Engineer Exam', level: 'review' },
       'test-api-key',
@@ -119,11 +119,11 @@ describe('IntegrityAnalysisService', () => {
       .mockResolvedValueOnce({ ...attemptWithExam, webcamViolationCount: 3 })
       .mockImplementationOnce((_ctx, fn) => fn(readTxWith([])))
       .mockImplementationOnce((_ctx, fn) => fn(write));
-    claudeClient.writeNarrative.mockResolvedValue('Multiple webcam violations, session blocked.');
+    integrityNarrativeClient.writeNarrative.mockResolvedValue('Multiple webcam violations, session blocked.');
 
     await service.analyze('attempt-1');
 
-    expect(claudeClient.writeNarrative).toHaveBeenCalledWith(
+    expect(integrityNarrativeClient.writeNarrative).toHaveBeenCalledWith(
       expect.any(Array),
       { examTitle: 'Backend Engineer Exam', level: 'high_concern' },
       'test-api-key',
@@ -139,7 +139,7 @@ describe('IntegrityAnalysisService', () => {
       .mockResolvedValueOnce({ ...attemptWithExam, webcamViolationCount: 1 })
       .mockImplementationOnce((_ctx, fn) => fn(readTxWith([])))
       .mockImplementationOnce((_ctx, fn) => fn(write));
-    claudeClient.writeNarrative.mockRejectedValue(new Error('rate limited'));
+    integrityNarrativeClient.writeNarrative.mockRejectedValue(new Error('rate limited'));
 
     await expect(service.analyze('attempt-1')).resolves.toBeUndefined();
 
@@ -157,7 +157,7 @@ describe('IntegrityAnalysisService', () => {
       .mockResolvedValueOnce({ ...attemptWithExam, webcamViolationCount: 1 })
       .mockImplementationOnce((_ctx, fn) => fn(readTxWith([])))
       .mockImplementationOnce((_ctx, fn) => fn(write));
-    claudeClient.writeNarrative.mockResolvedValue('One webcam violation.');
+    integrityNarrativeClient.writeNarrative.mockResolvedValue('One webcam violation.');
 
     await service.analyze('attempt-1');
 
@@ -188,11 +188,11 @@ describe('IntegrityAnalysisService', () => {
       .mockResolvedValueOnce(attemptWithExam)
       .mockImplementationOnce((_ctx, fn) => fn(readTxWith(answers)))
       .mockImplementationOnce((_ctx, fn) => fn(write));
-    claudeClient.writeNarrative.mockResolvedValue('A large paste was detected.');
+    integrityNarrativeClient.writeNarrative.mockResolvedValue('A large paste was detected.');
 
     await service.analyze('attempt-1');
 
-    expect(claudeClient.writeNarrative).toHaveBeenCalledWith(
+    expect(integrityNarrativeClient.writeNarrative).toHaveBeenCalledWith(
       [{ type: 'large_paste', severity: 'medium', detail: 'Pasted 250 characters in a single paste', questionId: 'q1' }],
       expect.anything(),
       'test-api-key',
@@ -216,7 +216,7 @@ describe('IntegrityAnalysisService', () => {
 
     await expect(service.analyze('attempt-1')).resolves.toBeUndefined();
 
-    expect(claudeClient.writeNarrative).not.toHaveBeenCalled();
+    expect(integrityNarrativeClient.writeNarrative).not.toHaveBeenCalled();
     expect(write.integrityAnalysis.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ create: expect.objectContaining({ level: 'clear', flagsJson: '[]' }) }),
     );
@@ -251,7 +251,7 @@ describe('IntegrityAnalysisService', () => {
       .mockImplementationOnce((_ctx, fn) => fn(readTx))
       .mockImplementationOnce((_ctx, fn) => fn(write))
       .mockImplementationOnce((_ctx, fn) => fn(counterpartTx));
-    claudeClient.writeNarrative.mockResolvedValue('High code similarity detected with another candidate.');
+    integrityNarrativeClient.writeNarrative.mockResolvedValue('High code similarity detected with another candidate.');
 
     await service.analyze('attempt-1');
 
@@ -323,7 +323,7 @@ describe('IntegrityAnalysisService', () => {
       .mockImplementationOnce((_ctx, fn) => fn(readTx))
       .mockImplementationOnce((_ctx, fn) => fn(write))
       .mockImplementationOnce((_ctx, fn) => fn(counterpartTx));
-    claudeClient.writeNarrative.mockResolvedValue('High code similarity detected with another candidate.');
+    integrityNarrativeClient.writeNarrative.mockResolvedValue('High code similarity detected with another candidate.');
 
     await service.analyze('attempt-1');
 
@@ -353,7 +353,7 @@ describe('IntegrityAnalysisService', () => {
       .mockImplementationOnce((_ctx, fn) => fn(readTx))
       .mockImplementationOnce((_ctx, fn) => fn(write))
       .mockImplementationOnce((_ctx, fn) => fn(counterpartTx));
-    claudeClient.writeNarrative.mockResolvedValue('High code similarity detected with another candidate.');
+    integrityNarrativeClient.writeNarrative.mockResolvedValue('High code similarity detected with another candidate.');
 
     await expect(service.analyze('attempt-1')).resolves.toBeUndefined();
 
@@ -380,7 +380,7 @@ describe('IntegrityAnalysisService', () => {
       .mockImplementationOnce((_ctx, fn) => fn(readTx))
       .mockImplementationOnce((_ctx, fn) => fn(write))
       .mockImplementationOnce(() => Promise.reject(new Error('counterpart tx unavailable')));
-    claudeClient.writeNarrative.mockResolvedValue('High code similarity detected with another candidate.');
+    integrityNarrativeClient.writeNarrative.mockResolvedValue('High code similarity detected with another candidate.');
 
     await expect(service.analyze('attempt-1')).resolves.toBeUndefined();
     expect(write.integrityAnalysis.upsert).toHaveBeenCalled();

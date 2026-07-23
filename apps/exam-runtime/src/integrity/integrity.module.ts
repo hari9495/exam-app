@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { CryptoModule } from '@exam-platform/shared';
 import { IntegrityAnalysisService } from './integrity-analysis.service';
-import { ClaudeIntegrityClient } from './claude-integrity.client';
+import { IntegrityNarrativeClient } from './integrity-narrative.client';
 
 @Module({
   imports: [CryptoModule],
-  providers: [IntegrityAnalysisService, ClaudeIntegrityClient],
+  providers: [IntegrityAnalysisService, IntegrityNarrativeClient],
   exports: [IntegrityAnalysisService],
 })
 export class IntegrityModule {}

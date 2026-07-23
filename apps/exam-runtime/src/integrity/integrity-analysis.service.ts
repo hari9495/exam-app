@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TenantPrismaService, AiApiKeyResolverService } from '@exam-platform/shared';
-import { ClaudeIntegrityClient } from './claude-integrity.client';
+import { IntegrityNarrativeClient } from './integrity-narrative.client';
 import { deriveTelemetryFlags, deriveAttemptFlags, deriveLevel, IntegrityFlag, AnswerTelemetry } from './integrity-rules';
 import { normalizeCode, similarityScore, MIN_NORMALIZED_LENGTH, SIMILARITY_THRESHOLD, SIMILARITY_HIGH } from './similarity';
 
@@ -23,7 +23,7 @@ export class IntegrityAnalysisService {
 
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
-    private readonly claudeIntegrityClient: ClaudeIntegrityClient,
+    private readonly integrityNarrativeClient: IntegrityNarrativeClient,
     private readonly aiApiKeyResolver: AiApiKeyResolverService,
   ) {}
 
@@ -130,8 +130,8 @@ export class IntegrityAnalysisService {
         narrative = CLEAR_NARRATIVE;
       } else {
         try {
-          const apiKey = await this.aiApiKeyResolver.resolve(organizationId);
-          narrative = await this.claudeIntegrityClient.writeNarrative(flags, { examTitle, level }, apiKey);
+          const aiProvider = await this.aiApiKeyResolver.resolve(organizationId);
+          narrative = await this.integrityNarrativeClient.writeNarrative(flags, { examTitle, level }, aiProvider);
           narrativeSucceeded = true;
         } catch (error) {
           this.logger.error(`Integrity narrative generation failed for attempt ${attemptId}`, error as Error);
