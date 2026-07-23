@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { motion, useReducedMotion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Users, Mail, Play, FileEdit, AlertTriangle, Clock, CheckCircle2, FileEdit as FileEditIcon, Plus, CalendarClock } from 'lucide-react';
 import { useDashboardExamPerformance, useDashboardFunnel, useDashboardSummary, useDashboardTrend } from '../../../lib/hooks/useDashboard';
 import { useExams } from '../../../lib/hooks/useExams';
@@ -151,7 +151,6 @@ function CandidateFunnelCard() {
 
 export default function DashboardPage() {
   const { data: summary, isLoading, isError } = useDashboardSummary();
-  const prefersReducedMotion = useReducedMotion();
 
   if (isLoading) {
     return (

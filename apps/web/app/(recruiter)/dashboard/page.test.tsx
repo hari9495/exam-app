@@ -114,10 +114,6 @@ describe('DashboardPage', () => {
             attention: { pendingGrading: [], recentProctoringFlags: [], staleInvitationCount: 0 },
             activity: [],
             upcomingExams: [],
-            // ponytail: page.tsx still reads summary.funnel (pre-existing Task 8 leftover,
-            // removed only in Task 10). Included here so this new test isn't blocked by
-            // that unrelated, already-known bug; not a statement about the funnel feature.
-            funnel: { invited: 0, started: 0, submitted: 0, passed: 0 },
           }),
           { status: 200 },
         );
