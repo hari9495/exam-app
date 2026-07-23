@@ -40,7 +40,10 @@ export default function UsersDirectoryPage() {
           Failed to load users.
         </p>
       )}
-      {!isLoading && !isError && (
+      {!isLoading && !isError && (data?.data ?? []).length === 0 && (
+        <p className="text-sm text-gray-500">No users found.</p>
+      )}
+      {!isLoading && !isError && (data?.data ?? []).length > 0 && (
         <>
           <table className="w-full text-left text-sm">
             <thead>

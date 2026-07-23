@@ -57,6 +57,64 @@ describe('UsersDirectoryPage', () => {
     expect(mockPush).toHaveBeenCalledWith('/users');
   });
 
+  it('renders each row with its own organization, not a single echoed value', async () => {
+    useAuth.mockReturnValue({ accessToken: 'token', switchIntoOrg: jest.fn() });
+    useUserDirectory.mockReturnValue({
+      data: {
+        data: [
+          {
+            id: 'u1',
+            organizationId: 'org-1',
+            organizationName: 'Acme Inc',
+            email: 'a@acme.test',
+            name: 'A',
+            role: 'recruiter',
+            status: 'active',
+            lastLoginAt: null,
+            createdAt: '2026-01-01',
+          },
+          {
+            id: 'u2',
+            organizationId: 'org-2',
+            organizationName: 'Widget Co',
+            email: 'b@widget.test',
+            name: 'B',
+            role: 'org_admin',
+            status: 'active',
+            lastLoginAt: null,
+            createdAt: '2026-01-01',
+          },
+        ],
+        total: 2,
+        page: 1,
+        pageSize: 20,
+        totalPages: 1,
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<UsersDirectoryPage />);
+
+    expect(await screen.findByText('a@acme.test')).toBeInTheDocument();
+    expect(screen.getByText('Acme Inc')).toBeInTheDocument();
+    expect(screen.getByText('b@widget.test')).toBeInTheDocument();
+    expect(screen.getByText('Widget Co')).toBeInTheDocument();
+  });
+
+  it('shows an empty-state message when the directory has no users', async () => {
+    useAuth.mockReturnValue({ accessToken: 'token', switchIntoOrg: jest.fn() });
+    useUserDirectory.mockReturnValue({
+      data: { data: [], total: 0, page: 1, pageSize: 20, totalPages: 1 },
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<UsersDirectoryPage />);
+
+    expect(await screen.findByText(/no users found/i)).toBeInTheDocument();
+  });
+
   it('shows a platform dash instead of an org name for other super_admin rows', async () => {
     useAuth.mockReturnValue({ accessToken: 'token', switchIntoOrg: jest.fn() });
     useUserDirectory.mockReturnValue({
