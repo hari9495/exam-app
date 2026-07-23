@@ -7,6 +7,35 @@ const ACTIVITY_LIMIT = 10;
 const RECENT_PROCTORING_LIMIT = 5;
 const UPCOMING_EXAMS_LIMIT = 5;
 
+export interface DashboardTrendPoint {
+  date: string;
+  value: number;
+}
+
+export interface DashboardTrend {
+  points: DashboardTrendPoint[];
+}
+
+function daysAgo(days: number): Date {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+}
+
+function bucketByDay(timestamps: Date[], days: number): DashboardTrendPoint[] {
+  const counts = new Map<string, number>();
+  for (const timestamp of timestamps) {
+    const key = timestamp.toISOString().slice(0, 10);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const points: DashboardTrendPoint[] = [];
+  for (let offset = days - 1; offset >= 0; offset -= 1) {
+    const date = new Date();
+    date.setUTCDate(date.getUTCDate() - offset);
+    const key = date.toISOString().slice(0, 10);
+    points.push({ date: key, value: counts.get(key) ?? 0 });
+  }
+  return points;
+}
+
 export interface DashboardSummary {
   stats: {
     totalCandidates: number;
@@ -142,6 +171,58 @@ export class DashboardService {
           availabilityWindowStart: exam.availabilityWindowStart!.toISOString(),
         })),
       };
+    });
+  }
+
+  async getTrend(
+    context: TenantContext,
+    metric: 'candidates' | 'invitations' | 'attempts' | 'pendingGrading',
+    days: 7 | 14 | 30,
+  ): Promise<DashboardTrend> {
+    const organizationId = context.organizationId as string;
+
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const exams = await tx.exam.findMany({ where: { organizationId }, select: { id: true } });
+      const examIds = exams.map((exam) => exam.id);
+      const windowStart = daysAgo(days);
+
+      let timestamps: Date[];
+      switch (metric) {
+        case 'candidates': {
+          const rows = await tx.candidate.findMany({
+            where: { organizationId, erasedAt: null, createdAt: { gte: windowStart } },
+            select: { createdAt: true },
+          });
+          timestamps = rows.map((row) => row.createdAt);
+          break;
+        }
+        case 'invitations': {
+          const rows = await tx.invitation.findMany({
+            where: { examId: { in: examIds }, invitedAt: { gte: windowStart } },
+            select: { invitedAt: true },
+          });
+          timestamps = rows.map((row) => row.invitedAt);
+          break;
+        }
+        case 'attempts': {
+          const rows = await tx.attempt.findMany({
+            where: { examId: { in: examIds }, startedAt: { gte: windowStart } },
+            select: { startedAt: true },
+          });
+          timestamps = rows.map((row) => row.startedAt);
+          break;
+        }
+        case 'pendingGrading': {
+          const rows = await tx.attempt.findMany({
+            where: { examId: { in: examIds }, status: 'pending_manual_grade', submittedAt: { gte: windowStart } },
+            select: { submittedAt: true },
+          });
+          timestamps = rows.map((row) => row.submittedAt as Date);
+          break;
+        }
+      }
+
+      return { points: bucketByDay(timestamps, days) };
     });
   }
 }

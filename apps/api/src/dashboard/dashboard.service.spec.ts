@@ -20,10 +20,10 @@ describe('DashboardService', () => {
       exam: {
         findMany: jest.fn().mockResolvedValueOnce([{ id: 'exam-1', title: 'Backend Round' }]).mockResolvedValue([]),
       },
-      candidate: { count: jest.fn().mockResolvedValue(0) },
-      invitation: { count: jest.fn().mockResolvedValue(0) },
-      attempt: { count: jest.fn().mockResolvedValue(0), groupBy: jest.fn().mockResolvedValue([]) },
-      result: { count: jest.fn().mockResolvedValue(0) },
+      candidate: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
+      invitation: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
+      attempt: { count: jest.fn().mockResolvedValue(0), groupBy: jest.fn().mockResolvedValue([]), findMany: jest.fn().mockResolvedValue([]) },
+      result: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
       proctoringEvent: { findMany: jest.fn().mockResolvedValue([]) },
       auditLog: { findMany: jest.fn().mockResolvedValue([]) },
       ...overrides,
@@ -129,5 +129,99 @@ describe('DashboardService', () => {
 
     expect(result.funnel).toEqual({ invited: 0, started: 0, submitted: 0, passed: 0 });
     expect(result.upcomingExams).toEqual([]);
+  });
+
+  describe('getTrend', () => {
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-07-23T12:00:00Z'));
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('buckets candidate counts by day over the requested window', async () => {
+      const tx = stubTx({
+        candidate: {
+          count: jest.fn().mockResolvedValue(0),
+          findMany: jest.fn().mockResolvedValue([
+            { createdAt: new Date('2026-07-22T09:00:00Z') },
+            { createdAt: new Date('2026-07-22T15:00:00Z') },
+            { createdAt: new Date('2026-07-20T09:00:00Z') },
+          ]),
+        },
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getTrend(context, 'candidates', 7);
+
+      expect(result.points).toHaveLength(7);
+      expect(result.points[result.points.length - 1]).toEqual({ date: '2026-07-23', value: 0 });
+      expect(result.points.find((p) => p.date === '2026-07-22')).toEqual({ date: '2026-07-22', value: 2 });
+      expect(result.points.find((p) => p.date === '2026-07-20')).toEqual({ date: '2026-07-20', value: 1 });
+      expect(tx.candidate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ organizationId: 'org-1', erasedAt: null, createdAt: { gte: new Date('2026-07-16T12:00:00Z') } }),
+        }),
+      );
+    });
+
+    it('buckets invitation counts by invitedAt for the invitations metric', async () => {
+      const tx = stubTx({
+        invitation: {
+          count: jest.fn().mockResolvedValue(0),
+          findMany: jest.fn().mockResolvedValue([{ invitedAt: new Date('2026-07-23T08:00:00Z') }]),
+        },
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getTrend(context, 'invitations', 14);
+
+      expect(result.points).toHaveLength(14);
+      expect(result.points[result.points.length - 1]).toEqual({ date: '2026-07-23', value: 1 });
+    });
+
+    it('buckets attempt-started counts by startedAt for the attempts metric', async () => {
+      const tx = stubTx({
+        attempt: {
+          count: jest.fn().mockResolvedValue(0),
+          groupBy: jest.fn().mockResolvedValue([]),
+          findMany: jest.fn().mockResolvedValue([{ startedAt: new Date('2026-07-21T08:00:00Z') }]),
+        },
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getTrend(context, 'attempts', 30);
+
+      expect(result.points).toHaveLength(30);
+      expect(result.points.find((p) => p.date === '2026-07-21')).toEqual({ date: '2026-07-21', value: 1 });
+    });
+
+    it('buckets pending-grading counts by submittedAt for attempts still awaiting manual grading', async () => {
+      const tx = stubTx({
+        attempt: {
+          count: jest.fn().mockResolvedValue(0),
+          groupBy: jest.fn().mockResolvedValue([]),
+          findMany: jest.fn().mockResolvedValue([{ submittedAt: new Date('2026-07-23T08:00:00Z') }]),
+        },
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getTrend(context, 'pendingGrading', 7);
+
+      expect(tx.attempt.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ status: 'pending_manual_grade' }) }),
+      );
+      expect(result.points[result.points.length - 1]).toEqual({ date: '2026-07-23', value: 1 });
+    });
+
+    it('returns all-zero points for a metric with no matching rows', async () => {
+      const tx = stubTx();
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getTrend(context, 'candidates', 7);
+
+      expect(result.points.every((p) => p.value === 0)).toBe(true);
+    });
   });
 });
