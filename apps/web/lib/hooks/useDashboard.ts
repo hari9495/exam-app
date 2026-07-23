@@ -12,11 +12,11 @@ import {
 } from '../types';
 import { useAuth } from '../auth-context';
 
-export function useDashboardSummary() {
+export function useDashboardSummary(window: DashboardWindow) {
   const { accessToken } = useAuth();
   return useQuery<DashboardSummary>({
-    queryKey: ['dashboard-summary'],
-    queryFn: () => apiFetch('/dashboard/summary', {}, accessToken ?? undefined),
+    queryKey: ['dashboard-summary', window],
+    queryFn: () => apiFetch(`/dashboard/summary?window=${window}`, {}, accessToken ?? undefined),
     enabled: Boolean(accessToken),
   });
 }

@@ -555,9 +555,9 @@ export interface DashboardSummary {
 }
 
 export type DashboardTrendMetric = 'candidates' | 'invitations' | 'attempts' | 'pendingGrading';
-export type DashboardTrendDays = 7 | 14 | 30;
+export type DashboardTrendDays = 7 | 14 | 30 | 90;
 export type DashboardPerformanceLimit = 5 | 10 | 'all';
-export type DashboardWindow = 'all' | '30d' | '90d';
+export type DashboardWindow = 'all' | '7d' | '14d' | '30d' | '90d';
 
 export interface DashboardTrend {
   points: { date: string; value: number }[];
