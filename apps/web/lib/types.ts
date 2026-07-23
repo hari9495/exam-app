@@ -551,11 +551,25 @@ export interface DashboardSummary {
     staleInvitationCount: number;
   };
   activity: { id: string; description: string; occurredAt: string }[];
-  funnel: {
-    invited: number;
-    started: number;
-    submitted: number;
-    passed: number;
-  };
   upcomingExams: { examId: string; examTitle: string; availabilityWindowStart: string }[];
+}
+
+export type DashboardTrendMetric = 'candidates' | 'invitations' | 'attempts' | 'pendingGrading';
+export type DashboardTrendDays = 7 | 14 | 30;
+export type DashboardPerformanceLimit = 5 | 10 | 'all';
+export type DashboardWindow = 'all' | '30d' | '90d';
+
+export interface DashboardTrend {
+  points: { date: string; value: number }[];
+}
+
+export interface DashboardExamPerformance {
+  exams: { examId: string; examTitle: string; passRate: number; avgScore: number; candidateCount: number }[];
+}
+
+export interface DashboardFunnel {
+  invited: number;
+  started: number;
+  submitted: number;
+  passed: number;
 }
