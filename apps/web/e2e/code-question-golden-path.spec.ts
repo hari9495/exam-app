@@ -21,8 +21,10 @@ test('candidate writes and submits code, recruiter grades and finalizes the atte
   await page.getByRole('option', { name: 'Code' }).click();
   await page.getByLabel('Question text').fill('Write a function that reverses a string.');
   await page.getByLabel('Marks', { exact: true }).fill('10');
-  await page.getByLabel('Language').click();
-  await page.getByRole('option', { name: 'javascript' }).click();
+  // Language mode defaults to Fixed; picking exactly one language via the live-list
+  // checkboxes is what keeps this the backward-compatible "auto-selected, zero extra
+  // candidate clicks" golden path (Starter code only renders once exactly 1 is checked).
+  await page.getByRole('checkbox', { name: 'javascript' }).click();
   await page.getByLabel('Starter code').fill('function reverse(str) {\n  \n}');
   await page.getByRole('button', { name: 'Create question' }).click();
   await expect(page).toHaveURL(/\/questions$/);
@@ -125,4 +127,98 @@ test('candidate writes and submits code, recruiter grades and finalizes the atte
   await expect(finalizeButton).toBeEnabled();
   await finalizeButton.click();
   await expect(page.getByText('No attempts pending manual grading.')).toBeVisible();
+});
+
+test('candidate must pick a language for a Fixed multi-language question before Monaco appears', async ({ page, browser }) => {
+  // Recruiter: create a Fixed-mode code question with two allowed languages
+  await page.goto('/login');
+  await page.getByLabel('Organization slug').fill(ORG_SLUG);
+  await page.getByLabel('Email').fill(RECRUITER_EMAIL);
+  await page.getByLabel('Password').fill(RECRUITER_PASSWORD);
+  await page.getByRole('button', { name: 'Log in' }).click();
+  await expect(page).toHaveURL(/\/dashboard/);
+
+  await page.getByRole('link', { name: 'Question Bank' }).click();
+  await page.getByRole('link', { name: 'New question' }).click();
+  await page.getByLabel('Question type').click();
+  await page.getByRole('option', { name: 'Code' }).click();
+  const questionText = 'Print the word hello in whichever language you pick.';
+  await page.getByLabel('Question text').fill(questionText);
+  await page.getByLabel('Marks', { exact: true }).fill('10');
+  // Two allowed languages -- Starter code never renders (that field is gated to exactly
+  // 1 allowed language), so the candidate must pick before Monaco can mount.
+  await page.getByRole('checkbox', { name: 'javascript' }).click();
+  await page.getByRole('checkbox', { name: 'python' }).click();
+  await page.getByRole('button', { name: 'Create question' }).click();
+  await expect(page).toHaveURL(/\/questions$/);
+
+  await page.getByRole('link', { name: 'Exams' }).click();
+  await page.getByRole('link', { name: 'New exam' }).click();
+  const examTitle = `Multi-Lang Exam ${Date.now()}`;
+  await page.getByLabel('Title').fill(examTitle);
+  await page.getByRole('button', { name: 'Create exam' }).click();
+  await expect(page).toHaveURL(/\/exams\/.+\/edit$/);
+
+  await page.getByRole('tab', { name: 'Sections & Questions' }).click();
+  await page.getByLabel('New section title').fill('Section One');
+  await page.getByRole('button', { name: 'Add section' }).click();
+  await page.getByRole('button', { name: 'Manage questions' }).click();
+  await page.getByRole('checkbox', { name: new RegExp(questionText.replace(/\./g, '\\.')) }).first().click();
+  await page.getByRole('button', { name: 'Save questions' }).click();
+  await page.getByRole('button', { name: 'Publish' }).click();
+  await expect(page).toHaveURL(/\/exams$/);
+
+  await page.getByRole('link', { name: 'Candidates' }).click();
+  const candidateEmail = `multi-lang-${Date.now()}@example.com`;
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Multi Lang Candidate');
+  await page.getByLabel('Email').fill(candidateEmail);
+  await page.getByRole('button', { name: 'Add candidate' }).click();
+  await expect(page.getByText(candidateEmail)).toBeVisible();
+
+  await page.getByLabel('Exam to invite to').click();
+  await page.getByRole('option', { name: examTitle, exact: true }).click();
+  await page.locator('.group', { hasText: candidateEmail }).getByRole('checkbox', { name: 'Multi Lang Candidate' }).click();
+  const invitePromise = page.waitForResponse((response) => response.url().includes('/invitations') && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Send invitations' }).click();
+  const inviteResponse = await invitePromise;
+  const inviteToken: string = (await inviteResponse.json()).created[0].token;
+
+  // Candidate: redeem the invite, confirm Monaco is gated behind an explicit language pick
+  const candidateContext = await browser.newContext();
+  const candidatePage = await candidateContext.newPage();
+  await candidatePage.addInitScript(() => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: { getUserMedia: async () => ({ getTracks: () => [{ stop: () => undefined }] }) },
+      configurable: true,
+    });
+    (window as unknown as { __DISABLE_WEBCAM_MONITOR__?: boolean }).__DISABLE_WEBCAM_MONITOR__ = true;
+  });
+  await candidatePage.goto(`/start?token=${inviteToken}`);
+  await expect(candidatePage).toHaveURL(/\/welcome$/);
+  await candidatePage.getByRole('button', { name: /skip practice/i }).click();
+  await candidatePage.getByRole('button', { name: 'Enable camera' }).click();
+  await candidatePage.getByRole('checkbox', { name: /i understand and consent to monitoring/i }).click();
+  await candidatePage.getByRole('button', { name: 'Start exam' }).click();
+  await expect(candidatePage).toHaveURL(/\/exam$/);
+
+  await expect(candidatePage.getByText(questionText)).toBeVisible();
+  // No language chosen yet -- only the picker renders, Monaco isn't mounted at all.
+  await expect(candidatePage.locator('.monaco-editor')).toHaveCount(0);
+  const languageSelect = candidatePage.getByLabel('Choose a language before you start');
+  await expect(languageSelect).toBeVisible();
+  await languageSelect.selectOption('python');
+
+  // Selecting a language swaps the picker for a real Monaco instance.
+  await expect(candidatePage.locator('.monaco-editor')).toBeVisible();
+  const editor = candidatePage.locator('.monaco-editor .view-lines').first();
+  await editor.click();
+  await candidatePage.keyboard.insertText('print("hello")');
+  await candidatePage.waitForResponse((response) => response.url().includes('/attempt/answer') && response.request().method() === 'POST');
+
+  await candidatePage.getByRole('button', { name: 'Run' }).click();
+  await candidatePage.waitForResponse((response) => response.url().includes('/attempt/run-code'));
+  const resultPanel = candidatePage.getByText(/Exit code:|Couldn't run your code right now/);
+  await expect(resultPanel).toBeVisible({ timeout: 10000 });
+
+  await candidateContext.close();
 });

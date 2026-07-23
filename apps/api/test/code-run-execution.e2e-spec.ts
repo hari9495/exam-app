@@ -21,10 +21,16 @@ describe('Code Run Execution HTTP flow', () => {
   let examId: string;
   let codeQuestionId: string;
   let singleMcqId: string;
+  let multiLangCodeQuestionId: string;
+  let anyModeCodeQuestionId: string;
   let accessToken: string;
   const fakeEmailService = { send: jest.fn().mockResolvedValue({ success: true, previewUrl: 'https://ethereal.email/fake' }) };
   const fakePistonClient = {
     execute: jest.fn().mockResolvedValue({ stdout: 'hi\n', stderr: '', exitCode: 0, compileError: null, timedOut: false }),
+    listRuntimes: jest.fn().mockResolvedValue([
+      { language: 'python', version: '3.10.0', aliases: [] },
+      { language: 'javascript', version: '18.15.0', aliases: ['node'] },
+    ]),
   };
 
   beforeAll(async () => {
@@ -77,12 +83,42 @@ describe('Code Run Execution HTTP flow', () => {
         text: 'Print "hi".',
         difficulty: 'easy',
         marks: 5,
-        codeLanguage: 'python',
+        languageMode: 'fixed',
+        allowedLanguages: ['python'],
         starterCode: 'print("hi")',
         options: [],
       })
       .expect(201);
     codeQuestionId = codeQuestionResponse.body.id;
+
+    const multiLangCodeQuestionResponse = await request(adminHttp)
+      .post('/api/v1/questions')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({
+        type: 'code',
+        text: 'Print "multi".',
+        difficulty: 'easy',
+        marks: 5,
+        languageMode: 'fixed',
+        allowedLanguages: ['python', 'javascript'],
+        options: [],
+      })
+      .expect(201);
+    multiLangCodeQuestionId = multiLangCodeQuestionResponse.body.id;
+
+    const anyModeCodeQuestionResponse = await request(adminHttp)
+      .post('/api/v1/questions')
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send({
+        type: 'code',
+        text: 'Print "any".',
+        difficulty: 'easy',
+        marks: 5,
+        languageMode: 'any',
+        options: [],
+      })
+      .expect(201);
+    anyModeCodeQuestionId = anyModeCodeQuestionResponse.body.id;
 
     const singleMcqResponse = await request(adminHttp)
       .post('/api/v1/questions')
@@ -97,7 +133,7 @@ describe('Code Run Execution HTTP flow', () => {
     await request(adminHttp)
       .put(`/api/v1/exams/${examId}/sections/${sectionResponse.body.id}/questions`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
-      .send({ questionIds: [codeQuestionId, singleMcqId] })
+      .send({ questionIds: [codeQuestionId, singleMcqId, multiLangCodeQuestionId, anyModeCodeQuestionId] })
       .expect(200);
 
     await request(adminHttp)
@@ -141,7 +177,7 @@ describe('Code Run Execution HTTP flow', () => {
     const runResponse = await request(runtimeHttp)
       .post('/api/v1/attempt/run-code')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ questionId: codeQuestionId, code: 'print("hi")' })
+      .send({ questionId: codeQuestionId, code: 'print("hi")', codeLanguage: 'python' })
       .expect(201);
 
     expect(runResponse.body).toEqual({ stdout: 'hi\n', stderr: '', exitCode: 0, compileError: null, timedOut: false, runsRemaining: 29 });
@@ -164,16 +200,69 @@ describe('Code Run Execution HTTP flow', () => {
       await request(runtimeHttp)
         .post('/api/v1/attempt/run-code')
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ questionId: codeQuestionId, code: 'print("hi")' })
+        .send({ questionId: codeQuestionId, code: 'print("hi")', codeLanguage: 'python' })
         .expect(201);
     }
 
     const cappedResponse = await request(runtimeHttp)
       .post('/api/v1/attempt/run-code')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ questionId: codeQuestionId, code: 'print("hi")' })
+      .send({ questionId: codeQuestionId, code: 'print("hi")', codeLanguage: 'python' })
       .expect(429);
 
     expect(cappedResponse.body.message).toBe('You have used all 30 runs for this question');
+  });
+
+  it('supports fixed mode with multiple allowed languages, rejecting a language outside the allowlist', async () => {
+    const currentResponse = await request(runtimeHttp)
+      .get('/api/v1/attempt/current')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const questions = currentResponse.body.sections.flatMap((section: { questions: { id: string }[] }) => section.questions);
+    const multiLangQuestion = questions.find((q: { id: string }) => q.id === multiLangCodeQuestionId);
+    expect(multiLangQuestion.languageMode).toBe('fixed');
+    expect(multiLangQuestion.allowedLanguages).toEqual(expect.arrayContaining(['python', 'javascript']));
+    expect(multiLangQuestion.allowedLanguages).toHaveLength(2);
+
+    await request(runtimeHttp)
+      .post('/api/v1/attempt/run-code')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ questionId: multiLangCodeQuestionId, code: 'console.log("hi")', codeLanguage: 'javascript' })
+      .expect(201);
+
+    const rejectedResponse = await request(runtimeHttp)
+      .post('/api/v1/attempt/run-code')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ questionId: multiLangCodeQuestionId, code: 'puts "hi"', codeLanguage: 'ruby' })
+      .expect(400);
+    expect(rejectedResponse.body.message).toBe('ruby is not an allowed language for this question');
+  });
+
+  it('supports any mode: live language list, run-code with a chosen language, and Answer.codeLanguage round-tripping through submit', async () => {
+    const languagesResponse = await request(runtimeHttp)
+      .get('/api/v1/attempt/code-languages')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(languagesResponse.body.languages.length).toBeGreaterThan(0);
+    const chosenLanguage = languagesResponse.body.languages[0].language;
+
+    await request(runtimeHttp)
+      .post('/api/v1/attempt/run-code')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ questionId: anyModeCodeQuestionId, code: 'print("hi")', codeLanguage: chosenLanguage })
+      .expect(201);
+
+    await request(runtimeHttp)
+      .post('/api/v1/attempt/answer')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ questionId: anyModeCodeQuestionId, selectedOptionIds: [], answerText: 'print("hi")', codeLanguage: chosenLanguage })
+      .expect(201);
+
+    const submitResponse = await request(runtimeHttp)
+      .post('/api/v1/attempt/submit')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+    expect(submitResponse.body.status).toBe('pending_manual_grade');
   });
 });
