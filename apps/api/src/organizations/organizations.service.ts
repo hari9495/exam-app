@@ -2,14 +2,13 @@ import { BadRequestException, ConflictException, Injectable, Logger, NotFoundExc
 import { Organization } from '@prisma/client';
 import { randomBytes, createHash, X509Certificate } from 'crypto';
 import * as argon2 from 'argon2';
-import { dirname, join } from 'path';
-import * as fs from 'fs/promises';
 import * as nodemailer from 'nodemailer';
-import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { OrgSecretsCryptoService } from '@exam-platform/shared';
+import { BlobStorageService } from '@exam-platform/shared';
+import { AiProvider, AnthropicProvider, OpenAiCompatibleProvider } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
@@ -18,7 +17,6 @@ import { UpdateSmtpSettingsDto } from './dto/update-smtp-settings.dto';
 import { UpdateAiKeyDto } from './dto/update-ai-key.dto';
 import { UpdateWebhookUrlDto } from './dto/update-webhook-url.dto';
 import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
-import { UPLOADS_ROOT } from './uploads-path';
 
 export interface BrandingResponse {
   logoUrl: string | null;
@@ -35,6 +33,10 @@ export interface AiCreditUsageResponse {
 export interface IntegrationsResponse {
   smtpConfigured: boolean;
   aiKeyConfigured: boolean;
+  aiProvider: string;
+  aiBaseUrl: string | null;
+  aiModelFast: string | null;
+  aiModelStandard: string | null;
   smtpHost: string | null;
   smtpPort: number | null;
   emailFromAddress: string | null;
@@ -74,6 +76,7 @@ export class OrganizationsService {
     private readonly audit: AuditService,
     private readonly emailService: EmailService,
     private readonly cryptoService: OrgSecretsCryptoService,
+    private readonly blobStorage: BlobStorageService,
   ) {}
 
   async create(context: TenantContext, actorUserId: string, dto: CreateOrganizationDto): Promise<Organization> {
@@ -180,10 +183,8 @@ export class OrganizationsService {
       throw new BadRequestException('Logo file must be 2MB or smaller');
     }
 
-    const logoPath = `logos/${organizationId}${extension}`;
-    const fullPath = join(UPLOADS_ROOT, logoPath);
-    await fs.mkdir(dirname(fullPath), { recursive: true });
-    await fs.writeFile(fullPath, file.buffer);
+    const blobPath = `logos/${organizationId}-${Date.now()}${extension}`;
+    const logoPath = await this.blobStorage.upload(blobPath, file.buffer, file.mimetype);
 
     const org = await this.prisma.organization.update({ where: { id: organizationId }, data: { logoPath } });
     await this.audit.record(context, {
@@ -235,12 +236,17 @@ export class OrganizationsService {
       where: { id: organizationId },
       select: {
         smtpHost: true, smtpPort: true, emailFromAddress: true, aiApiKeyEncrypted: true, smtpPasswordEncrypted: true,
+        aiProvider: true, aiBaseUrl: true, aiModelFast: true, aiModelStandard: true,
         apiKeyHash: true, apiKeyPrefix: true, apiKeyCreatedAt: true, webhookUrl: true,
       },
     });
     return {
       smtpConfigured: Boolean(org?.smtpPasswordEncrypted),
       aiKeyConfigured: Boolean(org?.aiApiKeyEncrypted),
+      aiProvider: org?.aiProvider ?? 'anthropic',
+      aiBaseUrl: org?.aiBaseUrl ?? null,
+      aiModelFast: org?.aiModelFast ?? null,
+      aiModelStandard: org?.aiModelStandard ?? null,
       smtpHost: org?.smtpHost ?? null,
       smtpPort: org?.smtpPort ?? null,
       emailFromAddress: org?.emailFromAddress ?? null,
@@ -328,16 +334,26 @@ export class OrganizationsService {
   async updateAiKey(context: TenantContext, actorUserId: string, dto: UpdateAiKeyDto): Promise<{ aiKeyConfigured: boolean }> {
     const organizationId = this.requireOrganizationId(context);
 
+    const provider: AiProvider =
+      dto.provider === 'openai-compatible'
+        ? new OpenAiCompatibleProvider(dto.apiKey, dto.baseUrl as string, dto.modelFast as string, dto.modelStandard as string)
+        : new AnthropicProvider(dto.apiKey);
+
     try {
-      const client = new Anthropic({ apiKey: dto.apiKey });
-      await client.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 1, messages: [{ role: 'user', content: 'Hi' }] });
+      await provider.ping();
     } catch (error) {
-      throw new BadRequestException(`That API key was rejected by Anthropic: ${(error as Error).message}`);
+      throw new BadRequestException(`That API key was rejected: ${(error as Error).message}`);
     }
 
     await this.prisma.organization.update({
       where: { id: organizationId },
-      data: { aiApiKeyEncrypted: this.cryptoService.encrypt(dto.apiKey) },
+      data: {
+        aiProvider: dto.provider,
+        aiApiKeyEncrypted: this.cryptoService.encrypt(dto.apiKey),
+        aiBaseUrl: dto.provider === 'openai-compatible' ? (dto.baseUrl as string) : null,
+        aiModelFast: dto.provider === 'openai-compatible' ? (dto.modelFast as string) : null,
+        aiModelStandard: dto.provider === 'openai-compatible' ? (dto.modelStandard as string) : null,
+      },
     });
     await this.audit.record(context, {
       actorUserId,
@@ -469,7 +485,7 @@ export class OrganizationsService {
 
   private toBrandingResponse(org: Pick<Organization, 'logoPath' | 'primaryColor' | 'accentColor'>): BrandingResponse {
     return {
-      logoUrl: org.logoPath ? `${process.env.API_ORIGIN}/uploads/${org.logoPath}` : null,
+      logoUrl: org.logoPath ?? null,
       primaryColor: org.primaryColor,
       accentColor: org.accentColor,
     };

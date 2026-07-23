@@ -6,19 +6,14 @@ jest.mock('nodemailer', () => ({
 const mockAnthropicCreate = jest.fn();
 jest.mock('@anthropic-ai/sdk', () => jest.fn().mockImplementation(() => ({ messages: { create: mockAnthropicCreate } })));
 
-jest.mock('fs/promises', () => ({
-  mkdir: jest.fn(),
-  writeFile: jest.fn(),
-}));
-
-import * as fs from 'fs/promises';
+const mockOpenAiCreate = jest.fn();
+jest.mock('openai', () => jest.fn().mockImplementation(() => ({ chat: { completions: { create: mockOpenAiCreate } } })));
 
 import { Test } from '@nestjs/testing';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { sep } from 'path';
 import { createHash } from 'crypto';
 import { OrganizationsService } from './organizations.service';
-import { PrismaService, TenantPrismaService, AuditService, OrgSecretsCryptoService } from '@exam-platform/shared';
+import { PrismaService, TenantPrismaService, AuditService, OrgSecretsCryptoService, BlobStorageService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 
 describe('OrganizationsService', () => {
@@ -32,10 +27,12 @@ describe('OrganizationsService', () => {
   let audit: { record: jest.Mock };
   let emailService: { send: jest.Mock };
   let cryptoService: { encrypt: jest.Mock; decrypt: jest.Mock };
+  let blobStorage: { upload: jest.Mock; uploadDataUri: jest.Mock };
 
   beforeEach(async () => {
     mockTransporterVerify.mockReset();
     mockAnthropicCreate.mockReset();
+    mockOpenAiCreate.mockReset();
     prisma = {
       organization: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), findMany: jest.fn(), count: jest.fn() },
       plan: { findFirst: jest.fn() },
@@ -45,6 +42,7 @@ describe('OrganizationsService', () => {
     audit = { record: jest.fn() };
     emailService = { send: jest.fn().mockResolvedValue({ success: true }) };
     cryptoService = { encrypt: jest.fn(), decrypt: jest.fn() };
+    blobStorage = { upload: jest.fn(), uploadDataUri: jest.fn() };
     const moduleRef = await Test.createTestingModule({
       providers: [
         OrganizationsService,
@@ -53,6 +51,7 @@ describe('OrganizationsService', () => {
         { provide: AuditService, useValue: audit },
         { provide: EmailService, useValue: emailService },
         { provide: OrgSecretsCryptoService, useValue: cryptoService },
+        { provide: BlobStorageService, useValue: blobStorage },
       ],
     }).compile();
     service = moduleRef.get(OrganizationsService);
@@ -221,13 +220,12 @@ describe('OrganizationsService', () => {
       expect(result).toEqual({ logoUrl: null, primaryColor: null, accentColor: null });
     });
 
-    it('derives logoUrl from logoPath and API_ORIGIN', async () => {
-      process.env.API_ORIGIN = 'http://localhost:3001';
-      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', logoPath: 'logos/org-1.png', primaryColor: '#1a73e8', accentColor: '#fbbc04' });
+    it('returns logoUrl as the stored logoPath blob URL', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', logoPath: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png', primaryColor: '#1a73e8', accentColor: '#fbbc04' });
 
       const result = await service.getBranding({ organizationId: 'org-1', isSuperAdmin: false });
 
-      expect(result).toEqual({ logoUrl: 'http://localhost:3001/uploads/logos/org-1.png', primaryColor: '#1a73e8', accentColor: '#fbbc04' });
+      expect(result).toEqual({ logoUrl: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png', primaryColor: '#1a73e8', accentColor: '#fbbc04' });
     });
 
     it('throws BadRequestException when the caller has no organization context', async () => {
@@ -262,54 +260,59 @@ describe('OrganizationsService', () => {
     const pngFile = { mimetype: 'image/png', size: 1024, buffer: Buffer.from('fake-png-bytes') } as Express.Multer.File;
 
     beforeEach(() => {
-      process.env.API_ORIGIN = 'http://localhost:3001';
-      (fs.mkdir as jest.Mock).mockReset().mockResolvedValue(undefined);
-      (fs.writeFile as jest.Mock).mockReset().mockResolvedValue(undefined);
+      blobStorage.upload.mockReset().mockResolvedValue('https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png');
     });
 
-    it('writes the file to logos/{orgId}.png and updates logoPath', async () => {
-      prisma.organization.update.mockResolvedValue({ id: 'org-1', logoPath: 'logos/org-1.png', primaryColor: null, accentColor: null });
+    it('uploads the file to blob storage under logos/{orgId} and updates logoPath', async () => {
+      prisma.organization.update.mockResolvedValue({
+        id: 'org-1',
+        logoPath: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png',
+        primaryColor: null,
+        accentColor: null,
+      });
 
       const result = await service.uploadLogo({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', pngFile);
 
-      expect(fs.writeFile).toHaveBeenCalledWith(expect.stringContaining(`logos${sep}org-1.png`), pngFile.buffer);
-      expect(prisma.organization.update).toHaveBeenCalledWith({ where: { id: 'org-1' }, data: { logoPath: 'logos/org-1.png' } });
+      expect(blobStorage.upload).toHaveBeenCalledWith(expect.stringContaining('logos/org-1-'), pngFile.buffer, 'image/png');
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { logoPath: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png' },
+      });
       expect(audit.record).toHaveBeenCalledWith(
         { organizationId: 'org-1', isSuperAdmin: false },
         { actorUserId: 'user-1', action: 'organization.logo_updated', entityType: 'organization', entityId: 'org-1' },
       );
-      expect(result.logoUrl).toBe('http://localhost:3001/uploads/logos/org-1.png');
+      expect(result.logoUrl).toBe('https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png');
     });
 
-    it('rejects a non-image mimetype without writing any file', async () => {
+    it('rejects a non-image mimetype without uploading anything', async () => {
       const badFile = { mimetype: 'application/pdf', size: 1024, buffer: Buffer.from('x') } as Express.Multer.File;
 
       await expect(service.uploadLogo({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', badFile)).rejects.toThrow(BadRequestException);
-      expect(fs.writeFile).not.toHaveBeenCalled();
+      expect(blobStorage.upload).not.toHaveBeenCalled();
     });
 
-    it('rejects a file over 2MB without writing any file', async () => {
+    it('rejects a file over 2MB without uploading anything', async () => {
       const bigFile = { mimetype: 'image/png', size: 2 * 1024 * 1024 + 1, buffer: Buffer.from('x') } as Express.Multer.File;
 
       await expect(service.uploadLogo({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', bigFile)).rejects.toThrow(BadRequestException);
-      expect(fs.writeFile).not.toHaveBeenCalled();
+      expect(blobStorage.upload).not.toHaveBeenCalled();
     });
 
     it('throws BadRequestException when the caller has no organization context', async () => {
       await expect(service.uploadLogo({ organizationId: null, isSuperAdmin: true }, 'user-1', pngFile)).rejects.toThrow(BadRequestException);
-      expect(fs.writeFile).not.toHaveBeenCalled();
+      expect(blobStorage.upload).not.toHaveBeenCalled();
     });
   });
 
   describe('getPublicBrandingBySlug', () => {
     it('returns branding for an existing slug, with no auth/tenant context required', async () => {
-      process.env.API_ORIGIN = 'http://localhost:3001';
-      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', logoPath: 'logos/org-1.png', primaryColor: '#1a73e8', accentColor: null });
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', logoPath: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png', primaryColor: '#1a73e8', accentColor: null });
 
       const result = await service.getPublicBrandingBySlug('acme');
 
       expect(prisma.organization.findUnique).toHaveBeenCalledWith({ where: { slug: 'acme' } });
-      expect(result).toEqual({ logoUrl: 'http://localhost:3001/uploads/logos/org-1.png', primaryColor: '#1a73e8', accentColor: null });
+      expect(result).toEqual({ logoUrl: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png', primaryColor: '#1a73e8', accentColor: null });
     });
 
     it('throws NotFoundException for an unknown slug', async () => {
@@ -364,13 +367,15 @@ describe('OrganizationsService', () => {
     it('reports both as unconfigured for an org with nothing set', async () => {
       prisma.organization.findUnique.mockResolvedValue({
         smtpHost: null, smtpPort: null, emailFromAddress: null, aiApiKeyEncrypted: null, smtpPasswordEncrypted: null,
+        aiProvider: 'anthropic', aiBaseUrl: null, aiModelFast: null, aiModelStandard: null,
         apiKeyHash: null, apiKeyPrefix: null, apiKeyCreatedAt: null, webhookUrl: null,
       });
 
       const result = await service.getIntegrations({ organizationId: 'org-1', isSuperAdmin: false });
 
       expect(result).toEqual({
-        smtpConfigured: false, aiKeyConfigured: false, smtpHost: null, smtpPort: null, emailFromAddress: null,
+        smtpConfigured: false, aiKeyConfigured: false, aiProvider: 'anthropic', aiBaseUrl: null, aiModelFast: null, aiModelStandard: null,
+        smtpHost: null, smtpPort: null, emailFromAddress: null,
         apiKeyConfigured: false, apiKeyPrefix: null, apiKeyCreatedAt: null,
         webhookConfigured: false, webhookUrl: null,
       });
@@ -381,6 +386,7 @@ describe('OrganizationsService', () => {
       prisma.organization.findUnique.mockResolvedValue({
         smtpHost: 'smtp.customer.test', smtpPort: 465, emailFromAddress: 'no-reply@customer.test',
         aiApiKeyEncrypted: 'encrypted-blob', smtpPasswordEncrypted: 'also-encrypted',
+        aiProvider: 'anthropic', aiBaseUrl: null, aiModelFast: null, aiModelStandard: null,
         apiKeyHash: 'hashed-key', apiKeyPrefix: 'pk_live_abcd', apiKeyCreatedAt,
         webhookUrl: 'https://customer.test/webhook',
       });
@@ -388,7 +394,7 @@ describe('OrganizationsService', () => {
       const result = await service.getIntegrations({ organizationId: 'org-1', isSuperAdmin: false });
 
       expect(result).toEqual({
-        smtpConfigured: true, aiKeyConfigured: true,
+        smtpConfigured: true, aiKeyConfigured: true, aiProvider: 'anthropic', aiBaseUrl: null, aiModelFast: null, aiModelStandard: null,
         smtpHost: 'smtp.customer.test', smtpPort: 465, emailFromAddress: 'no-reply@customer.test',
         apiKeyConfigured: true, apiKeyPrefix: 'pk_live_abcd', apiKeyCreatedAt,
         webhookConfigured: true, webhookUrl: 'https://customer.test/webhook',
@@ -513,9 +519,8 @@ describe('OrganizationsService', () => {
   });
 
   describe('updateAiKey', () => {
-    const dto = { apiKey: 'sk-ant-customer-key' };
-
-    it('validates via a real minimal messages.create() call, then encrypts and persists on success', async () => {
+    it('validates an Anthropic key via a real minimal ping, then encrypts and persists on success', async () => {
+      const dto = { provider: 'anthropic' as const, apiKey: 'sk-ant-customer-key' };
       mockAnthropicCreate.mockResolvedValue({ content: [] });
       cryptoService.encrypt.mockReturnValue('encrypted-key-blob');
       prisma.organization.update.mockResolvedValue({});
@@ -528,7 +533,7 @@ describe('OrganizationsService', () => {
       expect(cryptoService.encrypt).toHaveBeenCalledWith('sk-ant-customer-key');
       expect(prisma.organization.update).toHaveBeenCalledWith({
         where: { id: 'org-1' },
-        data: { aiApiKeyEncrypted: 'encrypted-key-blob' },
+        data: { aiProvider: 'anthropic', aiApiKeyEncrypted: 'encrypted-key-blob', aiBaseUrl: null, aiModelFast: null, aiModelStandard: null },
       });
       expect(audit.record).toHaveBeenCalledWith(
         { organizationId: 'org-1', isSuperAdmin: false },
@@ -537,7 +542,38 @@ describe('OrganizationsService', () => {
       expect(result).toEqual({ aiKeyConfigured: true });
     });
 
-    it('rejects with BadRequestException and persists nothing when the API call fails', async () => {
+    it('validates and persists an openai-compatible provider with its base URL and model names', async () => {
+      const dto = {
+        provider: 'openai-compatible' as const,
+        apiKey: 'azure-key',
+        baseUrl: 'https://example.openai.azure.com/openai/v1',
+        modelFast: 'gpt-fast',
+        modelStandard: 'gpt-standard',
+      };
+      mockOpenAiCreate.mockResolvedValue({ choices: [{ message: {} }] });
+      cryptoService.encrypt.mockReturnValue('encrypted-key-blob');
+      prisma.organization.update.mockResolvedValue({});
+
+      const result = await service.updateAiKey({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', dto);
+
+      expect(mockOpenAiCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ model: 'gpt-fast', max_tokens: 1, messages: [{ role: 'user', content: 'Hi' }] }),
+      );
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: {
+          aiProvider: 'openai-compatible',
+          aiApiKeyEncrypted: 'encrypted-key-blob',
+          aiBaseUrl: 'https://example.openai.azure.com/openai/v1',
+          aiModelFast: 'gpt-fast',
+          aiModelStandard: 'gpt-standard',
+        },
+      });
+      expect(result).toEqual({ aiKeyConfigured: true });
+    });
+
+    it('rejects with BadRequestException and persists nothing when the ping fails', async () => {
+      const dto = { provider: 'anthropic' as const, apiKey: 'sk-ant-customer-key' };
       mockAnthropicCreate.mockRejectedValue(new Error('authentication_error'));
 
       await expect(
@@ -548,6 +584,7 @@ describe('OrganizationsService', () => {
     });
 
     it('throws BadRequestException when the caller has no organization context', async () => {
+      const dto = { provider: 'anthropic' as const, apiKey: 'sk-ant-customer-key' };
       await expect(
         service.updateAiKey({ organizationId: null, isSuperAdmin: true }, 'user-1', dto),
       ).rejects.toThrow(BadRequestException);
