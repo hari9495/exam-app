@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TenantPrismaService, AiApiKeyResolverService } from '@exam-platform/shared';
-import { ClaudeCodeReviewClient } from './claude-code-review.client';
+import { CodeReviewClient } from './code-review.client';
 
 @Injectable()
 export class CodeReviewService {
@@ -8,7 +8,7 @@ export class CodeReviewService {
 
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
-    private readonly claudeCodeReviewClient: ClaudeCodeReviewClient,
+    private readonly codeReviewClient: CodeReviewClient,
     private readonly aiApiKeyResolver: AiApiKeyResolverService,
   ) {}
 
@@ -30,8 +30,8 @@ export class CodeReviewService {
       result = { status: 'completed', suggestedMarks: 0, summary: 'No code was submitted for this question.' };
     } else {
       try {
-        const apiKey = await this.aiApiKeyResolver.resolve(organizationId);
-        const review = await this.claudeCodeReviewClient.review(
+        const aiProvider = await this.aiApiKeyResolver.resolve(organizationId);
+        const review = await this.codeReviewClient.review(
           {
             questionText: answer.question.text,
             starterCode: answer.question.starterCode,
@@ -39,7 +39,7 @@ export class CodeReviewService {
             answerText: answer.answerText,
             marks: answer.question.marks,
           },
-          apiKey,
+          aiProvider,
         );
         result = { status: 'completed', suggestedMarks: review.suggestedMarks, summary: review.summary };
         chargeCredit = true;
