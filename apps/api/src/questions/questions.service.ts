@@ -147,7 +147,7 @@ export class QuestionsService {
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
           skip,
           take,
-          include: { tags: { include: { tag: true } } },
+          include: { options: true, tags: { include: { tag: true } } },
         }),
         tx.question.count({ where }),
       ]);
