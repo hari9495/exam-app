@@ -8,12 +8,19 @@ import { useAuth, SSO_PENDING_SLUG_KEY } from '../../../lib/auth-context';
 import { decodeJwtPayload } from '../../../lib/jwt';
 
 const GENERIC_ERROR = 'Sign-in failed. Please try again or use your password.';
+const ERROR_REDIRECT_DELAY_MS = 3000;
 
 function SsoCallbackRedeemer() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { login } = useAuth();
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!error) return;
+    const timer = setTimeout(() => router.push('/login'), ERROR_REDIRECT_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [error, router]);
 
   useEffect(() => {
     const ssoError = searchParams.get('ssoError');

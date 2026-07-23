@@ -107,4 +107,19 @@ describe('SsoCallbackPage', () => {
     expect(await screen.findByText(/sign-in failed/i)).toBeInTheDocument();
     expect(apiFetch).not.toHaveBeenCalled();
   });
+
+  it('auto-redirects to /login a few seconds after showing an error', async () => {
+    jest.useFakeTimers({ advanceTimers: true });
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('ssoError=invalid_response'));
+
+    render(<SsoCallbackPage />);
+
+    await screen.findByText(/sign-in failed/i);
+    expect(push).not.toHaveBeenCalled();
+
+    jest.advanceTimersByTime(3000);
+    expect(push).toHaveBeenCalledWith('/login');
+
+    jest.useRealTimers();
+  });
 });
