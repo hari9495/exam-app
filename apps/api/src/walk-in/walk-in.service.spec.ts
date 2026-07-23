@@ -3,6 +3,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { WalkInService } from './walk-in.service';
 import { PrismaService, TenantPrismaService, AuditService } from '@exam-platform/shared';
 import { WebhooksService } from '../webhooks/webhooks.service';
+import { EmailService } from '../email/email.service';
 
 describe('WalkInService', () => {
   let service: WalkInService;
@@ -10,12 +11,14 @@ describe('WalkInService', () => {
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
   let webhooksService: { enqueue: jest.Mock };
+  let emailService: { send: jest.Mock };
 
   beforeEach(async () => {
     prisma = { organization: { findUnique: jest.fn() } };
     tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
     webhooksService = { enqueue: jest.fn() };
+    emailService = { send: jest.fn().mockResolvedValue({ success: true }) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         WalkInService,
@@ -23,6 +26,7 @@ describe('WalkInService', () => {
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: AuditService, useValue: audit },
         { provide: WebhooksService, useValue: webhooksService },
+        { provide: EmailService, useValue: emailService },
       ],
     }).compile();
     service = moduleRef.get(WalkInService);
@@ -97,6 +101,11 @@ describe('WalkInService', () => {
       );
       expect(result).toEqual({ token: 'raw-token' });
       expect(webhooksService.enqueue).toHaveBeenCalledWith('org-1', 'invitation.created', expect.objectContaining({ id: 'inv-1' }));
+      // Always emails the exam link rather than relying on the browser that registered
+      // (often a phone, scanned from a QR code) to also be the device the exam is taken on.
+      expect(emailService.send).toHaveBeenCalledWith(
+        expect.objectContaining({ to: 'alice@test.com', organizationId: 'org-1', html: expect.stringContaining('token=raw-token') }),
+      );
     });
 
     it('reuses the existing candidate and a live invitation instead of creating a duplicate', async () => {

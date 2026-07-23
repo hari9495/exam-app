@@ -65,8 +65,19 @@ test('a walk-in candidate registers and starts the exam without an email invite'
     await examSelect.click();
     await page.getByRole('option', { name: examTitle, exact: true }).click();
   }
-  await page.getByRole('button', { name: 'Start exam' }).click();
+  // The registration form no longer starts the exam in this browser tab -- a QR-scanned
+  // registration is often on a phone that can't run the exam UI, so the link is always
+  // emailed instead. Capture the register response the same way the emailed link would
+  // carry the token, then open it as a separate navigation (standing in for "candidate
+  // opens the emailed link on their laptop").
+  const [registerResponse] = await Promise.all([
+    page.waitForResponse((response) => response.url().includes('/public/walk-in/') && response.request().method() === 'POST'),
+    page.getByRole('button', { name: 'Email me my exam link' }).click(),
+  ]);
+  await expect(page.getByText(/check your email/i)).toBeVisible();
+  const { token } = await registerResponse.json();
 
+  await page.goto(`/start?token=${token}`);
   await expect(page).toHaveURL(/\/welcome$/);
   await page.getByRole('button', { name: /skip practice/i }).click();
   await expect(page.getByText(examTitle)).toBeVisible();
