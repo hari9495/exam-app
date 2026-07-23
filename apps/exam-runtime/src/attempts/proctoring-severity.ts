@@ -30,6 +30,21 @@ const SEVERITY_BY_EVENT_TYPE: Record<string, Severity> = {
   webcam_snapshot: 'low',
 };
 
+export const STRIKE_WORTHY_EVENT_TYPES: ReadonlySet<string> = new Set([
+  'tab_switch',
+  'window_blur',
+  'fullscreen_exit',
+  'copy_paste',
+  'right_click',
+  'dev_tools_detected',
+  'multi_monitor_detected',
+  'idle_timeout',
+]);
+
+export function isStrikeWorthy(eventType: string): boolean {
+  return STRIKE_WORTHY_EVENT_TYPES.has(eventType);
+}
+
 export function getProctoringEventSeverity(eventType: string): Severity {
   return SEVERITY_BY_EVENT_TYPE[eventType] ?? 'low';
 }

@@ -1,4 +1,4 @@
-import { CLIENT_REPORTABLE_EVENT_TYPES, getProctoringEventSeverity } from './proctoring-severity';
+import { CLIENT_REPORTABLE_EVENT_TYPES, getProctoringEventSeverity, isStrikeWorthy } from './proctoring-severity';
 
 describe('CLIENT_REPORTABLE_EVENT_TYPES', () => {
   it('does not include multi_login (system-generated only)', () => {
@@ -72,4 +72,26 @@ describe('getProctoringEventSeverity', () => {
     expect(CLIENT_REPORTABLE_EVENT_TYPES).not.toContain('webcam_snapshot');
     expect(getProctoringEventSeverity('webcam_snapshot')).toBe('low');
   });
+});
+
+describe('isStrikeWorthy', () => {
+  it.each([
+    'tab_switch',
+    'window_blur',
+    'fullscreen_exit',
+    'copy_paste',
+    'right_click',
+    'dev_tools_detected',
+    'multi_monitor_detected',
+    'idle_timeout',
+  ])('returns true for %s', (eventType) => {
+    expect(isStrikeWorthy(eventType)).toBe(true);
+  });
+
+  it.each(['refresh_warning', 'editor_paste', 'looking_down', 'webcam_snapshot', 'something_unmapped'])(
+    'returns false for %s',
+    (eventType) => {
+      expect(isStrikeWorthy(eventType)).toBe(false);
+    },
+  );
 });
