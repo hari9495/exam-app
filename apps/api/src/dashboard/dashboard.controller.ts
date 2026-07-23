@@ -7,10 +7,10 @@ import { TenantContext } from '@exam-platform/shared';
 import { DashboardService } from './dashboard.service';
 
 const TREND_METRICS = ['candidates', 'invitations', 'attempts', 'pendingGrading'] as const;
-const TREND_DAYS = [7, 14, 30] as const;
+const TREND_DAYS = [7, 14, 30, 90] as const;
 
 const PERFORMANCE_LIMITS = ['5', '10', 'all'] as const;
-const WINDOWS = ['all', '30d', '90d'] as const;
+const WINDOWS = ['all', '7d', '14d', '30d', '90d'] as const;
 
 type TrendMetric = (typeof TREND_METRICS)[number];
 type TrendDays = (typeof TREND_DAYS)[number];

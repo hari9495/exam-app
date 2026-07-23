@@ -283,6 +283,19 @@ describe('DashboardService', () => {
 
       expect(result.exams).toEqual([]);
     });
+
+    it('accepts a 7-day window', async () => {
+      const tx = stubTx();
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.getExamPerformance(context, 'all', '7d');
+
+      expect(tx.result.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ attempt: expect.objectContaining({ submittedAt: expect.objectContaining({ gte: expect.any(Date) }) }) }),
+        }),
+      );
+    });
   });
 
   describe('getFunnel', () => {
@@ -355,6 +368,17 @@ describe('DashboardService', () => {
       );
       expect(tx.attempt.count).toHaveBeenCalledWith(
         expect.objectContaining({ where: expect.objectContaining({ invitation: expect.objectContaining({ invitedAt: expect.objectContaining({ gte: expect.any(Date) }) }) }) }),
+      );
+    });
+
+    it('accepts a 14-day window', async () => {
+      const tx = stubTx();
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.getFunnel(context, 'all', '14d');
+
+      expect(tx.invitation.count).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ invitedAt: expect.objectContaining({ gte: expect.any(Date) }) }) }),
       );
     });
   });

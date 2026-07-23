@@ -58,6 +58,11 @@ describe('DashboardController', () => {
       controller.getTrend(tenant, 'invitations', '30');
       expect(service.getTrend).toHaveBeenCalledWith(tenant, 'invitations', 30);
     });
+
+    it('accepts 90 days', () => {
+      controller.getTrend(tenant, 'candidates', '90');
+      expect(service.getTrend).toHaveBeenCalledWith(tenant, 'candidates', 90);
+    });
   });
 
   describe('getExamPerformance', () => {
@@ -82,6 +87,11 @@ describe('DashboardController', () => {
       controller.getExamPerformance(tenant, 'all', 'all');
       expect(service.getExamPerformance).toHaveBeenCalledWith(tenant, 'all', 'all');
     });
+
+    it('accepts a 7d window', () => {
+      controller.getExamPerformance(tenant, '5', '7d');
+      expect(service.getExamPerformance).toHaveBeenCalledWith(tenant, 5, '7d');
+    });
   });
 
   describe('getFunnel', () => {
@@ -101,6 +111,11 @@ describe('DashboardController', () => {
     it('passes examId "all" through unchanged', () => {
       controller.getFunnel(tenant, 'all', 'all');
       expect(service.getFunnel).toHaveBeenCalledWith(tenant, 'all', 'all');
+    });
+
+    it('accepts a 14d window', () => {
+      controller.getFunnel(tenant, 'all', '14d');
+      expect(service.getFunnel).toHaveBeenCalledWith(tenant, 'all', '14d');
     });
   });
 });

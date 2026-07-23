@@ -39,6 +39,23 @@ function daysAgo(days: number): Date {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
 
+type Window = 'all' | '7d' | '14d' | '30d' | '90d';
+
+function resolveWindowStart(window: Window): Date | null {
+  switch (window) {
+    case '7d':
+      return daysAgo(7);
+    case '14d':
+      return daysAgo(14);
+    case '30d':
+      return daysAgo(30);
+    case '90d':
+      return daysAgo(90);
+    case 'all':
+      return null;
+  }
+}
+
 function bucketByDay(timestamps: Date[], days: number): DashboardTrendPoint[] {
   const counts = new Map<string, number>();
   for (const timestamp of timestamps) {
@@ -178,7 +195,7 @@ export class DashboardService {
   async getTrend(
     context: TenantContext,
     metric: 'candidates' | 'invitations' | 'attempts' | 'pendingGrading',
-    days: 7 | 14 | 30,
+    days: 7 | 14 | 30 | 90,
   ): Promise<DashboardTrend> {
     const organizationId = context.organizationId as string;
 
@@ -230,7 +247,7 @@ export class DashboardService {
   async getExamPerformance(
     context: TenantContext,
     limit: number | 'all',
-    window: 'all' | '30d' | '90d',
+    window: Window,
   ): Promise<DashboardExamPerformance> {
     const organizationId = context.organizationId as string;
 
@@ -238,7 +255,7 @@ export class DashboardService {
       const exams = await tx.exam.findMany({ where: { organizationId }, select: { id: true, title: true } });
       const examIds = exams.map((exam) => exam.id);
       const examTitleById = new Map(exams.map((exam) => [exam.id, exam.title]));
-      const windowStart = window === '30d' ? daysAgo(30) : window === '90d' ? daysAgo(90) : null;
+      const windowStart = resolveWindowStart(window);
 
       const results = await tx.result.findMany({
         where: {
@@ -276,14 +293,14 @@ export class DashboardService {
     });
   }
 
-  async getFunnel(context: TenantContext, examId: string, window: 'all' | '30d' | '90d'): Promise<DashboardFunnel> {
+  async getFunnel(context: TenantContext, examId: string, window: Window): Promise<DashboardFunnel> {
     const organizationId = context.organizationId as string;
 
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const exams = await tx.exam.findMany({ where: { organizationId }, select: { id: true } });
       const examIds = exams.map((exam) => exam.id);
       const targetExamIds = examId === 'all' ? examIds : examIds.filter((id) => id === examId);
-      const windowStart = window === '30d' ? daysAgo(30) : window === '90d' ? daysAgo(90) : null;
+      const windowStart = resolveWindowStart(window);
       const invitationFilter = windowStart ? { invitedAt: { gte: windowStart } } : {};
 
       const [invited, started, submitted, passed] = await Promise.all([
