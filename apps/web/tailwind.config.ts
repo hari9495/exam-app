@@ -5,11 +5,11 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        primary: 'var(--color-primary, #1a73e8)',
+        primary: 'var(--color-primary, #0057f0)',
         accent: 'var(--color-accent, #fbbc04)',
         candidate: {
-          primary: 'var(--color-candidate-primary, #2F6F5E)',
-          'primary-light': 'var(--color-candidate-primary-light, #F0F7F4)',
+          primary: 'var(--color-candidate-primary, #0057f0)',
+          'primary-light': 'var(--color-candidate-primary-light, #E0EBFD)',
           'on-primary': 'var(--color-candidate-on-primary, #ffffff)',
           bg: '#F4F7F6',
           review: '#B8860B',

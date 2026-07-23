@@ -12,7 +12,7 @@ export default function BrandingSettingsPage() {
   const updateBranding = useUpdateBranding();
   const updateLogo = useUpdateBrandingLogo();
   const { toast } = useToast();
-  const [primaryColor, setPrimaryColor] = useState('#1a73e8');
+  const [primaryColor, setPrimaryColor] = useState('#0057f0');
   const [accentColor, setAccentColor] = useState('#fbbc04');
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);

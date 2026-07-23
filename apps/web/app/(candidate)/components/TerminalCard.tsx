@@ -26,7 +26,7 @@ interface TerminalCardProps {
 
 export function TerminalCard({ tone, title, body }: TerminalCardProps) {
   return (
-    <div className="flex min-h-screen items-center justify-center p-8">
+    <div className="flex flex-1 items-center justify-center px-8 pb-32 pt-8">
       <div className="w-full max-w-sm rounded-lg border border-candidate-border bg-white p-6 text-center shadow-sm">
         <div className={clsx('mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full', ICON_CLASSES[tone])}>
           <ToneIcon tone={tone} />

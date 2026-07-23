@@ -16,9 +16,6 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState<string | null>(null);
   const { data: branding } = useBranding(organizationSlug || null);
 
-  const primaryColor = branding?.primaryColor ?? undefined;
-  const accentColor = branding?.accentColor ?? undefined;
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -39,27 +36,31 @@ export default function ForgotPasswordPage() {
   return (
     <MotionConfig reducedMotion="user">
       <main className="grid md:min-h-screen md:grid-cols-2">
-        <div
-          className="relative hidden overflow-hidden md:flex md:flex-col md:items-start md:justify-center md:gap-4 md:px-16 md:py-12"
-          style={{
-            backgroundImage: `linear-gradient(135deg, ${primaryColor ?? 'var(--color-primary, #1a73e8)'}, ${accentColor ?? 'var(--color-accent, #fbbc04)'})`,
-          }}
-        >
-          <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-white/10" aria-hidden="true" />
-          <div className="pointer-events-none absolute -bottom-32 -left-16 h-96 w-96 rounded-full bg-white/10" aria-hidden="true" />
+        <div className="relative hidden flex-col items-start justify-center gap-12 border-r border-recruiter-border bg-white px-16 py-12 md:flex">
           {branding?.logoUrl ? (
-            <img src={branding.logoUrl} alt="Organization logo" className="relative z-10 max-h-14" />
+            <img src={branding.logoUrl} alt="Organization logo" className="max-h-16" />
           ) : (
-            <p className="relative z-10 text-2xl font-bold text-white">Examination Platform</p>
+            <div className="flex items-center gap-4">
+              <img src="/logo.png" alt="Prudent Hire" className="h-16 w-16 object-contain" />
+              <p className="text-4xl font-bold tracking-tight text-recruiter-text">Prudent Hire</p>
+            </div>
           )}
-          <p className="relative z-10 max-w-sm text-sm text-white/90">Sign in to manage exams, candidates, and results.</p>
+          <blockquote className="max-w-md border-l-2 border-primary pl-5">
+            <p className="text-xl font-medium leading-relaxed text-recruiter-text">
+              Great hires start with great signal.
+            </p>
+            <p className="mt-1 text-base text-recruiter-text-secondary">We help you see it clearly.</p>
+          </blockquote>
         </div>
 
-        <div className="flex flex-col items-center justify-center gap-4 bg-white px-6 py-12 md:hidden">
+        <div className="flex flex-col items-center justify-center gap-3 bg-white px-6 py-12 md:hidden">
           {branding?.logoUrl ? (
-            <img src={branding.logoUrl} alt="Organization logo" className="max-h-10" />
+            <img src={branding.logoUrl} alt="Organization logo" className="max-h-12" />
           ) : (
-            <p className="text-lg font-bold text-primary">Examination Platform</p>
+            <div className="flex items-center gap-3">
+              <img src="/logo.png" alt="Prudent Hire" className="h-10 w-10 object-contain" />
+              <p className="text-2xl font-bold tracking-tight text-recruiter-text">Prudent Hire</p>
+            </div>
           )}
         </div>
 
