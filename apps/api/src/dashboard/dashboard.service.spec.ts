@@ -224,4 +224,87 @@ describe('DashboardService', () => {
       expect(result.points.every((p) => p.value === 0)).toBe(true);
     });
   });
+
+  describe('getExamPerformance', () => {
+    it('aggregates pass rate, average score, and candidate count per exam from Result rows', async () => {
+      const tx = stubTx({
+        exam: {
+          findMany: jest
+            .fn()
+            .mockResolvedValueOnce([
+              { id: 'exam-1', title: 'Backend Round' },
+              { id: 'exam-2', title: 'Frontend Round' },
+            ])
+            .mockResolvedValue([]),
+        },
+        result: {
+          count: jest.fn().mockResolvedValue(0),
+          findMany: jest.fn().mockResolvedValue([
+            { passFail: 'pass', percentage: 80, attempt: { examId: 'exam-1', candidateId: 'cand-1' } },
+            { passFail: 'fail', percentage: 40, attempt: { examId: 'exam-1', candidateId: 'cand-2' } },
+            { passFail: 'pass', percentage: 90, attempt: { examId: 'exam-2', candidateId: 'cand-3' } },
+          ]),
+        },
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getExamPerformance(context, 10, 'all');
+
+      expect(result.exams).toEqual([
+        { examId: 'exam-1', examTitle: 'Backend Round', passRate: 50, avgScore: 60, candidateCount: 2 },
+        { examId: 'exam-2', examTitle: 'Frontend Round', passRate: 100, avgScore: 90, candidateCount: 1 },
+      ]);
+    });
+
+    it('sorts by candidate count descending and truncates to the given limit', async () => {
+      const tx = stubTx({
+        exam: {
+          findMany: jest
+            .fn()
+            .mockResolvedValueOnce([
+              { id: 'exam-1', title: 'Small' },
+              { id: 'exam-2', title: 'Big' },
+            ])
+            .mockResolvedValue([]),
+        },
+        result: {
+          count: jest.fn().mockResolvedValue(0),
+          findMany: jest.fn().mockResolvedValue([
+            { passFail: 'pass', percentage: 70, attempt: { examId: 'exam-1', candidateId: 'cand-1' } },
+            { passFail: 'pass', percentage: 70, attempt: { examId: 'exam-2', candidateId: 'cand-2' } },
+            { passFail: 'pass', percentage: 70, attempt: { examId: 'exam-2', candidateId: 'cand-3' } },
+          ]),
+        },
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getExamPerformance(context, 1, 'all');
+
+      expect(result.exams).toEqual([{ examId: 'exam-2', examTitle: 'Big', passRate: 100, avgScore: 70, candidateCount: 2 }]);
+    });
+
+    it('filters settled attempts by window using the underlying attempt submittedAt', async () => {
+      const tx = stubTx();
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.getExamPerformance(context, 'all', '30d');
+
+      expect(tx.result.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            attempt: expect.objectContaining({ submittedAt: expect.objectContaining({ gte: expect.any(Date) }) }),
+          }),
+        }),
+      );
+    });
+
+    it('returns an empty exams list for an org with no settled attempts', async () => {
+      const tx = stubTx();
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getExamPerformance(context, 5, 'all');
+
+      expect(result.exams).toEqual([]);
+    });
+  });
 });

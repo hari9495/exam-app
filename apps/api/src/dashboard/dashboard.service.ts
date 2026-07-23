@@ -16,6 +16,18 @@ export interface DashboardTrend {
   points: DashboardTrendPoint[];
 }
 
+export interface DashboardExamPerformanceRow {
+  examId: string;
+  examTitle: string;
+  passRate: number;
+  avgScore: number;
+  candidateCount: number;
+}
+
+export interface DashboardExamPerformance {
+  exams: DashboardExamPerformanceRow[];
+}
+
 function daysAgo(days: number): Date {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
@@ -223,6 +235,55 @@ export class DashboardService {
       }
 
       return { points: bucketByDay(timestamps, days) };
+    });
+  }
+
+  async getExamPerformance(
+    context: TenantContext,
+    limit: number | 'all',
+    window: 'all' | '30d' | '90d',
+  ): Promise<DashboardExamPerformance> {
+    const organizationId = context.organizationId as string;
+
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const exams = await tx.exam.findMany({ where: { organizationId }, select: { id: true, title: true } });
+      const examIds = exams.map((exam) => exam.id);
+      const examTitleById = new Map(exams.map((exam) => [exam.id, exam.title]));
+      const windowStart = window === '30d' ? daysAgo(30) : window === '90d' ? daysAgo(90) : null;
+
+      const results = await tx.result.findMany({
+        where: {
+          attempt: {
+            examId: { in: examIds },
+            ...(windowStart ? { submittedAt: { gte: windowStart } } : {}),
+          },
+        },
+        select: { passFail: true, percentage: true, attempt: { select: { examId: true, candidateId: true } } },
+      });
+
+      const byExam = new Map<string, { passCount: number; scoreSum: number; total: number; candidateIds: Set<string> }>();
+      for (const result of results) {
+        const examId = result.attempt.examId;
+        const bucket = byExam.get(examId) ?? { passCount: 0, scoreSum: 0, total: 0, candidateIds: new Set<string>() };
+        bucket.total += 1;
+        bucket.scoreSum += result.percentage;
+        if (result.passFail === 'pass') bucket.passCount += 1;
+        bucket.candidateIds.add(result.attempt.candidateId);
+        byExam.set(examId, bucket);
+      }
+
+      const rows = Array.from(byExam.entries())
+        .map(([examId, bucket]) => ({
+          examId,
+          examTitle: examTitleById.get(examId) ?? 'Unknown exam',
+          passRate: Math.round((bucket.passCount / bucket.total) * 100),
+          avgScore: Math.round(bucket.scoreSum / bucket.total),
+          candidateCount: bucket.candidateIds.size,
+        }))
+        .sort((a, b) => b.candidateCount - a.candidateCount);
+
+      const limited = limit === 'all' ? rows : rows.slice(0, limit);
+      return { exams: limited };
     });
   }
 }

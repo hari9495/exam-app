@@ -9,8 +9,13 @@ import { DashboardService } from './dashboard.service';
 const TREND_METRICS = ['candidates', 'invitations', 'attempts', 'pendingGrading'] as const;
 const TREND_DAYS = [7, 14, 30] as const;
 
+const PERFORMANCE_LIMITS = ['5', '10', 'all'] as const;
+const WINDOWS = ['all', '30d', '90d'] as const;
+
 type TrendMetric = (typeof TREND_METRICS)[number];
 type TrendDays = (typeof TREND_DAYS)[number];
+type PerformanceLimit = 5 | 10 | 'all';
+type Window = (typeof WINDOWS)[number];
 
 @Controller('dashboard')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -32,5 +37,22 @@ export class DashboardController {
     const parsedDays = Number(days);
     const resolvedDays: TrendDays = (TREND_DAYS as readonly number[]).includes(parsedDays) ? (parsedDays as TrendDays) : 14;
     return this.dashboardService.getTrend(tenant, metric as TrendMetric, resolvedDays);
+  }
+
+  @Get('exam-performance')
+  @RequireAnyPermission('exam:manage', 'results:view')
+  getExamPerformance(
+    @CurrentTenant() tenant: TenantContext,
+    @Query('limit') limit?: string,
+    @Query('window') window?: string,
+  ) {
+    if (!limit || !(PERFORMANCE_LIMITS as readonly string[]).includes(limit)) {
+      throw new BadRequestException(`limit must be one of ${PERFORMANCE_LIMITS.join(', ')}`);
+    }
+    if (!window || !(WINDOWS as readonly string[]).includes(window)) {
+      throw new BadRequestException(`window must be one of ${WINDOWS.join(', ')}`);
+    }
+    const resolvedLimit: PerformanceLimit = limit === 'all' ? 'all' : (Number(limit) as 5 | 10);
+    return this.dashboardService.getExamPerformance(tenant, resolvedLimit, window as Window);
   }
 }

@@ -59,4 +59,28 @@ describe('DashboardController', () => {
       expect(service.getTrend).toHaveBeenCalledWith(tenant, 'invitations', 30);
     });
   });
+
+  describe('getExamPerformance', () => {
+    it('rejects an invalid limit', () => {
+      expect(() => controller.getExamPerformance(tenant, 'bogus', 'all')).toThrow(BadRequestException);
+    });
+
+    it('rejects a missing limit', () => {
+      expect(() => controller.getExamPerformance(tenant, undefined, 'all')).toThrow(BadRequestException);
+    });
+
+    it('rejects an invalid window', () => {
+      expect(() => controller.getExamPerformance(tenant, '5', 'bogus')).toThrow(BadRequestException);
+    });
+
+    it('passes a numeric limit and window through to the service', () => {
+      controller.getExamPerformance(tenant, '10', '30d');
+      expect(service.getExamPerformance).toHaveBeenCalledWith(tenant, 10, '30d');
+    });
+
+    it('passes limit "all" through unchanged', () => {
+      controller.getExamPerformance(tenant, 'all', 'all');
+      expect(service.getExamPerformance).toHaveBeenCalledWith(tenant, 'all', 'all');
+    });
+  });
 });
