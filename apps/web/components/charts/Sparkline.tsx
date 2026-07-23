@@ -12,6 +12,7 @@ export interface SparklinePoint {
 interface SparklineProps {
   data: SparklinePoint[];
   color: string;
+  unit?: string;
 }
 
 const WIDTH = 200;
@@ -21,7 +22,7 @@ function formatDate(dateStr: string): string {
   return new Date(`${dateStr}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 
-export function Sparkline({ data, color }: SparklineProps) {
+export function Sparkline({ data, color, unit }: SparklineProps) {
   const gradientId = useId();
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
@@ -100,7 +101,7 @@ export function Sparkline({ data, color }: SparklineProps) {
           className="pointer-events-none absolute -top-6 z-10 whitespace-nowrap rounded bg-recruiter-text px-1.5 py-0.5 text-[10px] text-white shadow-md"
           style={{ left: `${(hoveredX / WIDTH) * 100}%`, transform: 'translateX(-50%)' }}
         >
-          {formatDate(hovered.date)}: {hovered.value}
+          {formatDate(hovered.date)}: {hovered.value} {unit ?? ''}
         </div>
       )}
     </div>

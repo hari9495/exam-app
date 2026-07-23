@@ -25,6 +25,13 @@ const TREND_WINDOW_OPTIONS: SelectOption[] = [
   { value: '30', label: '30 days' },
 ];
 
+const TREND_UNIT_LABELS: Record<DashboardTrendMetric, string> = {
+  candidates: 'new candidates',
+  invitations: 'invitations sent',
+  attempts: 'attempts started',
+  pendingGrading: 'newly pending grading',
+};
+
 interface StatCardProps {
   icon: typeof Users;
   value: number;
@@ -57,7 +64,7 @@ function StatCard({ icon: Icon, value, label, metric, color, delay }: StatCardPr
           <p className="text-2xl font-bold text-recruiter-text">{value}</p>
           <p className="text-xs text-recruiter-text-tertiary">{label}</p>
           <div className="mt-2 h-10 w-full">
-            <Sparkline data={points} color={color} />
+            <Sparkline data={points} color={color} unit={TREND_UNIT_LABELS[metric]} />
           </div>
         </div>
         <div className="border-t border-recruiter-border px-4 py-1.5">
