@@ -200,4 +200,44 @@ describe('useProctoringMonitor', () => {
       expect(report).not.toHaveBeenCalledWith('multi_monitor_detected', expect.anything());
     });
   });
+
+  describe('onViolation callback', () => {
+    function ProbeWithCallback({ enabled, onViolation }: { enabled: boolean; onViolation: (eventType: string) => void }) {
+      useProctoringMonitor(enabled, onViolation);
+      return null;
+    }
+
+    it('calls onViolation with the event type when a signal is reported', () => {
+      const onViolation = jest.fn();
+      render(<ProbeWithCallback enabled={true} onViolation={onViolation} />);
+
+      document.dispatchEvent(new Event('contextmenu'));
+
+      expect(onViolation).toHaveBeenCalledWith('right_click');
+    });
+
+    it('calls onViolation for a debounced report (tab_switch), not just direct ones', () => {
+      const onViolation = jest.fn();
+      render(<ProbeWithCallback enabled={true} onViolation={onViolation} />);
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+
+      document.dispatchEvent(new Event('visibilitychange'));
+
+      expect(onViolation).toHaveBeenCalledWith('tab_switch');
+    });
+
+    it('does not call onViolation when disabled', () => {
+      const onViolation = jest.fn();
+      render(<ProbeWithCallback enabled={false} onViolation={onViolation} />);
+
+      document.dispatchEvent(new Event('contextmenu'));
+
+      expect(onViolation).not.toHaveBeenCalled();
+    });
+
+    it('works with no callback provided (backward compatible)', () => {
+      render(<Probe enabled={true} />);
+      expect(() => document.dispatchEvent(new Event('contextmenu'))).not.toThrow();
+    });
+  });
 });

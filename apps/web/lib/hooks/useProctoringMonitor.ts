@@ -7,19 +7,31 @@ const DEVTOOLS_POLL_MS = 2000;
 const DEVTOOLS_SIZE_THRESHOLD = 160;
 const TAB_SWITCH_DEBOUNCE_MS = 5000;
 
-export function useProctoringMonitor(enabled: boolean): void {
+export function useProctoringMonitor(enabled: boolean, onViolation?: (eventType: ProctoringEventType) => void): void {
   const report = useReportProctoringEvent();
   const reportRef = useRef(report);
   reportRef.current = report;
+  const onViolationRef = useRef(onViolation);
+  onViolationRef.current = onViolation;
   const debounceTimers = useRef<Partial<Record<ProctoringEventType, ReturnType<typeof setTimeout>>>>({});
   const idleTimer = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
     if (!enabled) return;
 
+    function reportAndNotify(eventType: ProctoringEventType, metadata?: Record<string, unknown>) {
+      if (metadata !== undefined) {
+        reportRef.current(eventType, metadata);
+      } else {
+        reportRef.current(eventType);
+      }
+      onViolationRef.current?.(eventType);
+    }
+
     function debouncedReport(eventType: ProctoringEventType, windowMs: number, metadata?: Record<string, unknown>) {
       if (debounceTimers.current[eventType]) return;
       reportRef.current(eventType, metadata);
+      onViolationRef.current?.(eventType);
       debounceTimers.current[eventType] = setTimeout(() => {
         delete debounceTimers.current[eventType];
       }, windowMs);
@@ -27,7 +39,7 @@ export function useProctoringMonitor(enabled: boolean): void {
 
     function resetIdleTimer() {
       if (idleTimer.current) clearTimeout(idleTimer.current);
-      idleTimer.current = setTimeout(() => reportRef.current('idle_timeout'), IDLE_TIMEOUT_MS);
+      idleTimer.current = setTimeout(() => reportAndNotify('idle_timeout'), IDLE_TIMEOUT_MS);
     }
 
     function onVisibilityChange() {
@@ -44,17 +56,17 @@ export function useProctoringMonitor(enabled: boolean): void {
       }
     }
     function onCopy() {
-      reportRef.current('copy_paste', { action: 'copy' });
+      reportAndNotify('copy_paste', { action: 'copy' });
     }
     function onPaste() {
-      reportRef.current('copy_paste', { action: 'paste' });
+      reportAndNotify('copy_paste', { action: 'paste' });
     }
     function onContextMenu() {
-      reportRef.current('right_click');
+      reportAndNotify('right_click');
     }
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'F12' || (event.ctrlKey && event.shiftKey && event.key === 'I')) {
-        reportRef.current('dev_tools_detected', { trigger: 'shortcut' });
+        reportAndNotify('dev_tools_detected', { trigger: 'shortcut' });
       }
       resetIdleTimer();
     }
@@ -86,7 +98,7 @@ export function useProctoringMonitor(enabled: boolean): void {
     const multiMonitorInterval = setInterval(() => {
       const isExtended = (window.screen as Screen & { isExtended?: boolean }).isExtended === true;
       if (isExtended && !lastIsExtended) {
-        reportRef.current('multi_monitor_detected');
+        reportAndNotify('multi_monitor_detected');
       }
       lastIsExtended = isExtended;
     }, MULTI_MONITOR_POLL_MS);
@@ -106,7 +118,7 @@ export function useProctoringMonitor(enabled: boolean): void {
       const widthDelta = window.outerWidth - window.innerWidth;
       const heightDelta = window.outerHeight - window.innerHeight;
       if (widthDelta > DEVTOOLS_SIZE_THRESHOLD || heightDelta > DEVTOOLS_SIZE_THRESHOLD) {
-        reportRef.current('dev_tools_detected', { trigger: 'window-size' });
+        reportAndNotify('dev_tools_detected', { trigger: 'window-size' });
       }
     }, DEVTOOLS_POLL_MS);
 
