@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { AuditModule } from '@exam-platform/shared';
+import { AuditModule, StorageModule } from '@exam-platform/shared';
 import { GradingModule } from '../grading/grading.module';
 import { MonitoringModule } from '../monitoring/monitoring.module';
 import { LeaderboardModule } from '../leaderboard/leaderboard.module';
@@ -8,7 +8,7 @@ import { AttemptController } from './attempt.controller';
 import { AttemptService } from './attempt.service';
 
 @Module({
-  imports: [GradingModule, MonitoringModule, LeaderboardModule, AuditModule, CodeExecutionModule],
+  imports: [GradingModule, MonitoringModule, LeaderboardModule, AuditModule, CodeExecutionModule, StorageModule],
   controllers: [AttemptController],
   providers: [AttemptService],
 })

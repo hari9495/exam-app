@@ -8,3 +8,5 @@ export * from './crypto/crypto.module';
 export * from './crypto/org-secrets-crypto.service';
 export * from './crypto/ai-api-key-resolver.service';
 export * from './network/ip-range';
+export * from './storage/storage.module';
+export * from './storage/blob-storage.service';
