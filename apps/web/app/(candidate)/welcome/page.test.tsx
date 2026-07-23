@@ -60,6 +60,19 @@ describe('CandidateWelcomePage', () => {
     expect(screen.getByText(/monitored/)).toBeInTheDocument();
   });
 
+  it('greets the candidate by name so shared devices are not confusing', async () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: { candidateName: 'Ada Lovelace', exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45 }, sections: [] },
+      isLoading: false,
+    });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+
+    render(<CandidateWelcomePage />);
+    await skipPractice();
+
+    expect(screen.getByText(/Hi, Ada Lovelace/)).toBeInTheDocument();
+  });
+
   it('starts the attempt and navigates to /exam', async () => {
     const mutateAsync = jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' });
     (useAttemptQuery as jest.Mock).mockReturnValue({

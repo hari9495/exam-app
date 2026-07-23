@@ -33,7 +33,7 @@ describe('AttemptService', () => {
     id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false,
     schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null, feedbackVisibility: 'breakdown',
   };
-  const invitationRecord = { id: 'inv-1', candidateId: 'cand-1', examId: 'exam-1', exam, extraTimePercent: 0 };
+  const invitationRecord = { id: 'inv-1', candidateId: 'cand-1', examId: 'exam-1', exam, extraTimePercent: 0, candidate: { name: 'Ada Lovelace' } };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
@@ -108,6 +108,7 @@ describe('AttemptService', () => {
       const result = await service.getCurrent(session);
 
       expect(result).toEqual({
+        candidateName: 'Ada Lovelace',
         exam: {
           title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60,
           schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null,
@@ -227,6 +228,7 @@ describe('AttemptService', () => {
       const result = await service.getCurrent(session);
 
       expect(result).toEqual({
+        candidateName: 'Ada Lovelace',
         status: 'in_progress',
         remainingSeconds: 3300,
         exam: { title: 'Backend Round' },
@@ -1008,6 +1010,7 @@ describe('AttemptService', () => {
       const result = await service.getCurrent(session);
 
       expect(result).toEqual({
+        candidateName: 'Ada Lovelace',
         exam: {
           title: notYetOpenExam.title, instructions: notYetOpenExam.instructions, durationMinutes: notYetOpenExam.durationMinutes,
           schedulingEnabled: true,

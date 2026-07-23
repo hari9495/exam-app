@@ -30,6 +30,7 @@ function renderExamPage() {
 
 function attemptStateWithQuestion(question: any) {
   return {
+    candidateName: 'Ada Lovelace',
     status: 'in_progress',
     remainingSeconds: 590,
     webcamViolationCount: 0,
@@ -55,6 +56,7 @@ jest.mock('@monaco-editor/react', () => ({
 }));
 
 const attemptState = {
+  candidateName: 'Ada Lovelace',
   status: 'in_progress',
   remainingSeconds: 590,
   exam: { title: 'Test Exam' },
@@ -177,6 +179,12 @@ describe('CandidateExamPage', () => {
     await userEvent.click(screen.getByRole('button', { name: /4/ }));
 
     expect(saveAnswer).toHaveBeenCalledWith('q1', ['o1'], undefined);
+  });
+
+  it('shows the candidate name in the toolbar so shared devices are not confusing', () => {
+    render(<CandidateExamPage />);
+
+    expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
   });
 
   it('toggles mark-for-review', async () => {

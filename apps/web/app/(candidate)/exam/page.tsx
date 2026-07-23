@@ -248,7 +248,7 @@ export default function CandidateExamPage() {
         // experimental.d.ts does) — cast bridges that gap so keyboard/screen-reader users
         // can't reach the dimmed content while an overlay covers it.
         {...(((isPaused || isBlocked) ? { inert: '' } : {}) as React.HTMLAttributes<HTMLDivElement>)}
-        className={clsx('mx-auto max-w-4xl p-4', (isPaused || isBlocked) && 'pointer-events-none blur-sm select-none')}
+        className={clsx('mx-auto max-w-6xl p-4', (isPaused || isBlocked) && 'pointer-events-none blur-sm select-none')}
       >
       <div className="mb-4 rounded-lg border border-candidate-border bg-white px-4 py-3 shadow-sm">
         <div className="mb-2 flex items-center justify-between">
@@ -262,7 +262,10 @@ export default function CandidateExamPage() {
             </span>
           </button>
           <LeaderboardWidget enabled={started} />
-          <span className="hidden text-sm font-bold text-candidate-text lg:inline">{attemptState.exam.title}</span>
+          <div className="flex flex-col items-end">
+            <span className="hidden text-sm font-bold text-candidate-text lg:inline">{attemptState.exam.title}</span>
+            <span className="text-xs text-candidate-text-tertiary">{attemptState.candidateName}</span>
+          </div>
         </div>
         <TimerBar remainingSeconds={remainingSeconds} totalSeconds={totalSecondsRef.current ?? remainingSeconds} />
       </div>
@@ -326,8 +329,13 @@ export default function CandidateExamPage() {
                 </div>
               ) : (
                 <>
-                  <div className="overflow-hidden rounded-t-md">
-                    <div className="flex items-center justify-between bg-[#1E1E1E] px-3 py-1.5">
+                  <div className="overflow-hidden rounded-lg border border-[#2D2D2D] shadow-sm">
+                    <div className="flex items-center justify-between bg-[#1E1E1E] px-3 py-2">
+                      <span className="inline-flex items-center gap-1.5" aria-hidden="true">
+                        <span className="h-2.5 w-2.5 rounded-full bg-[#FF5F56]" />
+                        <span className="h-2.5 w-2.5 rounded-full bg-[#FFBD2E]" />
+                        <span className="h-2.5 w-2.5 rounded-full bg-[#27C93F]" />
+                      </span>
                       <span className="rounded bg-[#2D2D2D] px-2 py-0.5 text-[11px] font-semibold text-candidate-text-faint">
                         {currentCodeLanguage}
                       </span>
@@ -339,12 +347,12 @@ export default function CandidateExamPage() {
                       value={codeValue}
                       onChange={handleCodeChange}
                       onMount={(editor) => editorTelemetry.onEditorMount(editor)}
-                      options={{ minimap: { enabled: false }, fontSize: 13 }}
+                      options={{ minimap: { enabled: false }, fontSize: 13, padding: { top: 12 } }}
                       theme="vs-dark"
                     />
                   </div>
                   {question.allowStdin ? (
-                    <div className="mt-2 flex flex-col gap-1">
+                    <div className="mt-3 flex flex-col gap-1">
                       <label htmlFor="stdin-input" className="text-xs font-medium text-candidate-text-secondary">
                         Standard input (optional)
                       </label>
@@ -353,12 +361,12 @@ export default function CandidateExamPage() {
                         aria-label="Standard input (optional)"
                         value={stdinValue}
                         onChange={(e) => setStdinValues((prev) => ({ ...prev, [question.id]: e.target.value }))}
-                        className="rounded border border-candidate-border px-2 py-1 font-mono text-xs"
+                        className="rounded-md border border-candidate-border px-2.5 py-1.5 font-mono text-xs"
                         rows={2}
                       />
                     </div>
                   ) : null}
-                  <div className="mt-2 flex items-center gap-2">
+                  <div className="mt-3 flex items-center gap-3">
                     <CandidateButton variant="secondary" onClick={handleRun} disabled={runCode.isPending}>
                       <span className="inline-flex items-center gap-1.5">
                         <Play className="h-3.5 w-3.5" aria-hidden="true" />

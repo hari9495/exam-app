@@ -39,7 +39,7 @@ export default function CandidateWelcomePage() {
 
   if (step === 'practice') {
     return (
-      <div className="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-6 p-8">
+      <div className="mx-auto flex flex-1 max-w-xl flex-col justify-center gap-6 p-8">
         <PracticeStep onDone={() => setStep('consent')} />
       </div>
     );
@@ -74,9 +74,11 @@ export default function CandidateWelcomePage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-6 p-8">
+    <div className="mx-auto flex flex-1 max-w-xl flex-col justify-center gap-6 p-8">
       <div className="rounded-lg border border-candidate-border bg-white p-6 shadow-sm">
-        <p className="mb-1 text-xs font-bold uppercase tracking-wide text-candidate-primary">You&apos;re invited to</p>
+        <p className="mb-1 text-xs font-bold uppercase tracking-wide text-candidate-primary">
+          Hi, {current.candidateName} — you&apos;re invited to
+        </p>
         <h1 className="mb-3 text-xl font-bold text-candidate-text">{current.exam.title}</h1>
         <p className="mb-4 text-sm text-candidate-text-secondary">Duration: {current.exam.durationMinutes} minutes</p>
         {current.sections.length > 0 ? (

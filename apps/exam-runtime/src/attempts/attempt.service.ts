@@ -72,6 +72,7 @@ interface AttemptSectionSummary {
 }
 
 interface AttemptPreviewResponse {
+  candidateName: string;
   exam: {
     title: string;
     instructions: string | null;
@@ -101,6 +102,7 @@ interface AttemptFeedback {
 }
 
 interface AttemptStateResponse {
+  candidateName: string;
   status: string;
   remainingSeconds: number;
   webcamViolationCount: number;
@@ -145,6 +147,7 @@ export class AttemptService {
           include: { questions: true },
         });
         return {
+          candidateName: invitation.candidate.name,
           exam: {
             title: exam.title,
             instructions: exam.instructions,
@@ -174,6 +177,7 @@ export class AttemptService {
       const feedback = await this.buildFeedback(tx, exam, settled);
 
       return {
+        candidateName: invitation.candidate.name,
         status: settled.status,
         remainingSeconds: this.attemptSettlement.remainingSeconds(exam, settled),
         webcamViolationCount: settled.webcamViolationCount,
@@ -589,7 +593,7 @@ export class AttemptService {
 
   private async resolveContext(invitationId: string) {
     const invitation = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
-      tx.invitation.findUnique({ where: { id: invitationId }, include: { exam: true } }),
+      tx.invitation.findUnique({ where: { id: invitationId }, include: { exam: true, candidate: true } }),
     );
     if (!invitation || !invitation.exam) {
       throw new UnauthorizedException('Invalid candidate session');

@@ -124,11 +124,11 @@ export interface Exam {
   allowedIpRange: string | null;
   createdAt: string;
   sections: ExamSection[];
+  invitationCount: number;
 }
 
-// GET /exams (list) returns counts but not sections — GET /exams/:id (detail) is the reverse.
+// GET /exams (list) also returns attempt-progress counts that GET /exams/:id (detail) omits.
 export interface ExamListItem extends Omit<Exam, 'sections'> {
-  invitationCount: number;
   attemptSettledCount: number;
   attemptTotalCount: number;
 }
@@ -284,6 +284,7 @@ export interface AttemptSectionSummary {
 }
 
 export interface AttemptPreview {
+  candidateName: string;
   exam: {
     title: string;
     instructions: string | null;
@@ -313,6 +314,7 @@ export interface AttemptFeedback {
 }
 
 export interface AttemptState {
+  candidateName: string;
   status: string;
   remainingSeconds: number;
   webcamViolationCount: number;

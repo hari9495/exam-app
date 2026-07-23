@@ -2,9 +2,9 @@ import { render, screen } from '@testing-library/react';
 import { CodeOutputPanel } from './CodeOutputPanel';
 
 describe('CodeOutputPanel', () => {
-  it('renders nothing when there is no result or error', () => {
-    const { container } = render(<CodeOutputPanel result={null} error={null} />);
-    expect(container).toBeEmptyDOMElement();
+  it('shows a placeholder prompting the candidate to run their code when there is no result or error yet', () => {
+    render(<CodeOutputPanel result={null} error={null} />);
+    expect(screen.getByText('Click Run to see your output here.')).toBeInTheDocument();
   });
 
   it('renders the error string when present, taking priority over a stale result', () => {
