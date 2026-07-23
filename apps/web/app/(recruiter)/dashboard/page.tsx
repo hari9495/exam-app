@@ -107,7 +107,13 @@ function ExamPerformanceCard() {
         <p className="text-sm text-recruiter-text-tertiary">No settled attempts yet.</p>
       ) : (
         <div className="h-64 w-full">
-          <GroupedBarChart groups={groups} />
+          <GroupedBarChart
+            groups={groups}
+            legend={[
+              { label: 'Pass rate', color: '#0d9488' },
+              { label: 'Avg score', color: '#d4a017' },
+            ]}
+          />
         </div>
       )}
     </Card>

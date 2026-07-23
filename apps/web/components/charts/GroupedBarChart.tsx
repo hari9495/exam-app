@@ -14,14 +14,21 @@ export interface GroupedBarGroup {
   series: GroupedBarSeries[];
 }
 
+export interface GroupedBarLegendItem {
+  label: string;
+  color: string;
+}
+
 interface GroupedBarChartProps {
   groups: GroupedBarGroup[];
+  legend?: GroupedBarLegendItem[];
 }
 
 const DEFAULT_WIDTH = 600;
 const HEIGHT = 260;
-const MARGIN = { top: 24, right: 16, bottom: 32, left: 16 };
+const MARGIN = { top: 44, right: 16, bottom: 32, left: 16 };
 const LABEL_MAX_CHARS = 20;
+const LEGEND_ITEM_WIDTH = 90;
 
 function useContainerWidth(fallback: number) {
   const ref = useRef<HTMLDivElement>(null);
@@ -41,7 +48,7 @@ function useContainerWidth(fallback: number) {
   return [ref, width] as const;
 }
 
-export function GroupedBarChart({ groups }: GroupedBarChartProps) {
+export function GroupedBarChart({ groups, legend }: GroupedBarChartProps) {
   const [containerRef, width] = useContainerWidth(DEFAULT_WIDTH);
 
   if (groups.length === 0) {
@@ -72,6 +79,18 @@ export function GroupedBarChart({ groups }: GroupedBarChartProps) {
     <div ref={containerRef} className="h-full w-full">
       <svg viewBox={`0 0 ${width} ${HEIGHT}`} className="block h-full w-full" role="img" aria-label="Exam performance chart">
         <g transform={`translate(${MARGIN.left}, ${MARGIN.top})`}>
+          {legend && legend.length > 0 && (
+            <g aria-label="Legend">
+              {legend.map((item, index) => (
+                <g key={item.label} transform={`translate(${innerWidth - (legend.length - index) * LEGEND_ITEM_WIDTH}, -30)`}>
+                  <rect width={10} height={10} rx={2} fill={item.color} />
+                  <text x={14} y={9} fontSize={10} fill="#334155">
+                    {item.label}
+                  </text>
+                </g>
+              ))}
+            </g>
+          )}
           {groups.map((group) => (
             <g key={group.label} transform={`translate(${outerScale(group.label) ?? 0}, 0)`}>
               <title>{group.label}</title>
