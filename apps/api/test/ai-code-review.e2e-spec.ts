@@ -6,7 +6,7 @@ import { bootAdminApp, bootRuntimeApp } from './dual-app';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
-import { ClaudeCodeReviewClient } from '../../exam-runtime/src/code-review/claude-code-review.client';
+import { CodeReviewClient } from '../../exam-runtime/src/code-review/code-review.client';
 
 describe('AI Code Review flow', () => {
   let adminApp: INestApplication;
@@ -21,12 +21,12 @@ describe('AI Code Review flow', () => {
   let examId: string;
   let codeQuestionId: string;
   const fakeEmailService = { send: jest.fn().mockResolvedValue({ success: true, previewUrl: 'https://ethereal.email/fake' }) };
-  const fakeClaudeCodeReviewClient = { review: jest.fn() };
+  const fakeCodeReviewClient = { review: jest.fn() };
 
   beforeAll(async () => {
     adminApp = await bootAdminApp((builder) => builder.overrideProvider(EmailService).useValue(fakeEmailService));
     ({ app: runtimeApp } = await bootRuntimeApp((builder) =>
-      builder.overrideProvider(ClaudeCodeReviewClient).useValue(fakeClaudeCodeReviewClient),
+      builder.overrideProvider(CodeReviewClient).useValue(fakeCodeReviewClient),
     ));
     adminHttp = adminApp.getHttpServer();
     runtimeHttp = runtimeApp.getHttpServer();
@@ -146,7 +146,7 @@ describe('AI Code Review flow', () => {
     const submittedCode = 'function reverse(str) {\n  return str.split("").reverse().join("");\n}';
     const attemptId = await inviteStartAndSubmitCode('alice@ci-ai-code-review.test', 'Alice', submittedCode);
 
-    fakeClaudeCodeReviewClient.review.mockResolvedValueOnce({ suggestedMarks: 7, summary: 'Correct logic, minor style issues.' });
+    fakeCodeReviewClient.review.mockResolvedValueOnce({ suggestedMarks: 7, summary: 'Correct logic, minor style issues.' });
 
     const regenerateResponse = await request(adminHttp)
       .post(`/api/v1/attempts/${attemptId}/answers/${codeQuestionId}/code-review/regenerate`)
@@ -167,7 +167,7 @@ describe('AI Code Review flow', () => {
     const submittedCode = 'function reverse(str) {\n  return str;\n}';
     const attemptId = await inviteStartAndSubmitCode('bob@ci-ai-code-review.test', 'Bob', submittedCode);
 
-    fakeClaudeCodeReviewClient.review.mockRejectedValueOnce(new Error('Claude unavailable'));
+    fakeCodeReviewClient.review.mockRejectedValueOnce(new Error('Claude unavailable'));
 
     const regenerateResponse = await request(adminHttp)
       .post(`/api/v1/attempts/${attemptId}/answers/${codeQuestionId}/code-review/regenerate`)

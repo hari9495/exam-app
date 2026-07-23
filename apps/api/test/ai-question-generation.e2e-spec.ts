@@ -5,7 +5,7 @@ import { randomUUID } from 'crypto';
 import { bootAdminApp } from './dual-app';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
-import { ClaudeQuestionGenerationClient } from '../src/jobs/processors/claude-question-generation.client';
+import { QuestionGenerationClient } from '../src/jobs/processors/question-generation.client';
 
 describe('AI Question Generation flow', () => {
   let adminApp: INestApplication;
@@ -16,10 +16,10 @@ describe('AI Question Generation flow', () => {
   let orgId: string;
   let recruiterAccessToken: string;
   let orgAdminAccessToken: string;
-  const fakeClaudeClient = { generate: jest.fn() };
+  const fakeQuestionGenerationClient = { generate: jest.fn() };
 
   beforeAll(async () => {
-    adminApp = await bootAdminApp((builder) => builder.overrideProvider(ClaudeQuestionGenerationClient).useValue(fakeClaudeClient));
+    adminApp = await bootAdminApp((builder) => builder.overrideProvider(QuestionGenerationClient).useValue(fakeQuestionGenerationClient));
     adminHttp = adminApp.getHttpServer();
     prisma = adminApp.get(PrismaService);
     tenantPrisma = adminApp.get(TenantPrismaService);
@@ -86,7 +86,7 @@ describe('AI Question Generation flow', () => {
   }
 
   it('generates draft questions end-to-end, keeps them out of the active list, and publishes one', async () => {
-    fakeClaudeClient.generate.mockResolvedValueOnce([
+    fakeQuestionGenerationClient.generate.mockResolvedValueOnce([
       {
         type: 'single_mcq',
         text: 'What is a closure?',
@@ -144,7 +144,7 @@ describe('AI Question Generation flow', () => {
   });
 
   it('fails the job with zero questions created when the Claude client throws', async () => {
-    fakeClaudeClient.generate.mockRejectedValueOnce(new Error('rate limited'));
+    fakeQuestionGenerationClient.generate.mockRejectedValueOnce(new Error('rate limited'));
 
     const generateResponse = await request(adminHttp)
       .post('/api/v1/questions/ai-generate')
