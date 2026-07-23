@@ -28,6 +28,7 @@ describe('ProctoringWarningOverlay', () => {
     ['dev_tools_detected', 'Developer tools detected', 'We noticed browser developer tools were opened.'],
     ['multi_monitor_detected', 'Additional display detected', 'We noticed an additional display was connected.'],
     ['idle_timeout', 'Inactivity detected', 'We noticed no activity for several minutes.'],
+    ['browser_activity_unspecified', 'Policy violation detected', 'We noticed unusual activity during this exam.'],
   ])('shows the %s message', (reason, heading, body) => {
     render(<ProctoringWarningOverlay strike={2} reason={reason} onContinue={noop} continuePending={false} continueError={false} />);
     expect(screen.getByText(heading)).toBeInTheDocument();

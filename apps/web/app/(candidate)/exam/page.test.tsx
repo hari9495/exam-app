@@ -478,6 +478,23 @@ describe('CandidateExamPage', () => {
 
       expect(resumeMutate).toHaveBeenCalled();
     });
+
+    it('infers the browser-activity source from server counters when the page remounts with no live violation event', () => {
+      (useAttemptQuery as jest.Mock).mockReturnValue({
+        data: { ...attemptState, status: 'paused', webcamViolationCount: 0, browserActivityViolationCount: 2 },
+        isError: false,
+      });
+      // No onViolation/onViolationReason callback fires -- simulates a page reload while
+      // already paused, where this mount never saw the live event that caused the pause.
+      (useProctoringMonitor as jest.Mock).mockImplementation(() => undefined);
+      (useWebcamMonitor as jest.Mock).mockImplementation(() => undefined);
+      (useWebcamResume as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false, isError: false });
+
+      render(<CandidateExamPage />);
+
+      expect(screen.getByText('Policy violation detected')).toBeInTheDocument();
+      expect(screen.getByText('Warning 2/3')).toBeInTheDocument();
+    });
   });
 
   it.each(['paused', 'blocked'] as const)(

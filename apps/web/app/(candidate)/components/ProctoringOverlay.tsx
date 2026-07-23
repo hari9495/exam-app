@@ -29,6 +29,7 @@ const MESSAGES_BY_REASON: Record<string, { heading: string; body: string }> = {
   dev_tools_detected: { heading: 'Developer tools detected', body: 'We noticed browser developer tools were opened.' },
   multi_monitor_detected: { heading: 'Additional display detected', body: 'We noticed an additional display was connected.' },
   idle_timeout: { heading: 'Inactivity detected', body: 'We noticed no activity for several minutes.' },
+  browser_activity_unspecified: { heading: 'Policy violation detected', body: 'We noticed unusual activity during this exam.' },
 };
 
 export function ProctoringWarningOverlay({ strike, reason, onContinue, continuePending, continueError }: ProctoringWarningOverlayProps) {

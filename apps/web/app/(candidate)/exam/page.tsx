@@ -78,14 +78,30 @@ export default function CandidateExamPage() {
   const started = attemptState?.status === 'in_progress';
   const [lastViolationReason, setLastViolationReason] = useState<string>('no_face');
   const [lastViolationSource, setLastViolationSource] = useState<'webcam' | 'browser_activity'>('webcam');
+  const hasLiveViolationSource = useRef(false);
   useProctoringMonitor(started, (eventType) => {
+    hasLiveViolationSource.current = true;
     setLastViolationReason(eventType);
     setLastViolationSource('browser_activity');
   });
   useWebcamMonitor(started, (reason) => {
+    hasLiveViolationSource.current = true;
     setLastViolationReason(reason);
     setLastViolationSource('webcam');
   });
+  // If this mount never saw a live violation event (e.g. the page reloaded while
+  // already paused/blocked from an earlier session), infer which system caused the
+  // pause from the server-reported counters instead of defaulting to webcam --
+  // otherwise a browser-activity pause would render the wrong heading/strike count
+  // after a refresh.
+  useEffect(() => {
+    if (hasLiveViolationSource.current) return;
+    if (!attemptState || (attemptState.status !== 'paused' && attemptState.status !== 'blocked')) return;
+    if (attemptState.browserActivityViolationCount > attemptState.webcamViolationCount) {
+      setLastViolationReason('browser_activity_unspecified');
+      setLastViolationSource('browser_activity');
+    }
+  }, [attemptState?.status, attemptState?.browserActivityViolationCount, attemptState?.webcamViolationCount]);
   // Resuming from a browser-activity pause has nothing to re-verify (unlike webcam, which
   // re-checks face presence) -- it's the same generic "clear the pause" transition either way,
   // so the existing webcam-resume endpoint/mutation is reused rather than adding a duplicate one.
