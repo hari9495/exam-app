@@ -55,4 +55,16 @@ export class DashboardController {
     const resolvedLimit: PerformanceLimit = limit === 'all' ? 'all' : (Number(limit) as 5 | 10);
     return this.dashboardService.getExamPerformance(tenant, resolvedLimit, window as Window);
   }
+
+  @Get('funnel')
+  @RequireAnyPermission('exam:manage', 'results:view')
+  getFunnel(@CurrentTenant() tenant: TenantContext, @Query('examId') examId?: string, @Query('window') window?: string) {
+    if (!examId) {
+      throw new BadRequestException('examId query parameter is required');
+    }
+    if (!window || !(WINDOWS as readonly string[]).includes(window)) {
+      throw new BadRequestException(`window must be one of ${WINDOWS.join(', ')}`);
+    }
+    return this.dashboardService.getFunnel(tenant, examId, window as Window);
+  }
 }

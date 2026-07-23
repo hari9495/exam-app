@@ -28,6 +28,13 @@ export interface DashboardExamPerformance {
   exams: DashboardExamPerformanceRow[];
 }
 
+export interface DashboardFunnel {
+  invited: number;
+  started: number;
+  submitted: number;
+  passed: number;
+}
+
 function daysAgo(days: number): Date {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
@@ -61,12 +68,6 @@ export interface DashboardSummary {
     staleInvitationCount: number;
   };
   activity: { id: string; description: string; occurredAt: string }[];
-  funnel: {
-    invited: number;
-    started: number;
-    submitted: number;
-    passed: number;
-  };
   upcomingExams: { examId: string; examTitle: string; availabilityWindowStart: string }[];
 }
 
@@ -106,19 +107,15 @@ export class DashboardService {
         totalCandidates,
         invitationsSent,
         attemptsInProgress,
-        startedCount,
         pendingGradingGroups,
         staleInvitationCount,
         recentProctoringEvents,
         auditRows,
-        submittedCount,
-        passedCount,
         upcomingExamRows,
       ] = await Promise.all([
         tx.candidate.count({ where: { organizationId, erasedAt: null } }),
         tx.invitation.count({ where: { examId: { in: examIds } } }),
         tx.attempt.count({ where: { examId: { in: examIds }, status: 'in_progress' } }),
-        tx.attempt.count({ where: { examId: { in: examIds } } }),
         tx.attempt.groupBy({ by: ['examId'], where: { examId: { in: examIds }, status: 'pending_manual_grade' }, _count: { _all: true } }),
         tx.invitation.count({
           where: { examId: { in: examIds }, status: 'invited', invitedAt: { lte: staleThreshold }, attempt: null },
@@ -134,8 +131,6 @@ export class DashboardService {
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
           take: ACTIVITY_LIMIT,
         }),
-        tx.attempt.count({ where: { examId: { in: examIds }, submittedAt: { not: null } } }),
-        tx.result.count({ where: { attempt: { examId: { in: examIds } }, passFail: 'pass' } }),
         tx.exam.findMany({
           where: { organizationId, schedulingEnabled: true, availabilityWindowStart: { gt: new Date() } },
           select: { id: true, title: true, availabilityWindowStart: true },
@@ -171,12 +166,6 @@ export class DashboardService {
           description: describeActivity(row.action, row.entityId, row.metadataJson ? JSON.parse(row.metadataJson) : null, examTitleById),
           occurredAt: row.createdAt.toISOString(),
         })),
-        funnel: {
-          invited: invitationsSent,
-          started: startedCount,
-          submitted: submittedCount,
-          passed: passedCount,
-        },
         upcomingExams: upcomingExamRows.map((exam) => ({
           examId: exam.id,
           examTitle: exam.title,
@@ -284,6 +273,40 @@ export class DashboardService {
 
       const limited = limit === 'all' ? rows : rows.slice(0, limit);
       return { exams: limited };
+    });
+  }
+
+  async getFunnel(context: TenantContext, examId: string, window: 'all' | '30d' | '90d'): Promise<DashboardFunnel> {
+    const organizationId = context.organizationId as string;
+
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const exams = await tx.exam.findMany({ where: { organizationId }, select: { id: true } });
+      const examIds = exams.map((exam) => exam.id);
+      const targetExamIds = examId === 'all' ? examIds : examIds.filter((id) => id === examId);
+      const windowStart = window === '30d' ? daysAgo(30) : window === '90d' ? daysAgo(90) : null;
+      const invitationFilter = windowStart ? { invitedAt: { gte: windowStart } } : {};
+
+      const [invited, started, submitted, passed] = await Promise.all([
+        tx.invitation.count({ where: { examId: { in: targetExamIds }, ...invitationFilter } }),
+        tx.attempt.count({
+          where: { examId: { in: targetExamIds }, ...(windowStart ? { invitation: invitationFilter } : {}) },
+        }),
+        tx.attempt.count({
+          where: {
+            examId: { in: targetExamIds },
+            submittedAt: { not: null },
+            ...(windowStart ? { invitation: invitationFilter } : {}),
+          },
+        }),
+        tx.result.count({
+          where: {
+            attempt: { examId: { in: targetExamIds }, ...(windowStart ? { invitation: invitationFilter } : {}) },
+            passFail: 'pass',
+          },
+        }),
+      ]);
+
+      return { invited, started, submitted, passed };
     });
   }
 }

@@ -76,28 +76,6 @@ describe('DashboardService', () => {
     expect(result.attention.staleInvitationCount).toBe(6);
   });
 
-  it('computes the candidate funnel from invitation/attempt/result counts', async () => {
-    const tx = stubTx({
-      invitation: { count: jest.fn().mockResolvedValue(100) },
-      attempt: {
-        count: jest.fn().mockResolvedValue(60),
-        groupBy: jest.fn().mockResolvedValue([]),
-      },
-      result: { count: jest.fn().mockResolvedValue(22) },
-    });
-    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
-
-    const result = await service.getSummary(context);
-
-    expect(result.funnel).toEqual({ invited: 100, started: 60, submitted: 60, passed: 22 });
-    expect(tx.attempt.count).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ submittedAt: { not: null } }) }),
-    );
-    expect(tx.result.count).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ passFail: 'pass' }) }),
-    );
-  });
-
   it('lists upcoming scheduled exams soonest-first, excluding exams without a future window', async () => {
     const tx = stubTx({
       exam: {
@@ -121,13 +99,12 @@ describe('DashboardService', () => {
     ]);
   });
 
-  it('returns an empty funnel and upcoming-exams list for an org with no data', async () => {
+  it('returns an empty upcoming-exams list for an org with no data', async () => {
     const tx = stubTx({ invitation: { count: jest.fn().mockResolvedValue(0) }, result: { count: jest.fn().mockResolvedValue(0) } });
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
     const result = await service.getSummary(context);
 
-    expect(result.funnel).toEqual({ invited: 0, started: 0, submitted: 0, passed: 0 });
     expect(result.upcomingExams).toEqual([]);
   });
 
@@ -305,6 +282,80 @@ describe('DashboardService', () => {
       const result = await service.getExamPerformance(context, 5, 'all');
 
       expect(result.exams).toEqual([]);
+    });
+  });
+
+  describe('getFunnel', () => {
+    it('computes invited/started/submitted/passed across all of the org exams by default', async () => {
+      const tx = stubTx({
+        exam: {
+          findMany: jest
+            .fn()
+            .mockResolvedValueOnce([
+              { id: 'exam-1', title: 'Backend Round' },
+              { id: 'exam-2', title: 'Frontend Round' },
+            ])
+            .mockResolvedValue([]),
+        },
+        invitation: { count: jest.fn().mockResolvedValue(100) },
+        attempt: { count: jest.fn().mockResolvedValue(60), groupBy: jest.fn().mockResolvedValue([]) },
+        result: { count: jest.fn().mockResolvedValue(22) },
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getFunnel(context, 'all', 'all');
+
+      expect(result).toEqual({ invited: 100, started: 60, submitted: 60, passed: 22 });
+      expect(tx.invitation.count).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ examId: { in: ['exam-1', 'exam-2'] } }) }),
+      );
+    });
+
+    it('scopes to a single exam when examId is not "all"', async () => {
+      const tx = stubTx({
+        exam: {
+          findMany: jest
+            .fn()
+            .mockResolvedValueOnce([
+              { id: 'exam-1', title: 'Backend Round' },
+              { id: 'exam-2', title: 'Frontend Round' },
+            ])
+            .mockResolvedValue([]),
+        },
+        invitation: { count: jest.fn().mockResolvedValue(40) },
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.getFunnel(context, 'exam-1', 'all');
+
+      expect(tx.invitation.count).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ examId: { in: ['exam-1'] } }) }));
+    });
+
+    it('scopes to zero results when examId does not belong to the organization', async () => {
+      const tx = stubTx({
+        exam: {
+          findMany: jest.fn().mockResolvedValueOnce([{ id: 'exam-1', title: 'Backend Round' }]).mockResolvedValue([]),
+        },
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getFunnel(context, 'someone-elses-exam', 'all');
+
+      expect(result).toEqual({ invited: 0, started: 0, submitted: 0, passed: 0 });
+    });
+
+    it('filters by invitation invitedAt when a window is given', async () => {
+      const tx = stubTx();
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.getFunnel(context, 'all', '30d');
+
+      expect(tx.invitation.count).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ invitedAt: expect.objectContaining({ gte: expect.any(Date) }) }) }),
+      );
+      expect(tx.attempt.count).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ invitation: expect.objectContaining({ invitedAt: expect.objectContaining({ gte: expect.any(Date) }) }) }) }),
+      );
     });
   });
 });

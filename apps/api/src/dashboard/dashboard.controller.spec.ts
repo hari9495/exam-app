@@ -83,4 +83,24 @@ describe('DashboardController', () => {
       expect(service.getExamPerformance).toHaveBeenCalledWith(tenant, 'all', 'all');
     });
   });
+
+  describe('getFunnel', () => {
+    it('rejects a missing examId', () => {
+      expect(() => controller.getFunnel(tenant, undefined, 'all')).toThrow(BadRequestException);
+    });
+
+    it('rejects an invalid window', () => {
+      expect(() => controller.getFunnel(tenant, 'all', 'bogus')).toThrow(BadRequestException);
+    });
+
+    it('passes examId and window through to the service', () => {
+      controller.getFunnel(tenant, 'exam-1', '90d');
+      expect(service.getFunnel).toHaveBeenCalledWith(tenant, 'exam-1', '90d');
+    });
+
+    it('passes examId "all" through unchanged', () => {
+      controller.getFunnel(tenant, 'all', 'all');
+      expect(service.getFunnel).toHaveBeenCalledWith(tenant, 'all', 'all');
+    });
+  });
 });
