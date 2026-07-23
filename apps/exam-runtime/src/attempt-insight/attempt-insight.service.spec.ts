@@ -1,13 +1,14 @@
 import { Test } from '@nestjs/testing';
 import { AttemptInsightService } from './attempt-insight.service';
-import { ClaudeInsightClient } from './claude-insight.client';
+import { InsightClient } from './insight.client';
 import { TenantPrismaService, AiApiKeyResolverService } from '@exam-platform/shared';
 
 describe('AttemptInsightService', () => {
   let service: AttemptInsightService;
   let tenantPrisma: { forTenant: jest.Mock };
-  let claudeClient: { generate: jest.Mock };
+  let insightClient: { generate: jest.Mock };
   let aiApiKeyResolver: { resolve: jest.Mock };
+  const fakeAiProvider = { generateStructured: jest.fn() };
 
   const attemptWithResult = {
     id: 'attempt-1',
@@ -17,13 +18,13 @@ describe('AttemptInsightService', () => {
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
-    claudeClient = { generate: jest.fn() };
-    aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue('test-api-key') };
+    insightClient = { generate: jest.fn() };
+    aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue(fakeAiProvider) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         AttemptInsightService,
         { provide: TenantPrismaService, useValue: tenantPrisma },
-        { provide: ClaudeInsightClient, useValue: claudeClient },
+        { provide: InsightClient, useValue: insightClient },
         { provide: AiApiKeyResolverService, useValue: aiApiKeyResolver },
       ],
     }).compile();
@@ -36,7 +37,7 @@ describe('AttemptInsightService', () => {
     await expect(service.analyze('missing-attempt')).resolves.toBeUndefined();
 
     expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(1);
-    expect(claudeClient.generate).not.toHaveBeenCalled();
+    expect(insightClient.generate).not.toHaveBeenCalled();
   });
 
   it('resolves without doing anything when the attempt has no Result yet', async () => {
@@ -44,7 +45,7 @@ describe('AttemptInsightService', () => {
 
     await expect(service.analyze('attempt-1')).resolves.toBeUndefined();
 
-    expect(claudeClient.generate).not.toHaveBeenCalled();
+    expect(insightClient.generate).not.toHaveBeenCalled();
   });
 
   it('computes a per-topic breakdown, excludes untopic-ed questions, and persists a completed insight', async () => {
@@ -63,18 +64,18 @@ describe('AttemptInsightService', () => {
       .mockResolvedValueOnce(attemptWithResult)
       .mockImplementationOnce((_ctx, fn) => fn(readTx))
       .mockImplementationOnce((_ctx, fn) => fn(persistTx));
-    claudeClient.generate.mockResolvedValue('Solid SQL performance.');
+    insightClient.generate.mockResolvedValue('Solid SQL performance.');
 
     await service.analyze('attempt-1');
 
-    expect(claudeClient.generate).toHaveBeenCalledWith(
+    expect(insightClient.generate).toHaveBeenCalledWith(
       {
         percentage: 80,
         passFail: 'pass',
         topicBreakdown: [{ topic: 'SQL', correct: 1, total: 2 }],
         proctoring: null,
       },
-      'test-api-key',
+      fakeAiProvider,
     );
     expect(persistTx.attemptInsight.upsert).toHaveBeenCalledWith({
       where: { attemptId: 'attempt-1' },
@@ -93,7 +94,7 @@ describe('AttemptInsightService', () => {
       .mockResolvedValueOnce(attemptWithResult)
       .mockImplementationOnce((_ctx, fn) => fn(readTx))
       .mockImplementationOnce((_ctx, fn) => fn(persistTx));
-    claudeClient.generate.mockResolvedValue('Solid performance.');
+    insightClient.generate.mockResolvedValue('Solid performance.');
 
     await service.analyze('attempt-1');
 
@@ -112,7 +113,7 @@ describe('AttemptInsightService', () => {
       .mockResolvedValueOnce(attemptWithResult)
       .mockImplementationOnce((_ctx, fn) => fn(readTx))
       .mockImplementationOnce((_ctx, fn) => fn(persistTx));
-    claudeClient.generate.mockRejectedValue(new Error('rate limited'));
+    insightClient.generate.mockRejectedValue(new Error('rate limited'));
 
     await service.analyze('attempt-1');
 
@@ -131,13 +132,13 @@ describe('AttemptInsightService', () => {
       .mockResolvedValueOnce(attemptWithResult)
       .mockImplementationOnce((_ctx, fn) => fn(readTx))
       .mockImplementationOnce((_ctx, fn) => fn(persistTx));
-    claudeClient.generate.mockResolvedValue('Solid, one flag.');
+    insightClient.generate.mockResolvedValue('Solid, one flag.');
 
     await service.analyze('attempt-1');
 
-    expect(claudeClient.generate).toHaveBeenCalledWith(
+    expect(insightClient.generate).toHaveBeenCalledWith(
       expect.objectContaining({ proctoring: { riskLevel: 'medium', summary: 'One tab switch.' } }),
-      'test-api-key',
+      fakeAiProvider,
     );
   });
 
@@ -151,7 +152,7 @@ describe('AttemptInsightService', () => {
       .mockResolvedValueOnce(attemptWithResult)
       .mockImplementationOnce((_ctx, fn) => fn(readTx))
       .mockImplementationOnce((_ctx, fn) => fn(persistTx));
-    claudeClient.generate.mockRejectedValue(new Error('rate limited'));
+    insightClient.generate.mockRejectedValue(new Error('rate limited'));
 
     await expect(service.analyze('attempt-1')).resolves.toBeUndefined();
 

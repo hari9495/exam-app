@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TenantPrismaService, AiApiKeyResolverService } from '@exam-platform/shared';
-import { ClaudeInsightClient, TopicBreakdownEntry } from './claude-insight.client';
+import { InsightClient, TopicBreakdownEntry } from './insight.client';
 
 @Injectable()
 export class AttemptInsightService {
@@ -8,7 +8,7 @@ export class AttemptInsightService {
 
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
-    private readonly claudeInsightClient: ClaudeInsightClient,
+    private readonly insightClient: InsightClient,
     private readonly aiApiKeyResolver: AiApiKeyResolverService,
   ) {}
 
@@ -42,8 +42,8 @@ export class AttemptInsightService {
 
       let result: { status: string; summary: string | null };
       try {
-        const apiKey = await this.aiApiKeyResolver.resolve(organizationId);
-        const summary = await this.claudeInsightClient.generate(
+        const aiProvider = await this.aiApiKeyResolver.resolve(organizationId);
+        const summary = await this.insightClient.generate(
           {
             percentage: attempt.result.percentage,
             // ponytail: Result.passFail can now be null (pending manual grade of a code question);
@@ -52,7 +52,7 @@ export class AttemptInsightService {
             topicBreakdown,
             proctoring,
           },
-          apiKey,
+          aiProvider,
         );
         result = { status: 'completed', summary };
       } catch (error) {
