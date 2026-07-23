@@ -65,11 +65,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
       <div style={themeStyle} className="min-h-screen bg-gray-50">
         <div className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
           <div className="flex items-center gap-4">
-            {branding?.logoUrl ? (
-              <img src={branding.logoUrl} alt="Organization logo" className="max-h-8" />
-            ) : (
-              <img src="/logo.png" alt="Prudent Hire" className="h-8 w-8 object-contain" />
-            )}
+            {branding?.logoUrl && <img src={branding.logoUrl} alt="Organization logo" className="max-h-8" />}
             <Link
               href="/reports"
               className={clsx(

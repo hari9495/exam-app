@@ -66,6 +66,8 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
     .slice(0, 2)
     .join('')
     .toUpperCase();
+  // ponytail: BrandingResponse has no organizationName field; fall back to the org slug.
+  const orgInitial = (organizationSlug ?? 'O')[0]?.toUpperCase();
 
   return (
     <MotionConfig reducedMotion="user">
@@ -75,7 +77,9 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
           {branding?.logoUrl ? (
             <img src={branding.logoUrl} alt="Organization logo" className="max-h-7 max-w-7 rounded" />
           ) : (
-            <img src="/logo.png" alt="Prudent Hire" className="h-7 w-7 object-contain" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-xs font-bold text-white">
+              {orgInitial}
+            </div>
           )}
           <span className="truncate text-sm font-bold text-recruiter-text">{organizationSlug}</span>
         </div>
@@ -95,7 +99,7 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
                   )}
                   style={
                     isActive
-                      ? { backgroundColor: 'color-mix(in srgb, var(--color-primary, #0057f0) 12%, white)' }
+                      ? { backgroundColor: 'color-mix(in srgb, var(--color-primary, #1a73e8) 12%, white)' }
                       : undefined
                   }
                 >
