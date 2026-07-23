@@ -1,13 +1,14 @@
 import { Test } from '@nestjs/testing';
 import { AttemptAnalysisService } from './attempt-analysis.service';
-import { ClaudeProctoringClient } from './claude-proctoring.client';
+import { ProctoringRiskClient } from './proctoring-risk.client';
 import { TenantPrismaService, AiApiKeyResolverService } from '@exam-platform/shared';
 
 describe('AttemptAnalysisService', () => {
   let service: AttemptAnalysisService;
   let tenantPrisma: { forTenant: jest.Mock };
-  let claudeClient: { assessRisk: jest.Mock };
+  let proctoringRiskClient: { assessRisk: jest.Mock };
   let aiApiKeyResolver: { resolve: jest.Mock };
+  let aiProvider: { generateStructured: jest.Mock };
 
   const startedAt = new Date('2026-07-09T10:00:00Z');
   const attemptWithExam = {
@@ -18,13 +19,14 @@ describe('AttemptAnalysisService', () => {
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
-    claudeClient = { assessRisk: jest.fn() };
-    aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue('test-api-key') };
+    proctoringRiskClient = { assessRisk: jest.fn() };
+    aiProvider = { generateStructured: jest.fn() };
+    aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue(aiProvider) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         AttemptAnalysisService,
         { provide: TenantPrismaService, useValue: tenantPrisma },
-        { provide: ClaudeProctoringClient, useValue: claudeClient },
+        { provide: ProctoringRiskClient, useValue: proctoringRiskClient },
         { provide: AiApiKeyResolverService, useValue: aiApiKeyResolver },
       ],
     }).compile();
@@ -37,7 +39,7 @@ describe('AttemptAnalysisService', () => {
     await expect(service.analyze('missing-attempt')).resolves.toBeUndefined();
 
     expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(1);
-    expect(claudeClient.assessRisk).not.toHaveBeenCalled();
+    expect(proctoringRiskClient.assessRisk).not.toHaveBeenCalled();
   });
 
   it('skips the LLM call and records skipped_clean when there are no proctoring events', async () => {
@@ -50,7 +52,7 @@ describe('AttemptAnalysisService', () => {
 
     await service.analyze('attempt-1');
 
-    expect(claudeClient.assessRisk).not.toHaveBeenCalled();
+    expect(proctoringRiskClient.assessRisk).not.toHaveBeenCalled();
     expect(persistTx.proctoringAnalysis.upsert).toHaveBeenCalledWith({
       where: { attemptId: 'attempt-1' },
       create: { attemptId: 'attempt-1', status: 'skipped_clean', riskLevel: 'low', summary: 'No proctoring events were recorded during this attempt.' },
@@ -66,11 +68,11 @@ describe('AttemptAnalysisService', () => {
       .mockResolvedValueOnce(attemptWithExam)
       .mockImplementationOnce((_ctx, fn) => fn(readTx))
       .mockImplementationOnce((_ctx, fn) => fn(persistTx));
-    claudeClient.assessRisk.mockResolvedValue({ riskLevel: 'medium', summary: 'One tab switch.' });
+    proctoringRiskClient.assessRisk.mockResolvedValue({ riskLevel: 'medium', summary: 'One tab switch.' });
 
     await service.analyze('attempt-1');
 
-    expect(claudeClient.assessRisk).toHaveBeenCalledWith([{ eventType: 'tab_switch', severity: 'medium', elapsedSeconds: 120 }], 'test-api-key');
+    expect(proctoringRiskClient.assessRisk).toHaveBeenCalledWith([{ eventType: 'tab_switch', severity: 'medium', elapsedSeconds: 120 }], aiProvider);
     expect(persistTx.proctoringAnalysis.upsert).toHaveBeenCalledWith({
       where: { attemptId: 'attempt-1' },
       create: { attemptId: 'attempt-1', status: 'completed', riskLevel: 'medium', summary: 'One tab switch.' },
@@ -86,7 +88,7 @@ describe('AttemptAnalysisService', () => {
       .mockResolvedValueOnce(attemptWithExam)
       .mockImplementationOnce((_ctx, fn) => fn(readTx))
       .mockImplementationOnce((_ctx, fn) => fn(persistTx));
-    claudeClient.assessRisk.mockRejectedValue(new Error('rate limited'));
+    proctoringRiskClient.assessRisk.mockRejectedValue(new Error('rate limited'));
 
     await expect(service.analyze('attempt-1')).resolves.toBeUndefined();
 

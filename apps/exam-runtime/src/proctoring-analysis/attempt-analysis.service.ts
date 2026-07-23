@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TenantPrismaService, AiApiKeyResolverService } from '@exam-platform/shared';
-import { ClaudeProctoringClient } from './claude-proctoring.client';
+import { ProctoringRiskClient } from './proctoring-risk.client';
 
 const CLEAN_SUMMARY = 'No proctoring events were recorded during this attempt.';
 
@@ -10,7 +10,7 @@ export class AttemptAnalysisService {
 
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
-    private readonly claudeProctoringClient: ClaudeProctoringClient,
+    private readonly proctoringRiskClient: ProctoringRiskClient,
     private readonly aiApiKeyResolver: AiApiKeyResolverService,
   ) {}
 
@@ -43,8 +43,8 @@ export class AttemptAnalysisService {
         }));
 
         try {
-          const apiKey = await this.aiApiKeyResolver.resolve(organizationId);
-          const assessment = await this.claudeProctoringClient.assessRisk(timeline, apiKey);
+          const aiProvider = await this.aiApiKeyResolver.resolve(organizationId);
+          const assessment = await this.proctoringRiskClient.assessRisk(timeline, aiProvider);
           result = { status: 'completed', riskLevel: assessment.riskLevel, summary: assessment.summary };
         } catch (error) {
           this.logger.error(`Proctoring analysis failed for attempt ${attemptId}`, error as Error);
