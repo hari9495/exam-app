@@ -4,7 +4,7 @@ import { REDIS_CONNECTION, createRedisConnection } from './redis-connection';
 import { AI_JOBS_QUEUE, createAiJobsQueue } from './ai-jobs.queue';
 import { AI_JOB_PROCESSORS } from './processors/job-processor.interface';
 import { EchoProcessor } from './processors/echo.processor';
-import { ClaudeQuestionGenerationClient } from './processors/claude-question-generation.client';
+import { QuestionGenerationClient } from './processors/question-generation.client';
 import { AiQuestionGenerationProcessor } from './processors/ai-question-generation.processor';
 import { AiJobsWorkerService } from './ai-jobs.worker.service';
 import { WEBHOOK_DELIVERIES_QUEUE, createWebhookDeliveriesQueue } from './webhook-deliveries.queue';
@@ -21,7 +21,7 @@ import { JobsController } from './jobs.controller';
     { provide: AI_JOBS_QUEUE, useFactory: createAiJobsQueue, inject: [REDIS_CONNECTION] },
     { provide: WEBHOOK_DELIVERIES_QUEUE, useFactory: createWebhookDeliveriesQueue, inject: [REDIS_CONNECTION] },
     EchoProcessor,
-    ClaudeQuestionGenerationClient,
+    QuestionGenerationClient,
     AiQuestionGenerationProcessor,
     {
       provide: AI_JOB_PROCESSORS,

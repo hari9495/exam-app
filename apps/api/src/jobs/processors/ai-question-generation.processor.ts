@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { TenantContext, TenantPrismaService, AiApiKeyResolverService } from '@exam-platform/shared';
 import { JobProcessor } from './job-processor.interface';
-import { ClaudeQuestionGenerationClient, GeneratedQuestion } from './claude-question-generation.client';
+import { QuestionGenerationClient, GeneratedQuestion } from './question-generation.client';
 import { validateQuestionPayload } from '../../questions/question-validation';
 
 interface AiQuestionGenerationInput {
@@ -28,7 +28,7 @@ export class AiQuestionGenerationProcessor implements JobProcessor {
   readonly type = 'ai-question-generation';
 
   constructor(
-    private readonly claudeClient: ClaudeQuestionGenerationClient,
+    private readonly questionGenerationClient: QuestionGenerationClient,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly aiApiKeyResolver: AiApiKeyResolverService,
   ) {}
@@ -36,8 +36,8 @@ export class AiQuestionGenerationProcessor implements JobProcessor {
   async process(input: unknown, context: TenantContext): Promise<AiQuestionGenerationOutput> {
     const { topic, difficulty, questionTypes, count, requestedBy } = input as AiQuestionGenerationInput;
 
-    const apiKey = await this.aiApiKeyResolver.resolve(context.organizationId as string);
-    const generated = (await this.claudeClient.generate(topic, difficulty, questionTypes, count, apiKey)).slice(0, count);
+    const aiProvider = await this.aiApiKeyResolver.resolve(context.organizationId as string);
+    const generated = (await this.questionGenerationClient.generate(topic, difficulty, questionTypes, count, aiProvider)).slice(0, count);
 
     const valid: GeneratedQuestion[] = [];
     const dropped: DroppedQuestion[] = [];

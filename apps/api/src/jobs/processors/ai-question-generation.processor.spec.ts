@@ -2,21 +2,22 @@ import { AiQuestionGenerationProcessor } from './ai-question-generation.processo
 
 describe('AiQuestionGenerationProcessor', () => {
   let processor: AiQuestionGenerationProcessor;
-  let claudeClient: { generate: jest.Mock };
+  let questionGenerationClient: { generate: jest.Mock };
   let tenantPrisma: { forTenant: jest.Mock };
   let aiApiKeyResolver: { resolve: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
   const input = { topic: 'JavaScript closures', difficulty: 'medium', questionTypes: ['single_mcq', 'true_false'], count: 2, requestedBy: 'user-1' };
+  const aiProvider = { generateStructured: jest.fn(), ping: jest.fn() };
 
   beforeEach(() => {
-    claudeClient = { generate: jest.fn() };
+    questionGenerationClient = { generate: jest.fn() };
     tenantPrisma = { forTenant: jest.fn() };
-    aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue('test-api-key') };
-    processor = new AiQuestionGenerationProcessor(claudeClient as any, tenantPrisma as any, aiApiKeyResolver as any);
+    aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue(aiProvider) };
+    processor = new AiQuestionGenerationProcessor(questionGenerationClient as any, tenantPrisma as any, aiApiKeyResolver as any);
   });
 
   it('inserts every valid generated question as a draft, ai-generated row', async () => {
-    claudeClient.generate.mockResolvedValue([
+    questionGenerationClient.generate.mockResolvedValue([
       {
         type: 'single_mcq',
         text: 'What does a closure capture?',
@@ -63,7 +64,7 @@ describe('AiQuestionGenerationProcessor', () => {
   });
 
   it('records AiCreditUsage with credits equal to the number of questions actually created', async () => {
-    claudeClient.generate.mockResolvedValue([
+    questionGenerationClient.generate.mockResolvedValue([
       {
         type: 'single_mcq',
         text: 'Valid question',
@@ -87,7 +88,7 @@ describe('AiQuestionGenerationProcessor', () => {
   });
 
   it('does not record AiCreditUsage when zero questions are created', async () => {
-    claudeClient.generate.mockResolvedValue([
+    questionGenerationClient.generate.mockResolvedValue([
       {
         type: 'single_mcq',
         text: 'Invalid',
@@ -108,7 +109,7 @@ describe('AiQuestionGenerationProcessor', () => {
   });
 
   it('drops questions that fail validation and still completes with the valid ones', async () => {
-    claudeClient.generate.mockResolvedValue([
+    questionGenerationClient.generate.mockResolvedValue([
       {
         type: 'single_mcq',
         text: 'Valid question',
@@ -137,7 +138,7 @@ describe('AiQuestionGenerationProcessor', () => {
   });
 
   it('completes with zero created questions when every generated question fails validation', async () => {
-    claudeClient.generate.mockResolvedValue([
+    questionGenerationClient.generate.mockResolvedValue([
       {
         type: 'single_mcq',
         text: 'Invalid',
@@ -155,7 +156,7 @@ describe('AiQuestionGenerationProcessor', () => {
   });
 
   it('truncates generated questions to the requested count before validating and inserting', async () => {
-    claudeClient.generate.mockResolvedValue([
+    questionGenerationClient.generate.mockResolvedValue([
       {
         type: 'single_mcq',
         text: 'Question 1',
@@ -192,7 +193,7 @@ describe('AiQuestionGenerationProcessor', () => {
   });
 
   it('drops a generated question whose type is not in the requested questionTypes, without inserting it', async () => {
-    claudeClient.generate.mockResolvedValue([
+    questionGenerationClient.generate.mockResolvedValue([
       {
         type: 'single_mcq',
         text: 'Requested type',
@@ -224,7 +225,7 @@ describe('AiQuestionGenerationProcessor', () => {
   });
 
   it('propagates an error thrown by the Claude client, failing the whole job with zero inserts', async () => {
-    claudeClient.generate.mockRejectedValue(new Error('rate limited'));
+    questionGenerationClient.generate.mockRejectedValue(new Error('rate limited'));
 
     await expect(processor.process(input, context)).rejects.toThrow('rate limited');
     expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
