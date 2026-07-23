@@ -6,7 +6,7 @@ import { bootAdminApp, bootRuntimeApp } from './dual-app';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
-import { ClaudeProctoringClient } from '../../exam-runtime/src/proctoring-analysis/claude-proctoring.client';
+import { ProctoringRiskClient } from '../../exam-runtime/src/proctoring-analysis/proctoring-risk.client';
 import { InsightClient } from '../../exam-runtime/src/attempt-insight/insight.client';
 
 describe('AI Evaluation Insight flow', () => {
@@ -24,15 +24,15 @@ describe('AI Evaluation Insight flow', () => {
   let trueFalseQuestionId: string;
   let correctOptionId: string;
   const fakeEmailService = { send: jest.fn().mockResolvedValue({ success: true, previewUrl: 'https://ethereal.email/fake' }) };
-  const fakeClaudeProctoringClient = { assessRisk: jest.fn() };
+  const fakeProctoringRiskClient = { assessRisk: jest.fn() };
   const fakeInsightClient = { generate: jest.fn() };
 
   beforeAll(async () => {
     adminApp = await bootAdminApp((builder) => builder.overrideProvider(EmailService).useValue(fakeEmailService));
     ({ app: runtimeApp } = await bootRuntimeApp((builder) =>
       builder
-        .overrideProvider(ClaudeProctoringClient)
-        .useValue(fakeClaudeProctoringClient)
+        .overrideProvider(ProctoringRiskClient)
+        .useValue(fakeProctoringRiskClient)
         .overrideProvider(InsightClient)
         .useValue(fakeInsightClient),
     ));
@@ -168,7 +168,7 @@ describe('AI Evaluation Insight flow', () => {
   }
 
   it('generates a completed insight after settlement, sequenced after proctoring analysis', async () => {
-    fakeClaudeProctoringClient.assessRisk.mockClear();
+    fakeProctoringRiskClient.assessRisk.mockClear();
     fakeInsightClient.generate.mockResolvedValueOnce('Strong in SQL overall.');
 
     const attemptId = await inviteStartAndSubmit('alice@ci-ai-insight.test', 'Alice');

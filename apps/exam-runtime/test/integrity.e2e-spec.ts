@@ -6,7 +6,7 @@ import { bootAdminApp, bootRuntimeApp } from '../../api/test/dual-app';
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../../api/src/email/email.service';
 import { IntegrityNarrativeClient } from '../src/integrity/integrity-narrative.client';
-import { ClaudeProctoringClient } from '../src/proctoring-analysis/claude-proctoring.client';
+import { ProctoringRiskClient } from '../src/proctoring-analysis/proctoring-risk.client';
 
 // Settlement (grading) and the integrity/proctoring analyses it kicks off are fire-and-forget
 // (see attempt-settlement.service.ts), so assertions on integrity_analyses must poll rather than
@@ -49,14 +49,14 @@ describe('Integrity analysis e2e', () => {
 
   const fakeEmailService = { send: jest.fn().mockResolvedValue({ success: true, previewUrl: 'https://ethereal.email/fake' }) };
   const fakeIntegrityNarrativeClient = { writeNarrative: jest.fn().mockResolvedValue('Mock integrity narrative for CI.') };
-  const fakeClaudeProctoringClient = { assessRisk: jest.fn() };
+  const fakeProctoringRiskClient = { assessRisk: jest.fn() };
 
   beforeAll(async () => {
     adminApp = await bootAdminApp((builder) => builder.overrideProvider(EmailService).useValue(fakeEmailService));
     ({ app: runtimeApp } = await bootRuntimeApp((builder) =>
       builder
         .overrideProvider(IntegrityNarrativeClient).useValue(fakeIntegrityNarrativeClient)
-        .overrideProvider(ClaudeProctoringClient).useValue(fakeClaudeProctoringClient),
+        .overrideProvider(ProctoringRiskClient).useValue(fakeProctoringRiskClient),
     ));
     adminHttp = adminApp.getHttpServer();
     runtimeHttp = runtimeApp.getHttpServer();

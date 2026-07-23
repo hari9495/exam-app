@@ -6,7 +6,7 @@ import { bootAdminApp, bootRuntimeApp } from './dual-app';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
-import { ClaudeProctoringClient } from '../../exam-runtime/src/proctoring-analysis/claude-proctoring.client';
+import { ProctoringRiskClient } from '../../exam-runtime/src/proctoring-analysis/proctoring-risk.client';
 
 describe('AI Proctoring flow', () => {
   let adminApp: INestApplication;
@@ -20,11 +20,11 @@ describe('AI Proctoring flow', () => {
   let recruiterAccessToken: string;
   let examId: string;
   const fakeEmailService = { send: jest.fn().mockResolvedValue({ success: true, previewUrl: 'https://ethereal.email/fake' }) };
-  const fakeClaudeProctoringClient = { assessRisk: jest.fn() };
+  const fakeProctoringRiskClient = { assessRisk: jest.fn() };
 
   beforeAll(async () => {
     adminApp = await bootAdminApp((builder) => builder.overrideProvider(EmailService).useValue(fakeEmailService));
-    ({ app: runtimeApp } = await bootRuntimeApp((builder) => builder.overrideProvider(ClaudeProctoringClient).useValue(fakeClaudeProctoringClient)));
+    ({ app: runtimeApp } = await bootRuntimeApp((builder) => builder.overrideProvider(ProctoringRiskClient).useValue(fakeProctoringRiskClient)));
     adminHttp = adminApp.getHttpServer();
     runtimeHttp = runtimeApp.getHttpServer();
 
@@ -128,7 +128,7 @@ describe('AI Proctoring flow', () => {
   }
 
   it('records a completed analysis with the LLM-provided risk level and summary for an attempt with proctoring events', async () => {
-    fakeClaudeProctoringClient.assessRisk.mockResolvedValueOnce({ riskLevel: 'medium', summary: 'One tab switch mid-exam.' });
+    fakeProctoringRiskClient.assessRisk.mockResolvedValueOnce({ riskLevel: 'medium', summary: 'One tab switch mid-exam.' });
 
     const token = await inviteAndGetToken('alice@ci-ai-proctoring.test', 'Alice');
     const accessToken = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
@@ -143,7 +143,7 @@ describe('AI Proctoring flow', () => {
     const row = await pollForAnalysis('Alice');
 
     expect(row.proctoringAnalysis).toEqual({ status: 'completed', riskLevel: 'medium', summary: 'One tab switch mid-exam.' });
-    expect(fakeClaudeProctoringClient.assessRisk).toHaveBeenCalledWith([
+    expect(fakeProctoringRiskClient.assessRisk).toHaveBeenCalledWith([
       expect.objectContaining({ eventType: 'tab_switch', severity: 'medium' }),
     ]);
   });
@@ -152,18 +152,18 @@ describe('AI Proctoring flow', () => {
     const token = await inviteAndGetToken('bob@ci-ai-proctoring.test', 'Bob');
     const accessToken = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
     await request(runtimeHttp).post('/api/v1/attempt/start').set('Authorization', `Bearer ${accessToken}`).send({ consent: true }).expect(201);
-    fakeClaudeProctoringClient.assessRisk.mockClear();
+    fakeProctoringRiskClient.assessRisk.mockClear();
 
     await request(runtimeHttp).post('/api/v1/attempt/submit').set('Authorization', `Bearer ${accessToken}`).expect(201);
 
     const row = await pollForAnalysis('Bob');
 
     expect(row.proctoringAnalysis).toEqual({ status: 'skipped_clean', riskLevel: 'low', summary: 'No proctoring events were recorded during this attempt.' });
-    expect(fakeClaudeProctoringClient.assessRisk).not.toHaveBeenCalled();
+    expect(fakeProctoringRiskClient.assessRisk).not.toHaveBeenCalled();
   });
 
   it('records a failed analysis when the LLM client throws, then replaces it with a completed one via reanalyze', async () => {
-    fakeClaudeProctoringClient.assessRisk.mockRejectedValueOnce(new Error('rate limited'));
+    fakeProctoringRiskClient.assessRisk.mockRejectedValueOnce(new Error('rate limited'));
 
     const token = await inviteAndGetToken('carol@ci-ai-proctoring.test', 'Carol');
     const accessToken = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token }).expect(200)).body.accessToken;
@@ -178,7 +178,7 @@ describe('AI Proctoring flow', () => {
     const failedRow = await pollForAnalysis('Carol');
     expect(failedRow.proctoringAnalysis).toEqual({ status: 'failed', riskLevel: null, summary: null });
 
-    fakeClaudeProctoringClient.assessRisk.mockResolvedValueOnce({ riskLevel: 'high', summary: 'Copy-paste detected.' });
+    fakeProctoringRiskClient.assessRisk.mockResolvedValueOnce({ riskLevel: 'high', summary: 'Copy-paste detected.' });
     await request(adminHttp)
       .post(`/api/v1/attempts/${failedRow.attemptId}/reanalyze`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
