@@ -2,6 +2,7 @@ import './globals.css';
 import { AuthProvider } from '../lib/auth-context';
 import { QueryProvider } from '../lib/query-provider';
 import { ToastProvider } from '../components/ui';
+import { SuperAdminActingBanner } from '../components/SuperAdminActingBanner';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -9,7 +10,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <QueryProvider>
           <ToastProvider>
-            <AuthProvider>{children}</AuthProvider>
+            <AuthProvider>
+              <SuperAdminActingBanner />
+              {children}
+            </AuthProvider>
           </ToastProvider>
         </QueryProvider>
       </body>

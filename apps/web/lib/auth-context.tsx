@@ -9,9 +9,13 @@ interface AuthContextValue {
   accessToken: string | null;
   organizationSlug: string | null;
   role: string | null;
+  actingSuperAdmin: boolean;
+  actingOrgName: string | null;
   isLoading: boolean;
   login: (organizationSlug: string, accessToken: string) => void;
   logout: () => Promise<void>;
+  switchIntoOrg: (orgId: string) => Promise<void>;
+  switchOutOfOrg: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -29,6 +33,8 @@ export const SSO_PENDING_SLUG_KEY = 'ssoPendingOrganizationSlug';
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
+  const [actingSuperAdmin, setActingSuperAdmin] = useState(false);
+  const [actingOrgName, setActingOrgName] = useState<string | null>(null);
   const [organizationSlug, setOrganizationSlug] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const accessTokenRef = useRef<string | null>(null);
@@ -39,6 +45,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccessToken(token);
     const payload = token ? decodeJwtPayload(token) : null;
     setRole(payload && typeof payload.role === 'string' ? payload.role : null);
+    setActingSuperAdmin(Boolean(payload?.actingSuperAdmin));
+    setActingOrgName(payload && typeof payload.actingOrgName === 'string' ? payload.actingOrgName : null);
   }
 
   async function silentRefresh(): Promise<string | null> {
@@ -81,8 +89,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryClient.removeQueries({ queryKey: ['currentUser'] });
   }
 
+  async function switchIntoOrg(orgId: string): Promise<void> {
+    const result = await apiFetch(
+      `/auth/super-admin/switch-into/${orgId}`,
+      { method: 'POST', body: JSON.stringify({}) },
+      accessTokenRef.current ?? undefined,
+    );
+    applyToken(result.accessToken);
+  }
+
+  async function switchOutOfOrg(): Promise<void> {
+    await apiFetch(
+      '/auth/super-admin/switch-out',
+      { method: 'POST', body: JSON.stringify({}) },
+      accessTokenRef.current ?? undefined,
+    ).catch(() => undefined);
+    await silentRefresh();
+  }
+
   return (
-    <AuthContext.Provider value={{ accessToken, organizationSlug, role, isLoading, login, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider
+      value={{
+        accessToken,
+        organizationSlug,
+        role,
+        actingSuperAdmin,
+        actingOrgName,
+        isLoading,
+        login,
+        logout,
+        switchIntoOrg,
+        switchOutOfOrg,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
   );
 }
 

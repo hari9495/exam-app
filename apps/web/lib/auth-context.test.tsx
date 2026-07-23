@@ -90,4 +90,93 @@ describe('AuthProvider', () => {
 
     expect(client.getQueryData(['currentUser'])).toBeUndefined();
   });
+
+  it('decodes actingSuperAdmin and actingOrgName off the access token after switchIntoOrg', async () => {
+    const tokenA = fakeJwt({ sub: 'userA', organizationId: 'org1', role: 'super_admin' });
+    const actingToken = fakeJwt({
+      sub: 'userA',
+      organizationId: 'org2',
+      role: 'super_admin',
+      actingSuperAdmin: true,
+      actingOrgName: 'Acme Inc',
+    });
+
+    global.fetch = jest.fn(async (url) => {
+      const u = String(url);
+      if (u.endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: tokenA }), { status: 200 });
+      }
+      if (u.endsWith('/auth/super-admin/switch-into/org2')) {
+        return new Response(JSON.stringify({ accessToken: actingToken }), { status: 200 });
+      }
+      throw new Error(`Unexpected fetch to ${u}`);
+    }) as unknown as typeof fetch;
+
+    let auth: ReturnType<typeof useAuth> | undefined;
+    function Consumer() {
+      auth = useAuth();
+      return null;
+    }
+
+    renderWithQueryClient(
+      <AuthProvider>
+        <Consumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(auth?.accessToken).toBe(tokenA));
+
+    await act(async () => {
+      await auth!.switchIntoOrg('org2');
+    });
+
+    expect(auth?.actingSuperAdmin).toBe(true);
+    expect(auth?.actingOrgName).toBe('Acme Inc');
+  });
+
+  it('switchOutOfOrg calls the switch-out endpoint and restores a non-acting token via silent refresh', async () => {
+    const actingToken = fakeJwt({
+      sub: 'userA',
+      organizationId: 'org2',
+      role: 'super_admin',
+      actingSuperAdmin: true,
+      actingOrgName: 'Acme Inc',
+    });
+    const restoredToken = fakeJwt({ sub: 'userA', organizationId: 'org1', role: 'super_admin' });
+
+    let refreshCallCount = 0;
+    global.fetch = jest.fn(async (url) => {
+      const u = String(url);
+      if (u.endsWith('/auth/refresh')) {
+        refreshCallCount += 1;
+        const token = refreshCallCount === 1 ? actingToken : restoredToken;
+        return new Response(JSON.stringify({ accessToken: token }), { status: 200 });
+      }
+      if (u.endsWith('/auth/super-admin/switch-out')) {
+        return new Response(JSON.stringify({ success: true }), { status: 200 });
+      }
+      throw new Error(`Unexpected fetch to ${u}`);
+    }) as unknown as typeof fetch;
+
+    let auth: ReturnType<typeof useAuth> | undefined;
+    function Consumer() {
+      auth = useAuth();
+      return null;
+    }
+
+    renderWithQueryClient(
+      <AuthProvider>
+        <Consumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(auth?.actingSuperAdmin).toBe(true));
+
+    await act(async () => {
+      await auth!.switchOutOfOrg();
+    });
+
+    expect(auth?.actingSuperAdmin).toBe(false);
+    expect(auth?.accessToken).toBe(restoredToken);
+  });
 });
