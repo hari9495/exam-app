@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import IntegrationsSettingsPage from './page';
 import { ToastProvider } from '../../../../components/ui';
@@ -30,6 +31,10 @@ describe('IntegrationsSettingsPage', () => {
         return Promise.resolve({
           smtpConfigured: false,
           aiKeyConfigured: false,
+          aiProvider: 'anthropic',
+          aiBaseUrl: null,
+          aiModelFast: null,
+          aiModelStandard: null,
           smtpHost: null,
           smtpPort: null,
           emailFromAddress: null,
@@ -120,6 +125,51 @@ describe('IntegrationsSettingsPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('That API key was rejected by Anthropic: authentication_error');
   });
 
+  it('shows only the API key field for the Anthropic provider by default', async () => {
+    renderPage();
+    await screen.findByLabelText('AI API key');
+
+    expect(screen.queryByLabelText('Base URL')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Fast-tier model/deployment name')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Standard-tier model/deployment name')).not.toBeInTheDocument();
+  });
+
+  it('shows base URL and model fields when OpenAI-compatible is selected, and submits them together', async () => {
+    renderPage();
+    await screen.findByLabelText('AI provider');
+
+    await userEvent.click(screen.getByLabelText('AI provider'));
+    await userEvent.click(await screen.findByRole('option', { name: 'OpenAI-compatible' }));
+
+    expect(await screen.findByLabelText('Base URL')).toBeInTheDocument();
+    expect(screen.getByLabelText('Fast-tier model/deployment name')).toBeInTheDocument();
+    expect(screen.getByLabelText('Standard-tier model/deployment name')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('AI API key'), { target: { value: 'azure-key' } });
+    fireEvent.change(screen.getByLabelText('Base URL'), { target: { value: 'https://example.openai.azure.com/openai/v1' } });
+    fireEvent.change(screen.getByLabelText('Fast-tier model/deployment name'), { target: { value: 'gpt-fast' } });
+    fireEvent.change(screen.getByLabelText('Standard-tier model/deployment name'), { target: { value: 'gpt-standard' } });
+    mockedApiFetch.mockResolvedValueOnce({ aiKeyConfigured: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Save AI API key' }));
+
+    await waitFor(() =>
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        '/organizations/integrations/ai-key',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({
+            provider: 'openai-compatible',
+            apiKey: 'azure-key',
+            baseUrl: 'https://example.openai.azure.com/openai/v1',
+            modelFast: 'gpt-fast',
+            modelStandard: 'gpt-standard',
+          }),
+        }),
+        'token',
+      ),
+    );
+  });
+
   it('shows an inline error when generating the API key fails', async () => {
     renderPage();
     await screen.findByText('No API key generated');
@@ -142,6 +192,10 @@ describe('IntegrationsSettingsPage', () => {
         return Promise.resolve({
           smtpConfigured: false,
           aiKeyConfigured: false,
+          aiProvider: 'anthropic',
+          aiBaseUrl: null,
+          aiModelFast: null,
+          aiModelStandard: null,
           smtpHost: null,
           smtpPort: null,
           emailFromAddress: null,
@@ -174,6 +228,10 @@ describe('IntegrationsSettingsPage', () => {
         return Promise.resolve({
           smtpConfigured: false,
           aiKeyConfigured: false,
+          aiProvider: 'anthropic',
+          aiBaseUrl: null,
+          aiModelFast: null,
+          aiModelStandard: null,
           smtpHost: null,
           smtpPort: null,
           emailFromAddress: null,

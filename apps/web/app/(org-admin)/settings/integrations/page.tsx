@@ -11,9 +11,14 @@ import {
   useGenerateWebhookSecret,
   useWebhookDeliveries,
 } from '../../../../lib/hooks/useIntegrations';
-import { Input, Button, Card, CardGrid, useToast } from '../../../../components/ui';
+import { Input, Button, Card, CardGrid, Select, type SelectOption, useToast } from '../../../../components/ui';
 import { WebhookDeliveryRow } from '../../../../lib/types';
 import { motion } from 'framer-motion';
+
+const AI_PROVIDER_OPTIONS: SelectOption[] = [
+  { value: 'anthropic', label: 'Anthropic' },
+  { value: 'openai-compatible', label: 'OpenAI-compatible' },
+];
 
 export default function IntegrationsSettingsPage() {
   const { data: integrations } = useIntegrations();
@@ -28,7 +33,11 @@ export default function IntegrationsSettingsPage() {
   const [fromAddress, setFromAddress] = useState('');
   const [smtpError, setSmtpError] = useState<string | null>(null);
 
+  const [aiProvider, setAiProvider] = useState<'anthropic' | 'openai-compatible'>('anthropic');
   const [aiApiKey, setAiApiKey] = useState('');
+  const [aiBaseUrl, setAiBaseUrl] = useState('');
+  const [aiModelFast, setAiModelFast] = useState('');
+  const [aiModelStandard, setAiModelStandard] = useState('');
   const [aiKeyError, setAiKeyError] = useState<string | null>(null);
 
   const [revealedApiKey, setRevealedApiKey] = useState<string | null>(null);
@@ -71,13 +80,21 @@ export default function IntegrationsSettingsPage() {
   function handleAiKeySubmit(e: React.FormEvent) {
     e.preventDefault();
     setAiKeyError(null);
-    updateAiKey.mutate(aiApiKey, {
-      onSuccess: () => {
-        toast('AI API key saved.');
-        setAiApiKey('');
+    updateAiKey.mutate(
+      aiProvider === 'openai-compatible'
+        ? { provider: aiProvider, apiKey: aiApiKey, baseUrl: aiBaseUrl, modelFast: aiModelFast, modelStandard: aiModelStandard }
+        : { provider: aiProvider, apiKey: aiApiKey },
+      {
+        onSuccess: () => {
+          toast('AI API key saved.');
+          setAiApiKey('');
+          setAiBaseUrl('');
+          setAiModelFast('');
+          setAiModelStandard('');
+        },
+        onError: (err) => setAiKeyError(err instanceof Error ? err.message : 'Failed to save AI API key'),
       },
-      onError: (err) => setAiKeyError(err instanceof Error ? err.message : 'Failed to save AI API key'),
-    });
+    );
   }
 
   function handleGenerateApiKey() {
@@ -161,11 +178,19 @@ export default function IntegrationsSettingsPage() {
           <h2 className="mb-1 text-lg font-semibold text-recruiter-text">AI API key</h2>
           <p className="mb-4 text-sm text-recruiter-text-secondary">
             {integrations?.aiKeyConfigured
-              ? 'Configured — AI features use this organization\'s own Anthropic key.'
+              ? `Configured — AI features use this organization's ${integrations.aiProvider === 'openai-compatible' ? 'Azure OpenAI / OpenAI-compatible' : 'Anthropic'} endpoint.`
               : 'Not configured — AI features currently use the platform default key.'}
           </p>
           <form onSubmit={handleAiKeySubmit} className="flex flex-col gap-3">
+            <Select label="AI provider" value={aiProvider} onChange={(value) => setAiProvider(value as 'anthropic' | 'openai-compatible')} options={AI_PROVIDER_OPTIONS} />
             <Input label="AI API key" type="password" value={aiApiKey} onChange={setAiApiKey} required />
+            {aiProvider === 'openai-compatible' && (
+              <>
+                <Input label="Base URL" value={aiBaseUrl} onChange={setAiBaseUrl} required placeholder="https://your-resource.openai.azure.com/openai/v1" />
+                <Input label="Fast-tier model/deployment name" value={aiModelFast} onChange={setAiModelFast} required />
+                <Input label="Standard-tier model/deployment name" value={aiModelStandard} onChange={setAiModelStandard} required />
+              </>
+            )}
             <Button type="submit" loading={updateAiKey.isPending}>
               {integrations?.aiKeyConfigured ? 'Replace AI API key' : 'Save AI API key'}
             </Button>

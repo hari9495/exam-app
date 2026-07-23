@@ -189,6 +189,10 @@ export interface BrandingResponse {
 export interface IntegrationsResponse {
   smtpConfigured: boolean;
   aiKeyConfigured: boolean;
+  aiProvider: 'anthropic' | 'openai-compatible';
+  aiBaseUrl: string | null;
+  aiModelFast: string | null;
+  aiModelStandard: string | null;
   smtpHost: string | null;
   smtpPort: number | null;
   emailFromAddress: string | null;

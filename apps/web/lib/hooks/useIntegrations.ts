@@ -30,12 +30,20 @@ export function useUpdateSmtpSettings() {
   });
 }
 
+interface UpdateAiKeyInput {
+  provider: 'anthropic' | 'openai-compatible';
+  apiKey: string;
+  baseUrl?: string;
+  modelFast?: string;
+  modelStandard?: string;
+}
+
 export function useUpdateAiKey() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (apiKey: string): Promise<{ aiKeyConfigured: boolean }> =>
-      apiFetch('/organizations/integrations/ai-key', { method: 'PATCH', body: JSON.stringify({ apiKey }) }, accessToken ?? undefined),
+    mutationFn: (input: UpdateAiKeyInput): Promise<{ aiKeyConfigured: boolean }> =>
+      apiFetch('/organizations/integrations/ai-key', { method: 'PATCH', body: JSON.stringify(input) }, accessToken ?? undefined),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['integrations'] }),
   });
 }
