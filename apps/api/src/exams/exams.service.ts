@@ -1,5 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Exam, ExamSection, ExamSectionQuestion, Question, QuestionOption } from '@prisma/client';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Exam, ExamSection, ExamSectionQuestion, Prisma, Question, QuestionOption } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
@@ -163,7 +163,7 @@ export class ExamsService {
     });
   }
 
-  async findOne(context: TenantContext, id: string): Promise<Exam & { sections: ExamSectionWithQuestions[] }> {
+  async findOne(context: TenantContext, id: string): Promise<Exam & { sections: ExamSectionWithQuestions[]; invitationCount: number }> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({
         where: { id, organizationId: context.organizationId as string },
@@ -182,8 +182,21 @@ export class ExamsService {
       if (!exam) {
         throw new NotFoundException(`Exam ${id} not found`);
       }
-      return exam;
+      const invitationCount = await tx.invitation.count({ where: { examId: id } });
+      return { ...exam, invitationCount };
     });
+  }
+
+  // ponytail: an exam only ever has attempts if it has invitations first, so checking
+  // invitationCount alone also covers "has attempts" — no separate attempt query needed.
+  private async assertSectionsMutable(tx: Prisma.TransactionClient, examId: string, examStatus: string): Promise<void> {
+    if (examStatus !== 'published') {
+      return;
+    }
+    const invitationCount = await tx.invitation.count({ where: { examId } });
+    if (invitationCount > 0) {
+      throw new ConflictException('Cannot modify sections or questions on a published exam once candidates have been invited');
+    }
   }
 
   async update(context: TenantContext, id: string, dto: UpdateExamDto): Promise<Exam> {
@@ -369,6 +382,7 @@ export class ExamsService {
       if (!exam) {
         throw new NotFoundException(`Exam ${examId} not found`);
       }
+      await this.assertSectionsMutable(tx, examId, exam.status);
 
       const lastSection = await tx.examSection.findFirst({
         where: { examId },
@@ -393,6 +407,7 @@ export class ExamsService {
       if (!exam) {
         throw new NotFoundException(`Exam ${examId} not found`);
       }
+      await this.assertSectionsMutable(tx, examId, exam.status);
       const section = await tx.examSection.findFirst({ where: { id: sectionId, examId }, include: { poolTags: true } });
       if (!section) {
         throw new NotFoundException(`Section ${sectionId} not found`);
@@ -448,6 +463,7 @@ export class ExamsService {
       if (!exam) {
         throw new NotFoundException(`Exam ${examId} not found`);
       }
+      await this.assertSectionsMutable(tx, examId, exam.status);
       const section = await tx.examSection.findFirst({ where: { id: sectionId, examId } });
       if (!section) {
         throw new NotFoundException(`Section ${sectionId} not found`);
@@ -467,6 +483,7 @@ export class ExamsService {
       if (!exam) {
         throw new NotFoundException(`Exam ${examId} not found`);
       }
+      await this.assertSectionsMutable(tx, examId, exam.status);
       const section = await tx.examSection.findFirst({ where: { id: sectionId, examId } });
       if (!section) {
         throw new NotFoundException(`Section ${sectionId} not found`);

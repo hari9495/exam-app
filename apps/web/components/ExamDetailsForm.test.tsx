@@ -84,7 +84,7 @@ describe('ExamDetailsForm', () => {
       id: 'exam-1', title: 'Existing', instructions: null, status: 'draft' as const, durationMinutes: 60,
       passCriteriaPercent: 40, randomizeOrder: false, feedbackVisibility: 'pass_fail' as const, schedulingEnabled: true,
       availabilityWindowStart: '2026-07-20T09:00:00.000Z', availabilityWindowEnd: '2026-07-27T18:00:00.000Z',
-      walkInEnabled: false, allowedIpRange: null, createdAt: '2026-07-01T00:00:00.000Z', sections: [],
+      walkInEnabled: false, allowedIpRange: null, createdAt: '2026-07-01T00:00:00.000Z', sections: [], invitationCount: 0,
     };
     render(<ExamDetailsForm initialExam={scheduledExam} onSubmit={jest.fn()} submitLabel="Save" />);
 
@@ -161,7 +161,7 @@ describe('ExamDetailsForm', () => {
       id: 'exam-1', title: 'Existing', instructions: null, status: 'draft' as const, durationMinutes: 60,
       passCriteriaPercent: 40, randomizeOrder: false, feedbackVisibility: 'pass_fail' as const, schedulingEnabled: false,
       availabilityWindowStart: null, availabilityWindowEnd: null, walkInEnabled: false,
-      allowedIpRange: '203.0.113.0/24', createdAt: '2026-07-01T00:00:00.000Z', sections: [],
+      allowedIpRange: '203.0.113.0/24', createdAt: '2026-07-01T00:00:00.000Z', sections: [], invitationCount: 0,
     };
     render(<ExamDetailsForm initialExam={examWithIpRange} onSubmit={onSubmit} submitLabel="Save" />);
 

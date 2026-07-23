@@ -12,6 +12,7 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
   const [newTitle, setNewTitle] = useState('');
   const [pickerSectionId, setPickerSectionId] = useState<string | null>(null);
   const { toast } = useToast();
+  const locked = exam?.status === 'published' && exam.invitationCount > 0;
 
   function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -27,21 +28,30 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
 
   return (
     <div className="flex flex-col gap-3">
+      {locked && (
+        <p className="text-sm text-recruiter-text-secondary">
+          Sections and questions are locked because candidates have already been invited to this published exam.
+        </p>
+      )}
       {(exam?.sections ?? [])
         .slice()
         .sort((a, b) => a.orderIndex - b.orderIndex)
         .map((section) => (
           <Card key={section.id} className="flex items-center justify-between">
             <p className="font-medium">{section.title}</p>
-            <Button variant="secondary" onClick={() => setPickerSectionId(section.id)}>
-              Manage questions
-            </Button>
+            {!locked && (
+              <Button variant="secondary" onClick={() => setPickerSectionId(section.id)}>
+                Manage questions
+              </Button>
+            )}
           </Card>
         ))}
-      <form onSubmit={handleAdd} className="flex items-end gap-2">
-        <Input label="New section title" value={newTitle} onChange={setNewTitle} />
-        <Button type="submit">Add section</Button>
-      </form>
+      {!locked && (
+        <form onSubmit={handleAdd} className="flex items-end gap-2">
+          <Input label="New section title" value={newTitle} onChange={setNewTitle} required />
+          <Button type="submit">Add section</Button>
+        </form>
+      )}
       {pickerSectionId && (
         <SectionQuestionPicker
           examId={examId}

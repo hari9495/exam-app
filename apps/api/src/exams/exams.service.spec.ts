@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { ExamsService } from './exams.service';
 import { TenantPrismaService, AuditService } from '@exam-platform/shared';
 import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
@@ -277,6 +277,19 @@ describe('ExamsService', () => {
     await expect(service.findOne(context, 'missing-id')).rejects.toThrow(NotFoundException);
   });
 
+  it('includes invitationCount on findOne so the frontend can gate editing a published exam', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', sections: [] }) },
+      invitation: { count: jest.fn().mockResolvedValue(3) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    const result = await service.findOne(context, 'exam-1');
+
+    expect(result.invitationCount).toBe(3);
+    expect(tx.invitation.count).toHaveBeenCalledWith({ where: { examId: 'exam-1' } });
+  });
+
   it("updates an exam's title and instructions", async () => {
     const tx = {
       exam: {
@@ -538,6 +551,30 @@ describe('ExamsService', () => {
     await expect(service.createSection(context, 'missing-exam', { title: 'x' })).rejects.toThrow(NotFoundException);
   });
 
+  it('rejects createSection on a published exam that already has invited candidates', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }) },
+      invitation: { count: jest.fn().mockResolvedValue(1) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.createSection(context, 'exam-1', { title: 'x' })).rejects.toThrow(ConflictException);
+  });
+
+  it('allows createSection on a published exam with no invited candidates yet', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }) },
+      invitation: { count: jest.fn().mockResolvedValue(0) },
+      examSection: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'section-1', orderIndex: 0 }),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.createSection(context, 'exam-1', { title: 'x' })).resolves.toBeDefined();
+  });
+
   it('throws NotFoundException when updating a section that does not belong to the given exam', async () => {
     const tx = {
       exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
@@ -546,6 +583,16 @@ describe('ExamsService', () => {
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
     await expect(service.updateSection(context, 'exam-1', 'wrong-section', { title: 'x' })).rejects.toThrow(NotFoundException);
+  });
+
+  it('rejects updateSection on a published exam that already has invited candidates', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }) },
+      invitation: { count: jest.fn().mockResolvedValue(1) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.updateSection(context, 'exam-1', 'section-1', { title: 'x' })).rejects.toThrow(ConflictException);
   });
 
   it('updates a section\'s title without touching pool data when staying fixed', async () => {
@@ -779,6 +826,16 @@ describe('ExamsService', () => {
     expect(tx.examSection.delete).toHaveBeenCalledWith({ where: { id: 'section-1' } });
   });
 
+  it('rejects deleteSection on a published exam that already has invited candidates', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }) },
+      invitation: { count: jest.fn().mockResolvedValue(1) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.deleteSection(context, 'exam-1', 'section-1')).rejects.toThrow(ConflictException);
+  });
+
   it('throws NotFoundException from replaceSectionQuestions when a questionId does not resolve in this organization', async () => {
     const tx = {
       exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
@@ -789,6 +846,16 @@ describe('ExamsService', () => {
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
     await expect(service.replaceSectionQuestions(context, 'exam-1', 'section-1', ['q1'])).rejects.toThrow(NotFoundException);
+  });
+
+  it('rejects replaceSectionQuestions on a published exam that already has invited candidates', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }) },
+      invitation: { count: jest.fn().mockResolvedValue(1) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.replaceSectionQuestions(context, 'exam-1', 'section-1', ['q1'])).rejects.toThrow(ConflictException);
   });
 
   it('rejects replaceSectionQuestions when a newly-added question is archived', async () => {

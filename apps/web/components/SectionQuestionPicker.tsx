@@ -32,6 +32,10 @@ export function SectionQuestionPicker({ examId, sectionId, open, onClose, existi
   }
 
   function handleSave() {
+    if ((questions ?? []).length === 0) {
+      toast('Your question bank is empty. Add questions to it before adding them to a section.', 'error');
+      return;
+    }
     replaceQuestions.mutate(selectedIds, {
       onSuccess: onClose,
       onError: (error) => toast(error instanceof Error ? error.message : 'Failed to save questions.', 'error'),
@@ -41,6 +45,9 @@ export function SectionQuestionPicker({ examId, sectionId, open, onClose, existi
   return (
     <Modal open={open} title="Add questions to section" onClose={onClose}>
       <div className="flex max-h-80 flex-col gap-2 overflow-y-auto">
+        {(questions ?? []).length === 0 && (
+          <p className="text-sm text-gray-500">No questions yet. Add questions to your question bank first.</p>
+        )}
         {(questions ?? []).map((question) => (
           <div key={question.id} className="flex items-center justify-between gap-2">
             <Checkbox
