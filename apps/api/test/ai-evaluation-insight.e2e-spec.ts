@@ -7,7 +7,7 @@ import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
 import { ClaudeProctoringClient } from '../../exam-runtime/src/proctoring-analysis/claude-proctoring.client';
-import { ClaudeInsightClient } from '../../exam-runtime/src/attempt-insight/claude-insight.client';
+import { InsightClient } from '../../exam-runtime/src/attempt-insight/insight.client';
 
 describe('AI Evaluation Insight flow', () => {
   let adminApp: INestApplication;
@@ -25,7 +25,7 @@ describe('AI Evaluation Insight flow', () => {
   let correctOptionId: string;
   const fakeEmailService = { send: jest.fn().mockResolvedValue({ success: true, previewUrl: 'https://ethereal.email/fake' }) };
   const fakeClaudeProctoringClient = { assessRisk: jest.fn() };
-  const fakeClaudeInsightClient = { generate: jest.fn() };
+  const fakeInsightClient = { generate: jest.fn() };
 
   beforeAll(async () => {
     adminApp = await bootAdminApp((builder) => builder.overrideProvider(EmailService).useValue(fakeEmailService));
@@ -33,8 +33,8 @@ describe('AI Evaluation Insight flow', () => {
       builder
         .overrideProvider(ClaudeProctoringClient)
         .useValue(fakeClaudeProctoringClient)
-        .overrideProvider(ClaudeInsightClient)
-        .useValue(fakeClaudeInsightClient),
+        .overrideProvider(InsightClient)
+        .useValue(fakeInsightClient),
     ));
     adminHttp = adminApp.getHttpServer();
     runtimeHttp = runtimeApp.getHttpServer();
@@ -169,14 +169,14 @@ describe('AI Evaluation Insight flow', () => {
 
   it('generates a completed insight after settlement, sequenced after proctoring analysis', async () => {
     fakeClaudeProctoringClient.assessRisk.mockClear();
-    fakeClaudeInsightClient.generate.mockResolvedValueOnce('Strong in SQL overall.');
+    fakeInsightClient.generate.mockResolvedValueOnce('Strong in SQL overall.');
 
     const attemptId = await inviteStartAndSubmit('alice@ci-ai-insight.test', 'Alice');
 
     const insight = await pollForInsight(attemptId);
 
     expect(insight).toEqual(expect.objectContaining({ status: 'completed', summary: 'Strong in SQL overall.' }));
-    expect(fakeClaudeInsightClient.generate).toHaveBeenCalledWith(
+    expect(fakeInsightClient.generate).toHaveBeenCalledWith(
       expect.objectContaining({ topicBreakdown: [{ topic: 'SQL', correct: 1, total: 1 }] }),
     );
 
@@ -188,11 +188,11 @@ describe('AI Evaluation Insight flow', () => {
   });
 
   it('regenerates an insight on demand and returns a fresh row', async () => {
-    fakeClaudeInsightClient.generate.mockResolvedValueOnce('Initial summary.');
+    fakeInsightClient.generate.mockResolvedValueOnce('Initial summary.');
     const attemptId = await inviteStartAndSubmit('carol@ci-ai-insight.test', 'Carol');
     const initial = await pollForInsight(attemptId);
 
-    fakeClaudeInsightClient.generate.mockResolvedValueOnce('Regenerated summary.');
+    fakeInsightClient.generate.mockResolvedValueOnce('Regenerated summary.');
     const regenerateResponse = await request(adminHttp)
       .post(`/api/v1/attempts/${attemptId}/ai-insight/regenerate`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
@@ -210,7 +210,7 @@ describe('AI Evaluation Insight flow', () => {
   });
 
   it('rejects a role without results:view from reading the insight', async () => {
-    fakeClaudeInsightClient.generate.mockResolvedValueOnce('Org admin should not see this.');
+    fakeInsightClient.generate.mockResolvedValueOnce('Org admin should not see this.');
     const attemptId = await inviteStartAndSubmit('dave@ci-ai-insight.test', 'Dave');
     await pollForInsight(attemptId);
 
