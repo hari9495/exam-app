@@ -7,6 +7,9 @@ import { AttemptInsightService } from '../attempt-insight/attempt-insight.servic
 import { IntegrityAnalysisService } from '../integrity/integrity-analysis.service';
 import { WebcamViolationReason } from '../attempts/dto/webcam-violation.dto';
 import { ApiInternalClient } from '../api-internal-client/api-internal.client';
+import { getProctoringEventSeverity } from '../attempts/proctoring-severity';
+
+const BROWSER_ACTIVITY_COOLDOWN_MS = 60_000;
 
 export interface SettlementExam {
   id: string;
@@ -259,6 +262,44 @@ export class AttemptSettlementService {
       .emitAttemptStatus(attempt.examId, { attemptId: updated.id, candidateId: attempt.candidateId, status: updated.status })
       .catch((error) => this.logger.error('Failed to broadcast attempt status', error as Error));
     return { attempt: updated, strike };
+  }
+
+  async registerBrowserActivityViolation(
+    tx: Prisma.TransactionClient,
+    attempt: Attempt,
+    eventType: string,
+    metadata?: Record<string, unknown>,
+  ): Promise<{ attempt: Attempt; strike: number; event: { id: string; eventType: string; severity: string } }> {
+    const cooldownCutoff = new Date(Date.now() - BROWSER_ACTIVITY_COOLDOWN_MS);
+    const recentSameType = await tx.proctoringEvent.findFirst({
+      where: { attemptId: attempt.id, eventType, occurredAt: { gt: cooldownCutoff } },
+      orderBy: { occurredAt: 'desc' },
+    });
+
+    const event = await tx.proctoringEvent.create({
+      data: {
+        attemptId: attempt.id,
+        eventType,
+        severity: getProctoringEventSeverity(eventType),
+        metadataJson: metadata ? JSON.stringify(metadata) : null,
+      },
+    });
+
+    const isFreshStrike = !recentSameType;
+    if (!isFreshStrike || attempt.status === 'blocked') {
+      return { attempt, strike: attempt.browserActivityViolationCount, event };
+    }
+
+    const strike = attempt.browserActivityViolationCount + 1;
+    const status = strike >= 3 ? 'blocked' : 'paused';
+    const updated = await tx.attempt.update({
+      where: { id: attempt.id },
+      data: { browserActivityViolationCount: strike, status, pausedAt: new Date() },
+    });
+    void this.broadcaster
+      .emitAttemptStatus(attempt.examId, { attemptId: updated.id, candidateId: attempt.candidateId, status: updated.status })
+      .catch((error) => this.logger.error('Failed to broadcast attempt status', error as Error));
+    return { attempt: updated, strike, event };
   }
 
   async resumeFromPause(tx: Prisma.TransactionClient, attempt: Attempt): Promise<Attempt> {

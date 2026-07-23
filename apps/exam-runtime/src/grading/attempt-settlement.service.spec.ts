@@ -5,6 +5,7 @@ import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.
 import { AttemptInsightService } from '../attempt-insight/attempt-insight.service';
 import { IntegrityAnalysisService } from '../integrity/integrity-analysis.service';
 import { ApiInternalClient } from '../api-internal-client/api-internal.client';
+import { getProctoringEventSeverity } from '../attempts/proctoring-severity';
 
 describe('AttemptSettlementService', () => {
   let service: AttemptSettlementService;
@@ -796,6 +797,128 @@ describe('AttemptSettlementService', () => {
       await service.registerWebcamViolation(tx, attempt, 'multiple_faces', 'snap');
 
       expect(tx.proctoringEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: 'webcam_multiple_faces' }) }));
+    });
+  });
+
+  describe('registerBrowserActivityViolation', () => {
+    it('creates the event and adds a strike, pausing the attempt on strike 1', async () => {
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 0, status: 'in_progress' } as any;
+      const tx = {
+        proctoringEvent: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'tab_switch', severity: 'medium' }),
+        },
+        attempt: { update: jest.fn().mockResolvedValue({ ...attempt, browserActivityViolationCount: 1, status: 'paused' }) },
+      } as any;
+
+      const { attempt: updated, strike, event } = await service.registerBrowserActivityViolation(tx, attempt, 'tab_switch');
+
+      expect(strike).toBe(1);
+      expect(updated.status).toBe('paused');
+      expect(event).toEqual({ id: 'evt-1', eventType: 'tab_switch', severity: 'medium' });
+      expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+        data: { attemptId: 'attempt-1', eventType: 'tab_switch', severity: getProctoringEventSeverity('tab_switch'), metadataJson: null },
+      });
+      expect(tx.attempt.update).toHaveBeenCalledWith({
+        where: { id: 'attempt-1' },
+        data: { browserActivityViolationCount: 1, status: 'paused', pausedAt: expect.any(Date) },
+      });
+    });
+
+    it('blocks the attempt on strike 3', async () => {
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 2, status: 'paused' } as any;
+      const tx = {
+        proctoringEvent: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'evt-2', eventType: 'right_click', severity: 'low' }),
+        },
+        attempt: { update: jest.fn().mockResolvedValue({ ...attempt, browserActivityViolationCount: 3, status: 'blocked' }) },
+      } as any;
+
+      const { strike, attempt: updated } = await service.registerBrowserActivityViolation(tx, attempt, 'right_click');
+
+      expect(strike).toBe(3);
+      expect(updated.status).toBe('blocked');
+      expect(tx.attempt.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'blocked' }) }));
+    });
+
+    it('serializes optional metadata to JSON', async () => {
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 0, status: 'in_progress' } as any;
+      const tx = {
+        proctoringEvent: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'window_blur', severity: 'medium' }) },
+        attempt: { update: jest.fn().mockResolvedValue({ ...attempt, browserActivityViolationCount: 1, status: 'paused' }) },
+      } as any;
+
+      await service.registerBrowserActivityViolation(tx, attempt, 'window_blur', { durationMs: 3000 });
+
+      expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+        data: { attemptId: 'attempt-1', eventType: 'window_blur', severity: 'medium', metadataJson: JSON.stringify({ durationMs: 3000 }) },
+      });
+    });
+
+    it('logs the event but does not add a strike when the same event type occurred within the last 60 seconds', async () => {
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 1, status: 'paused' } as any;
+      const tx = {
+        proctoringEvent: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'evt-earlier', eventType: 'dev_tools_detected', occurredAt: new Date(Date.now() - 2000) }),
+          create: jest.fn().mockResolvedValue({ id: 'evt-2', eventType: 'dev_tools_detected', severity: 'high' }),
+        },
+        attempt: { update: jest.fn() },
+      } as any;
+
+      const { strike, attempt: updated, event } = await service.registerBrowserActivityViolation(tx, attempt, 'dev_tools_detected');
+
+      expect(strike).toBe(1); // unchanged -- this is the same ongoing incident, not a new strike
+      expect(updated).toBe(attempt);
+      expect(event).toEqual({ id: 'evt-2', eventType: 'dev_tools_detected', severity: 'high' });
+      expect(tx.proctoringEvent.create).toHaveBeenCalled(); // still logged for the Reports timeline
+      expect(tx.attempt.update).not.toHaveBeenCalled();
+    });
+
+    it('adds a fresh strike when the same event type last occurred more than 60 seconds ago', async () => {
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 1, status: 'in_progress' } as any;
+      const tx = {
+        proctoringEvent: {
+          findFirst: jest.fn().mockResolvedValue(null), // the cooldown-window query found nothing that recent
+          create: jest.fn().mockResolvedValue({ id: 'evt-2', eventType: 'dev_tools_detected', severity: 'high' }),
+        },
+        attempt: { update: jest.fn().mockResolvedValue({ ...attempt, browserActivityViolationCount: 2, status: 'paused' }) },
+      } as any;
+
+      const { strike } = await service.registerBrowserActivityViolation(tx, attempt, 'dev_tools_detected');
+
+      expect(strike).toBe(2);
+      expect(tx.attempt.update).toHaveBeenCalled();
+    });
+
+    it('queries for a recent same-type event scoped to this attempt within the cooldown window', async () => {
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 0, status: 'in_progress' } as any;
+      const tx = {
+        proctoringEvent: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'copy_paste', severity: 'medium' }) },
+        attempt: { update: jest.fn().mockResolvedValue({ ...attempt, browserActivityViolationCount: 1, status: 'paused' }) },
+      } as any;
+
+      await service.registerBrowserActivityViolation(tx, attempt, 'copy_paste');
+
+      expect(tx.proctoringEvent.findFirst).toHaveBeenCalledWith({
+        where: { attemptId: 'attempt-1', eventType: 'copy_paste', occurredAt: { gt: expect.any(Date) } },
+        orderBy: { occurredAt: 'desc' },
+      });
+    });
+
+    it('does not attempt a status transition or increment the strike when the attempt is already blocked', async () => {
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 3, status: 'blocked' } as any;
+      const tx = {
+        proctoringEvent: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'evt-4', eventType: 'right_click', severity: 'low' }) },
+        attempt: { update: jest.fn() },
+      } as any;
+
+      const { attempt: updated, strike } = await service.registerBrowserActivityViolation(tx, attempt, 'right_click');
+
+      expect(strike).toBe(3);
+      expect(updated).toBe(attempt);
+      expect(tx.attempt.update).not.toHaveBeenCalled();
+      expect(tx.proctoringEvent.create).toHaveBeenCalled(); // still logged for the audit trail
     });
   });
 
