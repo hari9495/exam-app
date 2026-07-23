@@ -200,7 +200,7 @@ describe('DashboardPage', () => {
     await waitFor(() => expect(screen.getByText('3 candidates invited to Backend Round')).toBeInTheDocument());
   });
 
-  it('renders the candidate funnel and upcoming exams widgets', async () => {
+  it('renders the upcoming exams widget', async () => {
     mockSummaryFetch({
       stats: { totalCandidates: 0, invitationsSent: 0, attemptsInProgress: 0, pendingGradingCount: 0 },
       attention: { pendingGrading: [], recentProctoringFlags: [], staleInvitationCount: 0 },
@@ -211,6 +211,58 @@ describe('DashboardPage', () => {
 
     await waitFor(() => expect(screen.getByText('Scheduled Round')).toBeInTheDocument());
     expect(screen.getByText(/Scheduled Round/).closest('a')).toHaveAttribute('href', '/exams/exam-3/edit');
+  });
+
+  it('renders the candidate funnel from the funnel endpoint and refetches when its filters change', async () => {
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/dashboard/summary')) {
+        return new Response(
+          JSON.stringify({
+            stats: { totalCandidates: 0, invitationsSent: 0, attemptsInProgress: 0, pendingGradingCount: 0 },
+            attention: { pendingGrading: [], recentProctoringFlags: [], staleInvitationCount: 0 },
+            activity: [],
+            upcomingExams: [],
+          }),
+          { status: 200 },
+        );
+      }
+      if (String(url).includes('/dashboard/trend')) {
+        return new Response(JSON.stringify({ points: [] }), { status: 200 });
+      }
+      if (String(url).includes('/dashboard/exam-performance')) {
+        return new Response(JSON.stringify({ exams: [] }), { status: 200 });
+      }
+      if (String(url).includes('/dashboard/funnel')) {
+        return new Response(JSON.stringify({ invited: 100, started: 60, submitted: 55, passed: 22 }), { status: 200 });
+      }
+      if (String(url).includes('/exams')) {
+        return new Response(JSON.stringify({ data: [{ id: 'exam-1', title: 'Backend Round' }], total: 1, page: 1, pageSize: 100, totalPages: 1 }), {
+          status: 200,
+        });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+    renderPage();
+
+    await waitFor(() => expect(screen.getByLabelText('Invited: 100')).toBeInTheDocument());
+    expect(screen.getByLabelText('Started: 60')).toBeInTheDocument();
+    expect(screen.getByLabelText('Submitted: 55')).toBeInTheDocument();
+    expect(screen.getByLabelText('Passed: 22')).toBeInTheDocument();
+
+    const fetchMock = global.fetch as jest.Mock;
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/funnel?examId=all&window=all'))).toBe(true);
+
+    const examTrigger = screen.getByLabelText('Funnel exam');
+    fireEvent.click(examTrigger);
+    const examOption = await screen.findByText('Backend Round');
+    fireEvent.click(examOption);
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/funnel?examId=exam-1&window=all'))).toBe(true),
+    );
   });
 
   it('shows an empty-state message when there are no upcoming exams', async () => {

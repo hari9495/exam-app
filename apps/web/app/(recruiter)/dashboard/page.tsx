@@ -3,13 +3,14 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { motion, useReducedMotion } from 'framer-motion';
-import { FunnelChart, Funnel, LabelList, ResponsiveContainer } from 'recharts';
 import { Users, Mail, Play, FileEdit, AlertTriangle, Clock, CheckCircle2, FileEdit as FileEditIcon, Plus, CalendarClock } from 'lucide-react';
-import { useDashboardExamPerformance, useDashboardSummary, useDashboardTrend } from '../../../lib/hooks/useDashboard';
+import { useDashboardExamPerformance, useDashboardFunnel, useDashboardSummary, useDashboardTrend } from '../../../lib/hooks/useDashboard';
+import { useExams } from '../../../lib/hooks/useExams';
 import { DashboardTrendMetric } from '../../../lib/types';
 import { Card, Button, Select, type SelectOption } from '../../../components/ui';
 import { Sparkline } from '../../../components/charts/Sparkline';
 import { GroupedBarChart } from '../../../components/charts/GroupedBarChart';
+import { FunnelChart } from '../../../components/charts/FunnelChart';
 
 function activityIconFor(description: string) {
   if (description.includes('invited')) return Mail;
@@ -113,6 +114,41 @@ function ExamPerformanceCard() {
   );
 }
 
+const FUNNEL_WINDOW_OPTIONS: SelectOption[] = [
+  { value: 'all', label: 'All time' },
+  { value: '30d', label: 'Last 30 days' },
+  { value: '90d', label: 'Last 90 days' },
+];
+
+function CandidateFunnelCard() {
+  const [examId, setExamId] = useState('all');
+  const [windowValue, setWindowValue] = useState('all');
+  const { data: exams } = useExams(undefined, { pageSize: 100 });
+  const { data: funnel } = useDashboardFunnel(examId, windowValue as 'all' | '30d' | '90d');
+
+  const examOptions: SelectOption[] = [{ value: 'all', label: 'All exams' }, ...(exams?.data ?? []).map((exam) => ({ value: exam.id, label: exam.title }))];
+
+  const stages = [
+    { label: 'Invited', value: funnel?.invited ?? 0 },
+    { label: 'Started', value: funnel?.started ?? 0 },
+    { label: 'Submitted', value: funnel?.submitted ?? 0 },
+    { label: 'Passed', value: funnel?.passed ?? 0 },
+  ];
+
+  return (
+    <Card>
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-bold text-recruiter-text">Candidate funnel</h2>
+        <div className="flex gap-2">
+          <Select label="Funnel exam" value={examId} onChange={setExamId} options={examOptions} />
+          <Select label="Funnel window" value={windowValue} onChange={setWindowValue} options={FUNNEL_WINDOW_OPTIONS} />
+        </div>
+      </div>
+      <FunnelChart stages={stages} />
+    </Card>
+  );
+}
+
 export default function DashboardPage() {
   const { data: summary, isLoading, isError } = useDashboardSummary();
   const prefersReducedMotion = useReducedMotion();
@@ -140,13 +176,6 @@ export default function DashboardPage() {
   const hasAttention =
     summary.attention.pendingGrading.length > 0 || summary.attention.recentProctoringFlags.length > 0 || summary.attention.staleInvitationCount > 0;
 
-  const funnelData = [
-    { name: 'Invited', value: summary.funnel.invited, fill: '#6366f1' },
-    { name: 'Started', value: summary.funnel.started, fill: '#818cf8' },
-    { name: 'Submitted', value: summary.funnel.submitted, fill: '#a5b4fc' },
-    { name: 'Passed', value: summary.funnel.passed, fill: '#22c55e' },
-  ];
-
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold text-recruiter-text">Dashboard</h1>
@@ -160,18 +189,7 @@ export default function DashboardPage() {
 
       <div className="mb-5 grid grid-cols-2 gap-4">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.16 }}>
-          <Card>
-            <h2 className="mb-3 text-sm font-bold text-recruiter-text">Candidate funnel</h2>
-            <div className="h-40 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <FunnelChart>
-                  <Funnel dataKey="value" data={funnelData} isAnimationActive={!prefersReducedMotion}>
-                    <LabelList position="right" dataKey="name" fill="#57615B" stroke="none" fontSize={11} />
-                  </Funnel>
-                </FunnelChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
+          <CandidateFunnelCard />
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.2 }}>
