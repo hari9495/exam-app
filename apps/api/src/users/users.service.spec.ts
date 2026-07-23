@@ -363,4 +363,25 @@ describe('UsersService', () => {
       { actorUserId: 'actor-1', action: 'user.super_admin_promoted', entityType: 'user', entityId: 'u-1' },
     );
   });
+
+  describe('listDirectory', () => {
+    it('queries across all organizations with no organizationId filter, and includes each user\'s org name', async () => {
+      const findMany = jest.fn().mockResolvedValue([
+        { id: 'u1', organizationId: 'org-1', email: 'a@acme.test', name: 'A', role: 'recruiter', status: 'active', lastLoginAt: null, createdAt: new Date(), organization: { name: 'Acme Inc' } },
+        { id: 'u2', organizationId: null, email: 'b@platform.test', name: 'B', role: 'super_admin', status: 'active', lastLoginAt: null, createdAt: new Date(), organization: null },
+      ]);
+      const count = jest.fn().mockResolvedValue(2);
+      tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
+        fn({ user: { findMany, count } }),
+      );
+
+      const result = await service.listDirectory({ organizationId: null, isSuperAdmin: true }, {});
+
+      expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }));
+      expect(result.data).toEqual([
+        expect.objectContaining({ id: 'u1', organizationName: 'Acme Inc' }),
+        expect.objectContaining({ id: 'u2', organizationName: null }),
+      ]);
+    });
+  });
 });

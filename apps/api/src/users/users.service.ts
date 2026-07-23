@@ -92,6 +92,31 @@ export class UsersService {
     });
   }
 
+  async listDirectory(
+    context: TenantContext,
+    filters: { page?: string; pageSize?: string; search?: string } = {},
+  ): Promise<PaginatedResponse<SafeUser & { organizationName: string | null }>> {
+    const { page, pageSize, skip, take } = resolvePaginationParams(filters.page, filters.pageSize);
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const where = filters.search ? { email: { contains: filters.search } } : {};
+      const [users, total] = await Promise.all([
+        tx.user.findMany({
+          where,
+          select: { ...SAFE_USER_SELECT, organization: { select: { name: true } } },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take,
+        }),
+        tx.user.count({ where }),
+      ]);
+      const data = users.map(({ organization, ...user }) => ({
+        ...user,
+        organizationName: organization?.name ?? null,
+      }));
+      return buildPaginatedResponse(data, total, page, pageSize);
+    });
+  }
+
   async getMe(context: TenantContext, userId: string): Promise<SafeUser> {
     return this.tenantPrisma.forTenant(context, (tx) =>
       tx.user.findUniqueOrThrow({ where: { id: userId }, select: SAFE_USER_SELECT }),

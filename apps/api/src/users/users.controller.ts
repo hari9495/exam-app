@@ -34,6 +34,17 @@ export class UsersController {
     return this.usersService.list(tenant, { page, pageSize, search });
   }
 
+  @Get('directory')
+  @RequirePermissions('platform:manage_organizations')
+  listDirectory(
+    @CurrentTenant() tenant: TenantContext,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.usersService.listDirectory(tenant, { page, pageSize, search });
+  }
+
   @Get('super-admins')
   @RequirePermissions('platform:manage_organizations')
   listSuperAdmins(
