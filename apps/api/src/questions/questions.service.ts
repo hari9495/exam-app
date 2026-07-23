@@ -2,10 +2,8 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma, Question, QuestionOption, QuestionTag, Tag } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
+import { BlobStorageService } from '@exam-platform/shared';
 import { randomUUID } from 'crypto';
-import { dirname, join } from 'path';
-import * as fs from 'fs/promises';
-import { UPLOADS_ROOT } from '../organizations/uploads-path';
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
 import { validateQuestionPayload } from './question-validation';
@@ -53,6 +51,7 @@ export class QuestionsService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly jobsService: JobsService,
     private readonly examRuntime: ExamRuntimeInternalClient,
+    private readonly blobStorage: BlobStorageService,
   ) {}
 
   private async fetchAvailableLanguagesIfNeeded(type: string, languageMode: string | undefined): Promise<string[]> {
@@ -120,12 +119,10 @@ export class QuestionsService {
       throw new BadRequestException('Image file must be 2MB or smaller');
     }
 
-    const imagePath = `question-images/${randomUUID()}${extension}`;
-    const fullPath = join(UPLOADS_ROOT, imagePath);
-    await fs.mkdir(dirname(fullPath), { recursive: true });
-    await fs.writeFile(fullPath, file.buffer);
+    const blobPath = `question-images/${randomUUID()}${extension}`;
+    const imageUrl = await this.blobStorage.upload(blobPath, file.buffer, file.mimetype);
 
-    return { imageUrl: `${process.env.API_ORIGIN}/uploads/${imagePath}` };
+    return { imageUrl };
   }
 
   async listAvailableLanguages(): Promise<{ language: string; version: string }[]> {
