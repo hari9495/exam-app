@@ -32,14 +32,18 @@ describe('InvitationsService', () => {
 
   it('invites every requested candidate to a published exam and sends an email for each', async () => {
     const createTx = {
-      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', title: 'Backend Round', status: 'published' }) },
+      exam: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ id: 'exam-1', title: 'Backend Round', status: 'published', durationMinutes: 60, schedulingEnabled: false, availabilityWindowStart: null }),
+      },
       candidate: { findMany: jest.fn().mockResolvedValue([{ id: 'cand-1', email: 'a@test.com', name: 'Alice', erasedAt: null }]) },
       invitation: {
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited' }),
       },
     };
-    const orgTx = { organization: { findUnique: jest.fn().mockResolvedValue({ logoPath: null }) } };
+    const orgTx = { organization: { findUnique: jest.fn().mockResolvedValue({ logoPath: null, name: 'Acme Hiring' }) } };
     const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) } };
     tenantPrisma.forTenant
       .mockImplementationOnce((_ctx, fn) => fn(createTx))
@@ -57,26 +61,47 @@ describe('InvitationsService', () => {
     await new Promise((resolve) => setImmediate(resolve));
 
     expect(emailService.send).toHaveBeenCalledWith(
-      expect.objectContaining({ to: 'a@test.com', subject: "You've been invited to an exam", organizationId: 'org-1' }),
+      expect.objectContaining({ to: 'a@test.com', subject: 'Registration Confirmed — Backend Round Assessment', organizationId: 'org-1' }),
     );
+    const html = emailService.send.mock.calls[0][0].html;
     // No logo uploaded for this org (orgTx resolves logoPath: null) -- the email should
     // not contain an <img> tag at all rather than a broken/empty src.
-    expect(emailService.send.mock.calls[0][0].html).not.toContain('<img');
+    expect(html).not.toContain('<img');
+    expect(html).toContain('Dear Alice,');
+    expect(html).toContain('Duration:</strong> 60 minutes');
+    expect(html).toContain('Best regards,<br/>Acme Hiring');
+    // Not a scheduled exam (schedulingEnabled: false) -- no Date & Time line should appear.
+    expect(html).not.toContain('Date &amp; Time');
     expect(notifTx.notification.create).toHaveBeenCalledWith({
       data: { invitationId: 'inv-1', status: 'sent', sentAt: expect.any(Date) },
     });
   });
 
-  it('includes the organization logo in the invitation email when one has been uploaded', async () => {
+  it('includes the organization logo and scheduled date/time in the invitation email when applicable', async () => {
     const createTx = {
-      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', title: 'Backend Round', status: 'published' }) },
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'exam-1',
+          title: 'Backend Round',
+          status: 'published',
+          durationMinutes: 90,
+          schedulingEnabled: true,
+          availabilityWindowStart: new Date('2026-08-01T09:00:00.000Z'),
+        }),
+      },
       candidate: { findMany: jest.fn().mockResolvedValue([{ id: 'cand-1', email: 'a@test.com', name: 'Alice', erasedAt: null }]) },
       invitation: {
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited' }),
       },
     };
-    const orgTx = { organization: { findUnique: jest.fn().mockResolvedValue({ logoPath: 'logos/org-1.png' }) } };
+    const orgTx = {
+      organization: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ logoPath: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png', name: 'Acme Hiring' }),
+      },
+    };
     const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) } };
     tenantPrisma.forTenant
       .mockImplementationOnce((_ctx, fn) => fn(createTx))
@@ -86,10 +111,13 @@ describe('InvitationsService', () => {
     await service.bulkInvite(context, 'exam-1', ['cand-1']);
     await new Promise((resolve) => setImmediate(resolve));
 
-    expect(orgTx.organization.findUnique).toHaveBeenCalledWith({ where: { id: 'org-1' }, select: { logoPath: true } });
-    expect(emailService.send.mock.calls[0][0].html).toContain(
-      `<img src="${process.env.API_ORIGIN}/uploads/logos/org-1.png" alt="Organization logo" height="40" />`,
+    expect(orgTx.organization.findUnique).toHaveBeenCalledWith({ where: { id: 'org-1' }, select: { logoPath: true, name: true } });
+    const html = emailService.send.mock.calls[0][0].html;
+    expect(html).toContain(
+      `<img src="https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png" alt="Organization logo" height="40" />`,
     );
+    expect(html).toContain('Date &amp; Time');
+    expect(html).toContain('Duration:</strong> 90 minutes');
   });
 
   it('rejects inviting an erased candidate', async () => {

@@ -58,7 +58,7 @@ export class InvitationsService {
   async bulkInvite(context: TenantContext, examId: string, candidateIds: string[]): Promise<BulkInviteResult> {
     const uniqueCandidateIds = [...new Set(candidateIds)];
 
-    const { examTitle, createdWithCandidate, skipped } = await this.tenantPrisma.forTenant(context, async (tx) => {
+    const { exam, createdWithCandidate, skipped } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({ where: { id: examId, organizationId: context.organizationId as string } });
       if (!exam) {
         throw new NotFoundException(`Exam ${examId} not found`);
@@ -106,7 +106,7 @@ export class InvitationsService {
         createdWithCandidate.push({ invitation, candidate });
       }
 
-      return { examTitle: exam.title, createdWithCandidate, skipped };
+      return { exam, createdWithCandidate, skipped };
     });
 
     // Fire-and-forget: email delivery is a notification side effect, not part of the
@@ -116,7 +116,7 @@ export class InvitationsService {
     // Ethereal's test-account provisioning), which has been observed to take several
     // seconds on a cold start.
     for (const { invitation, candidate } of createdWithCandidate) {
-      this.dispatchInvitationEmail(context, examTitle, invitation, candidate).catch((error) =>
+      this.dispatchInvitationEmail(context, exam, invitation, candidate).catch((error) =>
         this.logger.error(`Failed to dispatch invitation email for candidate ${candidate.id}`, error as Error),
       );
     }
@@ -126,7 +126,7 @@ export class InvitationsService {
         actorUserId: null,
         action: 'invitation.created',
         entityType: 'invitation',
-        metadata: { count: createdWithCandidate.length, examTitle },
+        metadata: { count: createdWithCandidate.length, examTitle: exam.title },
       });
       for (const { invitation } of createdWithCandidate) {
         await this.webhooks.enqueue(context.organizationId as string, 'invitation.created', {
@@ -249,7 +249,7 @@ export class InvitationsService {
   }
 
   async resend(context: TenantContext, invitationId: string): Promise<Invitation> {
-    const { invitation, examTitle, candidate } = await this.tenantPrisma.forTenant(context, async (tx) => {
+    const { invitation, exam, candidate } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.invitation.findFirst({
         where: { id: invitationId, exam: { organizationId: context.organizationId as string } },
         include: { exam: true, candidate: true },
@@ -264,10 +264,10 @@ export class InvitationsService {
         where: { id: invitationId },
         data: { token: generateToken(), expiresAt: resolveInvitationExpiry(existing.exam) },
       });
-      return { invitation: updated, examTitle: existing.exam.title, candidate: existing.candidate };
+      return { invitation: updated, exam: existing.exam, candidate: existing.candidate };
     });
 
-    this.dispatchInvitationEmail(context, examTitle, invitation, candidate).catch((error) =>
+    this.dispatchInvitationEmail(context, exam, invitation, candidate).catch((error) =>
       this.logger.error(`Failed to dispatch invitation email for invitation ${invitation.id}`, error as Error),
     );
     return invitation;
@@ -316,20 +316,42 @@ export class InvitationsService {
 
   private async dispatchInvitationEmail(
     context: TenantContext,
-    examTitle: string,
+    exam: { title: string; durationMinutes: number; schedulingEnabled: boolean; availabilityWindowStart: Date | null },
     invitation: Invitation,
     candidate: Candidate,
   ): Promise<void> {
-    const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/invite/${invitation.token}`;
+    const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/start?token=${invitation.token}`;
     const organization = await this.tenantPrisma.forTenant(context, (tx) =>
-      tx.organization.findUnique({ where: { id: context.organizationId as string }, select: { logoPath: true } }),
+      tx.organization.findUnique({ where: { id: context.organizationId as string }, select: { logoPath: true, name: true } }),
     );
-    const logoUrl = organization?.logoPath ? `${process.env.API_ORIGIN}/uploads/${organization.logoPath}` : null;
+    const logoUrl = organization?.logoPath ?? null;
     const logoHtml = logoUrl ? `<p><img src="${logoUrl}" alt="Organization logo" height="40" /></p>` : '';
+    const scheduleHtml =
+      exam.schedulingEnabled && exam.availabilityWindowStart
+        ? `<p><strong>Date &amp; Time:</strong> ${exam.availabilityWindowStart.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</p>`
+        : '';
+    const html =
+      `${logoHtml}<p>Dear ${candidate.name},</p>` +
+      `<p>Congratulations! Your registration for the "${exam.title}" assessment has been successfully completed.</p>` +
+      `<h3>Test Details</h3>${scheduleHtml}<p><strong>Duration:</strong> ${exam.durationMinutes} minutes</p>` +
+      `<p><a href="${link}" style="display:inline-block;padding:10px 20px;background:#2955a3;color:#ffffff;text-decoration:none;border-radius:4px;">Start Assessment</a></p>` +
+      `<h3>Before You Begin</h3><ul>` +
+      `<li>Use a laptop or desktop with a working webcam &mdash; this assessment uses camera-based monitoring, so make sure your camera is enabled and unobstructed before starting.</li>` +
+      `<li>Use a stable internet connection and a supported browser (Chrome or Edge recommended).</li>` +
+      `<li>Find a quiet, well-lit space free of interruptions for the full duration of the test.</li></ul>` +
+      `<h3>Examination Rules &amp; Guidelines</h3><ul>` +
+      `<li>Stay on the test window. Switching tabs, minimizing the window, or exiting full-screen mode is detected and counted as a violation.</li>` +
+      `<li>Copy, paste, and right-click are disabled during the test and are also detected as violations.</li>` +
+      `<li>Extended periods of inactivity may also be flagged.</li>` +
+      `<li>On your first and second violation, your exam will pause and you can resume it yourself from an on-screen prompt &mdash; no need to contact anyone.</li>` +
+      `<li>On your third violation, your exam will be blocked and can only be reopened by your recruiter, so please treat the first two warnings seriously.</li>` +
+      `<li>If negative marking applies to this assessment, incorrect answers may be penalized &mdash; only answer when you are confident.</li></ul>` +
+      `<p>If you run into any issues, just reply to this email and we will help you out.</p>` +
+      `<p>Best regards,<br/>${organization?.name ?? 'The Hiring Team'}</p>`;
     const result = await this.emailService.send({
       to: candidate.email,
-      subject: "You've been invited to an exam",
-      html: `${logoHtml}<p>You have been invited to take "${examTitle}".</p><p><a href="${link}">${link}</a></p>`,
+      subject: `Registration Confirmed — ${exam.title} Assessment`,
+      html,
       organizationId: context.organizationId ?? undefined,
     });
     await this.tenantPrisma.forTenant(context, (tx) =>
