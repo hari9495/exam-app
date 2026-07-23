@@ -1,10 +1,12 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useOrganizations, useCreateOrganization } from '../../../lib/hooks/useOrganizations';
 import { CardGrid, Input, Select, Button, Card, useToast, Pagination } from '../../../components/ui';
 import { Organization } from '../../../lib/types';
+import { useAuth } from '../../../lib/auth-context';
 
 const REGION_OPTIONS = [
   { value: 'us', label: 'US' },
@@ -12,6 +14,8 @@ const REGION_OPTIONS = [
 ];
 
 export default function OrganizationsPage() {
+  const router = useRouter();
+  const { switchIntoOrg } = useAuth();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const { data: organizationsResponse, isLoading, isError } = useOrganizations({ page, pageSize: 20, search: search || undefined });
@@ -22,6 +26,11 @@ export default function OrganizationsPage() {
   const [region, setRegion] = useState('us');
   const [adminEmail, setAdminEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  async function handleSwitchInto(orgId: string) {
+    await switchIntoOrg(orgId);
+    router.push('/dashboard');
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -50,6 +59,9 @@ export default function OrganizationsPage() {
           <span>{org.region.toUpperCase()}</span>
           <span>{new Date(org.createdAt).toLocaleDateString()}</span>
         </div>
+        <Button variant="secondary" onClick={() => handleSwitchInto(org.id)} className="mt-2">
+          Switch into
+        </Button>
       </div>
     );
   }

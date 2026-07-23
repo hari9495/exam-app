@@ -82,6 +82,48 @@ describe('Recruiter layout', () => {
     expect(screen.queryByRole('link', { name: 'Dashboard' })).not.toBeInTheDocument();
   });
 
+  it('admits an acting super_admin (role=super_admin, actingSuperAdmin=true) without redirecting, and shows cross-shell nav links', async () => {
+    const actingToken = fakeJwt({
+      sub: 'u1',
+      organizationId: 'org1',
+      role: 'super_admin',
+      actingSuperAdmin: true,
+      actingOrgName: 'Acme Inc',
+    });
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: actingToken }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <RecruiterLayout>
+            <p>Page content</p>
+          </RecruiterLayout>
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    expect(await screen.findByRole('link', { name: /Dashboard/i })).toBeInTheDocument();
+    expect(mockPush).not.toHaveBeenCalledWith('/login');
+    expect(screen.getByRole('link', { name: 'Reports' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Staff Users' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Audit Log' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Candidate Data Rights' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Org Settings' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Single Sign-On' })).toBeInTheDocument();
+  });
+
+  it('does not show cross-shell nav links for a normal (non-acting) recruiter', async () => {
+    renderLayout();
+    await screen.findByRole('link', { name: /Dashboard/i });
+    expect(screen.queryByRole('link', { name: 'Staff Users' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Reports' })).not.toBeInTheDocument();
+  });
+
   it('renders each nav item with an icon and marks the active route', async () => {
     renderLayout({ pathname: '/exams' });
     const examsLink = await screen.findByRole('link', { name: /Exams/i });

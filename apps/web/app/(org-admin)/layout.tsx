@@ -5,12 +5,12 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { MotionConfig } from 'framer-motion';
 import clsx from 'clsx';
-import { Users, History, ShieldCheck, Settings, Plug, KeyRound, LogOut } from 'lucide-react';
+import { Users, History, ShieldCheck, Settings, Plug, KeyRound, LogOut, LayoutDashboard, FileText, BookOpen } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
 import { useBranding } from '../../lib/hooks/useBranding';
 import { useCurrentUser } from '../../lib/hooks/useCurrentUser';
 
-const NAV_ITEMS = [
+const BASE_NAV_ITEMS = [
   { href: '/users', label: 'Staff Users', icon: Users },
   { href: '/audit-log', label: 'Audit Log', icon: History },
   { href: '/data-rights', label: 'Candidate Data Rights', icon: ShieldCheck },
@@ -19,20 +19,28 @@ const NAV_ITEMS = [
   { href: '/settings/sso', label: 'Single Sign-On', icon: KeyRound },
 ];
 
+const ACTING_EXTRA_NAV_ITEMS = [
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/exams', label: 'Exams', icon: FileText },
+  { href: '/questions', label: 'Question Bank', icon: BookOpen },
+  { href: '/candidates', label: 'Candidates', icon: Users },
+  { href: '/reports', label: 'Reports', icon: FileText },
+];
+
 export default function OrgAdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { accessToken, organizationSlug, role, isLoading, logout } = useAuth();
+  const { accessToken, organizationSlug, role, actingSuperAdmin, isLoading, logout } = useAuth();
   const { data: branding } = useBranding(organizationSlug);
   const { data: currentUser } = useCurrentUser();
 
   useEffect(() => {
     if (!isLoading && !accessToken) {
       router.push('/login');
-    } else if (!isLoading && accessToken && role && role !== 'org_admin') {
+    } else if (!isLoading && accessToken && role && role !== 'org_admin' && !actingSuperAdmin) {
       router.push('/login');
     }
-  }, [isLoading, accessToken, role, router]);
+  }, [isLoading, accessToken, role, actingSuperAdmin, router]);
 
   const themeStyle = {
     ...(branding?.primaryColor ? { '--color-primary': branding.primaryColor } : {}),
@@ -44,12 +52,14 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
     router.push('/login');
   }
 
-  if (isLoading || !accessToken || (role !== null && role !== 'org_admin')) {
+  if (isLoading || !accessToken || (role !== null && role !== 'org_admin' && !actingSuperAdmin)) {
     return <p className="p-8 text-sm text-recruiter-text-tertiary">Loading…</p>;
   }
 
   // Real name from useCurrentUser() once loaded; falls back to a per-role
   // placeholder only while loading or if the user has never set one.
+  const navItems = actingSuperAdmin ? [...BASE_NAV_ITEMS, ...ACTING_EXTRA_NAV_ITEMS] : BASE_NAV_ITEMS;
+
   const displayName = currentUser?.name || 'Org Admin';
   const initials = displayName
     .split(' ')
@@ -57,8 +67,6 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
     .slice(0, 2)
     .join('')
     .toUpperCase();
-  // ponytail: BrandingResponse has no organizationName field; fall back to the org slug.
-  const orgInitial = (organizationSlug ?? 'O')[0]?.toUpperCase();
 
   return (
     <MotionConfig reducedMotion="user">
@@ -68,14 +76,12 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
           {branding?.logoUrl ? (
             <img src={branding.logoUrl} alt="Organization logo" className="max-h-7 max-w-7 rounded" />
           ) : (
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-xs font-bold text-white">
-              {orgInitial}
-            </div>
+            <img src="/logo.png" alt="Prudent Hire" className="h-7 w-7 object-contain" />
           )}
           <span className="truncate text-sm font-bold text-recruiter-text">{organizationSlug}</span>
         </div>
         <ul className="flex flex-1 flex-col gap-0.5 p-2.5">
-          {NAV_ITEMS.map((item) => {
+          {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname?.startsWith(item.href) ?? false;
             return (
@@ -90,7 +96,7 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
                   )}
                   style={
                     isActive
-                      ? { backgroundColor: 'color-mix(in srgb, var(--color-primary, #1a73e8) 12%, white)' }
+                      ? { backgroundColor: 'color-mix(in srgb, var(--color-primary, #0057f0) 12%, white)' }
                       : undefined
                   }
                 >

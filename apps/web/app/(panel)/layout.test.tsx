@@ -46,6 +46,50 @@ describe('Panel layout', () => {
     expect(screen.queryByRole('link', { name: 'Exams' })).not.toBeInTheDocument();
   });
 
+  it('admits an acting super_admin (role=super_admin, actingSuperAdmin=true) without redirecting, and shows cross-shell nav links', async () => {
+    const actingToken = fakeJwt({
+      sub: 'u1',
+      organizationId: 'org1',
+      role: 'super_admin',
+      actingSuperAdmin: true,
+      actingOrgName: 'Acme Inc',
+    });
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: actingToken }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <PanelLayout>
+            <p>Page content</p>
+          </PanelLayout>
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    expect(await screen.findByRole('link', { name: 'Exams' })).toBeInTheDocument();
+    expect(mockPush).not.toHaveBeenCalledWith('/login');
+    expect(screen.getByRole('link', { name: /Dashboard/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Question Bank/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Candidates/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Staff Users' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Audit Log' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Candidate Data Rights' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Org Settings' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Single Sign-On' })).toBeInTheDocument();
+  });
+
+  it('does not show cross-shell nav links for a normal (non-acting) panel user', async () => {
+    renderLayout();
+    await screen.findByRole('link', { name: 'Exams' });
+    expect(screen.queryByRole('link', { name: 'Staff Users' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Dashboard/i })).not.toBeInTheDocument();
+  });
+
   it('logs out and redirects to /login when the logout button is clicked', async () => {
     renderLayout();
     const logoutButton = await screen.findByRole('button', { name: 'Log out' });

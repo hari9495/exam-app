@@ -6,8 +6,12 @@ import { QueryProvider } from '../../../lib/query-provider';
 import { ToastProvider } from '../../../components/ui';
 import { fakeJwt } from '../../../lib/test-utils/fake-jwt';
 
+const mockPush = jest.fn();
+jest.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush }) }));
+
 function renderPage() {
   const token = fakeJwt({ sub: 'u1', organizationId: null, role: 'super_admin' });
+  const actingToken = fakeJwt({ sub: 'u1', organizationId: 'org-1', role: 'super_admin', actingSuperAdmin: true, actingOrgName: 'Acme' });
   global.fetch = jest.fn(async (url, options) => {
     if (String(url).endsWith('/auth/refresh')) {
       return new Response(JSON.stringify({ accessToken: token }), { status: 200 });
@@ -30,6 +34,9 @@ function renderPage() {
         { status: 200 },
       );
     }
+    if (String(url).endsWith('/auth/super-admin/switch-into/org-1') && options?.method === 'POST') {
+      return new Response(JSON.stringify({ accessToken: actingToken }), { status: 200 });
+    }
     return new Response(JSON.stringify({}), { status: 200 });
   }) as unknown as typeof fetch;
 
@@ -48,6 +55,7 @@ describe('OrganizationsPage', () => {
   const originalFetch = global.fetch;
   afterEach(() => {
     global.fetch = originalFetch;
+    mockPush.mockClear();
   });
 
   it('lists existing organizations', async () => {
@@ -76,5 +84,20 @@ describe('OrganizationsPage', () => {
         adminEmail: 'admin@beta.test',
       });
     });
+  });
+
+  it('switches into an organization when "Switch into" is clicked', async () => {
+    renderPage();
+    await screen.findByText('Acme');
+
+    await userEvent.click(screen.getByRole('button', { name: /switch into/i }));
+
+    await waitFor(() => {
+      const switchCall = (global.fetch as jest.Mock).mock.calls.find(([url]) =>
+        String(url).endsWith('/auth/super-admin/switch-into/org-1'),
+      );
+      expect(switchCall).toBeDefined();
+    });
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/dashboard'));
   });
 });

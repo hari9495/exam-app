@@ -63,6 +63,64 @@ describe('Org admin layout', () => {
     expect(screen.queryByRole('link', { name: 'Staff Users' })).not.toBeInTheDocument();
   });
 
+  it('admits an acting super_admin (role=super_admin, actingSuperAdmin=true) without redirecting, and shows cross-shell nav links', async () => {
+    const actingToken = fakeJwt({
+      sub: 'u1',
+      organizationId: 'org1',
+      role: 'super_admin',
+      actingSuperAdmin: true,
+      actingOrgName: 'Acme Inc',
+    });
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: actingToken }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <OrgAdminLayout>
+            <p>Page content</p>
+          </OrgAdminLayout>
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    expect(await screen.findByRole('link', { name: 'Staff Users' })).toBeInTheDocument();
+    expect(mockPush).not.toHaveBeenCalledWith('/login');
+    expect(screen.getByRole('link', { name: /Dashboard/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Exams/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Question Bank/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Candidates/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Reports' })).toBeInTheDocument();
+  });
+
+  it('does not show cross-shell nav links for a normal (non-acting) org_admin', async () => {
+    const orgAdminToken = fakeJwt({ sub: 'u1', organizationId: 'org1', role: 'org_admin' });
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: orgAdminToken }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <OrgAdminLayout>
+            <p>Page content</p>
+          </OrgAdminLayout>
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    await screen.findByRole('link', { name: 'Staff Users' });
+    expect(screen.queryByRole('link', { name: /Dashboard/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Reports' })).not.toBeInTheDocument();
+  });
+
   it('renders each nav item with an icon and marks the active route via text-primary', async () => {
     const orgAdminToken = fakeJwt({ sub: 'u1', organizationId: 'org1', role: 'org_admin' });
     global.fetch = jest.fn(async (url) => {
