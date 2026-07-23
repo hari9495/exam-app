@@ -110,7 +110,7 @@ function describeActivity(action: string, entityId: string | null, metadata: Rec
 export class DashboardService {
   constructor(private readonly tenantPrisma: TenantPrismaService) {}
 
-  async getSummary(context: TenantContext): Promise<DashboardSummary> {
+  async getSummary(context: TenantContext, window: Window): Promise<DashboardSummary> {
     const organizationId = context.organizationId as string;
 
     return this.tenantPrisma.forTenant(context, async (tx) => {
@@ -119,20 +119,37 @@ export class DashboardService {
       const examTitleById = new Map(exams.map((exam) => [exam.id, exam.title]));
 
       const staleThreshold = new Date(Date.now() - STALE_INVITATION_DAYS * 24 * 60 * 60 * 1000);
+      const windowStart = resolveWindowStart(window);
 
       const [
         totalCandidates,
         invitationsSent,
         attemptsInProgress,
+        windowedPendingGradingGroups,
         pendingGradingGroups,
         staleInvitationCount,
         recentProctoringEvents,
         auditRows,
         upcomingExamRows,
       ] = await Promise.all([
-        tx.candidate.count({ where: { organizationId, erasedAt: null } }),
-        tx.invitation.count({ where: { examId: { in: examIds } } }),
-        tx.attempt.count({ where: { examId: { in: examIds }, status: 'in_progress' } }),
+        tx.candidate.count({
+          where: { organizationId, erasedAt: null, ...(windowStart ? { createdAt: { gte: windowStart } } : {}) },
+        }),
+        tx.invitation.count({
+          where: { examId: { in: examIds }, ...(windowStart ? { invitedAt: { gte: windowStart } } : {}) },
+        }),
+        tx.attempt.count({
+          where: { examId: { in: examIds }, status: 'in_progress', ...(windowStart ? { startedAt: { gte: windowStart } } : {}) },
+        }),
+        tx.attempt.groupBy({
+          by: ['examId'],
+          where: {
+            examId: { in: examIds },
+            status: 'pending_manual_grade',
+            ...(windowStart ? { submittedAt: { gte: windowStart } } : {}),
+          },
+          _count: { _all: true },
+        }),
         tx.attempt.groupBy({ by: ['examId'], where: { examId: { in: examIds }, status: 'pending_manual_grade' }, _count: { _all: true } }),
         tx.invitation.count({
           where: { examId: { in: examIds }, status: 'invited', invitedAt: { lte: staleThreshold }, attempt: null },
@@ -156,7 +173,7 @@ export class DashboardService {
         }),
       ]);
 
-      const pendingGradingCount = pendingGradingGroups.reduce((sum, group) => sum + group._count._all, 0);
+      const pendingGradingCount = windowedPendingGradingGroups.reduce((sum, group) => sum + group._count._all, 0);
 
       return {
         stats: {

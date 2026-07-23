@@ -48,7 +48,7 @@ describe('DashboardService', () => {
     });
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    const result = await service.getSummary(context);
+    const result = await service.getSummary(context, 'all');
 
     expect(result.stats).toEqual({
       totalCandidates: 248,
@@ -66,7 +66,7 @@ describe('DashboardService', () => {
     const tx = stubTx({ invitation: { count: jest.fn().mockResolvedValue(6) } });
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    const result = await service.getSummary(context);
+    const result = await service.getSummary(context, 'all');
 
     expect(tx.invitation.count).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -92,7 +92,7 @@ describe('DashboardService', () => {
       ]);
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    const result = await service.getSummary(context);
+    const result = await service.getSummary(context, 'all');
 
     expect(result.upcomingExams).toEqual([
       { examId: 'exam-2', examTitle: 'Scheduled Round', availabilityWindowStart: '2026-08-01T09:00:00.000Z' },
@@ -103,7 +103,7 @@ describe('DashboardService', () => {
     const tx = stubTx({ invitation: { count: jest.fn().mockResolvedValue(0) }, result: { count: jest.fn().mockResolvedValue(0) } });
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    const result = await service.getSummary(context);
+    const result = await service.getSummary(context, 'all');
 
     expect(result.upcomingExams).toEqual([]);
   });
@@ -380,6 +380,75 @@ describe('DashboardService', () => {
       expect(tx.invitation.count).toHaveBeenCalledWith(
         expect.objectContaining({ where: expect.objectContaining({ invitedAt: expect.objectContaining({ gte: expect.any(Date) }) }) }),
       );
+    });
+  });
+
+  describe('getSummary window filtering', () => {
+    it('filters totalCandidates by createdAt when a window is given', async () => {
+      const tx = stubTx();
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.getSummary(context, '30d');
+
+      expect(tx.candidate.count).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ createdAt: expect.objectContaining({ gte: expect.any(Date) }) }) }),
+      );
+    });
+
+    it('filters invitationsSent by invitedAt when a window is given', async () => {
+      const tx = stubTx();
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.getSummary(context, '30d');
+
+      expect(tx.invitation.count).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ invitedAt: expect.objectContaining({ gte: expect.any(Date) }) }) }),
+      );
+    });
+
+    it('filters attemptsInProgress by startedAt when a window is given', async () => {
+      const tx = stubTx();
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.getSummary(context, '30d');
+
+      expect(tx.attempt.count).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ status: 'in_progress', startedAt: expect.objectContaining({ gte: expect.any(Date) }) }),
+        }),
+      );
+    });
+
+    it('applies no date filter to any stat when window is "all"', async () => {
+      const tx = stubTx();
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.getSummary(context, 'all');
+
+      const candidateCountArgs = tx.candidate.count.mock.calls[0][0];
+      expect(candidateCountArgs.where.createdAt).toBeUndefined();
+      const invitationCountArgs = tx.invitation.count.mock.calls[0][0];
+      expect(invitationCountArgs.where.invitedAt).toBeUndefined();
+      const attemptCountArgs = tx.attempt.count.mock.calls[0][0];
+      expect(attemptCountArgs.where.startedAt).toBeUndefined();
+    });
+
+    it('computes stats.pendingGradingCount from a window-filtered query, independent of the unfiltered attention.pendingGrading list', async () => {
+      const tx = stubTx({
+        attempt: {
+          count: jest.fn().mockResolvedValue(0),
+          groupBy: jest
+            .fn()
+            .mockResolvedValueOnce([{ examId: 'exam-1', _count: { _all: 2 } }])
+            .mockResolvedValueOnce([{ examId: 'exam-1', _count: { _all: 9 } }]),
+        },
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getSummary(context, '7d');
+
+      expect(result.stats.pendingGradingCount).toBe(2);
+      expect(result.attention.pendingGrading).toEqual([{ examId: 'exam-1', examTitle: 'Backend Round', count: 9 }]);
     });
   });
 });

@@ -24,8 +24,11 @@ export class DashboardController {
 
   @Get('summary')
   @RequireAnyPermission('exam:manage', 'results:view')
-  getSummary(@CurrentTenant() tenant: TenantContext) {
-    return this.dashboardService.getSummary(tenant);
+  getSummary(@CurrentTenant() tenant: TenantContext, @Query('window') window?: string) {
+    if (!window || !(WINDOWS as readonly string[]).includes(window)) {
+      throw new BadRequestException(`window must be one of ${WINDOWS.join(', ')}`);
+    }
+    return this.dashboardService.getSummary(tenant, window as Window);
   }
 
   @Get('trend')

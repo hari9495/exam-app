@@ -35,6 +35,26 @@ describe('DashboardController', () => {
     controller = moduleRef.get(DashboardController);
   });
 
+  describe('getSummary', () => {
+    it('rejects a missing window', () => {
+      expect(() => controller.getSummary(tenant, undefined)).toThrow(BadRequestException);
+    });
+
+    it('rejects an invalid window', () => {
+      expect(() => controller.getSummary(tenant, 'bogus')).toThrow(BadRequestException);
+    });
+
+    it('passes a valid window through to the service', () => {
+      controller.getSummary(tenant, '30d');
+      expect(service.getSummary).toHaveBeenCalledWith(tenant, '30d');
+    });
+
+    it('passes window "all" through unchanged', () => {
+      controller.getSummary(tenant, 'all');
+      expect(service.getSummary).toHaveBeenCalledWith(tenant, 'all');
+    });
+  });
+
   describe('getTrend', () => {
     it('rejects an invalid metric', () => {
       expect(() => controller.getTrend(tenant, 'bogus', '14')).toThrow(BadRequestException);
