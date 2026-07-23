@@ -10,10 +10,6 @@ describe('DashboardPage', () => {
   const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
 
   beforeEach(() => {
-    // Recharts' ResponsiveContainer measures its container via ResizeObserver /
-    // getBoundingClientRect to size its chart. jsdom has no layout engine, so both
-    // report 0x0, which makes Recharts warn on every render. Report a real size so
-    // the chart renders without the "width(0) and height(0)" console.warn noise.
     globalThis.ResizeObserver = class ResizeObserver {
       observe() {}
       unobserve() {}
@@ -77,7 +73,7 @@ describe('DashboardPage', () => {
     expect(screen.getByText('9')).toBeInTheDocument();
   });
 
-  it('refetches a stat card trend when its window dropdown changes', async () => {
+  it('defaults to a 14-day range and refetches summary, trends, funnel, and exam performance when the global range changes', async () => {
     mockSummaryFetch({
       stats: { totalCandidates: 248, invitationsSent: 312, attemptsInProgress: 17, pendingGradingCount: 9 },
       attention: { pendingGrading: [], recentProctoringFlags: [], staleInvitationCount: 0 },
@@ -88,21 +84,49 @@ describe('DashboardPage', () => {
 
     await waitFor(() => expect(screen.getByText('248')).toBeInTheDocument());
     const fetchMock = global.fetch as jest.Mock;
-    const trendCallsBefore = fetchMock.mock.calls.filter(([url]) => String(url).includes('/dashboard/trend?metric=candidates')).length;
-    expect(trendCallsBefore).toBeGreaterThan(0);
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('days=14'))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/summary?window=14d'))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/trend?metric=candidates&days=14'))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/funnel?examId=all&window=14d'))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/exam-performance?limit=5&window=14d'))).toBe(true);
 
-    const trigger = screen.getByLabelText('Total candidates trend');
+    const trigger = screen.getByLabelText('Date range');
     fireEvent.click(trigger);
     const option = await screen.findByText('30 days');
     fireEvent.click(option);
 
-    await waitFor(() =>
-      expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/trend?metric=candidates&days=30'))).toBe(true),
-    );
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/summary?window=30d'))).toBe(true));
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/trend?metric=candidates&days=30'))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/trend?metric=invitations&days=30'))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/trend?metric=attempts&days=30'))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/trend?metric=pendingGrading&days=30'))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/funnel?examId=all&window=30d'))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/exam-performance?limit=5&window=30d'))).toBe(true);
   });
 
-  it('renders the exam performance chart and refetches when its filters change', async () => {
+  it('caps stat-card trend requests to 90 days when "All time" is selected, while summary/funnel/exam-performance use window=all', async () => {
+    mockSummaryFetch({
+      stats: { totalCandidates: 0, invitationsSent: 0, attemptsInProgress: 0, pendingGradingCount: 0 },
+      attention: { pendingGrading: [], recentProctoringFlags: [], staleInvitationCount: 0 },
+      activity: [],
+      upcomingExams: [],
+    });
+    renderPage();
+
+    await waitFor(() => expect(screen.getByLabelText('Date range')).toBeInTheDocument());
+    const fetchMock = global.fetch as jest.Mock;
+
+    const trigger = screen.getByLabelText('Date range');
+    fireEvent.click(trigger);
+    const option = await screen.findByText('All time');
+    fireEvent.click(option);
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/summary?window=all'))).toBe(true));
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/trend?metric=candidates&days=90'))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/funnel?examId=all&window=all'))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/exam-performance?limit=5&window=all'))).toBe(true);
+  });
+
+  it('renders the exam performance chart', async () => {
     global.fetch = jest.fn(async (url) => {
       if (String(url).endsWith('/auth/refresh')) {
         return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
@@ -137,16 +161,7 @@ describe('DashboardPage', () => {
     await waitFor(() => expect(screen.getByText('Exam performance')).toBeInTheDocument());
 
     const fetchMock = global.fetch as jest.Mock;
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/exam-performance?limit=5&window=all'))).toBe(true);
-
-    const limitTrigger = screen.getByLabelText('Top exams');
-    fireEvent.click(limitTrigger);
-    const tenOption = await screen.findByText('Top 10');
-    fireEvent.click(tenOption);
-
-    await waitFor(() =>
-      expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/exam-performance?limit=10&window=all'))).toBe(true),
-    );
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/exam-performance?limit=5&window=14d'))).toBe(true);
   });
 
   it('renders attention items with their counts', async () => {
@@ -209,7 +224,7 @@ describe('DashboardPage', () => {
     expect(screen.getByText(/Scheduled Round/).closest('a')).toHaveAttribute('href', '/exams/exam-3/edit');
   });
 
-  it('renders the candidate funnel from the funnel endpoint and refetches when its filters change', async () => {
+  it('renders the candidate funnel from the funnel endpoint', async () => {
     global.fetch = jest.fn(async (url) => {
       if (String(url).endsWith('/auth/refresh')) {
         return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
@@ -234,11 +249,6 @@ describe('DashboardPage', () => {
       if (String(url).includes('/dashboard/funnel')) {
         return new Response(JSON.stringify({ invited: 100, started: 60, submitted: 55, passed: 22 }), { status: 200 });
       }
-      if (String(url).includes('/exams')) {
-        return new Response(JSON.stringify({ data: [{ id: 'exam-1', title: 'Backend Round' }], total: 1, page: 1, pageSize: 100, totalPages: 1 }), {
-          status: 200,
-        });
-      }
       return new Response(JSON.stringify({}), { status: 200 });
     }) as unknown as typeof fetch;
     renderPage();
@@ -249,16 +259,7 @@ describe('DashboardPage', () => {
     expect(screen.getByLabelText('Passed: 22')).toBeInTheDocument();
 
     const fetchMock = global.fetch as jest.Mock;
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/funnel?examId=all&window=all'))).toBe(true);
-
-    const examTrigger = screen.getByLabelText('Funnel exam');
-    fireEvent.click(examTrigger);
-    const examOption = await screen.findByText('Backend Round');
-    fireEvent.click(examOption);
-
-    await waitFor(() =>
-      expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/funnel?examId=exam-1&window=all'))).toBe(true),
-    );
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/funnel?examId=all&window=14d'))).toBe(true);
   });
 
   it('shows an empty-state message when there are no upcoming exams', async () => {
