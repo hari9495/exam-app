@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useRouter } from 'next/navigation';
@@ -32,6 +33,7 @@ function attemptStateWithQuestion(question: any) {
     status: 'in_progress',
     remainingSeconds: 590,
     webcamViolationCount: 0,
+    browserActivityViolationCount: 0,
     exam: { title: 'Test Exam' },
     sections: [{ title: 'S1', targetDurationMinutes: null, questions: [question] }],
     answers: [],
@@ -419,6 +421,65 @@ describe('CandidateExamPage', () => {
     expect(push).not.toHaveBeenCalledWith('/submitted');
   });
 
+  describe('browser-activity strikes', () => {
+    it('shows the browser-activity strike count (not the webcam count) when paused by a browser-activity signal', () => {
+      (useAttemptQuery as jest.Mock).mockReturnValue({
+        data: { ...attemptState, status: 'paused', webcamViolationCount: 0, browserActivityViolationCount: 2 },
+        isError: false,
+      });
+      // Fired from an effect (like the real hook fires from an event listener), not
+      // synchronously during render, which would otherwise trip React's render-phase-update loop guard.
+      (useProctoringMonitor as jest.Mock).mockImplementation((_enabled: boolean, onViolation?: (eventType: string) => void) => {
+        useEffect(() => {
+          onViolation?.('tab_switch');
+        }, []);
+      });
+      (useWebcamResume as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false, isError: false });
+
+      render(<CandidateExamPage />);
+
+      expect(screen.getByText('Tab switch detected')).toBeInTheDocument();
+      expect(screen.getByText('Warning 2/3')).toBeInTheDocument();
+    });
+
+    it('still shows the webcam strike count and message when the last violation was a webcam one', () => {
+      (useAttemptQuery as jest.Mock).mockReturnValue({
+        data: { ...attemptState, status: 'paused', webcamViolationCount: 1, browserActivityViolationCount: 2 },
+        isError: false,
+      });
+      (useWebcamMonitor as jest.Mock).mockImplementation((_enabled: boolean, onViolationReason?: (reason: string) => void) => {
+        useEffect(() => {
+          onViolationReason?.('no_face');
+        }, []);
+      });
+      (useWebcamResume as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false, isError: false });
+
+      render(<CandidateExamPage />);
+
+      expect(screen.getByText('Face not visible')).toBeInTheDocument();
+      expect(screen.getByText('Warning 1/3')).toBeInTheDocument();
+    });
+
+    it('resumes via the same webcam-resume mutation regardless of which system caused the pause', async () => {
+      (useAttemptQuery as jest.Mock).mockReturnValue({
+        data: { ...attemptState, status: 'paused', webcamViolationCount: 0, browserActivityViolationCount: 1 },
+        isError: false,
+      });
+      (useProctoringMonitor as jest.Mock).mockImplementation((_enabled: boolean, onViolation?: (eventType: string) => void) => {
+        useEffect(() => {
+          onViolation?.('right_click');
+        }, []);
+      });
+      const resumeMutate = jest.fn();
+      (useWebcamResume as jest.Mock).mockReturnValue({ mutate: resumeMutate, isPending: false, isError: false });
+
+      render(<CandidateExamPage />);
+      await userEvent.click(screen.getByRole('button', { name: /continue/i }));
+
+      expect(resumeMutate).toHaveBeenCalled();
+    });
+  });
+
   it.each(['paused', 'blocked'] as const)(
     'does not let the frozen countdown reach zero and trigger a submit while %s, even with remainingSeconds=1',
     (status) => {
@@ -487,6 +548,7 @@ describe('CandidateExamPage', () => {
         status: 'in_progress',
         remainingSeconds: 600,
         webcamViolationCount: 0,
+        browserActivityViolationCount: 0,
         exam: { title: 'Sample Exam' },
         sections: [
           {

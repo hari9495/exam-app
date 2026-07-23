@@ -77,8 +77,18 @@ export default function CandidateExamPage() {
   const isTerminal = Boolean(attemptState && attemptState.status !== 'in_progress' && !isPaused && !isBlocked);
   const started = attemptState?.status === 'in_progress';
   const [lastViolationReason, setLastViolationReason] = useState<string>('no_face');
-  useProctoringMonitor(started);
-  useWebcamMonitor(started, setLastViolationReason);
+  const [lastViolationSource, setLastViolationSource] = useState<'webcam' | 'browser_activity'>('webcam');
+  useProctoringMonitor(started, (eventType) => {
+    setLastViolationReason(eventType);
+    setLastViolationSource('browser_activity');
+  });
+  useWebcamMonitor(started, (reason) => {
+    setLastViolationReason(reason);
+    setLastViolationSource('webcam');
+  });
+  // Resuming from a browser-activity pause has nothing to re-verify (unlike webcam, which
+  // re-checks face presence) -- it's the same generic "clear the pause" transition either way,
+  // so the existing webcam-resume endpoint/mutation is reused rather than adding a duplicate one.
   const webcamResume = useWebcamResume();
 
   async function finishSubmit() {
@@ -208,7 +218,7 @@ export default function CandidateExamPage() {
     <div className="relative">
       {isPaused ? (
         <ProctoringWarningOverlay
-          strike={attemptState.webcamViolationCount}
+          strike={lastViolationSource === 'browser_activity' ? attemptState.browserActivityViolationCount : attemptState.webcamViolationCount}
           reason={lastViolationReason}
           onContinue={() => webcamResume.mutate()}
           continuePending={webcamResume.isPending}
