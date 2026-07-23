@@ -12,8 +12,15 @@ export function SuperAdminActingBanner() {
   }
 
   async function handleExit() {
-    await switchOutOfOrg();
+    // Navigate first, then switch out. The acting token's `role` claim is always 'super_admin'
+    // regardless of actingSuperAdmin, so /organizations' own gate is satisfied throughout. This
+    // ordering matters: swapping it (switch-out first, navigate second) lets the *current* shell
+    // layout's own role-gate `useEffect` -- e.g. (recruiter)/(org-admin)/(panel)/layout.tsx's
+    // `role !== '<shell role>' && !actingSuperAdmin` check -- observe actingSuperAdmin flip to
+    // false while still mounted on that shell's page, and it races this function's own redirect
+    // to /organizations with a competing `router.push('/login')`, which can win.
     router.push('/organizations');
+    await switchOutOfOrg();
   }
 
   return (
