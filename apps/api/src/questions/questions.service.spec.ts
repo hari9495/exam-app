@@ -1,15 +1,7 @@
-jest.mock('fs/promises', () => ({
-  mkdir: jest.fn(),
-  writeFile: jest.fn(),
-}));
-
-import * as fs from 'fs/promises';
-
 import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { sep } from 'path';
 import { QuestionsService } from './questions.service';
-import { TenantPrismaService } from '@exam-platform/shared';
+import { TenantPrismaService, BlobStorageService } from '@exam-platform/shared';
 import { JobsService } from '../jobs/jobs.service';
 import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
 
@@ -30,6 +22,7 @@ describe('QuestionsService', () => {
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: JobsService, useValue: jobsService },
         { provide: ExamRuntimeInternalClient, useValue: examRuntime },
+        { provide: BlobStorageService, useValue: { upload: jest.fn(), uploadDataUri: jest.fn() } },
       ],
     }).compile();
     service = moduleRef.get(QuestionsService);
@@ -372,6 +365,35 @@ describe('QuestionsService', () => {
     );
   });
 
+  it('clears a stale starterCode on update when the dto omits it (e.g. languageMode widened past single-fixed)', async () => {
+    const dto = {
+      type: 'code',
+      text: 'Write a function that reverses a string.',
+      difficulty: 'medium',
+      marks: 10,
+      languageMode: 'any',
+      // starterCode intentionally omitted, mirroring the frontend's submission when a
+      // code question's language mode widens past single-fixed-language.
+      options: [],
+    };
+    const tx = {
+      question: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'q-1', starterCode: 'function reverse(str) {\n  \n}' }),
+        update: jest.fn().mockResolvedValue({ id: 'q-1', ...dto, starterCode: null, tags: [] }),
+      },
+      questionOption: { deleteMany: jest.fn() },
+      questionTag: { deleteMany: jest.fn() },
+      tag: { upsert: jest.fn() },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.update(context, 'q-1', dto);
+
+    expect(tx.question.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ starterCode: null }) }),
+    );
+  });
+
   it('archives a question by setting status to archived', async () => {
     const tx = {
       question: {
@@ -505,34 +527,38 @@ describe('QuestionsService.uploadImage', () => {
   let tenantPrisma: { forTenant: jest.Mock };
   let jobsService: { enqueue: jest.Mock };
   let examRuntime: { listAvailableLanguages: jest.Mock };
+  let blobStorage: { upload: jest.Mock; uploadDataUri: jest.Mock };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
     jobsService = { enqueue: jest.fn() };
     examRuntime = { listAvailableLanguages: jest.fn() };
+    blobStorage = {
+      upload: jest.fn().mockImplementation((blobPath: string) => Promise.resolve(`https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/${blobPath}`)),
+      uploadDataUri: jest.fn(),
+    };
     const moduleRef = await Test.createTestingModule({
       providers: [
         QuestionsService,
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: JobsService, useValue: jobsService },
         { provide: ExamRuntimeInternalClient, useValue: examRuntime },
+        { provide: BlobStorageService, useValue: blobStorage },
       ],
     }).compile();
     service = moduleRef.get(QuestionsService);
-    process.env.API_ORIGIN = 'http://localhost:3001';
-    (fs.mkdir as jest.Mock).mockReset().mockResolvedValue(undefined);
-    (fs.writeFile as jest.Mock).mockReset().mockResolvedValue(undefined);
   });
 
-  it('writes a valid PNG to question-images/ and returns its URL', async () => {
+  it('uploads a valid PNG to question-images/ and returns its blob URL', async () => {
     const file = { mimetype: 'image/png', size: 1024, buffer: Buffer.from('fake-png-bytes') } as Express.Multer.File;
 
     const result = await service.uploadImage(file);
 
-    expect(result.imageUrl).toMatch(/^http:\/\/localhost:3001\/uploads\/question-images\/[0-9a-f-]+\.png$/);
-    expect(fs.writeFile).toHaveBeenCalledWith(
-      expect.stringMatching(new RegExp(`question-images\\${sep}[0-9a-f-]+\\.png$`)),
+    expect(result.imageUrl).toMatch(/^https:\/\/sfstoragepoc\.blob\.core\.windows\.net\/ptc-vss-sf-interview-storage-container\/question-images\/[0-9a-f-]+\.png$/);
+    expect(blobStorage.upload).toHaveBeenCalledWith(
+      expect.stringMatching(/^question-images\/[0-9a-f-]+\.png$/),
       file.buffer,
+      'image/png',
     );
   });
 
@@ -540,13 +566,13 @@ describe('QuestionsService.uploadImage', () => {
     const file = { mimetype: 'application/pdf', size: 1024, buffer: Buffer.from('x') } as Express.Multer.File;
 
     await expect(service.uploadImage(file)).rejects.toThrow(BadRequestException);
-    expect(fs.writeFile).not.toHaveBeenCalled();
+    expect(blobStorage.upload).not.toHaveBeenCalled();
   });
 
   it('rejects a file over 2MB', async () => {
     const file = { mimetype: 'image/png', size: 2 * 1024 * 1024 + 1, buffer: Buffer.from('x') } as Express.Multer.File;
 
     await expect(service.uploadImage(file)).rejects.toThrow(BadRequestException);
-    expect(fs.writeFile).not.toHaveBeenCalled();
+    expect(blobStorage.upload).not.toHaveBeenCalled();
   });
 });
