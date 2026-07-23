@@ -60,7 +60,9 @@ export default function ExamsPage() {
       <div>
         <div className="mb-2 flex items-start justify-between gap-2">
           <div>
-            <div className="font-semibold text-recruiter-text">{exam.title}</div>
+            <Link href={`/exams/${exam.id}/edit`} className="font-semibold text-recruiter-text hover:underline">
+              {exam.title}
+            </Link>
             <div className="text-xs text-recruiter-text-tertiary">{exam.durationMinutes} min</div>
           </div>
           <div className="flex items-center gap-1.5">
