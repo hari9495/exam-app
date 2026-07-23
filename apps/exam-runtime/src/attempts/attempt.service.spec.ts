@@ -137,6 +137,31 @@ describe('AttemptService', () => {
       expect((result as any).organizationPrimaryColor).toBe('#B23B3B');
     });
 
+    it('returns browserActivityViolationCount alongside webcamViolationCount for an in-progress attempt', async () => {
+      const attempt = {
+        id: 'attempt-1', status: 'in_progress', startedAt: new Date(),
+        questionOrderJson: JSON.stringify(['q1']),
+        sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', targetDurationMinutes: null, questionIds: ['q1'] }]),
+        optionOrderJson: null,
+        webcamViolationCount: 1,
+        browserActivityViolationCount: 2,
+      };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'single_mcq', marks: 5, languageMode: 'fixed', allowedLanguages: null, starterCode: null, allowStdin: false, snippetCode: null, snippetLanguage: null, imageUrl: null, options: [] }]) },
+        answer: { findMany: jest.fn().mockResolvedValue([]) },
+        candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+      };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      settlement.remainingSeconds.mockReturnValue(1000);
+      mockBootstrapWithLogoThenScoped(tx);
+
+      const result = await service.getCurrent(session);
+
+      expect((result as any).webcamViolationCount).toBe(1);
+      expect((result as any).browserActivityViolationCount).toBe(2);
+    });
+
     it('falls back to 0 questions for a pool section with poolSize unset', async () => {
       const tx = {
         attempt: { findUnique: jest.fn().mockResolvedValue(null) },

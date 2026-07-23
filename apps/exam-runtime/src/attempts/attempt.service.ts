@@ -104,6 +104,7 @@ interface AttemptStateResponse {
   status: string;
   remainingSeconds: number;
   webcamViolationCount: number;
+  browserActivityViolationCount: number;
   exam: { title: string };
   sections: AttemptSection[];
   answers: AttemptAnswerSummary[];
@@ -176,6 +177,7 @@ export class AttemptService {
         status: settled.status,
         remainingSeconds: this.attemptSettlement.remainingSeconds(exam, settled),
         webcamViolationCount: settled.webcamViolationCount,
+        browserActivityViolationCount: settled.browserActivityViolationCount,
         exam: { title: exam.title },
         sections,
         answers: answers.map((answer) => ({

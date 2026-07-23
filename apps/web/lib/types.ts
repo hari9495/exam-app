@@ -312,6 +312,7 @@ export interface AttemptState {
   status: string;
   remainingSeconds: number;
   webcamViolationCount: number;
+  browserActivityViolationCount: number;
   exam: { title: string };
   sections: AttemptSection[];
   answers: AttemptAnswerSummary[];
