@@ -1,13 +1,13 @@
 import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { TenantPrismaService, AuditService, isIpAllowed } from '@exam-platform/shared';
+import { TenantPrismaService, AuditService, isIpAllowed, BlobStorageService } from '@exam-platform/shared';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { LeaderboardService, AUTO_GRADABLE_QUESTION_TYPES, CandidateLeaderboardResponse } from '../leaderboard/leaderboard.service';
 import { CandidateSession } from '../candidate-auth/current-candidate.decorator';
 import { AnswerDto } from './dto/answer.dto';
 import { StartAttemptDto } from './dto/start-attempt.dto';
-import { getProctoringEventSeverity } from './proctoring-severity';
+import { getProctoringEventSeverity, isStrikeWorthy } from './proctoring-severity';
 import { ReportProctoringEventDto } from './dto/report-proctoring-event.dto';
 import { shuffle } from './shuffle';
 import { effectiveDurationMinutes } from '../grading/grading';
@@ -128,6 +128,7 @@ export class AttemptService {
     private readonly runLimiter: RunLimiter,
     private readonly leaderboardService: LeaderboardService,
     private readonly audit: AuditService,
+    private readonly blobStorage: BlobStorageService,
   ) {}
 
   async getCurrent(session: CandidateSession): Promise<AttemptCurrentResponse> {
@@ -452,13 +453,30 @@ export class AttemptService {
   async reportProctoringEvent(
     session: CandidateSession,
     dto: ReportProctoringEventDto,
-  ): Promise<{ id: string; eventType: string; severity: string }> {
+  ): Promise<{ id: string; eventType: string; severity: string; strike: number; status: string }> {
     const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
 
     return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
       const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
       if (!attempt) {
         throw new NotFoundException('No attempt has been started');
+      }
+
+      if (isStrikeWorthy(dto.eventType)) {
+        const { attempt: updated, strike, event } = await this.attemptSettlement.registerBrowserActivityViolation(
+          tx,
+          attempt,
+          dto.eventType,
+          dto.metadata,
+        );
+        this.monitoringGateway.emitProctoringFlag(exam.id, {
+          attemptId: attempt.id,
+          candidateId: invitation.candidateId,
+          eventType: event.eventType,
+          severity: event.severity,
+          occurredAt: new Date(),
+        });
+        return { id: event.id, eventType: event.eventType, severity: event.severity, strike, status: updated.status };
       }
 
       const event = await tx.proctoringEvent.create({
@@ -476,7 +494,13 @@ export class AttemptService {
         severity: event.severity,
         occurredAt: event.occurredAt,
       });
-      return { id: event.id, eventType: event.eventType, severity: event.severity };
+      return {
+        id: event.id,
+        eventType: event.eventType,
+        severity: event.severity,
+        strike: attempt.browserActivityViolationCount,
+        status: attempt.status,
+      };
     });
   }
 
@@ -491,7 +515,8 @@ export class AttemptService {
       if (attempt.status !== 'in_progress') {
         throw new BadRequestException(`Cannot report a webcam violation — attempt status is "${attempt.status}"`);
       }
-      const { attempt: updated, strike } = await this.attemptSettlement.registerWebcamViolation(tx, attempt, dto.reason, dto.snapshot);
+      const snapshotUrl = await this.blobStorage.uploadDataUri(`webcam-snapshots/${attempt.id}-${Date.now()}.jpg`, dto.snapshot);
+      const { attempt: updated, strike } = await this.attemptSettlement.registerWebcamViolation(tx, attempt, dto.reason, snapshotUrl);
       return { strike, status: updated.status };
     });
   }
@@ -501,8 +526,9 @@ export class AttemptService {
     await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
       const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
       if (!attempt) return;
+      const snapshotUrl = await this.blobStorage.uploadDataUri(`webcam-snapshots/${attempt.id}-${Date.now()}.jpg`, dto.snapshot);
       await tx.proctoringEvent.create({
-        data: { attemptId: attempt.id, eventType: 'webcam_snapshot', severity: 'low', metadataJson: JSON.stringify({ snapshot: dto.snapshot }) },
+        data: { attemptId: attempt.id, eventType: 'webcam_snapshot', severity: 'low', metadataJson: JSON.stringify({ snapshot: snapshotUrl }) },
       });
     });
     return { ok: true };

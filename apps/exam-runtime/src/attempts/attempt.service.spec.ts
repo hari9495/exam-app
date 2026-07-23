@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { BadRequestException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { AttemptService } from './attempt.service';
-import { TenantPrismaService, AuditService } from '@exam-platform/shared';
+import { TenantPrismaService, AuditService, BlobStorageService } from '@exam-platform/shared';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { LeaderboardService } from '../leaderboard/leaderboard.service';
@@ -18,6 +18,7 @@ describe('AttemptService', () => {
     finalize: jest.Mock;
     remainingSeconds: jest.Mock;
     registerWebcamViolation: jest.Mock;
+    registerBrowserActivityViolation: jest.Mock;
     resumeFromPause: jest.Mock;
   };
   let monitoringGateway: { emitAttemptStatus: jest.Mock; emitProctoringFlag: jest.Mock; emitLeaderboardUpdate: jest.Mock };
@@ -26,6 +27,7 @@ describe('AttemptService', () => {
   let runLimiter: { checkAndIncrement: jest.Mock };
   let leaderboardService: { computeRecruiterView: jest.Mock; computeCandidateView: jest.Mock };
   let audit: { record: jest.Mock };
+  let blobStorage: { upload: jest.Mock; uploadDataUri: jest.Mock };
   const session = { invitationId: 'inv-1' };
   const exam = {
     id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false,
@@ -40,6 +42,7 @@ describe('AttemptService', () => {
       finalize: jest.fn(),
       remainingSeconds: jest.fn(),
       registerWebcamViolation: jest.fn(),
+      registerBrowserActivityViolation: jest.fn(),
       resumeFromPause: jest.fn(),
     };
     monitoringGateway = { emitAttemptStatus: jest.fn(), emitProctoringFlag: jest.fn(), emitLeaderboardUpdate: jest.fn() };
@@ -48,6 +51,7 @@ describe('AttemptService', () => {
     runLimiter = { checkAndIncrement: jest.fn() };
     leaderboardService = { computeRecruiterView: jest.fn(), computeCandidateView: jest.fn() };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
+    blobStorage = { upload: jest.fn(), uploadDataUri: jest.fn().mockImplementation((path, dataUri) => Promise.resolve(`https://blob.test/${path}`)) };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -60,6 +64,7 @@ describe('AttemptService', () => {
         { provide: RunLimiter, useValue: runLimiter },
         { provide: LeaderboardService, useValue: leaderboardService },
         { provide: AuditService, useValue: audit },
+        { provide: BlobStorageService, useValue: blobStorage },
       ],
     }).compile();
     service = moduleRef.get(AttemptService);
@@ -1380,63 +1385,128 @@ describe('AttemptService', () => {
   });
 
   describe('reportProctoringEvent', () => {
-    it('creates a proctoring event with server-computed severity', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'tab_switch', severity: 'medium' }) } };
-      mockBootstrapThenScoped(tx);
+    describe('a non-strike-worthy event type (e.g. looking_down)', () => {
+      it('creates a proctoring event with server-computed severity', async () => {
+        const tx = {
+          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          proctoringEvent: { create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }) },
+        };
+        mockBootstrapThenScoped(tx);
 
-      const result = await service.reportProctoringEvent(session, { eventType: 'tab_switch' });
+        const result = await service.reportProctoringEvent(session, { eventType: 'looking_down' });
 
-      expect(result).toEqual({ id: 'evt-1', eventType: 'tab_switch', severity: 'medium' });
-      expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
-        data: { attemptId: 'attempt-1', eventType: 'tab_switch', severity: getProctoringEventSeverity('tab_switch'), metadataJson: null },
+        expect(result).toEqual({ id: 'evt-1', eventType: 'looking_down', severity: 'medium', strike: 0, status: 'in_progress' });
+        expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+          data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: getProctoringEventSeverity('looking_down'), metadataJson: null },
+        });
+        expect(settlement.registerBrowserActivityViolation).not.toHaveBeenCalled();
+      });
+
+      it('serializes optional metadata to JSON', async () => {
+        const tx = {
+          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
+        };
+        mockBootstrapThenScoped(tx);
+
+        await service.reportProctoringEvent(session, { eventType: 'looking_down', metadata: { confidence: 0.8 } });
+
+        expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+          data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: 'medium', metadataJson: JSON.stringify({ confidence: 0.8 }) },
+        });
+      });
+
+      it('throws NotFoundException when no attempt has been started', async () => {
+        const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) } };
+        mockBootstrapThenScoped(tx);
+
+        await expect(service.reportProctoringEvent(session, { eventType: 'looking_down' })).rejects.toThrow(NotFoundException);
+      });
+
+      it('resolves tenant context via an unscoped bootstrap lookup followed by a properly scoped call', async () => {
+        const tx = {
+          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          proctoringEvent: { create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }) },
+        };
+        mockBootstrapThenScoped(tx);
+
+        await service.reportProctoringEvent(session, { eventType: 'looking_down' });
+
+        expect(tenantPrisma.forTenant).toHaveBeenNthCalledWith(1, { organizationId: null, isSuperAdmin: true }, expect.any(Function));
+        expect(tenantPrisma.forTenant).toHaveBeenNthCalledWith(2, { organizationId: 'org-1', isSuperAdmin: false }, expect.any(Function));
+      });
+
+      it('emits proctoring:flag after creating the event', async () => {
+        const createdEvent = { id: 'evt-1', eventType: 'looking_down', severity: 'medium', occurredAt: new Date() };
+        const tx = {
+          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          proctoringEvent: { create: jest.fn().mockResolvedValue(createdEvent) },
+        };
+        mockBootstrapThenScoped(tx);
+
+        await service.reportProctoringEvent(session, { eventType: 'looking_down' });
+
+        expect(monitoringGateway.emitProctoringFlag).toHaveBeenCalledWith('exam-1', {
+          attemptId: 'attempt-1', candidateId: 'cand-1', eventType: 'looking_down', severity: 'medium', occurredAt: createdEvent.occurredAt,
+        });
       });
     });
 
-    it('serializes optional metadata to JSON', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
-      mockBootstrapThenScoped(tx);
+    describe('a strike-worthy event type (e.g. tab_switch)', () => {
+      it('delegates to registerBrowserActivityViolation and returns its strike/status', async () => {
+        const attempt = { id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' };
+        const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
+        mockBootstrapThenScoped(tx);
+        settlement.registerBrowserActivityViolation.mockResolvedValue({
+          attempt: { ...attempt, browserActivityViolationCount: 1, status: 'paused' },
+          strike: 1,
+          event: { id: 'evt-1', eventType: 'tab_switch', severity: 'medium' },
+        });
 
-      await service.reportProctoringEvent(session, { eventType: 'idle_timeout', metadata: { idleSeconds: 45 } });
+        const result = await service.reportProctoringEvent(session, { eventType: 'tab_switch' });
 
-      expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
-        data: { attemptId: 'attempt-1', eventType: 'idle_timeout', severity: 'low', metadataJson: JSON.stringify({ idleSeconds: 45 }) },
+        expect(settlement.registerBrowserActivityViolation).toHaveBeenCalledWith(tx, attempt, 'tab_switch', undefined);
+        expect(result).toEqual({ id: 'evt-1', eventType: 'tab_switch', severity: 'medium', strike: 1, status: 'paused' });
       });
-    });
 
-    it('throws NotFoundException when no attempt has been started', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) } };
-      mockBootstrapThenScoped(tx);
+      it('passes optional metadata through to registerBrowserActivityViolation', async () => {
+        const attempt = { id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' };
+        const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
+        mockBootstrapThenScoped(tx);
+        settlement.registerBrowserActivityViolation.mockResolvedValue({
+          attempt: { ...attempt, browserActivityViolationCount: 1, status: 'paused' },
+          strike: 1,
+          event: { id: 'evt-1', eventType: 'window_blur', severity: 'medium' },
+        });
 
-      await expect(service.reportProctoringEvent(session, { eventType: 'tab_switch' })).rejects.toThrow(NotFoundException);
-    });
+        await service.reportProctoringEvent(session, { eventType: 'window_blur', metadata: { durationMs: 3000 } });
 
-    it('resolves tenant context via an unscoped bootstrap lookup followed by a properly scoped call', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'tab_switch', severity: 'medium' }) } };
-      mockBootstrapThenScoped(tx);
+        expect(settlement.registerBrowserActivityViolation).toHaveBeenCalledWith(tx, attempt, 'window_blur', { durationMs: 3000 });
+      });
 
-      await service.reportProctoringEvent(session, { eventType: 'tab_switch' });
+      it('emits proctoring:flag with the event returned by registerBrowserActivityViolation', async () => {
+        const attempt = { id: 'attempt-1', browserActivityViolationCount: 2, status: 'in_progress' };
+        const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
+        mockBootstrapThenScoped(tx);
+        settlement.registerBrowserActivityViolation.mockResolvedValue({
+          attempt: { ...attempt, browserActivityViolationCount: 3, status: 'blocked' },
+          strike: 3,
+          event: { id: 'evt-1', eventType: 'dev_tools_detected', severity: 'high' },
+        });
 
-      expect(tenantPrisma.forTenant).toHaveBeenNthCalledWith(
-        1,
-        { organizationId: null, isSuperAdmin: true },
-        expect.any(Function),
-      );
-      expect(tenantPrisma.forTenant).toHaveBeenNthCalledWith(
-        2,
-        { organizationId: 'org-1', isSuperAdmin: false },
-        expect.any(Function),
-      );
-    });
+        await service.reportProctoringEvent(session, { eventType: 'dev_tools_detected' });
 
-    it('emits proctoring:flag after creating the event', async () => {
-      const createdEvent = { id: 'evt-1', eventType: 'tab_switch', severity: 'medium', occurredAt: new Date() };
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue(createdEvent) } };
-      mockBootstrapThenScoped(tx);
+        expect(monitoringGateway.emitProctoringFlag).toHaveBeenCalledWith('exam-1', expect.objectContaining({
+          attemptId: 'attempt-1', candidateId: 'cand-1', eventType: 'dev_tools_detected', severity: 'high',
+        }));
+      });
 
-      await service.reportProctoringEvent(session, { eventType: 'tab_switch' });
+      it('throws NotFoundException when no attempt has been started', async () => {
+        const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) } };
+        mockBootstrapThenScoped(tx);
 
-      expect(monitoringGateway.emitProctoringFlag).toHaveBeenCalledWith('exam-1', {
-        attemptId: 'attempt-1', candidateId: 'cand-1', eventType: 'tab_switch', severity: 'medium', occurredAt: createdEvent.occurredAt,
+        await expect(service.reportProctoringEvent(session, { eventType: 'tab_switch' })).rejects.toThrow(NotFoundException);
+        expect(settlement.registerBrowserActivityViolation).not.toHaveBeenCalled();
       });
     });
   });
@@ -1606,7 +1676,9 @@ describe('AttemptService', () => {
       const result = await service.webcamViolation(session, { reason: 'no_face', snapshot: 'x' });
 
       expect(result).toEqual({ strike: 1, status: 'paused' });
-      expect(settlement.registerWebcamViolation).toHaveBeenCalledWith(tx, attempt, 'no_face', 'x');
+      expect(blobStorage.uploadDataUri).toHaveBeenCalledWith(expect.stringContaining('webcam-snapshots/attempt-1-'), 'x');
+      const uploadedUrl = await blobStorage.uploadDataUri.mock.results[0].value;
+      expect(settlement.registerWebcamViolation).toHaveBeenCalledWith(tx, attempt, 'no_face', uploadedUrl);
     });
   });
 
@@ -1618,9 +1690,12 @@ describe('AttemptService', () => {
       const result = await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,abc' });
 
       expect(result).toEqual({ ok: true });
-      expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
-        data: { attemptId: 'attempt-1', eventType: 'webcam_snapshot', severity: 'low', metadataJson: JSON.stringify({ snapshot: 'data:image/jpeg;base64,abc' }) },
-      });
+      expect(blobStorage.uploadDataUri).toHaveBeenCalledWith(expect.stringContaining('webcam-snapshots/attempt-1-'), 'data:image/jpeg;base64,abc');
+      const created = tx.proctoringEvent.create.mock.calls[0][0];
+      expect(created.data.attemptId).toBe('attempt-1');
+      expect(created.data.eventType).toBe('webcam_snapshot');
+      expect(created.data.severity).toBe('low');
+      expect(JSON.parse(created.data.metadataJson).snapshot).toMatch(/^https:\/\/blob\.test\/webcam-snapshots\/attempt-1-/);
       expect(monitoringGateway.emitProctoringFlag).not.toHaveBeenCalled();
     });
   });
