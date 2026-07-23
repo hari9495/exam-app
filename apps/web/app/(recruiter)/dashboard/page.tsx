@@ -61,7 +61,7 @@ function StatCard({ icon: Icon, value, label, metric, color, delay }: StatCardPr
           </div>
         </div>
         <div className="border-t border-recruiter-border px-4 py-1.5">
-          <Select label="Trend window" value={days} onChange={setDays} options={TREND_WINDOW_OPTIONS} />
+          <Select label={`${label} trend`} value={days} onChange={setDays} options={TREND_WINDOW_OPTIONS} />
         </div>
       </Card>
     </motion.div>

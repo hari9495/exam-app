@@ -92,7 +92,7 @@ describe('DashboardPage', () => {
     expect(trendCallsBefore).toBeGreaterThan(0);
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('days=14'))).toBe(true);
 
-    const trigger = screen.getAllByLabelText('Trend window')[0];
+    const trigger = screen.getByLabelText('Total candidates trend');
     fireEvent.click(trigger);
     const option = await screen.findByText('30 days');
     fireEvent.click(option);
