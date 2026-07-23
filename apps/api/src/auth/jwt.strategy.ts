@@ -6,6 +6,8 @@ export interface JwtPayload {
   sub: string;
   organizationId: string | null;
   role: string;
+  actingSuperAdmin?: boolean;
+  actingOrgName?: string;
 }
 
 @Injectable()
@@ -19,6 +21,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   validate(payload: JwtPayload) {
-    return { userId: payload.sub, organizationId: payload.organizationId, role: payload.role };
+    return {
+      userId: payload.sub,
+      organizationId: payload.organizationId,
+      role: payload.role,
+      actingSuperAdmin: payload.actingSuperAdmin ?? false,
+    };
   }
 }

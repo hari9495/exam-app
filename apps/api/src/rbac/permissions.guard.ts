@@ -20,9 +20,12 @@ export class PermissionsGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest();
-    const user = request.user as { role: string } | undefined;
+    const user = request.user as { role: string; actingSuperAdmin?: boolean } | undefined;
     if (!user) {
       throw new ForbiddenException('Not authenticated');
+    }
+    if (user.actingSuperAdmin) {
+      return true;
     }
 
     const allKeys = [...(requiredAll ?? []), ...(requiredAny ?? [])];

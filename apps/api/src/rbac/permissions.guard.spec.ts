@@ -63,4 +63,22 @@ describe('PermissionsGuard', () => {
 
     await expect(guard.canActivate(mockContext({ role: 'candidate' }))).rejects.toThrow(ForbiddenException);
   });
+
+  it('bypasses the permission check entirely when actingSuperAdmin is true, even for an unrelated permission', async () => {
+    const reflector = { get: jest.fn().mockReturnValue(['candidate:manage']) } as unknown as Reflector;
+    const prisma = { rolePermission: { findMany: jest.fn() } };
+    const guard = new PermissionsGuard(reflector, prisma as any);
+
+    const result = await guard.canActivate(mockContext({ role: 'super_admin', actingSuperAdmin: true }));
+    expect(result).toBe(true);
+    expect(prisma.rolePermission.findMany).not.toHaveBeenCalled();
+  });
+
+  it('still enforces the normal permission table for a super_admin session that is not acting', async () => {
+    const reflector = { get: jest.fn().mockReturnValue(['candidate:manage']) } as unknown as Reflector;
+    const prisma = { rolePermission: { findMany: jest.fn().mockResolvedValue([]) } };
+    const guard = new PermissionsGuard(reflector, prisma as any);
+
+    await expect(guard.canActivate(mockContext({ role: 'super_admin' }))).rejects.toThrow(ForbiddenException);
+  });
 });

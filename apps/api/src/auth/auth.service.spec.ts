@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
-import { UnauthorizedException } from '@nestjs/common';
+import { UnauthorizedException, NotFoundException } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { createHash } from 'crypto';
 import { AuthService } from './auth.service';
@@ -291,6 +291,48 @@ describe('AuthService', () => {
       );
       expect(prisma.refreshToken.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ userId: 'user-1' }) }),
+      );
+    });
+  });
+
+  describe('switchIntoOrg', () => {
+    it('throws when the target org does not exist', async () => {
+      prisma.organization.findUnique.mockResolvedValue(null);
+
+      await expect(service.switchIntoOrg('super-admin-1', 'no-such-org')).rejects.toThrow(NotFoundException);
+    });
+
+    it('audit-logs the switch-in against the target org and returns an acting access token', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme Inc' });
+
+      const token = await service.switchIntoOrg('super-admin-1', 'org-1');
+
+      expect(audit.record).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: true },
+        { actorUserId: 'super-admin-1', action: 'super_admin.org_switch_in', entityType: 'organization', entityId: 'org-1' },
+      );
+      const payload = jwt.verify(token, { secret: 'test-secret' }) as {
+        sub: string; organizationId: string; role: string; actingSuperAdmin: boolean; actingOrgName: string;
+      };
+      expect(payload).toMatchObject({
+        sub: 'super-admin-1', organizationId: 'org-1', role: 'super_admin', actingSuperAdmin: true, actingOrgName: 'Acme Inc',
+      });
+    });
+  });
+
+  describe('recordSwitchOut', () => {
+    it('is a no-op when there is no org to exit', async () => {
+      await service.recordSwitchOut('super-admin-1', null);
+
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('audit-logs the switch-out against the exited org', async () => {
+      await service.recordSwitchOut('super-admin-1', 'org-1');
+
+      expect(audit.record).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: true },
+        { actorUserId: 'super-admin-1', action: 'super_admin.org_switch_out', entityType: 'organization', entityId: 'org-1' },
       );
     });
   });

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { randomBytes, createHash, randomUUID } from 'crypto';
@@ -203,16 +203,56 @@ export class AuthService {
     return this.issueTokenPair(userId, organizationId, role);
   }
 
+  async switchIntoOrg(actorUserId: string, targetOrgId: string): Promise<string> {
+    const org = await this.prisma.organization.findUnique({ where: { id: targetOrgId } });
+    if (!org) {
+      throw new NotFoundException(`Organization ${targetOrgId} not found`);
+    }
+
+    await this.audit.record(
+      { organizationId: targetOrgId, isSuperAdmin: true },
+      { actorUserId, action: 'super_admin.org_switch_in', entityType: 'organization', entityId: targetOrgId },
+    );
+
+    return this.signAccessToken({
+      sub: actorUserId,
+      organizationId: targetOrgId,
+      role: 'super_admin',
+      actingSuperAdmin: true,
+      actingOrgName: org.name,
+    });
+  }
+
+  async recordSwitchOut(actorUserId: string, exitedOrgId: string | null): Promise<void> {
+    if (!exitedOrgId) {
+      return;
+    }
+    await this.audit.record(
+      { organizationId: exitedOrgId, isSuperAdmin: true },
+      { actorUserId, action: 'super_admin.org_switch_out', entityType: 'organization', entityId: exitedOrgId },
+    );
+  }
+
+  private signAccessToken(payload: {
+    sub: string;
+    organizationId: string | null;
+    role: string;
+    actingSuperAdmin?: boolean;
+    actingOrgName?: string;
+  }): string {
+    return this.jwt.sign(payload, {
+      secret: process.env.JWT_ACCESS_SECRET,
+      expiresIn: `${process.env.ACCESS_TOKEN_TTL_SECONDS ?? 900}s` as `${number}s`,
+    });
+  }
+
   private async issueTokenPair(
     userId: string,
     organizationId: string | null,
     role: string,
     familyId: string = randomUUID(),
   ): Promise<TokenPair> {
-    const accessToken = this.jwt.sign(
-      { sub: userId, organizationId, role },
-      { secret: process.env.JWT_ACCESS_SECRET, expiresIn: `${process.env.ACCESS_TOKEN_TTL_SECONDS ?? 900}s` as `${number}s` },
-    );
+    const accessToken = this.signAccessToken({ sub: userId, organizationId, role });
     const refreshToken = this.jwt.sign(
       { sub: userId, familyId },
       { secret: process.env.JWT_REFRESH_SECRET, expiresIn: `${process.env.REFRESH_TOKEN_TTL_DAYS ?? 30}d` as `${number}d` },

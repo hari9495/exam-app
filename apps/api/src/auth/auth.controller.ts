@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, HttpCode, Param, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { createHash } from 'crypto';
@@ -10,6 +10,10 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SsoExchangeDto } from './dto/sso-exchange.dto';
 import { STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
+import { JwtAuthGuard } from './jwt-auth.guard';
+import { PermissionsGuard } from '../rbac/permissions.guard';
+import { RequirePermissions } from '../rbac/permissions.decorator';
+import { CurrentUserId } from './current-user-id.decorator';
 
 const REFRESH_COOKIE = 'refresh_token';
 
@@ -104,6 +108,24 @@ export class AuthController {
       await this.authService.logout(refreshToken);
     }
     res.clearCookie(REFRESH_COOKIE);
+    return { success: true };
+  }
+
+  @Post('super-admin/switch-into/:orgId')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('platform:manage_organizations')
+  async switchIntoOrg(@CurrentUserId() userId: string, @Param('orgId') orgId: string) {
+    const accessToken = await this.authService.switchIntoOrg(userId, orgId);
+    return { accessToken };
+  }
+
+  @Post('super-admin/switch-out')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  async switchOutOfOrg(@CurrentUserId() userId: string, @Req() req: Request) {
+    const user = req.user as { organizationId: string | null; actingSuperAdmin?: boolean };
+    await this.authService.recordSwitchOut(userId, user.actingSuperAdmin ? user.organizationId : null);
     return { success: true };
   }
 }
