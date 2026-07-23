@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import DashboardPage from './page';
 import { AuthProvider } from '../../../lib/auth-context';
 import { QueryProvider } from '../../../lib/query-provider';
@@ -37,6 +37,15 @@ describe('DashboardPage', () => {
       if (String(url).includes('/dashboard/summary')) {
         return new Response(JSON.stringify(summary), { status: 200 });
       }
+      if (String(url).includes('/dashboard/trend')) {
+        return new Response(JSON.stringify({ points: [] }), { status: 200 });
+      }
+      if (String(url).includes('/dashboard/exam-performance')) {
+        return new Response(JSON.stringify({ exams: [] }), { status: 200 });
+      }
+      if (String(url).includes('/dashboard/funnel')) {
+        return new Response(JSON.stringify({ invited: 0, started: 0, submitted: 0, passed: 0 }), { status: 200 });
+      }
       return new Response(JSON.stringify({}), { status: 200 });
     }) as unknown as typeof fetch;
   }
@@ -58,7 +67,6 @@ describe('DashboardPage', () => {
       stats: { totalCandidates: 248, invitationsSent: 312, attemptsInProgress: 17, pendingGradingCount: 9 },
       attention: { pendingGrading: [], recentProctoringFlags: [], staleInvitationCount: 0 },
       activity: [],
-      funnel: { invited: 312, started: 200, submitted: 180, passed: 90 },
       upcomingExams: [],
     });
     renderPage();
@@ -67,6 +75,31 @@ describe('DashboardPage', () => {
     expect(screen.getByText('312')).toBeInTheDocument();
     expect(screen.getByText('17')).toBeInTheDocument();
     expect(screen.getByText('9')).toBeInTheDocument();
+  });
+
+  it('refetches a stat card trend when its window dropdown changes', async () => {
+    mockSummaryFetch({
+      stats: { totalCandidates: 248, invitationsSent: 312, attemptsInProgress: 17, pendingGradingCount: 9 },
+      attention: { pendingGrading: [], recentProctoringFlags: [], staleInvitationCount: 0 },
+      activity: [],
+      upcomingExams: [],
+    });
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('248')).toBeInTheDocument());
+    const fetchMock = global.fetch as jest.Mock;
+    const trendCallsBefore = fetchMock.mock.calls.filter(([url]) => String(url).includes('/dashboard/trend?metric=candidates')).length;
+    expect(trendCallsBefore).toBeGreaterThan(0);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('days=14'))).toBe(true);
+
+    const trigger = screen.getAllByLabelText('Trend window')[0];
+    fireEvent.click(trigger);
+    const option = await screen.findByText('30 days');
+    fireEvent.click(option);
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/trend?metric=candidates&days=30'))).toBe(true),
+    );
   });
 
   it('renders attention items with their counts', async () => {
@@ -78,7 +111,6 @@ describe('DashboardPage', () => {
         staleInvitationCount: 6,
       },
       activity: [],
-      funnel: { invited: 0, started: 0, submitted: 0, passed: 0 },
       upcomingExams: [],
     });
     renderPage();
@@ -97,7 +129,6 @@ describe('DashboardPage', () => {
         staleInvitationCount: 0,
       },
       activity: [],
-      funnel: { invited: 0, started: 0, submitted: 0, passed: 0 },
       upcomingExams: [],
     });
     renderPage();
@@ -111,7 +142,6 @@ describe('DashboardPage', () => {
       stats: { totalCandidates: 0, invitationsSent: 0, attemptsInProgress: 0, pendingGradingCount: 0 },
       attention: { pendingGrading: [], recentProctoringFlags: [], staleInvitationCount: 0 },
       activity: [{ id: 'log-1', description: '3 candidates invited to Backend Round', occurredAt: '2026-07-17T10:00:00Z' }],
-      funnel: { invited: 0, started: 0, submitted: 0, passed: 0 },
       upcomingExams: [],
     });
     renderPage();
@@ -124,7 +154,6 @@ describe('DashboardPage', () => {
       stats: { totalCandidates: 0, invitationsSent: 0, attemptsInProgress: 0, pendingGradingCount: 0 },
       attention: { pendingGrading: [], recentProctoringFlags: [], staleInvitationCount: 0 },
       activity: [],
-      funnel: { invited: 100, started: 60, submitted: 55, passed: 22 },
       upcomingExams: [{ examId: 'exam-3', examTitle: 'Scheduled Round', availabilityWindowStart: '2026-08-01T09:00:00.000Z' }],
     });
     renderPage();
@@ -138,7 +167,6 @@ describe('DashboardPage', () => {
       stats: { totalCandidates: 0, invitationsSent: 0, attemptsInProgress: 0, pendingGradingCount: 0 },
       attention: { pendingGrading: [], recentProctoringFlags: [], staleInvitationCount: 0 },
       activity: [],
-      funnel: { invited: 0, started: 0, submitted: 0, passed: 0 },
       upcomingExams: [],
     });
     renderPage();

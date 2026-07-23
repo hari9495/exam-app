@@ -1,11 +1,14 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { motion, useReducedMotion } from 'framer-motion';
-import { BarChart, Bar, FunnelChart, Funnel, LabelList, ResponsiveContainer } from 'recharts';
+import { FunnelChart, Funnel, LabelList, ResponsiveContainer } from 'recharts';
 import { Users, Mail, Play, FileEdit, AlertTriangle, Clock, CheckCircle2, FileEdit as FileEditIcon, Plus, CalendarClock } from 'lucide-react';
-import { useDashboardSummary } from '../../../lib/hooks/useDashboard';
-import { Card, Button } from '../../../components/ui';
+import { useDashboardSummary, useDashboardTrend } from '../../../lib/hooks/useDashboard';
+import { DashboardTrendMetric } from '../../../lib/types';
+import { Card, Button, Select, type SelectOption } from '../../../components/ui';
+import { Sparkline } from '../../../components/charts/Sparkline';
 
 function activityIconFor(description: string) {
   if (description.includes('invited')) return Mail;
@@ -14,35 +17,49 @@ function activityIconFor(description: string) {
   return CheckCircle2;
 }
 
+const TREND_WINDOW_OPTIONS: SelectOption[] = [
+  { value: '7', label: '7 days' },
+  { value: '14', label: '14 days' },
+  { value: '30', label: '30 days' },
+];
+
 interface StatCardProps {
   icon: typeof Users;
   value: number;
   label: string;
-  iconBg: string;
-  iconColor: string;
-  accentBorder: string;
-  sparkline: number[];
-  barColor: string;
+  metric: DashboardTrendMetric;
+  color: string;
   delay: number;
-  prefersReducedMotion: boolean;
 }
 
-function StatCard({ icon: Icon, value, label, iconBg, iconColor, accentBorder, sparkline, barColor, delay, prefersReducedMotion }: StatCardProps) {
-  const sparkData = sparkline.map((v, i) => ({ i, v }));
+function StatCard({ icon: Icon, value, label, metric, color, delay }: StatCardProps) {
+  const [days, setDays] = useState('14');
+  const { data: trend } = useDashboardTrend(metric, Number(days) as 7 | 14 | 30);
+  const points = trend?.points ?? [];
+  const firstValue = points[0]?.value ?? 0;
+  const lastValue = points[points.length - 1]?.value ?? 0;
+  const changePercent = firstValue > 0 ? Math.round(((lastValue - firstValue) / firstValue) * 100) : lastValue > 0 ? 100 : 0;
+
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay, ease: 'easeOut' }} whileHover={{ y: -3 }}>
-      <Card className={`border-l-[3px] ${accentBorder} shadow-sm transition-shadow hover:shadow-md`}>
-        <div className={`mb-2 flex h-7 w-7 items-center justify-center rounded-md ${iconBg} ${iconColor}`}>
-          <Icon size={15} />
+      <Card className="overflow-hidden p-0">
+        <div className="p-4" style={{ background: `linear-gradient(135deg, ${color}1a, transparent)` }}>
+          <div className="mb-2 flex items-center justify-between">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md" style={{ backgroundColor: `${color}26`, color }}>
+              <Icon size={16} />
+            </div>
+            <span className={`text-xs font-semibold ${changePercent >= 0 ? 'text-status-success' : 'text-status-danger'}`}>
+              {changePercent >= 0 ? '▲' : '▼'} {Math.abs(changePercent)}%
+            </span>
+          </div>
+          <p className="text-2xl font-bold text-recruiter-text">{value}</p>
+          <p className="text-xs text-recruiter-text-tertiary">{label}</p>
+          <div className="mt-2 h-10 w-full">
+            <Sparkline data={points} color={color} />
+          </div>
         </div>
-        <p className="text-2xl font-bold text-recruiter-text">{value}</p>
-        <p className="text-xs text-recruiter-text-tertiary">{label}</p>
-        <div className="mt-2 h-5 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={sparkData}>
-              <Bar dataKey="v" fill={barColor} radius={[1, 1, 0, 0]} isAnimationActive={!prefersReducedMotion} />
-            </BarChart>
-          </ResponsiveContainer>
+        <div className="border-t border-recruiter-border px-4 py-1.5">
+          <Select label="Trend window" value={days} onChange={setDays} options={TREND_WINDOW_OPTIONS} />
         </div>
       </Card>
     </motion.div>
@@ -88,54 +105,10 @@ export default function DashboardPage() {
       <h1 className="mb-6 text-2xl font-semibold text-recruiter-text">Dashboard</h1>
 
       <div className="mb-5 grid grid-cols-4 gap-3">
-        <StatCard
-          icon={Users}
-          value={summary.stats.totalCandidates}
-          label="Total candidates"
-          iconBg="bg-status-success-bg"
-          iconColor="text-status-success"
-          accentBorder="border-status-success"
-          sparkline={[3, 5, 4, 7, 6]}
-          barColor="#22c55e"
-          delay={0}
-          prefersReducedMotion={!!prefersReducedMotion}
-        />
-        <StatCard
-          icon={Mail}
-          value={summary.stats.invitationsSent}
-          label="Invitations sent"
-          iconBg="bg-status-success-bg"
-          iconColor="text-status-success"
-          accentBorder="border-status-info"
-          sparkline={[4, 6, 5, 8, 7]}
-          barColor="#2955a3"
-          delay={0.04}
-          prefersReducedMotion={!!prefersReducedMotion}
-        />
-        <StatCard
-          icon={Play}
-          value={summary.stats.attemptsInProgress}
-          label="Attempts in progress"
-          iconBg="bg-status-warning-bg"
-          iconColor="text-status-warning"
-          accentBorder="border-status-warning"
-          sparkline={[2, 3, 5, 4, 6]}
-          barColor="#8a5a00"
-          delay={0.08}
-          prefersReducedMotion={!!prefersReducedMotion}
-        />
-        <StatCard
-          icon={FileEdit}
-          value={summary.stats.pendingGradingCount}
-          label="Pending grading"
-          iconBg="bg-status-danger-bg"
-          iconColor="text-status-danger"
-          accentBorder="border-status-danger"
-          sparkline={[1, 2, 1, 3, 2]}
-          barColor="#b23b3b"
-          delay={0.12}
-          prefersReducedMotion={!!prefersReducedMotion}
-        />
+        <StatCard icon={Users} value={summary.stats.totalCandidates} label="Total candidates" metric="candidates" color="#0d9488" delay={0} />
+        <StatCard icon={Mail} value={summary.stats.invitationsSent} label="Invitations sent" metric="invitations" color="#334155" delay={0.04} />
+        <StatCard icon={Play} value={summary.stats.attemptsInProgress} label="Attempts in progress" metric="attempts" color="#d4a017" delay={0.08} />
+        <StatCard icon={FileEdit} value={summary.stats.pendingGradingCount} label="Pending grading" metric="pendingGrading" color="#f2765f" delay={0.12} />
       </div>
 
       <div className="mb-5 grid grid-cols-2 gap-4">
