@@ -39,7 +39,7 @@ describe('QuestionGenerationClient', () => {
     aiProvider.generateStructured.mockResolvedValue({});
 
     await expect(client.generate('Math', 'easy', ['single_mcq'], 1, aiProvider as unknown as AiProvider)).rejects.toThrow(
-      'AI provider returned malformed generated questions',
+      'AI provider returned a malformed set of generated questions',
     );
   });
 });

@@ -52,6 +52,10 @@ export default function IntegrationsSettingsPage() {
     if (integrations?.webhookUrl != null) setWebhookUrlInput(integrations.webhookUrl);
   }, [integrations?.webhookUrl]);
 
+  useEffect(() => {
+    if (integrations?.aiProvider != null) setAiProvider(integrations.aiProvider);
+  }, [integrations?.aiProvider]);
+
   const generateApiKey = useGenerateApiKey();
   const revokeApiKey = useRevokeApiKey();
   const updateWebhookUrl = useUpdateWebhookUrl();

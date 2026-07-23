@@ -119,10 +119,10 @@ describe('IntegrationsSettingsPage', () => {
     await screen.findByLabelText('AI API key');
 
     fireEvent.change(screen.getByLabelText('AI API key'), { target: { value: 'sk-ant-bad-key' } });
-    mockedApiFetch.mockRejectedValueOnce(new Error('That API key was rejected by Anthropic: authentication_error'));
+    mockedApiFetch.mockRejectedValueOnce(new Error('That API key was rejected: authentication_error'));
     fireEvent.click(screen.getByRole('button', { name: 'Save AI API key' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('That API key was rejected by Anthropic: authentication_error');
+    expect(await screen.findByRole('alert')).toHaveTextContent('That API key was rejected: authentication_error');
   });
 
   it('shows only the API key field for the Anthropic provider by default', async () => {
@@ -168,6 +168,40 @@ describe('IntegrationsSettingsPage', () => {
         'token',
       ),
     );
+  });
+
+  it('seeds the provider selector from the fetched integrations, showing the Azure fields for openai-compatible orgs', async () => {
+    mockedApiFetch.mockImplementation((path: string) => {
+      if (path === '/organizations/integrations') {
+        return Promise.resolve({
+          smtpConfigured: false,
+          aiKeyConfigured: true,
+          aiProvider: 'openai-compatible',
+          aiBaseUrl: 'https://example.openai.azure.com/openai/v1',
+          aiModelFast: 'gpt-fast',
+          aiModelStandard: 'gpt-standard',
+          smtpHost: null,
+          smtpPort: null,
+          emailFromAddress: null,
+          apiKeyConfigured: false,
+          apiKeyPrefix: null,
+          apiKeyCreatedAt: null,
+          webhookConfigured: false,
+          webhookUrl: null,
+        });
+      }
+      if (path === '/organizations/integrations/webhook-deliveries') {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve({});
+    });
+
+    renderPage();
+
+    expect(await screen.findByLabelText('Base URL')).toBeInTheDocument();
+    expect(screen.getByLabelText('Fast-tier model/deployment name')).toBeInTheDocument();
+    expect(screen.getByLabelText('Standard-tier model/deployment name')).toBeInTheDocument();
+    expect(screen.getByLabelText('AI provider')).toHaveTextContent('OpenAI-compatible');
   });
 
   it('shows an inline error when generating the API key fails', async () => {

@@ -68,7 +68,7 @@ export class QuestionGenerationClient {
     });
 
     if (!Array.isArray(result.questions)) {
-      throw new Error('AI provider returned malformed generated questions');
+      throw new Error('AI provider returned a malformed set of generated questions');
     }
     return result.questions as GeneratedQuestion[];
   }
