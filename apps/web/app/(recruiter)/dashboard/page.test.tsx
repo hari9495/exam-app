@@ -102,6 +102,57 @@ describe('DashboardPage', () => {
     );
   });
 
+  it('renders the exam performance chart and refetches when its filters change', async () => {
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/dashboard/summary')) {
+        return new Response(
+          JSON.stringify({
+            stats: { totalCandidates: 0, invitationsSent: 0, attemptsInProgress: 0, pendingGradingCount: 0 },
+            attention: { pendingGrading: [], recentProctoringFlags: [], staleInvitationCount: 0 },
+            activity: [],
+            upcomingExams: [],
+            // ponytail: page.tsx still reads summary.funnel (pre-existing Task 8 leftover,
+            // removed only in Task 10). Included here so this new test isn't blocked by
+            // that unrelated, already-known bug; not a statement about the funnel feature.
+            funnel: { invited: 0, started: 0, submitted: 0, passed: 0 },
+          }),
+          { status: 200 },
+        );
+      }
+      if (String(url).includes('/dashboard/trend')) {
+        return new Response(JSON.stringify({ points: [] }), { status: 200 });
+      }
+      if (String(url).includes('/dashboard/exam-performance')) {
+        return new Response(
+          JSON.stringify({ exams: [{ examId: 'exam-1', examTitle: 'Backend Round', passRate: 70, avgScore: 62, candidateCount: 12 }] }),
+          { status: 200 },
+        );
+      }
+      if (String(url).includes('/dashboard/funnel')) {
+        return new Response(JSON.stringify({ invited: 0, started: 0, submitted: 0, passed: 0 }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Exam performance')).toBeInTheDocument());
+
+    const fetchMock = global.fetch as jest.Mock;
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/exam-performance?limit=5&window=all'))).toBe(true);
+
+    const limitTrigger = screen.getByLabelText('Top exams');
+    fireEvent.click(limitTrigger);
+    const tenOption = await screen.findByText('Top 10');
+    fireEvent.click(tenOption);
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/exam-performance?limit=10&window=all'))).toBe(true),
+    );
+  });
+
   it('renders attention items with their counts', async () => {
     mockSummaryFetch({
       stats: { totalCandidates: 0, invitationsSent: 0, attemptsInProgress: 0, pendingGradingCount: 4 },

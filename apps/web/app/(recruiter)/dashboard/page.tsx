@@ -5,10 +5,11 @@ import Link from 'next/link';
 import { motion, useReducedMotion } from 'framer-motion';
 import { FunnelChart, Funnel, LabelList, ResponsiveContainer } from 'recharts';
 import { Users, Mail, Play, FileEdit, AlertTriangle, Clock, CheckCircle2, FileEdit as FileEditIcon, Plus, CalendarClock } from 'lucide-react';
-import { useDashboardSummary, useDashboardTrend } from '../../../lib/hooks/useDashboard';
+import { useDashboardExamPerformance, useDashboardSummary, useDashboardTrend } from '../../../lib/hooks/useDashboard';
 import { DashboardTrendMetric } from '../../../lib/types';
 import { Card, Button, Select, type SelectOption } from '../../../components/ui';
 import { Sparkline } from '../../../components/charts/Sparkline';
+import { GroupedBarChart } from '../../../components/charts/GroupedBarChart';
 
 function activityIconFor(description: string) {
   if (description.includes('invited')) return Mail;
@@ -63,6 +64,52 @@ function StatCard({ icon: Icon, value, label, metric, color, delay }: StatCardPr
         </div>
       </Card>
     </motion.div>
+  );
+}
+
+const PERFORMANCE_LIMIT_OPTIONS: SelectOption[] = [
+  { value: '5', label: 'Top 5' },
+  { value: '10', label: 'Top 10' },
+  { value: 'all', label: 'All' },
+];
+
+const WINDOW_OPTIONS: SelectOption[] = [
+  { value: 'all', label: 'All time' },
+  { value: '30d', label: 'Last 30 days' },
+  { value: '90d', label: 'Last 90 days' },
+];
+
+function ExamPerformanceCard() {
+  const [limit, setLimit] = useState('5');
+  const [windowValue, setWindowValue] = useState('all');
+  const { data } = useDashboardExamPerformance(limit === 'all' ? 'all' : (Number(limit) as 5 | 10), windowValue as 'all' | '30d' | '90d');
+  const exams = data?.exams ?? [];
+
+  const groups = exams.map((exam) => ({
+    label: exam.examTitle,
+    series: [
+      { key: 'passRate', value: exam.passRate, color: '#0d9488' },
+      { key: 'avgScore', value: exam.avgScore, color: '#d4a017' },
+    ],
+  }));
+
+  return (
+    <Card>
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-bold text-recruiter-text">Exam performance</h2>
+        <div className="flex gap-2">
+          <Select label="Top exams" value={limit} onChange={setLimit} options={PERFORMANCE_LIMIT_OPTIONS} />
+          <Select label="Performance window" value={windowValue} onChange={setWindowValue} options={WINDOW_OPTIONS} />
+        </div>
+      </div>
+      {groups.length === 0 ? (
+        <p className="text-sm text-recruiter-text-tertiary">No settled attempts yet.</p>
+      ) : (
+        <div className="h-64 w-full">
+          <GroupedBarChart groups={groups} />
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -148,6 +195,12 @@ export default function DashboardPage() {
               </ul>
             )}
           </Card>
+        </motion.div>
+      </div>
+
+      <div className="mb-5">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.2 }}>
+          <ExamPerformanceCard />
         </motion.div>
       </div>
 
