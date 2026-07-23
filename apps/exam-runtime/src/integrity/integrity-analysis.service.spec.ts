@@ -20,10 +20,12 @@ describe('IntegrityAnalysisService', () => {
   // "current" and "counterpart" so similarityScore() returns 1.0 without needing to fake the pure function.
   const LONG_CODE = 'function calculateSum(a, b) { return a + b; } '.repeat(6);
 
+  const fakeAiProvider = { generateStructured: jest.fn() };
+
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
     integrityNarrativeClient = { writeNarrative: jest.fn() };
-    aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue('test-api-key') };
+    aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue(fakeAiProvider) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         IntegrityAnalysisService,
@@ -104,7 +106,7 @@ describe('IntegrityAnalysisService', () => {
     expect(integrityNarrativeClient.writeNarrative).toHaveBeenCalledWith(
       [{ type: 'webcam_violations', severity: 'medium', detail: '1 webcam violation(s) recorded' }],
       { examTitle: 'Backend Engineer Exam', level: 'review' },
-      'test-api-key',
+      fakeAiProvider,
     );
     expect(write.integrityAnalysis.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -126,7 +128,7 @@ describe('IntegrityAnalysisService', () => {
     expect(integrityNarrativeClient.writeNarrative).toHaveBeenCalledWith(
       expect.any(Array),
       { examTitle: 'Backend Engineer Exam', level: 'high_concern' },
-      'test-api-key',
+      fakeAiProvider,
     );
     expect(write.integrityAnalysis.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ create: expect.objectContaining({ level: 'high_concern' }) }),
@@ -195,7 +197,7 @@ describe('IntegrityAnalysisService', () => {
     expect(integrityNarrativeClient.writeNarrative).toHaveBeenCalledWith(
       [{ type: 'large_paste', severity: 'medium', detail: 'Pasted 250 characters in a single paste', questionId: 'q1' }],
       expect.anything(),
-      'test-api-key',
+      fakeAiProvider,
     );
   });
 
