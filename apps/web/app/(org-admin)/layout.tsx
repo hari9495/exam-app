@@ -56,10 +56,10 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
     return <p className="p-8 text-sm text-recruiter-text-tertiary">Loading…</p>;
   }
 
-  // Real name from useCurrentUser() once loaded; falls back to a per-role
-  // placeholder only while loading or if the user has never set one.
   const navItems = actingSuperAdmin ? [...BASE_NAV_ITEMS, ...ACTING_EXTRA_NAV_ITEMS] : BASE_NAV_ITEMS;
 
+  // Real name from useCurrentUser() once loaded; falls back to a per-role
+  // placeholder only while loading or if the user has never set one.
   const displayName = currentUser?.name || 'Org Admin';
   const initials = displayName
     .split(' ')
