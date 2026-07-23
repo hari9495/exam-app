@@ -11,6 +11,7 @@ import { useAuth } from '../../lib/auth-context';
 const NAV_LINKS = [
   { href: '/organizations', label: 'Organizations' },
   { href: '/platform-admins', label: 'Platform Admins' },
+  { href: '/users', label: 'All Users' },
 ];
 
 export default function PlatformLayout({ children }: { children: React.ReactNode }) {

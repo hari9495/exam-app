@@ -30,6 +30,10 @@ export interface StaffUser {
   createdAt: string;
 }
 
+export interface DirectoryUser extends StaffUser {
+  organizationName: string | null;
+}
+
 export interface AuditLogEntry {
   id: string;
   action: string;
