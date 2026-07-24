@@ -120,14 +120,9 @@ export default function Home() {
         </div>
       </section>
 
-      <footer className="flex flex-col items-center justify-between gap-4 border-t border-recruiter-border px-6 py-8 text-sm text-recruiter-text-secondary md:flex-row md:px-16">
-        <div className="flex items-center gap-2">
-          <img src="/logo.png" alt="Prudent Hire" className="h-6 w-6 object-contain" />
-          <span>&copy; {new Date().getFullYear()} Prudent Hire</span>
-        </div>
-        <Link href="/login" className="font-medium text-primary hover:underline">
-          Login
-        </Link>
+      <footer className="flex items-center justify-center gap-2 border-t border-recruiter-border px-6 py-8 text-sm text-recruiter-text-secondary md:px-16">
+        <img src="/logo.png" alt="Prudent Hire" className="h-6 w-6 object-contain" />
+        <span>&copy; {new Date().getFullYear()} Prudent Hire</span>
       </footer>
     </main>
   );

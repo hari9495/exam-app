@@ -29,10 +29,9 @@ describe('Home (landing page)', () => {
     expect(screen.getByRole('heading', { name: 'Review AI-assisted results' })).toBeInTheDocument();
   });
 
-  it('shows a footer Login link', () => {
+  it('shows the footer copyright without a redundant Login link (nav already has one)', () => {
     render(<Home />);
-    const links = screen.getAllByRole('link', { name: 'Login' });
-    expect(links.length).toBeGreaterThanOrEqual(2);
-    links.forEach((link) => expect(link).toHaveAttribute('href', '/login'));
+    expect(screen.getByText(`© ${new Date().getFullYear()} Prudent Hire`)).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Login' })).toHaveLength(1);
   });
 });
