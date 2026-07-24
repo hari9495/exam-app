@@ -46,10 +46,8 @@ export default function ForgotPasswordPage() {
             </div>
           )}
           <blockquote className="max-w-md border-l-2 border-primary pl-5">
-            <p className="text-xl font-medium leading-relaxed text-recruiter-text">
-              Great hires start with great signal.
-            </p>
-            <p className="mt-1 text-base text-recruiter-text-secondary">We help you see it clearly.</p>
+            <p className="text-xl font-medium leading-relaxed text-recruiter-text">Automate early screens.</p>
+            <p className="mt-1 text-base text-recruiter-text-secondary">Focus human judgment on what matters.</p>
           </blockquote>
         </div>
 
