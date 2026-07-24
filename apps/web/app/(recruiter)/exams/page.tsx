@@ -4,11 +4,12 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Plus, Search, MoreHorizontal } from 'lucide-react';
-import { useExams, useDuplicateExam } from '../../../lib/hooks/useExams';
+import { useExams, useDuplicateExam, useArchiveExam } from '../../../lib/hooks/useExams';
 import {
   CardGrid,
   StatusBadge,
   Button,
+  Modal,
   useToast,
   DropdownMenu,
   DropdownMenuTrigger,
@@ -40,10 +41,12 @@ const EXAM_SORT_OPTIONS: SortOption<ExamListItem>[] = [
 export default function ExamsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [examPendingDelete, setExamPendingDelete] = useState<ExamListItem | null>(null);
   const { data: examsResponse, isLoading, isError } = useExams(undefined, { page, pageSize: 20, search: search || undefined });
   const router = useRouter();
   const { toast } = useToast();
   const duplicateExam = useDuplicateExam();
+  const archiveExam = useArchiveExam();
 
   function handleDuplicate(examId: string) {
     duplicateExam.mutate(examId, {
@@ -52,6 +55,20 @@ export default function ExamsPage() {
         router.push(`/exams/${created.id}/edit`);
       },
       onError: (error) => toast(error instanceof Error ? error.message : 'Failed to duplicate exam.', 'error'),
+    });
+  }
+
+  function handleConfirmDelete() {
+    if (!examPendingDelete) return;
+    archiveExam.mutate(examPendingDelete.id, {
+      onSuccess: () => {
+        toast('Exam deleted.');
+        setExamPendingDelete(null);
+      },
+      onError: (error) => {
+        toast(error instanceof Error ? error.message : 'Failed to delete exam.', 'error');
+        setExamPendingDelete(null);
+      },
     });
   }
 
@@ -101,6 +118,9 @@ export default function ExamsPage() {
               </DropdownMenuTrigger>
               <DropdownMenuContent>
                 <DropdownMenuItem onSelect={() => handleDuplicate(exam.id)}>Duplicate</DropdownMenuItem>
+                <DropdownMenuItem className="text-status-danger" onSelect={() => setExamPendingDelete(exam)}>
+                  Delete
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -164,6 +184,23 @@ export default function ExamsPage() {
         sortOptions={EXAM_SORT_OPTIONS}
       />
       <Pagination page={examsResponse?.page ?? 1} totalPages={examsResponse?.totalPages ?? 1} onPageChange={setPage} />
+
+      {examPendingDelete && (
+        <Modal open title="Delete exam" onClose={() => setExamPendingDelete(null)}>
+          <p className="mb-4 text-sm text-recruiter-text-secondary">
+            Delete &ldquo;{examPendingDelete.title}&rdquo;? Candidates and results already collected for this exam are kept, but it
+            will no longer appear in your exam list.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setExamPendingDelete(null)}>
+              Cancel
+            </Button>
+            <Button variant="danger" loading={archiveExam.isPending} onClick={handleConfirmDelete}>
+              Delete
+            </Button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

@@ -93,3 +93,13 @@ export function useDuplicateExam() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['exams'] }),
   });
 }
+
+export function useArchiveExam() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (examId: string) =>
+      apiFetch(`/exams/${examId}`, { method: 'DELETE' }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['exams'] }),
+  });
+}

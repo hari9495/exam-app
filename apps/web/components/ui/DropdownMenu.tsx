@@ -2,6 +2,7 @@
 
 import * as RadixDropdown from '@radix-ui/react-dropdown-menu';
 import { ComponentPropsWithoutRef, ReactNode } from 'react';
+import clsx from 'clsx';
 
 export function DropdownMenu({ children }: { children: ReactNode }) {
   return <RadixDropdown.Root>{children}</RadixDropdown.Root>;
@@ -31,11 +32,19 @@ export function DropdownMenuContent({ children }: { children: ReactNode }) {
   );
 }
 
-export function DropdownMenuItem({ children, onSelect }: { children: ReactNode; onSelect: () => void }) {
+export function DropdownMenuItem({
+  children,
+  onSelect,
+  className,
+}: {
+  children: ReactNode;
+  onSelect: () => void;
+  className?: string;
+}) {
   return (
     <RadixDropdown.Item
       onSelect={onSelect}
-      className="cursor-pointer rounded px-3 py-2 text-sm outline-none data-[highlighted]:bg-gray-100"
+      className={clsx('cursor-pointer rounded px-3 py-2 text-sm outline-none data-[highlighted]:bg-gray-100', className)}
     >
       {children}
     </RadixDropdown.Item>

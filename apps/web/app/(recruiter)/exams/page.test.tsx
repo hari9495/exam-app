@@ -215,6 +215,113 @@ describe('ExamsPage', () => {
     expect(screen.getByText('20')).toBeInTheDocument();
   });
 
+  it('deletes an exam after confirming in the dialog', async () => {
+    global.fetch = jest.fn(async (url, options) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).endsWith('/exams/exam-1') && options?.method === 'DELETE') {
+        return new Response(JSON.stringify({ id: 'exam-1', status: 'archived' }), { status: 200 });
+      }
+      if (String(url).includes('/exams')) {
+        return new Response(
+          JSON.stringify({ data: [{ id: 'exam-1', title: 'Backend Round', status: 'draft', sections: [] }], total: 1, page: 1, pageSize: 20, totalPages: 1 }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ExamsPage />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Backend Round')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await userEvent.click(await screen.findByText('Delete'));
+
+    expect(screen.getByText('Delete exam')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(screen.getByText('Exam deleted.')).toBeInTheDocument());
+    expect(screen.queryByText('Delete exam')).not.toBeInTheDocument();
+  });
+
+  it('shows an error toast and keeps the exam when deletion fails', async () => {
+    global.fetch = jest.fn(async (url, options) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).endsWith('/exams/exam-1') && options?.method === 'DELETE') {
+        return new Response(JSON.stringify({ message: 'Exam not found' }), { status: 404 });
+      }
+      if (String(url).includes('/exams')) {
+        return new Response(
+          JSON.stringify({ data: [{ id: 'exam-1', title: 'Backend Round', status: 'draft', sections: [] }], total: 1, page: 1, pageSize: 20, totalPages: 1 }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ExamsPage />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Backend Round')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await userEvent.click(await screen.findByText('Delete'));
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(screen.getByText('Exam not found')).toBeInTheDocument());
+  });
+
+  it('closes the delete dialog without calling the API when cancelled', async () => {
+    const fetchMock = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/exams')) {
+        return new Response(
+          JSON.stringify({ data: [{ id: 'exam-1', title: 'Backend Round', status: 'draft', sections: [] }], total: 1, page: 1, pageSize: 20, totalPages: 1 }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ExamsPage />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Backend Round')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await userEvent.click(await screen.findByText('Delete'));
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByText('Delete exam')).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some((call) => call[1]?.method === 'DELETE')).toBe(false);
+  });
+
   it('sends the typed search text to the server as a query param instead of filtering client-side', async () => {
     const fetchMock = jest.fn(async (url) => {
       if (String(url).endsWith('/auth/refresh')) {
