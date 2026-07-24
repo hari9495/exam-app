@@ -41,7 +41,7 @@ export default function ResetPasswordPage() {
   return (
     <MotionConfig reducedMotion="user">
       <main className="grid md:min-h-screen md:grid-cols-2">
-        <div className="relative hidden flex-col items-start justify-center gap-6 border-r border-recruiter-border bg-white px-16 py-12 md:flex">
+        <div className="relative hidden flex-col items-center justify-center gap-6 border-r border-recruiter-border bg-white px-16 py-12 md:flex">
           <div className="flex items-center gap-4">
             <img src="/logo.png" alt="Prudent Hire" className="h-16 w-16 object-contain" />
             <p className="text-4xl font-bold tracking-tight text-recruiter-text">Prudent Hire</p>

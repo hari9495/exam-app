@@ -36,7 +36,7 @@ export default function ForgotPasswordPage() {
   return (
     <MotionConfig reducedMotion="user">
       <main className="grid md:min-h-screen md:grid-cols-2">
-        <div className="relative hidden flex-col items-start justify-center gap-6 border-r border-recruiter-border bg-white px-16 py-12 md:flex">
+        <div className="relative hidden flex-col items-center justify-center gap-6 border-r border-recruiter-border bg-white px-16 py-12 md:flex">
           {branding?.logoUrl ? (
             <img src={branding.logoUrl} alt="Organization logo" className="max-h-16" />
           ) : (
