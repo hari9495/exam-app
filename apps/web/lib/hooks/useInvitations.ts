@@ -9,7 +9,10 @@ export function useBulkInvite(examId: string) {
   return useMutation({
     mutationFn: (candidateIds: string[]): Promise<BulkInviteResult> =>
       apiFetch(`/exams/${examId}/invitations`, { method: 'POST', body: JSON.stringify({ candidateIds }) }, accessToken ?? undefined),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['candidates'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['invitations', examId] });
+    },
   });
 }
 

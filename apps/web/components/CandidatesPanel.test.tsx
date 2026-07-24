@@ -5,6 +5,11 @@ import { ToastProvider } from './ui';
 import { CandidatesPanel } from './CandidatesPanel';
 
 jest.mock('../lib/hooks/useInvitations', () => ({ useExamInvitations: jest.fn(), useUpdateAccommodation: jest.fn() }));
+jest.mock('./InviteCandidatesModal', () => ({
+  InviteCandidatesModal: ({ existingCandidateIds }: { existingCandidateIds: string[] }) => (
+    <div data-testid="invite-modal">{JSON.stringify(existingCandidateIds)}</div>
+  ),
+}));
 
 function renderPanel(examId = 'exam-1') {
   render(
@@ -74,5 +79,20 @@ describe('CandidatesPanel', () => {
 
     expect(screen.getByText('50%')).toBeInTheDocument();
     expect(screen.queryByRole('spinbutton', { name: /extra time.*bob/i })).not.toBeInTheDocument();
+  });
+
+  it('opens the invite-candidates modal, passing the already-invited candidate ids to exclude', async () => {
+    (useExamInvitations as jest.Mock).mockReturnValue({
+      data: [{ id: 'inv-1', extraTimePercent: 0, attempt: null, candidateId: 'cand-1', candidate: { id: 'cand-1', name: 'Alice', email: 'alice@example.com' } }],
+      isLoading: false,
+    });
+    (useUpdateAccommodation as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
+
+    renderPanel();
+
+    expect(screen.queryByTestId('invite-modal')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Invite candidates' }));
+
+    expect(screen.getByTestId('invite-modal')).toHaveTextContent('["cand-1"]');
   });
 });

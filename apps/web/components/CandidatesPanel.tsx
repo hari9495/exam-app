@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { Table, useToast, type Column } from './ui';
+import { Table, Button, useToast, type Column } from './ui';
 import { useExamInvitations, useUpdateAccommodation } from '../lib/hooks/useInvitations';
+import { InviteCandidatesModal } from './InviteCandidatesModal';
 import { Invitation } from '../lib/types';
 
 function AccommodationCell({ invitation, onSave, isPending }: { invitation: Invitation; onSave: (value: number) => void; isPending: boolean }) {
@@ -40,6 +41,7 @@ export function CandidatesPanel({ examId }: { examId: string }) {
   const { data: invitations, isLoading } = useExamInvitations(examId);
   const updateAccommodation = useUpdateAccommodation(examId);
   const { toast } = useToast();
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
 
   const columns: Column<Invitation>[] = [
     { key: 'name', header: 'Candidate', render: (row) => row.candidate.name },
@@ -70,5 +72,20 @@ export function CandidatesPanel({ examId }: { examId: string }) {
     return <p className="text-sm text-gray-500">Loading…</p>;
   }
 
-  return <Table columns={columns} rows={invitations ?? []} rowKey={(row) => row.id} emptyMessage="No candidates invited yet." />;
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex justify-end">
+        <Button onClick={() => setInviteModalOpen(true)}>Invite candidates</Button>
+      </div>
+      <Table columns={columns} rows={invitations ?? []} rowKey={(row) => row.id} emptyMessage="No candidates invited yet." />
+      {inviteModalOpen && (
+        <InviteCandidatesModal
+          examId={examId}
+          open
+          onClose={() => setInviteModalOpen(false)}
+          existingCandidateIds={(invitations ?? []).map((invitation) => invitation.candidateId)}
+        />
+      )}
+    </div>
+  );
 }
