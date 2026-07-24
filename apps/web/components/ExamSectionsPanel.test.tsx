@@ -173,6 +173,210 @@ describe('ExamSectionsPanel', () => {
     expect(await screen.findByTestId('picker')).toHaveTextContent('existingQuestionIds:["q1"]');
   });
 
+  it("shows each section's question titles and marks once questions have been added", async () => {
+    const fetchMock = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/exams/exam-1')) {
+        return new Response(
+          JSON.stringify({
+            id: 'exam-1',
+            title: 'Backend Round',
+            instructions: null,
+            status: 'draft',
+            durationMinutes: 60,
+            passCriteriaPercent: 40,
+            randomizeOrder: false,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            sections: [
+              {
+                id: 's-1',
+                examId: 'exam-1',
+                title: 'Section One',
+                orderIndex: 0,
+                selectionMode: 'fixed',
+                poolSize: null,
+                poolDifficulty: null,
+                targetDurationMinutes: null,
+                questions: [
+                  { questionId: 'q1', question: { text: 'What is 2+2?', marks: 5 } },
+                  { questionId: 'q2', question: { text: 'Reverse a string', marks: 10 } },
+                ],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ExamSectionsPanel examId="exam-1" />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('What is 2+2?')).toBeInTheDocument());
+    expect(screen.getByText('Reverse a string')).toBeInTheDocument();
+    expect(screen.getByText('5 marks')).toBeInTheDocument();
+    expect(screen.getByText('10 marks')).toBeInTheDocument();
+  });
+
+  it('shows a pool summary instead of a question list for a pool-mode section', async () => {
+    const fetchMock = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/exams/exam-1')) {
+        return new Response(
+          JSON.stringify({
+            id: 'exam-1',
+            title: 'Backend Round',
+            instructions: null,
+            status: 'draft',
+            durationMinutes: 60,
+            passCriteriaPercent: 40,
+            randomizeOrder: false,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            sections: [
+              {
+                id: 's-1',
+                examId: 'exam-1',
+                title: 'Reasoning',
+                orderIndex: 0,
+                selectionMode: 'pool',
+                poolSize: 5,
+                poolDifficulty: 'medium',
+                targetDurationMinutes: null,
+                questions: [],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ExamSectionsPanel examId="exam-1" />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Pool of 5 questions (medium)')).toBeInTheDocument());
+  });
+
+  it('duplicates a section via the more-actions menu', async () => {
+    const fetchMock = jest.fn(async (url, options) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).endsWith('/exams/exam-1/sections/s-1/duplicate') && options?.method === 'POST') {
+        return new Response(JSON.stringify({ id: 's-2', title: 'Section One (Copy)' }), { status: 201 });
+      }
+      if (String(url).includes('/exams/exam-1')) {
+        return new Response(
+          JSON.stringify({
+            id: 'exam-1',
+            title: 'Backend Round',
+            instructions: null,
+            status: 'draft',
+            durationMinutes: 60,
+            passCriteriaPercent: 40,
+            randomizeOrder: false,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            sections: [
+              { id: 's-1', examId: 'exam-1', title: 'Section One', orderIndex: 0, selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: null, questions: [] },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ExamSectionsPanel examId="exam-1" />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Section One')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await userEvent.click(await screen.findByText('Duplicate'));
+
+    await waitFor(() => expect(screen.getByText('Section duplicated.')).toBeInTheDocument());
+  });
+
+  it('deletes a section after confirming in the dialog', async () => {
+    const fetchMock = jest.fn(async (url, options) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).endsWith('/exams/exam-1/sections/s-1') && options?.method === 'DELETE') {
+        return new Response(JSON.stringify({}), { status: 200 });
+      }
+      if (String(url).includes('/exams/exam-1')) {
+        return new Response(
+          JSON.stringify({
+            id: 'exam-1',
+            title: 'Backend Round',
+            instructions: null,
+            status: 'draft',
+            durationMinutes: 60,
+            passCriteriaPercent: 40,
+            randomizeOrder: false,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            sections: [
+              { id: 's-1', examId: 'exam-1', title: 'Section One', orderIndex: 0, selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: null, questions: [] },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ExamSectionsPanel examId="exam-1" />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Section One')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await userEvent.click(await screen.findByText('Delete'));
+
+    expect(screen.getByText('Delete section')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(screen.getByText('Section deleted.')).toBeInTheDocument());
+    expect(screen.queryByText('Delete section')).not.toBeInTheDocument();
+  });
+
   it('locks section/question editing on a published exam that already has invited candidates', async () => {
     const fetchMock = jest.fn(async (url) => {
       if (String(url).endsWith('/auth/refresh')) {
@@ -224,6 +428,7 @@ describe('ExamSectionsPanel', () => {
     await waitFor(() => expect(screen.getByText('Section One')).toBeInTheDocument());
     expect(screen.getByText(/locked because candidates have already been invited/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Manage questions' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('New section title')).not.toBeInTheDocument();
   });
 });

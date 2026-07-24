@@ -30,3 +30,23 @@ export function useReplaceSectionQuestions(examId: string, sectionId: string) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['exams', examId] }),
   });
 }
+
+export function useDeleteSection(examId: string) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sectionId: string) =>
+      apiFetch(`/exams/${examId}/sections/${sectionId}`, { method: 'DELETE' }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['exams', examId] }),
+  });
+}
+
+export function useDuplicateSection(examId: string) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sectionId: string) =>
+      apiFetch(`/exams/${examId}/sections/${sectionId}/duplicate`, { method: 'POST' }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['exams', examId] }),
+  });
+}

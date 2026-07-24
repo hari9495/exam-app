@@ -472,6 +472,53 @@ export class ExamsService {
     });
   }
 
+  async duplicateSection(context: TenantContext, examId: string, sectionId: string): Promise<ExamSection> {
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const exam = await tx.exam.findFirst({ where: { id: examId, organizationId: context.organizationId as string } });
+      if (!exam) {
+        throw new NotFoundException(`Exam ${examId} not found`);
+      }
+      await this.assertSectionsMutable(tx, examId, exam.status);
+      const section = await tx.examSection.findFirst({
+        where: { id: sectionId, examId },
+        include: { questions: { orderBy: { orderIndex: 'asc' } }, poolTags: true },
+      });
+      if (!section) {
+        throw new NotFoundException(`Section ${sectionId} not found`);
+      }
+
+      const lastSection = await tx.examSection.findFirst({ where: { examId }, orderBy: { orderIndex: 'desc' } });
+      const orderIndex = lastSection ? lastSection.orderIndex + 1 : 0;
+
+      const clone = await tx.examSection.create({
+        data: {
+          examId,
+          title: `${section.title} (Copy)`,
+          orderIndex,
+          selectionMode: section.selectionMode,
+          poolSize: section.poolSize,
+          poolDifficulty: section.poolDifficulty,
+          targetDurationMinutes: section.targetDurationMinutes,
+          ...(section.poolTags.length > 0
+            ? { poolTags: { create: section.poolTags.map((poolTag) => ({ tagId: poolTag.tagId })) } }
+            : {}),
+        },
+      });
+
+      if (section.questions.length > 0) {
+        await tx.examSectionQuestion.createMany({
+          data: section.questions.map((link) => ({
+            sectionId: clone.id,
+            questionId: link.questionId,
+            orderIndex: link.orderIndex,
+          })),
+        });
+      }
+
+      return clone;
+    });
+  }
+
   async replaceSectionQuestions(
     context: TenantContext,
     examId: string,

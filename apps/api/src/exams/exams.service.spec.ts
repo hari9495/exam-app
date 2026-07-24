@@ -836,6 +836,111 @@ describe('ExamsService', () => {
     await expect(service.deleteSection(context, 'exam-1', 'section-1')).rejects.toThrow(ConflictException);
   });
 
+  describe('duplicateSection', () => {
+    it("clones a fixed-mode section's title, settings, and questions, appending it at the end", async () => {
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'draft' }) },
+        examSection: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValueOnce({
+              id: 'section-1',
+              title: 'Aptitude',
+              selectionMode: 'fixed',
+              poolSize: null,
+              poolDifficulty: null,
+              targetDurationMinutes: 10,
+              questions: [{ questionId: 'q1', orderIndex: 0 }, { questionId: 'q2', orderIndex: 1 }],
+              poolTags: [],
+            })
+            .mockResolvedValueOnce({ id: 'section-2', orderIndex: 1 }),
+          create: jest.fn().mockResolvedValue({ id: 'section-3', title: 'Aptitude (Copy)' }),
+        },
+        examSectionQuestion: { createMany: jest.fn() },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.duplicateSection(context, 'exam-1', 'section-1');
+
+      expect(tx.examSection.create).toHaveBeenCalledWith({
+        data: {
+          examId: 'exam-1',
+          title: 'Aptitude (Copy)',
+          orderIndex: 2,
+          selectionMode: 'fixed',
+          poolSize: null,
+          poolDifficulty: null,
+          targetDurationMinutes: 10,
+        },
+      });
+      expect(tx.examSectionQuestion.createMany).toHaveBeenCalledWith({
+        data: [
+          { sectionId: 'section-3', questionId: 'q1', orderIndex: 0 },
+          { sectionId: 'section-3', questionId: 'q2', orderIndex: 1 },
+        ],
+      });
+      expect(result).toEqual({ id: 'section-3', title: 'Aptitude (Copy)' });
+    });
+
+    it('clones a pool-mode section along with its pool tags', async () => {
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'draft' }) },
+        examSection: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValueOnce({
+              id: 'section-1',
+              title: 'Reasoning',
+              selectionMode: 'pool',
+              poolSize: 5,
+              poolDifficulty: 'medium',
+              targetDurationMinutes: null,
+              questions: [],
+              poolTags: [{ tagId: 'tag-1' }],
+            })
+            .mockResolvedValueOnce(null),
+          create: jest.fn().mockResolvedValue({ id: 'section-2', title: 'Reasoning (Copy)' }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.duplicateSection(context, 'exam-1', 'section-1');
+
+      expect(tx.examSection.create).toHaveBeenCalledWith({
+        data: {
+          examId: 'exam-1',
+          title: 'Reasoning (Copy)',
+          orderIndex: 0,
+          selectionMode: 'pool',
+          poolSize: 5,
+          poolDifficulty: 'medium',
+          targetDurationMinutes: null,
+          poolTags: { create: [{ tagId: 'tag-1' }] },
+        },
+      });
+    });
+
+    it('throws NotFoundException when the source section does not belong to the given exam', async () => {
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'draft' }) },
+        examSection: { findFirst: jest.fn().mockResolvedValue(null) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.duplicateSection(context, 'exam-1', 'section-1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects duplicateSection on a published exam that already has invited candidates', async () => {
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }) },
+        invitation: { count: jest.fn().mockResolvedValue(1) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.duplicateSection(context, 'exam-1', 'section-1')).rejects.toThrow(ConflictException);
+    });
+  });
+
   it('throws NotFoundException from replaceSectionQuestions when a questionId does not resolve in this organization', async () => {
     const tx = {
       exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },

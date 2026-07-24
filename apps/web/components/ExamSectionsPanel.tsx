@@ -1,16 +1,31 @@
 'use client';
 
 import { useState } from 'react';
+import { MoreHorizontal } from 'lucide-react';
 import { useExam } from '../lib/hooks/useExams';
-import { useCreateSection } from '../lib/hooks/useExamSections';
+import { useCreateSection, useDeleteSection, useDuplicateSection } from '../lib/hooks/useExamSections';
 import { SectionQuestionPicker } from './SectionQuestionPicker';
-import { Button, Input, Card, useToast } from '../components/ui';
+import {
+  Button,
+  Input,
+  Card,
+  Modal,
+  useToast,
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '../components/ui';
+import { ExamSection } from '../lib/types';
 
 export function ExamSectionsPanel({ examId }: { examId: string }) {
   const { data: exam } = useExam(examId);
   const createSection = useCreateSection(examId);
+  const deleteSection = useDeleteSection(examId);
+  const duplicateSection = useDuplicateSection(examId);
   const [newTitle, setNewTitle] = useState('');
   const [pickerSectionId, setPickerSectionId] = useState<string | null>(null);
+  const [sectionPendingDelete, setSectionPendingDelete] = useState<ExamSection | null>(null);
   const { toast } = useToast();
   const locked = exam?.status === 'published' && exam.invitationCount > 0;
 
@@ -26,6 +41,27 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
     );
   }
 
+  function handleDuplicateSection(sectionId: string) {
+    duplicateSection.mutate(sectionId, {
+      onSuccess: () => toast('Section duplicated.'),
+      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to duplicate section.', 'error'),
+    });
+  }
+
+  function handleConfirmDeleteSection() {
+    if (!sectionPendingDelete) return;
+    deleteSection.mutate(sectionPendingDelete.id, {
+      onSuccess: () => {
+        toast('Section deleted.');
+        setSectionPendingDelete(null);
+      },
+      onError: (error) => {
+        toast(error instanceof Error ? error.message : 'Failed to delete section.', 'error');
+        setSectionPendingDelete(null);
+      },
+    });
+  }
+
   return (
     <div className="flex flex-col gap-3">
       {locked && (
@@ -37,12 +73,49 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
         .slice()
         .sort((a, b) => a.orderIndex - b.orderIndex)
         .map((section) => (
-          <Card key={section.id} className="flex items-center justify-between">
-            <p className="font-medium">{section.title}</p>
-            {!locked && (
-              <Button variant="secondary" onClick={() => setPickerSectionId(section.id)}>
-                Manage questions
-              </Button>
+          <Card key={section.id} className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-medium">{section.title}</p>
+              <div className="flex items-center gap-1.5">
+                {!locked && (
+                  <Button variant="secondary" onClick={() => setPickerSectionId(section.id)}>
+                    Manage questions
+                  </Button>
+                )}
+                {!locked && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      aria-label="More actions"
+                      className="rounded p-1.5 text-recruiter-text-tertiary hover:bg-recruiter-bg-subtle"
+                    >
+                      <MoreHorizontal size={16} />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem onSelect={() => handleDuplicateSection(section.id)}>Duplicate</DropdownMenuItem>
+                      <DropdownMenuItem className="text-status-danger" onSelect={() => setSectionPendingDelete(section)}>
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
+            </div>
+            {section.selectionMode === 'pool' ? (
+              <p className="text-sm text-recruiter-text-secondary">
+                Pool of {section.poolSize ?? 0} question{section.poolSize === 1 ? '' : 's'}
+                {section.poolDifficulty ? ` (${section.poolDifficulty})` : ''}
+              </p>
+            ) : section.questions.length === 0 ? (
+              <p className="text-sm text-recruiter-text-tertiary">No questions added yet.</p>
+            ) : (
+              <ul className="flex flex-col gap-1 border-t border-recruiter-border pt-2 text-sm text-recruiter-text-secondary">
+                {section.questions.map((q) => (
+                  <li key={q.questionId} className="flex items-center justify-between gap-2">
+                    <span>{q.question?.text ?? q.questionId}</span>
+                    {q.question && <span className="text-xs text-recruiter-text-tertiary">{q.question.marks} marks</span>}
+                  </li>
+                ))}
+              </ul>
             )}
           </Card>
         ))}
@@ -60,6 +133,21 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
           onClose={() => setPickerSectionId(null)}
           existingQuestionIds={exam?.sections.find((s) => s.id === pickerSectionId)?.questions.map((q) => q.questionId) ?? []}
         />
+      )}
+      {sectionPendingDelete && (
+        <Modal open title="Delete section" onClose={() => setSectionPendingDelete(null)}>
+          <p className="mb-4 text-sm text-recruiter-text-secondary">
+            Delete &ldquo;{sectionPendingDelete.title}&rdquo; and remove its questions from this exam?
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setSectionPendingDelete(null)}>
+              Cancel
+            </Button>
+            <Button variant="danger" loading={deleteSection.isPending} onClick={handleConfirmDeleteSection}>
+              Delete
+            </Button>
+          </div>
+        </Modal>
       )}
     </div>
   );

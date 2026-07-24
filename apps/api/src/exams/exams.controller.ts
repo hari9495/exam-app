@@ -88,6 +88,12 @@ export class ExamsController {
     return this.examsService.deleteSection(tenant, examId, sectionId);
   }
 
+  @Post(':id/sections/:sectionId/duplicate')
+  @RequirePermissions('exam:manage')
+  duplicateSection(@CurrentTenant() tenant: TenantContext, @Param('id') examId: string, @Param('sectionId') sectionId: string) {
+    return this.examsService.duplicateSection(tenant, examId, sectionId);
+  }
+
   @Put(':id/sections/:sectionId/questions')
   @RequirePermissions('exam:manage')
   replaceSectionQuestions(
