@@ -66,11 +66,11 @@ export default function Home() {
       <LandingHero>
         <section className="relative overflow-hidden px-6 py-20 md:px-16 md:py-28">
           <div className="relative grid items-center gap-12 md:grid-cols-2">
-            <div className="flex flex-col items-start gap-6">
-              <h1 className="max-w-2xl text-4xl font-bold leading-tight tracking-tight text-recruiter-text md:text-5xl">
+            <div className="flex w-fit flex-col items-start gap-6 md:justify-self-end">
+              <h1 className="max-w-md text-4xl font-bold leading-tight tracking-tight text-recruiter-text md:text-5xl">
                 Automate early screens. Focus human judgment on what matters.
               </h1>
-              <p className="max-w-xl text-lg text-recruiter-text-secondary">
+              <p className="max-w-sm text-lg text-recruiter-text-secondary">
                 Prudent Hire runs AI-assisted screening, live proctoring, and structured evaluation so your team
                 spends time on the candidates who matter.
               </p>
@@ -78,7 +78,7 @@ export default function Home() {
                 Get Started
               </Link>
             </div>
-            <div className="relative hidden justify-self-start md:block">
+            <div className="relative hidden justify-self-center md:block">
               <div aria-hidden="true" className="pointer-events-none absolute -right-6 -top-6">
                 <div className="h-24 w-24 rotate-45 rounded-2xl bg-primary/10" />
                 <div className="ml-20 mt-4 h-16 w-16 rotate-45 rounded-xl bg-primary/20" />
