@@ -29,6 +29,11 @@ describe('SamlStrategy', () => {
           idpCert: '-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----',
           idpIssuer: 'https://idp.example.com/entity',
           validateInResponseTo: 'always',
+          // Entra's default signs only the assertion, not the outer response
+          // -- the assertion signature must be required, the response-level
+          // one must not be (see resolveOrgSamlConfig).
+          wantAssertionsSigned: true,
+          wantAuthnResponseSigned: false,
         }),
       );
     });

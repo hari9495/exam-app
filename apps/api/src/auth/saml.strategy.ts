@@ -196,6 +196,17 @@ export class SamlStrategy implements OnModuleInit {
       // Constraints), so no privateKey/publicCert here.
       validateInResponseTo: ValidateInResponseTo.always,
       cacheProvider: this.cacheProvider,
+      // Entra ID's default "Signing Option" is "Sign SAML assertion" -- the
+      // outer <Response> is left unsigned. node-saml defaults to requiring a
+      // response-level signature (wantAuthnResponseSigned: true) and rejects
+      // Entra's default with "Invalid document signature" (confirmed against
+      // a captured live Entra response, 2026-07-24). The signed assertion is
+      // what carries the authenticated identity, so require THAT signature
+      // and accept an unsigned outer envelope -- otherwise every org admin
+      // must find and flip a buried non-default Entra setting before SSO
+      // works at all.
+      wantAssertionsSigned: true,
+      wantAuthnResponseSigned: false,
     };
   }
 
