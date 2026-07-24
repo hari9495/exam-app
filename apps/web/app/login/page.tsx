@@ -21,9 +21,11 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [ssoEnabled, setSsoEnabled] = useState(false);
+  const [usePasswordInstead, setUsePasswordInstead] = useState(false);
   const { data: branding } = useBranding(organizationSlug || null);
 
   async function handleSlugBlur() {
+    setUsePasswordInstead(false);
     if (!organizationSlug) {
       setSsoEnabled(false);
       return;
@@ -109,17 +111,26 @@ export default function LoginPage() {
                 onBlur={handleSlugBlur}
                 icon={<Building2 size={16} />}
               />
-              {ssoEnabled ? (
-                <motion.a
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3, ease: 'easeOut' }}
-                  href={`${process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001/api/v1'}/auth/saml/${organizationSlug}/login`}
-                  onClick={() => window.sessionStorage.setItem(SSO_PENDING_SLUG_KEY, organizationSlug)}
-                  className="flex items-center justify-center rounded-md border border-recruiter-border py-2 text-sm font-medium text-recruiter-text hover:bg-recruiter-bg-subtle"
-                >
-                  Log in with SSO
-                </motion.a>
+              {ssoEnabled && !usePasswordInstead ? (
+                <>
+                  <motion.a
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, ease: 'easeOut' }}
+                    href={`${process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001/api/v1'}/auth/saml/${organizationSlug}/login`}
+                    onClick={() => window.sessionStorage.setItem(SSO_PENDING_SLUG_KEY, organizationSlug)}
+                    className="flex items-center justify-center rounded-md border border-recruiter-border py-2 text-sm font-medium text-recruiter-text hover:bg-recruiter-bg-subtle"
+                  >
+                    Log in with SSO
+                  </motion.a>
+                  <button
+                    type="button"
+                    onClick={() => setUsePasswordInstead(true)}
+                    className="text-center text-sm font-medium text-primary hover:underline"
+                  >
+                    Log in with password instead
+                  </button>
+                </>
               ) : (
                 <>
                   <Input label="Email" type="email" value={email} onChange={setEmail} required icon={<Mail size={16} />} />
@@ -147,6 +158,15 @@ export default function LoginPage() {
                   <Button type="submit" loading={submitting}>
                     Log in
                   </Button>
+                  {ssoEnabled && (
+                    <button
+                      type="button"
+                      onClick={() => setUsePasswordInstead(false)}
+                      className="text-center text-sm font-medium text-recruiter-text-secondary hover:underline"
+                    >
+                      Back to SSO login
+                    </button>
+                  )}
                 </>
               )}
               {error && (

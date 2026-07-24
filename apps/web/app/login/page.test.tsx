@@ -248,6 +248,37 @@ describe('LoginPage', () => {
     expect(window.sessionStorage.getItem('ssoPendingOrganizationSlug')).toBe('acme');
   });
 
+  it('shows a "Log in with password instead" link that reveals the password form, even when SSO is enabled', async () => {
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ message: 'no session' }), { status: 401 });
+      }
+      if (String(url).includes('/auth/saml/')) {
+        return new Response(JSON.stringify({ enabled: true }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <LoginPage />
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    await userEvent.type(screen.getByLabelText(/organization slug/i), 'acme');
+    await userEvent.tab();
+
+    await screen.findByRole('link', { name: /log in with sso/i });
+    await userEvent.click(screen.getByRole('button', { name: /log in with password instead/i }));
+
+    expect(screen.getByLabelText(/^email$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Log in' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /log in with sso/i })).not.toBeInTheDocument();
+  });
+
   it('does not show the SSO button when the org has no SSO configured', async () => {
     global.fetch = jest.fn(async (url) => {
       if (String(url).endsWith('/auth/refresh')) {
