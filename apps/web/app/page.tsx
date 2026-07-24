@@ -78,7 +78,7 @@ export default function Home() {
                 Get Started
               </Link>
             </div>
-            <div className="relative hidden justify-self-center md:block">
+            <div className="relative hidden justify-self-start md:block">
               <div aria-hidden="true" className="pointer-events-none absolute -right-6 -top-6">
                 <div className="h-24 w-24 rotate-45 rounded-2xl bg-primary/10" />
                 <div className="ml-20 mt-4 h-16 w-16 rotate-45 rounded-xl bg-primary/20" />
