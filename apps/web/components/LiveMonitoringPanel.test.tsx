@@ -4,10 +4,12 @@ import { ToastProvider } from './ui';
 import { useExamMonitoring } from '../lib/hooks/useExamMonitoring';
 import * as useExamMonitoringModule from '../lib/hooks/useExamMonitoring';
 import * as useAttemptModerationModule from '../lib/hooks/useAttemptModeration';
+import * as useProctoringEventsModule from '../lib/hooks/useProctoringEvents';
 import { LiveMonitoringPanel } from './LiveMonitoringPanel';
 
 jest.mock('../lib/hooks/useExamMonitoring', () => ({ useExamMonitoring: jest.fn() }));
 jest.mock('../lib/hooks/useAttemptModeration', () => ({ useUnblockAttempt: jest.fn() }));
+jest.mock('../lib/hooks/useProctoringEvents', () => ({ useProctoringEvents: jest.fn() }));
 
 const now = new Date('2026-01-01T00:10:00Z');
 
@@ -160,5 +162,47 @@ describe('LiveMonitoringPanel', () => {
     await user.click(unblockButton);
     // The component passes onSuccess/onError toast callbacks as a second arg (see Step 7 of the brief).
     expect(mutate).toHaveBeenCalledWith('a1', expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }));
+  });
+
+  describe('proctoring log modal', () => {
+    beforeEach(() => {
+      jest.spyOn(useExamMonitoringModule, 'useExamMonitoring').mockReturnValue({
+        roster: [{ candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'blocked', online: true, remainingSeconds: null, answeredCount: 2, totalQuestions: 5 }],
+        alerts: [],
+        leaderboard: [],
+        connectionStatus: 'connected',
+        joinError: null,
+      });
+      jest.spyOn(useAttemptModerationModule, 'useUnblockAttempt').mockReturnValue({ mutate: jest.fn(), isPending: false } as any);
+    });
+
+    it('opens a modal listing the attempt proctoring events when View log is clicked', async () => {
+      jest.spyOn(useProctoringEventsModule, 'useProctoringEvents').mockReturnValue({
+        data: [
+          { id: 'e1', attemptId: 'a1', eventType: 'dev_tools_detected', severity: 'high', occurredAt: '2026-01-01T00:01:00Z', metadataJson: null },
+          { id: 'e2', attemptId: 'a1', eventType: 'tab_switch', severity: 'medium', occurredAt: '2026-01-01T00:02:00Z', metadataJson: null },
+        ],
+        isLoading: false,
+      } as any);
+
+      renderPanel();
+      const user = userEvent.setup({ delay: null });
+      await user.click(screen.getByRole('button', { name: 'View log' }));
+
+      expect(screen.getByText('Proctoring log')).toBeInTheDocument();
+      expect(screen.getByText('dev_tools_detected')).toBeInTheDocument();
+      expect(screen.getByText('tab_switch')).toBeInTheDocument();
+      expect(useProctoringEventsModule.useProctoringEvents).toHaveBeenCalledWith('a1');
+    });
+
+    it('shows an empty state in the log modal when the attempt has no recorded events', async () => {
+      jest.spyOn(useProctoringEventsModule, 'useProctoringEvents').mockReturnValue({ data: [], isLoading: false } as any);
+
+      renderPanel();
+      const user = userEvent.setup({ delay: null });
+      await user.click(screen.getByRole('button', { name: 'View log' }));
+
+      expect(screen.getByText('No proctoring events recorded for this attempt.')).toBeInTheDocument();
+    });
   });
 });

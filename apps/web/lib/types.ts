@@ -231,6 +231,15 @@ export type ProctoringEventType =
   | 'multi_monitor_detected'
   | 'looking_down';
 
+export interface ProctoringEvent {
+  id: string;
+  attemptId: string;
+  eventType: ProctoringEventType;
+  severity: string;
+  occurredAt: string;
+  metadataJson: string | null;
+}
+
 export interface AnswerTelemetry {
   keystrokeChars: number;
   pastedChars: number;

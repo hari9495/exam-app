@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useExamMonitoring } from '../lib/hooks/useExamMonitoring';
 import { useUnblockAttempt } from '../lib/hooks/useAttemptModeration';
-import { Table, Badge, Card, useToast, type Column } from './ui';
+import { useProctoringEvents } from '../lib/hooks/useProctoringEvents';
+import { Table, Badge, Card, Modal, useToast, type Column } from './ui';
 import { RosterRow, ConnectionStatus } from '../lib/types';
 
 const STATUS_VARIANT: Record<string, 'default' | 'success' | 'warning' | 'danger'> = {
@@ -35,10 +36,39 @@ function formatRelativeTime(occurredAt: string): string {
   return `${hours}h ago`;
 }
 
+function ProctoringLogModal({ attemptId, onClose }: { attemptId: string; onClose: () => void }) {
+  const { data: events, isLoading } = useProctoringEvents(attemptId);
+
+  return (
+    <Modal open title="Proctoring log" onClose={onClose}>
+      {isLoading ? (
+        <p className="text-sm text-gray-500">Loading…</p>
+      ) : !events || events.length === 0 ? (
+        <p className="text-sm text-gray-500">No proctoring events recorded for this attempt.</p>
+      ) : (
+        <ul className="flex max-h-96 flex-col gap-2 overflow-y-auto">
+          {events.map((event) => (
+            <li key={event.id} className="rounded border border-gray-200 p-2 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">{event.eventType}</span>
+                <Badge variant={event.severity === 'high' ? 'danger' : event.severity === 'medium' ? 'warning' : 'default'}>
+                  {event.severity}
+                </Badge>
+              </div>
+              <p className="text-xs text-gray-400">{new Date(event.occurredAt).toLocaleString()}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Modal>
+  );
+}
+
 export function LiveMonitoringPanel({ examId }: { examId: string }) {
   const { roster, alerts, connectionStatus, joinError } = useExamMonitoring(examId);
   const { toast } = useToast();
   const unblockAttempt = useUnblockAttempt();
+  const [logAttemptId, setLogAttemptId] = useState<string | null>(null);
   const previousStatusRef = useRef<ConnectionStatus>(connectionStatus);
 
   useEffect(() => {
@@ -76,21 +106,32 @@ export function LiveMonitoringPanel({ examId }: { examId: string }) {
     {
       key: 'actions',
       header: '',
-      render: (row) =>
-        row.status === 'blocked' && row.attemptId ? (
-          <button
-            onClick={() => {
-              unblockAttempt.mutate(row.attemptId as string, {
-                onSuccess: () => toast('Candidate unblocked.', 'success'),
-                onError: () => toast("Couldn't unblock the candidate — please try again.", 'error'),
-              });
-            }}
-            disabled={unblockAttempt.isPending}
-            className="rounded-full border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-50"
-          >
-            Unblock
-          </button>
-        ) : null,
+      render: (row) => (
+        <div className="flex items-center gap-2">
+          {row.status === 'blocked' && row.attemptId ? (
+            <button
+              onClick={() => {
+                unblockAttempt.mutate(row.attemptId as string, {
+                  onSuccess: () => toast('Candidate unblocked.', 'success'),
+                  onError: () => toast("Couldn't unblock the candidate — please try again.", 'error'),
+                });
+              }}
+              disabled={unblockAttempt.isPending}
+              className="rounded-full border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-50"
+            >
+              Unblock
+            </button>
+          ) : null}
+          {row.attemptId ? (
+            <button
+              onClick={() => setLogAttemptId(row.attemptId)}
+              className="rounded-full border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-50"
+            >
+              View log
+            </button>
+          ) : null}
+        </div>
+      ),
     },
   ];
 
@@ -153,6 +194,8 @@ export function LiveMonitoringPanel({ examId }: { examId: string }) {
           </div>
         </div>
       )}
+
+      {logAttemptId && <ProctoringLogModal attemptId={logAttemptId} onClose={() => setLogAttemptId(null)} />}
     </div>
   );
 }
