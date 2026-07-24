@@ -97,6 +97,19 @@ describe('AttemptsAdminService', () => {
       expect(examRuntime.unblock).not.toHaveBeenCalled();
     });
 
+    it('looks up the attempt by id only (no organizationId filter) for a super_admin, whose context has organizationId: null', async () => {
+      const superAdminContext = { organizationId: null, isSuperAdmin: true };
+      const findFirst = jest.fn().mockResolvedValue({ id: 'attempt-1' });
+      const tx = { attempt: { findFirst } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      examRuntime.unblock.mockResolvedValue({ status: 'in_progress' });
+
+      await service.unblock(superAdminContext, 'attempt-1', 'user-1');
+
+      expect(findFirst).toHaveBeenCalledWith({ where: { id: 'attempt-1' } });
+      expect(examRuntime.unblock).toHaveBeenCalledWith('attempt-1');
+    });
+
     it('proxies to examRuntime.unblock and records an audit entry', async () => {
       const tx = { attempt: { findFirst: jest.fn().mockResolvedValue({ id: 'attempt-1' }) } };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));

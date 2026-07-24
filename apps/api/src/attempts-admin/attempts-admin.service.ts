@@ -13,9 +13,7 @@ export class AttemptsAdminService {
 
   async listProctoringEvents(context: TenantContext, attemptId: string): Promise<ProctoringEvent[]> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
-      const attempt = await tx.attempt.findFirst({
-        where: { id: attemptId, invitation: { exam: { organizationId: context.organizationId as string } } },
-      });
+      const attempt = await tx.attempt.findFirst({ where: this.attemptOwnershipWhere(context, attemptId) });
       if (!attempt) {
         throw new NotFoundException(`Attempt ${attemptId} not found`);
       }
@@ -98,9 +96,7 @@ export class AttemptsAdminService {
     body: string,
   ): Promise<{ id: string; sentAt: Date }> {
     const { created, examId, candidateId } = await this.tenantPrisma.forTenant(context, async (tx) => {
-      const attempt = await tx.attempt.findFirst({
-        where: { id: attemptId, invitation: { exam: { organizationId: context.organizationId as string } } },
-      });
+      const attempt = await tx.attempt.findFirst({ where: this.attemptOwnershipWhere(context, attemptId) });
       if (!attempt) {
         throw new NotFoundException(`Attempt ${attemptId} not found`);
       }
@@ -124,9 +120,7 @@ export class AttemptsAdminService {
 
   async listMessages(context: TenantContext, attemptId: string): Promise<CandidateMessage[]> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
-      const attempt = await tx.attempt.findFirst({
-        where: { id: attemptId, invitation: { exam: { organizationId: context.organizationId as string } } },
-      });
+      const attempt = await tx.attempt.findFirst({ where: this.attemptOwnershipWhere(context, attemptId) });
       if (!attempt) {
         throw new NotFoundException(`Attempt ${attemptId} not found`);
       }
@@ -209,12 +203,21 @@ export class AttemptsAdminService {
 
   private async requireOwnedAttempt(context: TenantContext, attemptId: string): Promise<void> {
     await this.tenantPrisma.forTenant(context, async (tx) => {
-      const attempt = await tx.attempt.findFirst({
-        where: { id: attemptId, invitation: { exam: { organizationId: context.organizationId as string } } },
-      });
+      const attempt = await tx.attempt.findFirst({ where: this.attemptOwnershipWhere(context, attemptId) });
       if (!attempt) {
         throw new NotFoundException(`Attempt ${attemptId} not found`);
       }
     });
+  }
+
+  // A super_admin's TenantContext carries organizationId: null (they belong to no
+  // single org) -- filtering on `organizationId: null` would never match a real
+  // attempt and 404 every super_admin action. RLS (app_is_super_admin session
+  // context) already scopes their access correctly, so this app-level filter only
+  // needs to apply for non-super-admin callers.
+  private attemptOwnershipWhere(context: TenantContext, attemptId: string) {
+    return context.isSuperAdmin
+      ? { id: attemptId }
+      : { id: attemptId, invitation: { exam: { organizationId: context.organizationId as string } } };
   }
 }
