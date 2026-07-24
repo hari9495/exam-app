@@ -114,9 +114,18 @@ export function useProctoringMonitor(enabled: boolean, onViolation?: (eventType:
     window.addEventListener('focus', onWindowFocus);
     resetIdleTimer();
 
+    // Baselined against whatever outer/inner gap already exists when monitoring starts,
+    // rather than a fixed absolute threshold. High OS display scaling, a bookmarks bar,
+    // or a browser extension's toolbar can all produce a permanent gap bigger than
+    // DEVTOOLS_SIZE_THRESHOLD on their own -- flagging the raw value false-positives on
+    // every poll for the entire exam. Docking DevTools mid-session grows the gap further
+    // *beyond* whatever was already there, so comparing against the session's own
+    // starting point still catches that while ignoring an unchanging baseline offset.
+    const baselineWidthDelta = window.outerWidth - window.innerWidth;
+    const baselineHeightDelta = window.outerHeight - window.innerHeight;
     const devtoolsInterval = setInterval(() => {
-      const widthDelta = window.outerWidth - window.innerWidth;
-      const heightDelta = window.outerHeight - window.innerHeight;
+      const widthDelta = window.outerWidth - window.innerWidth - baselineWidthDelta;
+      const heightDelta = window.outerHeight - window.innerHeight - baselineHeightDelta;
       if (widthDelta > DEVTOOLS_SIZE_THRESHOLD || heightDelta > DEVTOOLS_SIZE_THRESHOLD) {
         reportAndNotify('dev_tools_detected', { trigger: 'window-size' });
       }

@@ -49,6 +49,45 @@ describe('useProctoringMonitor', () => {
     expect(report).toHaveBeenCalledWith('dev_tools_detected', { trigger: 'shortcut' });
   });
 
+  it('does not report dev_tools_detected for a persistent outer/inner size gap present from the start (DPI scaling, extension toolbars, etc.)', () => {
+    // A real, unchanging 200px gap -- bigger than the 160px threshold -- exists the
+    // whole time (e.g. high OS display scaling, or a browser extension's toolbar).
+    // Because this never increases after monitoring starts, it must never be flagged.
+    Object.defineProperty(window, 'outerWidth', { value: 1200, configurable: true });
+    Object.defineProperty(window, 'innerWidth', { value: 1000, configurable: true });
+    Object.defineProperty(window, 'outerHeight', { value: 800, configurable: true });
+    Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
+
+    render(<Probe enabled={true} />);
+    act(() => {
+      jest.advanceTimersByTime(10_000);
+    });
+
+    expect(report).not.toHaveBeenCalledWith('dev_tools_detected', expect.anything());
+  });
+
+  it('reports dev_tools_detected when the outer/inner size gap grows after monitoring starts', () => {
+    // Starts with no gap (baseline), then DevTools gets docked mid-session, growing
+    // the gap well past the threshold -- this is the case that must still be caught.
+    Object.defineProperty(window, 'outerWidth', { value: 1000, configurable: true });
+    Object.defineProperty(window, 'innerWidth', { value: 1000, configurable: true });
+    Object.defineProperty(window, 'outerHeight', { value: 800, configurable: true });
+    Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
+
+    render(<Probe enabled={true} />);
+    act(() => {
+      jest.advanceTimersByTime(2000);
+    });
+    expect(report).not.toHaveBeenCalledWith('dev_tools_detected', expect.anything());
+
+    Object.defineProperty(window, 'innerWidth', { value: 800, configurable: true });
+    act(() => {
+      jest.advanceTimersByTime(2000);
+    });
+
+    expect(report).toHaveBeenCalledWith('dev_tools_detected', { trigger: 'window-size' });
+  });
+
   it('does not reset the idle timer merely because the host component re-renders', () => {
     // The real (non-memoized) useReportProctoringEvent returns a brand-new function
     // identity on every render. mockReturnValue would hand back the same reference
