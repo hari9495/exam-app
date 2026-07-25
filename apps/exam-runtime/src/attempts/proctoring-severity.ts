@@ -10,6 +10,8 @@ export const CLIENT_REPORTABLE_EVENT_TYPES = [
   'window_blur',
   'multi_monitor_detected',
   'looking_down',
+  'screen_share_started',
+  'screen_share_stopped',
 ] as const;
 
 type Severity = 'low' | 'medium' | 'high';
@@ -18,6 +20,7 @@ const SEVERITY_BY_EVENT_TYPE: Record<string, Severity> = {
   dev_tools_detected: 'high',
   multi_login: 'high',
   multi_monitor_detected: 'high',
+  screen_share_stopped: 'high',
   tab_switch: 'medium',
   fullscreen_exit: 'medium',
   copy_paste: 'medium',
@@ -28,6 +31,7 @@ const SEVERITY_BY_EVENT_TYPE: Record<string, Severity> = {
   refresh_warning: 'low',
   idle_timeout: 'low',
   webcam_snapshot: 'low',
+  screen_share_started: 'low',
 };
 
 export const STRIKE_WORTHY_EVENT_TYPES: ReadonlySet<string> = new Set([
@@ -39,6 +43,7 @@ export const STRIKE_WORTHY_EVENT_TYPES: ReadonlySet<string> = new Set([
   'dev_tools_detected',
   'multi_monitor_detected',
   'idle_timeout',
+  'screen_share_stopped',
 ]);
 
 export function isStrikeWorthy(eventType: string): boolean {

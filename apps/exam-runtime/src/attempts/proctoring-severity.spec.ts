@@ -1,4 +1,5 @@
 import { CLIENT_REPORTABLE_EVENT_TYPES, getProctoringEventSeverity, isStrikeWorthy } from './proctoring-severity';
+import { TOGGLEABLE_PROCTORING_SIGNALS } from '../../../api/dist/exams/dto/create-exam.dto';
 
 describe('CLIENT_REPORTABLE_EVENT_TYPES', () => {
   it('does not include multi_login (system-generated only)', () => {
@@ -72,6 +73,16 @@ describe('getProctoringEventSeverity', () => {
     expect(CLIENT_REPORTABLE_EVENT_TYPES).not.toContain('webcam_snapshot');
     expect(getProctoringEventSeverity('webcam_snapshot')).toBe('low');
   });
+
+  it('maps screen_share_started to low severity and is client-reportable', () => {
+    expect(CLIENT_REPORTABLE_EVENT_TYPES).toContain('screen_share_started');
+    expect(getProctoringEventSeverity('screen_share_started')).toBe('low');
+  });
+
+  it('maps screen_share_stopped to high severity and is client-reportable', () => {
+    expect(CLIENT_REPORTABLE_EVENT_TYPES).toContain('screen_share_stopped');
+    expect(getProctoringEventSeverity('screen_share_stopped')).toBe('high');
+  });
 });
 
 describe('isStrikeWorthy', () => {
@@ -84,14 +95,19 @@ describe('isStrikeWorthy', () => {
     'dev_tools_detected',
     'multi_monitor_detected',
     'idle_timeout',
+    'screen_share_stopped',
   ])('returns true for %s', (eventType) => {
     expect(isStrikeWorthy(eventType)).toBe(true);
   });
 
-  it.each(['refresh_warning', 'editor_paste', 'looking_down', 'webcam_snapshot', 'something_unmapped'])(
+  it.each(['refresh_warning', 'editor_paste', 'looking_down', 'webcam_snapshot', 'screen_share_started', 'something_unmapped'])(
     'returns false for %s',
     (eventType) => {
       expect(isStrikeWorthy(eventType)).toBe(false);
     },
   );
+
+  it('verifies TOGGLEABLE_PROCTORING_SIGNALS still has exactly 8 entries', () => {
+    expect(TOGGLEABLE_PROCTORING_SIGNALS).toHaveLength(8);
+  });
 });
