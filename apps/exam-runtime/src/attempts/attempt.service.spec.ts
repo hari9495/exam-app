@@ -35,7 +35,7 @@ describe('AttemptService', () => {
     webcamProctoringEnabled: true,
     proctoringEnforcement: 'block',
     proctoringStrikeLimit: 3,
-    disabledProctoringSignalsJson: null as string | null,
+    disabledProctoringSignalsJson: null,
   };
   const invitationRecord = { id: 'inv-1', candidateId: 'cand-1', examId: 'exam-1', exam, extraTimePercent: 0, candidate: { name: 'Ada Lovelace' } };
 
@@ -1583,19 +1583,15 @@ describe('AttemptService', () => {
     });
 
     describe('a signal disabled for the exam', () => {
-      afterEach(() => {
-        // `exam` is shared module-level state (referenced by `invitationRecord`); reset it so
-        // later tests in this file don't inherit a disabled-signals list.
-        exam.disabledProctoringSignalsJson = null;
-      });
-
       it('silently ignores a signal the exam has disabled -- no event row, no strike, no live flag', async () => {
-        exam.disabledProctoringSignalsJson = JSON.stringify(['right_click']);
+        const examWithDisabledSignal = { ...exam, disabledProctoringSignalsJson: JSON.stringify(['right_click']) };
         const tx = {
           attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 1, status: 'in_progress' }) },
           proctoringEvent: { create: jest.fn() },
         };
-        mockBootstrapThenScoped(tx);
+        tenantPrisma.forTenant
+          .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examWithDisabledSignal }))
+          .mockImplementationOnce((_ctx, fn) => fn(tx));
 
         const result = await service.reportProctoringEvent(session, { eventType: 'right_click' });
 
@@ -1608,10 +1604,12 @@ describe('AttemptService', () => {
       });
 
       it('still processes a signal that is not in the disabled list', async () => {
-        exam.disabledProctoringSignalsJson = JSON.stringify(['right_click']);
+        const examWithDisabledSignal = { ...exam, disabledProctoringSignalsJson: JSON.stringify(['right_click']) };
         const attempt = { id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' };
         const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
-        mockBootstrapThenScoped(tx);
+        tenantPrisma.forTenant
+          .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examWithDisabledSignal }))
+          .mockImplementationOnce((_ctx, fn) => fn(tx));
         settlement.registerBrowserActivityViolation.mockResolvedValue({
           attempt: { ...attempt, browserActivityViolationCount: 1, status: 'paused' },
           strike: 1,
