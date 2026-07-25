@@ -76,19 +76,28 @@ export default function CandidateExamPage() {
   const isBlocked = attemptState?.status === 'blocked';
   const isTerminal = Boolean(attemptState && attemptState.status !== 'in_progress' && !isPaused && !isBlocked);
   const started = attemptState?.status === 'in_progress';
+  const proctoringConfig = attemptState?.exam.proctoring;
   const [lastViolationReason, setLastViolationReason] = useState<string>('no_face');
   const [lastViolationSource, setLastViolationSource] = useState<'webcam' | 'browser_activity'>('webcam');
   const hasLiveViolationSource = useRef(false);
-  useProctoringMonitor(started, (eventType) => {
-    hasLiveViolationSource.current = true;
-    setLastViolationReason(eventType);
-    setLastViolationSource('browser_activity');
-  });
-  useWebcamMonitor(started, (reason) => {
-    hasLiveViolationSource.current = true;
-    setLastViolationReason(reason);
-    setLastViolationSource('webcam');
-  });
+  useProctoringMonitor(
+    started,
+    (eventType) => {
+      hasLiveViolationSource.current = true;
+      setLastViolationReason(eventType);
+      setLastViolationSource('browser_activity');
+    },
+    proctoringConfig,
+  );
+  useWebcamMonitor(
+    started,
+    (reason) => {
+      hasLiveViolationSource.current = true;
+      setLastViolationReason(reason);
+      setLastViolationSource('webcam');
+    },
+    proctoringConfig,
+  );
   // If this mount never saw a live violation event (e.g. the page reloaded while
   // already paused/blocked from an earlier session), infer which system caused the
   // pause from the server-reported counters instead of defaulting to webcam --
@@ -235,6 +244,7 @@ export default function CandidateExamPage() {
       {isPaused ? (
         <ProctoringWarningOverlay
           strike={lastViolationSource === 'browser_activity' ? attemptState.browserActivityViolationCount : attemptState.webcamViolationCount}
+          strikeLimit={proctoringConfig?.strikeLimit ?? 3}
           reason={lastViolationReason}
           onContinue={() => webcamResume.mutate()}
           continuePending={webcamResume.isPending}

@@ -35,7 +35,7 @@ function attemptStateWithQuestion(question: any) {
     remainingSeconds: 590,
     webcamViolationCount: 0,
     browserActivityViolationCount: 0,
-    exam: { title: 'Test Exam' },
+    exam: { title: 'Test Exam', proctoring: { webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] } },
     sections: [{ title: 'S1', targetDurationMinutes: null, questions: [question] }],
     answers: [],
     messages: [],
@@ -574,7 +574,7 @@ describe('CandidateExamPage', () => {
         remainingSeconds: 600,
         webcamViolationCount: 0,
         browserActivityViolationCount: 0,
-        exam: { title: 'Sample Exam' },
+        exam: { title: 'Sample Exam', proctoring: { webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] } },
         sections: [
           {
             title: 'Section 1',
@@ -660,5 +660,18 @@ describe('CandidateExamPage', () => {
     expect(screen.getByLabelText('Choose a language before you start')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Choose a language before you start'), { target: { value: 'java' } });
     expect(screen.getByText('java')).toBeInTheDocument();
+  });
+
+  describe('per-exam proctoring config', () => {
+    it('passes the exam proctoring config through to both monitors', async () => {
+      const proctoring = { webcamEnabled: false, enforcement: 'warn' as const, strikeLimit: 2, disabledSignals: ['right_click'] };
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: { ...attemptState, exam: { title: 'Screen', proctoring } }, isError: false });
+
+      renderExamPage();
+
+      await waitFor(() => expect(useProctoringMonitor).toHaveBeenCalled());
+      expect(useProctoringMonitor).toHaveBeenLastCalledWith(true, expect.any(Function), proctoring);
+      expect(useWebcamMonitor).toHaveBeenLastCalledWith(true, expect.any(Function), proctoring);
+    });
   });
 });

@@ -3,6 +3,7 @@ import { CandidateButton } from './CandidateButton';
 
 interface ProctoringWarningOverlayProps {
   strike: number;
+  strikeLimit: number;
   reason?: string;
   onContinue: () => void;
   continuePending: boolean;
@@ -32,7 +33,7 @@ const MESSAGES_BY_REASON: Record<string, { heading: string; body: string }> = {
   browser_activity_unspecified: { heading: 'Policy violation detected', body: 'We noticed unusual activity during this exam.' },
 };
 
-export function ProctoringWarningOverlay({ strike, reason, onContinue, continuePending, continueError }: ProctoringWarningOverlayProps) {
+export function ProctoringWarningOverlay({ strike, strikeLimit, reason, onContinue, continuePending, continueError }: ProctoringWarningOverlayProps) {
   const { heading, body } = (reason && MESSAGES_BY_REASON[reason]) || DEFAULT_MESSAGE;
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-candidate-text/40 p-4">
@@ -42,7 +43,7 @@ export function ProctoringWarningOverlay({ strike, reason, onContinue, continueP
         </div>
         <h1 className="mb-1 text-base font-bold text-candidate-text">{heading}</h1>
         <p className="mb-4 text-sm text-candidate-text-secondary">{body}</p>
-        <p className="mb-4 text-xs text-candidate-text-faint">Warning {strike}/3</p>
+        <p className="mb-4 text-xs text-candidate-text-faint">Warning {strike}/{strikeLimit}</p>
         <CandidateButton onClick={onContinue} disabled={continuePending}>
           {continuePending ? 'Checking…' : 'Continue'}
         </CandidateButton>

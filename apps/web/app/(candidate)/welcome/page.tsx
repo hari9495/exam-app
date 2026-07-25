@@ -37,6 +37,8 @@ export default function CandidateWelcomePage() {
     return <p className="p-8 text-sm text-candidate-text-tertiary">Loading…</p>;
   }
 
+  const proctoring = current.exam.proctoring;
+
   if (step === 'practice') {
     return (
       <div className="mx-auto flex flex-1 max-w-xl flex-col justify-center gap-6 p-8">
@@ -46,6 +48,7 @@ export default function CandidateWelcomePage() {
   }
 
   async function handleEnableCamera() {
+    if (proctoring?.webcamEnabled === false) return;
     setCameraStatus('checking');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -60,7 +63,8 @@ export default function CandidateWelcomePage() {
     // Re-checked on every click: unplugging the display then clicking again proceeds.
     // undefined (Firefox/Safari) can't be detected -- fail open, matching the
     // platform's client-side proctoring posture.
-    if ((window.screen as Screen & { isExtended?: boolean }).isExtended === true) {
+    const watchesMultiMonitor = !proctoring?.disabledSignals.includes('multi_monitor_detected');
+    if (watchesMultiMonitor && (window.screen as Screen & { isExtended?: boolean }).isExtended === true) {
       setMultiMonitorBlocked(true);
       return;
     }
@@ -122,14 +126,14 @@ export default function CandidateWelcomePage() {
               <h2 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-candidate-text-secondary">Monitoring &amp; consent</h2>
               <p className="mb-2 text-xs text-candidate-text-secondary">This exam is monitored. While you take it, we collect:</p>
               <ul className="mb-2 list-disc pl-4 text-xs text-candidate-text-secondary">
-                <li>Webcam snapshots and face-presence checks</li>
+                {proctoring?.webcamEnabled !== false ? <li>Webcam snapshots and face-presence checks</li> : null}
                 <li>Browser activity (tab switches, fullscreen exits, copy/paste, right-click, developer tools)</li>
                 <li>Code-editor activity (paste sizes, typing-volume aggregates)</li>
               </ul>
               <p className="mb-3 text-xs text-candidate-text-secondary">
                 Seen by the hiring organization&apos;s staff and stored with your attempt.
               </p>
-              <CameraPreview status={cameraStatus} onEnable={handleEnableCamera} />
+              {proctoring?.webcamEnabled !== false ? <CameraPreview status={cameraStatus} onEnable={handleEnableCamera} /> : null}
               <label className="mt-3 flex items-start gap-2 text-xs text-candidate-text-secondary">
                 <input
                   type="checkbox"
@@ -150,7 +154,7 @@ export default function CandidateWelcomePage() {
               </div>
             ) : null}
 
-            {cameraStatus === 'granted' ? (
+            {proctoring?.webcamEnabled === false || cameraStatus === 'granted' ? (
               <CandidateButton onClick={handleStart} disabled={startAttempt.isPending || !consentChecked} className="w-full">
                 {startAttempt.isPending ? 'Starting…' : 'Start exam'}
               </CandidateButton>

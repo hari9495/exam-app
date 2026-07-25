@@ -5,17 +5,17 @@ describe('ProctoringWarningOverlay', () => {
   const noop = () => undefined;
 
   it('shows the multiple_faces message', () => {
-    render(<ProctoringWarningOverlay strike={1} reason="multiple_faces" onContinue={noop} continuePending={false} continueError={false} />);
+    render(<ProctoringWarningOverlay strike={1} reason="multiple_faces" strikeLimit={3} onContinue={noop} continuePending={false} continueError={false} />);
     expect(screen.getByText('More than one person detected')).toBeInTheDocument();
   });
 
   it('shows the no_face message', () => {
-    render(<ProctoringWarningOverlay strike={1} reason="no_face" onContinue={noop} continuePending={false} continueError={false} />);
+    render(<ProctoringWarningOverlay strike={1} reason="no_face" strikeLimit={3} onContinue={noop} continuePending={false} continueError={false} />);
     expect(screen.getByText('Face not visible')).toBeInTheDocument();
   });
 
   it('falls back to the no_face message for an unrecognized reason', () => {
-    render(<ProctoringWarningOverlay strike={1} reason={undefined} onContinue={noop} continuePending={false} continueError={false} />);
+    render(<ProctoringWarningOverlay strike={1} reason={undefined} strikeLimit={3} onContinue={noop} continuePending={false} continueError={false} />);
     expect(screen.getByText('Face not visible')).toBeInTheDocument();
   });
 
@@ -30,10 +30,18 @@ describe('ProctoringWarningOverlay', () => {
     ['idle_timeout', 'Inactivity detected', 'We noticed no activity for several minutes.'],
     ['browser_activity_unspecified', 'Policy violation detected', 'We noticed unusual activity during this exam.'],
   ])('shows the %s message', (reason, heading, body) => {
-    render(<ProctoringWarningOverlay strike={2} reason={reason} onContinue={noop} continuePending={false} continueError={false} />);
+    render(<ProctoringWarningOverlay strike={2} reason={reason} strikeLimit={3} onContinue={noop} continuePending={false} continueError={false} />);
     expect(screen.getByText(heading)).toBeInTheDocument();
     expect(screen.getByText(body)).toBeInTheDocument();
     expect(screen.getByText('Warning 2/3')).toBeInTheDocument();
+  });
+
+  it('shows the strike count against the exam configured limit rather than a hardcoded 3', () => {
+    render(
+      <ProctoringWarningOverlay strike={1} strikeLimit={2} reason="tab_switch" onContinue={() => {}} continuePending={false} continueError={false} />,
+    );
+
+    expect(screen.getByText('Warning 1/2')).toBeInTheDocument();
   });
 });
 
