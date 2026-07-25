@@ -14,10 +14,10 @@ export interface ExamProctoringConfig {
 
 export interface ProctoringBypassSource {
   proctoringBypassedAt: Date | null;
-  // Optional so callers holding only the two original columns still type-check; a
-  // revoked bypass is a durable historical fact, not erased state (see the integrity
-  // disclosure), so "currently bypassed" has to exclude it explicitly.
-  proctoringBypassRevokedAt?: Date | null;
+  // Required, not optional: a partial Prisma `select` that omits this column must fail
+  // to compile rather than silently read as "not revoked" (undefined == null is true),
+  // which would leave proctoring stuck warn-only. Fail-closed on this predicate.
+  proctoringBypassRevokedAt: Date | null;
 }
 
 export function isProctoringBypassActive(attempt?: ProctoringBypassSource | null): boolean {

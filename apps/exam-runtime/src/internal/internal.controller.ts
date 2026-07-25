@@ -78,22 +78,32 @@ export class InternalController {
       if (!InternalController.BYPASSABLE_STATUSES.includes(attempt.status)) {
         throw new BadRequestException(`Attempt ${id} cannot be bypassed from status "${attempt.status}"`);
       }
-      const bypassedAt = new Date();
+      // Re-applying over an already-active bypass must only amend the reason/actor --
+      // rewriting proctoringBypassedAt would shorten the window the integrity
+      // disclosure reports, and re-zeroing counters would wipe strikes a second time.
+      const alreadyBypassed = isProctoringBypassActive(attempt);
+      const bypassedAt = alreadyBypassed ? attempt.proctoringBypassedAt! : new Date();
       await tx.attempt.update({
         where: { id },
-        data: {
-          proctoringBypassedAt: bypassedAt,
-          proctoringBypassedBy: dto.actorUserId,
-          proctoringBypassReason: dto.reason.trim(),
-          // A re-apply after a revoke must clear the revocation, or the new bypass
-          // would read as already revoked and never take effect.
-          proctoringBypassRevokedAt: null,
-        },
+        data: alreadyBypassed
+          ? {
+              proctoringBypassedBy: dto.actorUserId,
+              proctoringBypassReason: dto.reason.trim(),
+            }
+          : {
+              proctoringBypassedAt: bypassedAt,
+              proctoringBypassedBy: dto.actorUserId,
+              proctoringBypassReason: dto.reason.trim(),
+              // A re-apply after a revoke must clear the revocation, or the new bypass
+              // would read as already revoked and never take effect.
+              proctoringBypassRevokedAt: null,
+            },
       });
       // Reset counters and resume: the candidate may already be paused or blocked by
       // the very false positives being forgiven, so leaving them stuck would defeat
-      // the point of the bypass.
-      const resumed = await this.attemptSettlement.resumeFromPause(tx, attempt, { resetViolationCounters: true });
+      // the point of the bypass. Not when already bypassed -- that would wipe strikes
+      // accrued during the still-active window for no reason.
+      const resumed = await this.attemptSettlement.resumeFromPause(tx, attempt, { resetViolationCounters: !alreadyBypassed });
       return { examId: attempt.examId, status: resumed.status, proctoringBypassedAt: bypassedAt.toISOString() };
     });
     this.broadcastProctoringBypass(examId, id, true);

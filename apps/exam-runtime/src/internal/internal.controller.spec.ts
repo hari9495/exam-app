@@ -196,6 +196,29 @@ describe('InternalController', () => {
         expect(tx.attempt.update.mock.calls[0][0].data.proctoringBypassReason).toBe('second reason');
       });
 
+      it('re-applying over an already-active bypass keeps the original timestamp and does not reset counters, but updates the reason', async () => {
+        const originalBypassedAt = new Date('2026-07-26T09:00:00.000Z');
+        const attempt = {
+          id: 'a1', status: 'in_progress', pausedAt: null, pausedDurationMs: 0,
+          webcamViolationCount: 2, browserActivityViolationCount: 1,
+          proctoringBypassedAt: originalBypassedAt, proctoringBypassRevokedAt: null,
+        };
+        const tx = {
+          attempt: { findUnique: jest.fn().mockResolvedValue(attempt), update: jest.fn().mockResolvedValue({}) },
+        };
+        tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+        attemptSettlement.resumeFromPause.mockResolvedValue({ status: 'in_progress' });
+
+        const result = await controller.applyProctoringBypass('a1', { reason: 'amending reason', actorUserId: ACTOR });
+
+        expect(tx.attempt.update).toHaveBeenCalledWith({
+          where: { id: 'a1' },
+          data: { proctoringBypassedBy: ACTOR, proctoringBypassReason: 'amending reason' },
+        });
+        expect(attemptSettlement.resumeFromPause).toHaveBeenCalledWith(tx, expect.objectContaining({ id: 'a1' }), { resetViolationCounters: false });
+        expect(result.proctoringBypassedAt).toBe(originalBypassedAt.toISOString());
+      });
+
       it('re-applying after a revoke clears the revocation, so the new bypass is active', async () => {
         const tx = {
           attempt: {
