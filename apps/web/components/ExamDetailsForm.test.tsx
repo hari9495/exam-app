@@ -85,6 +85,8 @@ describe('ExamDetailsForm', () => {
       passCriteriaPercent: 40, randomizeOrder: false, feedbackVisibility: 'pass_fail' as const, schedulingEnabled: true,
       availabilityWindowStart: '2026-07-20T09:00:00.000Z', availabilityWindowEnd: '2026-07-27T18:00:00.000Z',
       walkInEnabled: false, allowedIpRange: null, createdAt: '2026-07-01T00:00:00.000Z', sections: [], invitationCount: 0,
+      webcamProctoringEnabled: true, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
+      disabledProctoringSignalsJson: null,
     };
     render(<ExamDetailsForm initialExam={scheduledExam} onSubmit={jest.fn()} submitLabel="Save" />);
 
@@ -162,6 +164,8 @@ describe('ExamDetailsForm', () => {
       passCriteriaPercent: 40, randomizeOrder: false, feedbackVisibility: 'pass_fail' as const, schedulingEnabled: false,
       availabilityWindowStart: null, availabilityWindowEnd: null, walkInEnabled: false,
       allowedIpRange: '203.0.113.0/24', createdAt: '2026-07-01T00:00:00.000Z', sections: [], invitationCount: 0,
+      webcamProctoringEnabled: true, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
+      disabledProctoringSignalsJson: null,
     };
     render(<ExamDetailsForm initialExam={examWithIpRange} onSubmit={onSubmit} submitLabel="Save" />);
 
@@ -172,5 +176,83 @@ describe('ExamDetailsForm', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ allowedIpRange: null }));
+  });
+
+  describe('proctoring settings', () => {
+    it("submits today's defaults when the recruiter changes nothing", async () => {
+      const onSubmit = jest.fn();
+      render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Create" />);
+
+      await userEvent.type(screen.getByLabelText('Title'), 'Screen');
+      await userEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          webcamProctoringEnabled: true,
+          proctoringEnforcement: 'block',
+          proctoringStrikeLimit: 3,
+          disabledProctoringSignals: [],
+        }),
+      );
+    });
+
+    it('submits webcam off and the signals the recruiter unticked', async () => {
+      const onSubmit = jest.fn();
+      render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Create" />);
+
+      await userEvent.type(screen.getByLabelText('Title'), 'Screen');
+      await userEvent.click(screen.getByLabelText('Require webcam proctoring'));
+      await userEvent.click(screen.getByRole('button', { name: /which activity to watch/i }));
+      await userEvent.click(screen.getByLabelText('Right-click / context menu'));
+      await userEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ webcamProctoringEnabled: false, disabledProctoringSignals: ['right_click'] }),
+      );
+    });
+
+    it('hides the strike limit in record-only mode, because nothing is ever blocked', async () => {
+      render(<ExamDetailsForm onSubmit={jest.fn()} submitLabel="Create" />);
+
+      expect(screen.getByLabelText('Block after')).toBeInTheDocument();
+
+      await userEvent.click(screen.getByLabelText(/Record only/i));
+
+      expect(screen.queryByLabelText('Block after')).not.toBeInTheDocument();
+    });
+
+    it('prefills from an existing exam, reading the stored disabled-signal JSON', () => {
+      render(
+        <ExamDetailsForm
+          onSubmit={jest.fn()}
+          submitLabel="Save"
+          initialExam={
+            {
+              title: 'Screen',
+              durationMinutes: 60,
+              passCriteriaPercent: 40,
+              randomizeOrder: false,
+              feedbackVisibility: 'pass_fail',
+              schedulingEnabled: false,
+              walkInEnabled: false,
+              webcamProctoringEnabled: false,
+              proctoringEnforcement: 'warn',
+              proctoringStrikeLimit: 5,
+              disabledProctoringSignalsJson: JSON.stringify(['right_click']),
+            } as never
+          }
+        />,
+      );
+
+      expect(screen.getByLabelText('Require webcam proctoring')).not.toBeChecked();
+      expect(screen.getByLabelText(/Record only/i)).toBeChecked();
+    });
+
+    it('disables every proctoring control once the exam is locked, and says why', () => {
+      render(<ExamDetailsForm onSubmit={jest.fn()} submitLabel="Save" locked />);
+
+      expect(screen.getByLabelText('Require webcam proctoring')).toBeDisabled();
+      expect(screen.getByText(/locked because candidates have already been invited/i)).toBeInTheDocument();
+    });
   });
 });

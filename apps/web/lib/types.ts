@@ -122,6 +122,10 @@ export interface Exam {
   availabilityWindowEnd: string | null;
   walkInEnabled: boolean;
   allowedIpRange: string | null;
+  webcamProctoringEnabled: boolean;
+  proctoringEnforcement: 'warn' | 'block';
+  proctoringStrikeLimit: number;
+  disabledProctoringSignalsJson: string | null;
   createdAt: string;
   sections: ExamSection[];
   invitationCount: number;

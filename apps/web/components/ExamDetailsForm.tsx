@@ -16,13 +16,32 @@ export interface ExamDetailsValue {
   availabilityWindowEnd?: string;
   walkInEnabled: boolean;
   allowedIpRange?: string | null;
+  webcamProctoringEnabled: boolean;
+  proctoringEnforcement: 'warn' | 'block';
+  proctoringStrikeLimit: number;
+  disabledProctoringSignals: string[];
 }
 
 interface ExamDetailsFormProps {
   initialExam?: Exam;
   onSubmit: (input: ExamDetailsValue) => void;
   submitLabel: string;
+  locked?: boolean;
 }
+
+// Recruiters will not recognise the raw event-type names, so every toggle carries
+// plain-language copy. Keys must stay in sync with TOGGLEABLE_PROCTORING_SIGNALS
+// in apps/api/src/exams/dto/create-exam.dto.ts.
+const PROCTORING_SIGNAL_LABELS: { value: string; label: string }[] = [
+  { value: 'tab_switch', label: 'Switching browser tabs' },
+  { value: 'window_blur', label: 'Switching to another application' },
+  { value: 'fullscreen_exit', label: 'Leaving fullscreen' },
+  { value: 'copy_paste', label: 'Copy / paste' },
+  { value: 'right_click', label: 'Right-click / context menu' },
+  { value: 'dev_tools_detected', label: 'Developer tools' },
+  { value: 'multi_monitor_detected', label: 'A second display' },
+  { value: 'idle_timeout', label: 'Long inactivity' },
+];
 
 function toDatetimeLocalValue(iso: string): string {
   const date = new Date(iso);
@@ -30,7 +49,7 @@ function toDatetimeLocalValue(iso: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-export function ExamDetailsForm({ initialExam, onSubmit, submitLabel }: ExamDetailsFormProps) {
+export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = false }: ExamDetailsFormProps) {
   const [title, setTitle] = useState(initialExam?.title ?? '');
   const [instructions, setInstructions] = useState(initialExam?.instructions ?? '');
   const [durationMinutes, setDurationMinutes] = useState(String(initialExam?.durationMinutes ?? 60));
@@ -47,6 +66,19 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel }: ExamDeta
   const [schedulingError, setSchedulingError] = useState<string | undefined>(undefined);
   const [walkInEnabled, setWalkInEnabled] = useState(initialExam?.walkInEnabled ?? false);
   const [allowedIpRange, setAllowedIpRange] = useState(initialExam?.allowedIpRange ?? '');
+  const [webcamProctoringEnabled, setWebcamProctoringEnabled] = useState(initialExam?.webcamProctoringEnabled ?? true);
+  const [proctoringEnforcement, setProctoringEnforcement] = useState<'warn' | 'block'>(initialExam?.proctoringEnforcement ?? 'block');
+  const [proctoringStrikeLimit, setProctoringStrikeLimit] = useState(String(initialExam?.proctoringStrikeLimit ?? 3));
+  const [disabledSignals, setDisabledSignals] = useState<string[]>(() => {
+    if (!initialExam?.disabledProctoringSignalsJson) return [];
+    try {
+      const parsed = JSON.parse(initialExam.disabledProctoringSignalsJson);
+      return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === 'string') : [];
+    } catch {
+      return [];
+    }
+  });
+  const [signalsOpen, setSignalsOpen] = useState(false);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -75,6 +107,10 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel }: ExamDeta
         : initialExam?.allowedIpRange
           ? null
           : undefined,
+      webcamProctoringEnabled,
+      proctoringEnforcement,
+      proctoringStrikeLimit: Number(proctoringStrikeLimit),
+      disabledProctoringSignals: disabledSignals,
     });
   }
 
@@ -141,6 +177,82 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel }: ExamDeta
         onChange={setAllowedIpRange}
         placeholder="e.g. 203.0.113.4 or 203.0.113.0/24"
       />
+      <fieldset disabled={locked} className="flex flex-col gap-3 rounded-md border border-recruiter-border p-3">
+        <legend className="px-1 text-sm font-semibold text-recruiter-text">Proctoring &amp; integrity</legend>
+        {locked && (
+          <p className="text-xs text-recruiter-text-secondary">
+            These settings are locked because candidates have already been invited to this published exam — changing the rules
+            mid-exam would judge candidates in the same exam differently.
+          </p>
+        )}
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={webcamProctoringEnabled}
+            onChange={(e) => setWebcamProctoringEnabled(e.target.checked)}
+          />
+          Require webcam proctoring
+        </label>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-gray-700">If a rule is broken</span>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="radio"
+              name="proctoring-enforcement"
+              checked={proctoringEnforcement === 'block'}
+              onChange={() => setProctoringEnforcement('block')}
+            />
+            Pause the exam, then block after repeated strikes
+          </label>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="radio"
+              name="proctoring-enforcement"
+              checked={proctoringEnforcement === 'warn'}
+              onChange={() => setProctoringEnforcement('warn')}
+            />
+            Record only — never pause the exam
+          </label>
+        </div>
+        {proctoringEnforcement === 'block' && (
+          <Select
+            label="Block after"
+            value={proctoringStrikeLimit}
+            onChange={setProctoringStrikeLimit}
+            options={[
+              { value: '2', label: '2 strikes' },
+              { value: '3', label: '3 strikes' },
+              { value: '5', label: '5 strikes' },
+            ]}
+          />
+        )}
+        <button
+          type="button"
+          onClick={() => setSignalsOpen((open) => !open)}
+          className="self-start text-sm font-medium text-primary hover:underline"
+        >
+          {signalsOpen ? 'Hide' : 'Choose'} which activity to watch ({PROCTORING_SIGNAL_LABELS.length - disabledSignals.length}/
+          {PROCTORING_SIGNAL_LABELS.length})
+        </button>
+        {signalsOpen && (
+          <div className="flex flex-col gap-1.5 pl-1">
+            {PROCTORING_SIGNAL_LABELS.map((signal) => (
+              <label key={signal.value} className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={!disabledSignals.includes(signal.value)}
+                  onChange={(e) =>
+                    setDisabledSignals((current) =>
+                      e.target.checked ? current.filter((entry) => entry !== signal.value) : [...current, signal.value],
+                    )
+                  }
+                />
+                {signal.label}
+              </label>
+            ))}
+          </div>
+        )}
+      </fieldset>
       <Button type="submit">{submitLabel}</Button>
     </form>
   );
