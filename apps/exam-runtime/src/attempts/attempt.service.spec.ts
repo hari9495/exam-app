@@ -2214,5 +2214,66 @@ describe('AttemptService', () => {
 
       await expect(service.screenShareState(session, { active: true })).rejects.toThrow(NotFoundException);
     });
+
+    it('leaves a submitted attempt untouched on active:false -- no strike, no event, no writes at all', async () => {
+      const attempt = { id: 'attempt-1', status: 'submitted', screenShareStartedAt: new Date('2026-01-01T00:00:00Z') };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt), update: jest.fn() },
+        proctoringEvent: { create: jest.fn() },
+      };
+      mockScoped(examWithScreenCapture, tx);
+
+      const result = await service.screenShareState(session, { active: false });
+
+      expect(settlement.registerBrowserActivityViolation).not.toHaveBeenCalled();
+      expect(tx.attempt.update).not.toHaveBeenCalled();
+      expect(tx.proctoringEvent.create).not.toHaveBeenCalled();
+      expect(monitoringGateway.emitAttemptStatus).not.toHaveBeenCalled();
+      expect(result).toEqual({ status: 'submitted' });
+    });
+
+    it('leaves a submitted attempt untouched on active:true -- no timestamp, no event, no writes at all', async () => {
+      const attempt = { id: 'attempt-1', status: 'submitted', screenShareStartedAt: null };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt), update: jest.fn() },
+        proctoringEvent: { create: jest.fn() },
+      };
+      mockScoped(examWithScreenCapture, tx);
+
+      const result = await service.screenShareState(session, { active: true });
+
+      expect(tx.attempt.update).not.toHaveBeenCalled();
+      expect(tx.proctoringEvent.create).not.toHaveBeenCalled();
+      expect(settlement.resumeFromPause).not.toHaveBeenCalled();
+      expect(result).toEqual({ status: 'submitted' });
+    });
+
+    it('pauses under warn-mode enforcement -- the missing-share pause is a precondition, not enforcement', async () => {
+      const warnExam = { ...examWithScreenCapture, proctoringEnforcement: 'warn' };
+      const attempt = { id: 'attempt-1', status: 'in_progress', screenShareStartedAt: new Date('2026-01-01T00:00:00Z') };
+      const tx = {
+        attempt: {
+          findUnique: jest.fn().mockResolvedValue(attempt),
+          update: jest.fn()
+            .mockResolvedValueOnce({ ...attempt, screenShareStartedAt: null, browserActivityViolationCount: 1 })
+            .mockResolvedValueOnce({ ...attempt, screenShareStartedAt: null, browserActivityViolationCount: 1, status: 'paused', pausedAt: new Date() }),
+        },
+      };
+      mockScoped(warnExam, tx);
+      // Warn-mode enforcement: registerBrowserActivityViolation itself never pauses/blocks,
+      // so it hands back the attempt with status unchanged (still in_progress).
+      settlement.registerBrowserActivityViolation.mockResolvedValue({
+        attempt: { ...attempt, status: 'in_progress', browserActivityViolationCount: 1 },
+        strike: 1,
+        event: { id: 'evt-1', eventType: 'screen_share_stopped', severity: 'high' },
+      });
+
+      const result = await service.screenShareState(session, { active: false });
+
+      expect(tx.attempt.update).toHaveBeenCalledTimes(2);
+      expect(tx.attempt.update).toHaveBeenNthCalledWith(2, { where: { id: 'attempt-1' }, data: { status: 'paused', pausedAt: expect.any(Date) } });
+      expect(monitoringGateway.emitAttemptStatus).toHaveBeenCalledWith('exam-1', { attemptId: 'attempt-1', candidateId: 'cand-1', status: 'paused' });
+      expect(result).toEqual({ status: 'paused' });
+    });
   });
 });

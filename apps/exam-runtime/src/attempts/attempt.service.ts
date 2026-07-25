@@ -608,6 +608,20 @@ export class AttemptService {
         throw new NotFoundException('No attempt has been started');
       }
 
+      // This endpoint only ever acts on a still-live attempt. A terminal attempt (submitted,
+      // auto_submitted, force_submitted, pending_manual_grade) must not be resurrected or
+      // re-processed by a stray/late screen-share event -- e.g. the browser's
+      // MediaStreamTrack 'ended' handler firing active:false right as the submit tears the
+      // page down, well after screenShareStartedAt was set and nothing else clears it.
+      // `blocked` stays in the live set alongside in_progress/paused (not excluded) because
+      // it's an active enforcement state, not a terminal one: "leave a blocked attempt
+      // blocked" still means the strike path (and the started-event on active:true) keeps
+      // running for it, same as before this guard existed.
+      const isLive = attempt.status === 'in_progress' || attempt.status === 'paused' || attempt.status === 'blocked';
+      if (!isLive) {
+        return { status: attempt.status };
+      }
+
       // The server is authoritative: a stale or tampered client must not be able to pause
       // an exam that never asked for screen sharing. Write nothing, return status unchanged.
       if (!resolveProctoringConfig(exam, attempt).screenCaptureEnabled) {
