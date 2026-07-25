@@ -14,6 +14,14 @@ export interface ExamProctoringConfig {
 
 export interface ProctoringBypassSource {
   proctoringBypassedAt: Date | null;
+  // Optional so callers holding only the two original columns still type-check; a
+  // revoked bypass is a durable historical fact, not erased state (see the integrity
+  // disclosure), so "currently bypassed" has to exclude it explicitly.
+  proctoringBypassRevokedAt?: Date | null;
+}
+
+export function isProctoringBypassActive(attempt?: ProctoringBypassSource | null): boolean {
+  return attempt?.proctoringBypassedAt != null && attempt.proctoringBypassRevokedAt == null;
 }
 
 function parseDisabledSignals(json: string | null): string[] {
@@ -36,11 +44,12 @@ export function resolveProctoringConfig(
   // A recruiter bypass downgrades enforcement to warn-only for this one attempt:
   // events are still recorded, counted and broadcast, but nothing pauses or blocks
   // the candidate. It never widens what is watched -- only what is punished.
-  const bypassed = attempt?.proctoringBypassedAt != null;
+  // A revoked bypass enforces again.
+  const bypassed = isProctoringBypassActive(attempt);
   return {
     webcamEnabled: exam.webcamProctoringEnabled,
     // Anything other than an explicit 'warn' enforces, so a corrupt row fails safe.
-    enforcement: bypassed || exam.proctoringEnforcement === 'warn' ? 'warn' : 'block',
+    enforcement: (bypassed || exam.proctoringEnforcement === 'warn') ? 'warn' : 'block',
     strikeLimit: Math.max(1, exam.proctoringStrikeLimit),
     disabledSignals: parseDisabledSignals(exam.disabledProctoringSignalsJson),
   };

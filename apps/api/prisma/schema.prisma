@@ -386,6 +386,7 @@ model Attempt {
   proctoringBypassedAt          DateTime?           @map("proctoring_bypassed_at")
   proctoringBypassedBy          String?             @map("proctoring_bypassed_by") @db.UniqueIdentifier
   proctoringBypassReason        String?             @map("proctoring_bypass_reason")
+  proctoringBypassRevokedAt     DateTime?           @map("proctoring_bypass_revoked_at")
   invitation                    Invitation          @relation(fields: [invitationId], references: [id], onDelete: Cascade)
   answers                       Answer[]
   result                        Result?

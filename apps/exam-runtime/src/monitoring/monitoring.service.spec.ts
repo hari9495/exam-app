@@ -153,6 +153,13 @@ describe('MonitoringService', () => {
               candidateId: 'c3', id: 'i3', extraTimePercent: 0, status: 'invited', candidate: { name: 'Not started' },
               attempt: null,
             },
+            {
+              candidateId: 'c4', id: 'i4', extraTimePercent: 0, status: 'invited', candidate: { name: 'Revoked' },
+              attempt: {
+                id: 'a4', status: 'in_progress', questionOrderJson: '["q1"]', startedAt: new Date(),
+                lastSeenAt: new Date(), proctoringBypassedAt: new Date(), proctoringBypassRevokedAt: new Date(),
+              },
+            },
           ]),
         },
         answer: { count: jest.fn().mockResolvedValue(0) },
@@ -164,6 +171,8 @@ describe('MonitoringService', () => {
       expect(rows[0].proctoringBypassed).toBe(true);
       expect(rows[1].proctoringBypassed).toBe(false);
       expect(rows[2].proctoringBypassed).toBe(false);
+      // A revoked bypass is history, not current state -- the badge must clear.
+      expect(rows[3].proctoringBypassed).toBe(false);
     });
   });
 });

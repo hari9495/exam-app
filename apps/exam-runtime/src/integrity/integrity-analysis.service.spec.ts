@@ -72,6 +72,7 @@ describe('IntegrityAnalysisService', () => {
   async function runAnalysisWith(overrides: {
     proctoringBypassedAt: Date | null;
     proctoringBypassReason: string | null;
+    proctoringBypassRevokedAt?: Date | null;
     webcamViolationCount: number;
     events: { eventType: string; severity: string }[];
   }): Promise<{ narrative: string | null; level: string; flagsJson: string | null }> {
@@ -80,6 +81,7 @@ describe('IntegrityAnalysisService', () => {
       webcamViolationCount: overrides.webcamViolationCount,
       proctoringBypassedAt: overrides.proctoringBypassedAt,
       proctoringBypassReason: overrides.proctoringBypassReason,
+      proctoringBypassRevokedAt: overrides.proctoringBypassRevokedAt ?? null,
     };
     const write = persistTx();
     tenantPrisma.forTenant
@@ -500,7 +502,9 @@ describe('IntegrityAnalysisService', () => {
         events: [],
       });
 
-      expect(analysis.narrative).toContain('Proctoring enforcement was relaxed by a recruiter');
+      // "Recruiter note: " prefix (F6.2) marks the sentence as human-authored, since the
+      // report renders the disclosure and the AI narrative as one collapsed paragraph.
+      expect(analysis.narrative).toContain('Recruiter note: proctoring enforcement was relaxed by a recruiter');
       expect(analysis.narrative).toContain('webcam driver crashing');
     });
 
@@ -525,6 +529,33 @@ describe('IntegrityAnalysisService', () => {
       });
 
       expect(analysis.narrative).not.toContain('relaxed by a recruiter');
+    });
+
+    it('still discloses a bypass that was later revoked, and states the window it covered', async () => {
+      // Without this, revoke would erase the disclosure while its counter reset stands --
+      // a bypassed-then-revoked attempt would report quieter than one never bypassed.
+      const analysis = await runAnalysisWith({
+        proctoringBypassedAt: new Date('2026-07-26T10:30:00.000Z'),
+        proctoringBypassReason: 'webcam driver crashing',
+        proctoringBypassRevokedAt: new Date('2026-07-26T11:15:00.000Z'),
+        webcamViolationCount: 0,
+        events: [],
+      });
+
+      expect(analysis.narrative).toContain('Recruiter note: proctoring enforcement was relaxed by a recruiter');
+      expect(analysis.narrative).toContain('from 2026-07-26T10:30:00.000Z until 2026-07-26T11:15:00.000Z');
+    });
+
+    it('states that a never-revoked bypass covered the rest of the attempt', async () => {
+      const analysis = await runAnalysisWith({
+        proctoringBypassedAt: new Date('2026-07-26T10:30:00.000Z'),
+        proctoringBypassReason: 'flaky wifi',
+        proctoringBypassRevokedAt: null,
+        webcamViolationCount: 0,
+        events: [],
+      });
+
+      expect(analysis.narrative).toContain('for the remainder of the attempt');
     });
 
     it('does not report a block when enforcement was bypassed past the strike limit', async () => {

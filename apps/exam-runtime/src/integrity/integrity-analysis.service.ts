@@ -175,13 +175,26 @@ export class IntegrityAnalysisService {
   // The disclosure belongs in the narrative, not in flagsJson: IntegrityFlag severity
   // is only 'medium' | 'high', so a bypass flag would push an otherwise-clean attempt
   // to 'review' and penalise a candidate for a fault the recruiter accommodated.
-  private bypassDisclosure(attempt: { proctoringBypassedAt: Date | null; proctoringBypassReason: string | null }): string | null {
+  //
+  // It fires on a revoked bypass too: revoking resets both violation counters, so
+  // without a durable disclosure a bypassed-then-revoked attempt would read quieter
+  // than the same attempt with no bypass at all.
+  private bypassDisclosure(attempt: {
+    proctoringBypassedAt: Date | null;
+    proctoringBypassReason: string | null;
+    proctoringBypassRevokedAt: Date | null;
+  }): string | null {
     if (!attempt.proctoringBypassedAt) {
       return null;
     }
     const when = attempt.proctoringBypassedAt.toISOString();
     const reason = attempt.proctoringBypassReason?.trim() || 'no reason recorded';
-    return `Proctoring enforcement was relaxed by a recruiter at ${when} (reason: ${reason}). Violations after that point were recorded but not acted on, so the absence of a pause or block does not imply the absence of violations.`;
+    const window = attempt.proctoringBypassRevokedAt
+      ? `from ${when} until ${attempt.proctoringBypassRevokedAt.toISOString()}`
+      : `from ${when} for the remainder of the attempt`;
+    // "Recruiter note: " prefix so the reader can tell this sentence is not AI-authored
+    // narrative — the report renders narrative and disclosure as one paragraph.
+    return `Recruiter note: proctoring enforcement was relaxed by a recruiter ${window} (reason: ${reason}). Violations during that window were recorded but not acted on, so the absence of a pause or block does not imply the absence of violations.`;
   }
 
   private async updateCounterparts(organizationId: string, attemptId: string, matches: SimilarityMatch[]): Promise<void> {

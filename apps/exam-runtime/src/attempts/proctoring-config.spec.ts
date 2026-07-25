@@ -91,6 +91,15 @@ describe('proctoring bypass', () => {
     expect(resolveProctoringConfig(blockingExam).enforcement).toBe('block');
   });
 
+  it('enforces again once the bypass has been revoked', () => {
+    const config = resolveProctoringConfig(blockingExam, {
+      proctoringBypassedAt: new Date('2026-07-26T10:00:00.000Z'),
+      proctoringBypassRevokedAt: new Date('2026-07-26T10:30:00.000Z'),
+    });
+
+    expect(config.enforcement).toBe('block');
+  });
+
   it('is a no-op on an exam already configured as warn-only', () => {
     const warnExam = { ...blockingExam, proctoringEnforcement: 'warn' };
 

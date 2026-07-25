@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { computeRemainingSeconds, effectiveDurationMinutes } from '../grading/grading';
+import { isProctoringBypassActive } from '../attempts/proctoring-config';
 
 const ONLINE_THRESHOLD_MS = 30_000;
 
@@ -70,7 +71,7 @@ export class MonitoringService {
           remainingSeconds,
           answeredCount,
           totalQuestions,
-          proctoringBypassed: attempt?.proctoringBypassedAt != null,
+          proctoringBypassed: isProctoringBypassActive(attempt),
         });
       }
       return rows;
