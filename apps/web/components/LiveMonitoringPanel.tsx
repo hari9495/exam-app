@@ -18,6 +18,11 @@ const STATUS_VARIANT: Record<string, 'default' | 'success' | 'warning' | 'danger
 
 const RECENT_ALERT_WINDOW_MS = 5 * 60 * 1000;
 
+// The server only accepts a proctoring bypass apply/revoke from these three statuses;
+// offering the buttons on a settled attempt turns a deliberate 400 into what reads as
+// a transient "please try again" glitch.
+const BYPASSABLE_STATUSES = ['in_progress', 'paused', 'blocked'];
+
 function formatRemaining(seconds: number | null): string {
   if (seconds === null) {
     return '—';
@@ -158,7 +163,7 @@ export function LiveMonitoringPanel({ examId }: { examId: string }) {
               View log
             </button>
           ) : null}
-          {row.attemptId && row.proctoringBypassed ? (
+          {row.attemptId && BYPASSABLE_STATUSES.includes(row.status) && row.proctoringBypassed ? (
             <button
               onClick={() => {
                 revokeProctoringBypass.mutate(row.attemptId as string, {
@@ -172,7 +177,7 @@ export function LiveMonitoringPanel({ examId }: { examId: string }) {
               Restore proctoring
             </button>
           ) : null}
-          {row.attemptId && !row.proctoringBypassed ? (
+          {row.attemptId && BYPASSABLE_STATUSES.includes(row.status) && !row.proctoringBypassed ? (
             <button
               onClick={() => setBypassAttemptId(row.attemptId)}
               className="rounded-full border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-50"

@@ -242,5 +242,31 @@ describe('LiveMonitoringPanel', () => {
       expect(screen.getByRole('button', { name: 'Restore proctoring' })).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Relax proctoring' })).not.toBeInTheDocument();
     });
+
+    it('offers neither action on a settled attempt, which the server would reject with a 400', async () => {
+      renderPanelWithRoster([
+        { candidateId: 'c1', candidateName: 'Ann', invitationId: 'i1', attemptId: 'a1', status: 'submitted',
+          online: false, remainingSeconds: null, answeredCount: 5, totalQuestions: 5, proctoringBypassed: false },
+        { candidateId: 'c2', candidateName: 'Bob', invitationId: 'i2', attemptId: 'a2', status: 'auto_submitted',
+          online: false, remainingSeconds: null, answeredCount: 5, totalQuestions: 5, proctoringBypassed: true },
+        { candidateId: 'c3', candidateName: 'Cat', invitationId: 'i3', attemptId: 'a3', status: 'force_submitted',
+          online: false, remainingSeconds: null, answeredCount: 5, totalQuestions: 5, proctoringBypassed: false },
+      ]);
+
+      expect(await screen.findByText('Ann')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Relax proctoring' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Restore proctoring' })).not.toBeInTheDocument();
+    });
+
+    it('offers the relax action from paused and blocked, not just in_progress', async () => {
+      renderPanelWithRoster([
+        { candidateId: 'c1', candidateName: 'Ann', invitationId: 'i1', attemptId: 'a1', status: 'paused',
+          online: true, remainingSeconds: 600, answeredCount: 1, totalQuestions: 5, proctoringBypassed: false },
+        { candidateId: 'c2', candidateName: 'Bob', invitationId: 'i2', attemptId: 'a2', status: 'blocked',
+          online: true, remainingSeconds: 600, answeredCount: 1, totalQuestions: 5, proctoringBypassed: false },
+      ]);
+
+      expect(await screen.findAllByRole('button', { name: 'Relax proctoring' })).toHaveLength(2);
+    });
   });
 });

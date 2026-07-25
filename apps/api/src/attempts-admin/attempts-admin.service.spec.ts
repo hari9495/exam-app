@@ -402,6 +402,19 @@ describe('AttemptsAdminService', () => {
       await expect(service.bypassProctoring(context, 'a1', 'user-1', 'nope')).rejects.toThrow(NotFoundException);
       expect(examRuntime.applyProctoringBypass).not.toHaveBeenCalled();
     });
+
+    it('refuses to revoke an attempt outside the caller organization', async () => {
+      // Revoke resets both violation counters and resumes the attempt, so a missing
+      // ownership check here would be the more dangerous of the pair.
+      examRuntime.revokeProctoringBypass = jest.fn();
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) =>
+        fn({ attempt: { findFirst: jest.fn().mockResolvedValue(null) } }),
+      );
+
+      await expect(service.revokeProctoringBypass(context, 'a1', 'user-1')).rejects.toThrow(NotFoundException);
+      expect(examRuntime.revokeProctoringBypass).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
   });
 
   describe('BypassProctoringDto validation', () => {
