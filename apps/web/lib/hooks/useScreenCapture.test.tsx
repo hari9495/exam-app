@@ -172,6 +172,74 @@ describe('useScreenCapture', () => {
     expect(secondTrack.stop).toHaveBeenCalled();
   });
 
+  it('discards the loser when two requestShare() calls race concurrently (double-clicked share button)', async () => {
+    const trackA = makeTrack({ displaySurface: 'monitor' });
+    const streamA = makeStream(trackA);
+    const trackB = makeTrack({ displaySurface: 'monitor' });
+    const streamB = makeStream(trackB);
+
+    let resolveA!: (value: unknown) => void;
+    let resolveB!: (value: unknown) => void;
+    const getDisplayMedia = jest
+      .fn()
+      .mockImplementationOnce(() => new Promise((resolve) => (resolveA = resolve)))
+      .mockImplementationOnce(() => new Promise((resolve) => (resolveB = resolve)));
+    Object.defineProperty(global.navigator, 'mediaDevices', { value: { getDisplayMedia }, configurable: true });
+
+    const { result } = renderHook(() => useScreenCapture(true, jest.fn()));
+
+    let outcomeA: unknown;
+    let outcomeB: unknown;
+    await act(async () => {
+      // Both calls start before either awaits resolve -- this is the double-click:
+      // call B's requestShare() runs its synchronous prefix (guards, stopStream(),
+      // claiming a generation) while call A is still suspended awaiting its own
+      // getDisplayMedia picker promise.
+      const promiseA = result.current.requestShare().then((r) => (outcomeA = r));
+      const promiseB = result.current.requestShare().then((r) => (outcomeB = r));
+      resolveA(streamA);
+      resolveB(streamB);
+      await Promise.all([promiseA, promiseB]);
+    });
+
+    // A was superseded by B before A's picker promise ever resolved -- its stream
+    // must be released, not orphaned live with a dangling 'ended' listener.
+    expect(trackA.stop).toHaveBeenCalled();
+    expect(outcomeA).toBeNull();
+    // B is the one that actually won and is now the active share.
+    expect(trackB.stop).not.toHaveBeenCalled();
+    expect(outcomeB).toEqual({ displaySurface: 'monitor', userAgent: navigator.userAgent });
+    expect(result.current.active).toBe(true);
+  });
+
+  it('stops the stream if the component unmounts while getDisplayMedia is still pending', async () => {
+    const track = makeTrack({ displaySurface: 'monitor' });
+    const stream = makeStream(track);
+    let resolveGetDisplayMedia!: (value: unknown) => void;
+    const getDisplayMedia = jest.fn().mockReturnValue(new Promise((resolve) => (resolveGetDisplayMedia = resolve)));
+    Object.defineProperty(global.navigator, 'mediaDevices', { value: { getDisplayMedia }, configurable: true });
+
+    const { result, unmount } = renderHook(() => useScreenCapture(true, jest.fn()));
+
+    let outcome: unknown;
+    let sharePromise!: Promise<void>;
+    act(() => {
+      sharePromise = result.current.requestShare().then((r) => {
+        outcome = r;
+      });
+    });
+
+    unmount(); // cleanup runs while requestShare() is still suspended awaiting getDisplayMedia
+
+    await act(async () => {
+      resolveGetDisplayMedia(stream);
+      await sharePromise;
+    });
+
+    expect(track.stop).toHaveBeenCalled(); // otherwise unreachable by every teardown path
+    expect(outcome).toBeNull();
+  });
+
   it('stops the stream and sets denied when video.play() rejects', async () => {
     const track = makeTrack({ displaySurface: 'monitor' });
     const stream = makeStream(track);

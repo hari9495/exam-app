@@ -33,10 +33,19 @@ export function useScreenCapture(
   const lastCaptureAtRef = useRef(0);
   const captureCountRef = useRef(0);
 
+  // Bumped by every releaseCurrent() -- a concurrent second requestShare(), an
+  // unmount, or enabled flipping false, all of which can land while a prior
+  // requestShare() is still awaiting getDisplayMedia()/play(). requestShare()
+  // captures the value right after its own releaseCurrent() call and re-checks it
+  // after each subsequent await; a mismatch means it was superseded mid-flight, and
+  // its stream must be discarded rather than assigned.
+  const generationRef = useRef(0);
+
   // Shared by stopStream (an active share ending) and unmount cleanup (no state
   // update needed there) -- removes the 'ended' listener before stopping tracks so
   // a browser-initiated 'ended' racing teardown can't fire into a torn-down hook.
   const releaseCurrent = useCallback(() => {
+    generationRef.current += 1;
     if (trackRef.current && endedHandlerRef.current) {
       trackRef.current.removeEventListener('ended', endedHandlerRef.current);
     }
@@ -71,14 +80,25 @@ export function useScreenCapture(
 
     // A re-share while one is already active (re-sharing after a surface change, or
     // a double-clicked share button) must not orphan the previous stream -- release
-    // it up front rather than overwriting the refs that track it.
+    // it up front rather than overwriting the refs that track it, and claim this
+    // call's own generation so a second concurrent call (or a teardown) landing
+    // during either await below can be detected and yielded to.
     stopStream();
+    const myGeneration = generationRef.current;
 
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
     } catch {
       setError('denied');
+      return null;
+    }
+
+    if (generationRef.current !== myGeneration) {
+      // Superseded while awaiting the picker -- a concurrent requestShare(),
+      // unmount, or enabled->false already ran. Discard silently: whichever call
+      // is current owns the error/active state now.
+      stream.getTracks().forEach((t) => t.stop());
       return null;
     }
 
@@ -105,6 +125,12 @@ export function useScreenCapture(
       // stopped here rather than leaking a live share the candidate never sees used.
       stream.getTracks().forEach((t) => t.stop());
       setError('denied');
+      return null;
+    }
+
+    if (generationRef.current !== myGeneration) {
+      // Superseded while awaiting play() -- same reasoning as above.
+      stream.getTracks().forEach((t) => t.stop());
       return null;
     }
 
