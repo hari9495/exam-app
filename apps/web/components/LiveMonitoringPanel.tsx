@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useExamMonitoring } from '../lib/hooks/useExamMonitoring';
-import { useUnblockAttempt } from '../lib/hooks/useAttemptModeration';
+import { useUnblockAttempt, useBypassProctoring, useRevokeProctoringBypass } from '../lib/hooks/useAttemptModeration';
 import { useProctoringEvents } from '../lib/hooks/useProctoringEvents';
 import { Table, Badge, Card, Modal, useToast, type Column } from './ui';
 import { RosterRow, ConnectionStatus } from '../lib/types';
@@ -68,8 +68,27 @@ export function LiveMonitoringPanel({ examId }: { examId: string }) {
   const { roster, alerts, connectionStatus, joinError } = useExamMonitoring(examId);
   const { toast } = useToast();
   const unblockAttempt = useUnblockAttempt();
+  const bypassProctoring = useBypassProctoring();
+  const revokeProctoringBypass = useRevokeProctoringBypass();
   const [logAttemptId, setLogAttemptId] = useState<string | null>(null);
+  const [bypassAttemptId, setBypassAttemptId] = useState<string | null>(null);
+  const [bypassReason, setBypassReason] = useState('');
   const previousStatusRef = useRef<ConnectionStatus>(connectionStatus);
+
+  function handleConfirmBypass() {
+    if (!bypassAttemptId || !bypassReason.trim()) return;
+    bypassProctoring.mutate(
+      { attemptId: bypassAttemptId, reason: bypassReason.trim() },
+      {
+        onSuccess: () => {
+          toast('Proctoring relaxed for this candidate.', 'success');
+          setBypassAttemptId(null);
+          setBypassReason('');
+        },
+        onError: () => toast("Couldn't relax proctoring — please try again.", 'error'),
+      },
+    );
+  }
 
   useEffect(() => {
     if (previousStatusRef.current === 'connected' && connectionStatus === 'disconnected') {
@@ -85,7 +104,16 @@ export function LiveMonitoringPanel({ examId }: { examId: string }) {
 
   const rosterColumns: Column<RosterRow>[] = [
     { key: 'name', header: 'Candidate', render: (row) => row.candidateName, sortValue: (row) => row.candidateName },
-    { key: 'status', header: 'Status', render: (row) => <Badge variant={STATUS_VARIANT[row.status] ?? 'default'}>{row.status}</Badge> },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (row) => (
+        <>
+          <Badge variant={STATUS_VARIANT[row.status] ?? 'default'}>{row.status}</Badge>
+          {row.proctoringBypassed ? <Badge variant="warning">Proctoring relaxed</Badge> : null}
+        </>
+      ),
+    },
     { key: 'online', header: 'Online', render: (row) => <Badge variant={row.online ? 'success' : 'default'}>{row.online ? 'Online' : 'Offline'}</Badge> },
     { key: 'remaining', header: 'Time remaining', render: (row) => formatRemaining(row.remainingSeconds) },
     {
@@ -128,6 +156,28 @@ export function LiveMonitoringPanel({ examId }: { examId: string }) {
               className="rounded-full border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-50"
             >
               View log
+            </button>
+          ) : null}
+          {row.attemptId && row.proctoringBypassed ? (
+            <button
+              onClick={() => {
+                revokeProctoringBypass.mutate(row.attemptId as string, {
+                  onSuccess: () => toast('Proctoring restored.', 'success'),
+                  onError: () => toast("Couldn't restore proctoring — please try again.", 'error'),
+                });
+              }}
+              disabled={revokeProctoringBypass.isPending}
+              className="rounded-full border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-50"
+            >
+              Restore proctoring
+            </button>
+          ) : null}
+          {row.attemptId && !row.proctoringBypassed ? (
+            <button
+              onClick={() => setBypassAttemptId(row.attemptId)}
+              className="rounded-full border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-50"
+            >
+              Relax proctoring
             </button>
           ) : null}
         </div>
@@ -196,6 +246,41 @@ export function LiveMonitoringPanel({ examId }: { examId: string }) {
       )}
 
       {logAttemptId && <ProctoringLogModal attemptId={logAttemptId} onClose={() => setLogAttemptId(null)} />}
+
+      {bypassAttemptId ? (
+        <Modal open title="Relax proctoring for this candidate" onClose={() => { setBypassAttemptId(null); setBypassReason(''); }}>
+          <p className="mb-3 text-sm text-recruiter-text-secondary">
+            Violations will still be recorded, but this candidate will no longer be paused or blocked. Only this candidate is
+            affected.
+          </p>
+          <label htmlFor="bypass-reason" className="mb-1 block text-sm font-medium text-gray-700">
+            Why are you relaxing proctoring?
+          </label>
+          <textarea
+            id="bypass-reason"
+            value={bypassReason}
+            onChange={(event) => setBypassReason(event.target.value)}
+            rows={3}
+            maxLength={500}
+            className="mb-4 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => { setBypassAttemptId(null); setBypassReason(''); }}
+              className="rounded-full border border-gray-300 px-3 py-1 text-xs text-gray-700 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmBypass}
+              disabled={!bypassReason.trim() || bypassProctoring.isPending}
+              className="rounded-full bg-primary px-3 py-1 text-xs text-white disabled:opacity-50"
+            >
+              Confirm
+            </button>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }

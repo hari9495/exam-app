@@ -6,9 +6,14 @@ import * as useExamMonitoringModule from '../lib/hooks/useExamMonitoring';
 import * as useAttemptModerationModule from '../lib/hooks/useAttemptModeration';
 import * as useProctoringEventsModule from '../lib/hooks/useProctoringEvents';
 import { LiveMonitoringPanel } from './LiveMonitoringPanel';
+import { RosterRow } from '../lib/types';
 
 jest.mock('../lib/hooks/useExamMonitoring', () => ({ useExamMonitoring: jest.fn() }));
-jest.mock('../lib/hooks/useAttemptModeration', () => ({ useUnblockAttempt: jest.fn() }));
+jest.mock('../lib/hooks/useAttemptModeration', () => ({
+  useUnblockAttempt: jest.fn(() => ({ mutate: jest.fn(), isPending: false })),
+  useBypassProctoring: jest.fn(() => ({ mutate: jest.fn(), isPending: false })),
+  useRevokeProctoringBypass: jest.fn(() => ({ mutate: jest.fn(), isPending: false })),
+}));
 jest.mock('../lib/hooks/useProctoringEvents', () => ({ useProctoringEvents: jest.fn() }));
 
 const now = new Date('2026-01-01T00:10:00Z');
@@ -19,6 +24,16 @@ function renderPanel(examId = 'exam-1') {
       <LiveMonitoringPanel examId={examId} />
     </ToastProvider>,
   );
+}
+
+function renderPanelWithRoster(roster: RosterRow[]): void {
+  jest.spyOn(useExamMonitoringModule, 'useExamMonitoring').mockReturnValue({
+    roster,
+    alerts: [],
+    connectionStatus: 'connected',
+    joinError: null,
+  } as any);
+  renderPanel();
 }
 
 describe('LiveMonitoringPanel', () => {
@@ -143,17 +158,12 @@ describe('LiveMonitoringPanel', () => {
   });
 
   it('shows an Unblock action for a blocked candidate and calls the mutation on click', async () => {
-    jest.spyOn(useExamMonitoringModule, 'useExamMonitoring').mockReturnValue({
-      roster: [{ candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'blocked', online: true, remainingSeconds: null, answeredCount: 2, totalQuestions: 5 }],
-      alerts: [],
-      leaderboard: [],
-      connectionStatus: 'connected',
-      joinError: null,
-    });
     const mutate = jest.fn();
     jest.spyOn(useAttemptModerationModule, 'useUnblockAttempt').mockReturnValue({ mutate, isPending: false } as any);
 
-    renderPanel();
+    renderPanelWithRoster([
+      { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'blocked', online: true, remainingSeconds: null, answeredCount: 2, totalQuestions: 5, proctoringBypassed: false },
+    ]);
 
     // userEvent's default click uses real setTimeout delays, which hangs under this
     // file's jest.useFakeTimers(); delay: null makes it synchronous.
@@ -165,14 +175,11 @@ describe('LiveMonitoringPanel', () => {
   });
 
   describe('proctoring log modal', () => {
+    const roster: RosterRow[] = [
+      { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'blocked', online: true, remainingSeconds: null, answeredCount: 2, totalQuestions: 5, proctoringBypassed: false },
+    ];
+
     beforeEach(() => {
-      jest.spyOn(useExamMonitoringModule, 'useExamMonitoring').mockReturnValue({
-        roster: [{ candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'blocked', online: true, remainingSeconds: null, answeredCount: 2, totalQuestions: 5 }],
-        alerts: [],
-        leaderboard: [],
-        connectionStatus: 'connected',
-        joinError: null,
-      });
       jest.spyOn(useAttemptModerationModule, 'useUnblockAttempt').mockReturnValue({ mutate: jest.fn(), isPending: false } as any);
     });
 
@@ -185,7 +192,7 @@ describe('LiveMonitoringPanel', () => {
         isLoading: false,
       } as any);
 
-      renderPanel();
+      renderPanelWithRoster(roster);
       const user = userEvent.setup({ delay: null });
       await user.click(screen.getByRole('button', { name: 'View log' }));
 
@@ -198,11 +205,42 @@ describe('LiveMonitoringPanel', () => {
     it('shows an empty state in the log modal when the attempt has no recorded events', async () => {
       jest.spyOn(useProctoringEventsModule, 'useProctoringEvents').mockReturnValue({ data: [], isLoading: false } as any);
 
-      renderPanel();
+      renderPanelWithRoster(roster);
       const user = userEvent.setup({ delay: null });
       await user.click(screen.getByRole('button', { name: 'View log' }));
 
       expect(screen.getByText('No proctoring events recorded for this attempt.')).toBeInTheDocument();
+    });
+  });
+
+  describe('proctoring bypass', () => {
+    it('keeps the confirm button disabled until a reason is typed', async () => {
+      renderPanelWithRoster([
+        { candidateId: 'c1', candidateName: 'Ann', invitationId: 'i1', attemptId: 'a1', status: 'in_progress',
+          online: true, remainingSeconds: 600, answeredCount: 1, totalQuestions: 5, proctoringBypassed: false },
+      ]);
+
+      // See the Unblock test above: userEvent's default click uses real setTimeout
+      // delays, which hangs under this file's jest.useFakeTimers(); delay: null makes it synchronous.
+      const user = userEvent.setup({ delay: null });
+      await user.click(await screen.findByRole('button', { name: 'Relax proctoring' }));
+
+      expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled();
+
+      await user.type(screen.getByLabelText('Why are you relaxing proctoring?'), 'webcam driver crashing');
+
+      expect(screen.getByRole('button', { name: 'Confirm' })).not.toBeDisabled();
+    });
+
+    it('shows a badge and a restore action for an already-bypassed attempt', async () => {
+      renderPanelWithRoster([
+        { candidateId: 'c1', candidateName: 'Ann', invitationId: 'i1', attemptId: 'a1', status: 'in_progress',
+          online: true, remainingSeconds: 600, answeredCount: 1, totalQuestions: 5, proctoringBypassed: true },
+      ]);
+
+      expect(await screen.findByText('Proctoring relaxed')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Restore proctoring' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Relax proctoring' })).not.toBeInTheDocument();
     });
   });
 });
