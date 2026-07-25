@@ -11,7 +11,7 @@ describe('MonitoringGateway', () => {
   let jwt: JwtService;
   let prisma: { rolePermission: { findFirst: jest.Mock } };
   let tenantPrisma: { forTenant: jest.Mock };
-  let monitoring: { getRosterSnapshot: jest.Mock };
+  let monitoring: { getRosterSnapshot: jest.Mock; getRecentAlerts: jest.Mock };
   let leaderboardService: { computeRecruiterView: jest.Mock };
 
   function makeSocket(overrides: Record<string, unknown> = {}) {
@@ -28,7 +28,7 @@ describe('MonitoringGateway', () => {
   beforeEach(async () => {
     prisma = { rolePermission: { findFirst: jest.fn() } };
     tenantPrisma = { forTenant: jest.fn() };
-    monitoring = { getRosterSnapshot: jest.fn() };
+    monitoring = { getRosterSnapshot: jest.fn(), getRecentAlerts: jest.fn().mockResolvedValue([]) };
     leaderboardService = { computeRecruiterView: jest.fn() };
 
     const moduleRef = await Test.createTestingModule({
@@ -113,6 +113,10 @@ describe('MonitoringGateway', () => {
       prisma.rolePermission.findFirst.mockResolvedValue({ role: 'recruiter' });
       const roster = [{ candidateId: 'cand-1' }];
       monitoring.getRosterSnapshot.mockResolvedValue(roster);
+      const recentAlerts = [
+        { attemptId: 'attempt-1', candidateId: 'cand-1', eventType: 'tab_switch', severity: 'high', occurredAt: new Date('2026-07-25T10:00:00Z') },
+      ];
+      monitoring.getRecentAlerts.mockResolvedValue(recentAlerts);
       leaderboardService.computeRecruiterView.mockResolvedValue([
         { rank: 1, candidateId: 'cand-1', candidateName: 'Alice', correctCount: 2 },
       ]);
@@ -122,6 +126,8 @@ describe('MonitoringGateway', () => {
       expect(socket.join).toHaveBeenCalledWith('exam:exam-1');
       expect(socket.emit).toHaveBeenCalledWith('roster:snapshot', roster);
       expect(monitoring.getRosterSnapshot).toHaveBeenCalledWith({ organizationId: 'org-1', isSuperAdmin: false }, 'exam-1');
+      expect(monitoring.getRecentAlerts).toHaveBeenCalledWith({ organizationId: 'org-1', isSuperAdmin: false }, 'exam-1');
+      expect(socket.emit).toHaveBeenCalledWith('proctoring:recent', recentAlerts);
       expect(socket.emit).toHaveBeenCalledWith('leaderboard:snapshot', [
         { rank: 1, candidateId: 'cand-1', candidateName: 'Alice', correctCount: 2 },
       ]);

@@ -101,6 +101,9 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
     await client.join(`${EXAM_ROOM_PREFIX}${body.examId}`);
     client.emit('roster:snapshot', roster);
 
+    const recentAlerts = await this.monitoring.getRecentAlerts(context, body.examId);
+    client.emit('proctoring:recent', recentAlerts);
+
     const leaderboard = await this.leaderboard.computeRecruiterView(context, body.examId);
     client.emit('leaderboard:snapshot', leaderboard);
   }

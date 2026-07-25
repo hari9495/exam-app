@@ -175,4 +175,38 @@ describe('MonitoringService', () => {
       expect(rows[3].proctoringBypassed).toBe(false);
     });
   });
+
+  describe('getRecentAlerts', () => {
+    it('returns only medium and high severity events within the window, newest first, capped', async () => {
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
+        proctoringEvent: {
+          findMany: jest.fn().mockResolvedValue([
+            { attemptId: 'a1', eventType: 'tab_switch', severity: 'high', occurredAt: new Date('2026-07-25T10:00:00Z'), attempt: { candidateId: 'c1' } },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
+
+      const alerts = await service.getRecentAlerts(context, 'exam-1');
+
+      expect(alerts).toEqual([
+        { attemptId: 'a1', candidateId: 'c1', eventType: 'tab_switch', severity: 'high', occurredAt: new Date('2026-07-25T10:00:00Z') },
+      ]);
+      const args = tx.proctoringEvent.findMany.mock.calls[0][0];
+      expect(args.where.severity).toEqual({ in: ['medium', 'high'] });
+      expect(args.where.attempt).toEqual({ examId: 'exam-1' });
+      expect(args.where.occurredAt.gt).toBeInstanceOf(Date);
+      expect(args.orderBy).toEqual({ occurredAt: 'desc' });
+      expect(args.take).toBe(50);
+    });
+
+    it('throws NotFoundException when the exam does not belong to the caller organization', async () => {
+      const tx = { exam: { findFirst: jest.fn().mockResolvedValue(null) }, proctoringEvent: { findMany: jest.fn() } };
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
+
+      await expect(service.getRecentAlerts(context, 'exam-1')).rejects.toThrow(NotFoundException);
+      expect(tx.proctoringEvent.findMany).not.toHaveBeenCalled();
+    });
+  });
 });
