@@ -50,9 +50,10 @@ export default function EditExamPage() {
     () => new Map(monitoring.roster.filter((row) => row.attemptId).map((row) => [row.attemptId as string, row.candidateName])),
     [monitoring.roster],
   );
-  // exam?.title falls back to '' while the exam is still loading -- the hook must be
-  // called unconditionally, before the early return below.
-  const notifications = useAttentionNotifications(flagged, candidateNames, exam?.title ?? '');
+  // The hook must be called unconditionally, before the early return below, and the
+  // exam may still be loading -- a notification with an empty title reads as broken,
+  // so fall back to something meaningful rather than to ''.
+  const notifications = useAttentionNotifications(flagged, candidateNames, exam?.title || 'Live exam', params.id);
 
   if (!exam) {
     return <p className="text-sm text-gray-500">Loading…</p>;
