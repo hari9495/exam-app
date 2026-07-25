@@ -1,11 +1,12 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { useExamMonitoring } from '../lib/hooks/useExamMonitoring';
+import { RecruiterLeaderboardRow } from '../lib/types';
 
-export function LeaderboardPanel({ examId }: { examId: string }) {
-  const { leaderboard } = useExamMonitoring(examId);
-
+// Fed from the page's single monitoring socket. Calling useExamMonitoring here would
+// open a second socket per recruiter -- two join-exam handlers, two roster snapshots,
+// two leaderboard computations -- for data the page already has.
+export function LeaderboardPanel({ leaderboard }: { leaderboard: RecruiterLeaderboardRow[] }) {
   if (leaderboard.length === 0) {
     return <p className="text-sm text-gray-500">No answers yet — the leaderboard fills in as candidates answer.</p>;
   }

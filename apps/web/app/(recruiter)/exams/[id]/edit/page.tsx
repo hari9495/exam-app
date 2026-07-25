@@ -117,7 +117,7 @@ export default function EditExamPage() {
           />
         </TabsContent>
         <TabsContent value="leaderboard">
-          <LeaderboardPanel examId={exam.id} />
+          <LeaderboardPanel leaderboard={monitoring.leaderboard} />
         </TabsContent>
         <TabsContent value="grading">
           <GradingQueuePanel examId={exam.id} />
