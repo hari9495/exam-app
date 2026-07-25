@@ -1,11 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useExamMonitoring } from '../lib/hooks/useExamMonitoring';
 import { useUnblockAttempt, useBypassProctoring, useRevokeProctoringBypass } from '../lib/hooks/useAttemptModeration';
 import { useProctoringEvents } from '../lib/hooks/useProctoringEvents';
 import { Table, Badge, Card, Modal, useToast, type Column } from './ui';
-import { RosterRow, ConnectionStatus } from '../lib/types';
+import { RosterRow, ProctoringFlag, ConnectionStatus } from '../lib/types';
 
 const STATUS_VARIANT: Record<string, 'default' | 'success' | 'warning' | 'danger'> = {
   invited: 'default',
@@ -115,8 +114,19 @@ function ProctoringLogModal({ attemptId, onClose }: { attemptId: string; onClose
   );
 }
 
-export function LiveMonitoringPanel({ examId }: { examId: string }) {
-  const { roster, alerts, connectionStatus, joinError } = useExamMonitoring(examId);
+export function LiveMonitoringPanel({
+  examId,
+  roster,
+  alerts,
+  connectionStatus,
+  joinError,
+}: {
+  examId: string;
+  roster: RosterRow[];
+  alerts: ProctoringFlag[];
+  connectionStatus: ConnectionStatus;
+  joinError: string | null;
+}) {
   const { toast } = useToast();
   const unblockAttempt = useUnblockAttempt();
   const bypassProctoring = useBypassProctoring();

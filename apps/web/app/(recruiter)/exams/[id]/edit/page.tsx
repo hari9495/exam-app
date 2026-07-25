@@ -9,6 +9,7 @@ import { GradingQueuePanel } from '../../../../../components/GradingQueuePanel';
 import { LeaderboardPanel } from '../../../../../components/LeaderboardPanel';
 import { CandidatesPanel } from '../../../../../components/CandidatesPanel';
 import { useExam, useUpdateExam, usePublishExam } from '../../../../../lib/hooks/useExams';
+import { useExamMonitoring } from '../../../../../lib/hooks/useExamMonitoring';
 import { Tabs, TabsList, TabsTrigger, TabsContent, Button, useToast } from '../../../../../components/ui';
 
 export default function EditExamPage() {
@@ -18,6 +19,7 @@ export default function EditExamPage() {
   const { data: exam } = useExam(params.id);
   const updateExam = useUpdateExam(params.id);
   const publishExam = usePublishExam(params.id);
+  const monitoring = useExamMonitoring(params.id);
 
   if (!exam) {
     return <p className="text-sm text-gray-500">Loading…</p>;
@@ -81,7 +83,13 @@ export default function EditExamPage() {
           <CandidatesPanel examId={exam.id} />
         </TabsContent>
         <TabsContent value="live">
-          <LiveMonitoringPanel examId={exam.id} />
+          <LiveMonitoringPanel
+            examId={exam.id}
+            roster={monitoring.roster}
+            alerts={monitoring.alerts}
+            connectionStatus={monitoring.connectionStatus}
+            joinError={monitoring.joinError}
+          />
         </TabsContent>
         <TabsContent value="leaderboard">
           <LeaderboardPanel examId={exam.id} />

@@ -1,14 +1,11 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ToastProvider } from './ui';
-import { useExamMonitoring } from '../lib/hooks/useExamMonitoring';
-import * as useExamMonitoringModule from '../lib/hooks/useExamMonitoring';
 import * as useAttemptModerationModule from '../lib/hooks/useAttemptModeration';
 import * as useProctoringEventsModule from '../lib/hooks/useProctoringEvents';
 import { LiveMonitoringPanel } from './LiveMonitoringPanel';
-import { RosterRow } from '../lib/types';
+import { RosterRow, ProctoringFlag, ConnectionStatus } from '../lib/types';
 
-jest.mock('../lib/hooks/useExamMonitoring', () => ({ useExamMonitoring: jest.fn() }));
 jest.mock('../lib/hooks/useAttemptModeration', () => ({
   useUnblockAttempt: jest.fn(() => ({ mutate: jest.fn(), isPending: false })),
   useBypassProctoring: jest.fn(() => ({ mutate: jest.fn(), isPending: false })),
@@ -18,22 +15,30 @@ jest.mock('../lib/hooks/useProctoringEvents', () => ({ useProctoringEvents: jest
 
 const now = new Date('2026-01-01T00:10:00Z');
 
-function renderPanel(examId = 'exam-1') {
+function renderPanel(
+  examId = 'exam-1',
+  monitoring: {
+    roster?: RosterRow[];
+    alerts?: ProctoringFlag[];
+    connectionStatus?: ConnectionStatus;
+    joinError?: string | null;
+  } = {},
+) {
   return render(
     <ToastProvider>
-      <LiveMonitoringPanel examId={examId} />
+      <LiveMonitoringPanel
+        examId={examId}
+        roster={monitoring.roster ?? []}
+        alerts={monitoring.alerts ?? []}
+        connectionStatus={monitoring.connectionStatus ?? 'connected'}
+        joinError={monitoring.joinError ?? null}
+      />
     </ToastProvider>,
   );
 }
 
 function renderPanelWithRoster(roster: RosterRow[]): void {
-  jest.spyOn(useExamMonitoringModule, 'useExamMonitoring').mockReturnValue({
-    roster,
-    alerts: [],
-    connectionStatus: 'connected',
-    joinError: null,
-  } as any);
-  renderPanel();
+  renderPanel('exam-1', { roster });
 }
 
 describe('LiveMonitoringPanel', () => {
@@ -46,20 +51,16 @@ describe('LiveMonitoringPanel', () => {
   });
 
   it('renders stat tiles computed from the roster and alert feed', () => {
-    (useExamMonitoring as jest.Mock).mockReturnValue({
+    renderPanel('exam-1', {
       roster: [
-        { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'in_progress', online: true, remainingSeconds: 120, answeredCount: 2, totalQuestions: 5 },
-        { candidateId: 'c2', candidateName: 'Bob', invitationId: 'i2', attemptId: 'a2', status: 'submitted', online: false, remainingSeconds: null, answeredCount: 5, totalQuestions: 5 },
+        { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'in_progress', online: true, remainingSeconds: 120, answeredCount: 2, totalQuestions: 5, proctoringBypassed: false },
+        { candidateId: 'c2', candidateName: 'Bob', invitationId: 'i2', attemptId: 'a2', status: 'submitted', online: false, remainingSeconds: null, answeredCount: 5, totalQuestions: 5, proctoringBypassed: false },
       ],
       alerts: [
         { attemptId: 'a1', candidateId: 'c1', eventType: 'tab_switch', severity: 'medium', occurredAt: '2026-01-01T00:08:00Z' },
         { attemptId: 'a1', candidateId: 'c1', eventType: 'copy_paste', severity: 'low', occurredAt: '2025-01-01T00:00:00Z' },
       ],
-      connectionStatus: 'connected',
-      joinError: null,
     });
-
-    renderPanel();
 
     expect(screen.getByText('Online now')).toBeInTheDocument();
     // The four stat tiles (online, in-progress, submitted, recent alerts) plus the
@@ -71,36 +72,27 @@ describe('LiveMonitoringPanel', () => {
   });
 
   it('shows a per-row integrity alert chip counting medium/high severity alerts for that attemptId', () => {
-    (useExamMonitoring as jest.Mock).mockReturnValue({
+    renderPanel('exam-1', {
       roster: [
-        { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'in_progress', online: true, remainingSeconds: 120, answeredCount: 2, totalQuestions: 5 },
+        { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'in_progress', online: true, remainingSeconds: 120, answeredCount: 2, totalQuestions: 5, proctoringBypassed: false },
       ],
       alerts: [
         { attemptId: 'a1', candidateId: 'c1', eventType: 'tab_switch', severity: 'medium', occurredAt: '2026-01-01T00:08:00Z' },
         { attemptId: 'a1', candidateId: 'c1', eventType: 'copy_paste', severity: 'medium', occurredAt: '2026-01-01T00:09:00Z' },
         { attemptId: 'a1', candidateId: 'c1', eventType: 'right_click', severity: 'low', occurredAt: '2026-01-01T00:09:30Z' },
       ],
-      connectionStatus: 'connected',
-      joinError: null,
     });
-
-    renderPanel();
 
     expect(screen.getByText('Integrity alerts')).toBeInTheDocument();
     expect(screen.getByText('2')).toBeInTheDocument();
   });
 
   it('renders the roster table with candidate rows', () => {
-    (useExamMonitoring as jest.Mock).mockReturnValue({
+    renderPanel('exam-1', {
       roster: [
-        { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'in_progress', online: true, remainingSeconds: 65, answeredCount: 2, totalQuestions: 5 },
+        { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'in_progress', online: true, remainingSeconds: 65, answeredCount: 2, totalQuestions: 5, proctoringBypassed: false },
       ],
-      alerts: [],
-      connectionStatus: 'connected',
-      joinError: null,
     });
-
-    renderPanel();
 
     expect(screen.getByText('Alice')).toBeInTheDocument();
     expect(screen.getByText('in_progress')).toBeInTheDocument();
@@ -109,40 +101,32 @@ describe('LiveMonitoringPanel', () => {
   });
 
   it('shows an empty state when no proctoring alerts have arrived', () => {
-    (useExamMonitoring as jest.Mock).mockReturnValue({ roster: [], alerts: [], connectionStatus: 'connected', joinError: null });
-
     renderPanel();
 
     expect(screen.getByText('No proctoring alerts yet.')).toBeInTheDocument();
   });
 
   it('shows the join error inline instead of the roster when one is present', () => {
-    (useExamMonitoring as jest.Mock).mockReturnValue({ roster: [], alerts: [], connectionStatus: 'connected', joinError: 'Exam exam-1 not found' });
-
-    renderPanel();
+    renderPanel('exam-1', { joinError: 'Exam exam-1 not found' });
 
     expect(screen.getByText('Exam exam-1 not found')).toBeInTheDocument();
     expect(screen.queryByText('No candidates invited yet.')).not.toBeInTheDocument();
   });
 
   it('shows a disconnected status indicator when the socket drops', () => {
-    (useExamMonitoring as jest.Mock).mockReturnValue({ roster: [], alerts: [], connectionStatus: 'disconnected', joinError: null });
-
-    renderPanel();
+    renderPanel('exam-1', { connectionStatus: 'disconnected' });
 
     expect(screen.getByText('Disconnected')).toBeInTheDocument();
   });
 
   it('fires a one-time toast when connectionStatus transitions from connected to disconnected', () => {
-    (useExamMonitoring as jest.Mock).mockReturnValue({ roster: [], alerts: [], connectionStatus: 'connected', joinError: null });
-    const { rerender } = renderPanel();
+    const { rerender } = renderPanel('exam-1', { connectionStatus: 'connected' });
 
     expect(screen.queryByText('Live connection lost. Reconnecting…')).not.toBeInTheDocument();
 
-    (useExamMonitoring as jest.Mock).mockReturnValue({ roster: [], alerts: [], connectionStatus: 'disconnected', joinError: null });
     rerender(
       <ToastProvider>
-        <LiveMonitoringPanel examId="exam-1" />
+        <LiveMonitoringPanel examId="exam-1" roster={[]} alerts={[]} connectionStatus="disconnected" joinError={null} />
       </ToastProvider>,
     );
 
@@ -150,9 +134,7 @@ describe('LiveMonitoringPanel', () => {
   });
 
   it('does not fire the disconnect toast on initial mount, only on a connected-to-disconnected transition', () => {
-    (useExamMonitoring as jest.Mock).mockReturnValue({ roster: [], alerts: [], connectionStatus: 'disconnected', joinError: null });
-
-    renderPanel();
+    renderPanel('exam-1', { connectionStatus: 'disconnected' });
 
     expect(screen.queryByText('Live connection lost. Reconnecting…')).not.toBeInTheDocument();
   });
