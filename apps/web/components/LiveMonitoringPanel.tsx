@@ -121,6 +121,8 @@ export function LiveMonitoringPanel({
   flagged,
   connectionStatus,
   joinError,
+  notificationPermission,
+  onEnableNotifications,
 }: {
   examId: string;
   roster: RosterRow[];
@@ -128,6 +130,8 @@ export function LiveMonitoringPanel({
   flagged: Set<string>;
   connectionStatus: ConnectionStatus;
   joinError: string | null;
+  notificationPermission?: NotificationPermission | 'unsupported';
+  onEnableNotifications?: () => void;
 }) {
   const { toast } = useToast();
   const unblockAttempt = useUnblockAttempt();
@@ -270,9 +274,16 @@ export function LiveMonitoringPanel({
             <p className="text-2xl font-semibold">{recentAlertsCount}</p>
           </Card>
         </div>
-        <Badge variant={connectionStatus === 'connected' ? 'success' : connectionStatus === 'connecting' ? 'default' : 'danger'}>
-          {connectionStatus === 'connected' ? 'Connected' : connectionStatus === 'connecting' ? 'Connecting…' : 'Disconnected'}
-        </Badge>
+        <div className="flex items-center gap-2">
+          {notificationPermission === 'default' ? (
+            <button onClick={onEnableNotifications} className="rounded-full border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-50">
+              Enable alerts
+            </button>
+          ) : null}
+          <Badge variant={connectionStatus === 'connected' ? 'success' : connectionStatus === 'connecting' ? 'default' : 'danger'}>
+            {connectionStatus === 'connected' ? 'Connected' : connectionStatus === 'connecting' ? 'Connecting…' : 'Disconnected'}
+          </Badge>
+        </div>
       </div>
 
       {joinError ? (

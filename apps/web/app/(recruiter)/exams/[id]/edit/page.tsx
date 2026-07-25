@@ -11,6 +11,7 @@ import { LeaderboardPanel } from '../../../../../components/LeaderboardPanel';
 import { CandidatesPanel } from '../../../../../components/CandidatesPanel';
 import { useExam, useUpdateExam, usePublishExam } from '../../../../../lib/hooks/useExams';
 import { useExamMonitoring } from '../../../../../lib/hooks/useExamMonitoring';
+import { useAttentionNotifications } from '../../../../../lib/hooks/useAttentionNotifications';
 import { flaggedAttemptIds } from '../../../../../lib/attention-alert';
 import { Tabs, TabsList, TabsTrigger, TabsContent, Button, useToast } from '../../../../../components/ui';
 
@@ -33,6 +34,14 @@ export default function EditExamPage() {
   }, []);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `tick` is otherwise unused but is what drives decay of the flag over time
   const flagged = useMemo(() => flaggedAttemptIds(monitoring.alerts, Date.now()), [monitoring.alerts, tick]);
+
+  const candidateNames = useMemo(
+    () => new Map(monitoring.roster.filter((row) => row.attemptId).map((row) => [row.attemptId as string, row.candidateName])),
+    [monitoring.roster],
+  );
+  // exam?.title falls back to '' while the exam is still loading -- the hook must be
+  // called unconditionally, before the early return below.
+  const notifications = useAttentionNotifications(flagged, candidateNames, exam?.title ?? '');
 
   if (!exam) {
     return <p className="text-sm text-gray-500">Loading…</p>;
@@ -103,6 +112,8 @@ export default function EditExamPage() {
             alerts={monitoring.alerts}
             connectionStatus={monitoring.connectionStatus}
             joinError={monitoring.joinError}
+            notificationPermission={notifications.permission}
+            onEnableNotifications={notifications.requestPermission}
           />
         </TabsContent>
         <TabsContent value="leaderboard">

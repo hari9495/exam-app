@@ -5,6 +5,10 @@ import { ProctoringFlag } from './types';
 export const ATTENTION_ALERT_COUNT = 5;
 export const ATTENTION_WINDOW_MINUTES = 2;
 
+// How long an attempt must stay off the flagged set before a fresh desktop notification
+// is allowed for it again -- otherwise a sustained burst would renotify on every event.
+export const NOTIFY_REARM_MINUTES = 10;
+
 // Derived, never stored: the flag is a function of the feed and the clock, so it clears
 // itself when the burst passes and cannot survive a reload as stale state.
 export function flaggedAttemptIds(alerts: ProctoringFlag[], now: number): Set<string> {
