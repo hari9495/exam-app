@@ -237,12 +237,23 @@ describe('useExamMonitoring', () => {
     act(() => socket.trigger('connect'));
 
     act(() => socket.trigger('proctoring:flag', flag('quiet', 'c-quiet', 0)));
-    for (let i = 0; i < MAX_ALERTS_PER_ATTEMPT + 10; i++) {
-      act(() => socket.trigger('proctoring:flag', flag('noisy', 'c-noisy', i)));
+    const noisyEventCount = MAX_ALERTS_PER_ATTEMPT + 10;
+    for (let i = 0; i < noisyEventCount; i++) {
+      // Each live event is prepended (see useExamMonitoring's proctoring:flag handler), and
+      // in a real burst later events are more recent -- so secondsAgo must shrink as i grows
+      // to end up newest-first, the ordering retainAlerts documents and assumes.
+      act(() => socket.trigger('proctoring:flag', flag('noisy', 'c-noisy', noisyEventCount - i)));
     }
 
     const alerts = result.current.alerts;
-    expect(alerts.filter((a) => a.attemptId === 'noisy')).toHaveLength(MAX_ALERTS_PER_ATTEMPT);
+    const noisyAlerts = alerts.filter((a) => a.attemptId === 'noisy');
+    expect(noisyAlerts).toHaveLength(MAX_ALERTS_PER_ATTEMPT);
+    // The cap must drop the attempt's oldest alerts and keep its newest, not just truncate
+    // to the right length.
+    const noisyOccurredAt = new Set(noisyAlerts.map((a) => a.occurredAt));
+    expect(noisyOccurredAt.has(flag('noisy', 'c-noisy', 1).occurredAt)).toBe(true); // newest: survives
+    expect(noisyOccurredAt.has(flag('noisy', 'c-noisy', MAX_ALERTS_PER_ATTEMPT).occurredAt)).toBe(true); // oldest survivor
+    expect(noisyOccurredAt.has(flag('noisy', 'c-noisy', MAX_ALERTS_PER_ATTEMPT + 1).occurredAt)).toBe(false); // dropped
     expect(alerts.filter((a) => a.attemptId === 'quiet')).toHaveLength(1);
   });
 
