@@ -11,4 +11,8 @@ export class EventBusAttemptStatusBroadcaster implements AttemptStatusBroadcaste
   async emitMessageSent(examId: string, payload: { attemptId: string; candidateId: string; sentAt: Date }): Promise<void> {
     monitoringEventBus.emitMessageSent({ examId, ...payload });
   }
+
+  async emitProctoringBypass(examId: string, payload: { attemptId: string; proctoringBypassed: boolean }): Promise<void> {
+    monitoringEventBus.emitProctoringBypass({ examId, ...payload });
+  }
 }

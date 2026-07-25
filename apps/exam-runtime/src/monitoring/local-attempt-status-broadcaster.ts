@@ -13,4 +13,8 @@ export class LocalAttemptStatusBroadcaster implements AttemptStatusBroadcaster {
   async emitMessageSent(examId: string, payload: { attemptId: string; candidateId: string; sentAt: Date }): Promise<void> {
     this.monitoringGateway.emitMessageSent(examId, payload);
   }
+
+  async emitProctoringBypass(examId: string, payload: { attemptId: string; proctoringBypassed: boolean }): Promise<void> {
+    this.monitoringGateway.emitProctoringBypass(examId, payload);
+  }
 }

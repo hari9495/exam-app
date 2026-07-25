@@ -116,6 +116,12 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
     this.server?.to(`${EXAM_ROOM_PREFIX}${examId}`).emit('proctoring:flag', payload);
   }
 
+  // Narrow counterpart to attempt:status — the recruiter's roster is socket state, so
+  // an apply/revoke has to reach it as an event or the row goes stale until reload.
+  emitProctoringBypass(examId: string, payload: { attemptId: string; proctoringBypassed: boolean }): void {
+    this.server?.to(`${EXAM_ROOM_PREFIX}${examId}`).emit('attempt:proctoring-bypass', payload);
+  }
+
   emitMessageSent(examId: string, payload: { attemptId: string; candidateId: string; sentAt: Date }): void {
     this.server?.to(`${EXAM_ROOM_PREFIX}${examId}`).emit('message:sent', payload);
   }

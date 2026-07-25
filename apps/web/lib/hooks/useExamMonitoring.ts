@@ -87,6 +87,12 @@ export function useExamMonitoring(examId: string): UseExamMonitoringResult {
       );
     });
 
+    socket.on('attempt:proctoring-bypass', (payload: { attemptId: string; proctoringBypassed: boolean }) => {
+      setRoster((current) =>
+        current.map((row) => (row.attemptId === payload.attemptId ? { ...row, proctoringBypassed: payload.proctoringBypassed } : row)),
+      );
+    });
+
     socket.on('proctoring:flag', (payload: ProctoringFlag) => {
       setAlerts((current) => [payload, ...current].slice(0, MAX_ALERTS));
     });

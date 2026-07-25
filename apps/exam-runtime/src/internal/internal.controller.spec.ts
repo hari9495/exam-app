@@ -19,7 +19,7 @@ describe('InternalController', () => {
   let attemptInsight: { analyze: jest.Mock };
   let codeReviewService: { analyze: jest.Mock };
   let pistonRuntimes: { getAvailableLanguages: jest.Mock };
-  let broadcaster: { emitMessageSent: jest.Mock };
+  let broadcaster: { emitMessageSent: jest.Mock; emitProctoringBypass: jest.Mock };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
@@ -28,7 +28,7 @@ describe('InternalController', () => {
     attemptInsight = { analyze: jest.fn() };
     codeReviewService = { analyze: jest.fn() };
     pistonRuntimes = { getAvailableLanguages: jest.fn() };
-    broadcaster = { emitMessageSent: jest.fn().mockResolvedValue(undefined) };
+    broadcaster = { emitMessageSent: jest.fn().mockResolvedValue(undefined), emitProctoringBypass: jest.fn().mockResolvedValue(undefined) };
 
     const moduleRef = await Test.createTestingModule({
       controllers: [InternalController],
@@ -195,13 +195,59 @@ describe('InternalController', () => {
         await expect(controller.applyProctoringBypass('a1', { reason: 'second reason', actorUserId: ACTOR })).resolves.toBeDefined();
         expect(tx.attempt.update.mock.calls[0][0].data.proctoringBypassReason).toBe('second reason');
       });
+
+      it('re-applying after a revoke clears the revocation, so the new bypass is active', async () => {
+        const tx = {
+          attempt: {
+            findUnique: jest.fn().mockResolvedValue({
+              id: 'a1', status: 'in_progress', pausedAt: null, pausedDurationMs: 0,
+              proctoringBypassedAt: new Date('2026-07-26T10:00:00.000Z'), proctoringBypassRevokedAt: new Date('2026-07-26T10:30:00.000Z'),
+            }),
+            update: jest.fn().mockResolvedValue({}),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+        attemptSettlement.resumeFromPause.mockResolvedValue({ status: 'in_progress' });
+
+        await controller.applyProctoringBypass('a1', { reason: 'still flaky', actorUserId: ACTOR });
+
+        expect(tx.attempt.update.mock.calls[0][0].data.proctoringBypassRevokedAt).toBeNull();
+      });
+
+      it('broadcasts the bypass to the exam room so live rosters update without a reload', async () => {
+        const tx = {
+          attempt: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'a1', examId: 'exam-1', status: 'in_progress', pausedAt: null, pausedDurationMs: 0 }),
+            update: jest.fn().mockResolvedValue({}),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+        attemptSettlement.resumeFromPause.mockResolvedValue({ status: 'in_progress' });
+
+        await controller.applyProctoringBypass('a1', { reason: 'flaky wifi', actorUserId: ACTOR });
+
+        expect(broadcaster.emitProctoringBypass).toHaveBeenCalledWith('exam-1', { attemptId: 'a1', proctoringBypassed: true });
+      });
+
+      it('does not broadcast when the bypass is rejected', async () => {
+        const tx = {
+          attempt: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'a1', examId: 'exam-1', status: 'submitted', pausedAt: null, pausedDurationMs: 0 }),
+            update: jest.fn(),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+
+        await expect(controller.applyProctoringBypass('a1', { reason: 'too late', actorUserId: ACTOR })).rejects.toThrow(BadRequestException);
+        expect(broadcaster.emitProctoringBypass).not.toHaveBeenCalled();
+      });
     });
 
     describe('revokeProctoringBypass', () => {
-      it('clears all three columns on revoke and also resets counters', async () => {
+      it('records the revocation without erasing the bypass columns, and also resets counters', async () => {
         const tx = {
           attempt: {
-            findUnique: jest.fn().mockResolvedValue({ id: 'a1', status: 'paused', pausedAt: new Date(), pausedDurationMs: 0, proctoringBypassedAt: new Date() }),
+            findUnique: jest.fn().mockResolvedValue({ id: 'a1', status: 'paused', pausedAt: new Date(), pausedDurationMs: 0, proctoringBypassedAt: new Date(), proctoringBypassRevokedAt: null }),
             update: jest.fn().mockResolvedValue({}),
           },
         };
@@ -212,8 +258,11 @@ describe('InternalController', () => {
 
         expect(tx.attempt.update).toHaveBeenCalledWith({
           where: { id: 'a1' },
-          data: { proctoringBypassedAt: null, proctoringBypassedBy: null, proctoringBypassReason: null },
+          data: { proctoringBypassRevokedAt: expect.any(Date) },
         });
+        // The disclosure has to survive the revoke, so these must not be nulled.
+        expect(tx.attempt.update.mock.calls[0][0].data).not.toHaveProperty('proctoringBypassedAt');
+        expect(tx.attempt.update.mock.calls[0][0].data).not.toHaveProperty('proctoringBypassReason');
         expect(attemptSettlement.resumeFromPause).toHaveBeenCalledWith(tx, expect.objectContaining({ id: 'a1' }), { resetViolationCounters: true });
         expect(result.proctoringBypassedAt).toBeNull();
       });
@@ -221,7 +270,7 @@ describe('InternalController', () => {
       it('resumes still succeeds from paused', async () => {
         const tx = {
           attempt: {
-            findUnique: jest.fn().mockResolvedValue({ id: 'a1', status: 'paused', pausedAt: new Date(), pausedDurationMs: 0 }),
+            findUnique: jest.fn().mockResolvedValue({ id: 'a1', status: 'paused', pausedAt: new Date(), pausedDurationMs: 0, proctoringBypassedAt: new Date(), proctoringBypassRevokedAt: null }),
             update: jest.fn().mockResolvedValue({}),
           },
         };
@@ -236,7 +285,7 @@ describe('InternalController', () => {
       it('resumes still succeeds from blocked', async () => {
         const tx = {
           attempt: {
-            findUnique: jest.fn().mockResolvedValue({ id: 'a1', status: 'blocked', pausedAt: new Date(), pausedDurationMs: 0 }),
+            findUnique: jest.fn().mockResolvedValue({ id: 'a1', status: 'blocked', pausedAt: new Date(), pausedDurationMs: 0, proctoringBypassedAt: new Date(), proctoringBypassRevokedAt: null }),
             update: jest.fn().mockResolvedValue({}),
           },
         };
@@ -246,6 +295,48 @@ describe('InternalController', () => {
         await expect(controller.revokeProctoringBypass('a1', { actorUserId: ACTOR })).resolves.toBeDefined();
         expect(tx.attempt.update).toHaveBeenCalled();
         expect(attemptSettlement.resumeFromPause).toHaveBeenCalled();
+      });
+
+      it('rejects an attempt that was never bypassed, writing nothing and not resuming it', async () => {
+        const tx = {
+          attempt: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'a1', status: 'paused', pausedAt: new Date(), pausedDurationMs: 0, proctoringBypassedAt: null, proctoringBypassRevokedAt: null }),
+            update: jest.fn(),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+
+        await expect(controller.revokeProctoringBypass('a1', { actorUserId: ACTOR })).rejects.toThrow(BadRequestException);
+        expect(tx.attempt.update).not.toHaveBeenCalled();
+        expect(attemptSettlement.resumeFromPause).not.toHaveBeenCalled();
+      });
+
+      it('broadcasts the restored enforcement to the exam room', async () => {
+        const tx = {
+          attempt: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'a1', examId: 'exam-1', status: 'in_progress', pausedAt: null, pausedDurationMs: 0, proctoringBypassedAt: new Date(), proctoringBypassRevokedAt: null }),
+            update: jest.fn().mockResolvedValue({}),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+        attemptSettlement.resumeFromPause.mockResolvedValue({ status: 'in_progress' });
+
+        await controller.revokeProctoringBypass('a1', { actorUserId: ACTOR });
+
+        expect(broadcaster.emitProctoringBypass).toHaveBeenCalledWith('exam-1', { attemptId: 'a1', proctoringBypassed: false });
+      });
+
+      it('rejects a second revoke of an already-revoked bypass', async () => {
+        const tx = {
+          attempt: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'a1', status: 'in_progress', pausedAt: null, pausedDurationMs: 0, proctoringBypassedAt: new Date(), proctoringBypassRevokedAt: new Date() }),
+            update: jest.fn(),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+
+        await expect(controller.revokeProctoringBypass('a1', { actorUserId: ACTOR })).rejects.toThrow(BadRequestException);
+        expect(tx.attempt.update).not.toHaveBeenCalled();
       });
 
       it('rejects revoking a settled (submitted) attempt, writing nothing', async () => {

@@ -8,6 +8,7 @@ import { PistonRuntimesService } from '../code-execution/piston-runtimes.service
 import { ATTEMPT_STATUS_BROADCASTER, AttemptStatusBroadcaster } from '../monitoring/attempt-status-broadcaster';
 import { InternalAuthGuard } from './internal-auth.guard';
 import { effectiveDurationMinutes } from '../grading/grading';
+import { isProctoringBypassActive } from '../attempts/proctoring-config';
 import { NotifyMessageSentDto } from './dto/notify-message-sent.dto';
 import { SettleIfExpiredBatchDto } from './dto/settle-if-expired-batch.dto';
 import { GradeCodeAnswerDto } from './dto/grade-code-answer.dto';
@@ -69,7 +70,7 @@ export class InternalController {
 
   @Post('attempts/:id/proctoring-bypass')
   async applyProctoringBypass(@Param('id') id: string, @Body() dto: ApplyProctoringBypassDto) {
-    return this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {
+    const { examId, ...result } = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {
       const attempt = await tx.attempt.findUnique({ where: { id } });
       if (!attempt) {
         throw new NotFoundException(`Attempt ${id} not found`);
@@ -84,19 +85,24 @@ export class InternalController {
           proctoringBypassedAt: bypassedAt,
           proctoringBypassedBy: dto.actorUserId,
           proctoringBypassReason: dto.reason.trim(),
+          // A re-apply after a revoke must clear the revocation, or the new bypass
+          // would read as already revoked and never take effect.
+          proctoringBypassRevokedAt: null,
         },
       });
       // Reset counters and resume: the candidate may already be paused or blocked by
       // the very false positives being forgiven, so leaving them stuck would defeat
       // the point of the bypass.
       const resumed = await this.attemptSettlement.resumeFromPause(tx, attempt, { resetViolationCounters: true });
-      return { status: resumed.status, proctoringBypassedAt: bypassedAt.toISOString() };
+      return { examId: attempt.examId, status: resumed.status, proctoringBypassedAt: bypassedAt.toISOString() };
     });
+    this.broadcastProctoringBypass(examId, id, true);
+    return result;
   }
 
   @Post('attempts/:id/proctoring-bypass/revoke')
   async revokeProctoringBypass(@Param('id') id: string, @Body() _dto: RevokeProctoringBypassDto) {
-    return this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {
+    const { examId, ...result } = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {
       const attempt = await tx.attempt.findUnique({ where: { id } });
       if (!attempt) {
         throw new NotFoundException(`Attempt ${id} not found`);
@@ -104,16 +110,35 @@ export class InternalController {
       if (!InternalController.BYPASSABLE_STATUSES.includes(attempt.status)) {
         throw new BadRequestException(`Attempt ${id} cannot have its proctoring bypass revoked from status "${attempt.status}"`);
       }
+      // Without this, revoke is an unblock with no `status === 'blocked'` restriction:
+      // it would wipe the strike history of a never-bypassed attempt and audit that as
+      // a bypass revocation.
+      if (!isProctoringBypassActive(attempt)) {
+        throw new BadRequestException(`Attempt ${id} has no active proctoring bypass to revoke`);
+      }
       await tx.attempt.update({
         where: { id },
-        data: { proctoringBypassedAt: null, proctoringBypassedBy: null, proctoringBypassReason: null },
+        // The bypass columns stay: the integrity report must still disclose that
+        // enforcement was relaxed, and for how long. Only the revocation is written.
+        data: { proctoringBypassRevokedAt: new Date() },
       });
       // Counters must reset here too. Warn mode still increments them, so an attempt
       // that spent time bypassed can sit far past the strike limit -- restoring
       // enforcement without clearing them would block the candidate instantly.
       const resumed = await this.attemptSettlement.resumeFromPause(tx, attempt, { resetViolationCounters: true });
-      return { status: resumed.status, proctoringBypassedAt: null };
+      return { examId: attempt.examId, status: resumed.status, proctoringBypassedAt: null };
     });
+    this.broadcastProctoringBypass(examId, id, false);
+    return result;
+  }
+
+  // Fire-and-forget, like finalize()'s status broadcast: the roster is socket state,
+  // not a react-query cache, so without this push the recruiter's row keeps offering
+  // "Relax proctoring" on an already-bypassed attempt until they reload the page.
+  private broadcastProctoringBypass(examId: string, attemptId: string, proctoringBypassed: boolean): void {
+    void this.broadcaster
+      .emitProctoringBypass(examId, { attemptId, proctoringBypassed })
+      .catch((error) => this.logger.error('Failed to broadcast proctoring bypass', error as Error));
   }
 
   @Post('attempts/:id/answers/:questionId/grade')

@@ -9,5 +9,6 @@ export class MonitoringEventBusBridge implements OnModuleInit {
   onModuleInit(): void {
     monitoringEventBus.onAttemptStatus(({ examId, ...payload }) => this.monitoringGateway.emitAttemptStatus(examId, payload));
     monitoringEventBus.onMessageSent(({ examId, ...payload }) => this.monitoringGateway.emitMessageSent(examId, payload));
+    monitoringEventBus.onProctoringBypass(({ examId, ...payload }) => this.monitoringGateway.emitProctoringBypass(examId, payload));
   }
 }

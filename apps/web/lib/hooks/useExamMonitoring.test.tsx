@@ -137,6 +137,32 @@ describe('useExamMonitoring', () => {
     expect(result.current.roster[0].attemptId).toBe('a1');
   });
 
+  it('merges an attempt:proctoring-bypass update into the matching roster row only', async () => {
+    // Without this the recruiter's row keeps offering "Relax proctoring" after a
+    // successful relax — the roster is socket state, so no query invalidation reaches it.
+    const socket = createMockSocket();
+    (io as jest.Mock).mockReturnValue(socket);
+
+    const { result } = renderHook(() => useExamMonitoring('exam-1'));
+    await waitFor(() => expect(io).toHaveBeenCalled());
+    act(() => socket.trigger('connect'));
+    act(() =>
+      socket.trigger('roster:snapshot', [
+        { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'in_progress', online: true, remainingSeconds: 100, answeredCount: 0, totalQuestions: 5, proctoringBypassed: false },
+        { candidateId: 'c2', candidateName: 'Bob', invitationId: 'i2', attemptId: 'a2', status: 'in_progress', online: true, remainingSeconds: 100, answeredCount: 0, totalQuestions: 5, proctoringBypassed: false },
+      ]),
+    );
+
+    act(() => socket.trigger('attempt:proctoring-bypass', { attemptId: 'a1', proctoringBypassed: true }));
+
+    expect(result.current.roster.find((r) => r.attemptId === 'a1')?.proctoringBypassed).toBe(true);
+    expect(result.current.roster.find((r) => r.attemptId === 'a2')?.proctoringBypassed).toBe(false);
+
+    act(() => socket.trigger('attempt:proctoring-bypass', { attemptId: 'a1', proctoringBypassed: false }));
+
+    expect(result.current.roster.find((r) => r.attemptId === 'a1')?.proctoringBypassed).toBe(false);
+  });
+
   it('accumulates proctoring:flag events newest-first, capped at 50', async () => {
     const socket = createMockSocket();
     (io as jest.Mock).mockReturnValue(socket);

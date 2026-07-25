@@ -35,4 +35,15 @@ describe('EventBusAttemptStatusBroadcaster', () => {
       expect(listener.mock.calls[0][0].sentAt).toBeInstanceOf(Date);
     });
   });
+
+  describe('emitProctoringBypass', () => {
+    it('publishes the payload on monitoringEventBus', async () => {
+      const listener = jest.fn();
+      monitoringEventBus.onProctoringBypass(listener);
+
+      await broadcaster.emitProctoringBypass('exam-1', { attemptId: 'attempt-1', proctoringBypassed: false });
+
+      expect(listener).toHaveBeenCalledWith({ examId: 'exam-1', attemptId: 'attempt-1', proctoringBypassed: false });
+    });
+  });
 });
