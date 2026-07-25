@@ -4,10 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from '../auth-context';
 import { RosterRow, ProctoringFlag, ConnectionStatus, RecruiterLeaderboardRow } from '../types';
+import { retainAlerts } from '../attention-alert';
 
 const EXAM_RUNTIME_API_BASE = process.env.NEXT_PUBLIC_EXAM_RUNTIME_API_BASE ?? 'http://localhost:3002/api/v1';
 const EXAM_RUNTIME_ORIGIN = EXAM_RUNTIME_API_BASE.replace(/\/api\/v1\/?$/, '');
-const MAX_ALERTS = 50;
 
 interface UseExamMonitoringResult {
   roster: RosterRow[];
@@ -42,9 +42,10 @@ export function useExamMonitoring(examId: string): UseExamMonitoringResult {
       // Read the token fresh on every (re)connection attempt instead of depending on
       // accessToken's exact value below, so a silentRefresh()-issued token swap (every
       // 15 minutes, per ACCESS_TOKEN_TTL_SECONDS) doesn't tear down this effect and wipe
-      // the in-memory alert feed. (Unlike roster, which self-heals via roster:snapshot,
-      // the alert feed only gets proctoring:recent once, immediately on join — a
-      // reconnect wouldn't refill it the same way.)
+      // the in-memory alert feed. (A socket-level reconnect does re-emit join-exam and
+      // therefore does replay proctoring:recent — but tearing the effect down blanks the
+      // roster, alerts and leaderboard until the new join round-trips, four times an hour,
+      // for nothing.)
       auth: (cb: (data: { token: string | null }) => void) => cb({ token: tokenRef.current }),
       transports: ['websocket'],
     });
@@ -95,14 +96,15 @@ export function useExamMonitoring(examId: string): UseExamMonitoringResult {
     });
 
     socket.on('proctoring:recent', (rows: ProctoringFlag[]) => {
-      // Replayed history for this recruiter, newest first and already capped server-side.
-      // Replaces rather than merges: it only ever arrives once, immediately on join,
-      // before any live flag can have been appended.
-      setAlerts(rows.slice(0, MAX_ALERTS));
+      // Replayed history for this recruiter, newest first. Replaces rather than merges:
+      // the gateway emits it before joining the room, so no live flag can have been
+      // appended in between.
+      setAlerts(retainAlerts(rows, Date.now()));
     });
 
     socket.on('proctoring:flag', (payload: ProctoringFlag) => {
-      setAlerts((current) => [payload, ...current].slice(0, MAX_ALERTS));
+      // Same retention policy as the seed above, so the two paths cannot disagree.
+      setAlerts((current) => retainAlerts([payload, ...current], Date.now()));
     });
 
     socket.on('leaderboard:snapshot', (rows: RecruiterLeaderboardRow[]) => {
@@ -117,7 +119,8 @@ export function useExamMonitoring(examId: string): UseExamMonitoringResult {
       socket.disconnect();
     };
     // accessToken is intentionally omitted: reconnecting on every refreshed token would
-    // drop the in-memory alert feed (see auth callback comment above). Boolean(accessToken)
+    // blank the whole monitoring view for a round-trip (see auth callback comment above).
+    // Boolean(accessToken)
     // still re-runs this effect on its first arrival (login) and on logout (token -> null).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [Boolean(accessToken), examId]);

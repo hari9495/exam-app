@@ -225,7 +225,9 @@ describe('MonitoringService', () => {
       expect(args.where.attempt).toEqual({ examId: 'exam-1' });
       expect(args.where.occurredAt.gt).toBeInstanceOf(Date);
       expect(args.orderBy).toEqual({ occurredAt: 'desc' });
-      expect(args.take).toBe(50);
+      // A memory ceiling, not a detection policy: low enough to bound the payload, high
+      // enough that a fleet-wide misfire still seeds every candidate's burst.
+      expect(args.take).toBe(2000);
     });
 
     it('throws NotFoundException when the exam does not belong to the caller organization', async () => {

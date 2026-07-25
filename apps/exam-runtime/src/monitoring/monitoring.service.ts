@@ -6,7 +6,12 @@ import { isProctoringBypassActive } from '../attempts/proctoring-config';
 
 const ONLINE_THRESHOLD_MS = 30_000;
 export const ALERT_HISTORY_MINUTES = 30;
-const MAX_RECENT_ALERTS = 50;
+// Memory guard, not a policy. At 50 the replay was self-defeating: a fleet-wide misfire
+// across 30 candidates seeded ~1.7 alerts each, so nobody could reach the 5-in-2-minutes
+// the client needs to flag anyone. The 30-minute window is what actually bounds this
+// query; the ceiling only stops a pathological exam from shipping a huge payload.
+// Kept consistent with the client's per-attempt retention in lib/attention-alert.ts.
+const MAX_RECENT_ALERTS = 2000;
 
 export interface RecentAlert {
   attemptId: string;

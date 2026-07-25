@@ -2,11 +2,30 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { io } from 'socket.io-client';
 import { useAuth } from '../auth-context';
 import { useExamMonitoring } from './useExamMonitoring';
+import {
+  ALERT_RETENTION_MINUTES,
+  ATTENTION_ALERT_COUNT,
+  MAX_ALERTS_PER_ATTEMPT,
+  flaggedAttemptIds,
+} from '../attention-alert';
 
 jest.mock('socket.io-client', () => ({ io: jest.fn() }));
 jest.mock('../auth-context', () => ({ useAuth: jest.fn() }));
 
 type Handler = (...args: unknown[]) => void;
+
+// Timestamps are relative to the real clock: retention is now age-based, so a fixed
+// literal date would fall out of the window depending on when the suite runs.
+const startedAt = Date.now();
+function flag(attemptId: string, candidateId: string, secondsAgo: number) {
+  return {
+    attemptId,
+    candidateId,
+    eventType: 'tab_switch',
+    severity: 'medium',
+    occurredAt: new Date(startedAt - secondsAgo * 1000).toISOString(),
+  };
+}
 
 function createMockSocket() {
   const handlers: Record<string, Handler> = {};
@@ -163,7 +182,7 @@ describe('useExamMonitoring', () => {
     expect(result.current.roster.find((r) => r.attemptId === 'a1')?.proctoringBypassed).toBe(false);
   });
 
-  it('accumulates proctoring:flag events newest-first, capped at 50', async () => {
+  it('accumulates proctoring:flag events newest-first and drops ones older than the retention window', async () => {
     const socket = createMockSocket();
     (io as jest.Mock).mockReturnValue(socket);
 
@@ -172,15 +191,59 @@ describe('useExamMonitoring', () => {
     act(() => socket.trigger('connect'));
 
     for (let i = 0; i < 52; i++) {
-      act(() =>
-        socket.trigger('proctoring:flag', {
-          attemptId: 'a1', candidateId: 'c1', eventType: 'tab_switch', severity: 'medium', occurredAt: `2026-01-01T00:00:${String(i).padStart(2, '0')}Z`,
-        }),
-      );
+      act(() => socket.trigger('proctoring:flag', flag('a1', 'c1', 52 - i)));
+    }
+    // Retention is by age, not by an exam-wide count: 52 recent alerts for one attempt
+    // all survive, where the old 50-event buffer would have evicted two.
+    expect(result.current.alerts).toHaveLength(52);
+    expect(result.current.alerts[0].occurredAt).toBe(flag('a1', 'c1', 1).occurredAt);
+
+    act(() =>
+      socket.trigger('proctoring:flag', {
+        ...flag('a1', 'c1', 0),
+        occurredAt: new Date(Date.now() - (ALERT_RETENTION_MINUTES + 1) * 60_000).toISOString(),
+      }),
+    );
+
+    expect(result.current.alerts).toHaveLength(52);
+  });
+
+  it('keeps every candidate flaggable when the whole fleet misfires at once', async () => {
+    // Regression: with a 50-event exam-wide buffer, 30 candidates each firing 5 alerts
+    // left ~1.7 alerts per candidate in the feed and nobody could ever be flagged --
+    // the feature went dark in exactly the scenario it exists for.
+    const socket = createMockSocket();
+    (io as jest.Mock).mockReturnValue(socket);
+
+    const { result } = renderHook(() => useExamMonitoring('exam-1'));
+    await waitFor(() => expect(io).toHaveBeenCalled());
+    act(() => socket.trigger('connect'));
+
+    for (let round = 0; round < ATTENTION_ALERT_COUNT; round++) {
+      for (let candidate = 0; candidate < 30; candidate++) {
+        act(() => socket.trigger('proctoring:flag', flag(`a${candidate}`, `c${candidate}`, round)));
+      }
     }
 
-    expect(result.current.alerts).toHaveLength(50);
-    expect(result.current.alerts[0].occurredAt).toBe('2026-01-01T00:00:51Z');
+    expect(flaggedAttemptIds(result.current.alerts, Date.now()).size).toBe(30);
+  });
+
+  it('caps a single spamming attempt without evicting anyone else', async () => {
+    const socket = createMockSocket();
+    (io as jest.Mock).mockReturnValue(socket);
+
+    const { result } = renderHook(() => useExamMonitoring('exam-1'));
+    await waitFor(() => expect(io).toHaveBeenCalled());
+    act(() => socket.trigger('connect'));
+
+    act(() => socket.trigger('proctoring:flag', flag('quiet', 'c-quiet', 0)));
+    for (let i = 0; i < MAX_ALERTS_PER_ATTEMPT + 10; i++) {
+      act(() => socket.trigger('proctoring:flag', flag('noisy', 'c-noisy', i)));
+    }
+
+    const alerts = result.current.alerts;
+    expect(alerts.filter((a) => a.attemptId === 'noisy')).toHaveLength(MAX_ALERTS_PER_ATTEMPT);
+    expect(alerts.filter((a) => a.attemptId === 'quiet')).toHaveLength(1);
   });
 
   it('seeds the alert feed from proctoring:recent and still appends live flags', async () => {
@@ -193,21 +256,36 @@ describe('useExamMonitoring', () => {
 
     act(() =>
       socket.trigger('proctoring:recent', [
-        { attemptId: 'a1', candidateId: 'c1', eventType: 'tab_switch', severity: 'high', occurredAt: '2026-07-25T10:00:00.000Z' },
-        { attemptId: 'a2', candidateId: 'c2', eventType: 'window_blur', severity: 'medium', occurredAt: '2026-07-25T09:59:00.000Z' },
+        { ...flag('a1', 'c1', 0), severity: 'high' },
+        { ...flag('a2', 'c2', 0), eventType: 'window_blur' },
       ]),
     );
 
     expect(result.current.alerts).toHaveLength(2);
 
-    act(() =>
-      socket.trigger('proctoring:flag', {
-        attemptId: 'a1', candidateId: 'c1', eventType: 'copy_paste', severity: 'medium', occurredAt: '2026-07-25T10:01:00.000Z',
-      }),
-    );
+    act(() => socket.trigger('proctoring:flag', { ...flag('a1', 'c1', 1), eventType: 'copy_paste' }));
 
     expect(result.current.alerts).toHaveLength(3);
     expect(result.current.alerts[0].eventType).toBe('copy_paste');
+  });
+
+  it('drops seeded history older than the retention window', async () => {
+    const socket = createMockSocket();
+    (io as jest.Mock).mockReturnValue(socket);
+
+    const { result } = renderHook(() => useExamMonitoring('exam-1'));
+    await waitFor(() => expect(io).toHaveBeenCalled());
+    act(() => socket.trigger('connect'));
+
+    act(() =>
+      socket.trigger('proctoring:recent', [
+        flag('a1', 'c1', 0),
+        { ...flag('a2', 'c2', 0), occurredAt: new Date(Date.now() - (ALERT_RETENTION_MINUTES + 1) * 60_000).toISOString() },
+      ]),
+    );
+
+    expect(result.current.alerts).toHaveLength(1);
+    expect(result.current.alerts[0].attemptId).toBe('a1');
   });
 
   it('updates leaderboard state on leaderboard:snapshot and leaderboard:update', async () => {
@@ -270,11 +348,7 @@ describe('useExamMonitoring', () => {
     await waitFor(() => expect(io).toHaveBeenCalledTimes(1));
     act(() => socket.trigger('connect'));
 
-    act(() =>
-      socket.trigger('proctoring:flag', {
-        attemptId: 'a1', candidateId: 'c1', eventType: 'tab_switch', severity: 'medium', occurredAt: '2026-01-01T00:00:00Z',
-      }),
-    );
+    act(() => socket.trigger('proctoring:flag', flag('a1', 'c1', 0)));
     expect(result.current.alerts).toHaveLength(1);
 
     // Simulate AuthProvider.silentRefresh() swapping in a new token after a 401.
