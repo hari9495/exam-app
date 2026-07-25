@@ -15,6 +15,7 @@ export interface RosterRow {
   remainingSeconds: number | null;
   answeredCount: number | null;
   totalQuestions: number | null;
+  proctoringBypassed: boolean;
 }
 
 @Injectable()
@@ -69,6 +70,7 @@ export class MonitoringService {
           remainingSeconds,
           answeredCount,
           totalQuestions,
+          proctoringBypassed: attempt?.proctoringBypassedAt != null,
         });
       }
       return rows;

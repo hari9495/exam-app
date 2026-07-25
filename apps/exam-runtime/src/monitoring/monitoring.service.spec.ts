@@ -55,7 +55,7 @@ describe('MonitoringService', () => {
       expect(result).toEqual([
         {
           candidateId: 'cand-1', candidateName: 'Alice', invitationId: 'inv-1', attemptId: null,
-          status: 'invited', online: false, remainingSeconds: null, answeredCount: null, totalQuestions: null,
+          status: 'invited', online: false, remainingSeconds: null, answeredCount: null, totalQuestions: null, proctoringBypassed: false,
         },
       ]);
     });
@@ -81,7 +81,7 @@ describe('MonitoringService', () => {
 
       expect(result[0]).toEqual({
         candidateId: 'cand-1', candidateName: 'Alice', invitationId: 'inv-1', attemptId: 'attempt-1',
-        status: 'in_progress', online: true, remainingSeconds: expect.any(Number), answeredCount: 2, totalQuestions: 3,
+        status: 'in_progress', online: true, remainingSeconds: expect.any(Number), answeredCount: 2, totalQuestions: 3, proctoringBypassed: false,
       });
     });
 
@@ -128,6 +128,42 @@ describe('MonitoringService', () => {
 
       expect(result[0].online).toBe(false);
       expect(result[0].remainingSeconds).toBeNull();
+    });
+
+    it('reports proctoringBypassed true only for a bypassed attempt', async () => {
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', durationMinutes: 60 }) },
+        invitation: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              candidateId: 'c1', id: 'i1', extraTimePercent: 0, status: 'invited', candidate: { name: 'Bypassed' },
+              attempt: {
+                id: 'a1', status: 'in_progress', questionOrderJson: '["q1"]', startedAt: new Date(),
+                lastSeenAt: new Date(), proctoringBypassedAt: new Date(),
+              },
+            },
+            {
+              candidateId: 'c2', id: 'i2', extraTimePercent: 0, status: 'invited', candidate: { name: 'Normal' },
+              attempt: {
+                id: 'a2', status: 'in_progress', questionOrderJson: '["q1"]', startedAt: new Date(),
+                lastSeenAt: new Date(), proctoringBypassedAt: null,
+              },
+            },
+            {
+              candidateId: 'c3', id: 'i3', extraTimePercent: 0, status: 'invited', candidate: { name: 'Not started' },
+              attempt: null,
+            },
+          ]),
+        },
+        answer: { count: jest.fn().mockResolvedValue(0) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
+
+      const rows = await service.getRosterSnapshot(context, 'exam-1');
+
+      expect(rows[0].proctoringBypassed).toBe(true);
+      expect(rows[1].proctoringBypassed).toBe(false);
+      expect(rows[2].proctoringBypassed).toBe(false);
     });
   });
 });

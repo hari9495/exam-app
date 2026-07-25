@@ -514,6 +514,7 @@ export interface RosterRow {
   remainingSeconds: number | null;
   answeredCount: number | null;
   totalQuestions: number | null;
+  proctoringBypassed: boolean;
 }
 
 export interface ProctoringFlag {
