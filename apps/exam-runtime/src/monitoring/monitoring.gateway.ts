@@ -98,7 +98,6 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
       return;
     }
 
-    await client.join(`${EXAM_ROOM_PREFIX}${body.examId}`);
     client.emit('roster:snapshot', roster);
 
     try {
@@ -110,6 +109,11 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
 
     const leaderboard = await this.leaderboard.computeRecruiterView(context, body.examId);
     client.emit('leaderboard:snapshot', leaderboard);
+
+    // Join last, after every snapshot has been emitted. proctoring:recent *replaces* the
+    // client's alert list, so a proctoring:flag broadcast landing during these awaited
+    // queries used to be delivered, appended, and then wiped by the replay.
+    await client.join(`${EXAM_ROOM_PREFIX}${body.examId}`);
   }
 
   emitAttemptStatus(examId: string, payload: { attemptId: string; candidateId: string; status: string }): void {

@@ -133,6 +133,23 @@ describe('MonitoringGateway', () => {
       ]);
     });
 
+    it('emits proctoring:recent before joining the room, so no live flag can be wiped by the replay', async () => {
+      // proctoring:recent replaces the client's alert list. Joining first meant a
+      // proctoring:flag broadcast during the awaited history query was delivered,
+      // appended client-side, and then thrown away by the replay that followed.
+      const socket = makeSocket({ data: { user: { userId: 'user-1', organizationId: 'org-1', role: 'recruiter' } } });
+      prisma.rolePermission.findFirst.mockResolvedValue({ role: 'recruiter' });
+      monitoring.getRosterSnapshot.mockResolvedValue([]);
+      monitoring.getRecentAlerts.mockResolvedValue([]);
+      leaderboardService.computeRecruiterView.mockResolvedValue([]);
+
+      await gateway.handleJoinExam(socket, { examId: 'exam-1' });
+
+      const replayOrder = socket.emit.mock.calls.findIndex(([event]: [string]) => event === 'proctoring:recent');
+      expect(replayOrder).toBeGreaterThanOrEqual(0);
+      expect(socket.emit.mock.invocationCallOrder[replayOrder]).toBeLessThan(socket.join.mock.invocationCallOrder[0]);
+    });
+
     it('does not throw and still emits the leaderboard snapshot when recent-alerts lookup fails', async () => {
       const socket = makeSocket({ data: { user: { userId: 'user-1', organizationId: 'org-1', role: 'recruiter' } } });
       prisma.rolePermission.findFirst.mockResolvedValue({ role: 'recruiter' });
