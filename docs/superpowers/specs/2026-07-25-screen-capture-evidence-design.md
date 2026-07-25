@@ -19,7 +19,7 @@ A web page **cannot silently screenshot the screen**. The webcam approach works 
 1. Needs a real user gesture every single call — it cannot be pre-authorised and silently re-acquired the way camera permission can.
 2. Shows a picker where the candidate chooses tab / window / entire screen. A screenshot of the exam tab proves nothing, so the choice must be validated.
 3. Leaves a permanent browser-level "Stop sharing" control the candidate can hit at any time.
-4. Is unsupported on mobile browsers entirely.
+4. Is unevenly supported across browsers, and unsupported on mobile entirely. **Mobile is not a supported way to sit an exam on this platform** (confirmed 2026-07-25 — candidates must use a computer), so mobile support is not a design constraint. Desktop browser variation still is: an old or locked-down desktop browser can still lack it.
 
 Consequence: the attempt starts on the welcome page and then **navigates** to `/exam` (`apps/web/app/(candidate)/welcome/page.tsx:73-74`), and a `MediaStream` cannot survive that route change. So the share must be acquired **on the exam page, with the clock already running** — which is fine, because pausing extends the deadline.
 
@@ -33,7 +33,9 @@ New column on `Exam`:
 screenCaptureEnabled Boolean @default(false) @map("screen_capture_enabled")
 ```
 
-**Default `false` is deliberate.** Defaulting true would retroactively make every existing exam impossible for any candidate on a mobile browser. Contrast `webcamProctoringEnabled`, which defaulted true because it was already the de-facto behaviour.
+**Default `false` is deliberate**, and the toggle is confirmed in scope (2026-07-25). Defaulting true would retroactively add a hard new precondition to exams that are already published and part of a live hiring round — candidates midway through a process would suddenly be asked to share their screen. New exams opt in explicitly. Contrast `webcamProctoringEnabled`, which defaulted true because it was already the de-facto behaviour.
+
+The toggle also remains the escape hatch when a candidate's browser or corporate-managed machine blocks screen sharing and a recruiter needs to offer them a sittable exam.
 
 Threaded through the places the other four config fields already go: the create/update DTOs, `create()`/`update()`/`duplicate()` in `apps/api/src/exams/exams.service.ts`, the `ExamProctoringConfig` wire shape in both `proctoring-config.ts` and `apps/web/lib/types.ts`, and a checkbox in the "Proctoring & integrity" fieldset of `ExamDetailsForm.tsx`. It locks with the rest of the exam once a candidate starts.
 
@@ -123,7 +125,7 @@ Two implementation notes: `BlobStorageService` needs a delete method if it does 
 ## Accepted Limitations
 
 - If the candidate has two monitors and shares only one, captures miss the other screen. `multi_monitor_detected` still flags the setup, so a reviewer knows to weight the evidence accordingly.
-- Mobile browsers cannot participate at all. This is precisely why §1 is a per-exam toggle defaulting to off.
+- A desktop browser that is old or locked down by corporate policy may not support `getDisplayMedia`. Such a candidate cannot sit a screen-capture exam, which is why §1 stays a per-exam toggle: the recruiter can offer them an exam with it off rather than having no route at all. Mobile is out of scope by product decision, not a limitation to work around.
 - A determined candidate can still stop sharing and accept the strike. The design makes that costly and visible rather than impossible; nothing available to a web page can make it impossible.
 
 ## Out of Scope
