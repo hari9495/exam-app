@@ -215,11 +215,21 @@ export class ExamsService {
       // Proctoring rules must not change once candidates have been invited to a
       // published exam -- otherwise candidates in the same exam are judged by
       // different rules, which is indefensible if a hiring decision is challenged.
+      // The lock is value-based (not presence-based): the recruiter form resubmits
+      // all four fields on every save, so a benign no-op PATCH (e.g. only the title
+      // changed) must not be treated as touching proctoring config.
+      const existingDisabledSignals: string[] = existing.disabledProctoringSignalsJson
+        ? JSON.parse(existing.disabledProctoringSignalsJson)
+        : [];
+      const suppliedDisabledSignals = dto.disabledProctoringSignals;
+      const disabledSignalsChanged =
+        suppliedDisabledSignals !== undefined &&
+        JSON.stringify([...suppliedDisabledSignals].sort()) !== JSON.stringify([...existingDisabledSignals].sort());
       const touchesProctoringConfig =
-        dto.webcamProctoringEnabled !== undefined ||
-        dto.proctoringEnforcement !== undefined ||
-        dto.proctoringStrikeLimit !== undefined ||
-        dto.disabledProctoringSignals !== undefined;
+        (dto.webcamProctoringEnabled !== undefined && dto.webcamProctoringEnabled !== existing.webcamProctoringEnabled) ||
+        (dto.proctoringEnforcement !== undefined && dto.proctoringEnforcement !== existing.proctoringEnforcement) ||
+        (dto.proctoringStrikeLimit !== undefined && dto.proctoringStrikeLimit !== existing.proctoringStrikeLimit) ||
+        disabledSignalsChanged;
       if (touchesProctoringConfig) {
         await this.assertSectionsMutable(tx, id, existing.status);
       }

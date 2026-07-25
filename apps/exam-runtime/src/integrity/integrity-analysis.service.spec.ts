@@ -13,7 +13,17 @@ describe('IntegrityAnalysisService', () => {
     id: 'attempt-1',
     examId: 'exam-1',
     webcamViolationCount: 0,
-    invitation: { exam: { organizationId: 'org-1', title: 'Backend Engineer Exam' } },
+    invitation: {
+      exam: {
+        organizationId: 'org-1',
+        title: 'Backend Engineer Exam',
+        // Schema defaults (apps/api/prisma/schema.prisma): webcam on, block enforcement, limit 3, no disabled signals.
+        webcamProctoringEnabled: true,
+        proctoringEnforcement: 'block',
+        proctoringStrikeLimit: 3,
+        disabledProctoringSignalsJson: null,
+      },
+    },
   };
 
   // Long enough (>= MIN_NORMALIZED_LENGTH = 150 after normalization) and identical between
@@ -132,6 +142,74 @@ describe('IntegrityAnalysisService', () => {
     );
     expect(write.integrityAnalysis.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ create: expect.objectContaining({ level: 'high_concern' }) }),
+    );
+  });
+
+  it('config-aware blocked flag: a higher strike limit (5) with only 3 violations is not blocked -- medium severity, no "session blocked" wording', async () => {
+    const write = persistTx();
+    const attempt = {
+      ...attemptWithExam,
+      webcamViolationCount: 3,
+      invitation: { exam: { ...attemptWithExam.invitation.exam, proctoringStrikeLimit: 5 } },
+    };
+    tenantPrisma.forTenant
+      .mockResolvedValueOnce(attempt)
+      .mockImplementationOnce((_ctx, fn) => fn(readTxWith([])))
+      .mockImplementationOnce((_ctx, fn) => fn(write));
+    integrityNarrativeClient.writeNarrative.mockResolvedValue('Some webcam violations were recorded.');
+
+    await service.analyze('attempt-1');
+
+    expect(integrityNarrativeClient.writeNarrative).toHaveBeenCalledWith(
+      [{ type: 'webcam_violations', severity: 'medium', detail: '3 webcam violation(s) recorded' }],
+      { examTitle: 'Backend Engineer Exam', level: 'review' },
+      fakeAiProvider,
+    );
+    expect(write.integrityAnalysis.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ create: expect.objectContaining({ level: 'review' }) }),
+    );
+  });
+
+  it('config-aware blocked flag: warn-mode exams are never blocked regardless of violation count -- medium severity, no "session blocked" wording', async () => {
+    const write = persistTx();
+    const attempt = {
+      ...attemptWithExam,
+      webcamViolationCount: 3,
+      invitation: { exam: { ...attemptWithExam.invitation.exam, proctoringEnforcement: 'warn' } },
+    };
+    tenantPrisma.forTenant
+      .mockResolvedValueOnce(attempt)
+      .mockImplementationOnce((_ctx, fn) => fn(readTxWith([])))
+      .mockImplementationOnce((_ctx, fn) => fn(write));
+    integrityNarrativeClient.writeNarrative.mockResolvedValue('Some webcam violations were recorded.');
+
+    await service.analyze('attempt-1');
+
+    expect(integrityNarrativeClient.writeNarrative).toHaveBeenCalledWith(
+      [{ type: 'webcam_violations', severity: 'medium', detail: '3 webcam violation(s) recorded' }],
+      { examTitle: 'Backend Engineer Exam', level: 'review' },
+      fakeAiProvider,
+    );
+    expect(write.integrityAnalysis.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ create: expect.objectContaining({ level: 'review' }) }),
+    );
+  });
+
+  it('config-aware blocked flag: a default exam (block, limit 3) with 3 violations is blocked -- high severity, "session blocked" wording preserved', async () => {
+    const write = persistTx();
+    const attempt = { ...attemptWithExam, webcamViolationCount: 3 };
+    tenantPrisma.forTenant
+      .mockResolvedValueOnce(attempt)
+      .mockImplementationOnce((_ctx, fn) => fn(readTxWith([])))
+      .mockImplementationOnce((_ctx, fn) => fn(write));
+    integrityNarrativeClient.writeNarrative.mockResolvedValue('Multiple webcam violations, session blocked.');
+
+    await service.analyze('attempt-1');
+
+    expect(integrityNarrativeClient.writeNarrative).toHaveBeenCalledWith(
+      [{ type: 'webcam_violations', severity: 'high', detail: '3 webcam violation(s) recorded, session blocked' }],
+      { examTitle: 'Backend Engineer Exam', level: 'high_concern' },
+      fakeAiProvider,
     );
   });
 

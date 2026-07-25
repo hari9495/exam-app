@@ -1618,6 +1618,92 @@ describe('ExamsService', () => {
       expect(tx.exam.update).toHaveBeenCalled();
     });
 
+    it('allows a save that resubmits all four proctoring fields unchanged alongside a real edit (the recruiter form always sends all four)', async () => {
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1',
+            status: 'published',
+            webcamProctoringEnabled: true,
+            proctoringEnforcement: 'block',
+            proctoringStrikeLimit: 3,
+            disabledProctoringSignalsJson: JSON.stringify(['right_click', 'idle_timeout']),
+          }),
+          update: jest.fn().mockResolvedValue({ id: 'exam-1' }),
+        },
+        invitation: { count: jest.fn().mockResolvedValue(2), findMany: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.update(context, 'exam-1', {
+        title: 'Renamed',
+        webcamProctoringEnabled: true,
+        proctoringEnforcement: 'block',
+        proctoringStrikeLimit: 3,
+        disabledProctoringSignals: ['right_click', 'idle_timeout'],
+      });
+
+      expect(tx.exam.update).toHaveBeenCalled();
+      expect(tx.exam.update.mock.calls[0][0].data.title).toBe('Renamed');
+    });
+
+    it('still rejects when a resubmitted proctoring field genuinely differs from the stored value', async () => {
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1',
+            status: 'published',
+            webcamProctoringEnabled: true,
+            proctoringEnforcement: 'block',
+            proctoringStrikeLimit: 3,
+            disabledProctoringSignalsJson: null,
+          }),
+          update: jest.fn(),
+        },
+        invitation: { count: jest.fn().mockResolvedValue(2) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(
+        service.update(context, 'exam-1', {
+          title: 'Renamed',
+          webcamProctoringEnabled: true,
+          proctoringEnforcement: 'block',
+          proctoringStrikeLimit: 5,
+          disabledProctoringSignals: [],
+        }),
+      ).rejects.toThrow(ConflictException);
+      expect(tx.exam.update).not.toHaveBeenCalled();
+    });
+
+    it('treats an unchanged disabled-signal list supplied in a different order as unchanged', async () => {
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1',
+            status: 'published',
+            webcamProctoringEnabled: true,
+            proctoringEnforcement: 'block',
+            proctoringStrikeLimit: 3,
+            disabledProctoringSignalsJson: JSON.stringify(['right_click', 'idle_timeout']),
+          }),
+          update: jest.fn().mockResolvedValue({ id: 'exam-1' }),
+        },
+        invitation: { count: jest.fn().mockResolvedValue(2), findMany: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.update(context, 'exam-1', {
+        title: 'Renamed',
+        webcamProctoringEnabled: true,
+        proctoringEnforcement: 'block',
+        proctoringStrikeLimit: 3,
+        disabledProctoringSignals: ['idle_timeout', 'right_click'],
+      });
+
+      expect(tx.exam.update).toHaveBeenCalled();
+    });
+
     it('carries the proctoring config onto a duplicated exam', async () => {
       const tx = {
         exam: {

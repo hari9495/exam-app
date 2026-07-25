@@ -539,6 +539,13 @@ export class AttemptService {
       if (attempt.status !== 'in_progress') {
         throw new BadRequestException(`Cannot report a webcam violation — attempt status is "${attempt.status}"`);
       }
+      // The client is told whether webcam proctoring is on, but the server cannot trust
+      // it: a stale bundle or a tampered client on a webcam-disabled exam must not be
+      // able to record events, strikes, or a pause/block. Ignore rather than reject, for
+      // the same reason as the disabled-signal guard above.
+      if (!resolveProctoringConfig(exam).webcamEnabled) {
+        return { strike: attempt.webcamViolationCount, status: attempt.status };
+      }
       const snapshotUrl = await this.blobStorage.uploadDataUri(`webcam-snapshots/${attempt.id}-${Date.now()}.jpg`, dto.snapshot);
       const { attempt: updated, strike } = await this.attemptSettlement.registerWebcamViolation(tx, exam, attempt, dto.reason, snapshotUrl);
       return { strike, status: updated.status };

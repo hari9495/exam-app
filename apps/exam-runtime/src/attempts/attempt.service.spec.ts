@@ -1792,6 +1792,22 @@ describe('AttemptService', () => {
       const uploadedUrl = await blobStorage.uploadDataUri.mock.results[0].value;
       expect(settlement.registerWebcamViolation).toHaveBeenCalledWith(tx, exam, attempt, 'no_face', uploadedUrl);
     });
+
+    it('ignores the violation and leaves the attempt unchanged when webcam proctoring is disabled on the exam', async () => {
+      const disabledExam = { ...exam, webcamProctoringEnabled: false };
+      const invitationWithDisabledExam = { ...invitationRecord, exam: disabledExam };
+      const attempt = { id: 'attempt-1', status: 'in_progress', webcamViolationCount: 2 };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve(invitationWithDisabledExam))
+        .mockImplementationOnce((_ctx, fn) => fn(tx));
+
+      const result = await service.webcamViolation(session, { reason: 'no_face', snapshot: 'x' });
+
+      expect(result).toEqual({ strike: 2, status: 'in_progress' });
+      expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
+      expect(settlement.registerWebcamViolation).not.toHaveBeenCalled();
+    });
   });
 
   describe('webcamSnapshot', () => {

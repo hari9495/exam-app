@@ -3,6 +3,7 @@ import { TenantPrismaService, AiApiKeyResolverService } from '@exam-platform/sha
 import { IntegrityNarrativeClient } from './integrity-narrative.client';
 import { deriveTelemetryFlags, deriveAttemptFlags, deriveLevel, IntegrityFlag, AnswerTelemetry } from './integrity-rules';
 import { normalizeCode, similarityScore, MIN_NORMALIZED_LENGTH, SIMILARITY_THRESHOLD, SIMILARITY_HIGH } from './similarity';
+import { resolveProctoringConfig } from '../attempts/proctoring-config';
 
 const CLEAR_NARRATIVE = 'No integrity concerns detected.';
 const COUNTERPART_STATUSES = ['submitted', 'auto_submitted', 'force_submitted', 'pending_manual_grade'];
@@ -103,10 +104,15 @@ export class IntegrityAnalysisService {
         );
       }
 
+      // Blocked must reflect the exam's actual configured limit/enforcement, not a
+      // hardcoded threshold or attempt.status -- by the time integrity analysis runs
+      // (from finalize) status is already submitted/auto_submitted, so it no longer
+      // carries the block information.
+      const proctoring = resolveProctoringConfig(attempt.invitation.exam);
       flags.push(
         ...deriveAttemptFlags({
           webcamViolationCount: attempt.webcamViolationCount,
-          blocked: attempt.webcamViolationCount >= 3,
+          blocked: proctoring.enforcement === 'block' && attempt.webcamViolationCount >= proctoring.strikeLimit,
           events,
         }),
       );
