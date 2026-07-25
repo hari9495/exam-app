@@ -211,6 +211,100 @@ describe('LiveMonitoringPanel', () => {
 
       expect(screen.getByText('No proctoring events recorded for this attempt.')).toBeInTheDocument();
     });
+
+    it('renders a webcam snapshot thumbnail and enlarges it on click', async () => {
+      jest.spyOn(useProctoringEventsModule, 'useProctoringEvents').mockReturnValue({
+        data: [
+          {
+            id: 'e1',
+            attemptId: 'a1',
+            eventType: 'webcam_violation',
+            severity: 'high',
+            occurredAt: '2026-01-01T00:01:00Z',
+            metadataJson: JSON.stringify({ snapshot: 'blob:webcam-1', strike: 2 }),
+          },
+        ],
+        isLoading: false,
+      } as any);
+
+      renderPanelWithRoster(roster);
+      const user = userEvent.setup({ delay: null });
+      await user.click(screen.getByRole('button', { name: 'View log' }));
+
+      const thumbnail = screen.getByRole('button', { name: 'Enlarge webcam snapshot' });
+      expect(thumbnail.querySelector('img')).toHaveAttribute('src', 'blob:webcam-1');
+      expect(screen.getByText('Strike 2')).toBeInTheDocument();
+
+      await user.click(thumbnail);
+
+      expect(screen.getByText('Webcam snapshot')).toBeInTheDocument();
+      expect(screen.getByAltText('Webcam snapshot')).toHaveAttribute('src', 'blob:webcam-1');
+    });
+
+    it('renders a human-readable duration for a window_blur event, distinguishing sub-second from long blurs', async () => {
+      jest.spyOn(useProctoringEventsModule, 'useProctoringEvents').mockReturnValue({
+        data: [
+          { id: 'e1', attemptId: 'a1', eventType: 'window_blur', severity: 'low', occurredAt: '2026-01-01T00:01:00Z', metadataJson: JSON.stringify({ durationMs: 200 }) },
+          { id: 'e2', attemptId: 'a1', eventType: 'window_blur', severity: 'high', occurredAt: '2026-01-01T00:02:00Z', metadataJson: JSON.stringify({ durationMs: 45000 }) },
+        ],
+        isLoading: false,
+      } as any);
+
+      renderPanelWithRoster(roster);
+      const user = userEvent.setup({ delay: null });
+      await user.click(screen.getByRole('button', { name: 'View log' }));
+
+      expect(screen.getByText('Away for 0.2s')).toBeInTheDocument();
+      expect(screen.getByText('Away for 45s')).toBeInTheDocument();
+    });
+
+    it('renders a human-readable label for a paste event', async () => {
+      jest.spyOn(useProctoringEventsModule, 'useProctoringEvents').mockReturnValue({
+        data: [
+          { id: 'e1', attemptId: 'a1', eventType: 'copy_paste', severity: 'medium', occurredAt: '2026-01-01T00:01:00Z', metadataJson: JSON.stringify({ action: 'paste' }) },
+        ],
+        isLoading: false,
+      } as any);
+
+      renderPanelWithRoster(roster);
+      const user = userEvent.setup({ delay: null });
+      await user.click(screen.getByRole('button', { name: 'View log' }));
+
+      expect(screen.getByText('Paste')).toBeInTheDocument();
+    });
+
+    it('renders the event plainly, without throwing, when metadataJson is malformed or not an object', async () => {
+      jest.spyOn(useProctoringEventsModule, 'useProctoringEvents').mockReturnValue({
+        data: [
+          { id: 'e1', attemptId: 'a1', eventType: 'tab_switch', severity: 'medium', occurredAt: '2026-01-01T00:01:00Z', metadataJson: '{not json' },
+          { id: 'e2', attemptId: 'a1', eventType: 'right_click', severity: 'low', occurredAt: '2026-01-01T00:02:00Z', metadataJson: '"a string"' },
+        ],
+        isLoading: false,
+      } as any);
+
+      renderPanelWithRoster(roster);
+      const user = userEvent.setup({ delay: null });
+      await user.click(screen.getByRole('button', { name: 'View log' }));
+
+      expect(screen.getByText('tab_switch')).toBeInTheDocument();
+      expect(screen.getByText('right_click')).toBeInTheDocument();
+    });
+
+    it('renders an event with metadataJson: null as before', async () => {
+      jest.spyOn(useProctoringEventsModule, 'useProctoringEvents').mockReturnValue({
+        data: [
+          { id: 'e1', attemptId: 'a1', eventType: 'dev_tools_detected', severity: 'high', occurredAt: '2026-01-01T00:01:00Z', metadataJson: null },
+        ],
+        isLoading: false,
+      } as any);
+
+      renderPanelWithRoster(roster);
+      const user = userEvent.setup({ delay: null });
+      await user.click(screen.getByRole('button', { name: 'View log' }));
+
+      expect(screen.getByText('dev_tools_detected')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Enlarge webcam snapshot' })).not.toBeInTheDocument();
+    });
   });
 
   describe('proctoring bypass', () => {

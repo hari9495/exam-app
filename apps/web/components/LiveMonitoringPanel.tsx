@@ -41,8 +41,39 @@ function formatRelativeTime(occurredAt: string): string {
   return `${hours}h ago`;
 }
 
+// metadataJson is untrusted text from a column: a malformed row must render the
+// event plainly rather than crash the recruiter's only view into what happened.
+function parseEventMetadata(metadataJson: string | null): Record<string, unknown> | null {
+  if (!metadataJson) return null;
+  try {
+    const parsed = JSON.parse(metadataJson);
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function formatEventDetails(metadata: Record<string, unknown>): string[] {
+  const details: string[] = [];
+  if (typeof metadata.durationMs === 'number') {
+    const seconds = metadata.durationMs / 1000;
+    details.push(`Away for ${metadata.durationMs < 1000 ? seconds.toFixed(1) : Math.round(seconds)}s`);
+  }
+  if (typeof metadata.action === 'string') {
+    details.push(metadata.action === 'paste' ? 'Paste' : 'Copy');
+  }
+  if (typeof metadata.trigger === 'string') {
+    details.push(metadata.trigger === 'shortcut' ? 'Triggered by keyboard shortcut' : metadata.trigger);
+  }
+  if (typeof metadata.strike === 'number') {
+    details.push(`Strike ${metadata.strike}`);
+  }
+  return details;
+}
+
 function ProctoringLogModal({ attemptId, onClose }: { attemptId: string; onClose: () => void }) {
   const { data: events, isLoading } = useProctoringEvents(attemptId);
+  const [selectedSnapshot, setSelectedSnapshot] = useState<string | null>(null);
 
   return (
     <Modal open title="Proctoring log" onClose={onClose}>
@@ -52,19 +83,34 @@ function ProctoringLogModal({ attemptId, onClose }: { attemptId: string; onClose
         <p className="text-sm text-gray-500">No proctoring events recorded for this attempt.</p>
       ) : (
         <ul className="flex max-h-96 flex-col gap-2 overflow-y-auto">
-          {events.map((event) => (
-            <li key={event.id} className="rounded border border-gray-200 p-2 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="font-medium">{event.eventType}</span>
-                <Badge variant={event.severity === 'high' ? 'danger' : event.severity === 'medium' ? 'warning' : 'default'}>
-                  {event.severity}
-                </Badge>
-              </div>
-              <p className="text-xs text-gray-400">{new Date(event.occurredAt).toLocaleString()}</p>
-            </li>
-          ))}
+          {events.map((event) => {
+            const metadata = parseEventMetadata(event.metadataJson);
+            const details = metadata ? formatEventDetails(metadata) : [];
+            const snapshot = metadata && typeof metadata.snapshot === 'string' && metadata.snapshot !== '' ? metadata.snapshot : null;
+            return (
+              <li key={event.id} className="rounded border border-gray-200 p-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">{event.eventType}</span>
+                  <Badge variant={event.severity === 'high' ? 'danger' : event.severity === 'medium' ? 'warning' : 'default'}>
+                    {event.severity}
+                  </Badge>
+                </div>
+                <p className="text-xs text-gray-400">{new Date(event.occurredAt).toLocaleString()}</p>
+                {details.length > 0 && <p className="text-xs text-gray-600">{details.join(' — ')}</p>}
+                {snapshot && (
+                  <button type="button" onClick={() => setSelectedSnapshot(snapshot)} aria-label="Enlarge webcam snapshot">
+                    <img src={snapshot} alt="" className="mt-1 h-16 w-16 rounded object-cover" />
+                  </button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
+
+      <Modal open={selectedSnapshot !== null} title="Webcam snapshot" onClose={() => setSelectedSnapshot(null)}>
+        {selectedSnapshot && <img src={selectedSnapshot} alt="Webcam snapshot" className="w-full rounded" />}
+      </Modal>
     </Modal>
   );
 }
