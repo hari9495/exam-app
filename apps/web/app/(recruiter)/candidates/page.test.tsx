@@ -1,4 +1,4 @@
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import CandidatesPage from './page';
 import { AuthProvider } from '../../../lib/auth-context';
@@ -247,5 +247,148 @@ describe('CandidatesPage', () => {
     await waitFor(() =>
       expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/candidates') && String(call[0]).includes('search=alice'))).toBe(true),
     );
+  });
+
+  describe('managing candidates', () => {
+    const NEVER_INVITED = {
+      id: 'cand-1',
+      email: 'nanji.s@prudentconsulting.com',
+      name: 'Nanji',
+      phone: null,
+      status: 'active',
+      createdAt: '2026-07-24T00:00:00.000Z',
+      erasedAt: null,
+      invitationCount: 0,
+    };
+    const ALREADY_INVITED = { ...NEVER_INVITED, id: 'cand-2', name: 'Vishwamber Test', email: 'v@example.com', invitationCount: 2 };
+
+    function mockCandidates(candidates: unknown[]) {
+      const fetchMock = jest.fn(async (url, options) => {
+        if (String(url).endsWith('/auth/refresh')) {
+          return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        }
+        if (String(url).includes('/candidates/cand-1') && options?.method === 'DELETE') {
+          return new Response(JSON.stringify({ id: 'cand-1' }), { status: 200 });
+        }
+        if (String(url).includes('/candidates/') && options?.method === 'PATCH') {
+          return new Response(JSON.stringify({ id: 'cand-1', status: 'inactive' }), { status: 200 });
+        }
+        if (String(url).includes('/candidates')) {
+          return new Response(
+            JSON.stringify({ data: candidates, total: candidates.length, page: 1, pageSize: 20, totalPages: 1 }),
+            { status: 200 },
+          );
+        }
+        if (String(url).includes('/exams')) {
+          return new Response(JSON.stringify({ data: [], total: 0, page: 1, pageSize: 100, totalPages: 0 }), { status: 200 });
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+      return fetchMock;
+    }
+
+    function renderPage() {
+      render(
+        <QueryProvider>
+          <ToastProvider>
+            <AuthProvider>
+              <CandidatesPage />
+            </AuthProvider>
+          </ToastProvider>
+        </QueryProvider>,
+      );
+    }
+
+    it('requests only active candidates by default, so deactivated ones stay out of the way', async () => {
+      const fetchMock = mockCandidates([NEVER_INVITED]);
+      renderPage();
+
+      await waitFor(() => expect(screen.getByText('Nanji')).toBeInTheDocument());
+      expect(
+        fetchMock.mock.calls.some((call) => String(call[0]).includes('/candidates') && String(call[0]).includes('status=active')),
+      ).toBe(true);
+    });
+
+    it('drops the status filter entirely when All is selected', async () => {
+      const fetchMock = mockCandidates([NEVER_INVITED]);
+      renderPage();
+      await waitFor(() => expect(screen.getByText('Nanji')).toBeInTheDocument());
+
+      await userEvent.click(screen.getByRole('combobox', { name: 'Status' }));
+      await userEvent.click(screen.getByRole('option', { name: 'All' }));
+
+      await waitFor(() =>
+        expect(
+          fetchMock.mock.calls.some((call) => String(call[0]).includes('/candidates') && !String(call[0]).includes('status=')),
+        ).toBe(true),
+      );
+    });
+
+    it('badges an inactive candidate and offers to reactivate them', async () => {
+      mockCandidates([{ ...NEVER_INVITED, status: 'inactive' }]);
+      renderPage();
+
+      await waitFor(() => expect(screen.getByText('Nanji')).toBeInTheDocument());
+      expect(screen.getByText('Inactive')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Reactivate' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Deactivate' })).not.toBeInTheDocument();
+    });
+
+    it('deactivates a candidate by patching their status', async () => {
+      const fetchMock = mockCandidates([NEVER_INVITED]);
+      renderPage();
+      await waitFor(() => expect(screen.getByText('Nanji')).toBeInTheDocument());
+
+      await userEvent.click(screen.getByRole('button', { name: 'Deactivate' }));
+
+      await waitFor(() => {
+        const patchCall = fetchMock.mock.calls.find((call) => call[1]?.method === 'PATCH');
+        expect(patchCall).toBeDefined();
+        expect(JSON.parse(String(patchCall![1]?.body))).toEqual({ status: 'inactive' });
+      });
+      expect(await screen.findByText('Candidate deactivated.')).toBeInTheDocument();
+    });
+
+    it('offers Delete only for a candidate who has never been invited', async () => {
+      mockCandidates([NEVER_INVITED, ALREADY_INVITED]);
+      renderPage();
+
+      await waitFor(() => expect(screen.getByText('Nanji')).toBeInTheDocument());
+      expect(screen.getByText('Vishwamber Test')).toBeInTheDocument();
+      // Two candidates on screen but only the never-invited one exposes Delete.
+      expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(1);
+      expect(screen.getAllByRole('button', { name: 'Deactivate' })).toHaveLength(2);
+    });
+
+    it('deletes a candidate after confirming in the dialog', async () => {
+      const fetchMock = mockCandidates([NEVER_INVITED]);
+      renderPage();
+      await waitFor(() => expect(screen.getByText('Nanji')).toBeInTheDocument());
+
+      await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+      expect(screen.getByText('Delete candidate')).toBeInTheDocument();
+
+      const dialogButtons = screen.getAllByRole('button', { name: 'Delete' });
+      await userEvent.click(dialogButtons[dialogButtons.length - 1]);
+
+      await waitFor(() => expect(fetchMock.mock.calls.some((call) => call[1]?.method === 'DELETE')).toBe(true));
+      expect(await screen.findByText('Candidate deleted.')).toBeInTheDocument();
+    });
+
+    it('opens the edit modal prefilled for the chosen candidate', async () => {
+      mockCandidates([NEVER_INVITED]);
+      renderPage();
+      await waitFor(() => expect(screen.getByText('Nanji')).toBeInTheDocument());
+
+      await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+
+      // Scoped to the dialog: the page's own "Add candidate" form has an Email
+      // field too, so an unscoped query matches both.
+      const dialog = within(screen.getByRole('dialog'));
+      expect(dialog.getByText('Edit candidate')).toBeInTheDocument();
+      expect(dialog.getByLabelText('Email')).toHaveValue('nanji.s@prudentconsulting.com');
+      expect(dialog.getByLabelText('Name')).toHaveValue('Nanji');
+    });
   });
 });

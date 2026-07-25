@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
@@ -7,6 +7,7 @@ import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
 import { CandidatesService } from './candidates.service';
 import { CreateCandidateDto } from './dto/create-candidate.dto';
+import { UpdateCandidateDto } from './dto/update-candidate.dto';
 import { BulkUploadCandidatesDto } from './dto/bulk-upload-candidates.dto';
 
 @Controller('candidates')
@@ -27,8 +28,26 @@ export class CandidatesController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('search') search?: string,
+    @Query('status') status?: string,
   ) {
-    return this.candidatesService.list(tenant, { page, pageSize, search });
+    return this.candidatesService.list(tenant, { page, pageSize, search, status });
+  }
+
+  @Patch(':id')
+  @RequirePermissions('candidate:manage')
+  update(
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentUserId() userId: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateCandidateDto,
+  ) {
+    return this.candidatesService.update(tenant, userId, id, dto);
+  }
+
+  @Delete(':id')
+  @RequirePermissions('candidate:manage')
+  remove(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.candidatesService.remove(tenant, userId, id);
   }
 
   @Get('lookup')

@@ -3,11 +3,23 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Plus, Search } from 'lucide-react';
-import { useCandidates, useCreateCandidate } from '../../../lib/hooks/useCandidates';
+import clsx from 'clsx';
+import { useCandidates, useCreateCandidate, useUpdateCandidate, useDeleteCandidate } from '../../../lib/hooks/useCandidates';
 import { useExams } from '../../../lib/hooks/useExams';
 import { useBulkInvite } from '../../../lib/hooks/useInvitations';
 import { CandidateInviteForm } from '../../../components/CandidateInviteForm';
-import { CardGrid, Checkbox, Select, Button, useToast, Pagination, type SortOption } from '../../../components/ui';
+import { CandidateEditModal } from '../../../components/CandidateEditModal';
+import {
+  CardGrid,
+  Checkbox,
+  Select,
+  Button,
+  Modal,
+  StatusBadge,
+  useToast,
+  Pagination,
+  type SortOption,
+} from '../../../components/ui';
 import { Candidate } from '../../../lib/types';
 
 const CANDIDATE_SORT_OPTIONS: SortOption<Candidate>[] = [
@@ -15,10 +27,30 @@ const CANDIDATE_SORT_OPTIONS: SortOption<Candidate>[] = [
   { key: 'added', label: 'Added', sortValue: (candidate) => candidate.createdAt },
 ];
 
+const STATUS_FILTER_OPTIONS = [
+  { value: 'active', label: 'Active' },
+  { value: 'inactive', label: 'Inactive' },
+  { value: 'all', label: 'All' },
+];
+
 export default function CandidatesPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
-  const { data: candidatesResponse, isLoading, isError } = useCandidates({ page, pageSize: 20, search: search || undefined });
+  const [statusFilter, setStatusFilter] = useState('active');
+  const [candidateBeingEdited, setCandidateBeingEdited] = useState<Candidate | null>(null);
+  const [candidatePendingDelete, setCandidatePendingDelete] = useState<Candidate | null>(null);
+  const {
+    data: candidatesResponse,
+    isLoading,
+    isError,
+  } = useCandidates({
+    page,
+    pageSize: 20,
+    search: search || undefined,
+    status: statusFilter === 'all' ? undefined : statusFilter,
+  });
+  const updateCandidate = useUpdateCandidate();
+  const deleteCandidate = useDeleteCandidate();
   // ponytail: pageSize:100 is the server's max -- an org with >100 published
   // exams silently omits #101+ from this invite dropdown. Upgrade path:
   // replace with a real paginated/typeahead picker if this becomes a real constraint.
@@ -56,9 +88,36 @@ export default function CandidatesPage() {
     });
   }
 
+  function handleToggleStatus(candidate: Candidate) {
+    const nextStatus = candidate.status === 'inactive' ? 'active' : 'inactive';
+    updateCandidate.mutate(
+      { id: candidate.id, status: nextStatus },
+      {
+        onSuccess: () => toast(nextStatus === 'inactive' ? 'Candidate deactivated.' : 'Candidate reactivated.'),
+        onError: (error) => toast(error instanceof Error ? error.message : 'Failed to update candidate.', 'error'),
+      },
+    );
+  }
+
+  function handleConfirmDelete() {
+    if (!candidatePendingDelete) return;
+    deleteCandidate.mutate(candidatePendingDelete.id, {
+      onSuccess: () => {
+        toast('Candidate deleted.');
+        setCandidatePendingDelete(null);
+      },
+      onError: (error) => {
+        toast(error instanceof Error ? error.message : 'Failed to delete candidate.', 'error');
+        setCandidatePendingDelete(null);
+      },
+    });
+  }
+
   function renderCard(candidate: Candidate) {
+    const isInactive = candidate.status === 'inactive';
+    const neverInvited = (candidate.invitationCount ?? 0) === 0;
     return (
-      <div className="flex items-start gap-2.5">
+      <div className={clsx('flex items-start gap-2.5', isInactive && 'opacity-60')}>
         <Checkbox
           label={candidate.name}
           hideLabel
@@ -66,11 +125,36 @@ export default function CandidatesPage() {
           onChange={(checked) => toggle(candidate.id, checked)}
         />
         <div className="min-w-0 flex-1">
-          <div className="font-semibold text-recruiter-text">{candidate.name}</div>
+          <div className="flex items-center gap-1.5">
+            <span className="truncate font-semibold text-recruiter-text">{candidate.name}</span>
+            {isInactive && <StatusBadge tone="neutral">Inactive</StatusBadge>}
+          </div>
           <div className="truncate text-xs text-recruiter-text-tertiary">{candidate.email}</div>
           <div className="mt-2 flex items-center justify-between border-t border-recruiter-border pt-2 text-xs text-recruiter-text-tertiary">
             <span>{candidate.phone ?? '—'}</span>
             <span>Added {new Date(candidate.createdAt).toLocaleDateString()}</span>
+          </div>
+          <div className="mt-2 flex items-center gap-2 text-xs opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+            <button type="button" onClick={() => setCandidateBeingEdited(candidate)} className="font-medium text-primary">
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => handleToggleStatus(candidate)}
+              disabled={updateCandidate.isPending}
+              className="font-medium text-recruiter-text-secondary hover:underline disabled:opacity-50"
+            >
+              {isInactive ? 'Reactivate' : 'Deactivate'}
+            </button>
+            {neverInvited && (
+              <button
+                type="button"
+                onClick={() => setCandidatePendingDelete(candidate)}
+                className="font-medium text-status-danger hover:underline"
+              >
+                Delete
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -130,6 +214,7 @@ export default function CandidatesPage() {
             className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
           />
         </div>
+        <Select label="Status" value={statusFilter} onChange={(value) => { setStatusFilter(value); setPage(1); }} options={STATUS_FILTER_OPTIONS} />
         <Select
           label="Exam to invite to"
           value={examId}
@@ -149,6 +234,27 @@ export default function CandidatesPage() {
         sortOptions={CANDIDATE_SORT_OPTIONS}
       />
       <Pagination page={candidatesResponse?.page ?? 1} totalPages={candidatesResponse?.totalPages ?? 1} onPageChange={setPage} />
+
+      {candidateBeingEdited && (
+        <CandidateEditModal candidate={candidateBeingEdited} onClose={() => setCandidateBeingEdited(null)} />
+      )}
+
+      {candidatePendingDelete && (
+        <Modal open title="Delete candidate" onClose={() => setCandidatePendingDelete(null)}>
+          <p className="mb-4 text-sm text-recruiter-text-secondary">
+            Permanently delete &ldquo;{candidatePendingDelete.name}&rdquo;? They have never been invited to an exam, so nothing else
+            is affected. This can&apos;t be undone.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setCandidatePendingDelete(null)}>
+              Cancel
+            </Button>
+            <Button variant="danger" loading={deleteCandidate.isPending} onClick={handleConfirmDelete}>
+              Delete
+            </Button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

@@ -61,6 +61,27 @@ describe('InviteCandidatesModal', () => {
     expect(screen.getByText('Invited 1 candidate(s).')).toBeInTheDocument();
   });
 
+  it('asks the server for active candidates only, so deactivated ones cannot be invited', async () => {
+    const fetchMock = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/candidates')) {
+        return new Response(JSON.stringify({ data: [], total: 0, page: 1, pageSize: 100, totalPages: 0 }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    renderModal();
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some((call) => String(call[0]).includes('/candidates') && String(call[0]).includes('status=active')),
+      ).toBe(true),
+    );
+  });
+
   it('excludes candidates already invited to this exam from the picker', async () => {
     const fetchMock = jest.fn(async (url) => {
       if (String(url).endsWith('/auth/refresh')) {

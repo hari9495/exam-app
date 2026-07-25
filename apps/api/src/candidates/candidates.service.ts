@@ -4,6 +4,7 @@ import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { CreateCandidateDto } from './dto/create-candidate.dto';
+import { UpdateCandidateDto } from './dto/update-candidate.dto';
 import { parseCandidateCsv } from './csv-parser';
 import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
 
@@ -11,7 +12,10 @@ interface CandidateFilters {
   page?: string;
   pageSize?: string;
   search?: string;
+  status?: string;
 }
+
+export type CandidateListItem = Candidate & { invitationCount: number };
 
 export interface BulkUploadResult {
   created: number;
@@ -61,19 +65,108 @@ export class CandidatesService {
     });
   }
 
-  async list(context: TenantContext, filters: CandidateFilters): Promise<PaginatedResponse<Candidate>> {
+  async list(context: TenantContext, filters: CandidateFilters): Promise<PaginatedResponse<CandidateListItem>> {
     const { page, pageSize, skip, take } = resolvePaginationParams(filters.page, filters.pageSize);
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const where = {
         organizationId: context.organizationId as string,
+        ...(filters.status ? { status: filters.status } : {}),
         ...(filters.search ? { OR: [{ name: { contains: filters.search } }, { email: { contains: filters.search } }] } : {}),
       };
       const [candidates, total] = await Promise.all([
         tx.candidate.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip, take }),
         tx.candidate.count({ where }),
       ]);
-      return buildPaginatedResponse(candidates, total, page, pageSize);
+
+      // The UI only offers Delete for candidates with no exam history, so the
+      // count travels with the row rather than needing a per-card follow-up call.
+      const candidateIds = candidates.map((candidate) => candidate.id);
+      const invitationGroups =
+        candidateIds.length > 0
+          ? await tx.invitation.groupBy({ by: ['candidateId'], where: { candidateId: { in: candidateIds } }, _count: { _all: true } })
+          : [];
+      const countByCandidate = new Map(invitationGroups.map((group) => [group.candidateId, group._count._all]));
+
+      const data = candidates.map((candidate) => ({
+        ...candidate,
+        invitationCount: countByCandidate.get(candidate.id) ?? 0,
+      }));
+      return buildPaginatedResponse(data, total, page, pageSize);
     });
+  }
+
+  async update(context: TenantContext, actorUserId: string, candidateId: string, dto: UpdateCandidateDto): Promise<Candidate> {
+    const updated = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const candidate = await tx.candidate.findFirst({
+        where: { id: candidateId, organizationId: context.organizationId as string },
+      });
+      if (!candidate) {
+        throw new NotFoundException(`Candidate ${candidateId} not found`);
+      }
+      // An erased candidate's name/email are deliberately redacted placeholders;
+      // letting them be edited back would undo the erasure.
+      if (candidate.erasedAt) {
+        throw new ConflictException('An erased candidate cannot be edited');
+      }
+
+      if (dto.email && dto.email !== candidate.email) {
+        const clash = await tx.candidate.findFirst({
+          where: { organizationId: context.organizationId as string, email: dto.email, id: { not: candidateId } },
+        });
+        if (clash) {
+          throw new ConflictException(`A candidate with email ${dto.email} already exists`);
+        }
+      }
+
+      return tx.candidate.update({
+        where: { id: candidateId },
+        data: {
+          ...(dto.name !== undefined ? { name: dto.name } : {}),
+          ...(dto.email !== undefined ? { email: dto.email } : {}),
+          ...(dto.phone !== undefined ? { phone: dto.phone || null } : {}),
+          ...(dto.status !== undefined ? { status: dto.status } : {}),
+        },
+      });
+    });
+
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'candidate.updated',
+      entityType: 'candidate',
+      entityId: candidateId,
+      metadata: { fields: Object.keys(dto) },
+    });
+
+    return updated;
+  }
+
+  async remove(context: TenantContext, actorUserId: string, candidateId: string): Promise<{ id: string }> {
+    await this.tenantPrisma.forTenant(context, async (tx) => {
+      const candidate = await tx.candidate.findFirst({
+        where: { id: candidateId, organizationId: context.organizationId as string },
+      });
+      if (!candidate) {
+        throw new NotFoundException(`Candidate ${candidateId} not found`);
+      }
+      // Deleting a candidate who has been invited would orphan their invitations,
+      // attempts and results -- deactivating is the supported path for those.
+      const invitationCount = await tx.invitation.count({ where: { candidateId } });
+      if (invitationCount > 0) {
+        throw new ConflictException(
+          `Candidate ${candidateId} has ${invitationCount} invitation(s) and cannot be deleted -- mark them inactive instead`,
+        );
+      }
+      await tx.candidate.delete({ where: { id: candidateId } });
+    });
+
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'candidate.deleted',
+      entityType: 'candidate',
+      entityId: candidateId,
+    });
+
+    return { id: candidateId };
   }
 
   async lookupByEmail(context: TenantContext, email: string): Promise<Candidate> {

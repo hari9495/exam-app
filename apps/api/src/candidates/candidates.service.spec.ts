@@ -39,6 +39,206 @@ describe('CandidatesService', () => {
     });
   });
 
+  describe('list invitation counts and status filter', () => {
+    it('attaches an invitationCount to each row so the UI knows who is safe to delete', async () => {
+      const tx = {
+        candidate: {
+          findMany: jest.fn().mockResolvedValue([{ id: 'cand-1' }, { id: 'cand-2' }]),
+          count: jest.fn().mockResolvedValue(2),
+        },
+        invitation: { groupBy: jest.fn().mockResolvedValue([{ candidateId: 'cand-1', _count: { _all: 3 } }]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.list(context, {});
+
+      expect(result.data).toEqual([
+        { id: 'cand-1', invitationCount: 3 },
+        { id: 'cand-2', invitationCount: 0 },
+      ]);
+    });
+
+    it('skips the invitation lookup entirely when the page is empty', async () => {
+      const tx = {
+        candidate: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
+        invitation: { groupBy: jest.fn() },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.list(context, {});
+
+      expect(tx.invitation.groupBy).not.toHaveBeenCalled();
+    });
+
+    it('filters by status when one is supplied', async () => {
+      const tx = {
+        candidate: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
+        invitation: { groupBy: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.list(context, { status: 'active' });
+
+      expect(tx.candidate.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ status: 'active' }) }));
+    });
+
+    it('does not constrain status when no filter is supplied', async () => {
+      const tx = {
+        candidate: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
+        invitation: { groupBy: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.list(context, {});
+
+      const where = tx.candidate.findMany.mock.calls[0][0].where;
+      expect(where).not.toHaveProperty('status');
+    });
+  });
+
+  describe('update', () => {
+    it('updates only the supplied fields and records an audit entry', async () => {
+      const tx = {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'a@test.com', erasedAt: null }),
+          update: jest.fn().mockResolvedValue({ id: 'cand-1', name: 'Alice B' }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.update(context, 'user-1', 'cand-1', { name: 'Alice B' });
+
+      expect(tx.candidate.update).toHaveBeenCalledWith({ where: { id: 'cand-1' }, data: { name: 'Alice B' } });
+      expect(result).toEqual({ id: 'cand-1', name: 'Alice B' });
+      expect(audit.record).toHaveBeenCalledWith(context, {
+        actorUserId: 'user-1',
+        action: 'candidate.updated',
+        entityType: 'candidate',
+        entityId: 'cand-1',
+        metadata: { fields: ['name'] },
+      });
+    });
+
+    it('deactivates a candidate by writing the inactive status', async () => {
+      const tx = {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'a@test.com', erasedAt: null }),
+          update: jest.fn().mockResolvedValue({ id: 'cand-1', status: 'inactive' }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.update(context, 'user-1', 'cand-1', { status: 'inactive' });
+
+      expect(tx.candidate.update).toHaveBeenCalledWith({ where: { id: 'cand-1' }, data: { status: 'inactive' } });
+    });
+
+    it('normalises a cleared phone to null rather than an empty string', async () => {
+      const tx = {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'a@test.com', erasedAt: null }),
+          update: jest.fn().mockResolvedValue({ id: 'cand-1' }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.update(context, 'user-1', 'cand-1', { phone: '' });
+
+      expect(tx.candidate.update).toHaveBeenCalledWith({ where: { id: 'cand-1' }, data: { phone: null } });
+    });
+
+    it('rejects changing the email to one another candidate in the org already uses', async () => {
+      const tx = {
+        candidate: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValueOnce({ id: 'cand-1', email: 'a@test.com', erasedAt: null })
+            .mockResolvedValueOnce({ id: 'cand-2', email: 'taken@test.com' }),
+          update: jest.fn(),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.update(context, 'user-1', 'cand-1', { email: 'taken@test.com' })).rejects.toThrow(ConflictException);
+      expect(tx.candidate.update).not.toHaveBeenCalled();
+    });
+
+    it('allows re-submitting the candidate own unchanged email without a clash lookup', async () => {
+      const tx = {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'a@test.com', erasedAt: null }),
+          update: jest.fn().mockResolvedValue({ id: 'cand-1' }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.update(context, 'user-1', 'cand-1', { email: 'a@test.com' });
+
+      expect(tx.candidate.findFirst).toHaveBeenCalledTimes(1);
+      expect(tx.candidate.update).toHaveBeenCalled();
+    });
+
+    it('refuses to edit an erased candidate so the redaction is not undone', async () => {
+      const tx = {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'erased@redacted.invalid', erasedAt: new Date() }),
+          update: jest.fn(),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.update(context, 'user-1', 'cand-1', { name: 'Alice' })).rejects.toThrow(ConflictException);
+      expect(tx.candidate.update).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for a candidate outside the caller organization', async () => {
+      const tx = { candidate: { findFirst: jest.fn().mockResolvedValue(null), update: jest.fn() } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.update(context, 'user-1', 'cand-1', { name: 'Alice' })).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('remove', () => {
+    it('deletes a candidate who has never been invited and records an audit entry', async () => {
+      const tx = {
+        candidate: { findFirst: jest.fn().mockResolvedValue({ id: 'cand-1' }), delete: jest.fn().mockResolvedValue({ id: 'cand-1' }) },
+        invitation: { count: jest.fn().mockResolvedValue(0) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.remove(context, 'user-1', 'cand-1');
+
+      expect(tx.candidate.delete).toHaveBeenCalledWith({ where: { id: 'cand-1' } });
+      expect(result).toEqual({ id: 'cand-1' });
+      expect(audit.record).toHaveBeenCalledWith(context, {
+        actorUserId: 'user-1',
+        action: 'candidate.deleted',
+        entityType: 'candidate',
+        entityId: 'cand-1',
+      });
+    });
+
+    it('refuses to delete a candidate with invitations so results are never orphaned', async () => {
+      const tx = {
+        candidate: { findFirst: jest.fn().mockResolvedValue({ id: 'cand-1' }), delete: jest.fn() },
+        invitation: { count: jest.fn().mockResolvedValue(2) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.remove(context, 'user-1', 'cand-1')).rejects.toThrow(ConflictException);
+      expect(tx.candidate.delete).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for a candidate outside the caller organization', async () => {
+      const tx = { candidate: { findFirst: jest.fn().mockResolvedValue(null), delete: jest.fn() }, invitation: { count: jest.fn() } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.remove(context, 'user-1', 'cand-1')).rejects.toThrow(NotFoundException);
+    });
+  });
+
   it('rejects creating a candidate whose email already exists in the organization', async () => {
     const tx = {
       candidate: { findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'a@test.com' }) },
@@ -54,6 +254,7 @@ describe('CandidatesService', () => {
         findMany: jest.fn().mockResolvedValue([{ id: 'cand-1' }]),
         count: jest.fn().mockResolvedValue(1),
       },
+      invitation: { groupBy: jest.fn().mockResolvedValue([]) },
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
@@ -70,6 +271,7 @@ describe('CandidatesService', () => {
         findMany: jest.fn().mockResolvedValue([{ id: 'cand-2', name: 'Alice Smith', email: 'alice@test.com' }]),
         count: jest.fn().mockResolvedValue(1),
       },
+      invitation: { groupBy: jest.fn().mockResolvedValue([]) },
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 

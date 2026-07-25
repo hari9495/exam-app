@@ -317,6 +317,7 @@ model Candidate {
   email          String
   name           String
   phone          String?
+  status         String       @default("active")
   createdAt      DateTime     @default(now()) @map("created_at")
   erasedAt       DateTime?    @map("erased_at")
   invitations    Invitation[]

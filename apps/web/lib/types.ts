@@ -133,13 +133,17 @@ export interface ExamListItem extends Omit<Exam, 'sections'> {
   attemptTotalCount: number;
 }
 
+export type CandidateStatus = 'active' | 'inactive';
+
 export interface Candidate {
   id: string;
   email: string;
   name: string;
   phone: string | null;
+  status: CandidateStatus;
   createdAt: string;
   erasedAt: string | null;
+  invitationCount?: number;
 }
 
 export interface Invitation {

@@ -17,7 +17,8 @@ export function InviteCandidatesModal({ examId, open, onClose, existingCandidate
   // ponytail: pageSize:100 is the server's max -- an org with >100 matching
   // candidates silently can't invite #101+ in one go. Upgrade path: replace
   // with a real paginated/typeahead picker if this becomes a real constraint.
-  const { data: candidatesResponse } = useCandidates({ pageSize: 100, search: search || undefined });
+  // status:'active' keeps deactivated candidates out of the invite path.
+  const { data: candidatesResponse } = useCandidates({ pageSize: 100, search: search || undefined, status: 'active' });
   const candidates = (candidatesResponse?.data ?? []).filter((candidate) => !existingCandidateIds.includes(candidate.id));
   const bulkInvite = useBulkInvite(examId);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
