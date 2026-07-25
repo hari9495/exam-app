@@ -246,7 +246,7 @@ export class AttemptSettlementService {
     reason: WebcamViolationReason,
     snapshot: string,
   ): Promise<{ attempt: Attempt; strike: number }> {
-    const { enforcement, strikeLimit } = resolveProctoringConfig(exam);
+    const { enforcement, strikeLimit } = resolveProctoringConfig(exam, attempt);
     const strike = attempt.webcamViolationCount + 1;
     const atLimit = strike >= strikeLimit;
     const eventType =
@@ -304,7 +304,7 @@ export class AttemptSettlementService {
       return { attempt, strike: attempt.browserActivityViolationCount, event };
     }
 
-    const { enforcement, strikeLimit } = resolveProctoringConfig(exam);
+    const { enforcement, strikeLimit } = resolveProctoringConfig(exam, attempt);
     const strike = attempt.browserActivityViolationCount + 1;
     const status = enforcement === 'warn' ? attempt.status : strike >= strikeLimit ? 'blocked' : 'paused';
     const updated = await tx.attempt.update({

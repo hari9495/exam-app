@@ -474,7 +474,7 @@ export class AttemptService {
       // The client is told which signals to skip, but the server cannot trust it:
       // a stale bundle or a tampered client would otherwise still land strikes for
       // a signal the recruiter turned off. Ignore rather than reject.
-      const proctoring = resolveProctoringConfig(exam);
+      const proctoring = resolveProctoringConfig(exam, attempt);
       if (!isSignalEnabled(proctoring, dto.eventType)) {
         return {
           id: '',
@@ -543,7 +543,7 @@ export class AttemptService {
       // it: a stale bundle or a tampered client on a webcam-disabled exam must not be
       // able to record events, strikes, or a pause/block. Ignore rather than reject, for
       // the same reason as the disabled-signal guard above.
-      if (!resolveProctoringConfig(exam).webcamEnabled) {
+      if (!resolveProctoringConfig(exam, attempt).webcamEnabled) {
         return { strike: attempt.webcamViolationCount, status: attempt.status };
       }
       const snapshotUrl = await this.blobStorage.uploadDataUri(`webcam-snapshots/${attempt.id}-${Date.now()}.jpg`, dto.snapshot);
