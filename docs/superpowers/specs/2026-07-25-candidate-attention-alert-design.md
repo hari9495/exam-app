@@ -28,7 +28,7 @@ This is not a side issue — an alert built on that array would inherit the same
 
 Everything downstream then works unchanged: the count column becomes truthful, and the rate detection in §2 sees real history. Seeding the same array the socket already feeds is deliberate — no second code path, no reconciliation, no double-counting.
 
-Cap the seeded history at the existing `MAX_ALERTS` ceiling, newest first, so a noisy exam cannot flood the client.
+The client retains alerts **by age, not by an exam-wide count**: everything within `ALERT_RETENTION_MINUTES` (30, matching the replay window) is kept, with a per-attempt ceiling as a pure memory guard. An exam-wide count cap is wrong here, not merely coarse — it couples candidates to each other, so a fleet-wide misfire spreads the buffer thin enough that nobody accumulates the 5 alerts §2 needs and *nothing is flagged at all*. The same retention applies to the `proctoring:recent` seed and to live `proctoring:flag` appends, so the two paths cannot disagree. The server's replay cap is a payload ceiling only, high enough that it can never reintroduce that suppression.
 
 ### 2. The trigger
 
@@ -52,7 +52,7 @@ The tab count is the part that matters most: a recruiter editing an exam or revi
 
 The same limitation silently breaks the notification in §4: a recruiter sitting on the Details tab would receive no events at all, so nothing could ever fire. (Switching to a different *browser* tab is fine — the React tree stays mounted — but switching in-app tabs is not.)
 
-So the page owns the hook and passes `roster`, `alerts`, `connectionStatus` and `joinError` down to `LiveMonitoringPanel` as props. The panel keeps all its current behaviour and simply stops calling the hook itself. One socket, alive for as long as the exam page is open, regardless of which tab is showing.
+So the page owns the hook and passes `roster`, `alerts`, `connectionStatus` and `joinError` down to `LiveMonitoringPanel`, and `leaderboard` down to `LeaderboardPanel`, as props. The panels keep all their current behaviour and simply stop calling the hook themselves — a panel that still called it would open a *second* socket per recruiter, with its own join, roster snapshot and leaderboard computation. One socket, alive for as long as the exam page is open, regardless of which tab is showing.
 
 ### 4. Browser notification
 
@@ -61,7 +61,9 @@ When a candidate becomes flagged **and the page is not visible** (`document.visi
 Rules that keep it from becoming noise:
 
 - **Only when hidden.** If the recruiter is already looking at the tab, the highlight is enough; a notification on a focused tab is pure irritation.
-- **Once per candidate per flare-up.** Track which attempts have already been notified. An attempt is re-armed only after it has been *un*flagged (the burst subsided) for `NOTIFY_REARM_MINUTES` (10). Without this, a sustained burst re-notifies on every incoming event.
+- **At most one notification per candidate per `NOTIFY_REARM_MINUTES` (10).** Track which attempts have already been notified. An attempt re-arms once it has dropped out of the flagged set *and* 10 minutes have passed since its notification — so a burst that dips for a second does not re-notify, and a burst that never subsides never re-notifies at all. Without this, a sustained burst would fire on every incoming event.
+- **One popup, not one per candidate.** Notifications carry a stable per-attempt `tag` so the OS collapses repeats, and when more than a handful of attempts flag in the same evaluation a single summary ("4 candidates need attention") is sent instead. The mass-misfire scenario is exactly the one this feature is for; it must not arrive as a wall of popups.
+- **Nothing for a candidate the recruiter has already rescued.** An attempt with an active proctoring bypass is excluded from the flagged set entirely — no badge, no tab count, no notification. The bypass suppresses enforcement but not recording, so the events keep coming; continuing to page the recruiter about the candidate they just acted on is the fastest way to make them ignore the feature. Revoking the bypass makes the attempt eligible again, with no memory of the earlier flag. The exclusion lives where `flagged` is composed, on the exam page, so the rule itself stays a pure function of alerts and the clock.
 - **Permission is requested on an explicit user action**, not on page load — a button in the Live panel ("Enable alerts"). Browsers reject or penalise unprompted permission requests, and a spontaneous prompt on page load is hostile.
 - If permission is denied or unavailable, the in-app highlighting still works. The notification is an enhancement, never the only channel.
 
@@ -74,7 +76,7 @@ Rules that keep it from becoming noise:
 ## Accepted Limitations
 
 - The alert only reaches a recruiter with the app open in some tab. Fully closing the app means no alert. Stated plainly rather than papered over — §5 explains why email is deferred rather than assumed.
-- Seeded history is capped at 30 minutes and `MAX_ALERTS`. A candidate who had a burst 45 minutes ago and has been quiet since will not be flagged — which is correct, since they no longer need attention, though the count column will under-report their total.
+- History is bounded at 30 minutes. A candidate who had a burst 45 minutes ago and has been quiet since will not be flagged — which is correct, since they no longer need attention, though the count column under-reports their lifetime total. (An earlier draft claimed the exam-wide `MAX_ALERTS` cap only cost accuracy in that column. That was wrong: it suppressed detection itself, which is why §1 now retains by age and per attempt.)
 
 ## Testing
 
@@ -85,3 +87,7 @@ Rules that keep it from becoming noise:
 - Notification fires only when `visibilityState` is `hidden`, fires once per flare-up, and re-arms only after the un-flagged interval.
 - Denied permission leaves the in-app highlight fully working.
 - The Live tab count reflects the number of flagged candidates and returns to zero when they subside.
+- Thirty candidates each accumulating a burst at the same moment all get flagged — the retention policy must not let them crowd each other out.
+- A bypassed attempt in a burst is not flagged and does not contribute to the tab count; the same attempt, once the bypass is revoked, is flagged normally.
+- The gateway emits `proctoring:recent` before joining the exam room, so a live flag cannot be delivered and then wiped by the replay.
+- Many candidates flagging at once produce one summary notification, not one per candidate.

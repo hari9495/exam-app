@@ -118,7 +118,6 @@ export default function EditExamPage() {
         </TabsContent>
         <TabsContent value="live">
           <LiveMonitoringPanel
-            examId={exam.id}
             flagged={flagged}
             roster={monitoring.roster}
             alerts={monitoring.alerts}

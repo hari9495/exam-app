@@ -17,7 +17,6 @@ jest.mock('../lib/hooks/useProctoringEvents', () => ({ useProctoringEvents: jest
 const now = new Date('2026-01-01T00:10:00Z');
 
 function renderPanel(
-  examId = 'exam-1',
   monitoring: {
     roster?: RosterRow[];
     alerts?: ProctoringFlag[];
@@ -30,7 +29,6 @@ function renderPanel(
   return render(
     <ToastProvider>
       <LiveMonitoringPanel
-        examId={examId}
         roster={monitoring.roster ?? []}
         alerts={alerts}
         flagged={monitoring.flagged ?? flaggedAttemptIds(alerts, Date.now())}
@@ -42,7 +40,7 @@ function renderPanel(
 }
 
 function renderPanelWithRoster(roster: RosterRow[], alerts: ProctoringFlag[] = []): void {
-  renderPanel('exam-1', { roster, alerts });
+  renderPanel({ roster, alerts });
 }
 
 describe('LiveMonitoringPanel', () => {
@@ -55,7 +53,7 @@ describe('LiveMonitoringPanel', () => {
   });
 
   it('renders stat tiles computed from the roster and alert feed', () => {
-    renderPanel('exam-1', {
+    renderPanel({
       roster: [
         { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'in_progress', online: true, remainingSeconds: 120, answeredCount: 2, totalQuestions: 5, proctoringBypassed: false },
         { candidateId: 'c2', candidateName: 'Bob', invitationId: 'i2', attemptId: 'a2', status: 'submitted', online: false, remainingSeconds: null, answeredCount: 5, totalQuestions: 5, proctoringBypassed: false },
@@ -76,7 +74,7 @@ describe('LiveMonitoringPanel', () => {
   });
 
   it('shows a per-row integrity alert chip counting medium/high severity alerts for that attemptId', () => {
-    renderPanel('exam-1', {
+    renderPanel({
       roster: [
         { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'in_progress', online: true, remainingSeconds: 120, answeredCount: 2, totalQuestions: 5, proctoringBypassed: false },
       ],
@@ -92,7 +90,7 @@ describe('LiveMonitoringPanel', () => {
   });
 
   it('renders the roster table with candidate rows', () => {
-    renderPanel('exam-1', {
+    renderPanel({
       roster: [
         { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'in_progress', online: true, remainingSeconds: 65, answeredCount: 2, totalQuestions: 5, proctoringBypassed: false },
       ],
@@ -111,26 +109,26 @@ describe('LiveMonitoringPanel', () => {
   });
 
   it('shows the join error inline instead of the roster when one is present', () => {
-    renderPanel('exam-1', { joinError: 'Exam exam-1 not found' });
+    renderPanel({ joinError: 'Exam exam-1 not found' });
 
     expect(screen.getByText('Exam exam-1 not found')).toBeInTheDocument();
     expect(screen.queryByText('No candidates invited yet.')).not.toBeInTheDocument();
   });
 
   it('shows a disconnected status indicator when the socket drops', () => {
-    renderPanel('exam-1', { connectionStatus: 'disconnected' });
+    renderPanel({ connectionStatus: 'disconnected' });
 
     expect(screen.getByText('Disconnected')).toBeInTheDocument();
   });
 
   it('fires a one-time toast when connectionStatus transitions from connected to disconnected', () => {
-    const { rerender } = renderPanel('exam-1', { connectionStatus: 'connected' });
+    const { rerender } = renderPanel({ connectionStatus: 'connected' });
 
     expect(screen.queryByText('Live connection lost. Reconnecting…')).not.toBeInTheDocument();
 
     rerender(
       <ToastProvider>
-        <LiveMonitoringPanel examId="exam-1" roster={[]} alerts={[]} flagged={new Set()} connectionStatus="disconnected" joinError={null} />
+        <LiveMonitoringPanel roster={[]} alerts={[]} flagged={new Set()} connectionStatus="disconnected" joinError={null} />
       </ToastProvider>,
     );
 
@@ -138,7 +136,7 @@ describe('LiveMonitoringPanel', () => {
   });
 
   it('does not fire the disconnect toast on initial mount, only on a connected-to-disconnected transition', () => {
-    renderPanel('exam-1', { connectionStatus: 'disconnected' });
+    renderPanel({ connectionStatus: 'disconnected' });
 
     expect(screen.queryByText('Live connection lost. Reconnecting…')).not.toBeInTheDocument();
   });

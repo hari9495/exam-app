@@ -115,7 +115,6 @@ function ProctoringLogModal({ attemptId, onClose }: { attemptId: string; onClose
 }
 
 export function LiveMonitoringPanel({
-  examId,
   roster,
   alerts,
   flagged,
@@ -124,7 +123,6 @@ export function LiveMonitoringPanel({
   notificationPermission,
   onEnableNotifications,
 }: {
-  examId: string;
   roster: RosterRow[];
   alerts: ProctoringFlag[];
   flagged: Set<string>;
