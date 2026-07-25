@@ -383,6 +383,9 @@ model Attempt {
   pausedAt                      DateTime?           @map("paused_at")
   pausedDurationMs              Int                 @default(0) @map("paused_duration_ms")
   consentAt                     DateTime?           @map("consent_at")
+  proctoringBypassedAt          DateTime?           @map("proctoring_bypassed_at")
+  proctoringBypassedBy          String?             @map("proctoring_bypassed_by") @db.UniqueIdentifier
+  proctoringBypassReason        String?             @map("proctoring_bypass_reason")
   invitation                    Invitation          @relation(fields: [invitationId], references: [id], onDelete: Cascade)
   answers                       Answer[]
   result                        Result?
