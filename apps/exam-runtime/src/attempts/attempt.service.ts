@@ -486,13 +486,39 @@ export class AttemptService {
         };
       }
 
+      // Screenshots are server-authoritative, same as the signal guard above: a disabled
+      // capture is ignored, not rejected, so a stale/tampered client can't force an upload
+      // the recruiter turned off. `metadata` only diverges from `dto.metadata` when a
+      // screenshot is actually being handled -- otherwise it stays `dto.metadata` (including
+      // `undefined`) so callers below see no behavior change.
+      let metadata = dto.metadata;
+      if (dto.screenshot && proctoring.screenCaptureEnabled) {
+        // Match the JSON key, not the bare word: `screenshotCapReached` also contains the
+        // substring "screenshot", and would otherwise inflate this count once the cap is hit.
+        const priorScreenshots = await tx.proctoringEvent.count({
+          where: { attemptId: attempt.id, metadataJson: { contains: '"screenshot":' } },
+        });
+        if (priorScreenshots >= 150) {
+          metadata = { ...metadata, screenshotCapReached: true };
+        } else {
+          try {
+            const screenshotUrl = await this.blobStorage.uploadDataUri(`screen-captures/${attempt.id}-${Date.now()}.jpg`, dto.screenshot);
+            metadata = { ...metadata, screenshot: screenshotUrl };
+          } catch (error) {
+            // The violation record is what matters -- losing the image is acceptable, losing
+            // the violation is not.
+            this.logger.error('Failed to upload screen capture', error as Error);
+          }
+        }
+      }
+
       if (isStrikeWorthy(dto.eventType)) {
         const { attempt: updated, strike, event } = await this.attemptSettlement.registerBrowserActivityViolation(
           tx,
           exam,
           attempt,
           dto.eventType,
-          dto.metadata,
+          metadata,
         );
         this.monitoringGateway.emitProctoringFlag(exam.id, {
           attemptId: attempt.id,
@@ -509,7 +535,7 @@ export class AttemptService {
           attemptId: attempt.id,
           eventType: dto.eventType,
           severity: getProctoringEventSeverity(dto.eventType),
-          metadataJson: dto.metadata ? JSON.stringify(dto.metadata) : null,
+          metadataJson: metadata ? JSON.stringify(metadata) : null,
         },
       });
       this.monitoringGateway.emitProctoringFlag(exam.id, {

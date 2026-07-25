@@ -1644,6 +1644,111 @@ describe('AttemptService', () => {
         expect(settlement.registerBrowserActivityViolation).toHaveBeenCalled();
       });
     });
+
+    describe('a supplied screenshot', () => {
+      const examWithCapture = { ...exam, screenCaptureEnabled: true };
+      const examWithoutCapture = { ...exam, screenCaptureEnabled: false };
+
+      function mockScoped(examOverride: unknown, tx: unknown) {
+        tenantPrisma.forTenant
+          .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examOverride }))
+          .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
+      }
+
+      it('uploads it and merges the resulting URL into the event metadata when screenCaptureEnabled is true', async () => {
+        const tx = {
+          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          proctoringEvent: {
+            create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }),
+            count: jest.fn().mockResolvedValue(0),
+          },
+        };
+        mockScoped(examWithCapture, tx);
+
+        await service.reportProctoringEvent(session, { eventType: 'looking_down', screenshot: 'data:image/jpeg;base64,abc' });
+
+        expect(blobStorage.uploadDataUri).toHaveBeenCalledWith(expect.stringContaining('screen-captures/attempt-1-'), 'data:image/jpeg;base64,abc');
+        const uploadedUrl = await blobStorage.uploadDataUri.mock.results[0].value;
+        expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+          data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: 'medium', metadataJson: JSON.stringify({ screenshot: uploadedUrl }) },
+        });
+      });
+
+      it('is ignored silently when screenCaptureEnabled is false -- no upload, the violation is still recorded without an image', async () => {
+        const tx = {
+          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          proctoringEvent: { create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }) },
+        };
+        mockScoped(examWithoutCapture, tx);
+
+        const result = await service.reportProctoringEvent(session, { eventType: 'looking_down', screenshot: 'data:image/jpeg;base64,abc' });
+
+        expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
+        expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+          data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: 'medium', metadataJson: null },
+        });
+        expect(result.id).toBe('evt-1');
+      });
+
+      it('uploads to the screen-captures/ prefix keyed by attempt id, mirroring the webcam snapshot path shape', async () => {
+        const tx = {
+          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          proctoringEvent: {
+            create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }),
+            count: jest.fn().mockResolvedValue(0),
+          },
+        };
+        mockScoped(examWithCapture, tx);
+
+        await service.reportProctoringEvent(session, { eventType: 'looking_down', screenshot: 'data:image/jpeg;base64,abc' });
+
+        expect(blobStorage.uploadDataUri).toHaveBeenCalledWith(
+          expect.stringMatching(/^screen-captures\/attempt-1-\d+\.jpg$/),
+          'data:image/jpeg;base64,abc',
+        );
+      });
+
+      it('skips the upload and records screenshotCapReached once 150 screenshots already exist for the attempt', async () => {
+        const tx = {
+          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          proctoringEvent: {
+            create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }),
+            count: jest.fn().mockResolvedValue(150),
+          },
+        };
+        mockScoped(examWithCapture, tx);
+
+        const result = await service.reportProctoringEvent(session, { eventType: 'looking_down', screenshot: 'data:image/jpeg;base64,abc' });
+
+        expect(tx.proctoringEvent.count).toHaveBeenCalledWith({
+          where: { attemptId: 'attempt-1', metadataJson: { contains: '"screenshot":' } },
+        });
+        expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
+        expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+          data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: 'medium', metadataJson: JSON.stringify({ screenshotCapReached: true }) },
+        });
+        expect(result.id).toBe('evt-1');
+      });
+
+      it('still records the violation without an image when the upload throws', async () => {
+        const tx = {
+          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          proctoringEvent: {
+            create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }),
+            count: jest.fn().mockResolvedValue(0),
+          },
+        };
+        mockScoped(examWithCapture, tx);
+        blobStorage.uploadDataUri.mockRejectedValueOnce(new Error('blob storage unavailable'));
+
+        const result = await service.reportProctoringEvent(session, { eventType: 'looking_down', screenshot: 'data:image/jpeg;base64,abc' });
+
+        expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+          data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: 'medium', metadataJson: null },
+        });
+        expect(result.id).toBe('evt-1');
+      });
+    });
   });
 
   describe('runCode', () => {
