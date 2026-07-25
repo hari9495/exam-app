@@ -42,8 +42,9 @@ export function useExamMonitoring(examId: string): UseExamMonitoringResult {
       // Read the token fresh on every (re)connection attempt instead of depending on
       // accessToken's exact value below, so a silentRefresh()-issued token swap (every
       // 15 minutes, per ACCESS_TOKEN_TTL_SECONDS) doesn't tear down this effect and wipe
-      // the in-memory alert feed, which has no server-side replay (unlike roster, which
-      // self-heals via roster:snapshot).
+      // the in-memory alert feed. (Unlike roster, which self-heals via roster:snapshot,
+      // the alert feed only gets proctoring:recent once, immediately on join — a
+      // reconnect wouldn't refill it the same way.)
       auth: (cb: (data: { token: string | null }) => void) => cb({ token: tokenRef.current }),
       transports: ['websocket'],
     });
@@ -91,6 +92,13 @@ export function useExamMonitoring(examId: string): UseExamMonitoringResult {
       setRoster((current) =>
         current.map((row) => (row.attemptId === payload.attemptId ? { ...row, proctoringBypassed: payload.proctoringBypassed } : row)),
       );
+    });
+
+    socket.on('proctoring:recent', (rows: ProctoringFlag[]) => {
+      // Replayed history for this recruiter, newest first and already capped server-side.
+      // Replaces rather than merges: it only ever arrives once, immediately on join,
+      // before any live flag can have been appended.
+      setAlerts(rows.slice(0, MAX_ALERTS));
     });
 
     socket.on('proctoring:flag', (payload: ProctoringFlag) => {

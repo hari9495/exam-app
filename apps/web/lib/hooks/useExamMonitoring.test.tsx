@@ -183,6 +183,33 @@ describe('useExamMonitoring', () => {
     expect(result.current.alerts[0].occurredAt).toBe('2026-01-01T00:00:51Z');
   });
 
+  it('seeds the alert feed from proctoring:recent and still appends live flags', async () => {
+    const socket = createMockSocket();
+    (io as jest.Mock).mockReturnValue(socket);
+
+    const { result } = renderHook(() => useExamMonitoring('exam-1'));
+    await waitFor(() => expect(io).toHaveBeenCalled());
+    act(() => socket.trigger('connect'));
+
+    act(() =>
+      socket.trigger('proctoring:recent', [
+        { attemptId: 'a1', candidateId: 'c1', eventType: 'tab_switch', severity: 'high', occurredAt: '2026-07-25T10:00:00.000Z' },
+        { attemptId: 'a2', candidateId: 'c2', eventType: 'window_blur', severity: 'medium', occurredAt: '2026-07-25T09:59:00.000Z' },
+      ]),
+    );
+
+    expect(result.current.alerts).toHaveLength(2);
+
+    act(() =>
+      socket.trigger('proctoring:flag', {
+        attemptId: 'a1', candidateId: 'c1', eventType: 'copy_paste', severity: 'medium', occurredAt: '2026-07-25T10:01:00.000Z',
+      }),
+    );
+
+    expect(result.current.alerts).toHaveLength(3);
+    expect(result.current.alerts[0].eventType).toBe('copy_paste');
+  });
+
   it('updates leaderboard state on leaderboard:snapshot and leaderboard:update', async () => {
     const socket = createMockSocket();
     (io as jest.Mock).mockReturnValue(socket);
