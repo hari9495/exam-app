@@ -115,6 +115,12 @@ export class ExamsService {
           availabilityWindowStart: scheduling.availabilityWindowStart,
           availabilityWindowEnd: scheduling.availabilityWindowEnd,
           allowedIpRange: dto.allowedIpRange ?? null,
+          ...(dto.webcamProctoringEnabled !== undefined ? { webcamProctoringEnabled: dto.webcamProctoringEnabled } : {}),
+          ...(dto.proctoringEnforcement !== undefined ? { proctoringEnforcement: dto.proctoringEnforcement } : {}),
+          ...(dto.proctoringStrikeLimit !== undefined ? { proctoringStrikeLimit: dto.proctoringStrikeLimit } : {}),
+          ...(dto.disabledProctoringSignals !== undefined
+            ? { disabledProctoringSignalsJson: dto.disabledProctoringSignals.length > 0 ? JSON.stringify(dto.disabledProctoringSignals) : null }
+            : {}),
           createdBy: userId,
         },
       }),
@@ -206,6 +212,18 @@ export class ExamsService {
         throw new NotFoundException(`Exam ${id} not found`);
       }
 
+      // Proctoring rules must not change once candidates have been invited to a
+      // published exam -- otherwise candidates in the same exam are judged by
+      // different rules, which is indefensible if a hiring decision is challenged.
+      const touchesProctoringConfig =
+        dto.webcamProctoringEnabled !== undefined ||
+        dto.proctoringEnforcement !== undefined ||
+        dto.proctoringStrikeLimit !== undefined ||
+        dto.disabledProctoringSignals !== undefined;
+      if (touchesProctoringConfig) {
+        await this.assertSectionsMutable(tx, id, existing.status);
+      }
+
       const schedulingEnabledInput = dto.schedulingEnabled !== undefined ? dto.schedulingEnabled : existing.schedulingEnabled;
       const availabilityWindowStartInput =
         dto.availabilityWindowStart !== undefined ? dto.availabilityWindowStart : (existing.availabilityWindowStart?.toISOString() ?? undefined);
@@ -224,6 +242,12 @@ export class ExamsService {
           ...(dto.feedbackVisibility !== undefined ? { feedbackVisibility: dto.feedbackVisibility } : {}),
           ...(dto.walkInEnabled !== undefined ? { walkInEnabled: dto.walkInEnabled } : {}),
           ...(dto.allowedIpRange !== undefined ? { allowedIpRange: dto.allowedIpRange || null } : {}),
+          ...(dto.webcamProctoringEnabled !== undefined ? { webcamProctoringEnabled: dto.webcamProctoringEnabled } : {}),
+          ...(dto.proctoringEnforcement !== undefined ? { proctoringEnforcement: dto.proctoringEnforcement } : {}),
+          ...(dto.proctoringStrikeLimit !== undefined ? { proctoringStrikeLimit: dto.proctoringStrikeLimit } : {}),
+          ...(dto.disabledProctoringSignals !== undefined
+            ? { disabledProctoringSignalsJson: dto.disabledProctoringSignals.length > 0 ? JSON.stringify(dto.disabledProctoringSignals) : null }
+            : {}),
           schedulingEnabled: scheduling.schedulingEnabled,
           availabilityWindowStart: scheduling.availabilityWindowStart,
           availabilityWindowEnd: scheduling.availabilityWindowEnd,
@@ -328,6 +352,10 @@ export class ExamsService {
           passCriteriaPercent: exam.passCriteriaPercent,
           randomizeOrder: exam.randomizeOrder,
           feedbackVisibility: exam.feedbackVisibility,
+          webcamProctoringEnabled: exam.webcamProctoringEnabled,
+          proctoringEnforcement: exam.proctoringEnforcement,
+          proctoringStrikeLimit: exam.proctoringStrikeLimit,
+          disabledProctoringSignalsJson: exam.disabledProctoringSignalsJson,
           schedulingEnabled: false,
           availabilityWindowStart: null,
           availabilityWindowEnd: null,
