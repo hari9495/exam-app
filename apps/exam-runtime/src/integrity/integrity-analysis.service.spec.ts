@@ -65,6 +65,34 @@ describe('IntegrityAnalysisService', () => {
     return { integrityAnalysis: { upsert: jest.fn() }, aiCreditUsage: { create: jest.fn() } };
   }
 
+  // Shared scaffolding for tests that only vary the attempt's bypass fields, webcam
+  // violation count and proctoring events, against the default exam config (block,
+  // strike limit 3, webcam on). Returns exactly the fields persisted via the
+  // integrityAnalysis.upsert `create` payload -- narrative, level and flagsJson.
+  async function runAnalysisWith(overrides: {
+    proctoringBypassedAt: Date | null;
+    proctoringBypassReason: string | null;
+    webcamViolationCount: number;
+    events: { eventType: string; severity: string }[];
+  }): Promise<{ narrative: string | null; level: string; flagsJson: string | null }> {
+    const attempt = {
+      ...attemptWithExam,
+      webcamViolationCount: overrides.webcamViolationCount,
+      proctoringBypassedAt: overrides.proctoringBypassedAt,
+      proctoringBypassReason: overrides.proctoringBypassReason,
+    };
+    const write = persistTx();
+    tenantPrisma.forTenant
+      .mockResolvedValueOnce(attempt)
+      .mockImplementationOnce((_ctx: any, fn: any) => fn(readTxWith([], overrides.events)))
+      .mockImplementationOnce((_ctx: any, fn: any) => fn(write));
+
+    await service.analyze('attempt-1');
+
+    const call = write.integrityAnalysis.upsert.mock.calls[0][0];
+    return { narrative: call.create.narrative, level: call.create.level, flagsJson: call.create.flagsJson };
+  }
+
   it('resolves without doing anything when the attempt cannot be found', async () => {
     tenantPrisma.forTenant.mockResolvedValueOnce(null);
 
@@ -126,23 +154,21 @@ describe('IntegrityAnalysisService', () => {
   });
 
   it('flagged path (high severity): webcam-blocked attempt derives high_concern level', async () => {
-    const write = persistTx();
-    tenantPrisma.forTenant
-      .mockResolvedValueOnce({ ...attemptWithExam, webcamViolationCount: 3 })
-      .mockImplementationOnce((_ctx, fn) => fn(readTxWith([])))
-      .mockImplementationOnce((_ctx, fn) => fn(write));
     integrityNarrativeClient.writeNarrative.mockResolvedValue('Multiple webcam violations, session blocked.');
 
-    await service.analyze('attempt-1');
+    const analysis = await runAnalysisWith({
+      proctoringBypassedAt: null,
+      proctoringBypassReason: null,
+      webcamViolationCount: 3,
+      events: [],
+    });
 
     expect(integrityNarrativeClient.writeNarrative).toHaveBeenCalledWith(
       expect.any(Array),
       { examTitle: 'Backend Engineer Exam', level: 'high_concern' },
       fakeAiProvider,
     );
-    expect(write.integrityAnalysis.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ create: expect.objectContaining({ level: 'high_concern' }) }),
-    );
+    expect(analysis.level).toBe('high_concern');
   });
 
   it('config-aware blocked flag: a higher strike limit (5) with only 3 violations is not blocked -- medium severity, no "session blocked" wording', async () => {
@@ -196,15 +222,14 @@ describe('IntegrityAnalysisService', () => {
   });
 
   it('config-aware blocked flag: a default exam (block, limit 3) with 3 violations is blocked -- high severity, "session blocked" wording preserved', async () => {
-    const write = persistTx();
-    const attempt = { ...attemptWithExam, webcamViolationCount: 3 };
-    tenantPrisma.forTenant
-      .mockResolvedValueOnce(attempt)
-      .mockImplementationOnce((_ctx, fn) => fn(readTxWith([])))
-      .mockImplementationOnce((_ctx, fn) => fn(write));
     integrityNarrativeClient.writeNarrative.mockResolvedValue('Multiple webcam violations, session blocked.');
 
-    await service.analyze('attempt-1');
+    await runAnalysisWith({
+      proctoringBypassedAt: null,
+      proctoringBypassReason: null,
+      webcamViolationCount: 3,
+      events: [],
+    });
 
     expect(integrityNarrativeClient.writeNarrative).toHaveBeenCalledWith(
       [{ type: 'webcam_violations', severity: 'high', detail: '3 webcam violation(s) recorded, session blocked' }],
@@ -464,5 +489,55 @@ describe('IntegrityAnalysisService', () => {
 
     await expect(service.analyze('attempt-1')).resolves.toBeUndefined();
     expect(write.integrityAnalysis.upsert).toHaveBeenCalled();
+  });
+
+  describe('bypass disclosure', () => {
+    it('prepends a disclosure to the clear narrative when no flags were raised', async () => {
+      const analysis = await runAnalysisWith({
+        proctoringBypassedAt: new Date('2026-07-26T10:30:00.000Z'),
+        proctoringBypassReason: 'webcam driver crashing',
+        webcamViolationCount: 0,
+        events: [],
+      });
+
+      expect(analysis.narrative).toContain('Proctoring enforcement was relaxed by a recruiter');
+      expect(analysis.narrative).toContain('webcam driver crashing');
+    });
+
+    it('leaves the integrity level untouched, so a bypass never penalises the candidate', async () => {
+      const analysis = await runAnalysisWith({
+        proctoringBypassedAt: new Date('2026-07-26T10:30:00.000Z'),
+        proctoringBypassReason: 'flaky wifi',
+        webcamViolationCount: 0,
+        events: [],
+      });
+
+      expect(analysis.level).toBe('clear');
+      expect(JSON.parse(analysis.flagsJson ?? '[]')).toEqual([]);
+    });
+
+    it('adds no disclosure when the attempt was never bypassed', async () => {
+      const analysis = await runAnalysisWith({
+        proctoringBypassedAt: null,
+        proctoringBypassReason: null,
+        webcamViolationCount: 0,
+        events: [],
+      });
+
+      expect(analysis.narrative).not.toContain('relaxed by a recruiter');
+    });
+
+    it('does not report a block when enforcement was bypassed past the strike limit', async () => {
+      const analysis = await runAnalysisWith({
+        proctoringBypassedAt: new Date('2026-07-26T10:30:00.000Z'),
+        proctoringBypassReason: 'driver crash',
+        webcamViolationCount: 9,
+        events: [],
+      });
+
+      const flags = JSON.parse(analysis.flagsJson ?? '[]') as { type: string; detail: string }[];
+      const webcamFlag = flags.find((flag) => flag.type === 'webcam_violations');
+      expect(webcamFlag?.detail).not.toContain('session blocked');
+    });
   });
 });

@@ -108,7 +108,7 @@ export class IntegrityAnalysisService {
       // hardcoded threshold or attempt.status -- by the time integrity analysis runs
       // (from finalize) status is already submitted/auto_submitted, so it no longer
       // carries the block information.
-      const proctoring = resolveProctoringConfig(attempt.invitation.exam);
+      const proctoring = resolveProctoringConfig(attempt.invitation.exam, attempt);
       flags.push(
         ...deriveAttemptFlags({
           webcamViolationCount: attempt.webcamViolationCount,
@@ -145,6 +145,11 @@ export class IntegrityAnalysisService {
         }
       }
 
+      const disclosure = this.bypassDisclosure(attempt);
+      if (disclosure) {
+        narrative = narrative ? `${disclosure}\n\n${narrative}` : disclosure;
+      }
+
       const result = { status: 'completed', level, flagsJson: JSON.stringify(flags), narrative };
       await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
         await tx.integrityAnalysis.upsert({
@@ -165,6 +170,18 @@ export class IntegrityAnalysisService {
     } catch (error) {
       this.logger.error(`Integrity analysis could not run for attempt ${attemptId}`, error as Error);
     }
+  }
+
+  // The disclosure belongs in the narrative, not in flagsJson: IntegrityFlag severity
+  // is only 'medium' | 'high', so a bypass flag would push an otherwise-clean attempt
+  // to 'review' and penalise a candidate for a fault the recruiter accommodated.
+  private bypassDisclosure(attempt: { proctoringBypassedAt: Date | null; proctoringBypassReason: string | null }): string | null {
+    if (!attempt.proctoringBypassedAt) {
+      return null;
+    }
+    const when = attempt.proctoringBypassedAt.toISOString();
+    const reason = attempt.proctoringBypassReason?.trim() || 'no reason recorded';
+    return `Proctoring enforcement was relaxed by a recruiter at ${when} (reason: ${reason}). Violations after that point were recorded but not acted on, so the absence of a pause or block does not imply the absence of violations.`;
   }
 
   private async updateCounterparts(organizationId: string, attemptId: string, matches: SimilarityMatch[]): Promise<void> {
