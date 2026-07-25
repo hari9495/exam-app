@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ExamDetailsForm } from '../../../../../components/ExamDetailsForm';
@@ -10,6 +11,7 @@ import { LeaderboardPanel } from '../../../../../components/LeaderboardPanel';
 import { CandidatesPanel } from '../../../../../components/CandidatesPanel';
 import { useExam, useUpdateExam, usePublishExam } from '../../../../../lib/hooks/useExams';
 import { useExamMonitoring } from '../../../../../lib/hooks/useExamMonitoring';
+import { flaggedAttemptIds } from '../../../../../lib/attention-alert';
 import { Tabs, TabsList, TabsTrigger, TabsContent, Button, useToast } from '../../../../../components/ui';
 
 export default function EditExamPage() {
@@ -20,6 +22,17 @@ export default function EditExamPage() {
   const updateExam = useUpdateExam(params.id);
   const publishExam = usePublishExam(params.id);
   const monitoring = useExamMonitoring(params.id);
+
+  // The flag is derived from Date.now(), and a burst that stops produces no further
+  // socket events -- without this tick nothing would re-render and the badge would
+  // stay lit after the candidate had settled down.
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((value) => value + 1), 15_000);
+    return () => clearInterval(id);
+  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `tick` is otherwise unused but is what drives decay of the flag over time
+  const flagged = useMemo(() => flaggedAttemptIds(monitoring.alerts, Date.now()), [monitoring.alerts, tick]);
 
   if (!exam) {
     return <p className="text-sm text-gray-500">Loading…</p>;
@@ -57,7 +70,7 @@ export default function EditExamPage() {
           <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="sections">Sections &amp; Questions</TabsTrigger>
           <TabsTrigger value="candidates">Candidates</TabsTrigger>
-          <TabsTrigger value="live">Live</TabsTrigger>
+          <TabsTrigger value="live">Live{flagged.size > 0 ? ` (${flagged.size})` : ''}</TabsTrigger>
           <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
           <TabsTrigger value="grading">Grading</TabsTrigger>
         </TabsList>
@@ -85,6 +98,7 @@ export default function EditExamPage() {
         <TabsContent value="live">
           <LiveMonitoringPanel
             examId={exam.id}
+            flagged={flagged}
             roster={monitoring.roster}
             alerts={monitoring.alerts}
             connectionStatus={monitoring.connectionStatus}

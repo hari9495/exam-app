@@ -5,6 +5,7 @@ import * as useAttemptModerationModule from '../lib/hooks/useAttemptModeration';
 import * as useProctoringEventsModule from '../lib/hooks/useProctoringEvents';
 import { LiveMonitoringPanel } from './LiveMonitoringPanel';
 import { RosterRow, ProctoringFlag, ConnectionStatus } from '../lib/types';
+import { flaggedAttemptIds, ATTENTION_ALERT_COUNT, ATTENTION_WINDOW_MINUTES } from '../lib/attention-alert';
 
 jest.mock('../lib/hooks/useAttemptModeration', () => ({
   useUnblockAttempt: jest.fn(() => ({ mutate: jest.fn(), isPending: false })),
@@ -20,16 +21,19 @@ function renderPanel(
   monitoring: {
     roster?: RosterRow[];
     alerts?: ProctoringFlag[];
+    flagged?: Set<string>;
     connectionStatus?: ConnectionStatus;
     joinError?: string | null;
   } = {},
 ) {
+  const alerts = monitoring.alerts ?? [];
   return render(
     <ToastProvider>
       <LiveMonitoringPanel
         examId={examId}
         roster={monitoring.roster ?? []}
-        alerts={monitoring.alerts ?? []}
+        alerts={alerts}
+        flagged={monitoring.flagged ?? flaggedAttemptIds(alerts, Date.now())}
         connectionStatus={monitoring.connectionStatus ?? 'connected'}
         joinError={monitoring.joinError ?? null}
       />
@@ -37,8 +41,8 @@ function renderPanel(
   );
 }
 
-function renderPanelWithRoster(roster: RosterRow[]): void {
-  renderPanel('exam-1', { roster });
+function renderPanelWithRoster(roster: RosterRow[], alerts: ProctoringFlag[] = []): void {
+  renderPanel('exam-1', { roster, alerts });
 }
 
 describe('LiveMonitoringPanel', () => {
@@ -126,7 +130,7 @@ describe('LiveMonitoringPanel', () => {
 
     rerender(
       <ToastProvider>
-        <LiveMonitoringPanel examId="exam-1" roster={[]} alerts={[]} connectionStatus="disconnected" joinError={null} />
+        <LiveMonitoringPanel examId="exam-1" roster={[]} alerts={[]} flagged={new Set()} connectionStatus="disconnected" joinError={null} />
       </ToastProvider>,
     );
 
@@ -343,6 +347,54 @@ describe('LiveMonitoringPanel', () => {
       ]);
 
       expect(await screen.findAllByRole('button', { name: 'Relax proctoring' })).toHaveLength(2);
+    });
+  });
+
+  describe('attention flag', () => {
+    function burst(attemptId: string, count: number) {
+      return Array.from({ length: count }, (_, i) => ({
+        attemptId, candidateId: 'c1', eventType: 'tab_switch', severity: 'high',
+        occurredAt: new Date(Date.now() - i * 1000).toISOString(),
+      }));
+    }
+
+    it('shows a Needs attention badge for a candidate in a burst', async () => {
+      renderPanelWithRoster(
+        [{ candidateId: 'c1', candidateName: 'Ann', invitationId: 'i1', attemptId: 'a1', status: 'in_progress',
+           online: true, remainingSeconds: 600, answeredCount: 1, totalQuestions: 5, proctoringBypassed: false }],
+        burst('a1', ATTENTION_ALERT_COUNT),
+      );
+
+      expect(await screen.findByText('Needs attention')).toBeInTheDocument();
+    });
+
+    it('shows no badge below the threshold', async () => {
+      renderPanelWithRoster(
+        [{ candidateId: 'c1', candidateName: 'Ann', invitationId: 'i1', attemptId: 'a1', status: 'in_progress',
+           online: true, remainingSeconds: 600, answeredCount: 1, totalQuestions: 5, proctoringBypassed: false }],
+        burst('a1', ATTENTION_ALERT_COUNT - 1),
+      );
+
+      // The alert sidebar renders one "Ann" per alert in the burst, so findByText('Ann')
+      // would hit a multiple-match error here -- findAllByText waits for the same render.
+      await screen.findAllByText('Ann');
+      expect(screen.queryByText('Needs attention')).not.toBeInTheDocument();
+    });
+
+    it('clears the badge once a burst has aged out of the attention window', async () => {
+      const staleBurst = Array.from({ length: ATTENTION_ALERT_COUNT }, (_, i) => ({
+        attemptId: 'a1', candidateId: 'c1', eventType: 'tab_switch', severity: 'high',
+        occurredAt: new Date(Date.now() - (ATTENTION_WINDOW_MINUTES * 60_000 + 1000) - i * 1000).toISOString(),
+      }));
+
+      renderPanelWithRoster(
+        [{ candidateId: 'c1', candidateName: 'Dana', invitationId: 'i1', attemptId: 'a1', status: 'in_progress',
+           online: true, remainingSeconds: 600, answeredCount: 1, totalQuestions: 5, proctoringBypassed: false }],
+        staleBurst,
+      );
+
+      await screen.findAllByText('Dana');
+      expect(screen.queryByText('Needs attention')).not.toBeInTheDocument();
     });
   });
 });

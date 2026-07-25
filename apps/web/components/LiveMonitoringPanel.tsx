@@ -118,12 +118,14 @@ export function LiveMonitoringPanel({
   examId,
   roster,
   alerts,
+  flagged,
   connectionStatus,
   joinError,
 }: {
   examId: string;
   roster: RosterRow[];
   alerts: ProctoringFlag[];
+  flagged: Set<string>;
   connectionStatus: ConnectionStatus;
   joinError: string | null;
 }) {
@@ -172,6 +174,7 @@ export function LiveMonitoringPanel({
         <>
           <Badge variant={STATUS_VARIANT[row.status] ?? 'default'}>{row.status}</Badge>
           {row.proctoringBypassed ? <Badge variant="warning">Proctoring relaxed</Badge> : null}
+          {row.attemptId && flagged.has(row.attemptId) ? <Badge variant="danger">Needs attention</Badge> : null}
         </>
       ),
     },
