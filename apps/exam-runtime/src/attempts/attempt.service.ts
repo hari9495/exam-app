@@ -8,6 +8,7 @@ import { CandidateSession } from '../candidate-auth/current-candidate.decorator'
 import { AnswerDto } from './dto/answer.dto';
 import { StartAttemptDto } from './dto/start-attempt.dto';
 import { getProctoringEventSeverity, isStrikeWorthy } from './proctoring-severity';
+import { resolveProctoringConfig, ExamProctoringConfig } from './proctoring-config';
 import { ReportProctoringEventDto } from './dto/report-proctoring-event.dto';
 import { shuffle } from './shuffle';
 import { effectiveDurationMinutes } from '../grading/grading';
@@ -80,6 +81,7 @@ interface AttemptPreviewResponse {
     schedulingEnabled: boolean;
     availabilityWindowStart: Date | null;
     availabilityWindowEnd: Date | null;
+    proctoring: ExamProctoringConfig;
   };
   schedulingWindowState: 'not_open' | 'open' | 'closed' | null;
   sections: AttemptSectionSummary[];
@@ -107,7 +109,7 @@ interface AttemptStateResponse {
   remainingSeconds: number;
   webcamViolationCount: number;
   browserActivityViolationCount: number;
-  exam: { title: string };
+  exam: { title: string; proctoring: ExamProctoringConfig };
   sections: AttemptSection[];
   answers: AttemptAnswerSummary[];
   messages: AttemptMessageSummary[];
@@ -155,6 +157,7 @@ export class AttemptService {
             schedulingEnabled: exam.schedulingEnabled,
             availabilityWindowStart: exam.availabilityWindowStart,
             availabilityWindowEnd: exam.availabilityWindowEnd,
+            proctoring: resolveProctoringConfig(exam),
           },
           schedulingWindowState: this.getSchedulingWindowState(exam),
           sections: sections.map((section) => ({
@@ -182,7 +185,7 @@ export class AttemptService {
         remainingSeconds: this.attemptSettlement.remainingSeconds(exam, settled),
         webcamViolationCount: settled.webcamViolationCount,
         browserActivityViolationCount: settled.browserActivityViolationCount,
-        exam: { title: exam.title },
+        exam: { title: exam.title, proctoring: resolveProctoringConfig(exam) },
         sections,
         answers: answers.map((answer) => ({
           questionId: answer.questionId,

@@ -32,6 +32,10 @@ describe('AttemptService', () => {
   const exam = {
     id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false,
     schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null, feedbackVisibility: 'breakdown',
+    webcamProctoringEnabled: true,
+    proctoringEnforcement: 'block',
+    proctoringStrikeLimit: 3,
+    disabledProctoringSignalsJson: null,
   };
   const invitationRecord = { id: 'inv-1', candidateId: 'cand-1', examId: 'exam-1', exam, extraTimePercent: 0, candidate: { name: 'Ada Lovelace' } };
 
@@ -112,6 +116,7 @@ describe('AttemptService', () => {
         exam: {
           title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60,
           schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null,
+          proctoring: { webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] },
         },
         schedulingWindowState: null,
         sections: [
@@ -231,7 +236,7 @@ describe('AttemptService', () => {
         candidateName: 'Ada Lovelace',
         status: 'in_progress',
         remainingSeconds: 3300,
-        exam: { title: 'Backend Round' },
+        exam: { title: 'Backend Round', proctoring: { webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] } },
         sections: [
           {
             title: 'Section One', targetDurationMinutes: 20,
@@ -610,6 +615,44 @@ describe('AttemptService', () => {
       expect((result as any).feedback).toEqual({
         status: 'settled', visibility: 'breakdown', passFail: 'fail', percentage: 50,
         sections: [{ title: 'Section One', score: 5, maxScore: 10 }],
+      });
+    });
+
+    it('includes the resolved proctoring config in the pre-start preview, because the welcome screen gates the camera prompt on it', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
+      mockBootstrapWithLogoThenScoped(tx);
+
+      const result = await service.getCurrent(session);
+
+      expect('schedulingWindowState' in result).toBe(true);
+      expect((result as { exam: { proctoring: unknown } }).exam.proctoring).toEqual({
+        webcamEnabled: true,
+        enforcement: 'block',
+        strikeLimit: 3,
+        disabledSignals: [],
+      });
+    });
+
+    it('includes the resolved proctoring config in the in-exam state so the client can stop emitting disabled signals', async () => {
+      const attempt = {
+        id: 'attempt-1', status: 'in_progress', startedAt: new Date(),
+        questionOrderJson: '[]', sectionSnapshotJson: '[]', optionOrderJson: null,
+      };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        question: { findMany: jest.fn().mockResolvedValue([]) },
+        answer: { findMany: jest.fn().mockResolvedValue([]) },
+        candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+      };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      settlement.remainingSeconds.mockReturnValue(3300);
+      mockBootstrapWithLogoThenScoped(tx);
+
+      const result = await service.getCurrent(session);
+
+      expect((result as { exam: { title: string; proctoring: unknown } }).exam).toEqual({
+        title: expect.any(String),
+        proctoring: { webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] },
       });
     });
   });
@@ -1016,6 +1059,7 @@ describe('AttemptService', () => {
           schedulingEnabled: true,
           availabilityWindowStart: notYetOpenExam.availabilityWindowStart,
           availabilityWindowEnd: notYetOpenExam.availabilityWindowEnd,
+          proctoring: { webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] },
         },
         schedulingWindowState: 'not_open',
         sections: [],
