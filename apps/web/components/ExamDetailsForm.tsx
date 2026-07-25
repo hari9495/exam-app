@@ -116,6 +116,13 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
 
   return (
     <form onSubmit={handleSubmit} className="flex max-w-xl flex-col gap-4">
+      {locked && (
+        <p className="rounded-md border border-recruiter-border bg-recruiter-bg-subtle p-3 text-sm text-recruiter-text-secondary">
+          This exam is locked because a candidate has already started it. Nothing here can be changed anymore — you can still
+          invite new candidates and manage live monitoring from their respective tabs.
+        </p>
+      )}
+      <fieldset disabled={locked} className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0">
       <Input label="Title" value={title} onChange={setTitle} required />
       <div className="flex flex-col gap-1">
         <label htmlFor="exam-instructions" className="text-sm font-medium text-gray-700">
@@ -177,14 +184,8 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
         onChange={setAllowedIpRange}
         placeholder="e.g. 203.0.113.4 or 203.0.113.0/24"
       />
-      <fieldset disabled={locked} className="flex flex-col gap-3 rounded-md border border-recruiter-border p-3">
+      <fieldset className="flex flex-col gap-3 rounded-md border border-recruiter-border p-3">
         <legend className="px-1 text-sm font-semibold text-recruiter-text">Proctoring &amp; integrity</legend>
-        {locked && (
-          <p className="text-xs text-recruiter-text-secondary">
-            These settings are locked because candidates have already been invited to this published exam — changing the rules
-            mid-exam would judge candidates in the same exam differently.
-          </p>
-        )}
         <label className="flex items-center gap-2 text-sm text-gray-700">
           <input
             type="checkbox"
@@ -253,7 +254,8 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
           </div>
         )}
       </fieldset>
-      <Button type="submit">{submitLabel}</Button>
+      {!locked && <Button type="submit">{submitLabel}</Button>}
+      </fieldset>
     </form>
   );
 }

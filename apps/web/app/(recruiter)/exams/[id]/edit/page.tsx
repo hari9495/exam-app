@@ -63,7 +63,7 @@ export default function EditExamPage() {
           <ExamDetailsForm
             initialExam={exam}
             submitLabel="Save details"
-            locked={exam.status === 'published' && exam.invitationCount > 0}
+            locked={exam.hasStartedAttempts}
             onSubmit={(input) =>
               updateExam.mutate(input, {
                 onSuccess: () => toast('Exam updated.'),

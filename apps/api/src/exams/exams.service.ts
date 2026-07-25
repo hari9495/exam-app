@@ -169,7 +169,10 @@ export class ExamsService {
     });
   }
 
-  async findOne(context: TenantContext, id: string): Promise<Exam & { sections: ExamSectionWithQuestions[]; invitationCount: number }> {
+  async findOne(
+    context: TenantContext,
+    id: string,
+  ): Promise<Exam & { sections: ExamSectionWithQuestions[]; invitationCount: number; hasStartedAttempts: boolean }> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({
         where: { id, organizationId: context.organizationId as string },
@@ -189,19 +192,20 @@ export class ExamsService {
         throw new NotFoundException(`Exam ${id} not found`);
       }
       const invitationCount = await tx.invitation.count({ where: { examId: id } });
-      return { ...exam, invitationCount };
+      const startedAttemptCount = await tx.attempt.count({ where: { examId: id } });
+      return { ...exam, invitationCount, hasStartedAttempts: startedAttemptCount > 0 };
     });
   }
 
-  // ponytail: an exam only ever has attempts if it has invitations first, so checking
-  // invitationCount alone also covers "has attempts" — no separate attempt query needed.
-  private async assertSectionsMutable(tx: Prisma.TransactionClient, examId: string, examStatus: string): Promise<void> {
-    if (examStatus !== 'published') {
-      return;
-    }
-    const invitationCount = await tx.invitation.count({ where: { examId } });
-    if (invitationCount > 0) {
-      throw new ConflictException('Cannot modify sections or questions on a published exam once candidates have been invited');
+  // The exam locks the moment any candidate has actually started it -- title, scheduling,
+  // proctoring rules, sections and questions all become read-only from that point on, so
+  // that a hiring decision is never made against rules that changed mid-exam. Inviting more
+  // candidates and the live-monitoring block/unblock actions are unaffected -- they don't go
+  // through this method.
+  private async assertExamMutable(tx: Prisma.TransactionClient, examId: string): Promise<void> {
+    const startedAttemptCount = await tx.attempt.count({ where: { examId } });
+    if (startedAttemptCount > 0) {
+      throw new ConflictException('Cannot modify this exam once a candidate has started it');
     }
   }
 
@@ -212,32 +216,9 @@ export class ExamsService {
         throw new NotFoundException(`Exam ${id} not found`);
       }
 
-      // Proctoring rules must not change once candidates have been invited to a
-      // published exam -- otherwise candidates in the same exam are judged by
-      // different rules, which is indefensible if a hiring decision is challenged.
-      // The lock is value-based (not presence-based): the recruiter form resubmits
-      // all four fields on every save, so a benign no-op PATCH (e.g. only the title
-      // changed) must not be treated as touching proctoring config.
-      let existingDisabledSignals: string[] = [];
-      try {
-        const parsed = JSON.parse(existing.disabledProctoringSignalsJson ?? '[]');
-        if (Array.isArray(parsed)) existingDisabledSignals = parsed.filter((entry): entry is string => typeof entry === 'string');
-      } catch {
-        // Corrupt row -> treat as "nothing disabled", matching resolveProctoringConfig's
-        // fail-safe. A save must be able to repair the row, not 500 on reading it.
-      }
-      const suppliedDisabledSignals = dto.disabledProctoringSignals;
-      const disabledSignalsChanged =
-        suppliedDisabledSignals !== undefined &&
-        JSON.stringify([...suppliedDisabledSignals].sort()) !== JSON.stringify([...existingDisabledSignals].sort());
-      const touchesProctoringConfig =
-        (dto.webcamProctoringEnabled !== undefined && dto.webcamProctoringEnabled !== existing.webcamProctoringEnabled) ||
-        (dto.proctoringEnforcement !== undefined && dto.proctoringEnforcement !== existing.proctoringEnforcement) ||
-        (dto.proctoringStrikeLimit !== undefined && dto.proctoringStrikeLimit !== existing.proctoringStrikeLimit) ||
-        disabledSignalsChanged;
-      if (touchesProctoringConfig) {
-        await this.assertSectionsMutable(tx, id, existing.status);
-      }
+      // The whole exam locks once a candidate has started it -- nothing here is
+      // partially editable, so there's no need to diff individual fields.
+      await this.assertExamMutable(tx, id);
 
       const schedulingEnabledInput = dto.schedulingEnabled !== undefined ? dto.schedulingEnabled : existing.schedulingEnabled;
       const availabilityWindowStartInput =
@@ -425,7 +406,7 @@ export class ExamsService {
       if (!exam) {
         throw new NotFoundException(`Exam ${examId} not found`);
       }
-      await this.assertSectionsMutable(tx, examId, exam.status);
+      await this.assertExamMutable(tx, examId);
 
       const lastSection = await tx.examSection.findFirst({
         where: { examId },
@@ -450,7 +431,7 @@ export class ExamsService {
       if (!exam) {
         throw new NotFoundException(`Exam ${examId} not found`);
       }
-      await this.assertSectionsMutable(tx, examId, exam.status);
+      await this.assertExamMutable(tx, examId);
       const section = await tx.examSection.findFirst({ where: { id: sectionId, examId }, include: { poolTags: true } });
       if (!section) {
         throw new NotFoundException(`Section ${sectionId} not found`);
@@ -506,7 +487,7 @@ export class ExamsService {
       if (!exam) {
         throw new NotFoundException(`Exam ${examId} not found`);
       }
-      await this.assertSectionsMutable(tx, examId, exam.status);
+      await this.assertExamMutable(tx, examId);
       const section = await tx.examSection.findFirst({ where: { id: sectionId, examId } });
       if (!section) {
         throw new NotFoundException(`Section ${sectionId} not found`);
@@ -521,7 +502,7 @@ export class ExamsService {
       if (!exam) {
         throw new NotFoundException(`Exam ${examId} not found`);
       }
-      await this.assertSectionsMutable(tx, examId, exam.status);
+      await this.assertExamMutable(tx, examId);
       const section = await tx.examSection.findFirst({
         where: { id: sectionId, examId },
         include: { questions: { orderBy: { orderIndex: 'asc' } }, poolTags: true },
@@ -573,7 +554,7 @@ export class ExamsService {
       if (!exam) {
         throw new NotFoundException(`Exam ${examId} not found`);
       }
-      await this.assertSectionsMutable(tx, examId, exam.status);
+      await this.assertExamMutable(tx, examId);
       const section = await tx.examSection.findFirst({ where: { id: sectionId, examId } });
       if (!section) {
         throw new NotFoundException(`Section ${sectionId} not found`);

@@ -85,6 +85,7 @@ describe('ExamDetailsForm', () => {
       passCriteriaPercent: 40, randomizeOrder: false, feedbackVisibility: 'pass_fail' as const, schedulingEnabled: true,
       availabilityWindowStart: '2026-07-20T09:00:00.000Z', availabilityWindowEnd: '2026-07-27T18:00:00.000Z',
       walkInEnabled: false, allowedIpRange: null, createdAt: '2026-07-01T00:00:00.000Z', sections: [], invitationCount: 0,
+      hasStartedAttempts: false,
       webcamProctoringEnabled: true, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
       disabledProctoringSignalsJson: null,
     };
@@ -164,6 +165,7 @@ describe('ExamDetailsForm', () => {
       passCriteriaPercent: 40, randomizeOrder: false, feedbackVisibility: 'pass_fail' as const, schedulingEnabled: false,
       availabilityWindowStart: null, availabilityWindowEnd: null, walkInEnabled: false,
       allowedIpRange: '203.0.113.0/24', createdAt: '2026-07-01T00:00:00.000Z', sections: [], invitationCount: 0,
+      hasStartedAttempts: false,
       webcamProctoringEnabled: true, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
       disabledProctoringSignalsJson: null,
     };
@@ -252,7 +254,31 @@ describe('ExamDetailsForm', () => {
       render(<ExamDetailsForm onSubmit={jest.fn()} submitLabel="Save" locked />);
 
       expect(screen.getByLabelText('Require webcam proctoring')).toBeDisabled();
-      expect(screen.getByText(/locked because candidates have already been invited/i)).toBeInTheDocument();
+      expect(screen.getByText(/locked because a candidate has already started it/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('full-exam lock', () => {
+    it('disables every field in the form, not just proctoring, once the exam is locked', () => {
+      render(<ExamDetailsForm onSubmit={jest.fn()} submitLabel="Save" locked />);
+
+      expect(screen.getByLabelText('Title')).toBeDisabled();
+      expect(screen.getByLabelText('Duration (minutes)')).toBeDisabled();
+      expect(screen.getByLabelText('Enable walk-in registration for this exam')).toBeDisabled();
+      expect(screen.getByLabelText(/allowed ip \/ cidr range/i)).toBeDisabled();
+    });
+
+    it('hides the submit button entirely once the exam is locked, since there is nothing left to save', () => {
+      render(<ExamDetailsForm onSubmit={jest.fn()} submitLabel="Save" locked />);
+
+      expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+    });
+
+    it('shows the submit button and leaves fields editable when the exam is not locked', () => {
+      render(<ExamDetailsForm onSubmit={jest.fn()} submitLabel="Save" />);
+
+      expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+      expect(screen.getByLabelText('Title')).not.toBeDisabled();
     });
   });
 });

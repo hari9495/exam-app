@@ -377,7 +377,7 @@ describe('ExamSectionsPanel', () => {
     expect(screen.queryByText('Delete section')).not.toBeInTheDocument();
   });
 
-  it('locks section/question editing on a published exam that already has invited candidates', async () => {
+  it('locks section/question editing once a candidate has started the exam', async () => {
     const fetchMock = jest.fn(async (url) => {
       if (String(url).endsWith('/auth/refresh')) {
         return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
@@ -394,6 +394,7 @@ describe('ExamSectionsPanel', () => {
             randomizeOrder: false,
             createdAt: '2026-01-01T00:00:00.000Z',
             invitationCount: 2,
+            hasStartedAttempts: true,
             sections: [
               {
                 id: 's-1',
@@ -426,7 +427,7 @@ describe('ExamSectionsPanel', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Section One')).toBeInTheDocument());
-    expect(screen.getByText(/locked because candidates have already been invited/i)).toBeInTheDocument();
+    expect(screen.getByText(/locked because a candidate has already started this exam/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Manage questions' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('New section title')).not.toBeInTheDocument();

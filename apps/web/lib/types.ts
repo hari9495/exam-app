@@ -129,6 +129,7 @@ export interface Exam {
   createdAt: string;
   sections: ExamSection[];
   invitationCount: number;
+  hasStartedAttempts: boolean;
 }
 
 // GET /exams (list) also returns attempt-progress counts that GET /exams/:id (detail) omits.

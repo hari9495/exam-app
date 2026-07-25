@@ -27,7 +27,7 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
   const [pickerSectionId, setPickerSectionId] = useState<string | null>(null);
   const [sectionPendingDelete, setSectionPendingDelete] = useState<ExamSection | null>(null);
   const { toast } = useToast();
-  const locked = exam?.status === 'published' && exam.invitationCount > 0;
+  const locked = exam?.hasStartedAttempts ?? false;
 
   function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -66,7 +66,7 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
     <div className="flex flex-col gap-3">
       {locked && (
         <p className="text-sm text-recruiter-text-secondary">
-          Sections and questions are locked because candidates have already been invited to this published exam.
+          Sections and questions are locked because a candidate has already started this exam.
         </p>
       )}
       {(exam?.sections ?? [])
