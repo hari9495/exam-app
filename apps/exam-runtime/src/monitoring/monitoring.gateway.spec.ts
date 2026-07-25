@@ -132,6 +132,22 @@ describe('MonitoringGateway', () => {
         { rank: 1, candidateId: 'cand-1', candidateName: 'Alice', correctCount: 2 },
       ]);
     });
+
+    it('does not throw and still emits the leaderboard snapshot when recent-alerts lookup fails', async () => {
+      const socket = makeSocket({ data: { user: { userId: 'user-1', organizationId: 'org-1', role: 'recruiter' } } });
+      prisma.rolePermission.findFirst.mockResolvedValue({ role: 'recruiter' });
+      const roster = [{ candidateId: 'cand-1' }];
+      monitoring.getRosterSnapshot.mockResolvedValue(roster);
+      monitoring.getRecentAlerts.mockRejectedValue(new Error('db hiccup'));
+      const leaderboardSnapshot = [{ rank: 1, candidateId: 'cand-1', candidateName: 'Alice', correctCount: 2 }];
+      leaderboardService.computeRecruiterView.mockResolvedValue(leaderboardSnapshot);
+
+      await expect(gateway.handleJoinExam(socket, { examId: 'exam-1' })).resolves.not.toThrow();
+
+      expect(socket.emit).not.toHaveBeenCalledWith('proctoring:recent', expect.anything());
+      expect(socket.emit).not.toHaveBeenCalledWith('error', expect.anything());
+      expect(socket.emit).toHaveBeenCalledWith('leaderboard:snapshot', leaderboardSnapshot);
+    });
   });
 
   describe('emitLeaderboardUpdate', () => {
