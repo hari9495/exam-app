@@ -48,6 +48,12 @@ Both constants are named exports in one module so the thresholds can be tuned wi
 
 The tab count is the part that matters most: a recruiter editing an exam or reviewing candidates gets pulled to Live without having to think to check.
 
+**This requires moving `useExamMonitoring` up to the exam edit page.** `TabsContent` is Radix's, which unmounts inactive tabs, so today `LiveMonitoringPanel` — and with it the socket and the whole alert feed — is destroyed the moment the recruiter switches to Details or Candidates. Nothing can be counted on the Live tab because no data is arriving.
+
+The same limitation silently breaks the notification in §4: a recruiter sitting on the Details tab would receive no events at all, so nothing could ever fire. (Switching to a different *browser* tab is fine — the React tree stays mounted — but switching in-app tabs is not.)
+
+So the page owns the hook and passes `roster`, `alerts`, `connectionStatus` and `joinError` down to `LiveMonitoringPanel` as props. The panel keeps all its current behaviour and simply stops calling the hook itself. One socket, alive for as long as the exam page is open, regardless of which tab is showing.
+
 ### 4. Browser notification
 
 When a candidate becomes flagged **and the page is not visible** (`document.visibilityState === 'hidden'`), fire a desktop notification naming the candidate and the exam.
