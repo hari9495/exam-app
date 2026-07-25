@@ -109,6 +109,100 @@ describe('InternalController', () => {
     });
   });
 
+  describe('proctoring bypass', () => {
+    const ACTOR = '11111111-1111-1111-1111-111111111111';
+
+    describe('applyProctoringBypass', () => {
+      it('stores the reason, the actor and a timestamp, then resets counters and resumes', async () => {
+        const attempt = { id: 'a1', status: 'blocked', pausedAt: new Date(), pausedDurationMs: 0 };
+        const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt), update: jest.fn().mockResolvedValue({}) } };
+        tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+        attemptSettlement.resumeFromPause.mockResolvedValue({ status: 'in_progress' });
+
+        const result = await controller.applyProctoringBypass('a1', { reason: 'webcam driver crashing', actorUserId: ACTOR });
+
+        expect(tx.attempt.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { id: 'a1' },
+            data: expect.objectContaining({ proctoringBypassReason: 'webcam driver crashing', proctoringBypassedBy: ACTOR }),
+          }),
+        );
+        expect(tx.attempt.update.mock.calls[0][0].data.proctoringBypassedAt).toBeInstanceOf(Date);
+        expect(attemptSettlement.resumeFromPause).toHaveBeenCalledWith(tx, expect.objectContaining({ id: 'a1' }), { resetViolationCounters: true });
+        expect(result.status).toBe('in_progress');
+      });
+
+      it('resumes an in_progress attempt without error', async () => {
+        const tx = {
+          attempt: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'a1', status: 'in_progress', pausedAt: null, pausedDurationMs: 0 }),
+            update: jest.fn().mockResolvedValue({}),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+        attemptSettlement.resumeFromPause.mockResolvedValue({ status: 'in_progress' });
+
+        await expect(controller.applyProctoringBypass('a1', { reason: 'flaky wifi', actorUserId: ACTOR })).resolves.toBeDefined();
+      });
+
+      it('rejects a settled attempt', async () => {
+        const tx = {
+          attempt: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'a1', status: 'submitted', pausedAt: null, pausedDurationMs: 0 }),
+            update: jest.fn(),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+
+        await expect(controller.applyProctoringBypass('a1', { reason: 'too late', actorUserId: ACTOR })).rejects.toThrow(BadRequestException);
+        expect(tx.attempt.update).not.toHaveBeenCalled();
+      });
+
+      it('throws NotFound for a missing attempt', async () => {
+        const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), update: jest.fn() } };
+        tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+
+        await expect(controller.applyProctoringBypass('nope', { reason: 'x', actorUserId: ACTOR })).rejects.toThrow(NotFoundException);
+      });
+
+      it('re-applying updates the reason rather than erroring', async () => {
+        const tx = {
+          attempt: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'a1', status: 'in_progress', pausedAt: null, pausedDurationMs: 0, proctoringBypassedAt: new Date() }),
+            update: jest.fn().mockResolvedValue({}),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+        attemptSettlement.resumeFromPause.mockResolvedValue({ status: 'in_progress' });
+
+        await expect(controller.applyProctoringBypass('a1', { reason: 'second reason', actorUserId: ACTOR })).resolves.toBeDefined();
+        expect(tx.attempt.update.mock.calls[0][0].data.proctoringBypassReason).toBe('second reason');
+      });
+    });
+
+    describe('revokeProctoringBypass', () => {
+      it('clears all three columns on revoke and also resets counters', async () => {
+        const tx = {
+          attempt: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'a1', status: 'paused', pausedAt: new Date(), pausedDurationMs: 0, proctoringBypassedAt: new Date() }),
+            update: jest.fn().mockResolvedValue({}),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+        attemptSettlement.resumeFromPause.mockResolvedValue({ status: 'in_progress' });
+
+        const result = await controller.revokeProctoringBypass('a1', { actorUserId: ACTOR });
+
+        expect(tx.attempt.update).toHaveBeenCalledWith({
+          where: { id: 'a1' },
+          data: { proctoringBypassedAt: null, proctoringBypassedBy: null, proctoringBypassReason: null },
+        });
+        expect(attemptSettlement.resumeFromPause).toHaveBeenCalledWith(tx, expect.objectContaining({ id: 'a1' }), { resetViolationCounters: true });
+        expect(result.proctoringBypassedAt).toBeNull();
+      });
+    });
+  });
+
   describe('gradeCodeAnswer', () => {
     it('grades a code answer and caps marksAwarded at the question marks', async () => {
       const answer = { id: 'answer-1', attemptId: 'attempt-1', questionId: 'question-1', question: { type: 'code', marks: 10 } };

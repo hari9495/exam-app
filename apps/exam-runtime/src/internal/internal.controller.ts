@@ -11,6 +11,7 @@ import { effectiveDurationMinutes } from '../grading/grading';
 import { NotifyMessageSentDto } from './dto/notify-message-sent.dto';
 import { SettleIfExpiredBatchDto } from './dto/settle-if-expired-batch.dto';
 import { GradeCodeAnswerDto } from './dto/grade-code-answer.dto';
+import { ApplyProctoringBypassDto, RevokeProctoringBypassDto } from './dto/proctoring-bypass.dto';
 
 @Controller('internal')
 @UseGuards(InternalAuthGuard)
@@ -59,6 +60,57 @@ export class InternalController {
       return this.attemptSettlement.resumeFromPause(tx, attempt, { resetViolationCounters: true });
     });
     return { status: updated.status };
+  }
+
+  // A bypass is deliberately allowed from in_progress, paused and blocked: the
+  // recruiter is rescuing a candidate whose environment keeps tripping false
+  // positives, and that candidate may be in any of those three states.
+  private static readonly BYPASSABLE_STATUSES = ['in_progress', 'paused', 'blocked'];
+
+  @Post('attempts/:id/proctoring-bypass')
+  async applyProctoringBypass(@Param('id') id: string, @Body() dto: ApplyProctoringBypassDto) {
+    return this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { id } });
+      if (!attempt) {
+        throw new NotFoundException(`Attempt ${id} not found`);
+      }
+      if (!InternalController.BYPASSABLE_STATUSES.includes(attempt.status)) {
+        throw new BadRequestException(`Attempt ${id} cannot be bypassed from status "${attempt.status}"`);
+      }
+      const bypassedAt = new Date();
+      await tx.attempt.update({
+        where: { id },
+        data: {
+          proctoringBypassedAt: bypassedAt,
+          proctoringBypassedBy: dto.actorUserId,
+          proctoringBypassReason: dto.reason,
+        },
+      });
+      // Reset counters and resume: the candidate may already be paused or blocked by
+      // the very false positives being forgiven, so leaving them stuck would defeat
+      // the point of the bypass.
+      const resumed = await this.attemptSettlement.resumeFromPause(tx, attempt, { resetViolationCounters: true });
+      return { status: resumed.status, proctoringBypassedAt: bypassedAt.toISOString() };
+    });
+  }
+
+  @Post('attempts/:id/proctoring-bypass/revoke')
+  async revokeProctoringBypass(@Param('id') id: string, @Body() _dto: RevokeProctoringBypassDto) {
+    return this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { id } });
+      if (!attempt) {
+        throw new NotFoundException(`Attempt ${id} not found`);
+      }
+      await tx.attempt.update({
+        where: { id },
+        data: { proctoringBypassedAt: null, proctoringBypassedBy: null, proctoringBypassReason: null },
+      });
+      // Counters must reset here too. Warn mode still increments them, so an attempt
+      // that spent time bypassed can sit far past the strike limit -- restoring
+      // enforcement without clearing them would block the candidate instantly.
+      const resumed = await this.attemptSettlement.resumeFromPause(tx, attempt, { resetViolationCounters: true });
+      return { status: resumed.status, proctoringBypassedAt: null };
+    });
   }
 
   @Post('attempts/:id/answers/:questionId/grade')
