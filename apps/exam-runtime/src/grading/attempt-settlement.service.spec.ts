@@ -866,6 +866,41 @@ describe('AttemptSettlementService', () => {
       });
     });
 
+    // Regression test for fix round 6 (see scc-task-5-report.md): reportProctoringEvent merges
+    // the server-authoritative screenshot URL into the same metadata object it hands to this
+    // method. The shared sanitizer's key filter matches "screenshot" as a *substring* (by
+    // design, to close prior key-shape bypasses), so if that merged object were sanitized as a
+    // single blob, the server's own `screenshot`/`screenshotCapReached` keys would be stripped
+    // right back out -- a silent evidence blackout on every strike-worthy capture, with no
+    // attacker involved and nothing logged. The fix: keep the client metadata and the
+    // server-authoritative overlay as two separate arguments, so only the former goes through
+    // the sanitizer and the latter is composed in untouched.
+    it('composes server-authoritative metadata (e.g. an uploaded screenshot URL) in after sanitizing the client metadata, not through it', async () => {
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 0, status: 'in_progress' } as any;
+      const tx = {
+        proctoringEvent: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'tab_switch', severity: 'medium' }) },
+        attempt: { update: jest.fn().mockResolvedValue({ ...attempt, browserActivityViolationCount: 1, status: 'paused' }) },
+      } as any;
+
+      await service.registerBrowserActivityViolation(
+        tx,
+        exam,
+        attempt,
+        'tab_switch',
+        { durationMs: 3000 },
+        { screenshot: 'https://blob/x.jpg' },
+      );
+
+      expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+        data: {
+          attemptId: 'attempt-1',
+          eventType: 'tab_switch',
+          severity: 'medium',
+          metadataJson: JSON.stringify({ durationMs: 3000, screenshot: 'https://blob/x.jpg' }),
+        },
+      });
+    });
+
     it('logs the event but does not add a strike when the same event type occurred within the last 60 seconds', async () => {
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 1, status: 'paused' } as any;
       const tx = {

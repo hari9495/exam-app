@@ -285,6 +285,7 @@ export class AttemptSettlementService {
     attempt: Attempt,
     eventType: string,
     metadata?: Record<string, unknown>,
+    serverMetadata?: Record<string, unknown>,
   ): Promise<{ attempt: Attempt; strike: number; event: { id: string; eventType: string; severity: string } }> {
     const cooldownCutoff = new Date(Date.now() - BROWSER_ACTIVITY_COOLDOWN_MS);
     const recentSameType = await tx.proctoringEvent.findFirst({
@@ -294,14 +295,21 @@ export class AttemptSettlementService {
 
     // This is the one place every strike-worthy write funnels through (reportProctoringEvent's
     // strike branch, screenShareState's stop path), so the metadata guard lives here rather
-    // than at each caller -- see sanitize-metadata.ts for what it checks and why.
+    // than at each caller -- see sanitize-metadata.ts for what it checks and why. Only the
+    // client-supplied `metadata` goes through the guard; `serverMetadata` (e.g. the uploaded
+    // screenshot URL) is server-authoritative and applied *after*, never subject to it -- the
+    // guard's own key filter matches on "screenshot" as a substring, so sanitizing the two
+    // together would strip the server's own `screenshot`/`screenshotCapReached` keys right back
+    // out (that regression is exactly what this split fixes -- see scc-task-5-report.md fix
+    // round 6).
     const safeMetadata = sanitizeMetadataOrDrop(metadata, this.logger, attempt.id, eventType);
+    const combinedMetadata = safeMetadata || serverMetadata ? { ...safeMetadata, ...serverMetadata } : undefined;
     const event = await tx.proctoringEvent.create({
       data: {
         attemptId: attempt.id,
         eventType,
         severity: getProctoringEventSeverity(eventType),
-        metadataJson: safeMetadata ? JSON.stringify(safeMetadata) : null,
+        metadataJson: combinedMetadata ? JSON.stringify(combinedMetadata) : null,
       },
     });
 

@@ -4,8 +4,13 @@ import { Logger } from '@nestjs/common';
 // upload -- a client must never be able to set them itself. This is a separate concern from
 // the cap-count invariant below: forging one of these two keys (folded for case/width, see
 // isForgedScreenshotKey) lets a client's own metadata be mistaken for real capture evidence or
-// a real cap-reached marker. Nothing else about a key's shape is suspicious on its own, so
-// this check is deliberately narrow.
+// a real cap-reached marker. This check is deliberately broad, not narrow: it's a substring
+// match (`includes('screenshot')`), so it also eats `xscreenshotx`, `myScreenshotNote`, and any
+// key containing a raw quote -- on purpose, to close every key-shape variant the last several
+// rounds of fixes found one at a time. The cost of that breadth is that it also eats the
+// server's *own* `screenshot`/`screenshotCapReached` keys if they're ever run through it -- see
+// sanitizeMetadataOrDrop below and its callers for why server-set keys are composed in strictly
+// after this filter runs, never through it (fix round 6 regression, see scc-task-5-report.md).
 const SOFT_HYPHEN = String.fromCharCode(0xad);
 const IGNORABLE_KEY_CHARS = new RegExp(`[\\p{Cf}${SOFT_HYPHEN}]`, 'gu');
 
@@ -70,7 +75,11 @@ export function sanitizeMetadataOrDrop(
     const stripped = stripForgedScreenshotKeys(metadata);
     if (stripped) {
       const serialized = JSON.stringify(stripped);
-      if (serialized.normalize('NFKC').toLowerCase().includes(CAP_COUNT_LITERAL)) {
+      // Same fold as the key filter above (strip ignorable/format characters, then NFKC, then
+      // lowercase) -- applied here to the whole serialized text so an interleaved format
+      // character inside a *value* (e.g. a zero-width character sitting inside "screenshot")
+      // can't slip past this check the way it would already be caught in a key name.
+      if (serialized.replace(IGNORABLE_KEY_CHARS, '').normalize('NFKC').toLowerCase().includes(CAP_COUNT_LITERAL)) {
         throw new Error('Metadata serializes to text containing the reserved "screenshot": literal');
       }
     }

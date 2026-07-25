@@ -1568,7 +1568,7 @@ describe('AttemptService', () => {
 
         const result = await service.reportProctoringEvent(session, { eventType: 'tab_switch' });
 
-        expect(settlement.registerBrowserActivityViolation).toHaveBeenCalledWith(tx, exam, attempt, 'tab_switch', undefined);
+        expect(settlement.registerBrowserActivityViolation).toHaveBeenCalledWith(tx, exam, attempt, 'tab_switch', undefined, undefined);
         expect(result).toEqual({ id: 'evt-1', eventType: 'tab_switch', severity: 'medium', strike: 1, status: 'paused' });
       });
 
@@ -1584,7 +1584,7 @@ describe('AttemptService', () => {
 
         await service.reportProctoringEvent(session, { eventType: 'window_blur', metadata: { durationMs: 3000 } });
 
-        expect(settlement.registerBrowserActivityViolation).toHaveBeenCalledWith(tx, exam, attempt, 'window_blur', { durationMs: 3000 });
+        expect(settlement.registerBrowserActivityViolation).toHaveBeenCalledWith(tx, exam, attempt, 'window_blur', { durationMs: 3000 }, undefined);
       });
 
       it('emits proctoring:flag with the event returned by registerBrowserActivityViolation', async () => {
@@ -1791,7 +1791,11 @@ describe('AttemptService', () => {
         }
       });
 
-      it('threads an uploaded screenshot url into metadata for a strike-worthy event via registerBrowserActivityViolation', async () => {
+      it('threads an uploaded screenshot url into registerBrowserActivityViolation as the server-metadata argument, separate from client metadata', async () => {
+        // Regression coverage for fix round 6: the screenshot URL must travel as the dedicated
+        // serverMetadata argument, not merged into the client metadata argument -- merging it in
+        // would have it sanitized (and stripped) right back out. See
+        // AttemptSettlementService.registerBrowserActivityViolation and scc-task-5-report.md.
         const attempt = { id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' };
         const tx = {
           attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
@@ -1812,6 +1816,7 @@ describe('AttemptService', () => {
           examWithCapture,
           attempt,
           'tab_switch',
+          undefined,
           { screenshot: uploadedUrl },
         );
       });

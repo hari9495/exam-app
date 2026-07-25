@@ -505,12 +505,16 @@ export class AttemptService {
 
       // Screenshots are server-authoritative, same as the signal guard above: a disabled
       // capture is ignored, not rejected, so a stale/tampered client can't force an upload
-      // the recruiter turned off. Strip any client-forged `screenshot`/`screenshotCapReached`
-      // key first -- those are only ever meant to be set below, by us -- and drop metadata
-      // entirely if it can't be proven safe to serialize (see sanitizeMetadataOrDrop). `metadata`
-      // only diverges further from there when a screenshot is actually being handled --
-      // otherwise it stays as-is (including `undefined`) so callers below see no behavior change.
-      let metadata = sanitizeMetadataOrDrop(dto.metadata, this.logger, attempt.id, dto.eventType);
+      // the recruiter turned off. `metadata` is the client's own data, sanitized once here
+      // (strips any client-forged `screenshot`/`screenshotCapReached` key -- those are only
+      // ever meant to be set below, by us -- and drops it entirely if it can't be proven safe
+      // to serialize; see sanitizeMetadataOrDrop). `serverMetadata` carries our own
+      // screenshot/cap-reached keys and is composed in *after* sanitization, never through it --
+      // the sanitizer's key filter matches "screenshot" as a substring, so running our own keys
+      // through it would strip them right back out (that regression, and the fix, are in
+      // scc-task-5-report.md fix round 6).
+      const metadata = sanitizeMetadataOrDrop(dto.metadata, this.logger, attempt.id, dto.eventType);
+      let serverMetadata: Record<string, unknown> | undefined;
       if (dto.screenshot && proctoring.screenCaptureEnabled) {
         // Match the JSON key, not the bare word: `screenshotCapReached` also contains the
         // substring "screenshot", and would otherwise inflate this count once the cap is hit.
@@ -518,14 +522,14 @@ export class AttemptService {
           where: { attemptId: attempt.id, metadataJson: { contains: '"screenshot":' } },
         });
         if (priorScreenshots >= 150) {
-          metadata = { ...metadata, screenshotCapReached: true };
+          serverMetadata = { screenshotCapReached: true };
         } else {
           try {
             const screenshotUrl = await withTimeout(
               this.blobStorage.uploadDataUri(`screen-captures/${attempt.id}-${Date.now()}.jpg`, dto.screenshot),
               SCREENSHOT_UPLOAD_TIMEOUT_MS,
             );
-            metadata = { ...metadata, screenshot: screenshotUrl };
+            serverMetadata = { screenshot: screenshotUrl };
           } catch (error) {
             // The violation record is what matters -- losing the image is acceptable, losing
             // the violation is not.
@@ -541,6 +545,7 @@ export class AttemptService {
           attempt,
           dto.eventType,
           metadata,
+          serverMetadata,
         );
         this.monitoringGateway.emitProctoringFlag(exam.id, {
           attemptId: attempt.id,
@@ -552,12 +557,13 @@ export class AttemptService {
         return { id: event.id, eventType: event.eventType, severity: event.severity, strike, status: updated.status };
       }
 
+      const combinedMetadata = metadata || serverMetadata ? { ...metadata, ...serverMetadata } : undefined;
       const event = await tx.proctoringEvent.create({
         data: {
           attemptId: attempt.id,
           eventType: dto.eventType,
           severity: getProctoringEventSeverity(dto.eventType),
-          metadataJson: metadata ? JSON.stringify(metadata) : null,
+          metadataJson: combinedMetadata ? JSON.stringify(combinedMetadata) : null,
         },
       });
       this.monitoringGateway.emitProctoringFlag(exam.id, {
