@@ -100,7 +100,7 @@ If `screenCaptureEnabled` is false, a supplied screenshot is **ignored, not reje
 Two limits, both load-bearing, and they sit at different layers on purpose:
 
 - **Rate limit ~1 capture per 5s, client-side in the hook.** `right_click` is not debounced today, so without this a candidate holding down the context menu generates a capture per event. This layer exists to avoid pointless uploads, not as a security control.
-- **Hard cap of 60 captures per attempt, enforced server-side.** The rate limit alone still permits ~720 captures in a 60-minute exam (~100MB); 60 bounds an attempt to roughly 10MB. This one must be server-side — a client-side cap is trivially bypassed by a tampered bundle, and storage abuse is exactly what a tampered bundle would target. The server counts existing events for the attempt that already carry a `screenshot`; past the cap, events still record normally but the upload is skipped and the metadata records that the cap was reached, so a reviewer is not misled by the missing image. The client self-limits to the same number to avoid uploading data the server will discard.
+- **Hard cap of 150 captures per attempt, enforced server-side.** The rate limit alone still permits ~720 captures in a 60-minute exam (~100MB); 150 bounds an attempt to roughly 23MB. This one must be server-side — a client-side cap is trivially bypassed by a tampered bundle, and storage abuse is exactly what a tampered bundle would target. The server counts existing events for the attempt that already carry a `screenshot`; past the cap, events still record normally but the upload is skipped and the metadata records that the cap was reached, so a reviewer is not misled by the missing image. The client self-limits to the same number to avoid uploading data the server will discard.
 
 Frames are downscaled to at most 1280px wide and encoded JPEG at quality 0.5 (~100–200KB), matching the webcam path's approach.
 
@@ -114,7 +114,11 @@ Two things must change, and the second is a real pre-existing gap this feature m
 
 **Consent copy.** The welcome page's monitoring-consent block must explicitly state that the candidate's **entire screen** is recorded during the exam, not just the exam page. Screen capture exposes everything on their desktop — other tabs, messages, personal accounts. Burying that under a generic "I consent to monitoring" checkbox is not adequate disclosure.
 
-**Blob deletion on erase.** `candidates.service.ts:321` nulls `proctoringEvent.metadataJson` on GDPR erase, which drops the *reference* to the blob but never deletes the blob itself. Webcam snapshots therefore already survive candidate erasure as orphaned files in Azure Blob Storage. Screen captures of a candidate's whole desktop make this materially more serious. The erase path should collect the `snapshot`/`screenshot` URLs before nulling the column and delete the underlying blobs. This closes the pre-existing webcam leak with the same change — flagged here because the honest alternative is knowingly shipping more sensitive orphaned data.
+**Blob deletion on erase — in scope, confirmed.** `candidates.service.ts:321` nulls `proctoringEvent.metadataJson` on GDPR erase, which drops the *reference* to the blob but never deletes the blob itself. Webcam snapshots therefore already survive candidate erasure as orphaned files in Azure Blob Storage. Screen captures of a candidate's whole desktop make this materially more serious.
+
+The erase path must therefore read each affected event's `metadataJson` and collect any `snapshot` / `screenshot` URLs **before** nulling the column, then delete those blobs. This closes the pre-existing webcam leak with the same change.
+
+Two implementation notes: `BlobStorageService` needs a delete method if it does not already expose one, and blob deletion must happen *outside* the Prisma transaction (a failed remote delete must not roll back the erase — the database redaction is the legally binding part). A blob that fails to delete should be logged, not thrown, and the erase should still report success.
 
 ## Accepted Limitations
 
@@ -134,6 +138,6 @@ Two things must change, and the second is a real pre-existing gap this feature m
 - `attempt.service.spec.ts` — a screenshot is uploaded and stored when `screenCaptureEnabled`, and silently ignored when it is off; `screen-captures/` prefix is used.
 - Share-state endpoint — `active:false` with a null `screenShareStartedAt` pauses without recording a strike; with a non-null one it records `screen_share_stopped` and strikes; `active:true` sets the timestamp, records `screen_share_started`, and resumes **without** resetting counters; repeated calls in either direction are idempotent; a bypassed attempt is exempt from the pause.
 - `grading.spec.ts` already covers `pausedDurationMs` extending the deadline; add a case asserting a share-wait pause costs the candidate no exam time.
-- `useScreenCapture.test.tsx` — rejects a non-`monitor` `displaySurface` and does not report active; accepts when `displaySurface` is undefined; `onended` triggers the inactive report; the rate limit and the 60-capture cap both hold.
+- `useScreenCapture.test.tsx` — rejects a non-`monitor` `displaySurface` and does not report active; accepts when `displaySurface` is undefined; `onended` triggers the inactive report; the rate limit holds, and the client stops capturing at 150.
 - `exam/page.test.tsx` — the overlay blocks questions when sharing is required and absent; the block overlay wins when the attempt is blocked.
 - `ExamDetailsForm.test.tsx` — the new toggle submits, and is disabled along with everything else once the exam is locked.
