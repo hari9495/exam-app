@@ -1948,4 +1948,225 @@ describe('AttemptService', () => {
       expect(settlement.resumeFromPause).toHaveBeenCalledWith(tx, attempt);
     });
   });
+
+  describe('screenShareState', () => {
+    const examWithScreenCapture = { ...exam, screenCaptureEnabled: true };
+    const examWithoutScreenCapture = { ...exam, screenCaptureEnabled: false };
+
+    function mockScoped(exam: unknown, tx: unknown) {
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam }))
+        .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
+    }
+
+    it('writes nothing and returns the current status unchanged when the exam has screenCaptureEnabled false', async () => {
+      const attempt = { id: 'attempt-1', status: 'in_progress', screenShareStartedAt: null };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt), update: jest.fn() },
+        proctoringEvent: { create: jest.fn() },
+      };
+      mockScoped(examWithoutScreenCapture, tx);
+
+      const result = await service.screenShareState(session, { active: false });
+
+      expect(result).toEqual({ status: 'in_progress' });
+      expect(tx.attempt.update).not.toHaveBeenCalled();
+      expect(tx.proctoringEvent.create).not.toHaveBeenCalled();
+      expect(settlement.registerBrowserActivityViolation).not.toHaveBeenCalled();
+      expect(settlement.resumeFromPause).not.toHaveBeenCalled();
+      expect(monitoringGateway.emitAttemptStatus).not.toHaveBeenCalled();
+    });
+
+    it('pauses and records no strike when active:false arrives and sharing never started (arriving is not a violation)', async () => {
+      const attempt = { id: 'attempt-1', status: 'in_progress', screenShareStartedAt: null };
+      const tx = {
+        attempt: {
+          findUnique: jest.fn().mockResolvedValue(attempt),
+          update: jest.fn().mockResolvedValue({ ...attempt, status: 'paused', pausedAt: new Date() }),
+        },
+      };
+      mockScoped(examWithScreenCapture, tx);
+
+      const result = await service.screenShareState(session, { active: false });
+
+      expect(settlement.registerBrowserActivityViolation).not.toHaveBeenCalled();
+      expect(tx.attempt.update).toHaveBeenCalledTimes(1);
+      expect(tx.attempt.update).toHaveBeenCalledWith({ where: { id: 'attempt-1' }, data: { status: 'paused', pausedAt: expect.any(Date) } });
+      expect(monitoringGateway.emitAttemptStatus).toHaveBeenCalledWith('exam-1', { attemptId: 'attempt-1', candidateId: 'cand-1', status: 'paused' });
+      expect(result).toEqual({ status: 'paused' });
+    });
+
+    it('records screen_share_stopped through registerBrowserActivityViolation and strikes when a share was running', async () => {
+      const attempt = { id: 'attempt-1', status: 'in_progress', screenShareStartedAt: new Date('2026-01-01T00:00:00Z') };
+      const tx = {
+        attempt: {
+          findUnique: jest.fn().mockResolvedValue(attempt),
+          update: jest.fn().mockResolvedValue({ ...attempt, status: 'paused', screenShareStartedAt: null, browserActivityViolationCount: 1 }),
+        },
+      };
+      mockScoped(examWithScreenCapture, tx);
+      settlement.registerBrowserActivityViolation.mockResolvedValue({
+        attempt: { ...attempt, status: 'paused', browserActivityViolationCount: 1 },
+        strike: 1,
+        event: { id: 'evt-1', eventType: 'screen_share_stopped', severity: 'high' },
+      });
+
+      const result = await service.screenShareState(session, { active: false, displaySurface: 'monitor', userAgent: 'Mozilla' });
+
+      expect(settlement.registerBrowserActivityViolation).toHaveBeenCalledWith(
+        tx,
+        examWithScreenCapture,
+        attempt,
+        'screen_share_stopped',
+        { displaySurface: 'monitor', userAgent: 'Mozilla' },
+      );
+      expect(tx.attempt.update).toHaveBeenCalledTimes(1);
+      expect(tx.attempt.update).toHaveBeenCalledWith({ where: { id: 'attempt-1' }, data: { screenShareStartedAt: null } });
+      expect(result).toEqual({ status: 'paused' });
+    });
+
+    it('leaves a blocked attempt blocked -- the state machine never downgrades blocked to paused', async () => {
+      const attempt = { id: 'attempt-1', status: 'blocked', screenShareStartedAt: new Date('2026-01-01T00:00:00Z') };
+      const tx = {
+        attempt: {
+          findUnique: jest.fn().mockResolvedValue(attempt),
+          update: jest.fn().mockResolvedValue({ ...attempt, screenShareStartedAt: null }),
+        },
+      };
+      mockScoped(examWithScreenCapture, tx);
+      settlement.registerBrowserActivityViolation.mockResolvedValue({
+        attempt: { ...attempt },
+        strike: 3,
+        event: { id: 'evt-1', eventType: 'screen_share_stopped', severity: 'high' },
+      });
+
+      const result = await service.screenShareState(session, { active: false });
+
+      expect(tx.attempt.update).toHaveBeenCalledTimes(1);
+      expect(monitoringGateway.emitAttemptStatus).not.toHaveBeenCalled();
+      expect(result).toEqual({ status: 'blocked' });
+    });
+
+    it('skips the pause entirely on a bypassed attempt, while still recording the strike', async () => {
+      const attempt = {
+        id: 'attempt-1',
+        status: 'in_progress',
+        screenShareStartedAt: new Date('2026-01-01T00:00:00Z'),
+        proctoringBypassedAt: new Date('2026-01-01T00:00:00Z'),
+        proctoringBypassRevokedAt: null,
+      };
+      const tx = {
+        attempt: {
+          findUnique: jest.fn().mockResolvedValue(attempt),
+          update: jest.fn().mockResolvedValue({ ...attempt, screenShareStartedAt: null, browserActivityViolationCount: 1 }),
+        },
+      };
+      mockScoped(examWithScreenCapture, tx);
+      settlement.registerBrowserActivityViolation.mockResolvedValue({
+        attempt: { ...attempt, browserActivityViolationCount: 1 },
+        strike: 1,
+        event: { id: 'evt-1', eventType: 'screen_share_stopped', severity: 'high' },
+      });
+
+      const result = await service.screenShareState(session, { active: false });
+
+      expect(settlement.registerBrowserActivityViolation).toHaveBeenCalled();
+      expect(tx.attempt.update).toHaveBeenCalledTimes(1);
+      expect(monitoringGateway.emitAttemptStatus).not.toHaveBeenCalled();
+      expect(result).toEqual({ status: 'in_progress' });
+    });
+
+    it('sets the timestamp, records screen_share_started, and resumes without resetting violation counters', async () => {
+      const attempt = { id: 'attempt-1', status: 'paused', screenShareStartedAt: null, browserActivityViolationCount: 2 };
+      const startedAttempt = { ...attempt, screenShareStartedAt: new Date('2026-07-26T00:00:00Z') };
+      const tx = {
+        attempt: {
+          findUnique: jest.fn().mockResolvedValue(attempt),
+          update: jest.fn().mockResolvedValue(startedAttempt),
+        },
+        proctoringEvent: { create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'screen_share_started', severity: 'low' }) },
+      };
+      mockScoped(examWithScreenCapture, tx);
+      settlement.resumeFromPause.mockResolvedValue({ ...startedAttempt, status: 'in_progress' });
+
+      const result = await service.screenShareState(session, { active: true, displaySurface: 'monitor', userAgent: 'Mozilla' });
+
+      expect(tx.attempt.update).toHaveBeenCalledWith({ where: { id: 'attempt-1' }, data: { screenShareStartedAt: expect.any(Date) } });
+      expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+        data: {
+          attemptId: 'attempt-1',
+          eventType: 'screen_share_started',
+          severity: getProctoringEventSeverity('screen_share_started'),
+          metadataJson: JSON.stringify({ displaySurface: 'monitor', userAgent: 'Mozilla' }),
+        },
+      });
+      expect(settlement.resumeFromPause).toHaveBeenCalledWith(tx, startedAttempt);
+      expect(result).toEqual({ status: 'in_progress' });
+    });
+
+    it('is idempotent across repeated active:true calls -- second call does not re-write the timestamp or double-record the event', async () => {
+      const initialAttempt = { id: 'attempt-1', status: 'paused', screenShareStartedAt: null };
+      const startedAttempt = { ...initialAttempt, screenShareStartedAt: new Date('2026-07-26T00:00:00Z') };
+      const tx = {
+        attempt: {
+          findUnique: jest.fn().mockResolvedValueOnce(initialAttempt).mockResolvedValueOnce(startedAttempt),
+          update: jest.fn().mockResolvedValue(startedAttempt),
+        },
+        proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
+      };
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examWithScreenCapture }))
+        .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx))
+        .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examWithScreenCapture }))
+        .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
+      settlement.resumeFromPause.mockResolvedValue({ ...startedAttempt, status: 'in_progress' });
+
+      await service.screenShareState(session, { active: true });
+      expect(tx.attempt.update).toHaveBeenCalledTimes(1);
+      expect(tx.proctoringEvent.create).toHaveBeenCalledTimes(1);
+
+      const secondResult = await service.screenShareState(session, { active: true });
+      expect(tx.attempt.update).toHaveBeenCalledTimes(1);
+      expect(tx.proctoringEvent.create).toHaveBeenCalledTimes(1);
+      expect(settlement.resumeFromPause).toHaveBeenCalledTimes(2);
+      expect(secondResult).toEqual({ status: 'in_progress' });
+    });
+
+    it('is idempotent across repeated active:false calls -- second call does not double-strike, double-record, or double-pause', async () => {
+      const runningAttempt = { id: 'attempt-1', status: 'in_progress', screenShareStartedAt: new Date('2026-01-01T00:00:00Z') };
+      const stoppedAttempt = { ...runningAttempt, status: 'paused', screenShareStartedAt: null };
+      const tx = {
+        attempt: {
+          findUnique: jest.fn().mockResolvedValueOnce(runningAttempt).mockResolvedValueOnce(stoppedAttempt),
+          update: jest.fn().mockResolvedValue(stoppedAttempt),
+        },
+      };
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examWithScreenCapture }))
+        .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx))
+        .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examWithScreenCapture }))
+        .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
+      settlement.registerBrowserActivityViolation.mockResolvedValue({
+        attempt: { ...runningAttempt, status: 'paused', browserActivityViolationCount: 1 },
+        strike: 1,
+        event: { id: 'evt-1', eventType: 'screen_share_stopped', severity: 'high' },
+      });
+
+      await service.screenShareState(session, { active: false });
+      expect(settlement.registerBrowserActivityViolation).toHaveBeenCalledTimes(1);
+      expect(tx.attempt.update).toHaveBeenCalledTimes(1);
+
+      const secondResult = await service.screenShareState(session, { active: false });
+      expect(settlement.registerBrowserActivityViolation).toHaveBeenCalledTimes(1);
+      expect(tx.attempt.update).toHaveBeenCalledTimes(1);
+      expect(secondResult).toEqual({ status: 'paused' });
+    });
+
+    it('throws NotFoundException when no attempt has been started', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) } };
+      mockScoped(examWithScreenCapture, tx);
+
+      await expect(service.screenShareState(session, { active: true })).rejects.toThrow(NotFoundException);
+    });
+  });
 });

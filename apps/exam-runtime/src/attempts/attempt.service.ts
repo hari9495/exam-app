@@ -8,7 +8,7 @@ import { CandidateSession } from '../candidate-auth/current-candidate.decorator'
 import { AnswerDto } from './dto/answer.dto';
 import { StartAttemptDto } from './dto/start-attempt.dto';
 import { getProctoringEventSeverity, isStrikeWorthy } from './proctoring-severity';
-import { resolveProctoringConfig, isSignalEnabled, ExamProctoringConfig } from './proctoring-config';
+import { resolveProctoringConfig, isSignalEnabled, isProctoringBypassActive, ExamProctoringConfig } from './proctoring-config';
 import { ReportProctoringEventDto } from './dto/report-proctoring-event.dto';
 import { shuffle } from './shuffle';
 import { effectiveDurationMinutes } from '../grading/grading';
@@ -18,6 +18,7 @@ import { RunLimiter } from '../code-execution/run-limiter';
 import { RunCodeDto } from './dto/run-code.dto';
 import { WebcamViolationDto } from './dto/webcam-violation.dto';
 import { WebcamSnapshotDto } from './dto/webcam-snapshot.dto';
+import { ScreenShareStateDto } from './dto/screen-share-state.dto';
 
 interface AttemptQuestionOption {
   id: string;
@@ -595,6 +596,73 @@ export class AttemptService {
       }
       const updated = await this.attemptSettlement.resumeFromPause(tx, attempt);
       return { status: updated.status };
+    });
+  }
+
+  async screenShareState(session: CandidateSession, dto: ScreenShareStateDto): Promise<{ status: string }> {
+    const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
+
+    return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
+      if (!attempt) {
+        throw new NotFoundException('No attempt has been started');
+      }
+
+      // The server is authoritative: a stale or tampered client must not be able to pause
+      // an exam that never asked for screen sharing. Write nothing, return status unchanged.
+      if (!resolveProctoringConfig(exam, attempt).screenCaptureEnabled) {
+        return { status: attempt.status };
+      }
+
+      if (dto.active) {
+        let current = attempt;
+        // Only a genuine start (previously not sharing) sets the timestamp and records the
+        // event -- a repeated active:true call must not double-record.
+        if (!attempt.screenShareStartedAt) {
+          current = await tx.attempt.update({ where: { id: attempt.id }, data: { screenShareStartedAt: new Date() } });
+          await tx.proctoringEvent.create({
+            data: {
+              attemptId: attempt.id,
+              eventType: 'screen_share_started',
+              severity: getProctoringEventSeverity('screen_share_started'),
+              metadataJson: JSON.stringify({ displaySurface: dto.displaySurface, userAgent: dto.userAgent }),
+            },
+          });
+        }
+        // Meeting a precondition is not a recruiter pardon: resume without resetting counters.
+        const resumed = await this.attemptSettlement.resumeFromPause(tx, current);
+        return { status: resumed.status };
+      }
+
+      // active: false
+      let current = attempt;
+      if (attempt.screenShareStartedAt) {
+        // A genuine stop: strike-worthy, respects the exam's enforcement mode (and any
+        // proctoring bypass) via registerBrowserActivityViolation. Clearing the timestamp
+        // makes a repeated active:false call a no-strike, no-record no-op.
+        const { attempt: struck } = await this.attemptSettlement.registerBrowserActivityViolation(
+          tx,
+          exam,
+          attempt,
+          'screen_share_stopped',
+          { displaySurface: dto.displaySurface, userAgent: dto.userAgent },
+        );
+        current = await tx.attempt.update({ where: { id: struck.id }, data: { screenShareStartedAt: null } });
+      }
+
+      // Pausing for a missing share is a precondition, not enforcement -- it applies even
+      // in warn mode, and never downgrades an already-blocked attempt. A bypassed attempt
+      // is exempt from the pause entirely (but not from the strike recorded above).
+      if (current.status === 'in_progress' && !isProctoringBypassActive(current)) {
+        current = await tx.attempt.update({ where: { id: current.id }, data: { status: 'paused', pausedAt: new Date() } });
+        this.monitoringGateway.emitAttemptStatus(exam.id, {
+          attemptId: current.id,
+          candidateId: invitation.candidateId,
+          status: current.status,
+        });
+      }
+
+      return { status: current.status };
     });
   }
 
