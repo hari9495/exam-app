@@ -107,13 +107,16 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
       this.logger.error(`Recent alerts lookup failed for exam ${body.examId}`, error as Error);
     }
 
+    // Join right after proctoring:recent rather than after every snapshot. proctoring:recent
+    // *replaces* the client's alert list, so a proctoring:flag broadcast landing before the
+    // join is delivered and then wiped by the replay -- joining here shrinks that window to
+    // the gap between two synchronous emits instead of spanning the leaderboard round-trip
+    // below too. This narrows but does not eliminate the window; fully closing it needs
+    // join-first plus merge-instead-of-replace on the client, which is deliberately not done here.
+    await client.join(`${EXAM_ROOM_PREFIX}${body.examId}`);
+
     const leaderboard = await this.leaderboard.computeRecruiterView(context, body.examId);
     client.emit('leaderboard:snapshot', leaderboard);
-
-    // Join last, after every snapshot has been emitted. proctoring:recent *replaces* the
-    // client's alert list, so a proctoring:flag broadcast landing during these awaited
-    // queries used to be delivered, appended, and then wiped by the replay.
-    await client.join(`${EXAM_ROOM_PREFIX}${body.examId}`);
   }
 
   emitAttemptStatus(examId: string, payload: { attemptId: string; candidateId: string; status: string }): void {
