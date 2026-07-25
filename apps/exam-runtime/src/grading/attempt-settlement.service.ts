@@ -9,6 +9,7 @@ import { WebcamViolationReason } from '../attempts/dto/webcam-violation.dto';
 import { ApiInternalClient } from '../api-internal-client/api-internal.client';
 import { getProctoringEventSeverity } from '../attempts/proctoring-severity';
 import { resolveProctoringConfig } from '../attempts/proctoring-config';
+import { sanitizeMetadataOrDrop } from '../attempts/sanitize-metadata';
 
 const BROWSER_ACTIVITY_COOLDOWN_MS = 60_000;
 
@@ -291,12 +292,16 @@ export class AttemptSettlementService {
       orderBy: { occurredAt: 'desc' },
     });
 
+    // This is the one place every strike-worthy write funnels through (reportProctoringEvent's
+    // strike branch, screenShareState's stop path), so the metadata guard lives here rather
+    // than at each caller -- see sanitize-metadata.ts for what it checks and why.
+    const safeMetadata = sanitizeMetadataOrDrop(metadata, this.logger, attempt.id, eventType);
     const event = await tx.proctoringEvent.create({
       data: {
         attemptId: attempt.id,
         eventType,
         severity: getProctoringEventSeverity(eventType),
-        metadataJson: metadata ? JSON.stringify(metadata) : null,
+        metadataJson: safeMetadata ? JSON.stringify(safeMetadata) : null,
       },
     });
 

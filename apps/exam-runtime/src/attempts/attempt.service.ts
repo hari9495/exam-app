@@ -19,6 +19,7 @@ import { RunCodeDto } from './dto/run-code.dto';
 import { WebcamViolationDto } from './dto/webcam-violation.dto';
 import { WebcamSnapshotDto } from './dto/webcam-snapshot.dto';
 import { ScreenShareStateDto } from './dto/screen-share-state.dto';
+import { sanitizeMetadataOrDrop } from './sanitize-metadata';
 
 interface AttemptQuestionOption {
   id: string;
@@ -120,90 +121,6 @@ interface AttemptStateResponse {
 }
 
 export type AttemptCurrentResponse = AttemptPreviewResponse | AttemptStateResponse;
-
-// `screenshot`/`screenshotCapReached` are server-authoritative outcomes of the upload below --
-// a client must never be able to set them itself. The invariant that actually matters is not
-// "no key literally named screenshot" -- it's that the serialized JSON text must never contain
-// the literal `"screenshot":` the cap-count query greps for. That query matches case- AND
-// width-insensitively: confirmed against the actual dev database (SQL_Latin1_General_CP1_CI_AS)
-// -- see scc-task-5-report.md fix round 4 -- N'{"ｓcreenshot":1}' (fullwidth U+FF53 "s") LIKE
-// N'%"screenshot":%' is a real match there. A key can produce the literal two ways:
-//   1. the key, after folding, *contains* "screenshot" as a substring -- not just an exact name
-//      match: "screenshot", "screenshotCapReached", "xscreenshotx", and Unicode variants the
-//      collation folds to "screenshot" (fullwidth forms; possibly others depending on collation
-//      and SQL Server version, so fold aggressively rather than enumerate) -- the key's own
-//      structural quotes supply the `"` ... `":`.
-//   2. the key contains a raw `"` character itself (e.g. the 11-char key `"screenshot`) -- the
-//      embedded quote supplies the opening `"` and the key's own closing quote supplies the
-//      `":`, so `"screenshot":` forms even though the key's folded text never contains it.
-// (String *values* can't do either: a value's own quote is always escaped as `\"` in the
-// serialization, and that backslash sits directly between any preceding text and the quote --
-// so a value can never place an unescaped `"` immediately after the text "screenshot" the way
-// case 2 needs. A value's escaped rendering *can* contain a bare `":` substring elsewhere in
-// general -- e.g. the value `a":b` serializes as `"a\":b"`, which does contain `":` -- but never
-// with "screenshot" immediately before it, which is the only occurrence the cap query cares
-// about. So values are safe without filtering; only keys need this check.)
-// Fold before substring-matching: NFKC normalization maps fullwidth/compatibility Unicode forms
-// (e.g. U+FF53 fullwidth "s") to their ASCII equivalent, matching what the collation does above.
-// Also strip Unicode "format" characters (`\p{Cf}`, invisible-but-present codepoints) and the
-// soft hyphen (U+00AD) first -- NFKC alone doesn't remove those, and some Windows collations
-// treat them as ignorable in comparisons. This is deliberately more aggressive than any single
-// collation's documented folding, so the filter doesn't have to track collation internals to
-// stay correct.
-// Recursing into every object and array element is exhaustive over containers; the fold +
-// substring + quote check above is what's exhaustive over how the literal can appear in the text.
-// Built from a charcode, not an escape or literal character, so the invisible soft hyphen
-// (codepoint 0x00AD) can't get silently mangled or lost in an editor/diff.
-const SOFT_HYPHEN = String.fromCharCode(0xad);
-const IGNORABLE_KEY_CHARS = new RegExp(`[\\p{Cf}${SOFT_HYPHEN}]`, 'gu');
-
-function isForgedScreenshotKey(key: string): boolean {
-  const folded = key.replace(IGNORABLE_KEY_CHARS, '').normalize('NFKC').toLowerCase();
-  return folded.includes('screenshot') || key.includes('"');
-}
-
-function stripForgedScreenshotKeys(metadata?: Record<string, unknown>): Record<string, unknown> | undefined {
-  if (!metadata) return metadata;
-  return sanitizeAgainstForgedScreenshotKeys(metadata) as Record<string, unknown>;
-}
-
-function sanitizeAgainstForgedScreenshotKeys(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sanitizeAgainstForgedScreenshotKeys);
-  }
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .filter(([key]) => !isForgedScreenshotKey(key))
-        .map(([key, nested]) => [key, sanitizeAgainstForgedScreenshotKeys(nested)]),
-    );
-  }
-  return value;
-}
-
-// Hostile or merely absurd metadata (thousands of nesting levels deep -- a few KB of payload,
-// trivially inside the body-size limit) can overflow the stack, either in the recursion just
-// above or in a later JSON.stringify of the same structure (a different, larger depth, but the
-// same failure). Either way that's an uncaught RangeError inside the transaction, which is a
-// lost violation -- exactly what this task exists to prevent. Rather than tune two separate
-// depth ceilings (one per recursive/stringify path, liable to drift out of sync), prove the
-// sanitized metadata is actually serializable once, up front, and drop it entirely if not: the
-// violation is what matters, losing a hostile client's metadata is an acceptable trade.
-function sanitizeMetadataOrDrop(
-  metadata: Record<string, unknown> | undefined,
-  logger: Logger,
-  attemptId: string,
-  eventType: string,
-): Record<string, unknown> | undefined {
-  try {
-    const stripped = stripForgedScreenshotKeys(metadata);
-    if (stripped) JSON.stringify(stripped);
-    return stripped;
-  } catch (error) {
-    logger.error(`Dropping unprocessable proctoring event metadata (attempt ${attemptId}, event ${eventType})`, error as Error);
-    return undefined;
-  }
-}
 
 // The blob upload runs inside the tenant-scoped interactive transaction (see
 // TenantPrismaService.forTenant), which has Prisma's default 5s timeout. A slow-but-eventually-
@@ -765,12 +682,20 @@ export class AttemptService {
         // event -- a repeated active:true call must not double-record.
         if (!attempt.screenShareStartedAt) {
           current = await tx.attempt.update({ where: { id: attempt.id }, data: { screenShareStartedAt: new Date() } });
+          // displaySurface/userAgent are client-controlled free text -- route through the same
+          // shared guard as every other metadata write (see sanitize-metadata.ts).
+          const startedMetadata = sanitizeMetadataOrDrop(
+            { displaySurface: dto.displaySurface, userAgent: dto.userAgent },
+            this.logger,
+            attempt.id,
+            'screen_share_started',
+          );
           await tx.proctoringEvent.create({
             data: {
               attemptId: attempt.id,
               eventType: 'screen_share_started',
               severity: getProctoringEventSeverity('screen_share_started'),
-              metadataJson: JSON.stringify({ displaySurface: dto.displaySurface, userAgent: dto.userAgent }),
+              metadataJson: startedMetadata ? JSON.stringify(startedMetadata) : null,
             },
           });
         }

@@ -10,6 +10,14 @@ import { PistonClient } from '../code-execution/piston-client';
 import { PistonRuntimesService } from '../code-execution/piston-runtimes.service';
 import { RunLimiter } from '../code-execution/run-limiter';
 
+// The cap-count query folds case AND width (see sanitize-metadata.ts / scc-task-5-report.md),
+// so a plain `.toContain('"screenshot":')` assertion is case- and width-sensitive in JS and
+// would pass on a stored `"ｓcreenshot":` that the real query still matches. Fold the same way
+// production does before asserting, so a passing test means what it looks like it means.
+function foldForCapCheck(text: string): string {
+  return text.normalize('NFKC').toLowerCase();
+}
+
 describe('AttemptService', () => {
   let service: AttemptService;
   let tenantPrisma: { forTenant: jest.Mock };
@@ -1886,7 +1894,7 @@ describe('AttemptService', () => {
 
         expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
         const [[{ data }]] = tx.proctoringEvent.create.mock.calls;
-        expect(data.metadataJson).not.toContain('"screenshot":');
+        expect(foldForCapCheck(data.metadataJson)).not.toContain('"screenshot":');
         expect(data).toEqual({
           attemptId: 'attempt-1',
           eventType: 'looking_down',
@@ -1938,7 +1946,7 @@ describe('AttemptService', () => {
         });
 
         const [[{ data }]] = tx.proctoringEvent.create.mock.calls;
-        expect(data.metadataJson).not.toContain('"screenshot":');
+        expect(foldForCapCheck(data.metadataJson)).not.toContain('"screenshot":');
         expect(data).toEqual({
           attemptId: 'attempt-1',
           eventType: 'looking_down',
@@ -1963,13 +1971,41 @@ describe('AttemptService', () => {
         });
 
         const [[{ data }]] = tx.proctoringEvent.create.mock.calls;
-        expect(data.metadataJson).not.toContain('"screenshot":');
+        expect(foldForCapCheck(data.metadataJson)).not.toContain('"screenshot":');
         expect(data).toEqual({
           attemptId: 'attempt-1',
           eventType: 'looking_down',
           severity: 'medium',
           metadataJson: JSON.stringify({ note: 'legit' }),
         });
+      });
+
+      it('drops metadata entirely when a plain VALUE (no forged key at all) folds to the cap-count literal via fullwidth punctuation', async () => {
+        const tx = {
+          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          proctoringEvent: { create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }) },
+        };
+        mockScoped(examWithoutCapture, tx);
+        const loggerErrorSpy = jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
+
+        // U+FF02 FULLWIDTH QUOTATION MARK + U+FF1A FULLWIDTH COLON -- confirmed against the
+        // actual dev database (SQL_Latin1_General_CP1_CI_AS) to LIKE-match the ASCII `":` the
+        // cap query greps for. No key here is even inspected by the key filter -- this is an
+        // ordinary metadata *value*, which is exactly why the fix moved from guessing at key
+        // shapes to checking the serialized text itself.
+        const result = await service.reportProctoringEvent(session, {
+          eventType: 'looking_down',
+          metadata: { trigger: '＂screenshot＂：' },
+        });
+
+        expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+          data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: 'medium', metadataJson: null },
+        });
+        expect(result.id).toBe('evt-1');
+        expect(loggerErrorSpy).toHaveBeenCalledWith(
+          'Dropping unprocessable proctoring event metadata (attempt attempt-1, event looking_down)',
+          expect.any(Error),
+        );
       });
     });
   });
@@ -2430,6 +2466,42 @@ describe('AttemptService', () => {
       });
       expect(settlement.resumeFromPause).toHaveBeenCalledWith(tx, startedAttempt);
       expect(result).toEqual({ status: 'in_progress' });
+    });
+
+    it('drops displaySurface/userAgent metadata that would fold to the cap-count literal, rather than writing it raw', async () => {
+      // displaySurface/userAgent are client-controlled free text written directly here, not
+      // through reportProctoringEvent's dto.metadata -- this write site needed its own guard
+      // (see sanitize-metadata.ts). Fullwidth quote/colon (U+FF02/U+FF1A) fold to ASCII under
+      // the same collation that folds width for the cap-count query, confirmed against the
+      // actual dev database (scc-task-5-report.md fix round 5) -- a 13-character value, well
+      // inside the DTO's 50-char MaxLength, with no forged key involved at all.
+      const attempt = { id: 'attempt-1', status: 'paused', screenShareStartedAt: null, browserActivityViolationCount: 2 };
+      const startedAttempt = { ...attempt, screenShareStartedAt: new Date('2026-07-26T00:00:00Z') };
+      const tx = {
+        attempt: {
+          findUnique: jest.fn().mockResolvedValue(attempt),
+          update: jest.fn().mockResolvedValue(startedAttempt),
+        },
+        proctoringEvent: { create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'screen_share_started', severity: 'low' }) },
+      };
+      mockScoped(examWithScreenCapture, tx);
+      settlement.resumeFromPause.mockResolvedValue({ ...startedAttempt, status: 'in_progress' });
+      const loggerErrorSpy = jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
+
+      await service.screenShareState(session, { active: true, displaySurface: '＂screenshot＂：', userAgent: 'Mozilla' });
+
+      expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+        data: {
+          attemptId: 'attempt-1',
+          eventType: 'screen_share_started',
+          severity: getProctoringEventSeverity('screen_share_started'),
+          metadataJson: null,
+        },
+      });
+      expect(loggerErrorSpy).toHaveBeenCalledWith(
+        'Dropping unprocessable proctoring event metadata (attempt attempt-1, event screen_share_started)',
+        expect.any(Error),
+      );
     });
 
     it('does not resume a blocked attempt on active:true -- still records screen_share_started, but stays blocked', async () => {
