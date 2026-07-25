@@ -1871,6 +1871,54 @@ describe('AttemptService', () => {
           },
         });
       });
+
+      it('strips a key that smuggles a raw quote character, which would otherwise form the literal "screenshot": in the serialized JSON', async () => {
+        const tx = {
+          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          proctoringEvent: { create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }) },
+        };
+        mockScoped(examWithoutCapture, tx);
+
+        await service.reportProctoringEvent(session, {
+          eventType: 'looking_down',
+          metadata: { '"screenshot': 1, note: 'legit' },
+        });
+
+        expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
+        const [[{ data }]] = tx.proctoringEvent.create.mock.calls;
+        expect(data.metadataJson).not.toContain('"screenshot":');
+        expect(data).toEqual({
+          attemptId: 'attempt-1',
+          eventType: 'looking_down',
+          severity: 'medium',
+          metadataJson: JSON.stringify({ note: 'legit' }),
+        });
+      });
+
+      it('drops metadata that overflows the stack (absurdly deep nesting) rather than losing the violation to an uncaught RangeError', async () => {
+        const tx = {
+          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          proctoringEvent: { create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }) },
+        };
+        mockScoped(examWithoutCapture, tx);
+        const loggerErrorSpy = jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
+
+        // Deep enough to overflow the stack in either the recursive strip or a later
+        // JSON.stringify of the same shape, regardless of the exact stack size this process
+        // happens to run with.
+        let deeplyNested: Record<string, unknown> = { value: 1 };
+        for (let i = 0; i < 50_000; i++) {
+          deeplyNested = { nested: deeplyNested };
+        }
+
+        const result = await service.reportProctoringEvent(session, { eventType: 'looking_down', metadata: deeplyNested });
+
+        expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+          data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: 'medium', metadataJson: null },
+        });
+        expect(result.id).toBe('evt-1');
+        expect(loggerErrorSpy).toHaveBeenCalledWith('Dropping unprocessable proctoring event metadata', expect.any(Error));
+      });
     });
   });
 

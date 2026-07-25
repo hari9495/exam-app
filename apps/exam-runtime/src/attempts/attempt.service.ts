@@ -122,14 +122,28 @@ interface AttemptStateResponse {
 export type AttemptCurrentResponse = AttemptPreviewResponse | AttemptStateResponse;
 
 // `screenshot`/`screenshotCapReached` are server-authoritative outcomes of the upload below --
-// a client must never be able to set them itself (e.g. `metadata: { screenshot: 'https://attacker...' }`
-// with no real `screenshot` field, which would otherwise pass straight through to storage and
-// also inflate the cap count, whose SQL Server `contains` match is case-insensitive by default
-// collation -- and matches against the whole serialized JSON, so a key buried in a nested
-// object or array element counts too). Strip case-insensitively and recursively -- JSON from
-// the wire is only ever plain objects/arrays/primitives, so recursing into every object and
-// array element (nothing else) is exhaustive.
+// a client must never be able to set them itself. The invariant that actually matters is not
+// "no key literally named screenshot" -- it's that the serialized JSON text must never contain
+// the literal `"screenshot":` the cap-count query greps for (matched case-insensitively, per
+// SQL Server's default collation). Two ways a key can produce that literal:
+//   1. the key *is* (case-insensitively) "screenshot" or "screenshotCapReached" -- the
+//      structural quotes around the key supply the `"` ... `":`.
+//   2. the key contains a raw `"` itself (e.g. the 11-char key `"screenshot`, i.e. a literal
+//      quote character followed by the letters s-c-r-e-e-n-s-h-o-t) -- the embedded quote
+//      supplies the opening `"` and the key's own closing quote supplies the `":`, so
+//      `"screenshot":` forms even though the key name itself never equals "screenshot".
+// (String *values* can't do this: a value's own closing quote is always followed by `,`, `}`,
+// or `]` in valid JSON -- never by `:` -- so no amount of embedded-quote trickery in a value can
+// reconstruct the key-terminating `":` sequence. Only keys sit in a `"<key>":` position, which
+// is why only keys need this check -- values are provably safe and don't need filtering.)
+// Recursing into every object and array element is exhaustive over containers -- it is not, by
+// itself, exhaustive over how the literal can appear in the text, which is why both checks below
+// are required together.
 const FORGED_SCREENSHOT_KEYS = new Set(['screenshot', 'screenshotcapreached']);
+
+function isForgedScreenshotKey(key: string): boolean {
+  return FORGED_SCREENSHOT_KEYS.has(key.toLowerCase()) || key.includes('"');
+}
 
 function stripForgedScreenshotKeys(metadata?: Record<string, unknown>): Record<string, unknown> | undefined {
   if (!metadata) return metadata;
@@ -143,11 +157,30 @@ function sanitizeAgainstForgedScreenshotKeys(value: unknown): unknown {
   if (value && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>)
-        .filter(([key]) => !FORGED_SCREENSHOT_KEYS.has(key.toLowerCase()))
+        .filter(([key]) => !isForgedScreenshotKey(key))
         .map(([key, nested]) => [key, sanitizeAgainstForgedScreenshotKeys(nested)]),
     );
   }
   return value;
+}
+
+// Hostile or merely absurd metadata (thousands of nesting levels deep -- a few KB of payload,
+// trivially inside the body-size limit) can overflow the stack, either in the recursion just
+// above or in a later JSON.stringify of the same structure (a different, larger depth, but the
+// same failure). Either way that's an uncaught RangeError inside the transaction, which is a
+// lost violation -- exactly what this task exists to prevent. Rather than tune two separate
+// depth ceilings (one per recursive/stringify path, liable to drift out of sync), prove the
+// sanitized metadata is actually serializable once, up front, and drop it entirely if not: the
+// violation is what matters, losing a hostile client's metadata is an acceptable trade.
+function sanitizeMetadataOrDrop(metadata: Record<string, unknown> | undefined, logger: Logger): Record<string, unknown> | undefined {
+  try {
+    const stripped = stripForgedScreenshotKeys(metadata);
+    if (stripped) JSON.stringify(stripped);
+    return stripped;
+  } catch (error) {
+    logger.error('Dropping unprocessable proctoring event metadata', error as Error);
+    return undefined;
+  }
 }
 
 // The blob upload runs inside the tenant-scoped interactive transaction (see
@@ -534,11 +567,11 @@ export class AttemptService {
       // Screenshots are server-authoritative, same as the signal guard above: a disabled
       // capture is ignored, not rejected, so a stale/tampered client can't force an upload
       // the recruiter turned off. Strip any client-forged `screenshot`/`screenshotCapReached`
-      // key first -- those are only ever meant to be set below, by us. `metadata` only
-      // diverges further from the sanitized `dto.metadata` when a screenshot is actually being
-      // handled -- otherwise it stays as-is (including `undefined`) so callers below see no
-      // behavior change.
-      let metadata = stripForgedScreenshotKeys(dto.metadata);
+      // key first -- those are only ever meant to be set below, by us -- and drop metadata
+      // entirely if it can't be proven safe to serialize (see sanitizeMetadataOrDrop). `metadata`
+      // only diverges further from there when a screenshot is actually being handled --
+      // otherwise it stays as-is (including `undefined`) so callers below see no behavior change.
+      let metadata = sanitizeMetadataOrDrop(dto.metadata, this.logger);
       if (dto.screenshot && proctoring.screenCaptureEnabled) {
         // Match the JSON key, not the bare word: `screenshotCapReached` also contains the
         // substring "screenshot", and would otherwise inflate this count once the cap is hit.
