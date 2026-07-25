@@ -21,7 +21,7 @@ const mockExam: Exam = {
   passCriteriaPercent: 40, randomizeOrder: false, feedbackVisibility: 'none', schedulingEnabled: false,
   availabilityWindowStart: null, availabilityWindowEnd: null, walkInEnabled: false, allowedIpRange: null,
   webcamProctoringEnabled: false, proctoringEnforcement: 'block', proctoringStrikeLimit: 3,
-  disabledProctoringSignalsJson: null, createdAt: '2026-07-25T09:00:00.000Z', sections: [],
+  disabledProctoringSignalsJson: null, screenCaptureEnabled: false, createdAt: '2026-07-25T09:00:00.000Z', sections: [],
   invitationCount: 1, hasStartedAttempts: true,
 };
 

@@ -126,6 +126,7 @@ export interface Exam {
   proctoringEnforcement: 'warn' | 'block';
   proctoringStrikeLimit: number;
   disabledProctoringSignalsJson: string | null;
+  screenCaptureEnabled: boolean;
   createdAt: string;
   sections: ExamSection[];
   invitationCount: number;
@@ -310,6 +311,7 @@ export interface ExamProctoringConfig {
   enforcement: 'warn' | 'block';
   strikeLimit: number;
   disabledSignals: string[];
+  screenCaptureEnabled: boolean;
 }
 
 export interface AttemptPreview {

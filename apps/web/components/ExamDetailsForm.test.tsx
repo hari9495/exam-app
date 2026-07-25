@@ -87,7 +87,7 @@ describe('ExamDetailsForm', () => {
       walkInEnabled: false, allowedIpRange: null, createdAt: '2026-07-01T00:00:00.000Z', sections: [], invitationCount: 0,
       hasStartedAttempts: false,
       webcamProctoringEnabled: true, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
-      disabledProctoringSignalsJson: null,
+      disabledProctoringSignalsJson: null, screenCaptureEnabled: false,
     };
     render(<ExamDetailsForm initialExam={scheduledExam} onSubmit={jest.fn()} submitLabel="Save" />);
 
@@ -167,7 +167,7 @@ describe('ExamDetailsForm', () => {
       allowedIpRange: '203.0.113.0/24', createdAt: '2026-07-01T00:00:00.000Z', sections: [], invitationCount: 0,
       hasStartedAttempts: false,
       webcamProctoringEnabled: true, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
-      disabledProctoringSignalsJson: null,
+      disabledProctoringSignalsJson: null, screenCaptureEnabled: false,
     };
     render(<ExamDetailsForm initialExam={examWithIpRange} onSubmit={onSubmit} submitLabel="Save" />);
 
@@ -255,6 +255,39 @@ describe('ExamDetailsForm', () => {
 
       expect(screen.getByLabelText('Require webcam proctoring')).toBeDisabled();
       expect(screen.getByText(/locked because a candidate has already started it/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('screen capture toggle', () => {
+    it('submits screenCaptureEnabled false by default', async () => {
+      const onSubmit = jest.fn();
+      render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Create" />);
+
+      await userEvent.type(screen.getByLabelText('Title'), 'Screen');
+      await userEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ screenCaptureEnabled: false }));
+    });
+
+    it('submits screenCaptureEnabled true when ticked', async () => {
+      const onSubmit = jest.fn();
+      render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Create" />);
+
+      await userEvent.type(screen.getByLabelText('Title'), 'Screen');
+      await userEvent.click(screen.getByLabelText("Record the candidate's screen as evidence"));
+      await userEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ screenCaptureEnabled: true }));
+    });
+
+    it('shows the explanatory copy only once ticked', async () => {
+      render(<ExamDetailsForm onSubmit={jest.fn()} submitLabel="Create" />);
+
+      expect(screen.queryByText(/must share their whole screen to start/i)).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByLabelText("Record the candidate's screen as evidence"));
+
+      expect(screen.getByText(/must share their whole screen to start/i)).toBeInTheDocument();
     });
   });
 

@@ -6,6 +6,7 @@ function source(overrides: Partial<Parameters<typeof resolveProctoringConfig>[0]
     proctoringEnforcement: 'block',
     proctoringStrikeLimit: 3,
     disabledProctoringSignalsJson: null,
+    screenCaptureEnabled: false,
     ...overrides,
   };
 }
@@ -17,7 +18,13 @@ describe('resolveProctoringConfig', () => {
       enforcement: 'block',
       strikeLimit: 3,
       disabledSignals: [],
+      screenCaptureEnabled: false,
     });
+  });
+
+  it('surfaces screenCaptureEnabled on the resolved config', () => {
+    expect(resolveProctoringConfig(source({ screenCaptureEnabled: true })).screenCaptureEnabled).toBe(true);
+    expect(resolveProctoringConfig(source({ screenCaptureEnabled: false })).screenCaptureEnabled).toBe(false);
   });
 
   it('parses the disabled-signal JSON array', () => {
@@ -67,6 +74,7 @@ describe('proctoring bypass', () => {
     proctoringEnforcement: 'block',
     proctoringStrikeLimit: 5,
     disabledProctoringSignalsJson: JSON.stringify(['right_click']),
+    screenCaptureEnabled: true,
   };
 
   it('forces warn enforcement when the attempt is bypassed', () => {
@@ -81,6 +89,12 @@ describe('proctoring bypass', () => {
     expect(config.webcamEnabled).toBe(true);
     expect(config.strikeLimit).toBe(5);
     expect(config.disabledSignals).toEqual(['right_click']);
+  });
+
+  it('reports screenCaptureEnabled unchanged on a bypassed attempt -- a bypass narrows what is punished, never what is watched', () => {
+    const config = resolveProctoringConfig(blockingExam, { proctoringBypassedAt: new Date(), proctoringBypassRevokedAt: null });
+
+    expect(config.screenCaptureEnabled).toBe(true);
   });
 
   it('enforces normally when the attempt is not bypassed', () => {

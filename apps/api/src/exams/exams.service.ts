@@ -121,6 +121,7 @@ export class ExamsService {
           ...(dto.disabledProctoringSignals !== undefined
             ? { disabledProctoringSignalsJson: dto.disabledProctoringSignals.length > 0 ? JSON.stringify(dto.disabledProctoringSignals) : null }
             : {}),
+          ...(dto.screenCaptureEnabled !== undefined ? { screenCaptureEnabled: dto.screenCaptureEnabled } : {}),
           createdBy: userId,
         },
       }),
@@ -244,6 +245,7 @@ export class ExamsService {
           ...(dto.disabledProctoringSignals !== undefined
             ? { disabledProctoringSignalsJson: dto.disabledProctoringSignals.length > 0 ? JSON.stringify(dto.disabledProctoringSignals) : null }
             : {}),
+          ...(dto.screenCaptureEnabled !== undefined ? { screenCaptureEnabled: dto.screenCaptureEnabled } : {}),
           schedulingEnabled: scheduling.schedulingEnabled,
           availabilityWindowStart: scheduling.availabilityWindowStart,
           availabilityWindowEnd: scheduling.availabilityWindowEnd,
@@ -352,6 +354,7 @@ export class ExamsService {
           proctoringEnforcement: exam.proctoringEnforcement,
           proctoringStrikeLimit: exam.proctoringStrikeLimit,
           disabledProctoringSignalsJson: exam.disabledProctoringSignalsJson,
+          screenCaptureEnabled: exam.screenCaptureEnabled,
           schedulingEnabled: false,
           availabilityWindowStart: null,
           availabilityWindowEnd: null,

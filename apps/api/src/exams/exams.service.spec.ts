@@ -1770,4 +1770,44 @@ describe('ExamsService', () => {
       );
     });
   });
+
+  describe('screen capture toggle', () => {
+    it('persists screenCaptureEnabled on create', async () => {
+      const tx = { exam: { create: jest.fn().mockResolvedValue({ id: 'exam-1' }) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.create(context, 'user-1', { title: 'Screen', screenCaptureEnabled: true });
+
+      expect(tx.exam.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ screenCaptureEnabled: true }) }),
+      );
+    });
+
+    it('persists screenCaptureEnabled on update', async () => {
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null }),
+          update: jest.fn().mockResolvedValue({ id: 'exam-1' }),
+        },
+        invitation: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
+        attempt: { count: jest.fn().mockResolvedValue(0) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.update(context, 'exam-1', { title: 'Screen', screenCaptureEnabled: true });
+
+      expect(tx.exam.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ screenCaptureEnabled: true }) }),
+      );
+    });
+
+    it('leaves screenCaptureEnabled to the schema default when omitted', async () => {
+      const tx = { exam: { create: jest.fn().mockResolvedValue({ id: 'exam-1' }) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.create(context, 'user-1', { title: 'Screen' });
+
+      expect(tx.exam.create.mock.calls[0][0].data.screenCaptureEnabled).toBeUndefined();
+    });
+  });
 });

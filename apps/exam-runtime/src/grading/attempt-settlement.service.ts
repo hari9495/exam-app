@@ -21,6 +21,7 @@ export interface SettlementExam {
   proctoringEnforcement: string;
   proctoringStrikeLimit: number;
   disabledProctoringSignalsJson: string | null;
+  screenCaptureEnabled: boolean;
 }
 
 @Injectable()

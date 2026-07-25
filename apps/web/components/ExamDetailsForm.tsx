@@ -20,6 +20,7 @@ export interface ExamDetailsValue {
   proctoringEnforcement: 'warn' | 'block';
   proctoringStrikeLimit: number;
   disabledProctoringSignals: string[];
+  screenCaptureEnabled: boolean;
 }
 
 interface ExamDetailsFormProps {
@@ -79,6 +80,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
     }
   });
   const [signalsOpen, setSignalsOpen] = useState(false);
+  const [screenCaptureEnabled, setScreenCaptureEnabled] = useState(initialExam?.screenCaptureEnabled ?? false);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -111,6 +113,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
       proctoringEnforcement,
       proctoringStrikeLimit: Number(proctoringStrikeLimit),
       disabledProctoringSignals: disabledSignals,
+      screenCaptureEnabled,
     });
   }
 
@@ -253,6 +256,16 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
             ))}
           </div>
         )}
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" checked={screenCaptureEnabled} onChange={(e) => setScreenCaptureEnabled(e.target.checked)} />
+          Record the candidate&apos;s screen as evidence
+        </label>
+        {screenCaptureEnabled ? (
+          <p className="pl-6 text-xs text-recruiter-text-secondary">
+            Candidates must share their whole screen to start, and cannot use a phone or tablet. Their screen is captured only
+            when a rule is broken.
+          </p>
+        ) : null}
       </fieldset>
       {!locked && <Button type="submit">{submitLabel}</Button>}
       </fieldset>

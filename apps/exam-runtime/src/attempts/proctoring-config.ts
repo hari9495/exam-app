@@ -3,6 +3,7 @@ export interface ProctoringConfigSource {
   proctoringEnforcement: string;
   proctoringStrikeLimit: number;
   disabledProctoringSignalsJson: string | null;
+  screenCaptureEnabled: boolean;
 }
 
 export interface ExamProctoringConfig {
@@ -10,6 +11,7 @@ export interface ExamProctoringConfig {
   enforcement: 'warn' | 'block';
   strikeLimit: number;
   disabledSignals: string[];
+  screenCaptureEnabled: boolean;
 }
 
 export interface ProctoringBypassSource {
@@ -52,6 +54,8 @@ export function resolveProctoringConfig(
     enforcement: (bypassed || exam.proctoringEnforcement === 'warn') ? 'warn' : 'block',
     strikeLimit: Math.max(1, exam.proctoringStrikeLimit),
     disabledSignals: parseDisabledSignals(exam.disabledProctoringSignalsJson),
+    // Never touched by a bypass -- a bypass narrows what is punished, never what is watched.
+    screenCaptureEnabled: exam.screenCaptureEnabled,
   };
 }
 

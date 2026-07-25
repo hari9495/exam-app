@@ -87,4 +87,8 @@ export class CreateExamDto {
   @ArrayUnique()
   @IsIn(TOGGLEABLE_PROCTORING_SIGNALS, { each: true })
   disabledProctoringSignals?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  screenCaptureEnabled?: boolean;
 }
