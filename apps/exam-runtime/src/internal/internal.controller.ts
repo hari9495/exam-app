@@ -83,7 +83,7 @@ export class InternalController {
         data: {
           proctoringBypassedAt: bypassedAt,
           proctoringBypassedBy: dto.actorUserId,
-          proctoringBypassReason: dto.reason,
+          proctoringBypassReason: dto.reason.trim(),
         },
       });
       // Reset counters and resume: the candidate may already be paused or blocked by
@@ -100,6 +100,9 @@ export class InternalController {
       const attempt = await tx.attempt.findUnique({ where: { id } });
       if (!attempt) {
         throw new NotFoundException(`Attempt ${id} not found`);
+      }
+      if (!InternalController.BYPASSABLE_STATUSES.includes(attempt.status)) {
+        throw new BadRequestException(`Attempt ${id} cannot have its proctoring bypass revoked from status "${attempt.status}"`);
       }
       await tx.attempt.update({
         where: { id },

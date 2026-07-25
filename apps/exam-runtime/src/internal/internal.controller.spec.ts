@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { validate } from 'class-validator';
 import { InternalController } from './internal.controller';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
@@ -8,6 +9,7 @@ import { AttemptInsightService } from '../attempt-insight/attempt-insight.servic
 import { CodeReviewService } from '../code-review/code-review.service';
 import { PistonRuntimesService } from '../code-execution/piston-runtimes.service';
 import { ATTEMPT_STATUS_BROADCASTER } from '../monitoring/attempt-status-broadcaster';
+import { ApplyProctoringBypassDto } from './dto/proctoring-bypass.dto';
 
 describe('InternalController', () => {
   let controller: InternalController;
@@ -165,6 +167,21 @@ describe('InternalController', () => {
         await expect(controller.applyProctoringBypass('nope', { reason: 'x', actorUserId: ACTOR })).rejects.toThrow(NotFoundException);
       });
 
+      it('trims leading/trailing whitespace from the reason before persisting', async () => {
+        const tx = {
+          attempt: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'a1', status: 'in_progress', pausedAt: null, pausedDurationMs: 0 }),
+            update: jest.fn().mockResolvedValue({}),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+        attemptSettlement.resumeFromPause.mockResolvedValue({ status: 'in_progress' });
+
+        await controller.applyProctoringBypass('a1', { reason: '  webcam driver crashing  ', actorUserId: ACTOR });
+
+        expect(tx.attempt.update.mock.calls[0][0].data.proctoringBypassReason).toBe('webcam driver crashing');
+      });
+
       it('re-applying updates the reason rather than erroring', async () => {
         const tx = {
           attempt: {
@@ -200,6 +217,74 @@ describe('InternalController', () => {
         expect(attemptSettlement.resumeFromPause).toHaveBeenCalledWith(tx, expect.objectContaining({ id: 'a1' }), { resetViolationCounters: true });
         expect(result.proctoringBypassedAt).toBeNull();
       });
+
+      it('resumes still succeeds from paused', async () => {
+        const tx = {
+          attempt: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'a1', status: 'paused', pausedAt: new Date(), pausedDurationMs: 0 }),
+            update: jest.fn().mockResolvedValue({}),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+        attemptSettlement.resumeFromPause.mockResolvedValue({ status: 'in_progress' });
+
+        await expect(controller.revokeProctoringBypass('a1', { actorUserId: ACTOR })).resolves.toBeDefined();
+        expect(tx.attempt.update).toHaveBeenCalled();
+        expect(attemptSettlement.resumeFromPause).toHaveBeenCalled();
+      });
+
+      it('resumes still succeeds from blocked', async () => {
+        const tx = {
+          attempt: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'a1', status: 'blocked', pausedAt: new Date(), pausedDurationMs: 0 }),
+            update: jest.fn().mockResolvedValue({}),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+        attemptSettlement.resumeFromPause.mockResolvedValue({ status: 'in_progress' });
+
+        await expect(controller.revokeProctoringBypass('a1', { actorUserId: ACTOR })).resolves.toBeDefined();
+        expect(tx.attempt.update).toHaveBeenCalled();
+        expect(attemptSettlement.resumeFromPause).toHaveBeenCalled();
+      });
+
+      it('rejects revoking a settled (submitted) attempt, writing nothing', async () => {
+        const tx = {
+          attempt: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'a1', status: 'submitted', pausedAt: null, pausedDurationMs: 0, proctoringBypassedAt: new Date() }),
+            update: jest.fn(),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+
+        await expect(controller.revokeProctoringBypass('a1', { actorUserId: ACTOR })).rejects.toThrow(BadRequestException);
+        expect(tx.attempt.update).not.toHaveBeenCalled();
+        expect(attemptSettlement.resumeFromPause).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe('ApplyProctoringBypassDto validation', () => {
+    const VALID_UUID = '3fa85f64-5717-4562-b3fc-2c963f66afa6';
+
+    it('rejects a whitespace-only reason', async () => {
+      const dto = new ApplyProctoringBypassDto();
+      dto.reason = '   ';
+      dto.actorUserId = VALID_UUID;
+
+      const errors = await validate(dto);
+
+      expect(errors.length).toBeGreaterThan(0);
+    });
+
+    it('accepts a genuine reason', async () => {
+      const dto = new ApplyProctoringBypassDto();
+      dto.reason = 'webcam driver crashing';
+      dto.actorUserId = VALID_UUID;
+
+      const errors = await validate(dto);
+
+      expect(errors).toHaveLength(0);
     });
   });
 
