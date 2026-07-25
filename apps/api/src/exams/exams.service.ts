@@ -218,9 +218,14 @@ export class ExamsService {
       // The lock is value-based (not presence-based): the recruiter form resubmits
       // all four fields on every save, so a benign no-op PATCH (e.g. only the title
       // changed) must not be treated as touching proctoring config.
-      const existingDisabledSignals: string[] = existing.disabledProctoringSignalsJson
-        ? JSON.parse(existing.disabledProctoringSignalsJson)
-        : [];
+      let existingDisabledSignals: string[] = [];
+      try {
+        const parsed = JSON.parse(existing.disabledProctoringSignalsJson ?? '[]');
+        if (Array.isArray(parsed)) existingDisabledSignals = parsed.filter((entry): entry is string => typeof entry === 'string');
+      } catch {
+        // Corrupt row -> treat as "nothing disabled", matching resolveProctoringConfig's
+        // fail-safe. A save must be able to repair the row, not 500 on reading it.
+      }
       const suppliedDisabledSignals = dto.disabledProctoringSignals;
       const disabledSignalsChanged =
         suppliedDisabledSignals !== undefined &&

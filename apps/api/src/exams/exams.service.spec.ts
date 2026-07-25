@@ -1704,6 +1704,80 @@ describe('ExamsService', () => {
       expect(tx.exam.update).toHaveBeenCalled();
     });
 
+    it('updates without throwing when the stored disabled-signals JSON is malformed', async () => {
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1',
+            status: 'draft',
+            webcamProctoringEnabled: true,
+            proctoringEnforcement: 'block',
+            proctoringStrikeLimit: 3,
+            disabledProctoringSignalsJson: '{not json',
+          }),
+          update: jest.fn().mockResolvedValue({ id: 'exam-1' }),
+        },
+        invitation: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.update(context, 'exam-1', { title: 'Renamed' })).resolves.toBeDefined();
+
+      expect(tx.exam.update).toHaveBeenCalled();
+    });
+
+    it('updates without throwing when the stored disabled-signals JSON parses to a non-array', async () => {
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1',
+            status: 'draft',
+            webcamProctoringEnabled: true,
+            proctoringEnforcement: 'block',
+            proctoringStrikeLimit: 3,
+            disabledProctoringSignalsJson: '{"a":1}',
+          }),
+          update: jest.fn().mockResolvedValue({ id: 'exam-1' }),
+        },
+        invitation: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.update(context, 'exam-1', { title: 'Renamed' })).resolves.toBeDefined();
+
+      expect(tx.exam.update).toHaveBeenCalled();
+    });
+
+    it('treats an identical well-formed disabled-signal array as unchanged on a published exam with invited candidates', async () => {
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1',
+            status: 'published',
+            webcamProctoringEnabled: true,
+            proctoringEnforcement: 'block',
+            proctoringStrikeLimit: 3,
+            disabledProctoringSignalsJson: JSON.stringify(['right_click', 'idle_timeout']),
+          }),
+          update: jest.fn().mockResolvedValue({ id: 'exam-1' }),
+        },
+        invitation: { count: jest.fn().mockResolvedValue(2), findMany: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(
+        service.update(context, 'exam-1', {
+          title: 'Renamed',
+          webcamProctoringEnabled: true,
+          proctoringEnforcement: 'block',
+          proctoringStrikeLimit: 3,
+          disabledProctoringSignals: ['right_click', 'idle_timeout'],
+        }),
+      ).resolves.toBeDefined();
+
+      expect(tx.exam.update).toHaveBeenCalled();
+    });
+
     it('carries the proctoring config onto a duplicated exam', async () => {
       const tx = {
         exam: {
