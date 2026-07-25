@@ -185,7 +185,7 @@ export class AttemptService {
         remainingSeconds: this.attemptSettlement.remainingSeconds(exam, settled),
         webcamViolationCount: settled.webcamViolationCount,
         browserActivityViolationCount: settled.browserActivityViolationCount,
-        exam: { title: exam.title, proctoring: resolveProctoringConfig(exam) },
+        exam: { title: exam.title, proctoring: resolveProctoringConfig(exam, settled) },
         sections,
         answers: answers.map((answer) => ({
           questionId: answer.questionId,
