@@ -264,6 +264,10 @@ model Exam {
   availabilityWindowEnd   DateTime?     @map("availability_window_end")
   walkInEnabled           Boolean       @default(false) @map("walk_in_enabled")
   allowedIpRange          String?       @map("allowed_ip_range")
+  webcamProctoringEnabled Boolean       @default(true) @map("webcam_proctoring_enabled")
+  proctoringEnforcement   String        @default("block") @map("proctoring_enforcement")
+  proctoringStrikeLimit   Int           @default(3) @map("proctoring_strike_limit")
+  disabledProctoringSignalsJson String? @map("disabled_proctoring_signals_json") @db.NVarChar(Max)
   createdBy               String        @map("created_by") @db.UniqueIdentifier
   createdAt               DateTime      @default(now()) @map("created_at")
   sections                ExamSection[]
