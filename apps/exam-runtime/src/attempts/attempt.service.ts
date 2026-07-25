@@ -124,25 +124,42 @@ export type AttemptCurrentResponse = AttemptPreviewResponse | AttemptStateRespon
 // `screenshot`/`screenshotCapReached` are server-authoritative outcomes of the upload below --
 // a client must never be able to set them itself. The invariant that actually matters is not
 // "no key literally named screenshot" -- it's that the serialized JSON text must never contain
-// the literal `"screenshot":` the cap-count query greps for (matched case-insensitively, per
-// SQL Server's default collation). Two ways a key can produce that literal:
-//   1. the key *is* (case-insensitively) "screenshot" or "screenshotCapReached" -- the
-//      structural quotes around the key supply the `"` ... `":`.
-//   2. the key contains a raw `"` itself (e.g. the 11-char key `"screenshot`, i.e. a literal
-//      quote character followed by the letters s-c-r-e-e-n-s-h-o-t) -- the embedded quote
-//      supplies the opening `"` and the key's own closing quote supplies the `":`, so
-//      `"screenshot":` forms even though the key name itself never equals "screenshot".
-// (String *values* can't do this: a value's own closing quote is always followed by `,`, `}`,
-// or `]` in valid JSON -- never by `:` -- so no amount of embedded-quote trickery in a value can
-// reconstruct the key-terminating `":` sequence. Only keys sit in a `"<key>":` position, which
-// is why only keys need this check -- values are provably safe and don't need filtering.)
-// Recursing into every object and array element is exhaustive over containers -- it is not, by
-// itself, exhaustive over how the literal can appear in the text, which is why both checks below
-// are required together.
-const FORGED_SCREENSHOT_KEYS = new Set(['screenshot', 'screenshotcapreached']);
+// the literal `"screenshot":` the cap-count query greps for. That query matches case- AND
+// width-insensitively: confirmed against the actual dev database (SQL_Latin1_General_CP1_CI_AS)
+// -- see scc-task-5-report.md fix round 4 -- N'{"ｓcreenshot":1}' (fullwidth U+FF53 "s") LIKE
+// N'%"screenshot":%' is a real match there. A key can produce the literal two ways:
+//   1. the key, after folding, *contains* "screenshot" as a substring -- not just an exact name
+//      match: "screenshot", "screenshotCapReached", "xscreenshotx", and Unicode variants the
+//      collation folds to "screenshot" (fullwidth forms; possibly others depending on collation
+//      and SQL Server version, so fold aggressively rather than enumerate) -- the key's own
+//      structural quotes supply the `"` ... `":`.
+//   2. the key contains a raw `"` character itself (e.g. the 11-char key `"screenshot`) -- the
+//      embedded quote supplies the opening `"` and the key's own closing quote supplies the
+//      `":`, so `"screenshot":` forms even though the key's folded text never contains it.
+// (String *values* can't do either: a value's own quote is always escaped as `\"` in the
+// serialization, and that backslash sits directly between any preceding text and the quote --
+// so a value can never place an unescaped `"` immediately after the text "screenshot" the way
+// case 2 needs. A value's escaped rendering *can* contain a bare `":` substring elsewhere in
+// general -- e.g. the value `a":b` serializes as `"a\":b"`, which does contain `":` -- but never
+// with "screenshot" immediately before it, which is the only occurrence the cap query cares
+// about. So values are safe without filtering; only keys need this check.)
+// Fold before substring-matching: NFKC normalization maps fullwidth/compatibility Unicode forms
+// (e.g. U+FF53 fullwidth "s") to their ASCII equivalent, matching what the collation does above.
+// Also strip Unicode "format" characters (`\p{Cf}`, invisible-but-present codepoints) and the
+// soft hyphen (U+00AD) first -- NFKC alone doesn't remove those, and some Windows collations
+// treat them as ignorable in comparisons. This is deliberately more aggressive than any single
+// collation's documented folding, so the filter doesn't have to track collation internals to
+// stay correct.
+// Recursing into every object and array element is exhaustive over containers; the fold +
+// substring + quote check above is what's exhaustive over how the literal can appear in the text.
+// Built from a charcode, not an escape or literal character, so the invisible soft hyphen
+// (codepoint 0x00AD) can't get silently mangled or lost in an editor/diff.
+const SOFT_HYPHEN = String.fromCharCode(0xad);
+const IGNORABLE_KEY_CHARS = new RegExp(`[\\p{Cf}${SOFT_HYPHEN}]`, 'gu');
 
 function isForgedScreenshotKey(key: string): boolean {
-  return FORGED_SCREENSHOT_KEYS.has(key.toLowerCase()) || key.includes('"');
+  const folded = key.replace(IGNORABLE_KEY_CHARS, '').normalize('NFKC').toLowerCase();
+  return folded.includes('screenshot') || key.includes('"');
 }
 
 function stripForgedScreenshotKeys(metadata?: Record<string, unknown>): Record<string, unknown> | undefined {
@@ -172,13 +189,18 @@ function sanitizeAgainstForgedScreenshotKeys(value: unknown): unknown {
 // depth ceilings (one per recursive/stringify path, liable to drift out of sync), prove the
 // sanitized metadata is actually serializable once, up front, and drop it entirely if not: the
 // violation is what matters, losing a hostile client's metadata is an acceptable trade.
-function sanitizeMetadataOrDrop(metadata: Record<string, unknown> | undefined, logger: Logger): Record<string, unknown> | undefined {
+function sanitizeMetadataOrDrop(
+  metadata: Record<string, unknown> | undefined,
+  logger: Logger,
+  attemptId: string,
+  eventType: string,
+): Record<string, unknown> | undefined {
   try {
     const stripped = stripForgedScreenshotKeys(metadata);
     if (stripped) JSON.stringify(stripped);
     return stripped;
   } catch (error) {
-    logger.error('Dropping unprocessable proctoring event metadata', error as Error);
+    logger.error(`Dropping unprocessable proctoring event metadata (attempt ${attemptId}, event ${eventType})`, error as Error);
     return undefined;
   }
 }
@@ -571,7 +593,7 @@ export class AttemptService {
       // entirely if it can't be proven safe to serialize (see sanitizeMetadataOrDrop). `metadata`
       // only diverges further from there when a screenshot is actually being handled --
       // otherwise it stays as-is (including `undefined`) so callers below see no behavior change.
-      let metadata = sanitizeMetadataOrDrop(dto.metadata, this.logger);
+      let metadata = sanitizeMetadataOrDrop(dto.metadata, this.logger, attempt.id, dto.eventType);
       if (dto.screenshot && proctoring.screenCaptureEnabled) {
         // Match the JSON key, not the bare word: `screenshotCapReached` also contains the
         // substring "screenshot", and would otherwise inflate this count once the cap is hit.

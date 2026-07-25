@@ -1917,7 +1917,59 @@ describe('AttemptService', () => {
           data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: 'medium', metadataJson: null },
         });
         expect(result.id).toBe('evt-1');
-        expect(loggerErrorSpy).toHaveBeenCalledWith('Dropping unprocessable proctoring event metadata', expect.any(Error));
+        expect(loggerErrorSpy).toHaveBeenCalledWith(
+          'Dropping unprocessable proctoring event metadata (attempt attempt-1, event looking_down)',
+          expect.any(Error),
+        );
+      });
+
+      it('strips a fullwidth Unicode variant of the key that the DB collation folds to "screenshot"', async () => {
+        const tx = {
+          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          proctoringEvent: { create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }) },
+        };
+        mockScoped(examWithoutCapture, tx);
+
+        // U+FF53 FULLWIDTH LATIN SMALL LETTER S -- confirmed against the actual dev database
+        // (SQL_Latin1_General_CP1_CI_AS) to LIKE-match "screenshot" in the cap-count query.
+        await service.reportProctoringEvent(session, {
+          eventType: 'looking_down',
+          metadata: { 'ｓcreenshot': 'https://attacker.example/clean-desk.jpg', note: 'legit' },
+        });
+
+        const [[{ data }]] = tx.proctoringEvent.create.mock.calls;
+        expect(data.metadataJson).not.toContain('"screenshot":');
+        expect(data).toEqual({
+          attemptId: 'attempt-1',
+          eventType: 'looking_down',
+          severity: 'medium',
+          metadataJson: JSON.stringify({ note: 'legit' }),
+        });
+      });
+
+      it('strips a long-s Unicode variant of the key (NFKC-folds to "screenshot" even though this DB build does not fold it)', async () => {
+        const tx = {
+          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          proctoringEvent: { create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }) },
+        };
+        mockScoped(examWithoutCapture, tx);
+
+        // U+017F LATIN SMALL LETTER LONG S. Did not LIKE-match under this dev database's
+        // collation when checked directly, but NFKC folds it regardless -- deliberately more
+        // aggressive than the one collation we could verify, per scc-task-5-report.md.
+        await service.reportProctoringEvent(session, {
+          eventType: 'looking_down',
+          metadata: { 'ſcreenshot': 'https://attacker.example/clean-desk.jpg', note: 'legit' },
+        });
+
+        const [[{ data }]] = tx.proctoringEvent.create.mock.calls;
+        expect(data.metadataJson).not.toContain('"screenshot":');
+        expect(data).toEqual({
+          attemptId: 'attempt-1',
+          eventType: 'looking_down',
+          severity: 'medium',
+          metadataJson: JSON.stringify({ note: 'legit' }),
+        });
       });
     });
   });
