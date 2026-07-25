@@ -84,7 +84,11 @@ The existing `useAttemptModeration` hook (`apps/web/lib/hooks/`) is extended wit
 
 ### 7. Integrity report must disclose it
 
-This is the part that matters most for defensibility. `integrity-analysis.service.ts` must state, in the stored narrative and in the structured flags, that proctoring enforcement was relaxed for this attempt — who did it, when, and the reason given. A reviewer reading a clean integrity report on a bypassed attempt must not be able to mistake "no violations enforced" for "no violations occurred".
+This is the part that matters most for defensibility. `integrity-analysis.service.ts` must state that proctoring enforcement was relaxed for this attempt, with the reason and the timestamp. A reviewer reading a clean integrity report on a bypassed attempt must not be able to mistake "no violations enforced" for "no violations occurred".
+
+**The disclosure goes in the narrative, not in `flagsJson`.** `IntegrityFlag.severity` is only `'medium' | 'high'` (`apps/exam-runtime/src/integrity/integrity-rules.ts:17`) and `deriveLevel(flags)` maps those onto `review` / `high_concern`. Adding a bypass flag would therefore push an otherwise-clean attempt to `review` — penalising a candidate for a technical fault the recruiter accommodated, which inverts the intent. The integrity *level* must keep reflecting candidate behaviour only; the bypass is context a human reads, so it belongs in the narrative text.
+
+This means the disclosure must be prepended in both narrative branches: the `flags.length === 0` shortcut that returns `CLEAR_NARRATIVE`, and the AI-generated path.
 
 The attempt query there already uses `include: { invitation: { include: { exam: true } } }`, so the attempt row (and therefore the three new columns) is present without a schema-level query change.
 
