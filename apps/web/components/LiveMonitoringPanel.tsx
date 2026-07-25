@@ -130,6 +130,10 @@ export function LiveMonitoringPanel({
   flagged: Set<string>;
   connectionStatus: ConnectionStatus;
   joinError: string | null;
+  // ponytail: optional only so the existing test file keeps compiling without supplying
+  // them; they fail closed (Enable alerts button just doesn't render), so no wrong-render
+  // risk today, but a caller can silently omit both and lose the feature with no type
+  // error. Make required once this panel's test file is updated to pass them.
   notificationPermission?: NotificationPermission | 'unsupported';
   onEnableNotifications?: () => void;
 }) {

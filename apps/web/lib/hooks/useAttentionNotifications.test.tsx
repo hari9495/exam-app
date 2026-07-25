@@ -133,5 +133,27 @@ describe('useAttentionNotifications', () => {
 
       expect(notificationCtor).toHaveBeenCalledTimes(1);
     });
+
+    it('re-notifies a flare-up that occurred while the tab was visible, once hidden again past the re-arm window', () => {
+      // Notify while hidden, matching the other re-arm tests' setup.
+      const { rerender } = renderHook(({ flagged }) => useAttentionNotifications(flagged, roster, 'Midterm'), {
+        initialProps: { flagged: new Set(['a1']) },
+      });
+      expect(notificationCtor).toHaveBeenCalledTimes(1);
+
+      // Recruiter switches to looking at the page: candidate flares and settles while visible.
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+      rerender({ flagged: new Set<string>() });
+
+      act(() => {
+        jest.advanceTimersByTime(NOTIFY_REARM_MINUTES * 60_000 + 1_000);
+      });
+
+      // Recruiter switches away; the same candidate flares again -- a real, separate flare-up.
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+      rerender({ flagged: new Set(['a1']) });
+
+      expect(notificationCtor).toHaveBeenCalledTimes(2);
+    });
   });
 });

@@ -37,15 +37,21 @@ export function useAttentionNotifications(
   }, []);
 
   useEffect(() => {
+    const entries = notified.current;
+
+    // Bookkeeping: mark attempts that dropped out of `flagged` as no longer active.
+    // This must run on every evaluation regardless of tab visibility -- otherwise a
+    // flagged-to-dropped transition that happens while the tab is visible never gets
+    // recorded, and a later real flare-up (while hidden) is mistaken for a sustained
+    // burst that never re-arms.
+    for (const [attemptId, entry] of entries) {
+      if (entry.active && !flagged.has(attemptId)) entry.active = false;
+    }
+
     if (!notificationsSupported() || Notification.permission !== 'granted') return;
     if (document.visibilityState !== 'hidden') return;
 
     const now = Date.now();
-    const entries = notified.current;
-
-    for (const [attemptId, entry] of entries) {
-      if (entry.active && !flagged.has(attemptId)) entry.active = false;
-    }
 
     for (const attemptId of flagged) {
       const entry = entries.get(attemptId);
