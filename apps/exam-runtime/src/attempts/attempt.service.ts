@@ -8,7 +8,7 @@ import { CandidateSession } from '../candidate-auth/current-candidate.decorator'
 import { AnswerDto } from './dto/answer.dto';
 import { StartAttemptDto } from './dto/start-attempt.dto';
 import { getProctoringEventSeverity, isStrikeWorthy } from './proctoring-severity';
-import { resolveProctoringConfig, ExamProctoringConfig } from './proctoring-config';
+import { resolveProctoringConfig, isSignalEnabled, ExamProctoringConfig } from './proctoring-config';
 import { ReportProctoringEventDto } from './dto/report-proctoring-event.dto';
 import { shuffle } from './shuffle';
 import { effectiveDurationMinutes } from '../grading/grading';
@@ -469,6 +469,20 @@ export class AttemptService {
       const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
       if (!attempt) {
         throw new NotFoundException('No attempt has been started');
+      }
+
+      // The client is told which signals to skip, but the server cannot trust it:
+      // a stale bundle or a tampered client would otherwise still land strikes for
+      // a signal the recruiter turned off. Ignore rather than reject.
+      const proctoring = resolveProctoringConfig(exam);
+      if (!isSignalEnabled(proctoring, dto.eventType)) {
+        return {
+          id: '',
+          eventType: dto.eventType,
+          severity: 'low',
+          strike: attempt.browserActivityViolationCount,
+          status: attempt.status,
+        };
       }
 
       if (isStrikeWorthy(dto.eventType)) {

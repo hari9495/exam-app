@@ -35,7 +35,7 @@ describe('AttemptService', () => {
     webcamProctoringEnabled: true,
     proctoringEnforcement: 'block',
     proctoringStrikeLimit: 3,
-    disabledProctoringSignalsJson: null,
+    disabledProctoringSignalsJson: null as string | null,
   };
   const invitationRecord = { id: 'inv-1', candidateId: 'cand-1', examId: 'exam-1', exam, extraTimePercent: 0, candidate: { name: 'Ada Lovelace' } };
 
@@ -1579,6 +1579,48 @@ describe('AttemptService', () => {
 
         await expect(service.reportProctoringEvent(session, { eventType: 'tab_switch' })).rejects.toThrow(NotFoundException);
         expect(settlement.registerBrowserActivityViolation).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('a signal disabled for the exam', () => {
+      afterEach(() => {
+        // `exam` is shared module-level state (referenced by `invitationRecord`); reset it so
+        // later tests in this file don't inherit a disabled-signals list.
+        exam.disabledProctoringSignalsJson = null;
+      });
+
+      it('silently ignores a signal the exam has disabled -- no event row, no strike, no live flag', async () => {
+        exam.disabledProctoringSignalsJson = JSON.stringify(['right_click']);
+        const tx = {
+          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 1, status: 'in_progress' }) },
+          proctoringEvent: { create: jest.fn() },
+        };
+        mockBootstrapThenScoped(tx);
+
+        const result = await service.reportProctoringEvent(session, { eventType: 'right_click' });
+
+        expect(tx.proctoringEvent.create).not.toHaveBeenCalled();
+        expect(settlement.registerBrowserActivityViolation).not.toHaveBeenCalled();
+        expect(monitoringGateway.emitProctoringFlag).not.toHaveBeenCalled();
+        // Returns unchanged state rather than 400ing: a stale client tab must not be
+        // able to fail an exam with errors after the recruiter turns a signal off.
+        expect(result).toEqual({ id: '', eventType: 'right_click', severity: 'low', strike: 1, status: 'in_progress' });
+      });
+
+      it('still processes a signal that is not in the disabled list', async () => {
+        exam.disabledProctoringSignalsJson = JSON.stringify(['right_click']);
+        const attempt = { id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' };
+        const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
+        mockBootstrapThenScoped(tx);
+        settlement.registerBrowserActivityViolation.mockResolvedValue({
+          attempt: { ...attempt, browserActivityViolationCount: 1, status: 'paused' },
+          strike: 1,
+          event: { id: 'evt-1', eventType: 'tab_switch', severity: 'medium' },
+        });
+
+        await service.reportProctoringEvent(session, { eventType: 'tab_switch' });
+
+        expect(settlement.registerBrowserActivityViolation).toHaveBeenCalled();
       });
     });
   });
