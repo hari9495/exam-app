@@ -1,8 +1,10 @@
 import { Test } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
+import { validate } from 'class-validator';
 import { AttemptsAdminService } from './attempts-admin.service';
 import { TenantPrismaService, AuditService } from '@exam-platform/shared';
 import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
+import { BypassProctoringDto } from './dto/bypass-proctoring.dto';
 
 describe('AttemptsAdminService', () => {
   let service: AttemptsAdminService;
@@ -15,6 +17,8 @@ describe('AttemptsAdminService', () => {
     notifyMessageSent: jest.Mock;
     regenerateInsight: jest.Mock;
     generateCodeReview: jest.Mock;
+    applyProctoringBypass: jest.Mock;
+    revokeProctoringBypass: jest.Mock;
   };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
@@ -28,6 +32,8 @@ describe('AttemptsAdminService', () => {
       notifyMessageSent: jest.fn(),
       regenerateInsight: jest.fn(),
       generateCodeReview: jest.fn(),
+      applyProctoringBypass: jest.fn(),
+      revokeProctoringBypass: jest.fn(),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -336,6 +342,85 @@ describe('AttemptsAdminService', () => {
         metadata: { questionId: 'question-1' },
       });
       expect(result).toBe(review);
+    });
+  });
+
+  describe('proctoring bypass', () => {
+    it('calls the runtime with the reason and actor, then audits', async () => {
+      examRuntime.applyProctoringBypass = jest.fn().mockResolvedValue({ status: 'in_progress', proctoringBypassedAt: '2026-07-26T00:00:00.000Z' });
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) =>
+        fn({ attempt: { findFirst: jest.fn().mockResolvedValue({ id: 'a1' }) } }),
+      );
+
+      const result = await service.bypassProctoring(context, 'a1', 'user-1', 'webcam driver crashing');
+
+      expect(examRuntime.applyProctoringBypass).toHaveBeenCalledWith('a1', { reason: 'webcam driver crashing', actorUserId: 'user-1' });
+      expect(audit.record).toHaveBeenCalledWith(context, {
+        actorUserId: 'user-1',
+        action: 'attempt.proctoring_bypassed',
+        entityType: 'attempt',
+        entityId: 'a1',
+        metadata: { reason: 'webcam driver crashing' },
+      });
+      expect(result.status).toBe('in_progress');
+    });
+
+    it('trims leading/trailing whitespace from the reason before calling the runtime and auditing', async () => {
+      examRuntime.applyProctoringBypass = jest.fn().mockResolvedValue({ status: 'in_progress', proctoringBypassedAt: null });
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) =>
+        fn({ attempt: { findFirst: jest.fn().mockResolvedValue({ id: 'a1' }) } }),
+      );
+
+      await service.bypassProctoring(context, 'a1', 'user-1', '  webcam driver crashing  ');
+
+      expect(examRuntime.applyProctoringBypass).toHaveBeenCalledWith('a1', { reason: 'webcam driver crashing', actorUserId: 'user-1' });
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ metadata: { reason: 'webcam driver crashing' } }));
+    });
+
+    it('audits the revoke with its own action name', async () => {
+      examRuntime.revokeProctoringBypass = jest.fn().mockResolvedValue({ status: 'in_progress', proctoringBypassedAt: null });
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) =>
+        fn({ attempt: { findFirst: jest.fn().mockResolvedValue({ id: 'a1' }) } }),
+      );
+
+      await service.revokeProctoringBypass(context, 'a1', 'user-1');
+
+      expect(audit.record).toHaveBeenCalledWith(context, {
+        actorUserId: 'user-1',
+        action: 'attempt.proctoring_bypass_revoked',
+        entityType: 'attempt',
+        entityId: 'a1',
+      });
+    });
+
+    it('refuses an attempt outside the caller organization', async () => {
+      examRuntime.applyProctoringBypass = jest.fn();
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) =>
+        fn({ attempt: { findFirst: jest.fn().mockResolvedValue(null) } }),
+      );
+
+      await expect(service.bypassProctoring(context, 'a1', 'user-1', 'nope')).rejects.toThrow(NotFoundException);
+      expect(examRuntime.applyProctoringBypass).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('BypassProctoringDto validation', () => {
+    it('rejects a whitespace-only reason', async () => {
+      const dto = new BypassProctoringDto();
+      dto.reason = '   ';
+
+      const errors = await validate(dto);
+
+      expect(errors.length).toBeGreaterThan(0);
+    });
+
+    it('accepts a genuine reason', async () => {
+      const dto = new BypassProctoringDto();
+      dto.reason = 'webcam driver crashing';
+
+      const errors = await validate(dto);
+
+      expect(errors).toHaveLength(0);
     });
   });
 });

@@ -50,6 +50,32 @@ export class ExamRuntimeInternalClient {
     return response.json();
   }
 
+  async applyProctoringBypass(
+    attemptId: string,
+    payload: { reason: string; actorUserId: string },
+  ): Promise<{ status: string; proctoringBypassedAt: string | null }> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/attempts/${attemptId}/proctoring-bypass`, {
+      method: 'POST',
+      headers: { ...this.headers(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    await this.throwIfNotOk(response);
+    return response.json();
+  }
+
+  async revokeProctoringBypass(
+    attemptId: string,
+    payload: { actorUserId: string },
+  ): Promise<{ status: string; proctoringBypassedAt: string | null }> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/attempts/${attemptId}/proctoring-bypass/revoke`, {
+      method: 'POST',
+      headers: { ...this.headers(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    await this.throwIfNotOk(response);
+    return response.json();
+  }
+
   async gradeCodeAnswer(attemptId: string, questionId: string, payload: GradeCodeAnswerPayload): Promise<GradeCodeAnswerResult> {
     const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/attempts/${attemptId}/answers/${questionId}/grade`, {
       method: 'POST',

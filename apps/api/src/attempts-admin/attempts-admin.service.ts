@@ -51,6 +51,47 @@ export class AttemptsAdminService {
     return result;
   }
 
+  async bypassProctoring(
+    context: TenantContext,
+    attemptId: string,
+    actorUserId: string,
+    reason: string,
+  ): Promise<{ status: string; proctoringBypassedAt: string | null }> {
+    await this.requireOwnedAttempt(context, attemptId);
+
+    const trimmedReason = reason.trim();
+    const result = await this.examRuntime.applyProctoringBypass(attemptId, { reason: trimmedReason, actorUserId });
+
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'attempt.proctoring_bypassed',
+      entityType: 'attempt',
+      entityId: attemptId,
+      metadata: { reason: trimmedReason },
+    });
+
+    return result;
+  }
+
+  async revokeProctoringBypass(
+    context: TenantContext,
+    attemptId: string,
+    actorUserId: string,
+  ): Promise<{ status: string; proctoringBypassedAt: string | null }> {
+    await this.requireOwnedAttempt(context, attemptId);
+
+    const result = await this.examRuntime.revokeProctoringBypass(attemptId, { actorUserId });
+
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'attempt.proctoring_bypass_revoked',
+      entityType: 'attempt',
+      entityId: attemptId,
+    });
+
+    return result;
+  }
+
   async gradeCodeAnswer(
     context: TenantContext,
     attemptId: string,

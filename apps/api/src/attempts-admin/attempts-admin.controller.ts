@@ -8,6 +8,7 @@ import { TenantContext } from '@exam-platform/shared';
 import { AttemptsAdminService } from './attempts-admin.service';
 import { SendCandidateMessageDto } from './dto/send-candidate-message.dto';
 import { GradeCodeAnswerDto } from './dto/grade-code-answer.dto';
+import { BypassProctoringDto } from './dto/bypass-proctoring.dto';
 
 @Controller('attempts')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -30,6 +31,23 @@ export class AttemptsAdminController {
   @RequirePermissions('exam:manage')
   unblock(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
     return this.attemptsAdminService.unblock(tenant, id, userId);
+  }
+
+  @Post(':id/proctoring-bypass')
+  @RequirePermissions('exam:manage')
+  bypassProctoring(
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentUserId() userId: string,
+    @Param('id') id: string,
+    @Body() dto: BypassProctoringDto,
+  ) {
+    return this.attemptsAdminService.bypassProctoring(tenant, id, userId, dto.reason);
+  }
+
+  @Post(':id/proctoring-bypass/revoke')
+  @RequirePermissions('exam:manage')
+  revokeProctoringBypass(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.attemptsAdminService.revokeProctoringBypass(tenant, id, userId);
   }
 
   @Post(':id/answers/:questionId/grade')
