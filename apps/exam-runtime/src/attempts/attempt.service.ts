@@ -125,11 +125,29 @@ export type AttemptCurrentResponse = AttemptPreviewResponse | AttemptStateRespon
 // a client must never be able to set them itself (e.g. `metadata: { screenshot: 'https://attacker...' }`
 // with no real `screenshot` field, which would otherwise pass straight through to storage and
 // also inflate the cap count, whose SQL Server `contains` match is case-insensitive by default
-// collation). Strip case-insensitively so no casing variant slips through either.
+// collation -- and matches against the whole serialized JSON, so a key buried in a nested
+// object or array element counts too). Strip case-insensitively and recursively -- JSON from
+// the wire is only ever plain objects/arrays/primitives, so recursing into every object and
+// array element (nothing else) is exhaustive.
+const FORGED_SCREENSHOT_KEYS = new Set(['screenshot', 'screenshotcapreached']);
+
 function stripForgedScreenshotKeys(metadata?: Record<string, unknown>): Record<string, unknown> | undefined {
   if (!metadata) return metadata;
-  const forged = new Set(['screenshot', 'screenshotcapreached']);
-  return Object.fromEntries(Object.entries(metadata).filter(([key]) => !forged.has(key.toLowerCase())));
+  return sanitizeAgainstForgedScreenshotKeys(metadata) as Record<string, unknown>;
+}
+
+function sanitizeAgainstForgedScreenshotKeys(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sanitizeAgainstForgedScreenshotKeys);
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([key]) => !FORGED_SCREENSHOT_KEYS.has(key.toLowerCase()))
+        .map(([key, nested]) => [key, sanitizeAgainstForgedScreenshotKeys(nested)]),
+    );
+  }
+  return value;
 }
 
 // The blob upload runs inside the tenant-scoped interactive transaction (see

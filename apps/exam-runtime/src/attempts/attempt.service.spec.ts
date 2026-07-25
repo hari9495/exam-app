@@ -1825,6 +1825,52 @@ describe('AttemptService', () => {
           data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: 'medium', metadataJson: JSON.stringify({ note: 'legit' }) },
         });
       });
+
+      it('strips a forged screenshot key nested inside an object one level deep -- a shallow strip would leave it matchable by the cap-count query', async () => {
+        const tx = {
+          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          proctoringEvent: { create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }) },
+        };
+        mockScoped(examWithoutCapture, tx);
+
+        await service.reportProctoringEvent(session, {
+          eventType: 'looking_down',
+          metadata: { evidence: { screenshot: 'https://attacker.example/clean-desk.jpg', note: 'legit' } },
+        });
+
+        expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
+        expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+          data: {
+            attemptId: 'attempt-1',
+            eventType: 'looking_down',
+            severity: 'medium',
+            metadataJson: JSON.stringify({ evidence: { note: 'legit' } }),
+          },
+        });
+      });
+
+      it('strips a forged screenshot key nested inside an array element', async () => {
+        const tx = {
+          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          proctoringEvent: { create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }) },
+        };
+        mockScoped(examWithoutCapture, tx);
+
+        await service.reportProctoringEvent(session, {
+          eventType: 'looking_down',
+          metadata: { items: [{ screenshotCapReached: true, note: 'legit' }] },
+        });
+
+        expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
+        expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+          data: {
+            attemptId: 'attempt-1',
+            eventType: 'looking_down',
+            severity: 'medium',
+            metadataJson: JSON.stringify({ items: [{ note: 'legit' }] }),
+          },
+        });
+      });
     });
   });
 

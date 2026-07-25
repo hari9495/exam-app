@@ -8,11 +8,14 @@ import { resolveInternalBindHost } from './bootstrap-config';
 
 // Express's default 100kb JSON body limit is too small for a screen-capture violation
 // report: a candidate's screenshot rides in the same body as the event (see
-// AttemptService.reportProctoringEvent), and a real ~1280px-wide JPEG data URI alone runs
-// 100-200KB. 512kb was sized by measuring representative captures (see
-// .superpowers/sdd/scc-task-5-report.md) -- comfortable headroom over real payloads without
-// handing an unauthenticated-ish, candidate-facing endpoint an unbounded body.
-const JSON_BODY_LIMIT = '512kb';
+// AttemptService.reportProctoringEvent). This limit assumes the capture client (not yet
+// built -- a later task) meets the feature's contract: frames downscaled to <=1280px wide,
+// JPEG quality 0.5, before upload. Measuring representative captures at that spec (see
+// .superpowers/sdd/scc-task-5-report.md) put busy/colorful 1920x1080 content -- already
+// above the 1280px contract -- at ~399KB and a worst-case incompressible 1280x800 frame at
+// ~510KB, so 1mb leaves roughly 2.5x headroom over in-contract captures while staying a
+// deliberately bounded number for a candidate-facing, only-lightly-authenticated endpoint.
+const JSON_BODY_LIMIT = '1mb';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
