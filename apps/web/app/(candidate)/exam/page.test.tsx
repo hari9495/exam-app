@@ -59,7 +59,7 @@ const attemptState = {
   candidateName: 'Ada Lovelace',
   status: 'in_progress',
   remainingSeconds: 590,
-  exam: { title: 'Test Exam' },
+  exam: { title: 'Test Exam', proctoring: { webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] } },
   sections: [
     {
       title: 'Section One',
@@ -76,7 +76,7 @@ const attemptState = {
 const codeAttemptState = {
   status: 'in_progress',
   remainingSeconds: 590,
-  exam: { title: 'Test Exam' },
+  exam: { title: 'Test Exam', proctoring: { webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] } },
   sections: [
     {
       title: 'Section One',
@@ -108,7 +108,7 @@ const codeAttemptStateWithStdin = {
 const twoCodeQuestionsAttemptState = {
   status: 'in_progress',
   remainingSeconds: 590,
-  exam: { title: 'Test Exam' },
+  exam: { title: 'Test Exam', proctoring: { webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] } },
   sections: [
     {
       title: 'Section One',
