@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { detectViolationReason, detectLookingDown, ViolationReason } from '../webcam-detection';
 import { createViolationVoter } from '../webcam-voting';
 import { useReportProctoringEvent, useReportWebcamSnapshot, useReportWebcamViolation } from './useAttempt';
+import { ExamProctoringConfig } from '../types';
 
 const SAMPLE_INTERVAL_MS = 500;
 const PERIODIC_SNAPSHOT_MIN_MS = 120_000;
@@ -20,7 +21,11 @@ function captureSnapshot(video: HTMLVideoElement): string {
   return canvas.toDataURL('image/jpeg', 0.5);
 }
 
-export function useWebcamMonitor(enabled: boolean, onViolationReason?: (reason: string) => void): void {
+export function useWebcamMonitor(
+  enabled: boolean,
+  onViolationReason?: (reason: string) => void,
+  config?: ExamProctoringConfig,
+): void {
   const reportViolation = useReportWebcamViolation();
   const reportViolationRef = useRef(reportViolation.mutate);
   reportViolationRef.current = reportViolation.mutate;
@@ -36,8 +41,13 @@ export function useWebcamMonitor(enabled: boolean, onViolationReason?: (reason: 
   const onViolationRef = useRef(onViolationReason);
   onViolationRef.current = onViolationReason;
 
+  const configRef = useRef(config);
+  configRef.current = config;
+
   useEffect(() => {
-    if (!enabled) return;
+    // webcamEnabled === false must bail before setup() -- see the fail-safe below,
+    // which reports a real no_face violation if the camera cannot be acquired.
+    if (!enabled || configRef.current?.webcamEnabled === false) return;
     // E2E specs mock navigator.mediaDevices with a plain object, not a real MediaStream —
     // assigning it to video.srcObject throws, and setup()'s fail-safe below would then flag
     // a real webcam violation on every long-running spec. Playwright's init scripts set this

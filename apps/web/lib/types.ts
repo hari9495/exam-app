@@ -300,6 +300,13 @@ export interface AttemptSectionSummary {
   questionCount: number;
 }
 
+export interface ExamProctoringConfig {
+  webcamEnabled: boolean;
+  enforcement: 'warn' | 'block';
+  strikeLimit: number;
+  disabledSignals: string[];
+}
+
 export interface AttemptPreview {
   candidateName: string;
   exam: {
@@ -309,6 +316,7 @@ export interface AttemptPreview {
     schedulingEnabled: boolean;
     availabilityWindowStart: string | null;
     availabilityWindowEnd: string | null;
+    proctoring: ExamProctoringConfig;
   };
   schedulingWindowState: 'not_open' | 'open' | 'closed' | null;
   sections: AttemptSectionSummary[];
@@ -336,7 +344,7 @@ export interface AttemptState {
   remainingSeconds: number;
   webcamViolationCount: number;
   browserActivityViolationCount: number;
-  exam: { title: string };
+  exam: { title: string; proctoring: ExamProctoringConfig };
   sections: AttemptSection[];
   answers: AttemptAnswerSummary[];
   messages: AttemptMessageSummary[];

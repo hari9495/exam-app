@@ -279,4 +279,53 @@ describe('useProctoringMonitor', () => {
       expect(() => document.dispatchEvent(new Event('contextmenu'))).not.toThrow();
     });
   });
+
+  describe('per-exam signal config', () => {
+    function ConfigProbe({ enabled, config }: { enabled: boolean; config?: any }) {
+      useProctoringMonitor(enabled, undefined, config);
+      return null;
+    }
+
+    it('does not report a signal the exam has disabled', () => {
+      render(<ConfigProbe enabled={true} config={{ webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: ['right_click'] }} />);
+
+      document.dispatchEvent(new Event('contextmenu'));
+
+      expect(report).not.toHaveBeenCalledWith('right_click');
+    });
+
+    it('still reports signals that are not disabled', () => {
+      render(<ConfigProbe enabled={true} config={{ webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: ['right_click'] }} />);
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+
+      document.dispatchEvent(new Event('visibilitychange'));
+
+      expect(report).toHaveBeenCalledWith('tab_switch', undefined);
+    });
+
+    it('watches everything when no config is supplied, preserving the pre-config behaviour', () => {
+      render(<ConfigProbe enabled={true} />);
+
+      document.dispatchEvent(new Event('contextmenu'));
+
+      expect(report).toHaveBeenCalledWith('right_click');
+    });
+
+    it('picks up a config change without tearing down and re-arming the listeners', () => {
+      const { rerender } = render(
+        <ConfigProbe enabled={true} config={{ webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] }} />,
+      );
+      document.dispatchEvent(new Event('contextmenu'));
+      expect(report).toHaveBeenCalledWith('right_click');
+      report.mockClear();
+
+      // A fresh object identity each render is exactly what React Query hands us.
+      rerender(
+        <ConfigProbe enabled={true} config={{ webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: ['right_click'] }} />,
+      );
+      document.dispatchEvent(new Event('contextmenu'));
+
+      expect(report).not.toHaveBeenCalledWith('right_click');
+    });
+  });
 });

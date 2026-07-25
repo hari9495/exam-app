@@ -1,25 +1,40 @@
 import { useEffect, useRef } from 'react';
 import { useReportProctoringEvent } from './useAttempt';
-import { ProctoringEventType } from '../types';
+import { ProctoringEventType, ExamProctoringConfig } from '../types';
 
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const DEVTOOLS_POLL_MS = 2000;
 const DEVTOOLS_SIZE_THRESHOLD = 160;
 const TAB_SWITCH_DEBOUNCE_MS = 5000;
 
-export function useProctoringMonitor(enabled: boolean, onViolation?: (eventType: ProctoringEventType) => void): void {
+export function useProctoringMonitor(
+  enabled: boolean,
+  onViolation?: (eventType: ProctoringEventType) => void,
+  config?: ExamProctoringConfig,
+): void {
   const report = useReportProctoringEvent();
   const reportRef = useRef(report);
   reportRef.current = report;
   const onViolationRef = useRef(onViolation);
   onViolationRef.current = onViolation;
+  // Mirrored through a ref, not the effect's dep array: React Query hands us a new
+  // object identity on every refetch (every 3-30s), and widening the deps would
+  // tear down and re-arm every listener on that cadence.
+  const configRef = useRef(config);
+  configRef.current = config;
   const debounceTimers = useRef<Partial<Record<ProctoringEventType, ReturnType<typeof setTimeout>>>>({});
   const idleTimer = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
     if (!enabled) return;
 
+    function isSignalEnabled(eventType: ProctoringEventType): boolean {
+      const disabled = configRef.current?.disabledSignals;
+      return !disabled || !disabled.includes(eventType);
+    }
+
     function reportAndNotify(eventType: ProctoringEventType, metadata?: Record<string, unknown>) {
+      if (!isSignalEnabled(eventType)) return;
       if (metadata !== undefined) {
         reportRef.current(eventType, metadata);
       } else {
@@ -29,6 +44,7 @@ export function useProctoringMonitor(enabled: boolean, onViolation?: (eventType:
     }
 
     function debouncedReport(eventType: ProctoringEventType, windowMs: number, metadata?: Record<string, unknown>) {
+      if (!isSignalEnabled(eventType)) return;
       if (debounceTimers.current[eventType]) return;
       reportRef.current(eventType, metadata);
       onViolationRef.current?.(eventType);

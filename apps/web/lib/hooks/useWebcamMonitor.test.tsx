@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import * as useAttemptModule from './useAttempt';
 import { useWebcamMonitor } from './useWebcamMonitor';
 
@@ -175,5 +175,23 @@ describe('useWebcamMonitor', () => {
       (process.env as { NODE_ENV: string }).NODE_ENV = originalNodeEnv as string;
       delete (window as unknown as { __DISABLE_WEBCAM_MONITOR__?: boolean }).__DISABLE_WEBCAM_MONITOR__;
     }
+  });
+
+  it('never touches the camera when the exam has webcam proctoring turned off', async () => {
+    function ConfigProbe() {
+      useWebcamMonitor(true, undefined, { webcamEnabled: false, enforcement: 'block', strikeLimit: 3, disabledSignals: [] });
+      return null;
+    }
+
+    render(<ConfigProbe />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Must short-circuit before setup(): the hook's fail-safe reports a real
+    // no_face violation on camera failure, so relying on getUserMedia failing
+    // would generate violations for an exam that opted out of webcam entirely.
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+    expect(mutate).not.toHaveBeenCalled();
   });
 });
