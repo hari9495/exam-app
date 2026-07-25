@@ -1,5 +1,5 @@
 import { CLIENT_REPORTABLE_EVENT_TYPES, getProctoringEventSeverity, isStrikeWorthy } from './proctoring-severity';
-import { TOGGLEABLE_PROCTORING_SIGNALS } from '../../../api/dist/exams/dto/create-exam.dto';
+import { TOGGLEABLE_PROCTORING_SIGNALS } from '../../../api/src/exams/dto/create-exam.dto';
 
 describe('CLIENT_REPORTABLE_EVENT_TYPES', () => {
   it('does not include multi_login (system-generated only)', () => {
@@ -106,8 +106,12 @@ describe('isStrikeWorthy', () => {
       expect(isStrikeWorthy(eventType)).toBe(false);
     },
   );
+});
 
-  it('verifies TOGGLEABLE_PROCTORING_SIGNALS still has exactly 8 entries', () => {
+describe('TOGGLEABLE_PROCTORING_SIGNALS', () => {
+  it('still has exactly 8 entries: adding screen_share_started/stopped must not widen it', () => {
     expect(TOGGLEABLE_PROCTORING_SIGNALS).toHaveLength(8);
+    expect(TOGGLEABLE_PROCTORING_SIGNALS).not.toContain('screen_share_started');
+    expect(TOGGLEABLE_PROCTORING_SIGNALS).not.toContain('screen_share_stopped');
   });
 });
