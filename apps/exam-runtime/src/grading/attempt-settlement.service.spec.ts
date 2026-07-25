@@ -1050,5 +1050,37 @@ describe('AttemptSettlementService', () => {
       expect(call.data.pausedAt).toBeNull();
       expect(call.data.pausedDurationMs).toBeGreaterThanOrEqual(5_000 + 9_000); // >= previous 5s + ~10s just elapsed, with slack
     });
+
+    it('leaves the violation counters alone on a candidate self-resume, so strikes cannot be farmed', async () => {
+      const tx = { attempt: { update: jest.fn() } } as any;
+      tx.attempt.update.mockResolvedValue({ id: 'a1', examId: 'exam-1', status: 'in_progress' });
+
+      await service.resumeFromPause(tx, {
+        id: 'a1', examId: 'exam-1', candidateId: 'c1', pausedAt: new Date(), pausedDurationMs: 0,
+        webcamViolationCount: 2, browserActivityViolationCount: 1,
+      } as never);
+
+      const data = tx.attempt.update.mock.calls[0][0].data;
+      expect(data).not.toHaveProperty('webcamViolationCount');
+      expect(data).not.toHaveProperty('browserActivityViolationCount');
+    });
+
+    it('zeroes both counters when a recruiter unblocks, so the candidate gets a real second chance', async () => {
+      const tx = { attempt: { update: jest.fn() } } as any;
+      tx.attempt.update.mockResolvedValue({ id: 'a1', examId: 'exam-1', status: 'in_progress' });
+
+      await service.resumeFromPause(
+        tx,
+        {
+          id: 'a1', examId: 'exam-1', candidateId: 'c1', pausedAt: new Date(), pausedDurationMs: 0,
+          webcamViolationCount: 3, browserActivityViolationCount: 3,
+        } as never,
+        { resetViolationCounters: true },
+      );
+
+      const data = tx.attempt.update.mock.calls[0][0].data;
+      expect(data.webcamViolationCount).toBe(0);
+      expect(data.browserActivityViolationCount).toBe(0);
+    });
   });
 });

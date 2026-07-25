@@ -321,11 +321,22 @@ export class AttemptSettlementService {
     return { attempt: updated, strike, event };
   }
 
-  async resumeFromPause(tx: Prisma.TransactionClient, attempt: Attempt): Promise<Attempt> {
+  async resumeFromPause(
+    tx: Prisma.TransactionClient,
+    attempt: Attempt,
+    options: { resetViolationCounters?: boolean } = {},
+  ): Promise<Attempt> {
     const elapsedMs = attempt.pausedAt ? Date.now() - attempt.pausedAt.getTime() : 0;
     const updated = await tx.attempt.update({
       where: { id: attempt.id },
-      data: { status: 'in_progress', pausedAt: null, pausedDurationMs: attempt.pausedDurationMs + elapsedMs },
+      data: {
+        status: 'in_progress',
+        pausedAt: null,
+        pausedDurationMs: attempt.pausedDurationMs + elapsedMs,
+        // Only a recruiter unblock clears the slate. Doing this on the candidate's
+        // own webcam self-resume would let them trip the same rule forever.
+        ...(options.resetViolationCounters ? { webcamViolationCount: 0, browserActivityViolationCount: 0 } : {}),
+      },
     });
     void this.broadcaster
       .emitAttemptStatus(attempt.examId, { attemptId: updated.id, candidateId: attempt.candidateId, status: updated.status })

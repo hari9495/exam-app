@@ -93,6 +93,20 @@ describe('InternalController', () => {
 
       expect(result).toEqual({ status: 'in_progress' });
     });
+
+    it('asks for the violation counters to be reset, so the next event does not immediately re-block', async () => {
+      const attempt = { id: 'a1', status: 'blocked' };
+      tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn({ attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } }));
+      attemptSettlement.resumeFromPause.mockResolvedValue({ ...attempt, status: 'in_progress' });
+
+      await controller.unblock('a1');
+
+      expect(attemptSettlement.resumeFromPause).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ id: 'a1' }),
+        { resetViolationCounters: true },
+      );
+    });
   });
 
   describe('gradeCodeAnswer', () => {

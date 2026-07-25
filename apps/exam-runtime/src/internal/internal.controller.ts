@@ -56,7 +56,7 @@ export class InternalController {
       if (attempt.status !== 'blocked') {
         throw new BadRequestException(`Attempt ${id} cannot be unblocked from status "${attempt.status}"`);
       }
-      return this.attemptSettlement.resumeFromPause(tx, attempt);
+      return this.attemptSettlement.resumeFromPause(tx, attempt, { resetViolationCounters: true });
     });
     return { status: updated.status };
   }
