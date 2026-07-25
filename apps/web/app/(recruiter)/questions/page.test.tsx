@@ -1,4 +1,5 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import QuestionsPage from './page';
 import { AuthProvider } from '../../../lib/auth-context';
 import { QueryProvider } from '../../../lib/query-provider';
@@ -205,5 +206,125 @@ describe('QuestionsPage', () => {
     await waitFor(() =>
       expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/questions') && String(call[0]).includes('search=onboarding'))).toBe(true),
     );
+  });
+
+  describe('preview and grouping', () => {
+    const QUESTIONS = [
+      {
+        id: 'q-1',
+        type: 'single_mcq',
+        text: 'Two numbers are in the ratio 4:5. If their LCM is 140, what is the sum?',
+        topic: 'Ratios',
+        category: 'Aptitude',
+        difficulty: 'hard',
+        marks: 2,
+        negativeMarks: 0,
+        status: 'active',
+        aiGenerated: false,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        options: [
+          { id: 'o1', text: '45', isCorrect: false, imageUrl: null },
+          { id: 'o2', text: '63', isCorrect: true, imageUrl: null },
+        ],
+        tags: [{ id: 't1', name: 'Arithmetic' }],
+      },
+      {
+        id: 'q-2',
+        type: 'single_mcq',
+        text: 'If 20% of a number is 50, what is 35% of that number?',
+        topic: 'Percentages',
+        category: 'Aptitude',
+        difficulty: 'easy',
+        marks: 1,
+        negativeMarks: 0,
+        status: 'active',
+        aiGenerated: false,
+        createdAt: '2026-01-02T00:00:00.000Z',
+        options: [{ id: 'o3', text: '87.5', isCorrect: true, imageUrl: null }],
+        tags: [],
+      },
+    ];
+
+    function mockQuestions() {
+      global.fetch = jest.fn(async (url) => {
+        if (String(url).endsWith('/auth/refresh')) {
+          return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        }
+        if (String(url).includes('/questions')) {
+          return new Response(JSON.stringify({ data: QUESTIONS, total: 2, page: 1, pageSize: 20, totalPages: 1 }), { status: 200 });
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      }) as unknown as typeof fetch;
+    }
+
+    function renderPage() {
+      render(
+        <QueryProvider>
+          <ToastProvider>
+            <AuthProvider>
+              <QuestionsPage />
+            </AuthProvider>
+          </ToastProvider>
+        </QueryProvider>,
+      );
+    }
+
+    it('shows the candidate-style answer options inline, without opening the editor', async () => {
+      mockQuestions();
+      renderPage();
+
+      await waitFor(() => expect(screen.getByText('A. 45')).toBeInTheDocument());
+      expect(screen.getByText('B. 63')).toBeInTheDocument();
+      expect(screen.getAllByLabelText('Correct answer').length).toBeGreaterThan(0);
+    });
+
+    it('groups questions under topic headings with per-group counts when Topic is picked', async () => {
+      mockQuestions();
+      renderPage();
+      await waitFor(() => expect(screen.getByText('A. 45')).toBeInTheDocument());
+
+      await userEvent.click(screen.getByRole('combobox', { name: 'Group by' }));
+      await userEvent.click(screen.getByRole('option', { name: 'Topic' }));
+
+      expect(screen.getByRole('heading', { name: 'Percentages' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Ratios' })).toBeInTheDocument();
+      expect(screen.getByText('1 question · 2 marks')).toBeInTheDocument();
+    });
+
+    it('orders difficulty groups easy to hard rather than alphabetically', async () => {
+      mockQuestions();
+      renderPage();
+      await waitFor(() => expect(screen.getByText('A. 45')).toBeInTheDocument());
+
+      await userEvent.click(screen.getByRole('combobox', { name: 'Group by' }));
+      await userEvent.click(screen.getByRole('option', { name: 'Difficulty' }));
+
+      const headings = screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent);
+      expect(headings).toEqual(['Easy', 'Hard']);
+    });
+
+    it('groups untagged questions into a trailing no-tags heading', async () => {
+      mockQuestions();
+      renderPage();
+      await waitFor(() => expect(screen.getByText('A. 45')).toBeInTheDocument());
+
+      await userEvent.click(screen.getByRole('combobox', { name: 'Group by' }));
+      await userEvent.click(screen.getByRole('option', { name: 'Tag' }));
+
+      const headings = screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent);
+      expect(headings).toEqual(['Arithmetic', 'No tags']);
+    });
+
+    it('hides the sort control while grouped, since grouping replaces flat ordering', async () => {
+      mockQuestions();
+      renderPage();
+      await waitFor(() => expect(screen.getByRole('combobox', { name: 'Sort by' })).toBeInTheDocument());
+
+      await userEvent.click(screen.getByRole('combobox', { name: 'Group by' }));
+      await userEvent.click(screen.getByRole('option', { name: 'Category' }));
+
+      expect(screen.queryByRole('combobox', { name: 'Sort by' })).not.toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Aptitude' })).toBeInTheDocument();
+    });
   });
 });

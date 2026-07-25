@@ -4,22 +4,10 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { Plus, Search } from 'lucide-react';
 import { useQuestions } from '../../../lib/hooks/useQuestions';
-import { CardGrid, StatusBadge, Button, Pagination, type StatusTone, type SortOption } from '../../../components/ui';
-import { Question, QuestionType, Difficulty } from '../../../lib/types';
-
-const TYPE_TONE: Record<QuestionType, StatusTone> = {
-  single_mcq: 'info',
-  multi_mcq: 'info',
-  true_false: 'info',
-  code: 'purple',
-};
-
-const TYPE_LABEL: Record<QuestionType, string> = {
-  single_mcq: 'MCQ',
-  multi_mcq: 'MCQ',
-  true_false: 'True/False',
-  code: 'Code',
-};
+import { CardGrid, Select, Button, Pagination, type SortOption } from '../../../components/ui';
+import { QuestionPreviewCard } from '../../../components/QuestionPreviewCard';
+import { groupQuestions, type GroupBy } from '../../../lib/question-grouping';
+import { Question, Difficulty } from '../../../lib/types';
 
 const DIFFICULTY_LEVEL: Record<Difficulty, number> = { easy: 1, medium: 2, hard: 3 };
 
@@ -29,42 +17,21 @@ const QUESTION_SORT_OPTIONS: SortOption<Question>[] = [
   { key: 'marks', label: 'Marks', sortValue: (q) => q.marks },
 ];
 
-function DifficultyDots({ difficulty }: { difficulty: Difficulty }) {
-  const level = DIFFICULTY_LEVEL[difficulty];
-  return (
-    <div className="flex gap-0.5" aria-label={`Difficulty: ${difficulty}`}>
-      {[1, 2, 3].map((dot) => (
-        <span key={dot} className={dot <= level ? 'h-1.5 w-1.5 rounded-full bg-primary' : 'h-1.5 w-1.5 rounded-full bg-recruiter-border'} />
-      ))}
-    </div>
-  );
-}
+const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
+  { value: 'none', label: 'No grouping' },
+  { value: 'topic', label: 'Topic' },
+  { value: 'category', label: 'Category' },
+  { value: 'difficulty', label: 'Difficulty' },
+  { value: 'tag', label: 'Tag' },
+];
+
+const CARD_SHELL = 'group rounded-2xl border border-recruiter-border bg-white p-4 shadow-sm transition-shadow hover:shadow-md';
 
 export default function QuestionsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [groupBy, setGroupBy] = useState<GroupBy>('none');
   const { data: questions, isLoading, isError } = useQuestions({ page, pageSize: 20, search: search || undefined });
-
-  function renderCard(q: Question) {
-    return (
-      <div>
-        <p className="mb-2.5 font-semibold text-recruiter-text">{q.text}</p>
-        <div className="flex items-center justify-between border-t border-recruiter-border pt-2.5 text-xs">
-          <div className="flex items-center gap-2">
-            <StatusBadge tone={TYPE_TONE[q.type]}>{TYPE_LABEL[q.type]}</StatusBadge>
-            <DifficultyDots difficulty={q.difficulty} />
-            <span className="text-recruiter-text-tertiary">{q.marks} marks</span>
-          </div>
-          <Link
-            href={`/questions/${q.id}/edit`}
-            className="font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-          >
-            Edit
-          </Link>
-        </div>
-      </div>
-    );
-  }
 
   if (isLoading) {
     return (
@@ -86,6 +53,9 @@ export default function QuestionsPage() {
     );
   }
 
+  const rows = questions?.data ?? [];
+  const groups = groupBy === 'none' ? [] : groupQuestions(rows, groupBy);
+
   return (
     <div>
       <div className="mb-4.5 flex items-center justify-between">
@@ -102,7 +72,7 @@ export default function QuestionsPage() {
           </Link>
         </div>
       </div>
-      <div className="mb-3 flex items-center gap-2">
+      <div className="mb-3 flex items-end gap-2">
         <div className="relative max-w-xs flex-1">
           <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-recruiter-text-tertiary" />
           <input
@@ -117,14 +87,45 @@ export default function QuestionsPage() {
             className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
           />
         </div>
+        <Select label="Group by" value={groupBy} onChange={(value) => setGroupBy(value as GroupBy)} options={GROUP_BY_OPTIONS} />
       </div>
-      <CardGrid
-        items={questions?.data ?? []}
-        cardKey={(q) => q.id}
-        renderCard={renderCard}
-        emptyMessage="No questions yet."
-        sortOptions={QUESTION_SORT_OPTIONS}
-      />
+
+      {groupBy === 'none' ? (
+        <CardGrid
+          items={rows}
+          cardKey={(q) => q.id}
+          renderCard={(q) => <QuestionPreviewCard question={q} />}
+          emptyMessage="No questions yet."
+          sortOptions={QUESTION_SORT_OPTIONS}
+        />
+      ) : rows.length === 0 ? (
+        <p className="py-8 text-center text-sm text-recruiter-text-tertiary">No questions yet.</p>
+      ) : (
+        <div className="flex flex-col gap-6">
+          {groups.map((group) => {
+            const totalMarks = group.questions.reduce((sum, question) => sum + (question.marks ?? 0), 0);
+            return (
+              <section key={group.label}>
+                <div className="mb-2.5 flex flex-wrap items-baseline gap-2 border-b border-recruiter-border pb-1.5">
+                  <h2 className="text-sm font-semibold text-recruiter-text">{group.label}</h2>
+                  <span className="text-xs text-recruiter-text-tertiary">
+                    {group.questions.length} {group.questions.length === 1 ? 'question' : 'questions'} · {totalMarks}{' '}
+                    {totalMarks === 1 ? 'mark' : 'marks'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {group.questions.map((question) => (
+                    <div key={question.id} className={CARD_SHELL}>
+                      <QuestionPreviewCard question={question} />
+                    </div>
+                  ))}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
+
       <Pagination page={questions?.page ?? 1} totalPages={questions?.totalPages ?? 1} onPageChange={setPage} />
     </div>
   );
