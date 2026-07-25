@@ -32,8 +32,19 @@ export default function EditExamPage() {
     const id = setInterval(() => setTick((value) => value + 1), 15_000);
     return () => clearInterval(id);
   }, []);
+  // A recruiter who relaxes proctoring has already acted on this candidate. The bypass
+  // suppresses enforcement, not recording, so events keep arriving -- without this the
+  // row would show "Proctoring relaxed" and "Needs attention" side by side for the rest
+  // of the exam and keep re-notifying about the one candidate already dealt with.
+  // Nothing is remembered: revoking the bypass makes the attempt flaggable again.
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `tick` is otherwise unused but is what drives decay of the flag over time
-  const flagged = useMemo(() => flaggedAttemptIds(monitoring.alerts, Date.now()), [monitoring.alerts, tick]);
+  const flagged = useMemo(() => {
+    const ids = flaggedAttemptIds(monitoring.alerts, Date.now());
+    for (const row of monitoring.roster) {
+      if (row.attemptId && row.proctoringBypassed) ids.delete(row.attemptId);
+    }
+    return ids;
+  }, [monitoring.alerts, monitoring.roster, tick]);
 
   const candidateNames = useMemo(
     () => new Map(monitoring.roster.filter((row) => row.attemptId).map((row) => [row.attemptId as string, row.candidateName])),
