@@ -60,3 +60,40 @@ describe('isSignalEnabled', () => {
     expect(isSignalEnabled(config, 'dev_tools_detected')).toBe(true);
   });
 });
+
+describe('proctoring bypass', () => {
+  const blockingExam = {
+    webcamProctoringEnabled: true,
+    proctoringEnforcement: 'block',
+    proctoringStrikeLimit: 5,
+    disabledProctoringSignalsJson: JSON.stringify(['right_click']),
+  };
+
+  it('forces warn enforcement when the attempt is bypassed', () => {
+    const config = resolveProctoringConfig(blockingExam, { proctoringBypassedAt: new Date() });
+
+    expect(config.enforcement).toBe('warn');
+  });
+
+  it('leaves every other setting untouched when bypassed', () => {
+    const config = resolveProctoringConfig(blockingExam, { proctoringBypassedAt: new Date() });
+
+    expect(config.webcamEnabled).toBe(true);
+    expect(config.strikeLimit).toBe(5);
+    expect(config.disabledSignals).toEqual(['right_click']);
+  });
+
+  it('enforces normally when the attempt is not bypassed', () => {
+    expect(resolveProctoringConfig(blockingExam, { proctoringBypassedAt: null }).enforcement).toBe('block');
+  });
+
+  it('enforces normally when no attempt is supplied at all', () => {
+    expect(resolveProctoringConfig(blockingExam).enforcement).toBe('block');
+  });
+
+  it('is a no-op on an exam already configured as warn-only', () => {
+    const warnExam = { ...blockingExam, proctoringEnforcement: 'warn' };
+
+    expect(resolveProctoringConfig(warnExam, { proctoringBypassedAt: new Date() }).enforcement).toBe('warn');
+  });
+});
