@@ -315,16 +315,60 @@ describe('QuestionsPage', () => {
       expect(headings).toEqual(['Arithmetic', 'No tags']);
     });
 
-    it('hides the sort control while grouped, since grouping replaces flat ordering', async () => {
+    it('keeps the sort control available while grouped, so rows sort within each group', async () => {
       mockQuestions();
       renderPage();
-      await waitFor(() => expect(screen.getByRole('combobox', { name: 'Sort by' })).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText('A. 45')).toBeInTheDocument());
 
       await userEvent.click(screen.getByRole('combobox', { name: 'Group by' }));
       await userEvent.click(screen.getByRole('option', { name: 'Category' }));
 
-      expect(screen.queryByRole('combobox', { name: 'Sort by' })).not.toBeInTheDocument();
       expect(screen.getByRole('heading', { name: 'Aptitude' })).toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: 'Sort by' })).toBeInTheDocument();
+    });
+
+    it('switches to the dense list view and expands a row to reveal its options', async () => {
+      mockQuestions();
+      renderPage();
+      await waitFor(() => expect(screen.getByText('A. 45')).toBeInTheDocument());
+
+      await userEvent.click(screen.getByRole('button', { name: /^List$/ }));
+
+      // Collapsed list rows show the question text but not the answer options.
+      expect(screen.queryByText('A. 45')).not.toBeInTheDocument();
+      const rowToggles = screen.getAllByRole('button', { expanded: false });
+      await userEvent.click(rowToggles[0]);
+
+      expect(screen.getByText('A. 45')).toBeInTheDocument();
+      expect(screen.getByLabelText('Correct answer')).toBeInTheDocument();
+    });
+
+    it('marks the active view in the cards/list toggle', async () => {
+      mockQuestions();
+      renderPage();
+      await waitFor(() => expect(screen.getByText('A. 45')).toBeInTheDocument());
+
+      expect(screen.getByRole('button', { name: /^Cards$/, pressed: true })).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: /^List$/ }));
+
+      expect(screen.getByRole('button', { name: /^List$/, pressed: true })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^Cards$/, pressed: false })).toBeInTheDocument();
+    });
+
+    it('applies the chosen sort order to the list view as well as cards', async () => {
+      mockQuestions();
+      renderPage();
+      await waitFor(() => expect(screen.getByText('A. 45')).toBeInTheDocument());
+
+      await userEvent.click(screen.getByRole('button', { name: /^List$/ }));
+      await userEvent.click(screen.getByRole('combobox', { name: 'Sort by' }));
+      await userEvent.click(screen.getByRole('option', { name: 'Marks' }));
+
+      // q-2 carries 1 mark and q-1 carries 2, so ascending marks puts q-2 first.
+      const texts = screen.getAllByRole('button', { expanded: false }).map((button) => button.textContent);
+      expect(texts[0]).toContain('If 20% of a number is 50');
+      expect(texts[1]).toContain('Two numbers are in the ratio 4:5');
     });
   });
 });
