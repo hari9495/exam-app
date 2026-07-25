@@ -73,7 +73,7 @@ describe('MonitoringService', () => {
             { id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' }, extraTimePercent: 0, attempt },
           ]),
         },
-        answer: { count: jest.fn().mockResolvedValue(2) },
+        answer: { groupBy: jest.fn().mockResolvedValue([{ attemptId: 'attempt-1', _count: { _all: 2 } }]) },
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
@@ -97,7 +97,7 @@ describe('MonitoringService', () => {
             },
           ]),
         },
-        answer: { count: jest.fn().mockResolvedValue(0) },
+        answer: { groupBy: jest.fn().mockResolvedValue([]) },
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
@@ -120,7 +120,7 @@ describe('MonitoringService', () => {
             { id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' }, attempt },
           ]),
         },
-        answer: { count: jest.fn().mockResolvedValue(1) },
+        answer: { groupBy: jest.fn().mockResolvedValue([{ attemptId: 'attempt-1', _count: { _all: 1 } }]) },
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
@@ -162,7 +162,7 @@ describe('MonitoringService', () => {
             },
           ]),
         },
-        answer: { count: jest.fn().mockResolvedValue(0) },
+        answer: { groupBy: jest.fn().mockResolvedValue([]) },
       };
       tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
 
@@ -173,6 +173,33 @@ describe('MonitoringService', () => {
       expect(rows[2].proctoringBypassed).toBe(false);
       // A revoked bypass is history, not current state -- the badge must clear.
       expect(rows[3].proctoringBypassed).toBe(false);
+    });
+
+    it('counts answers for the whole roster in one grouped query, not one per attempt', async () => {
+      // The presence tick re-runs this snapshot every 15s per open exam page, so an
+      // N+1 here scales with exam size and never stops.
+      const invitations = Array.from({ length: 20 }, (_, i) => ({
+        id: `inv-${i}`, candidateId: `cand-${i}`, status: 'invited', candidate: { name: `Cand ${i}` }, extraTimePercent: 0,
+        attempt: {
+          id: `attempt-${i}`, status: 'in_progress', startedAt: new Date(), lastSeenAt: new Date(),
+          questionOrderJson: '["q1","q2"]',
+        },
+      }));
+      const groupBy = jest.fn().mockResolvedValue([{ attemptId: 'attempt-3', _count: { _all: 2 } }]);
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue(exam) },
+        invitation: { findMany: jest.fn().mockResolvedValue(invitations) },
+        answer: { groupBy },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
+
+      const rows = await service.getRosterSnapshot(context, 'exam-1');
+
+      expect(groupBy).toHaveBeenCalledTimes(1);
+      expect(groupBy.mock.calls[0][0].where).toEqual({ attemptId: { in: invitations.map((i) => i.attempt.id) } });
+      // Meaning preserved: each row still reports its own answered count, zero included.
+      expect(rows[3].answeredCount).toBe(2);
+      expect(rows[0].answeredCount).toBe(0);
     });
   });
 

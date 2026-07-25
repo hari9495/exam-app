@@ -53,6 +53,22 @@ export class MonitoringService {
         orderBy: [{ invitedAt: 'desc' }, { id: 'desc' }],
       });
 
+      // One grouped count for the whole roster instead of one count() per invitation:
+      // the presence tick re-runs this snapshot every 15s for every open exam page, so
+      // the N+1 cost 200 candidates once meant ~800 count queries a minute, forever.
+      const attemptIds = invitations.map((invitation) => invitation.attempt?.id).filter((id): id is string => !!id);
+      const answeredCounts = new Map<string, number>();
+      if (attemptIds.length > 0) {
+        const grouped = await tx.answer.groupBy({
+          by: ['attemptId'],
+          where: { attemptId: { in: attemptIds } },
+          _count: { _all: true },
+        });
+        for (const group of grouped) {
+          answeredCounts.set(group.attemptId, group._count._all);
+        }
+      }
+
       const rows: RosterRow[] = [];
       for (const invitation of invitations) {
         const attempt = invitation.attempt;
@@ -62,7 +78,8 @@ export class MonitoringService {
 
         if (attempt) {
           totalQuestions = (JSON.parse(attempt.questionOrderJson) as string[]).length;
-          answeredCount = await tx.answer.count({ where: { attemptId: attempt.id } });
+          // Absent from the grouped result means zero answers -- groupBy returns no row.
+          answeredCount = answeredCounts.get(attempt.id) ?? 0;
           if (attempt.status === 'in_progress') {
             remainingSeconds = computeRemainingSeconds(
               effectiveDurationMinutes(exam.durationMinutes, invitation.extraTimePercent),
