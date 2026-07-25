@@ -2104,6 +2104,52 @@ describe('AttemptService', () => {
       expect(result).toEqual({ status: 'in_progress' });
     });
 
+    it('does not resume a blocked attempt on active:true -- still records screen_share_started, but stays blocked', async () => {
+      const attempt = { id: 'attempt-1', status: 'blocked', screenShareStartedAt: null };
+      const startedAttempt = { ...attempt, screenShareStartedAt: new Date('2026-07-26T00:00:00Z') };
+      const tx = {
+        attempt: {
+          findUnique: jest.fn().mockResolvedValue(attempt),
+          update: jest.fn().mockResolvedValue(startedAttempt),
+        },
+        proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
+      };
+      mockScoped(examWithScreenCapture, tx);
+
+      const result = await service.screenShareState(session, { active: true, displaySurface: 'monitor', userAgent: 'Mozilla' });
+
+      expect(tx.attempt.update).toHaveBeenCalledWith({ where: { id: 'attempt-1' }, data: { screenShareStartedAt: expect.any(Date) } });
+      expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+        data: {
+          attemptId: 'attempt-1',
+          eventType: 'screen_share_started',
+          severity: getProctoringEventSeverity('screen_share_started'),
+          metadataJson: JSON.stringify({ displaySurface: 'monitor', userAgent: 'Mozilla' }),
+        },
+      });
+      expect(settlement.resumeFromPause).not.toHaveBeenCalled();
+      expect(result).toEqual({ status: 'blocked' });
+    });
+
+    it('leaves an in_progress attempt in_progress on active:true -- resume only applies from paused, no spurious side effects', async () => {
+      const attempt = { id: 'attempt-1', status: 'in_progress', screenShareStartedAt: null };
+      const startedAttempt = { ...attempt, screenShareStartedAt: new Date('2026-07-26T00:00:00Z') };
+      const tx = {
+        attempt: {
+          findUnique: jest.fn().mockResolvedValue(attempt),
+          update: jest.fn().mockResolvedValue(startedAttempt),
+        },
+        proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
+      };
+      mockScoped(examWithScreenCapture, tx);
+
+      const result = await service.screenShareState(session, { active: true });
+
+      expect(settlement.resumeFromPause).not.toHaveBeenCalled();
+      expect(monitoringGateway.emitAttemptStatus).not.toHaveBeenCalled();
+      expect(result).toEqual({ status: 'in_progress' });
+    });
+
     it('is idempotent across repeated active:true calls -- second call does not re-write the timestamp or double-record the event', async () => {
       const initialAttempt = { id: 'attempt-1', status: 'paused', screenShareStartedAt: null };
       const startedAttempt = { ...initialAttempt, screenShareStartedAt: new Date('2026-07-26T00:00:00Z') };

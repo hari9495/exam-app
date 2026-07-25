@@ -629,6 +629,12 @@ export class AttemptService {
             },
           });
         }
+        // Mirror of the active:false pause rule: resume only lifts a `paused` attempt.
+        // A `blocked` (or any other non-paused) attempt must not be handed a way to
+        // un-block itself by stopping and restarting its share.
+        if (current.status !== 'paused') {
+          return { status: current.status };
+        }
         // Meeting a precondition is not a recruiter pardon: resume without resetting counters.
         const resumed = await this.attemptSettlement.resumeFromPause(tx, current);
         return { status: resumed.status };
