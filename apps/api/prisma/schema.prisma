@@ -268,6 +268,7 @@ model Exam {
   proctoringEnforcement   String        @default("block") @map("proctoring_enforcement")
   proctoringStrikeLimit   Int           @default(3) @map("proctoring_strike_limit")
   disabledProctoringSignalsJson String? @map("disabled_proctoring_signals_json") @db.NVarChar(Max)
+  screenCaptureEnabled          Boolean             @default(false) @map("screen_capture_enabled")
   createdBy               String        @map("created_by") @db.UniqueIdentifier
   createdAt               DateTime      @default(now()) @map("created_at")
   sections                ExamSection[]
@@ -383,6 +384,7 @@ model Attempt {
   pausedAt                      DateTime?           @map("paused_at")
   pausedDurationMs              Int                 @default(0) @map("paused_duration_ms")
   consentAt                     DateTime?           @map("consent_at")
+  screenShareStartedAt          DateTime?           @map("screen_share_started_at")
   proctoringBypassedAt          DateTime?           @map("proctoring_bypassed_at")
   proctoringBypassedBy          String?             @map("proctoring_bypassed_by") @db.UniqueIdentifier
   proctoringBypassReason        String?             @map("proctoring_bypass_reason")
