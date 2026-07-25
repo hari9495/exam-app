@@ -121,6 +121,33 @@ interface AttemptStateResponse {
 
 export type AttemptCurrentResponse = AttemptPreviewResponse | AttemptStateResponse;
 
+// `screenshot`/`screenshotCapReached` are server-authoritative outcomes of the upload below --
+// a client must never be able to set them itself (e.g. `metadata: { screenshot: 'https://attacker...' }`
+// with no real `screenshot` field, which would otherwise pass straight through to storage and
+// also inflate the cap count, whose SQL Server `contains` match is case-insensitive by default
+// collation). Strip case-insensitively so no casing variant slips through either.
+function stripForgedScreenshotKeys(metadata?: Record<string, unknown>): Record<string, unknown> | undefined {
+  if (!metadata) return metadata;
+  const forged = new Set(['screenshot', 'screenshotcapreached']);
+  return Object.fromEntries(Object.entries(metadata).filter(([key]) => !forged.has(key.toLowerCase())));
+}
+
+// The blob upload runs inside the tenant-scoped interactive transaction (see
+// TenantPrismaService.forTenant), which has Prisma's default 5s timeout. A slow-but-eventually-
+// successful upload wouldn't throw on its own, so without a bound the transaction would already
+// be closed by the time we tried to write the event -- an uncaught "Transaction already closed"
+// that 500s and loses the violation, which is exactly what the catch below exists to prevent.
+// This timeout forces a slow upload to fail fast enough to still land in that catch.
+const SCREENSHOT_UPLOAD_TIMEOUT_MS = 3000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer!: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 @Injectable()
 export class AttemptService {
   private readonly logger = new Logger(AttemptService.name);
@@ -488,10 +515,12 @@ export class AttemptService {
 
       // Screenshots are server-authoritative, same as the signal guard above: a disabled
       // capture is ignored, not rejected, so a stale/tampered client can't force an upload
-      // the recruiter turned off. `metadata` only diverges from `dto.metadata` when a
-      // screenshot is actually being handled -- otherwise it stays `dto.metadata` (including
-      // `undefined`) so callers below see no behavior change.
-      let metadata = dto.metadata;
+      // the recruiter turned off. Strip any client-forged `screenshot`/`screenshotCapReached`
+      // key first -- those are only ever meant to be set below, by us. `metadata` only
+      // diverges further from the sanitized `dto.metadata` when a screenshot is actually being
+      // handled -- otherwise it stays as-is (including `undefined`) so callers below see no
+      // behavior change.
+      let metadata = stripForgedScreenshotKeys(dto.metadata);
       if (dto.screenshot && proctoring.screenCaptureEnabled) {
         // Match the JSON key, not the bare word: `screenshotCapReached` also contains the
         // substring "screenshot", and would otherwise inflate this count once the cap is hit.
@@ -502,7 +531,10 @@ export class AttemptService {
           metadata = { ...metadata, screenshotCapReached: true };
         } else {
           try {
-            const screenshotUrl = await this.blobStorage.uploadDataUri(`screen-captures/${attempt.id}-${Date.now()}.jpg`, dto.screenshot);
+            const screenshotUrl = await withTimeout(
+              this.blobStorage.uploadDataUri(`screen-captures/${attempt.id}-${Date.now()}.jpg`, dto.screenshot),
+              SCREENSHOT_UPLOAD_TIMEOUT_MS,
+            );
             metadata = { ...metadata, screenshot: screenshotUrl };
           } catch (error) {
             // The violation record is what matters -- losing the image is acceptable, losing

@@ -1739,6 +1739,7 @@ describe('AttemptService', () => {
           },
         };
         mockScoped(examWithCapture, tx);
+        const loggerErrorSpy = jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
         blobStorage.uploadDataUri.mockRejectedValueOnce(new Error('blob storage unavailable'));
 
         const result = await service.reportProctoringEvent(session, { eventType: 'looking_down', screenshot: 'data:image/jpeg;base64,abc' });
@@ -1747,6 +1748,82 @@ describe('AttemptService', () => {
           data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: 'medium', metadataJson: null },
         });
         expect(result.id).toBe('evt-1');
+        expect(loggerErrorSpy).toHaveBeenCalledWith('Failed to upload screen capture', expect.any(Error));
+      });
+
+      it('records the violation without an image when the upload does not resolve within the bound (guards the transaction timeout)', async () => {
+        jest.useFakeTimers();
+        try {
+          const tx = {
+            attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+            proctoringEvent: {
+              create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }),
+              count: jest.fn().mockResolvedValue(0),
+            },
+          };
+          mockScoped(examWithCapture, tx);
+          const loggerErrorSpy = jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
+          // Never resolves -- simulates a blob upload that outlives the bound.
+          blobStorage.uploadDataUri.mockReturnValueOnce(new Promise(() => {}));
+
+          const resultPromise = service.reportProctoringEvent(session, {
+            eventType: 'looking_down',
+            screenshot: 'data:image/jpeg;base64,abc',
+          });
+          await jest.advanceTimersByTimeAsync(3000);
+          const result = await resultPromise;
+
+          expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+            data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: 'medium', metadataJson: null },
+          });
+          expect(result.id).toBe('evt-1');
+          expect(loggerErrorSpy).toHaveBeenCalledWith('Failed to upload screen capture', expect.any(Error));
+        } finally {
+          jest.useRealTimers();
+        }
+      });
+
+      it('threads an uploaded screenshot url into metadata for a strike-worthy event via registerBrowserActivityViolation', async () => {
+        const attempt = { id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' };
+        const tx = {
+          attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+          proctoringEvent: { count: jest.fn().mockResolvedValue(0) },
+        };
+        mockScoped(examWithCapture, tx);
+        settlement.registerBrowserActivityViolation.mockResolvedValue({
+          attempt: { ...attempt, browserActivityViolationCount: 1, status: 'paused' },
+          strike: 1,
+          event: { id: 'evt-1', eventType: 'tab_switch', severity: 'medium' },
+        });
+
+        await service.reportProctoringEvent(session, { eventType: 'tab_switch', screenshot: 'data:image/jpeg;base64,abc' });
+
+        const uploadedUrl = await blobStorage.uploadDataUri.mock.results[0].value;
+        expect(settlement.registerBrowserActivityViolation).toHaveBeenCalledWith(
+          tx,
+          examWithCapture,
+          attempt,
+          'tab_switch',
+          { screenshot: uploadedUrl },
+        );
+      });
+
+      it('strips a client-forged screenshot/screenshotCapReached metadata key (case-insensitively) even when capture is off and no real screenshot is sent', async () => {
+        const tx = {
+          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          proctoringEvent: { create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }) },
+        };
+        mockScoped(examWithoutCapture, tx);
+
+        await service.reportProctoringEvent(session, {
+          eventType: 'looking_down',
+          metadata: { screenshot: 'https://attacker.example/clean-desk.jpg', SCREENSHOTCAPREACHED: true, note: 'legit' },
+        });
+
+        expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
+        expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+          data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: 'medium', metadataJson: JSON.stringify({ note: 'legit' }) },
+        });
       });
     });
   });
