@@ -8,6 +8,7 @@ import { IntegrityAnalysisService } from '../integrity/integrity-analysis.servic
 import { WebcamViolationReason } from '../attempts/dto/webcam-violation.dto';
 import { ApiInternalClient } from '../api-internal-client/api-internal.client';
 import { getProctoringEventSeverity } from '../attempts/proctoring-severity';
+import { resolveProctoringConfig } from '../attempts/proctoring-config';
 
 const BROWSER_ACTIVITY_COOLDOWN_MS = 60_000;
 
@@ -16,6 +17,10 @@ export interface SettlementExam {
   organizationId: string;
   durationMinutes: number;
   passCriteriaPercent: number;
+  webcamProctoringEnabled: boolean;
+  proctoringEnforcement: string;
+  proctoringStrikeLimit: number;
+  disabledProctoringSignalsJson: string | null;
 }
 
 @Injectable()
@@ -236,11 +241,14 @@ export class AttemptSettlementService {
 
   async registerWebcamViolation(
     tx: Prisma.TransactionClient,
+    exam: SettlementExam,
     attempt: Attempt,
     reason: WebcamViolationReason,
     snapshot: string,
   ): Promise<{ attempt: Attempt; strike: number }> {
+    const { enforcement, strikeLimit } = resolveProctoringConfig(exam);
     const strike = attempt.webcamViolationCount + 1;
+    const atLimit = strike >= strikeLimit;
     const eventType =
       reason === 'no_face' ? 'webcam_no_face'
       : reason === 'multiple_faces' ? 'webcam_multiple_faces'
@@ -249,14 +257,19 @@ export class AttemptSettlementService {
       data: {
         attemptId: attempt.id,
         eventType,
-        severity: strike >= 3 ? 'high' : 'medium',
+        severity: atLimit ? 'high' : 'medium',
         metadataJson: JSON.stringify({ snapshot, strike }),
       },
     });
-    const status = strike >= 3 ? 'blocked' : 'paused';
+    // Warn-only records and counts but never interrupts the candidate.
+    const status = enforcement === 'warn' ? attempt.status : atLimit ? 'blocked' : 'paused';
     const updated = await tx.attempt.update({
       where: { id: attempt.id },
-      data: { webcamViolationCount: strike, status, pausedAt: new Date() },
+      data: {
+        webcamViolationCount: strike,
+        status,
+        pausedAt: enforcement === 'warn' ? null : new Date(),
+      },
     });
     void this.broadcaster
       .emitAttemptStatus(attempt.examId, { attemptId: updated.id, candidateId: attempt.candidateId, status: updated.status })
@@ -266,6 +279,7 @@ export class AttemptSettlementService {
 
   async registerBrowserActivityViolation(
     tx: Prisma.TransactionClient,
+    exam: SettlementExam,
     attempt: Attempt,
     eventType: string,
     metadata?: Record<string, unknown>,
@@ -290,11 +304,16 @@ export class AttemptSettlementService {
       return { attempt, strike: attempt.browserActivityViolationCount, event };
     }
 
+    const { enforcement, strikeLimit } = resolveProctoringConfig(exam);
     const strike = attempt.browserActivityViolationCount + 1;
-    const status = strike >= 3 ? 'blocked' : 'paused';
+    const status = enforcement === 'warn' ? attempt.status : strike >= strikeLimit ? 'blocked' : 'paused';
     const updated = await tx.attempt.update({
       where: { id: attempt.id },
-      data: { browserActivityViolationCount: strike, status, pausedAt: new Date() },
+      data: {
+        browserActivityViolationCount: strike,
+        status,
+        pausedAt: enforcement === 'warn' ? null : new Date(),
+      },
     });
     void this.broadcaster
       .emitAttemptStatus(attempt.examId, { attemptId: updated.id, candidateId: attempt.candidateId, status: updated.status })

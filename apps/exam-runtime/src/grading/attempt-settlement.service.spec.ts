@@ -14,7 +14,16 @@ describe('AttemptSettlementService', () => {
   let attemptInsight: { analyze: jest.Mock };
   let integrityAnalysis: { analyze: jest.Mock };
   let apiInternalClient: { dispatchWebhook: jest.Mock };
-  const exam = { id: 'exam-1', organizationId: 'org-1', durationMinutes: 30, passCriteriaPercent: 50 };
+  const exam = {
+    id: 'exam-1',
+    organizationId: 'org-1',
+    durationMinutes: 30,
+    passCriteriaPercent: 50,
+    webcamProctoringEnabled: true,
+    proctoringEnforcement: 'block',
+    proctoringStrikeLimit: 3,
+    disabledProctoringSignalsJson: null,
+  };
 
   beforeEach(() => {
     broadcaster = { emitAttemptStatus: jest.fn().mockResolvedValue(undefined), emitMessageSent: jest.fn().mockResolvedValue(undefined) };
@@ -759,7 +768,7 @@ describe('AttemptSettlementService', () => {
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, status: 'paused', webcamViolationCount: 1 }) },
       } as any;
 
-      const { attempt: updated, strike } = await service.registerWebcamViolation(tx, attempt, 'no_face', 'data:image/jpeg;base64,abc');
+      const { attempt: updated, strike } = await service.registerWebcamViolation(tx, exam, attempt, 'no_face', 'data:image/jpeg;base64,abc');
 
       expect(strike).toBe(1);
       expect(updated.status).toBe('paused');
@@ -779,7 +788,7 @@ describe('AttemptSettlementService', () => {
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, status: 'blocked', webcamViolationCount: 3 }) },
       } as any;
 
-      const { attempt: updated, strike } = await service.registerWebcamViolation(tx, attempt, 'head_turned', 'snap');
+      const { attempt: updated, strike } = await service.registerWebcamViolation(tx, exam, attempt, 'head_turned', 'snap');
 
       expect(strike).toBe(3);
       expect(updated.status).toBe('blocked');
@@ -794,7 +803,7 @@ describe('AttemptSettlementService', () => {
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, status: 'paused', webcamViolationCount: 1 }) },
       } as any;
 
-      await service.registerWebcamViolation(tx, attempt, 'multiple_faces', 'snap');
+      await service.registerWebcamViolation(tx, exam, attempt, 'multiple_faces', 'snap');
 
       expect(tx.proctoringEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: 'webcam_multiple_faces' }) }));
     });
@@ -811,7 +820,7 @@ describe('AttemptSettlementService', () => {
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, browserActivityViolationCount: 1, status: 'paused' }) },
       } as any;
 
-      const { attempt: updated, strike, event } = await service.registerBrowserActivityViolation(tx, attempt, 'tab_switch');
+      const { attempt: updated, strike, event } = await service.registerBrowserActivityViolation(tx, exam, attempt, 'tab_switch');
 
       expect(strike).toBe(1);
       expect(updated.status).toBe('paused');
@@ -835,7 +844,7 @@ describe('AttemptSettlementService', () => {
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, browserActivityViolationCount: 3, status: 'blocked' }) },
       } as any;
 
-      const { strike, attempt: updated } = await service.registerBrowserActivityViolation(tx, attempt, 'right_click');
+      const { strike, attempt: updated } = await service.registerBrowserActivityViolation(tx, exam, attempt, 'right_click');
 
       expect(strike).toBe(3);
       expect(updated.status).toBe('blocked');
@@ -849,7 +858,7 @@ describe('AttemptSettlementService', () => {
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, browserActivityViolationCount: 1, status: 'paused' }) },
       } as any;
 
-      await service.registerBrowserActivityViolation(tx, attempt, 'window_blur', { durationMs: 3000 });
+      await service.registerBrowserActivityViolation(tx, exam, attempt, 'window_blur', { durationMs: 3000 });
 
       expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
         data: { attemptId: 'attempt-1', eventType: 'window_blur', severity: 'medium', metadataJson: JSON.stringify({ durationMs: 3000 }) },
@@ -866,7 +875,7 @@ describe('AttemptSettlementService', () => {
         attempt: { update: jest.fn() },
       } as any;
 
-      const { strike, attempt: updated, event } = await service.registerBrowserActivityViolation(tx, attempt, 'dev_tools_detected');
+      const { strike, attempt: updated, event } = await service.registerBrowserActivityViolation(tx, exam, attempt, 'dev_tools_detected');
 
       expect(strike).toBe(1); // unchanged -- this is the same ongoing incident, not a new strike
       expect(updated).toBe(attempt);
@@ -885,7 +894,7 @@ describe('AttemptSettlementService', () => {
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, browserActivityViolationCount: 2, status: 'paused' }) },
       } as any;
 
-      const { strike } = await service.registerBrowserActivityViolation(tx, attempt, 'dev_tools_detected');
+      const { strike } = await service.registerBrowserActivityViolation(tx, exam, attempt, 'dev_tools_detected');
 
       expect(strike).toBe(2);
       expect(tx.attempt.update).toHaveBeenCalled();
@@ -898,7 +907,7 @@ describe('AttemptSettlementService', () => {
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, browserActivityViolationCount: 1, status: 'paused' }) },
       } as any;
 
-      await service.registerBrowserActivityViolation(tx, attempt, 'copy_paste');
+      await service.registerBrowserActivityViolation(tx, exam, attempt, 'copy_paste');
 
       expect(tx.proctoringEvent.findFirst).toHaveBeenCalledWith({
         where: { attemptId: 'attempt-1', eventType: 'copy_paste', occurredAt: { gt: expect.any(Date) } },
@@ -913,12 +922,116 @@ describe('AttemptSettlementService', () => {
         attempt: { update: jest.fn() },
       } as any;
 
-      const { attempt: updated, strike } = await service.registerBrowserActivityViolation(tx, attempt, 'right_click');
+      const { attempt: updated, strike } = await service.registerBrowserActivityViolation(tx, exam, attempt, 'right_click');
 
       expect(strike).toBe(3);
       expect(updated).toBe(attempt);
       expect(tx.attempt.update).not.toHaveBeenCalled();
       expect(tx.proctoringEvent.create).toHaveBeenCalled(); // still logged for the audit trail
+    });
+  });
+
+  describe('configurable strike limit and warn-only enforcement', () => {
+    let tx: any;
+
+    beforeEach(() => {
+      tx = {
+        proctoringEvent: { findFirst: jest.fn(), create: jest.fn().mockResolvedValue({}) },
+        attempt: { update: jest.fn() },
+      };
+    });
+
+    const strictExam = {
+      id: 'exam-1',
+      organizationId: 'org-1',
+      durationMinutes: 60,
+      passCriteriaPercent: 40,
+      webcamProctoringEnabled: true,
+      proctoringEnforcement: 'block',
+      proctoringStrikeLimit: 2,
+      disabledProctoringSignalsJson: null,
+    };
+    const warnExam = { ...strictExam, proctoringEnforcement: 'warn', proctoringStrikeLimit: 3 };
+
+    it('blocks a browser-activity violation at the exam configured limit of 2 rather than the old hardcoded 3', async () => {
+      tx.proctoringEvent.findFirst.mockResolvedValue(null);
+      tx.attempt.update.mockResolvedValue({ id: 'a1', examId: 'exam-1', status: 'blocked' });
+
+      const { strike } = await service.registerBrowserActivityViolation(
+        tx,
+        strictExam,
+        { id: 'a1', examId: 'exam-1', candidateId: 'c1', status: 'in_progress', browserActivityViolationCount: 1, pausedDurationMs: 0 } as never,
+        'tab_switch',
+      );
+
+      expect(strike).toBe(2);
+      expect(tx.attempt.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'blocked' }) }));
+    });
+
+    it('still only pauses at the first strike when the limit is 2', async () => {
+      tx.proctoringEvent.findFirst.mockResolvedValue(null);
+      tx.attempt.update.mockResolvedValue({ id: 'a1', examId: 'exam-1', status: 'paused' });
+
+      await service.registerBrowserActivityViolation(
+        tx,
+        strictExam,
+        { id: 'a1', examId: 'exam-1', candidateId: 'c1', status: 'in_progress', browserActivityViolationCount: 0, pausedDurationMs: 0 } as never,
+        'tab_switch',
+      );
+
+      expect(tx.attempt.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'paused' }) }));
+    });
+
+    it('records and counts but never pauses in warn-only mode, so the candidate is not interrupted', async () => {
+      tx.proctoringEvent.findFirst.mockResolvedValue(null);
+      tx.attempt.update.mockResolvedValue({ id: 'a1', examId: 'exam-1', status: 'in_progress' });
+
+      const { strike } = await service.registerBrowserActivityViolation(
+        tx,
+        warnExam,
+        { id: 'a1', examId: 'exam-1', candidateId: 'c1', status: 'in_progress', browserActivityViolationCount: 5, pausedDurationMs: 0 } as never,
+        'tab_switch',
+      );
+
+      expect(tx.proctoringEvent.create).toHaveBeenCalled();
+      expect(strike).toBe(6);
+      const data = tx.attempt.update.mock.calls[0][0].data;
+      expect(data.browserActivityViolationCount).toBe(6);
+      expect(data.status).toBe('in_progress');
+      expect(data.pausedAt).toBeNull();
+    });
+
+    it('blocks a webcam violation at the configured limit and marks it high severity there', async () => {
+      tx.attempt.update.mockResolvedValue({ id: 'a1', examId: 'exam-1', status: 'blocked' });
+
+      await service.registerWebcamViolation(
+        tx,
+        strictExam,
+        { id: 'a1', examId: 'exam-1', candidateId: 'c1', webcamViolationCount: 1, pausedDurationMs: 0 } as never,
+        'no_face',
+        'https://blob/snap.jpg',
+      );
+
+      expect(tx.proctoringEvent.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ severity: 'high' }) }),
+      );
+      expect(tx.attempt.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'blocked' }) }));
+    });
+
+    it('never pauses a webcam violation in warn-only mode', async () => {
+      tx.attempt.update.mockResolvedValue({ id: 'a1', examId: 'exam-1', status: 'in_progress' });
+
+      await service.registerWebcamViolation(
+        tx,
+        warnExam,
+        { id: 'a1', examId: 'exam-1', candidateId: 'c1', status: 'in_progress', webcamViolationCount: 0, pausedDurationMs: 0 } as never,
+        'no_face',
+        'https://blob/snap.jpg',
+      );
+
+      const data = tx.attempt.update.mock.calls[0][0].data;
+      expect(data.status).toBe('in_progress');
+      expect(data.pausedAt).toBeNull();
     });
   });
 

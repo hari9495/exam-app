@@ -1537,7 +1537,7 @@ describe('AttemptService', () => {
 
         const result = await service.reportProctoringEvent(session, { eventType: 'tab_switch' });
 
-        expect(settlement.registerBrowserActivityViolation).toHaveBeenCalledWith(tx, attempt, 'tab_switch', undefined);
+        expect(settlement.registerBrowserActivityViolation).toHaveBeenCalledWith(tx, exam, attempt, 'tab_switch', undefined);
         expect(result).toEqual({ id: 'evt-1', eventType: 'tab_switch', severity: 'medium', strike: 1, status: 'paused' });
       });
 
@@ -1553,7 +1553,7 @@ describe('AttemptService', () => {
 
         await service.reportProctoringEvent(session, { eventType: 'window_blur', metadata: { durationMs: 3000 } });
 
-        expect(settlement.registerBrowserActivityViolation).toHaveBeenCalledWith(tx, attempt, 'window_blur', { durationMs: 3000 });
+        expect(settlement.registerBrowserActivityViolation).toHaveBeenCalledWith(tx, exam, attempt, 'window_blur', { durationMs: 3000 });
       });
 
       it('emits proctoring:flag with the event returned by registerBrowserActivityViolation', async () => {
@@ -1790,7 +1790,7 @@ describe('AttemptService', () => {
       expect(result).toEqual({ strike: 1, status: 'paused' });
       expect(blobStorage.uploadDataUri).toHaveBeenCalledWith(expect.stringContaining('webcam-snapshots/attempt-1-'), 'x');
       const uploadedUrl = await blobStorage.uploadDataUri.mock.results[0].value;
-      expect(settlement.registerWebcamViolation).toHaveBeenCalledWith(tx, attempt, 'no_face', uploadedUrl);
+      expect(settlement.registerWebcamViolation).toHaveBeenCalledWith(tx, exam, attempt, 'no_face', uploadedUrl);
     });
   });
 

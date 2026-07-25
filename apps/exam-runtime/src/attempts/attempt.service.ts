@@ -488,6 +488,7 @@ export class AttemptService {
       if (isStrikeWorthy(dto.eventType)) {
         const { attempt: updated, strike, event } = await this.attemptSettlement.registerBrowserActivityViolation(
           tx,
+          exam,
           attempt,
           dto.eventType,
           dto.metadata,
@@ -528,7 +529,7 @@ export class AttemptService {
   }
 
   async webcamViolation(session: CandidateSession, dto: WebcamViolationDto): Promise<{ strike: number; status: string }> {
-    const { organizationId, invitation } = await this.resolveContext(session.invitationId);
+    const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
 
     return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
       const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
@@ -539,7 +540,7 @@ export class AttemptService {
         throw new BadRequestException(`Cannot report a webcam violation — attempt status is "${attempt.status}"`);
       }
       const snapshotUrl = await this.blobStorage.uploadDataUri(`webcam-snapshots/${attempt.id}-${Date.now()}.jpg`, dto.snapshot);
-      const { attempt: updated, strike } = await this.attemptSettlement.registerWebcamViolation(tx, attempt, dto.reason, snapshotUrl);
+      const { attempt: updated, strike } = await this.attemptSettlement.registerWebcamViolation(tx, exam, attempt, dto.reason, snapshotUrl);
       return { strike, status: updated.status };
     });
   }
