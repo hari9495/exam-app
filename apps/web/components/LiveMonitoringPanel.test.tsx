@@ -395,4 +395,40 @@ describe('LiveMonitoringPanel', () => {
       expect(screen.queryByText('Needs attention')).not.toBeInTheDocument();
     });
   });
+
+  describe('alert feed size', () => {
+    // The feed is no longer capped exam-wide (age + per-attempt retention can hold
+    // thousands), so the sidebar must cap what it renders while counts stay accurate.
+    function manyAlerts(attemptId: string, count: number, secondsAgoStart = 0) {
+      return Array.from({ length: count }, (_, i) => ({
+        attemptId, candidateId: 'c1', eventType: 'tab_switch', severity: 'medium',
+        occurredAt: new Date(Date.now() - (secondsAgoStart + i) * 1000).toISOString(),
+      }));
+    }
+
+    it('renders at most 50 alerts in the sidebar even when the feed holds far more', () => {
+      renderPanelWithRoster(
+        [{ candidateId: 'c1', candidateName: 'Ann', invitationId: 'i1', attemptId: 'a1', status: 'in_progress',
+           online: true, remainingSeconds: 600, answeredCount: 1, totalQuestions: 5, proctoringBypassed: false }],
+        manyAlerts('a1', 200),
+      );
+
+      expect(screen.getAllByText('tab_switch')).toHaveLength(50);
+    });
+
+    it("still reports a candidate's true alert count in the per-row column past the sidebar's 50-item limit", async () => {
+      const alerts = [
+        ...manyAlerts('a1', 60), // within the "last 5 min" tile window
+        ...manyAlerts('a1', 10, 400), // outside it, but still counted in the per-row total
+      ];
+      renderPanelWithRoster(
+        [{ candidateId: 'c1', candidateName: 'Ann', invitationId: 'i1', attemptId: 'a1', status: 'in_progress',
+           online: true, remainingSeconds: 600, answeredCount: 1, totalQuestions: 5, proctoringBypassed: false }],
+        alerts,
+      );
+
+      expect(await screen.findByText('60')).toBeInTheDocument(); // Alerts (last 5 min) tile
+      expect(await screen.findByText('70')).toBeInTheDocument(); // Integrity alerts column: the true total, not truncated to 50
+    });
+  });
 });

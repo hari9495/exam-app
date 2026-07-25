@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useUnblockAttempt, useBypassProctoring, useRevokeProctoringBypass } from '../lib/hooks/useAttemptModeration';
 import { useProctoringEvents } from '../lib/hooks/useProctoringEvents';
 import { Table, Badge, Card, Modal, useToast, type Column } from './ui';
@@ -16,6 +16,11 @@ const STATUS_VARIANT: Record<string, 'default' | 'success' | 'warning' | 'danger
 };
 
 const RECENT_ALERT_WINDOW_MS = 5 * 60 * 1000;
+
+// The alerts feed is no longer capped exam-wide (retention is age + per-attempt based,
+// so it can hold thousands). The sidebar only ever needs to show the newest handful --
+// counts and the flagged set still read the full array below.
+const SIDEBAR_ALERT_LIMIT = 50;
 
 // The server only accepts a proctoring bypass apply/revoke from these three statuses;
 // offering the buttons on a settled attempt turns a deliberate 400 into what reads as
@@ -171,6 +176,17 @@ export function LiveMonitoringPanel({
   const submittedCount = roster.filter((row) => row.status === 'submitted' || row.status === 'auto_submitted' || row.status === 'force_submitted').length;
   const recentAlertsCount = alerts.filter((alert) => Date.now() - new Date(alert.occurredAt).getTime() <= RECENT_ALERT_WINDOW_MS).length;
 
+  // Single pass over the full alert array per render instead of a filter per roster row
+  // (was O(roster x alerts) -- thousands of alerts x hundreds of rows on every socket event).
+  const mediumOrHighCountByAttempt = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const alert of alerts) {
+      if (alert.severity !== 'medium' && alert.severity !== 'high') continue;
+      counts.set(alert.attemptId, (counts.get(alert.attemptId) ?? 0) + 1);
+    }
+    return counts;
+  }, [alerts]);
+
   const rosterColumns: Column<RosterRow>[] = [
     { key: 'name', header: 'Candidate', render: (row) => row.candidateName, sortValue: (row) => row.candidateName },
     {
@@ -195,9 +211,7 @@ export function LiveMonitoringPanel({
       key: 'integrityAlerts',
       header: 'Integrity alerts',
       render: (row) => {
-        const count = alerts.filter(
-          (alert) => alert.attemptId === row.attemptId && (alert.severity === 'medium' || alert.severity === 'high'),
-        ).length;
+        const count = (row.attemptId && mediumOrHighCountByAttempt.get(row.attemptId)) || 0;
         return count > 0 ? <Badge variant="danger">{count}</Badge> : <span className="text-gray-400">0</span>;
       },
     },
@@ -303,7 +317,7 @@ export function LiveMonitoringPanel({
               <p className="text-sm text-gray-500">No proctoring alerts yet.</p>
             ) : (
               <ul className="flex flex-col gap-2">
-                {alerts.map((alert, index) => {
+                {alerts.slice(0, SIDEBAR_ALERT_LIMIT).map((alert, index) => {
                   const candidate = roster.find((row) => row.attemptId === alert.attemptId);
                   return (
                     <li key={`${alert.attemptId}-${alert.occurredAt}-${index}`} className="rounded border border-gray-200 p-2 text-sm">
