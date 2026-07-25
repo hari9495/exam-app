@@ -28,15 +28,29 @@ export function useScreenCapture(
 
   const streamRef = useRef<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const trackRef = useRef<MediaStreamTrack | null>(null);
+  const endedHandlerRef = useRef<(() => void) | null>(null);
   const lastCaptureAtRef = useRef(0);
   const captureCountRef = useRef(0);
 
-  const stopStream = useCallback(() => {
+  // Shared by stopStream (an active share ending) and unmount cleanup (no state
+  // update needed there) -- removes the 'ended' listener before stopping tracks so
+  // a browser-initiated 'ended' racing teardown can't fire into a torn-down hook.
+  const releaseCurrent = useCallback(() => {
+    if (trackRef.current && endedHandlerRef.current) {
+      trackRef.current.removeEventListener('ended', endedHandlerRef.current);
+    }
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     videoRef.current = null;
-    setActive(false);
+    trackRef.current = null;
+    endedHandlerRef.current = null;
   }, []);
+
+  const stopStream = useCallback(() => {
+    releaseCurrent();
+    setActive(false);
+  }, [releaseCurrent]);
 
   // The exam turning screen-capture off mid-attempt (or the enclosing feature being
   // disabled) must release the share, not just skip future requestShare() calls.
@@ -45,11 +59,8 @@ export function useScreenCapture(
   }, [enabled, stopStream]);
 
   useEffect(() => {
-    return () => {
-      streamRef.current?.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    };
-  }, []);
+    return () => releaseCurrent();
+  }, [releaseCurrent]);
 
   const requestShare = useCallback(async (): Promise<{ displaySurface?: string; userAgent: string } | null> => {
     if (!enabled) return null;
@@ -57,6 +68,11 @@ export function useScreenCapture(
       setError('unsupported');
       return null;
     }
+
+    // A re-share while one is already active (re-sharing after a surface change, or
+    // a double-clicked share button) must not orphan the previous stream -- release
+    // it up front rather than overwriting the refs that track it.
+    stopStream();
 
     let stream: MediaStream;
     try {
@@ -77,19 +93,33 @@ export function useScreenCapture(
       return null;
     }
 
-    track?.addEventListener('ended', () => {
-      stopStream();
-      onEndedRef.current();
-    });
-
     const video = document.createElement('video');
     video.muted = true;
     video.playsInline = true;
     video.srcObject = stream;
-    await video.play();
+    try {
+      await video.play();
+    } catch {
+      // Safari/low-power-mode play() rejection: the stream is otherwise unreachable
+      // by every teardown path (it was never assigned to streamRef), so it must be
+      // stopped here rather than leaking a live share the candidate never sees used.
+      stream.getTracks().forEach((t) => t.stop());
+      setError('denied');
+      return null;
+    }
+
+    const handleEnded = () => {
+      stopStream();
+      onEndedRef.current();
+    };
+    track?.addEventListener('ended', handleEnded);
 
     streamRef.current = stream;
     videoRef.current = video;
+    trackRef.current = track ?? null;
+    endedHandlerRef.current = handleEnded;
+    // A fresh re-share deliberately gets a new 150-capture allowance -- the server's
+    // hard cap is the real enforcement, this counter is just client-side politeness.
     lastCaptureAtRef.current = 0;
     captureCountRef.current = 0;
     setError(null);

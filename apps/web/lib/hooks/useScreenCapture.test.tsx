@@ -7,18 +7,21 @@ const mockDrawImage = jest.fn();
 const mockToDataURL = jest.fn().mockReturnValue('data:image/jpeg;base64,stub');
 
 function makeTrack(settings: { displaySurface?: string } = {}) {
+  const listeners = {} as Record<string, () => void>;
   return {
     stop: jest.fn(),
     getSettings: jest.fn().mockReturnValue(settings),
-    addEventListener: jest.fn(),
-    listeners: {} as Record<string, () => void>,
+    addEventListener: jest.fn((event: string, handler: () => void) => {
+      listeners[event] = handler;
+    }),
+    removeEventListener: jest.fn((event: string) => {
+      delete listeners[event];
+    }),
+    listeners,
   };
 }
 
 function makeStream(track: ReturnType<typeof makeTrack>) {
-  track.addEventListener.mockImplementation((event: string, handler: () => void) => {
-    track.listeners[event] = handler;
-  });
   return {
     getVideoTracks: () => [track],
     getTracks: () => [track], // a real MediaStream's getTracks() includes its video track(s)
@@ -141,6 +144,55 @@ describe('useScreenCapture', () => {
     expect(mockToDataURL).not.toHaveBeenCalled();
   });
 
+  it('releases a previously active share before starting a new request, so a later wrong-surface leaves nothing orphaned', async () => {
+    const firstTrack = makeTrack({ displaySurface: 'monitor' });
+    const firstStream = makeStream(firstTrack);
+    const secondTrack = makeTrack({ displaySurface: 'browser' });
+    const secondStream = makeStream(secondTrack);
+    const getDisplayMedia = jest.fn().mockResolvedValueOnce(firstStream).mockResolvedValueOnce(secondStream);
+    Object.defineProperty(global.navigator, 'mediaDevices', { value: { getDisplayMedia }, configurable: true });
+
+    const { result } = renderHook(() => useScreenCapture(true, jest.fn()));
+    await act(async () => {
+      await result.current.requestShare();
+    });
+    expect(result.current.active).toBe(true);
+
+    let outcome;
+    await act(async () => {
+      outcome = await result.current.requestShare();
+    });
+
+    expect(outcome).toBeNull();
+    expect(result.current.error).toBe('wrong-surface');
+    expect(result.current.active).toBe(false);
+    // The first (now orphaned) share's tracks must be stopped too, not just the
+    // rejected second one -- otherwise the browser's sharing indicator stays on.
+    expect(firstTrack.stop).toHaveBeenCalled();
+    expect(secondTrack.stop).toHaveBeenCalled();
+  });
+
+  it('stops the stream and sets denied when video.play() rejects', async () => {
+    const track = makeTrack({ displaySurface: 'monitor' });
+    const stream = makeStream(track);
+    Object.defineProperty(global.navigator, 'mediaDevices', {
+      value: { getDisplayMedia: jest.fn().mockResolvedValue(stream) },
+      configurable: true,
+    });
+    HTMLMediaElement.prototype.play = jest.fn().mockRejectedValue(new DOMException('aborted', 'AbortError'));
+
+    const { result } = renderHook(() => useScreenCapture(true, jest.fn()));
+    let outcome;
+    await act(async () => {
+      outcome = await result.current.requestShare();
+    });
+
+    expect(outcome).toBeNull();
+    expect(result.current.error).toBe('denied');
+    expect(result.current.active).toBe(false);
+    expect(track.stop).toHaveBeenCalled(); // otherwise unreachable by every teardown path
+  });
+
   describe('with an active monitor share', () => {
     async function setupActiveShare(onEnded: () => void) {
       const track = makeTrack({ displaySurface: 'monitor' });
@@ -150,11 +202,12 @@ describe('useScreenCapture', () => {
         configurable: true,
       });
 
-      const { result } = renderHook(() => useScreenCapture(true, onEnded));
+      const rendered = renderHook(() => useScreenCapture(true, onEnded));
+      const { result } = rendered;
       await act(async () => {
         await result.current.requestShare();
       });
-      return { result, track };
+      return { result, track, unmount: rendered.unmount };
     }
 
     it('rate-limits to one capture per 5s', async () => {
@@ -197,6 +250,26 @@ describe('useScreenCapture', () => {
 
       expect(onEnded).toHaveBeenCalledTimes(1);
       expect(result.current.active).toBe(false);
+    });
+
+    it('downscales the frame to at most 1280px wide and encodes at quality 0.5', async () => {
+      // Fixture source is 1920x1080 (see beforeEach) -- server's 1mb body limit is
+      // sized against exactly this contract, so the scale math and quality are
+      // asserted directly rather than just checking capture() returns non-null.
+      const { result } = await setupActiveShare(jest.fn());
+
+      result.current.capture();
+
+      expect(mockDrawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 1280, 720);
+      expect(mockToDataURL).toHaveBeenCalledWith('image/jpeg', 0.5);
+    });
+
+    it('stops all tracks on unmount', async () => {
+      const { track, unmount } = await setupActiveShare(jest.fn());
+
+      unmount();
+
+      expect(track.stop).toHaveBeenCalled();
     });
   });
 });
