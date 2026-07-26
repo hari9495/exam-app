@@ -762,6 +762,16 @@ describe('CandidateExamPage', () => {
       expect(screen.getByText(/choose your entire screen, not a single tab or window/i)).toBeInTheDocument();
     });
 
+    it('tells a blocked candidate to contact their recruiter instead of a dead-end retry, when sharing is unavailable', () => {
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: attemptWithScreenCapture(), isError: false });
+      (useScreenCapture as jest.Mock).mockReturnValue({ active: false, error: 'unavailable', requestShare: jest.fn(), capture: jest.fn(() => null) });
+
+      render(<CandidateExamPage />);
+
+      expect(screen.getByText('Screen sharing required')).toBeInTheDocument();
+      expect(screen.getByText(/blocking screen sharing.*contact your recruiter/i)).toBeInTheDocument();
+    });
+
     it('does not re-POST { active: false } on an unrelated re-render while still inactive', () => {
       const mutate = jest.fn();
       (useScreenShareState as jest.Mock).mockReturnValue({ mutate, isPending: false });

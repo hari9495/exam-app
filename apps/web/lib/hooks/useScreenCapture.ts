@@ -7,7 +7,7 @@ const JPEG_QUALITY = 0.5;
 const CAPTURE_INTERVAL_MS = 5000;
 const MAX_CAPTURES = 150;
 
-type ScreenCaptureError = 'wrong-surface' | 'denied' | 'unsupported' | null;
+type ScreenCaptureError = 'wrong-surface' | 'denied' | 'unsupported' | 'unavailable' | null;
 
 export function useScreenCapture(
   enabled: boolean,
@@ -89,11 +89,17 @@ export function useScreenCapture(
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-    } catch {
+    } catch (err) {
       // A superseded call rejecting must not clobber the current call's state --
       // e.g. a stale 'denied' landing after the winner already set active/error.
       if (generationRef.current !== myGeneration) return null;
-      setError('denied');
+      // NotAllowedError is the candidate dismissing the picker or denying the prompt --
+      // clicking "Share my screen" again gets them straight back to it. Anything else (an
+      // enterprise policy, or a Permissions-Policy: display-capture block) never shows a
+      // picker at all: retrying the same click reproduces the exact same silent failure, so
+      // that needs different, unblocking copy rather than "try again" (see
+      // ScreenShareRequiredOverlay).
+      setError(err instanceof DOMException && err.name === 'NotAllowedError' ? 'denied' : 'unavailable');
       return null;
     }
 

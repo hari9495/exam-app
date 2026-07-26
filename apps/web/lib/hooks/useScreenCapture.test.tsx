@@ -119,6 +119,42 @@ describe('useScreenCapture', () => {
     expect(result.current.active).toBe(false);
   });
 
+  it("sets unavailable (not denied) when getDisplayMedia rejects with anything other than NotAllowedError", async () => {
+    // An enterprise policy or a Permissions-Policy: display-capture block never shows a
+    // picker at all -- the rejection isn't the candidate dismissing a prompt, so it must not
+    // get the "click again" copy that assumes one was shown.
+    Object.defineProperty(global.navigator, 'mediaDevices', {
+      value: { getDisplayMedia: jest.fn().mockRejectedValue(new DOMException('blocked', 'NotFoundError')) },
+      configurable: true,
+    });
+
+    const { result } = renderHook(() => useScreenCapture(true, jest.fn()));
+    let outcome;
+    await act(async () => {
+      outcome = await result.current.requestShare();
+    });
+
+    expect(outcome).toBeNull();
+    expect(result.current.error).toBe('unavailable');
+    expect(result.current.active).toBe(false);
+  });
+
+  it('sets unavailable when getDisplayMedia rejects with a plain (non-DOMException) error', async () => {
+    Object.defineProperty(global.navigator, 'mediaDevices', {
+      value: { getDisplayMedia: jest.fn().mockRejectedValue(new Error('blocked by policy')) },
+      configurable: true,
+    });
+
+    const { result } = renderHook(() => useScreenCapture(true, jest.fn()));
+    let outcome;
+    await act(async () => {
+      outcome = await result.current.requestShare();
+    });
+
+    expect(outcome).toBeNull();
+    expect(result.current.error).toBe('unavailable');
+  });
+
   it('reports unsupported without throwing when getDisplayMedia is missing', async () => {
     Object.defineProperty(global.navigator, 'mediaDevices', { value: {}, configurable: true });
 

@@ -2,7 +2,7 @@ import { ScreenShare } from 'lucide-react';
 import { CandidateButton } from './CandidateButton';
 
 interface ScreenShareRequiredOverlayProps {
-  error: 'wrong-surface' | 'denied' | 'unsupported' | null;
+  error: 'wrong-surface' | 'denied' | 'unsupported' | 'unavailable' | null;
   onShare: () => void;
   pending?: boolean;
 }
@@ -21,6 +21,12 @@ export function ScreenShareRequiredOverlay({ error, onShare, pending }: ScreenSh
         <p className="mb-4 text-xs text-candidate-text-faint">Your exam is paused and no time is being lost while you do this.</p>
         {error === 'wrong-surface' ? (
           <p className="mb-4 text-xs text-candidate-danger">Please choose your entire screen, not a single tab or window.</p>
+        ) : error === 'denied' ? (
+          <p className="mb-4 text-xs text-candidate-danger">You dismissed the prompt — click again and choose your entire screen.</p>
+        ) : error === 'unavailable' || error === 'unsupported' ? (
+          <p className="mb-4 text-xs text-candidate-danger">
+            Your browser or organization is blocking screen sharing. Contact your recruiter — they can let you continue without it.
+          </p>
         ) : null}
         <CandidateButton onClick={onShare} disabled={pending}>
           {pending ? 'Waiting…' : 'Share my screen'}
