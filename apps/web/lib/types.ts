@@ -352,6 +352,11 @@ export interface AttemptState {
   webcamViolationCount: number;
   browserActivityViolationCount: number;
   exam: { title: string; proctoring: ExamProctoringConfig };
+  // Server-authoritative "must maintain a share to avoid the block" gate -- distinct from
+  // exam.proctoring.screenCaptureEnabled, which a bypass deliberately leaves true (a bypass
+  // narrows what is punished, never what is watched). Deliberately excludes "is currently
+  // sharing"; the client composes that itself from useScreenCapture's own live state.
+  screenShareRequired: boolean;
   sections: AttemptSection[];
   answers: AttemptAnswerSummary[];
   messages: AttemptMessageSummary[];

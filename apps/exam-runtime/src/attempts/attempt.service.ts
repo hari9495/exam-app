@@ -112,6 +112,13 @@ interface AttemptStateResponse {
   webcamViolationCount: number;
   browserActivityViolationCount: number;
   exam: { title: string; proctoring: ExamProctoringConfig };
+  // Server-authoritative "must maintain a share" gate for the candidate's blocking overlay --
+  // deliberately excludes "is currently sharing" (the client already knows that instantly via
+  // its own MediaStream, and folding it in here would race a refetch against a share the
+  // candidate just started/stopped). A bypass narrows what is punished, never what is watched,
+  // so screenCaptureEnabled itself stays true under a bypass -- this is the one place that
+  // combines it with the bypass to decide whether the candidate must be blocked over it.
+  screenShareRequired: boolean;
   sections: AttemptSection[];
   answers: AttemptAnswerSummary[];
   messages: AttemptMessageSummary[];
@@ -204,6 +211,7 @@ export class AttemptService {
         webcamViolationCount: settled.webcamViolationCount,
         browserActivityViolationCount: settled.browserActivityViolationCount,
         exam: { title: exam.title, proctoring: resolveProctoringConfig(exam, settled) },
+        screenShareRequired: exam.screenCaptureEnabled && !isProctoringBypassActive(settled),
         sections,
         answers: answers.map((answer) => ({
           questionId: answer.questionId,

@@ -83,6 +83,11 @@ export default function CandidateExamPage() {
   const [lastViolationSource, setLastViolationSource] = useState<'webcam' | 'browser_activity'>('webcam');
   const hasLiveViolationSource = useRef(false);
   const captureEnabled = proctoringConfig?.screenCaptureEnabled === true;
+  // Server-authoritative: false under a recruiter bypass even though captureEnabled (from
+  // exam.proctoring.screenCaptureEnabled) stays true -- a bypass narrows what is punished, not
+  // what is watched, so the hook below still stays enabled (the candidate can still share and
+  // still get frames captured), but only screenShareRequired gates the blocking overlay.
+  const screenShareRequired = attemptState?.screenShareRequired === true;
   const screenShareState = useScreenShareState();
   // Guards the "POST { active: false } once" requirement -- reset whenever a share becomes
   // active (below) so a later stop-and-restart cycle posts again, but not on every render
@@ -231,8 +236,10 @@ export default function CandidateExamPage() {
   }
 
   // The block overlay takes precedence -- a blocked attempt has nothing to resume into,
-  // sharing again wouldn't change that, so don't mask it with the share prompt.
-  if (captureEnabled && !screenCapture.active && !isBlocked) {
+  // sharing again wouldn't change that, so don't mask it with the share prompt. Gated on
+  // screenShareRequired (server-computed, bypass-aware), not captureEnabled -- a bypassed
+  // attempt must not be blocked over a share it was never going to be punished for missing.
+  if (screenShareRequired && !screenCapture.active && !isBlocked) {
     return <ScreenShareRequiredOverlay error={screenCapture.error} onShare={handleShareScreen} pending={isRequestingShare} />;
   }
 

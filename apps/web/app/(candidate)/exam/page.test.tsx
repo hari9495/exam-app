@@ -688,6 +688,7 @@ describe('CandidateExamPage', () => {
           title: 'Test Exam',
           proctoring: { webcamEnabled: true, enforcement: 'block' as const, strikeLimit: 3, disabledSignals: [], screenCaptureEnabled: true },
         },
+        screenShareRequired: true,
         ...overrides,
       };
     }
@@ -699,6 +700,22 @@ describe('CandidateExamPage', () => {
 
       expect(screen.getByText('Screen sharing required')).toBeInTheDocument();
       expect(screen.queryByText('What is 2 + 2?')).not.toBeInTheDocument();
+    });
+
+    it('renders the questions, not the overlay, for a bypassed attempt even though screenCaptureEnabled stays true', () => {
+      // exam.proctoring.screenCaptureEnabled stays true under a bypass (a bypass narrows what
+      // is punished, never what is watched) -- only the server-computed screenShareRequired
+      // reflects the exemption. A bypassed candidate must not be blocked over a share the
+      // server was never going to pause them for missing.
+      (useAttemptQuery as jest.Mock).mockReturnValue({
+        data: attemptWithScreenCapture({ screenShareRequired: false }),
+        isError: false,
+      });
+
+      render(<CandidateExamPage />);
+
+      expect(screen.queryByText('Screen sharing required')).not.toBeInTheDocument();
+      expect(screen.getByText('What is 2 + 2?')).toBeInTheDocument();
     });
 
     it('renders the questions instead of the overlay once screen sharing is active', () => {

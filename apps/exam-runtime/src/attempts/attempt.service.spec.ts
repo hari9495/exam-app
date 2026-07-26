@@ -199,6 +199,72 @@ describe('AttemptService', () => {
       expect((result as any).exam.proctoring.enforcement).toBe('warn');
     });
 
+    describe('screenShareRequired', () => {
+      const attemptBase = {
+        id: 'attempt-1', status: 'in_progress' as const, startedAt: new Date(),
+        questionOrderJson: JSON.stringify(['q1']),
+        sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', targetDurationMinutes: null, questionIds: ['q1'] }]),
+        optionOrderJson: null,
+      };
+      const txFor = (attempt: unknown) => ({
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'single_mcq', marks: 5, languageMode: 'fixed', allowedLanguages: null, starterCode: null, allowStdin: false, snippetCode: null, snippetLanguage: null, imageUrl: null, options: [] }]) },
+        answer: { findMany: jest.fn().mockResolvedValue([]) },
+        candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+      });
+
+      it('is true when the exam has screenCaptureEnabled and there is no bypass', async () => {
+        const examWithCapture = { ...exam, screenCaptureEnabled: true };
+        const attempt = { ...attemptBase, proctoringBypassedAt: null, proctoringBypassRevokedAt: null };
+        tenantPrisma.forTenant
+          .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examWithCapture }))
+          .mockImplementationOnce(() => Promise.resolve({ logoPath: null }))
+          .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(txFor(attempt)));
+        settlement.settleIfExpired.mockResolvedValue(attempt);
+        settlement.remainingSeconds.mockReturnValue(1000);
+
+        const result = await service.getCurrent(session);
+
+        expect((result as any).screenShareRequired).toBe(true);
+      });
+
+      it('is false when the exam has screenCaptureEnabled off', async () => {
+        const examWithoutCapture = { ...exam, screenCaptureEnabled: false };
+        const attempt = { ...attemptBase, proctoringBypassedAt: null, proctoringBypassRevokedAt: null };
+        tenantPrisma.forTenant
+          .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examWithoutCapture }))
+          .mockImplementationOnce(() => Promise.resolve({ logoPath: null }))
+          .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(txFor(attempt)));
+        settlement.settleIfExpired.mockResolvedValue(attempt);
+        settlement.remainingSeconds.mockReturnValue(1000);
+
+        const result = await service.getCurrent(session);
+
+        expect((result as any).screenShareRequired).toBe(false);
+      });
+
+      // The whole point: a bypass narrows what is punished, never what is watched, so
+      // screenCaptureEnabled itself stays true under a bypass (see resolveProctoringConfig) --
+      // but the candidate must not be blocked by the share overlay while bypassed, since the
+      // server also skips the pause for a bypassed attempt (see screenShareState()). Without
+      // this, a bypassed candidate sees a blocking overlay while their clock keeps running.
+      it('is false when a bypass is active even though screenCaptureEnabled stays true', async () => {
+        const examWithCapture = { ...exam, screenCaptureEnabled: true };
+        const attempt = { ...attemptBase, proctoringBypassedAt: new Date(), proctoringBypassRevokedAt: null };
+        tenantPrisma.forTenant
+          .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examWithCapture }))
+          .mockImplementationOnce(() => Promise.resolve({ logoPath: null }))
+          .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(txFor(attempt)));
+        settlement.settleIfExpired.mockResolvedValue(attempt);
+        settlement.remainingSeconds.mockReturnValue(1000);
+
+        const result = await service.getCurrent(session);
+
+        expect((result as any).exam.proctoring.screenCaptureEnabled).toBe(true);
+        expect((result as any).screenShareRequired).toBe(false);
+      });
+    });
+
     it('falls back to 0 questions for a pool section with poolSize unset', async () => {
       const tx = {
         attempt: { findUnique: jest.fn().mockResolvedValue(null) },
