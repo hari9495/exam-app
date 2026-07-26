@@ -644,8 +644,16 @@ export class AttemptService {
   // folds, and a collation change to `_AI` would have reopened it silently. A counter has no
   // text to fool: it only moves when this function itself increments it, and only after a real
   // upload lands (never on a skipped or failed one). The increment runs in the same interactive
-  // transaction as the cap check and the event write, closing the old design's TOCTOU window
-  // where the count and the write could land in separate transactions under READ COMMITTED.
+  // transaction as the cap check and the event write, so the two can never land separately --
+  // but the cap check itself is still a plain, non-locking read of Attempt.screenCaptureCount
+  // taken at the top of that transaction, so concurrent requests arriving before either commits
+  // can each see a count under the cap and each upload; the overshoot is bounded by the number
+  // of requests in flight at that instant and one-shot (the atomic `{ increment: 1 }` can't lose
+  // an update, so the counter is exactly correct once everything commits). Accepted as-is: the
+  // only exploitable direction is *extra* screenshots, not the evidence blackout this feature
+  // exists to prevent. If strict enforcement is ever wanted, replace the read+update pair with
+  // `tx.attempt.updateMany({ where: { id, screenCaptureCount: { lt: MAX_SCREEN_CAPTURES } }, data: { screenCaptureCount: { increment: 1 } } })`
+  // and check its affected count.
   private async captureScreenshotMetadata(
     tx: Prisma.TransactionClient,
     attempt: { id: string; screenCaptureCount: number },
@@ -658,13 +666,12 @@ export class AttemptService {
     if (attempt.screenCaptureCount >= MAX_SCREEN_CAPTURES) {
       return { screenshotCapReached: true };
     }
+    let screenshotUrl: string;
     try {
-      const screenshotUrl = await withTimeout(
+      screenshotUrl = await withTimeout(
         this.blobStorage.uploadDataUri(`screen-captures/${attempt.id}-${Date.now()}.jpg`, screenshot),
         SCREENSHOT_UPLOAD_TIMEOUT_MS,
       );
-      await tx.attempt.update({ where: { id: attempt.id }, data: { screenCaptureCount: { increment: 1 } } });
-      return { screenshot: screenshotUrl };
     } catch (error) {
       // The violation record is what matters -- losing the image is acceptable, losing the
       // violation is not. Not incrementing here is deliberate too: the counter must only ever
@@ -672,6 +679,15 @@ export class AttemptService {
       this.logger.error('Failed to upload screen capture', error as Error);
       return undefined;
     }
+    try {
+      // Kept in its own try/catch so a DB failure here isn't misreported as an upload failure --
+      // the upload already succeeded, so the event still gets its screenshot url either way;
+      // only the counter risks drifting low if this throws.
+      await tx.attempt.update({ where: { id: attempt.id }, data: { screenCaptureCount: { increment: 1 } } });
+    } catch (error) {
+      this.logger.error('Failed to increment screenCaptureCount after a successful screen-capture upload', error as Error);
+    }
+    return { screenshot: screenshotUrl };
   }
 
   async webcamSnapshot(session: CandidateSession, dto: WebcamSnapshotDto): Promise<{ ok: true }> {

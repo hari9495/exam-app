@@ -250,29 +250,29 @@ model QuestionTag {
 }
 
 model Exam {
-  id                      String        @id @default(uuid()) @db.UniqueIdentifier
-  organizationId          String        @map("organization_id") @db.UniqueIdentifier
-  title                   String
-  instructions            String?       @db.NVarChar(Max)
-  status                  String        @default("draft")
-  durationMinutes         Int           @default(60) @map("duration_minutes")
-  passCriteriaPercent     Int           @default(40) @map("pass_criteria_percent")
-  randomizeOrder          Boolean       @default(false) @map("randomize_order")
-  feedbackVisibility      String        @default("pass_fail") @map("feedback_visibility")
-  schedulingEnabled       Boolean       @default(false) @map("scheduling_enabled")
-  availabilityWindowStart DateTime?     @map("availability_window_start")
-  availabilityWindowEnd   DateTime?     @map("availability_window_end")
-  walkInEnabled           Boolean       @default(false) @map("walk_in_enabled")
-  allowedIpRange          String?       @map("allowed_ip_range")
-  webcamProctoringEnabled Boolean       @default(true) @map("webcam_proctoring_enabled")
-  proctoringEnforcement   String        @default("block") @map("proctoring_enforcement")
-  proctoringStrikeLimit   Int           @default(3) @map("proctoring_strike_limit")
-  disabledProctoringSignalsJson String? @map("disabled_proctoring_signals_json") @db.NVarChar(Max)
-  screenCaptureEnabled          Boolean             @default(false) @map("screen_capture_enabled")
-  createdBy               String        @map("created_by") @db.UniqueIdentifier
-  createdAt               DateTime      @default(now()) @map("created_at")
-  sections                ExamSection[]
-  invitations             Invitation[]
+  id                            String        @id @default(uuid()) @db.UniqueIdentifier
+  organizationId                String        @map("organization_id") @db.UniqueIdentifier
+  title                         String
+  instructions                  String?       @db.NVarChar(Max)
+  status                        String        @default("draft")
+  durationMinutes               Int           @default(60) @map("duration_minutes")
+  passCriteriaPercent           Int           @default(40) @map("pass_criteria_percent")
+  randomizeOrder                Boolean       @default(false) @map("randomize_order")
+  feedbackVisibility            String        @default("pass_fail") @map("feedback_visibility")
+  schedulingEnabled             Boolean       @default(false) @map("scheduling_enabled")
+  availabilityWindowStart       DateTime?     @map("availability_window_start")
+  availabilityWindowEnd         DateTime?     @map("availability_window_end")
+  walkInEnabled                 Boolean       @default(false) @map("walk_in_enabled")
+  allowedIpRange                String?       @map("allowed_ip_range")
+  webcamProctoringEnabled       Boolean       @default(true) @map("webcam_proctoring_enabled")
+  proctoringEnforcement         String        @default("block") @map("proctoring_enforcement")
+  proctoringStrikeLimit         Int           @default(3) @map("proctoring_strike_limit")
+  disabledProctoringSignalsJson String?       @map("disabled_proctoring_signals_json") @db.NVarChar(Max)
+  screenCaptureEnabled          Boolean       @default(false) @map("screen_capture_enabled")
+  createdBy                     String        @map("created_by") @db.UniqueIdentifier
+  createdAt                     DateTime      @default(now()) @map("created_at")
+  sections                      ExamSection[]
+  invitations                   Invitation[]
 
   @@index([organizationId, status])
   @@map("exams")
@@ -381,7 +381,7 @@ model Attempt {
   lastSeenAt                    DateTime?           @map("last_seen_at")
   webcamViolationCount          Int                 @default(0) @map("webcam_violation_count")
   browserActivityViolationCount Int                 @default(0) @map("browser_activity_violation_count")
-  screenCaptureCount             Int                @default(0) @map("screen_capture_count")
+  screenCaptureCount            Int                 @default(0) @map("screen_capture_count")
   pausedAt                      DateTime?           @map("paused_at")
   pausedDurationMs              Int                 @default(0) @map("paused_duration_ms")
   consentAt                     DateTime?           @map("consent_at")

@@ -2142,7 +2142,12 @@ describe('AttemptService', () => {
           expect(result.id).toBe('evt-1');
         });
 
-        it('the same four payloads cannot suppress the cap either, once Attempt.screenCaptureCount is genuinely at 150', async () => {
+        it.each([
+          ['a screenshot key nested one level deep', { evidence: { screenshot: 'https://attacker.example/x.jpg' } }],
+          ['a key that smuggles a raw quote character', { '"screenshot': 1 }],
+          ['a fullwidth Unicode variant of the key', { 'ｓcreenshot': 'https://attacker.example/x.jpg' }],
+          ['fullwidth quote+colon inside an ordinary value', { trigger: '＂screenshot＂：' }],
+        ])('%s cannot suppress the cap either, once Attempt.screenCaptureCount is genuinely at 150', async (_label, smuggledMetadata) => {
           const tx = {
             attempt: {
               findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress', screenCaptureCount: 150 }),
@@ -2157,17 +2162,17 @@ describe('AttemptService', () => {
           const result = await service.reportProctoringEvent(session, {
             eventType: 'looking_down',
             screenshot: 'data:image/jpeg;base64,abc',
-            // Both keys are entirely forged (one quote-smuggled, one fullwidth), so the
-            // sanitizer strips them down to an empty object before it's merged with
-            // serverMetadata below -- keeps the expected metadataJson exactly { screenshotCapReached: true }.
-            metadata: { '"screenshot': 1, 'ｓcreenshot': 'x' },
+            metadata: smuggledMetadata,
           });
 
           expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
           expect(tx.attempt.update).not.toHaveBeenCalled();
-          expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
-            data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: 'medium', metadataJson: JSON.stringify({ screenshotCapReached: true }) },
-          });
+          const [[{ data }]] = tx.proctoringEvent.create.mock.calls;
+          expect(data.attemptId).toBe('attempt-1');
+          // The forged/smuggled bits of metadata may or may not survive the key-strip depending
+          // on shape (a bare value like `trigger` isn't forged and passes through), but
+          // screenshotCapReached is always present and true regardless of payload shape.
+          expect(JSON.parse(data.metadataJson).screenshotCapReached).toBe(true);
           expect(result.id).toBe('evt-1');
         });
       });
