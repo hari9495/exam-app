@@ -225,6 +225,57 @@ describe('LiveMonitoringPanel', () => {
       expect(screen.getByAltText('Webcam snapshot')).toHaveAttribute('src', 'blob:webcam-1');
     });
 
+    it('renders a screen capture thumbnail and enlarges it on click', async () => {
+      jest.spyOn(useProctoringEventsModule, 'useProctoringEvents').mockReturnValue({
+        data: [
+          {
+            id: 'e1',
+            attemptId: 'a1',
+            eventType: 'tab_switch',
+            severity: 'high',
+            occurredAt: '2026-01-01T00:01:00Z',
+            metadataJson: JSON.stringify({ screenshot: 'blob:screen-1', strike: 2 }),
+          },
+        ],
+        isLoading: false,
+      } as any);
+
+      renderPanelWithRoster(roster);
+      const user = userEvent.setup({ delay: null });
+      await user.click(screen.getByRole('button', { name: 'View log' }));
+
+      const thumbnail = screen.getByRole('button', { name: 'Enlarge screen capture' });
+      expect(thumbnail.querySelector('img')).toHaveAttribute('src', 'blob:screen-1');
+
+      await user.click(thumbnail);
+
+      expect(screen.getByText('Screen capture')).toBeInTheDocument();
+      expect(screen.getByAltText('Screen capture')).toHaveAttribute('src', 'blob:screen-1');
+    });
+
+    it('shows a cap-reached message instead of an image when the screen-capture cap was hit', async () => {
+      jest.spyOn(useProctoringEventsModule, 'useProctoringEvents').mockReturnValue({
+        data: [
+          {
+            id: 'e1',
+            attemptId: 'a1',
+            eventType: 'tab_switch',
+            severity: 'high',
+            occurredAt: '2026-01-01T00:01:00Z',
+            metadataJson: JSON.stringify({ screenshotCapReached: true }),
+          },
+        ],
+        isLoading: false,
+      } as any);
+
+      renderPanelWithRoster(roster);
+      const user = userEvent.setup({ delay: null });
+      await user.click(screen.getByRole('button', { name: 'View log' }));
+
+      expect(screen.getByText('Screen-capture limit reached — no image for this event')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Enlarge screen capture' })).not.toBeInTheDocument();
+    });
+
     it('renders a human-readable duration for a window_blur event, distinguishing sub-second from long blurs', async () => {
       jest.spyOn(useProctoringEventsModule, 'useProctoringEvents').mockReturnValue({
         data: [

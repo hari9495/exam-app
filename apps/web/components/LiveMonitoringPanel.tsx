@@ -72,12 +72,16 @@ function formatEventDetails(metadata: Record<string, unknown>): string[] {
   if (typeof metadata.strike === 'number') {
     details.push(`Strike ${metadata.strike}`);
   }
+  if (metadata.screenshotCapReached === true) {
+    details.push('Screen-capture limit reached — no image for this event');
+  }
   return details;
 }
 
 function ProctoringLogModal({ attemptId, onClose }: { attemptId: string; onClose: () => void }) {
   const { data: events, isLoading } = useProctoringEvents(attemptId);
   const [selectedSnapshot, setSelectedSnapshot] = useState<string | null>(null);
+  const [selectedScreenshot, setSelectedScreenshot] = useState<string | null>(null);
 
   return (
     <Modal open title="Proctoring log" onClose={onClose}>
@@ -91,6 +95,7 @@ function ProctoringLogModal({ attemptId, onClose }: { attemptId: string; onClose
             const metadata = parseEventMetadata(event.metadataJson);
             const details = metadata ? formatEventDetails(metadata) : [];
             const snapshot = metadata && typeof metadata.snapshot === 'string' && metadata.snapshot !== '' ? metadata.snapshot : null;
+            const screenshot = metadata && typeof metadata.screenshot === 'string' && metadata.screenshot !== '' ? metadata.screenshot : null;
             return (
               <li key={event.id} className="rounded border border-gray-200 p-2 text-sm">
                 <div className="flex items-center justify-between">
@@ -106,6 +111,11 @@ function ProctoringLogModal({ attemptId, onClose }: { attemptId: string; onClose
                     <img src={snapshot} alt="" className="mt-1 h-16 w-16 rounded object-cover" />
                   </button>
                 )}
+                {screenshot && (
+                  <button type="button" onClick={() => setSelectedScreenshot(screenshot)} aria-label="Enlarge screen capture">
+                    <img src={screenshot} alt="" className="mt-1 h-16 w-16 rounded object-cover" />
+                  </button>
+                )}
               </li>
             );
           })}
@@ -114,6 +124,10 @@ function ProctoringLogModal({ attemptId, onClose }: { attemptId: string; onClose
 
       <Modal open={selectedSnapshot !== null} title="Webcam snapshot" onClose={() => setSelectedSnapshot(null)}>
         {selectedSnapshot && <img src={selectedSnapshot} alt="Webcam snapshot" className="w-full rounded" />}
+      </Modal>
+
+      <Modal open={selectedScreenshot !== null} title="Screen capture" onClose={() => setSelectedScreenshot(null)}>
+        {selectedScreenshot && <img src={selectedScreenshot} alt="Screen capture" className="w-full rounded" />}
       </Modal>
     </Modal>
   );
