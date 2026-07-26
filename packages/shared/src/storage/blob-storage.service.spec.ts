@@ -16,9 +16,17 @@ const CONTAINER_URL = 'https://fakeaccount.blob.core.windows.net/container';
 describe('BlobStorageService.deleteByUrl', () => {
   let service: BlobStorageService;
   let deleteIfExists: jest.SpyInstance;
+  // The real address deleteIfExists() was actually invoked against -- read off `this.url`
+  // inside the stub rather than asserted from the argument we handed deleteByUrl(). A version
+  // of deleteByUrl() that passes the wrong string into getBlockBlobClient() (the raw blobUrl
+  // instead of the relative slice, say) still resolves to a real BlockBlobClient and still
+  // calls deleteIfExists() once -- asserting call *count* alone can't catch that class of bug,
+  // only asserting *which* blob it resolved to can (fix round 2).
+  let addressed: string[];
 
   beforeEach(() => {
     jest.clearAllMocks();
+    addressed = [];
     const realContainer = new ContainerClient(CONTAINER_URL);
     (BlobServiceClient.fromConnectionString as jest.Mock).mockReturnValue({
       getContainerClient: () => realContainer,
@@ -28,7 +36,10 @@ describe('BlobStorageService.deleteByUrl', () => {
     service = new BlobStorageService();
     // The only thing stubbed is the actual network call -- path joining and .url resolution
     // above this are the genuine SDK.
-    deleteIfExists = jest.spyOn(BlockBlobClient.prototype, 'deleteIfExists').mockResolvedValue({} as never);
+    deleteIfExists = jest.spyOn(BlockBlobClient.prototype, 'deleteIfExists').mockImplementation(async function (this: BlockBlobClient) {
+      addressed.push(this.url);
+      return {} as never;
+    });
   });
 
   afterEach(() => {
@@ -38,13 +49,22 @@ describe('BlobStorageService.deleteByUrl', () => {
   it('deletes the blob addressed by a URL that lives inside our own container', async () => {
     await service.deleteByUrl(`${CONTAINER_URL}/webcam-snapshots/a.jpg`);
 
-    expect(deleteIfExists).toHaveBeenCalledTimes(1);
+    expect(addressed).toEqual([`${CONTAINER_URL}/webcam-snapshots/a.jpg`]);
   });
 
   it('decodes a URL-encoded blob path before deleting', async () => {
     await service.deleteByUrl(`${CONTAINER_URL}/screen-captures/att%201-1.jpg`);
 
-    expect(deleteIfExists).toHaveBeenCalledTimes(1);
+    // Not just "one call" -- the resolved address must be the *decoded* name. Deleting the
+    // decodeURIComponent call in the source would re-encode the literal "%20" and still pass a
+    // weaker assertion; this one catches it.
+    expect(addressed).toEqual([`${CONTAINER_URL}/screen-captures/att%201-1.jpg`]);
+  });
+
+  it('does not attempt a delete for a container URL plus a trailing slash (empty blob name)', async () => {
+    await expect(service.deleteByUrl(`${CONTAINER_URL}/`)).resolves.toBeUndefined();
+
+    expect(deleteIfExists).not.toHaveBeenCalled();
   });
 
   it('rejects a URL from a different container that merely starts the same, without attempting a delete', async () => {

@@ -45,12 +45,16 @@ export class BlobStorageService {
     if (!blobUrl.startsWith(prefix)) {
       return; // not ours -- never try to delete an arbitrary URL
     }
-    let blob;
+    let name: string;
     try {
-      blob = container.getBlockBlobClient(decodeURIComponent(blobUrl.slice(prefix.length)));
+      name = decodeURIComponent(blobUrl.slice(prefix.length));
     } catch {
       return; // malformed percent-encoding in a database-sourced URL -- never ours to guess at
     }
+    if (!name) {
+      return; // the container URL plus a trailing slash decodes to an empty blob name -- nothing to address
+    }
+    const blob = container.getBlockBlobClient(name);
     // The plain string check above passes a "../other-container/x.jpg" suffix (or its
     // %2E%2E-encoded form) straight through -- the SDK resolves the ".." when it builds
     // the client's own .url, landing outside our container. Round-trip through that
