@@ -1192,6 +1192,29 @@ describe('AttemptSettlementService', () => {
       expect(data.pausedAt).toBeNull();
       expect(data.pausedReason).toBeNull();
     });
+
+    // Regression test: the warn arm used to be evaluated before the wasAlreadyPaused guard, so a
+    // warn-mode browser-activity strike arriving while the attempt is already paused for a
+    // different reason (e.g. screen_share, which pauses regardless of enforcement) would wipe
+    // pausedAt/pausedReason -- unfreezing the clock and losing the owner mid-pause.
+    it('does not clear an existing screen_share pause when a warn-mode browser-activity strike arrives while already paused', async () => {
+      tx.proctoringEvent.findFirst.mockResolvedValue(null);
+      tx.attempt.update.mockResolvedValue({ id: 'a1', examId: 'exam-1', status: 'paused' });
+
+      await service.registerBrowserActivityViolation(
+        tx,
+        warnExam,
+        {
+          id: 'a1', examId: 'exam-1', candidateId: 'c1', status: 'paused',
+          browserActivityViolationCount: 0, pausedDurationMs: 0, pausedReason: 'screen_share',
+        } as never,
+        'tab_switch',
+      );
+
+      const data = tx.attempt.update.mock.calls[0][0].data;
+      expect(data).not.toHaveProperty('pausedAt');
+      expect(data).not.toHaveProperty('pausedReason');
+    });
   });
 
   describe('registerBrowserActivityViolation -- re-pause guard (owner-tagged pauses, time-loss fix)', () => {

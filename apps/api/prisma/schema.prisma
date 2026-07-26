@@ -383,7 +383,7 @@ model Attempt {
   browserActivityViolationCount Int                 @default(0) @map("browser_activity_violation_count")
   screenCaptureCount            Int                 @default(0) @map("screen_capture_count")
   pausedAt                      DateTime?           @map("paused_at")
-  pausedReason                  String?             @map("paused_reason")
+  pausedReason                  String?             @map("paused_reason") @db.NVarChar(50)
   pausedDurationMs              Int                 @default(0) @map("paused_duration_ms")
   consentAt                     DateTime?           @map("consent_at")
   screenShareStartedAt          DateTime?           @map("screen_share_started_at")

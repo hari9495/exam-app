@@ -493,8 +493,12 @@ describe('CandidateExamPage', () => {
     });
 
     it('infers the browser-activity source from the server-reported pausedReason when the page remounts with no live violation event', () => {
+      // webcamViolationCount (3) deliberately exceeds browserActivityViolationCount (1) here --
+      // the deleted counter heuristic (browserActivityViolationCount > webcamViolationCount)
+      // would pick webcam and render the wrong heading/count. Only the server-reported
+      // pausedReason can get this right.
       (useAttemptQuery as jest.Mock).mockReturnValue({
-        data: { ...attemptState, status: 'paused', webcamViolationCount: 0, browserActivityViolationCount: 2, pausedReason: 'browser_activity' },
+        data: { ...attemptState, status: 'paused', webcamViolationCount: 3, browserActivityViolationCount: 1, pausedReason: 'browser_activity' },
         isError: false,
       });
       // No onViolation/onViolationReason callback fires -- simulates a page reload while
@@ -506,7 +510,25 @@ describe('CandidateExamPage', () => {
       render(<CandidateExamPage />);
 
       expect(screen.getByText('Policy violation detected')).toBeInTheDocument();
-      expect(screen.getByText('Warning 2/3')).toBeInTheDocument();
+      expect(screen.getByText('Warning 1/3')).toBeInTheDocument();
+    });
+
+    it('infers the webcam source from the server-reported pausedReason when browserActivityViolationCount exceeds webcamViolationCount', () => {
+      // Mirror of the above: browserActivityViolationCount (3) exceeds webcamViolationCount (1),
+      // which is exactly the case the deleted counter heuristic got wrong (it would pick
+      // browser_activity here). pausedReason: 'webcam' must still win.
+      (useAttemptQuery as jest.Mock).mockReturnValue({
+        data: { ...attemptState, status: 'paused', webcamViolationCount: 1, browserActivityViolationCount: 3, pausedReason: 'webcam' },
+        isError: false,
+      });
+      (useProctoringMonitor as jest.Mock).mockImplementation(() => undefined);
+      (useWebcamMonitor as jest.Mock).mockImplementation(() => undefined);
+      (useWebcamResume as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false, isError: false });
+
+      render(<CandidateExamPage />);
+
+      expect(screen.getByText('Face not visible')).toBeInTheDocument();
+      expect(screen.getByText('Warning 1/3')).toBeInTheDocument();
     });
   });
 

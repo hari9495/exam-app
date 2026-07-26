@@ -386,10 +386,10 @@ export class AttemptSettlementService {
       data: {
         browserActivityViolationCount: strike,
         status,
-        ...(enforcement === 'warn'
-          ? { pausedAt: null, pausedReason: null }
-          : wasAlreadyPaused
-            ? {}
+        ...(wasAlreadyPaused
+          ? {}
+          : enforcement === 'warn'
+            ? { pausedAt: null, pausedReason: null }
             : { pausedAt: new Date(), pausedReason: 'browser_activity' as const }),
       },
     });
