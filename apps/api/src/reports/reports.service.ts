@@ -89,6 +89,7 @@ export interface WebcamTimelineEntry {
   strike?: number;
   snapshot: string;
   screenshot?: string;
+  screenshotCapReached?: boolean;
 }
 
 export interface CandidateDetail {
@@ -329,9 +330,14 @@ export class ReportsService {
               parsed = {};
             }
           }
-          const meta = (await signProctoringEvidence(this.blobStorage, parsed)) as {
+          // signProctoringEvidence short-circuits non-object input (including JSON `null`,
+          // which JSON.parse accepts without throwing) back to that same non-object value --
+          // `?? {}` catches that so `meta.snapshot` etc. below can't throw a TypeError over one
+          // bad row, same as the malformed-JSON case above.
+          const meta = ((await signProctoringEvidence(this.blobStorage, parsed)) ?? {}) as {
             snapshot?: string;
             screenshot?: string;
+            screenshotCapReached?: boolean;
             strike?: number;
           };
           if (e.eventType === 'webcam_snapshot') {
@@ -340,6 +346,7 @@ export class ReportsService {
               kind: 'periodic' as const,
               snapshot: meta.snapshot ?? '',
               screenshot: meta.screenshot,
+              screenshotCapReached: meta.screenshotCapReached === true ? true : undefined,
             };
           }
           return {
@@ -349,6 +356,7 @@ export class ReportsService {
             strike: meta.strike,
             snapshot: meta.snapshot ?? '',
             screenshot: meta.screenshot,
+            screenshotCapReached: meta.screenshotCapReached === true ? true : undefined,
           };
         }),
       );

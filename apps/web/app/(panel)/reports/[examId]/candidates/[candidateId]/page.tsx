@@ -118,44 +118,50 @@ export default function PanelCandidateDetailPage() {
           <p className="text-sm text-gray-500">No webcam snapshots recorded.</p>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-            {candidate.webcamTimeline.map((entry, index) => (
-              <div
-                key={index}
-                className={`rounded border-2 p-2 text-left ${entry.kind === 'violation' ? 'border-red-500' : 'border-gray-200'}`}
-              >
-                {entry.snapshot !== '' ? (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedSnapshot(entry)}
-                    aria-label={`Webcam snapshot at ${formatSnapshotTime(entry.occurredAt)}`}
-                    className="block w-full"
-                  >
-                    <img src={entry.snapshot} alt="" className="mb-1 h-20 w-full rounded object-cover" />
-                  </button>
-                ) : !entry.screenshot ? (
-                  <div className="mb-1 flex h-20 w-full items-center justify-center rounded bg-gray-100 text-xs text-gray-400">
-                    No image
-                  </div>
-                ) : null}
-                {entry.screenshot && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedScreenshot(entry.screenshot as string)}
-                    aria-label={`Screen capture at ${formatSnapshotTime(entry.occurredAt)}`}
-                    className="block w-full"
-                  >
-                    <p className="text-[10px] font-medium uppercase text-gray-400">Screen capture</p>
-                    <img src={entry.screenshot} alt="" className="mb-1 h-20 w-full rounded object-cover" />
-                  </button>
-                )}
-                <p className="text-xs text-gray-500">{formatSnapshotTime(entry.occurredAt)}</p>
-                {entry.kind === 'violation' && (
-                  <p className="text-xs font-medium text-red-700">
-                    {entry.reason} — strike {entry.strike}
-                  </p>
-                )}
-              </div>
-            ))}
+            {candidate.webcamTimeline.map((entry, index) => {
+              const screenshot = typeof entry.screenshot === 'string' && entry.screenshot !== '' ? entry.screenshot : null;
+              return (
+                <div
+                  key={index}
+                  className={`rounded border-2 p-2 text-left ${entry.kind === 'violation' ? 'border-red-500' : 'border-gray-200'}`}
+                >
+                  {entry.snapshot !== '' ? (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSnapshot(entry)}
+                      aria-label={`Webcam snapshot at ${formatSnapshotTime(entry.occurredAt)}`}
+                      className="block w-full"
+                    >
+                      <img src={entry.snapshot} alt="" className="mb-1 h-20 w-full rounded object-cover" />
+                    </button>
+                  ) : !screenshot && !entry.screenshotCapReached ? (
+                    <div className="mb-1 flex h-20 w-full items-center justify-center rounded bg-gray-100 text-xs text-gray-400">
+                      No image
+                    </div>
+                  ) : null}
+                  {screenshot && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedScreenshot(screenshot)}
+                      aria-label={`Screen capture at ${formatSnapshotTime(entry.occurredAt)}`}
+                      className="block w-full"
+                    >
+                      <p className="text-[10px] font-medium uppercase text-gray-400">Screen capture</p>
+                      <img src={screenshot} alt="" className="mb-1 h-20 w-full rounded object-cover" />
+                    </button>
+                  )}
+                  {!screenshot && entry.screenshotCapReached && (
+                    <p className="mb-1 text-[10px] text-gray-400">Screen-capture limit reached — no image for this event</p>
+                  )}
+                  <p className="text-xs text-gray-500">{formatSnapshotTime(entry.occurredAt)}</p>
+                  {entry.kind === 'violation' && (
+                    <p className="text-xs font-medium text-red-700">
+                      {entry.reason} — strike {entry.strike}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

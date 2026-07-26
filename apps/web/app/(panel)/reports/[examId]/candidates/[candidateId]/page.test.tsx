@@ -280,5 +280,32 @@ describe('PanelCandidateDetailPage', () => {
       expect(screen.queryByRole('button', { name: /webcam snapshot/i })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /screen capture/i })).not.toBeInTheDocument();
     });
+
+    it('shows the same cap-reached copy as the live log instead of "No image" when screenshotCapReached is set', () => {
+      (useAttemptInsight as jest.Mock).mockReturnValue({ data: null, isLoading: false });
+      (useCandidateReport as jest.Mock).mockReturnValue({
+        data: {
+          ...candidateDetail,
+          webcamTimeline: [
+            {
+              occurredAt: '2026-01-01T00:05:00.000Z',
+              kind: 'violation',
+              reason: 'multiple_faces',
+              strike: 1,
+              snapshot: 'data:image/png;base64,snap',
+              screenshotCapReached: true,
+            },
+          ],
+        },
+        isLoading: false,
+      });
+
+      renderPage();
+
+      expect(screen.getByText('Screen-capture limit reached — no image for this event')).toBeInTheDocument();
+      expect(screen.queryByText('No image')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /screen capture/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /webcam snapshot/i })).toBeInTheDocument();
+    });
   });
 });

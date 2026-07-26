@@ -570,6 +570,82 @@ describe('ReportsService', () => {
       ]);
     });
 
+    it('does not throw when metadataJson is the JSON literal "null" (valid JSON, but not an object)', async () => {
+      examsService.getResults.mockResolvedValue([
+        row({
+          candidateId: 'cand-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted',
+          score: 5, maxScore: 5, percentage: 100, passFail: 'pass',
+        }),
+      ]);
+      const tx = {
+        attempt: {
+          findFirst: jest.fn().mockResolvedValue({
+            sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
+            answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5 }],
+          }),
+        },
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'q1', text: 'Q1 text', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', text: 'A', isCorrect: true }] },
+          ]),
+        },
+        proctoringEvent: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              eventType: 'webcam_multiple_faces',
+              occurredAt: new Date('2026-01-01T00:05:00Z'),
+              metadataJson: 'null',
+            },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const detail = await service.getCandidateDetail(context, 'exam-1', 'cand-1');
+
+      expect(detail.webcamTimeline).toEqual([
+        { occurredAt: '2026-01-01T00:05:00.000Z', kind: 'violation', reason: 'multiple_faces', snapshot: '' },
+      ]);
+    });
+
+    it('carries screenshotCapReached through to the entry when the screen-capture cap was hit', async () => {
+      examsService.getResults.mockResolvedValue([
+        row({
+          candidateId: 'cand-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted',
+          score: 5, maxScore: 5, percentage: 100, passFail: 'pass',
+        }),
+      ]);
+      const tx = {
+        attempt: {
+          findFirst: jest.fn().mockResolvedValue({
+            sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
+            answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5 }],
+          }),
+        },
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'q1', text: 'Q1 text', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', text: 'A', isCorrect: true }] },
+          ]),
+        },
+        proctoringEvent: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              eventType: 'webcam_multiple_faces',
+              occurredAt: new Date('2026-01-01T00:05:00Z'),
+              metadataJson: JSON.stringify({ snapshot: 'a', screenshotCapReached: true, strike: 1 }),
+            },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const detail = await service.getCandidateDetail(context, 'exam-1', 'cand-1');
+
+      expect(detail.webcamTimeline).toEqual([
+        { occurredAt: '2026-01-01T00:05:00.000Z', kind: 'violation', reason: 'multiple_faces', strike: 1, snapshot: 'a', screenshotCapReached: true },
+      ]);
+    });
+
     describe('with the real BlobStorageService (offline SAS signing, no network)', () => {
       const CONTAINER_URL = 'https://fakeaccount.blob.core.windows.net/container';
       let realService: ReportsService;

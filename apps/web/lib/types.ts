@@ -472,6 +472,7 @@ export interface WebcamTimelineEntry {
   strike?: number;
   snapshot: string;
   screenshot?: string;
+  screenshotCapReached?: boolean;
 }
 
 export interface CandidateDetail {
