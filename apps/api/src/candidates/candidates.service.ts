@@ -49,14 +49,42 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 // remaining way to point someone at the file. Safe to log: strips scheme, host, and any query
 // string (a SAS token, if this URL ever carried one), keeping only the path inside the
 // container so an operator can look the blob up by hand.
+//
+// evidenceUrls also carries legacy inline `data:` URIs (image bytes, base64-encoded, straight
+// in the string -- see blob-storage.service.ts's "inline data: URIs from before this fix").
+// `new URL()` parses those happily, and for an opaque scheme like `data:` its `.pathname` *is*
+// the entire opaque body -- slicing that would log the candidate's own webcam/screenshot bytes
+// into the one log the erase does not control the retention of. Only ever slice a real
+// hierarchical http(s) blob URL; anything else is reported as unparseable rather than sliced.
 function blobPathForLogging(blobUrl: string): string {
   try {
-    const { pathname } = new URL(blobUrl);
-    const [, , ...containerRelative] = pathname.split('/');
-    return containerRelative.length > 0 ? containerRelative.join('/') : pathname;
+    const url = new URL(blobUrl);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+      return '(inline or non-URL evidence value)';
+    }
+    const [, , ...containerRelative] = url.pathname.split('/');
+    const path = containerRelative.length > 0 ? containerRelative.join('/') : url.pathname;
+    try {
+      return decodeURIComponent(path);
+    } catch {
+      return path; // malformed percent-encoding -- log the raw (still scheme/host/query-free) path
+    }
   } catch {
     return '(unparseable evidence URL)';
   }
+}
+
+// Logging hundreds of paths on one line risks a truncated log pipeline silently dropping the
+// tail -- the only surviving record of those blobs. Chunk into numbered groups instead.
+const LOG_CHUNK_SIZE = 50;
+function chunkedLogLines(label: string, paths: string[]): string[] {
+  const lines: string[] = [];
+  for (let i = 0; i < paths.length; i += LOG_CHUNK_SIZE) {
+    const chunk = paths.slice(i, i + LOG_CHUNK_SIZE);
+    const suffix = paths.length > LOG_CHUNK_SIZE ? ` [${i + 1}-${i + chunk.length} of ${paths.length}]` : '';
+    lines.push(`${label}${suffix}: ${chunk.join(', ')}`);
+  }
+  return lines;
 }
 
 export type CandidateListItem = Candidate & { invitationCount: number };
@@ -428,9 +456,10 @@ export class CandidatesService {
       const uniqueUrls = Array.from(new Set(evidenceUrls));
       if (uniqueUrls.length > 0) {
         // Tally outcomes so a partial or total no-op is visible instead of looking identical to
-        // a clean full delete -- never log the URLs/paths of the underlying blobs themselves,
-        // only counts, since these are evidence locations for someone who just exercised an
-        // erasure right.
+        // a clean full delete. The one-line summary below stays counts-only; failed and
+        // unattempted blobs additionally get their container-relative *path* logged (via
+        // blobPathForLogging, never the full URL/host/query) since after this call returns
+        // metadataJson is already null and the log line is the only remaining way to find them.
         const tally: Record<BlobDeleteOutcome, number> = {
           deleted: 0, 'not-found': 0, 'skipped-not-ours': 0, 'skipped-empty-name': 0, 'skipped-not-configured': 0,
         };
@@ -482,16 +511,17 @@ export class CandidatesService {
           this.logger.warn(summary);
           // Paths (never full URLs) plus, for failures, the error -- so the summary's "this
           // wasn't fully deleted" is paired with enough to actually go find the blob, instead of
-          // just proving it's lost.
-          const detailParts: string[] = [];
+          // just proving it's lost. Chunked so a candidate with hundreds of blobs doesn't produce
+          // one oversized line that a log pipeline truncates, silently dropping the tail.
           if (failedBlobs.length > 0) {
-            detailParts.push(`failed: ${failedBlobs.map((entry) => `${entry.path} (${entry.error})`).join(', ')}`);
+            for (const line of chunkedLogLines('failed', failedBlobs.map((entry) => `${entry.path} (${entry.error})`))) {
+              this.logger.warn(`Proctoring evidence blob deletion detail for candidate ${candidateId}: ${line}`);
+            }
           }
           if (unattemptedUrls.length > 0) {
-            detailParts.push(`unattempted: ${unattemptedUrls.map(blobPathForLogging).join(', ')}`);
-          }
-          if (detailParts.length > 0) {
-            this.logger.warn(`Proctoring evidence blob deletion detail for candidate ${candidateId}: ${detailParts.join(' | ')}`);
+            for (const line of chunkedLogLines('unattempted', unattemptedUrls.map(blobPathForLogging))) {
+              this.logger.warn(`Proctoring evidence blob deletion detail for candidate ${candidateId}: ${line}`);
+            }
           }
         }
 
@@ -499,23 +529,31 @@ export class CandidatesService {
         // into the 'candidate.erased' entry above without moving that call after the delete loop
         // and losing its crash-safety guarantee) -- this is the durable record of what actually
         // happened to the evidence, since application logs typically retain far less time than
-        // the audit table.
-        await this.audit.record(context, {
-          actorUserId,
-          action: 'candidate.erased.evidence_deleted',
-          entityType: 'candidate',
-          entityId: candidateId,
-          metadata: {
-            total: uniqueUrls.length,
-            deleted: tally.deleted,
-            notFound: tally['not-found'],
-            failed,
-            skippedNotOurs: tally['skipped-not-ours'],
-            skippedEmptyName: tally['skipped-empty-name'],
-            skippedNotConfigured: tally['skipped-not-configured'],
-            unattempted,
-          },
-        });
+        // the audit table. This whole delete phase is deliberately non-throwing (a failed remote
+        // delete must not fail the erase), so this write gets the same treatment: a transient DB
+        // failure on the *tally* must not turn an already-successful, already-redacted,
+        // already-audited erase into a 500 the caller can never retry successfully (a retry just
+        // finds `erasedAt` set and no-ops).
+        try {
+          await this.audit.record(context, {
+            actorUserId,
+            action: 'candidate.erased.evidence_deleted',
+            entityType: 'candidate',
+            entityId: candidateId,
+            metadata: {
+              total: uniqueUrls.length,
+              deleted: tally.deleted,
+              notFound: tally['not-found'],
+              failed,
+              skippedNotOurs: tally['skipped-not-ours'],
+              skippedEmptyName: tally['skipped-empty-name'],
+              skippedNotConfigured: tally['skipped-not-configured'],
+              unattempted,
+            },
+          });
+        } catch (error) {
+          this.logger.warn(`Failed to write the evidence-deletion audit entry for candidate ${candidateId}`, error as Error);
+        }
       }
     }
 

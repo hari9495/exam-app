@@ -754,23 +754,28 @@ describe('CandidatesService', () => {
       });
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      // The budget is read via two real Date.now() calls (computing the deadline, then the first
-      // loop-condition check) -- both true wall-clock reads, so the first 10-wide batch (the
-      // concurrency limit) is genuinely allowed to start. From the third call on, time is pushed
-      // 60s into the future, well past the 20s budget, so the *second* loop-condition check finds
-      // the budget exhausted and the loop stops without a real 60-second wait.
+      // Chosen to discriminate the fix, not just exercise "the budget trips eventually": at
+      // 18s elapsed with a 20s budget, the *old* `Date.now() < deadline` check (18000 < 20000)
+      // would still admit a second 10-wide batch that could then run its full 3s per-call
+      // timeout and finish at 21s -- past the budget the comment claims to enforce. The *new*
+      // `Date.now() + EVIDENCE_DELETE_TIMEOUT_MS <= deadline` check (18000 + 3000 <= 20000) is
+      // exactly false, so only the first batch (comfortably admitted at 1s elapsed) runs.
+      // Reverting the comparison operator turns this from 10 into 20 deleteByUrl calls.
       const realNow = Date.now.bind(Date);
-      let calls = 0;
+      const base = realNow();
+      let call = 0;
       jest.spyOn(Date, 'now').mockImplementation(() => {
-        calls += 1;
-        return calls <= 2 ? realNow() : realNow() + 60_000;
+        call += 1;
+        if (call === 1) return base; // deadline = base + 20_000
+        if (call === 2) return base + 1_000; // first batch's admission check
+        return base + 18_000; // every check from the second batch onward
       });
       const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
 
       const result = await service.erase(context, 'user-1', 'cand-1');
 
       expect(result).toEqual({ id: 'cand-1', erasedAt: expect.any(Date) });
-      expect(blobStorage.deleteByUrl).toHaveBeenCalledTimes(10); // one concurrency-wide batch, then the budget check trips
+      expect(blobStorage.deleteByUrl).toHaveBeenCalledTimes(10); // only the first batch -- the second is refused, not just delayed
       expect(warnSpy).toHaveBeenCalledTimes(2);
       const [summary] = warnSpy.mock.calls[0];
       expect(summary).toContain('15 unattempted');
@@ -787,7 +792,35 @@ describe('CandidatesService', () => {
       warnSpy.mockRestore();
     });
 
-    it('writes a companion audit entry with the delete tally after the loop', async () => {
+    it('never slices a legacy inline data: URI as if it were a blob path when it ends up in the failed detail line', async () => {
+      // Payload deliberately shaped like real webcam JPEG base64 -- the regression this guards
+      // is `new URL(...).pathname` on an opaque `data:` scheme handing back the *entire* opaque
+      // body (here, the base64 payload itself) to be logged verbatim.
+      const dataUri = 'data:image/jpeg;base64,AAAA/BASE64FACEIMAGEDATA==';
+      const tx = makeEraseTx({
+        proctoringEvents: [
+          { metadataJson: JSON.stringify({ snapshot: 'https://blob.test/container/webcam-snapshots/a.jpg' }) },
+          { metadataJson: JSON.stringify({ snapshot: dataUri }) },
+        ],
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      // The real blob deletes cleanly; the inline data: URI is the one that fails, so
+      // blobPathForLogging is genuinely exercised on it (a `not-ours` skip would never reach
+      // the logging path at all -- it must be *logged*, via failed or unattempted, to matter).
+      blobStorage.deleteByUrl.mockResolvedValueOnce('deleted').mockRejectedValueOnce(new Error('unreachable'));
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      await service.erase(context, 'user-1', 'cand-1');
+
+      const allLogText = warnSpy.mock.calls.map(([message]) => message).join('\n');
+      expect(allLogText).not.toContain('base64');
+      expect(allLogText).not.toContain('FACEIMAGEDATA');
+      expect(allLogText).toContain('(inline or non-URL evidence value)');
+
+      warnSpy.mockRestore();
+    });
+
+    it('writes a companion audit entry with the delete tally strictly after the delete loop finishes', async () => {
       const tx = makeEraseTx({
         proctoringEvents: [
           { metadataJson: JSON.stringify({ snapshot: 'https://blob.test/container/webcam-snapshots/a.jpg' }) },
@@ -809,6 +842,25 @@ describe('CandidatesService', () => {
           skippedNotOurs: 0, skippedEmptyName: 0, skippedNotConfigured: 0, unattempted: 0,
         },
       });
+      const deleteOrders = blobStorage.deleteByUrl.mock.invocationCallOrder;
+      const auditOrders = audit.record.mock.invocationCallOrder;
+      expect(auditOrders[1]).toBeGreaterThan(Math.max(...deleteOrders));
+    });
+
+    it('still succeeds and does not throw when the companion audit write itself fails', async () => {
+      const tx = makeEraseTx({
+        proctoringEvents: [{ metadataJson: JSON.stringify({ snapshot: 'https://blob.test/container/webcam-snapshots/a.jpg' }) }],
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      audit.record.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('audit db unavailable'));
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      const result = await service.erase(context, 'user-1', 'cand-1');
+
+      expect(result).toEqual({ id: 'cand-1', erasedAt: expect.any(Date) });
+      expect(warnSpy.mock.calls.some(([message]) => typeof message === 'string' && message.includes('audit entry'))).toBe(true);
+
+      warnSpy.mockRestore();
     });
 
     it('does not abort the erase when one proctoring event carries malformed metadataJson', async () => {
