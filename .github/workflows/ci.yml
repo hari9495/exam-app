@@ -41,11 +41,24 @@ jobs:
       - name: Run apps/exam-runtime unit tests
         run: npm run test:exam-runtime
 
+      # apps/web was previously neither tested nor built here. The recruiter-facing
+      # proctoring log is the only surface that renders captured evidence, so a
+      # regression in apps/web silently turns evidence capture into a write-only
+      # feature -- exactly the defect this job now guards against.
+      - name: Run apps/web unit tests
+        run: npm run test:web
+
       - name: Build apps/api
         run: npm run build --workspace=apps/api
 
       - name: Build apps/exam-runtime
         run: npm run build --workspace=apps/exam-runtime
+
+      # NEXT_PUBLIC_API_BASE / NEXT_PUBLIC_EXAM_RUNTIME_API_BASE are not set here on
+      # purpose: every reader falls back with `??`, so this builds without secrets and
+      # still catches type errors and broken imports.
+      - name: Build apps/web
+        run: npm run build --workspace=apps/web
 
       - name: Dependency audit report (all severities, informational)
         run: npm audit || true

@@ -16,6 +16,7 @@
     "test:api:e2e": "npm run test:e2e --workspace=apps/api --",
     "test:exam-runtime": "npm run test --workspace=apps/exam-runtime --",
     "test:exam-runtime:e2e": "npm run test:e2e --workspace=apps/exam-runtime --",
-    "test:shared": "npm run test --workspace=packages/shared --"
+    "test:shared": "npm run test --workspace=packages/shared --",
+    "test:web": "npm run test --workspace=apps/web --"
   }
 }
