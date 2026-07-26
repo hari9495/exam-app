@@ -254,6 +254,9 @@ describe('ExamDetailsForm', () => {
       render(<ExamDetailsForm onSubmit={jest.fn()} submitLabel="Save" locked />);
 
       expect(screen.getByLabelText('Require webcam proctoring')).toBeDisabled();
+      // Disabled via the enclosing <fieldset disabled>, same as every other proctoring
+      // control -- asserted explicitly here rather than just assumed.
+      expect(screen.getByLabelText("Record the candidate's screen as evidence")).toBeDisabled();
       expect(screen.getByText(/locked because a candidate has already started it/i)).toBeInTheDocument();
     });
   });

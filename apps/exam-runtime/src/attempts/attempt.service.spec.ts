@@ -2606,12 +2606,15 @@ describe('AttemptService', () => {
 
       const result = await service.screenShareState(session, { active: false, reason: 'ended' });
 
+      // No displaySurface/userAgent supplied -- shareMetadata is undefined, not the always-
+      // truthy { displaySurface: undefined, userAgent: undefined } literal (see the
+      // metadataJson: null test below for why that distinction matters).
       expect(settlement.registerBrowserActivityViolation).toHaveBeenCalledWith(
         tx,
         examWithScreenCapture,
         attempt,
         'screen_share_stopped',
-        { displaySurface: undefined, userAgent: undefined },
+        undefined,
       );
       expect(result).toEqual({ status: 'paused' });
     });
@@ -2693,6 +2696,55 @@ describe('AttemptService', () => {
       });
       expect(settlement.resumeFromPause).toHaveBeenCalledWith(tx, startedAttempt);
       expect(result).toEqual({ status: 'in_progress' });
+    });
+
+    it('writes metadataJson: null (not "{}") for screen_share_started when displaySurface/userAgent are both absent', async () => {
+      // { displaySurface: undefined, userAgent: undefined } is a non-null object literal --
+      // always truthy -- so building it unconditionally and only null-checking the object
+      // itself lets JSON.stringify silently drop the undefined-valued keys and write "{}"
+      // instead of null, unlike every other metadata-less event.
+      const attempt = { id: 'attempt-1', status: 'paused', screenShareStartedAt: null, browserActivityViolationCount: 0 };
+      const startedAttempt = { ...attempt, screenShareStartedAt: new Date('2026-07-26T00:00:00Z') };
+      const tx = {
+        attempt: {
+          findUnique: jest.fn().mockResolvedValue(attempt),
+          update: jest.fn().mockResolvedValue(startedAttempt),
+        },
+        proctoringEvent: { create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'screen_share_started', severity: 'low' }) },
+      };
+      mockScoped(examWithScreenCapture, tx);
+      settlement.resumeFromPause.mockResolvedValue({ ...startedAttempt, status: 'in_progress' });
+
+      await service.screenShareState(session, { active: true });
+
+      expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+        data: {
+          attemptId: 'attempt-1',
+          eventType: 'screen_share_started',
+          severity: getProctoringEventSeverity('screen_share_started'),
+          metadataJson: null,
+        },
+      });
+    });
+
+    it('writes metadataJson: null (not "{}") for screen_share_stopped when displaySurface/userAgent are both absent', async () => {
+      const attempt = { id: 'attempt-1', status: 'in_progress', screenShareStartedAt: new Date('2026-01-01T00:00:00Z') };
+      const tx = {
+        attempt: {
+          findUnique: jest.fn().mockResolvedValue(attempt),
+          update: jest.fn().mockResolvedValue({ ...attempt, status: 'paused', screenShareStartedAt: null, browserActivityViolationCount: 1 }),
+        },
+      };
+      mockScoped(examWithScreenCapture, tx);
+      settlement.registerBrowserActivityViolation.mockResolvedValue({
+        attempt: { ...attempt, status: 'paused', browserActivityViolationCount: 1 },
+        strike: 1,
+        event: { id: 'evt-1', eventType: 'screen_share_stopped', severity: 'high' },
+      });
+
+      await service.screenShareState(session, { active: false, reason: 'ended' });
+
+      expect(settlement.registerBrowserActivityViolation).toHaveBeenCalledWith(tx, examWithScreenCapture, attempt, 'screen_share_stopped', undefined);
     });
 
     it('drops displaySurface/userAgent metadata that would fold to the cap-count literal, rather than writing it raw', async () => {

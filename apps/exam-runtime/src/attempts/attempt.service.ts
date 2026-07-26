@@ -513,14 +513,21 @@ export class AttemptService {
 
       // Screenshots are server-authoritative, same as the signal guard above: a disabled
       // capture is ignored, not rejected, so a stale/tampered client can't force an upload
-      // the recruiter turned off. `metadata` is the client's own data, sanitized once here
-      // (strips any client-forged `screenshot`/`screenshotCapReached` key -- those are only
-      // ever meant to be set below, by us -- and drops it entirely if it can't be proven safe
-      // to serialize; see sanitizeMetadataOrDrop). `serverMetadata` carries our own
-      // screenshot/cap-reached keys and is composed in *after* sanitization, never through it --
-      // the sanitizer's key filter matches "screenshot" as a substring, so running our own keys
-      // through it would strip them right back out (that regression, and the fix, are in
-      // scc-task-5-report.md fix round 6).
+      // the recruiter turned off. `metadata` is the client's own data, sanitized here (strips
+      // any client-forged `screenshot`/`screenshotCapReached` key -- those are only ever meant
+      // to be set below, by us -- and drops it entirely if it can't be proven safe to
+      // serialize; see sanitizeMetadataOrDrop). This pass is what protects the non-strike
+      // branch below, which uses `metadata` directly with no further sanitization. The
+      // strike-worthy branch's call into registerBrowserActivityViolation sanitizes its
+      // `metadata` argument again internally -- that's not this pass being skipped, it's
+      // registerBrowserActivityViolation's own guarantee for its *other* caller
+      // (screenShareState's stop path), which never pre-sanitizes. The second pass here is
+      // simply redundant, not wrong: sanitizeMetadataOrDrop is idempotent, so running
+      // already-clean metadata through it twice changes nothing. `serverMetadata` carries our
+      // own screenshot/cap-reached keys and is composed in *after* sanitization, never through
+      // it -- the sanitizer's key filter matches "screenshot" as a substring, so running our
+      // own keys through it would strip them right back out (that regression, and the fix, are
+      // in scc-task-5-report.md fix round 6).
       const metadata = sanitizeMetadataOrDrop(dto.metadata, this.logger, attempt.id, dto.eventType);
       const serverMetadata = await this.captureScreenshotMetadata(tx, attempt.id, dto.screenshot, proctoring.screenCaptureEnabled);
 
@@ -740,6 +747,16 @@ export class AttemptService {
         return { status: attempt.status };
       }
 
+      // displaySurface/userAgent are both optional -- build the object only when at least one
+      // is actually present. `{ displaySurface: undefined, userAgent: undefined }` is a
+      // non-null object literal (always truthy), and JSON.stringify silently drops
+      // undefined-valued keys, so passing that ever-truthy shape through unconditionally
+      // writes metadataJson: "{}" instead of null, unlike every other metadata-less event.
+      const shareMetadata =
+        dto.displaySurface !== undefined || dto.userAgent !== undefined
+          ? { displaySurface: dto.displaySurface, userAgent: dto.userAgent }
+          : undefined;
+
       if (dto.active) {
         let current = attempt;
         // Only a genuine start (previously not sharing) sets the timestamp and records the
@@ -748,12 +765,7 @@ export class AttemptService {
           current = await tx.attempt.update({ where: { id: attempt.id }, data: { screenShareStartedAt: new Date() } });
           // displaySurface/userAgent are client-controlled free text -- route through the same
           // shared guard as every other metadata write (see sanitize-metadata.ts).
-          const startedMetadata = sanitizeMetadataOrDrop(
-            { displaySurface: dto.displaySurface, userAgent: dto.userAgent },
-            this.logger,
-            attempt.id,
-            'screen_share_started',
-          );
+          const startedMetadata = sanitizeMetadataOrDrop(shareMetadata, this.logger, attempt.id, 'screen_share_started');
           await tx.proctoringEvent.create({
             data: {
               attemptId: attempt.id,
@@ -789,7 +801,7 @@ export class AttemptService {
             exam,
             attempt,
             'screen_share_stopped',
-            { displaySurface: dto.displaySurface, userAgent: dto.userAgent },
+            shareMetadata,
           );
           current = struck;
         }
