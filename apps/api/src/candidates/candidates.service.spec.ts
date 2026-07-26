@@ -1,22 +1,25 @@
 import { Test } from '@nestjs/testing';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { CandidatesService } from './candidates.service';
-import { TenantPrismaService, AuditService } from '@exam-platform/shared';
+import { TenantPrismaService, AuditService, BlobStorageService } from '@exam-platform/shared';
 
 describe('CandidatesService', () => {
   let service: CandidatesService;
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
+  let blobStorage: { deleteByUrl: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
+    blobStorage = { deleteByUrl: jest.fn().mockResolvedValue(undefined) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         CandidatesService,
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: AuditService, useValue: audit },
+        { provide: BlobStorageService, useValue: blobStorage },
       ],
     }).compile();
     service = moduleRef.get(CandidatesService);
@@ -413,7 +416,9 @@ describe('CandidatesService', () => {
   });
 
   describe('erase', () => {
-    function makeEraseTx(overrides: { candidate?: Record<string, unknown> } = {}) {
+    function makeEraseTx(
+      overrides: { candidate?: Record<string, unknown>; proctoringEvents?: { metadataJson: string | null }[] } = {},
+    ) {
       return {
         candidate: {
           findFirst: jest.fn().mockResolvedValue(
@@ -430,7 +435,10 @@ describe('CandidatesService', () => {
           updateMany: jest.fn(),
         },
         candidateMessage: { updateMany: jest.fn() },
-        proctoringEvent: { updateMany: jest.fn() },
+        proctoringEvent: {
+          findMany: jest.fn().mockResolvedValue(overrides.proctoringEvents ?? []),
+          updateMany: jest.fn(),
+        },
         proctoringAnalysis: { updateMany: jest.fn() },
         attemptInsight: { updateMany: jest.fn() },
         candidateRefreshToken: { deleteMany: jest.fn() },
@@ -499,6 +507,72 @@ describe('CandidatesService', () => {
       await expect(service.erase(context, 'user-1', 'cand-x')).rejects.toThrow(NotFoundException);
       expect(tx.candidate.update).not.toHaveBeenCalled();
       expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('reads the webcam snapshot and screen-capture URLs before metadataJson is nulled, then deletes both blobs after the transaction commits', async () => {
+      const tx = makeEraseTx({
+        proctoringEvents: [
+          { metadataJson: JSON.stringify({ snapshot: 'https://blob.test/container/webcam-snapshots/a.jpg' }) },
+          { metadataJson: JSON.stringify({ screenshot: 'https://blob.test/container/screen-captures/b.jpg' }) },
+        ],
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.erase(context, 'user-1', 'cand-1');
+
+      // Ordering, not just occurrence: the read must happen strictly before the write that
+      // destroys the reference, and the remote delete must happen strictly after the
+      // transaction's last statement (i.e. after it has committed).
+      const readOrder = tx.proctoringEvent.findMany.mock.invocationCallOrder[0];
+      const nullOrder = tx.proctoringEvent.updateMany.mock.invocationCallOrder[0];
+      const lastTxStatementOrder = tx.invitation.updateMany.mock.invocationCallOrder[0];
+      const deleteOrders = blobStorage.deleteByUrl.mock.invocationCallOrder;
+
+      expect(readOrder).toBeLessThan(nullOrder);
+      expect(Math.min(...deleteOrders)).toBeGreaterThan(lastTxStatementOrder);
+
+      expect(tx.proctoringEvent.updateMany).toHaveBeenCalledWith({
+        where: { attemptId: { in: ['attempt-1'] } }, data: { metadataJson: null },
+      });
+      expect(blobStorage.deleteByUrl).toHaveBeenCalledWith('https://blob.test/container/webcam-snapshots/a.jpg');
+      expect(blobStorage.deleteByUrl).toHaveBeenCalledWith('https://blob.test/container/screen-captures/b.jpg');
+      expect(blobStorage.deleteByUrl).toHaveBeenCalledTimes(2);
+    });
+
+    it('still reports a successful erase, and still deletes the remaining blobs, when one blob delete throws', async () => {
+      const tx = makeEraseTx({
+        proctoringEvents: [
+          { metadataJson: JSON.stringify({ snapshot: 'https://blob.test/container/webcam-snapshots/a.jpg' }) },
+          { metadataJson: JSON.stringify({ snapshot: 'https://blob.test/container/webcam-snapshots/b.jpg' }) },
+        ],
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      blobStorage.deleteByUrl.mockRejectedValueOnce(new Error('blob storage unavailable'));
+
+      const result = await service.erase(context, 'user-1', 'cand-1');
+
+      expect(result).toEqual({ id: 'cand-1', erasedAt: expect.any(Date) });
+      expect(blobStorage.deleteByUrl).toHaveBeenCalledTimes(2);
+      expect(audit.record).toHaveBeenCalledWith(context, {
+        actorUserId: 'user-1', action: 'candidate.erased', entityType: 'candidate', entityId: 'cand-1',
+      });
+    });
+
+    it('does not abort the erase when one proctoring event carries malformed metadataJson', async () => {
+      const tx = makeEraseTx({
+        proctoringEvents: [
+          { metadataJson: 'not-valid-json{' },
+          { metadataJson: JSON.stringify({ snapshot: 'https://blob.test/container/webcam-snapshots/c.jpg' }) },
+        ],
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.erase(context, 'user-1', 'cand-1');
+
+      expect(result).toEqual({ id: 'cand-1', erasedAt: expect.any(Date) });
+      expect(blobStorage.deleteByUrl).toHaveBeenCalledTimes(1);
+      expect(blobStorage.deleteByUrl).toHaveBeenCalledWith('https://blob.test/container/webcam-snapshots/c.jpg');
+      expect(audit.record).toHaveBeenCalled();
     });
   });
 });

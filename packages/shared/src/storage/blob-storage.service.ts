@@ -31,4 +31,13 @@ export class BlobStorageService {
     const [, contentType, base64] = match;
     return this.upload(blobPath, Buffer.from(base64, 'base64'), contentType);
   }
+
+  async deleteByUrl(blobUrl: string): Promise<void> {
+    const container = this.getContainer();
+    const prefix = `${container.url}/`;
+    if (!blobUrl.startsWith(prefix)) {
+      return; // not ours -- never try to delete an arbitrary URL
+    }
+    await container.getBlockBlobClient(decodeURIComponent(blobUrl.slice(prefix.length))).deleteIfExists();
+  }
 }

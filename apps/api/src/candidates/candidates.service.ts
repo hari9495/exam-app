@@ -1,8 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Candidate } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
+import { BlobStorageService } from '@exam-platform/shared';
 import { CreateCandidateDto } from './dto/create-candidate.dto';
 import { UpdateCandidateDto } from './dto/update-candidate.dto';
 import { parseCandidateCsv } from './csv-parser';
@@ -41,9 +42,12 @@ export interface CandidateDataExport {
 
 @Injectable()
 export class CandidatesService {
+  private readonly logger = new Logger(CandidatesService.name);
+
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly audit: AuditService,
+    private readonly blobStorage: BlobStorageService,
   ) {}
 
   async create(context: TenantContext, dto: CreateCandidateDto): Promise<Candidate> {
@@ -295,7 +299,7 @@ export class CandidatesService {
   }
 
   async erase(context: TenantContext, actorUserId: string, candidateId: string): Promise<{ id: string; erasedAt: Date }> {
-    const { erasedAt, didErase } = await this.tenantPrisma.forTenant(context, async (tx) => {
+    const { erasedAt, didErase, evidenceUrls } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const candidate = await tx.candidate.findFirst({
         where: { id: candidateId, organizationId: context.organizationId as string },
       });
@@ -303,13 +307,31 @@ export class CandidatesService {
         throw new NotFoundException(`Candidate ${candidateId} not found`);
       }
       if (candidate.erasedAt) {
-        return { erasedAt: candidate.erasedAt, didErase: false };
+        return { erasedAt: candidate.erasedAt, didErase: false, evidenceUrls: [] as string[] };
       }
 
       const invitations = await tx.invitation.findMany({ where: { candidateId }, select: { id: true } });
       const invitationIds = invitations.map((invitation) => invitation.id);
       const attempts = await tx.attempt.findMany({ where: { invitationId: { in: invitationIds } }, select: { id: true } });
       const attemptIds = attempts.map((attempt) => attempt.id);
+
+      // Collect proctoring evidence blob URLs *before* the updateMany below nulls
+      // metadataJson -- once that column is null the references are gone forever.
+      const proctoringEvents = await tx.proctoringEvent.findMany({
+        where: { attemptId: { in: attemptIds } },
+        select: { metadataJson: true },
+      });
+      const evidenceUrls: string[] = [];
+      for (const event of proctoringEvents) {
+        if (!event.metadataJson) continue;
+        try {
+          const metadata = JSON.parse(event.metadataJson) as { snapshot?: string; screenshot?: string };
+          if (metadata.snapshot) evidenceUrls.push(metadata.snapshot);
+          if (metadata.screenshot) evidenceUrls.push(metadata.screenshot);
+        } catch {
+          // A corrupt row must not abort a legally required erase.
+        }
+      }
 
       const now = new Date();
       await tx.candidate.update({
@@ -333,10 +355,21 @@ export class CandidatesService {
         data: { status: 'revoked', revokedAt: now },
       });
 
-      return { erasedAt: now, didErase: true };
+      return { erasedAt: now, didErase: true, evidenceUrls };
     });
 
     if (didErase) {
+      // Deleting the blobs is outside the transaction on purpose: a failed remote
+      // delete must not roll back the erase -- the database redaction is the part
+      // that's legally required, the blob cleanup is best-effort on top of it.
+      for (const url of evidenceUrls) {
+        try {
+          await this.blobStorage.deleteByUrl(url);
+        } catch (error) {
+          this.logger.error(`Failed to delete proctoring evidence blob for candidate ${candidateId}: ${url}`, error as Error);
+        }
+      }
+
       await this.audit.record(context, {
         actorUserId,
         action: 'candidate.erased',
