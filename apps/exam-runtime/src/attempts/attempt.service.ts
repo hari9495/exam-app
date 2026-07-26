@@ -522,29 +522,7 @@ export class AttemptService {
       // through it would strip them right back out (that regression, and the fix, are in
       // scc-task-5-report.md fix round 6).
       const metadata = sanitizeMetadataOrDrop(dto.metadata, this.logger, attempt.id, dto.eventType);
-      let serverMetadata: Record<string, unknown> | undefined;
-      if (dto.screenshot && proctoring.screenCaptureEnabled) {
-        // Match the JSON key, not the bare word: `screenshotCapReached` also contains the
-        // substring "screenshot", and would otherwise inflate this count once the cap is hit.
-        const priorScreenshots = await tx.proctoringEvent.count({
-          where: { attemptId: attempt.id, metadataJson: { contains: '"screenshot":' } },
-        });
-        if (priorScreenshots >= 150) {
-          serverMetadata = { screenshotCapReached: true };
-        } else {
-          try {
-            const screenshotUrl = await withTimeout(
-              this.blobStorage.uploadDataUri(`screen-captures/${attempt.id}-${Date.now()}.jpg`, dto.screenshot),
-              SCREENSHOT_UPLOAD_TIMEOUT_MS,
-            );
-            serverMetadata = { screenshot: screenshotUrl };
-          } catch (error) {
-            // The violation record is what matters -- losing the image is acceptable, losing
-            // the violation is not.
-            this.logger.error('Failed to upload screen capture', error as Error);
-          }
-        }
-      }
+      const serverMetadata = await this.captureScreenshotMetadata(tx, attempt.id, dto.screenshot, proctoring.screenCaptureEnabled);
 
       if (isStrikeWorthy(dto.eventType)) {
         const { attempt: updated, strike, event } = await this.attemptSettlement.registerBrowserActivityViolation(
@@ -606,13 +584,62 @@ export class AttemptService {
       // it: a stale bundle or a tampered client on a webcam-disabled exam must not be
       // able to record events, strikes, or a pause/block. Ignore rather than reject, for
       // the same reason as the disabled-signal guard above.
-      if (!resolveProctoringConfig(exam, attempt).webcamEnabled) {
+      const proctoring = resolveProctoringConfig(exam, attempt);
+      if (!proctoring.webcamEnabled) {
         return { strike: attempt.webcamViolationCount, status: attempt.status };
       }
       const snapshotUrl = await this.blobStorage.uploadDataUri(`webcam-snapshots/${attempt.id}-${Date.now()}.jpg`, dto.snapshot);
-      const { attempt: updated, strike } = await this.attemptSettlement.registerWebcamViolation(tx, exam, attempt, dto.reason, snapshotUrl);
+      // Same shared cap-count/withTimeout/upload path reportProctoringEvent uses for its
+      // screenshot -- webcam strikes (no_face, multiple_faces, webcam_head_turned) are the
+      // feature's motivating case (the most common machine misfire) and previously carried no
+      // screen evidence at all.
+      const screenMetadata = await this.captureScreenshotMetadata(tx, attempt.id, dto.screenshot, proctoring.screenCaptureEnabled);
+      const { attempt: updated, strike } = await this.attemptSettlement.registerWebcamViolation(
+        tx,
+        exam,
+        attempt,
+        dto.reason,
+        snapshotUrl,
+        screenMetadata,
+      );
       return { strike, status: updated.status };
     });
+  }
+
+  // Shared by reportProctoringEvent and webcamViolation: uploads a client-supplied screen
+  // capture and returns the metadata overlay to merge into the event's metadataJson *after*
+  // sanitization (see the sanitizeMetadataOrDrop comment in reportProctoringEvent) -- these
+  // keys are server-authoritative and must never pass back through the client-metadata filter.
+  // Ignored (not rejected) when the exam has capture off, same as the disabled-signal guard.
+  private async captureScreenshotMetadata(
+    tx: Prisma.TransactionClient,
+    attemptId: string,
+    screenshot: string | undefined,
+    screenCaptureEnabled: boolean,
+  ): Promise<Record<string, unknown> | undefined> {
+    if (!screenshot || !screenCaptureEnabled) {
+      return undefined;
+    }
+    // Match the JSON key, not the bare word: `screenshotCapReached` also contains the
+    // substring "screenshot", and would otherwise inflate this count once the cap is hit.
+    const priorScreenshots = await tx.proctoringEvent.count({
+      where: { attemptId, metadataJson: { contains: '"screenshot":' } },
+    });
+    if (priorScreenshots >= 150) {
+      return { screenshotCapReached: true };
+    }
+    try {
+      const screenshotUrl = await withTimeout(
+        this.blobStorage.uploadDataUri(`screen-captures/${attemptId}-${Date.now()}.jpg`, screenshot),
+        SCREENSHOT_UPLOAD_TIMEOUT_MS,
+      );
+      return { screenshot: screenshotUrl };
+    } catch (error) {
+      // The violation record is what matters -- losing the image is acceptable, losing the
+      // violation is not.
+      this.logger.error('Failed to upload screen capture', error as Error);
+      return undefined;
+    }
   }
 
   async webcamSnapshot(session: CandidateSession, dto: WebcamSnapshotDto): Promise<{ ok: true }> {

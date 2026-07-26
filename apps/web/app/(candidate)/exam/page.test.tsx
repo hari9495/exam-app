@@ -676,7 +676,7 @@ describe('CandidateExamPage', () => {
 
       await waitFor(() => expect(useProctoringMonitor).toHaveBeenCalled());
       expect(useProctoringMonitor).toHaveBeenLastCalledWith(true, expect.any(Function), proctoring, expect.any(Function));
-      expect(useWebcamMonitor).toHaveBeenLastCalledWith(true, expect.any(Function), proctoring);
+      expect(useWebcamMonitor).toHaveBeenLastCalledWith(true, expect.any(Function), proctoring, expect.any(Function));
     });
   });
 

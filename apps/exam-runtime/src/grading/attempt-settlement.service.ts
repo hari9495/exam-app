@@ -247,6 +247,12 @@ export class AttemptSettlementService {
     attempt: Attempt,
     reason: WebcamViolationReason,
     snapshot: string,
+    // Screen-capture overlay from AttemptService.captureScreenshotMetadata -- server-authoritative
+    // (an upload URL or a screenshotCapReached flag), applied directly here with no sanitization
+    // pass. That's deliberate, not an oversight: unlike registerBrowserActivityViolation, this
+    // method never merges in client-supplied metadata, so there is no forged-key filter for a
+    // server-set `screenshot` key to collide with in the first place.
+    screenshotMetadata?: Record<string, unknown>,
   ): Promise<{ attempt: Attempt; strike: number }> {
     const { enforcement, strikeLimit } = resolveProctoringConfig(exam, attempt);
     const strike = attempt.webcamViolationCount + 1;
@@ -260,7 +266,7 @@ export class AttemptSettlementService {
         attemptId: attempt.id,
         eventType,
         severity: atLimit ? 'high' : 'medium',
-        metadataJson: JSON.stringify({ snapshot, strike }),
+        metadataJson: JSON.stringify({ snapshot, strike, ...screenshotMetadata }),
       },
     });
     // Warn-only records and counts but never interrupts the candidate.

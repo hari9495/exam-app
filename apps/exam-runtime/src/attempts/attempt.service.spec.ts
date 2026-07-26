@@ -2265,7 +2265,47 @@ describe('AttemptService', () => {
       expect(result).toEqual({ strike: 1, status: 'paused' });
       expect(blobStorage.uploadDataUri).toHaveBeenCalledWith(expect.stringContaining('webcam-snapshots/attempt-1-'), 'x');
       const uploadedUrl = await blobStorage.uploadDataUri.mock.results[0].value;
-      expect(settlement.registerWebcamViolation).toHaveBeenCalledWith(tx, exam, attempt, 'no_face', uploadedUrl);
+      expect(settlement.registerWebcamViolation).toHaveBeenCalledWith(tx, exam, attempt, 'no_face', uploadedUrl, undefined);
+    });
+
+    it('threads a screenshot through the same cap-count/upload helper reportProctoringEvent uses, landing it in registerWebcamViolation', async () => {
+      const screenCaptureExam = { ...exam, screenCaptureEnabled: true };
+      const invitationWithScreenCapture = { ...invitationRecord, exam: screenCaptureExam };
+      const attempt = { id: 'attempt-1', status: 'in_progress', webcamViolationCount: 0 };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        proctoringEvent: { count: jest.fn().mockResolvedValue(0) },
+      };
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve(invitationWithScreenCapture))
+        .mockImplementationOnce((_ctx, fn) => fn(tx));
+      settlement.registerWebcamViolation = jest.fn().mockResolvedValue({ attempt: { ...attempt, status: 'paused', webcamViolationCount: 1 }, strike: 1 });
+
+      await service.webcamViolation(session, { reason: 'no_face', snapshot: 'x', screenshot: 'data:image/jpeg;base64,abc' });
+
+      expect(blobStorage.uploadDataUri).toHaveBeenCalledWith(expect.stringContaining('screen-captures/attempt-1-'), 'data:image/jpeg;base64,abc');
+      const screenshotUrl = await blobStorage.uploadDataUri.mock.results[1].value;
+      expect(settlement.registerWebcamViolation).toHaveBeenCalledWith(
+        tx,
+        screenCaptureExam,
+        attempt,
+        'no_face',
+        expect.any(String),
+        { screenshot: screenshotUrl },
+      );
+    });
+
+    it('ignores a supplied screenshot silently when the exam has screenCaptureEnabled false', async () => {
+      const attempt = { id: 'attempt-1', status: 'in_progress', webcamViolationCount: 0 };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
+      mockBootstrapThenScoped(tx);
+      settlement.registerWebcamViolation = jest.fn().mockResolvedValue({ attempt: { ...attempt, status: 'paused', webcamViolationCount: 1 }, strike: 1 });
+
+      await service.webcamViolation(session, { reason: 'no_face', snapshot: 'x', screenshot: 'data:image/jpeg;base64,abc' });
+
+      expect(blobStorage.uploadDataUri).toHaveBeenCalledTimes(1);
+      expect(blobStorage.uploadDataUri).not.toHaveBeenCalledWith(expect.stringContaining('screen-captures/'), expect.anything());
+      expect(settlement.registerWebcamViolation).toHaveBeenCalledWith(tx, exam, attempt, 'no_face', expect.any(String), undefined);
     });
 
     it('ignores the violation and leaves the attempt unchanged when webcam proctoring is disabled on the exam', async () => {

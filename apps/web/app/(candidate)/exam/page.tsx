@@ -152,6 +152,7 @@ export default function CandidateExamPage() {
       setLastViolationSource('webcam');
     },
     proctoringConfig,
+    screenCapture.capture,
   );
   // If this mount never saw a live violation event (e.g. the page reloaded while
   // already paused/blocked from an earlier session), infer which system caused the

@@ -207,14 +207,16 @@ export function useReportWebcamViolation() {
     mutationFn: ({
       reason,
       snapshot,
+      screenshot,
     }: {
       reason: 'no_face' | 'head_turned' | 'multiple_faces';
       snapshot: string;
+      screenshot?: string;
     }): Promise<WebcamViolationResult> =>
       withRetry(() =>
         candidateApiFetch(
           '/attempt/webcam-violation',
-          { method: 'POST', body: JSON.stringify({ reason, snapshot }) },
+          { method: 'POST', body: JSON.stringify({ reason, snapshot, screenshot }) },
           accessToken ?? undefined,
         ),
       ),

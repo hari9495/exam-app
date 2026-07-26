@@ -29,8 +29,16 @@ const LOOKING_DOWN_RESULT = {
   facialTransformationMatrixes: [{ data: new Float32Array([0, 0, 0, 0, 0, 0, 0, 0, 0, -0.9, 1]) }],
 };
 
-function Probe({ enabled, onViolationReason }: { enabled: boolean; onViolationReason?: (reason: string) => void }) {
-  useWebcamMonitor(enabled, onViolationReason);
+function Probe({
+  enabled,
+  onViolationReason,
+  capture,
+}: {
+  enabled: boolean;
+  onViolationReason?: (reason: string) => void;
+  capture?: () => string | null;
+}) {
+  useWebcamMonitor(enabled, onViolationReason, undefined, capture);
   return null;
 }
 
@@ -134,6 +142,42 @@ describe('useWebcamMonitor', () => {
     render(<Probe enabled={true} />);
 
     await waitFor(() => expect(mutate).toHaveBeenCalledWith({ reason: 'no_face', snapshot: '' }));
+  });
+
+  it('attaches a screen capture to a confirmed webcam violation when capture is supplied', async () => {
+    const capture = jest.fn(() => 'data:image/jpeg;base64,screen');
+    render(<Probe enabled={true} capture={capture} />);
+    await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled());
+
+    mockDetectForVideo.mockReturnValue({ faceLandmarks: [] }); // no_face every tick from here
+    jest.advanceTimersByTime(5 * SAMPLE_INTERVAL_MS); // 5 of 8 -> confirmed
+
+    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ reason: 'no_face', screenshot: 'data:image/jpeg;base64,screen' }));
+  });
+
+  it('attaches a screen capture to the fail-safe no_face report when camera/model setup fails', async () => {
+    const capture = jest.fn(() => 'data:image/jpeg;base64,screen');
+    (navigator.mediaDevices.getUserMedia as jest.Mock).mockRejectedValue(new Error('camera denied'));
+    render(<Probe enabled={true} capture={capture} />);
+
+    await waitFor(() => expect(mutate).toHaveBeenCalledWith({ reason: 'no_face', snapshot: '', screenshot: 'data:image/jpeg;base64,screen' }));
+  });
+
+  it('does not re-subscribe (restart the camera) when the capture function identity changes across renders', async () => {
+    const captureA = jest.fn(() => 'a');
+    const { rerender } = render(<Probe enabled={true} capture={captureA} />);
+    await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1));
+
+    const captureB = jest.fn(() => 'b');
+    rerender(<Probe enabled={true} capture={captureB} />);
+
+    mockDetectForVideo.mockReturnValue({ faceLandmarks: [] }); // no_face every tick from here
+    jest.advanceTimersByTime(5 * SAMPLE_INTERVAL_MS); // 5 of 8 -> confirmed
+
+    // Still only one getUserMedia call (no teardown/restart), and the *new* capture function
+    // (mirrored through the ref, not a stale closure) is what gets used.
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ screenshot: 'b' }));
   });
 
   it('stops the stream and never starts polling if unmounted while getUserMedia is still pending', async () => {

@@ -797,6 +797,25 @@ describe('AttemptSettlementService', () => {
       expect(tx.attempt.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'blocked' }) }));
     });
 
+    it('merges the screenshot overlay into metadataJson directly, alongside snapshot/strike', async () => {
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', webcamViolationCount: 0 } as any;
+      const tx = {
+        proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
+        attempt: { update: jest.fn().mockResolvedValue({ ...attempt, status: 'paused', webcamViolationCount: 1 }) },
+      } as any;
+
+      await service.registerWebcamViolation(tx, exam, attempt, 'no_face', 'data:image/jpeg;base64,abc', { screenshot: 'https://blob.test/screen-captures/x.jpg' });
+
+      expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+        data: {
+          attemptId: 'attempt-1',
+          eventType: 'webcam_no_face',
+          severity: 'medium',
+          metadataJson: JSON.stringify({ snapshot: 'data:image/jpeg;base64,abc', strike: 1, screenshot: 'https://blob.test/screen-captures/x.jpg' }),
+        },
+      });
+    });
+
     it('maps multiple_faces to the webcam_multiple_faces event type', async () => {
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', webcamViolationCount: 0 } as any;
       const tx = {

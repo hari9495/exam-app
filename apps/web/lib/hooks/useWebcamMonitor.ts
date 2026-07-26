@@ -25,10 +25,18 @@ export function useWebcamMonitor(
   enabled: boolean,
   onViolationReason?: (reason: string) => void,
   config?: ExamProctoringConfig,
+  capture?: () => string | null,
 ): void {
   const reportViolation = useReportWebcamViolation();
   const reportViolationRef = useRef(reportViolation.mutate);
   reportViolationRef.current = reportViolation.mutate;
+
+  // Same ref-mirror pattern useProctoringMonitor uses for its `capture` -- identity-stable in
+  // practice (useScreenCapture), but mirrored anyway so the effect below still depends only on
+  // [enabled] and never re-subscribes (tearing down and restarting the camera/model) when a
+  // function identity changes.
+  const captureRef = useRef(capture);
+  captureRef.current = capture;
 
   const reportEvent = useReportProctoringEvent();
   const reportEventRef = useRef(reportEvent);
@@ -120,7 +128,11 @@ export function useWebcamMonitor(
         // independently from the same frame -- one confirming does not suppress the other.
         const confirmedViolation = violationVoter.push(detectViolationReason(result));
         if (confirmedViolation) {
-          reportViolationRef.current({ reason: confirmedViolation as ViolationReason, snapshot: captureSnapshot(video) });
+          reportViolationRef.current({
+            reason: confirmedViolation as ViolationReason,
+            snapshot: captureSnapshot(video),
+            screenshot: captureRef.current?.() ?? undefined,
+          });
           onViolationRef.current?.(confirmedViolation);
         }
 
@@ -135,8 +147,10 @@ export function useWebcamMonitor(
 
     setup().catch(() => {
       // Camera/model failure mid-attempt fails safe toward flagging (a "no face" violation)
-      // rather than silently disabling the check.
-      reportViolationRef.current({ reason: 'no_face', snapshot: '' });
+      // rather than silently disabling the check. Still attach a screen capture where possible --
+      // this is exactly the kind of machine misfire the feature exists to give a reviewer
+      // evidence for.
+      reportViolationRef.current({ reason: 'no_face', snapshot: '', screenshot: captureRef.current?.() ?? undefined });
     });
 
     return () => {
