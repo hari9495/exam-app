@@ -97,24 +97,28 @@ export default function CandidateExamPage() {
   // Reset on error (rather than left permanently stuck) so the attempt isn't silently stuck
   // in_progress with the clock running because one transient POST failed.
   const postedShareInactiveRef = useRef(false);
-  function postShareInactive() {
+  // reason: 'ended' -- the browser's own Stop-sharing control fired, a genuine and
+  // strike-worthy stop. 'absent' -- this component mounted (or re-mounted, e.g. after a
+  // refresh) with no live stream; a getDisplayMedia stream cannot survive navigation, so this
+  // is indistinguishable from a tab crash and must pause without costing a strike.
+  function postShareInactive(reason: 'ended' | 'absent') {
     if (postedShareInactiveRef.current) return;
     postedShareInactiveRef.current = true;
     screenShareState.mutate(
-      { active: false },
+      { active: false, reason },
       { onError: () => { postedShareInactiveRef.current = false; } },
     );
   }
   // onEnded fires from the browser's own "Stop sharing" control (see useScreenCapture) --
   // it's identity-stable through that hook's internal ref mirror, so passing a fresh closure
   // here every render is fine.
-  const screenCapture = useScreenCapture(captureEnabled, postShareInactive);
+  const screenCapture = useScreenCapture(captureEnabled, () => postShareInactive('ended'));
   useEffect(() => {
     if (!captureEnabled || screenCapture.active) {
       postedShareInactiveRef.current = false;
       return;
     }
-    postShareInactive();
+    postShareInactive('absent');
   }, [captureEnabled, screenCapture.active]);
 
   const [isRequestingShare, setIsRequestingShare] = useState(false);

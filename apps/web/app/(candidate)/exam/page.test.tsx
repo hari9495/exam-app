@@ -780,6 +780,41 @@ describe('CandidateExamPage', () => {
       expect(mutate).toHaveBeenCalledTimes(1);
     });
 
+    it("POSTs reason: 'absent' on mount when no stream is live, so a refresh pauses without a strike", () => {
+      const mutate = jest.fn();
+      (useScreenShareState as jest.Mock).mockReturnValue({ mutate, isPending: false });
+      (useScreenCapture as jest.Mock).mockReturnValue({ active: false, error: null, requestShare: jest.fn(), capture: jest.fn(() => null) });
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: attemptWithScreenCapture(), isError: false });
+
+      render(<CandidateExamPage />);
+
+      expect(mutate).toHaveBeenCalledWith(
+        { active: false, reason: 'absent' },
+        expect.objectContaining({ onError: expect.any(Function) }),
+      );
+    });
+
+    it("POSTs reason: 'ended' when the browser's own Stop-sharing control fires", () => {
+      let onEndedCallback: (() => void) | undefined;
+      (useScreenCapture as jest.Mock).mockImplementation((_enabled: boolean, onEnded: () => void) => {
+        onEndedCallback = onEnded;
+        return { active: true, error: null, requestShare: jest.fn(), capture: jest.fn(() => null) };
+      });
+      const mutate = jest.fn();
+      (useScreenShareState as jest.Mock).mockReturnValue({ mutate, isPending: false });
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: attemptWithScreenCapture(), isError: false });
+
+      render(<CandidateExamPage />);
+      act(() => {
+        onEndedCallback?.();
+      });
+
+      expect(mutate).toHaveBeenCalledWith(
+        { active: false, reason: 'ended' },
+        expect.objectContaining({ onError: expect.any(Function) }),
+      );
+    });
+
     it('retries the { active: false } POST after a failed attempt once the effect runs again for the same stop event', () => {
       let onEndedCallback: (() => void) | undefined;
       let active = true;

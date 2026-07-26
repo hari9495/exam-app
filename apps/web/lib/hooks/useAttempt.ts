@@ -169,14 +169,19 @@ export function useScreenShareState() {
       active,
       displaySurface,
       userAgent,
+      reason,
     }: {
       active: boolean;
       displaySurface?: string;
       userAgent?: string;
+      // 'ended' (the browser's Stop-sharing control) is strike-worthy; 'absent' (no live
+      // stream at mount -- a refresh can't carry a getDisplayMedia stream across navigation)
+      // pauses only. Omitted defaults server-side to 'ended'.
+      reason?: 'ended' | 'absent';
     }): Promise<{ status: string }> =>
       candidateApiFetch(
         '/attempt/screen-share-state',
-        { method: 'POST', body: JSON.stringify({ active, displaySurface, userAgent }) },
+        { method: 'POST', body: JSON.stringify({ active, displaySurface, userAgent, reason }) },
         accessToken ?? undefined,
       ),
     // A missed { active: false } leaves the attempt in_progress with the clock running behind a

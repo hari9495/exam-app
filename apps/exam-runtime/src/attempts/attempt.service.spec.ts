@@ -2477,6 +2477,54 @@ describe('AttemptService', () => {
       expect(result).toEqual({ status: 'paused' });
     });
 
+    it("pauses without striking when reason:'absent' arrives while a share was running (a refresh can't survive navigation)", async () => {
+      const attempt = { id: 'attempt-1', status: 'in_progress', screenShareStartedAt: new Date('2026-01-01T00:00:00Z') };
+      const tx = {
+        attempt: {
+          findUnique: jest.fn().mockResolvedValue(attempt),
+          update: jest
+            .fn()
+            .mockResolvedValueOnce({ ...attempt, screenShareStartedAt: null })
+            .mockResolvedValueOnce({ ...attempt, screenShareStartedAt: null, status: 'paused' }),
+        },
+      };
+      mockScoped(examWithScreenCapture, tx);
+
+      const result = await service.screenShareState(session, { active: false, reason: 'absent' });
+
+      expect(settlement.registerBrowserActivityViolation).not.toHaveBeenCalled();
+      expect(tx.attempt.update).toHaveBeenNthCalledWith(1, { where: { id: 'attempt-1' }, data: { screenShareStartedAt: null } });
+      expect(tx.attempt.update).toHaveBeenNthCalledWith(2, { where: { id: 'attempt-1' }, data: { status: 'paused', pausedAt: expect.any(Date) } });
+      expect(result).toEqual({ status: 'paused' });
+    });
+
+    it("strikes when reason:'ended' arrives while a share was running, same as an omitted reason", async () => {
+      const attempt = { id: 'attempt-1', status: 'in_progress', screenShareStartedAt: new Date('2026-01-01T00:00:00Z') };
+      const tx = {
+        attempt: {
+          findUnique: jest.fn().mockResolvedValue(attempt),
+          update: jest.fn().mockResolvedValue({ ...attempt, status: 'paused', screenShareStartedAt: null, browserActivityViolationCount: 1 }),
+        },
+      };
+      mockScoped(examWithScreenCapture, tx);
+      settlement.registerBrowserActivityViolation.mockResolvedValue({
+        attempt: { ...attempt, status: 'paused', browserActivityViolationCount: 1 },
+        strike: 1,
+        event: { id: 'evt-1', eventType: 'screen_share_stopped', severity: 'high' },
+      });
+
+      const result = await service.screenShareState(session, { active: false, reason: 'ended' });
+
+      expect(settlement.registerBrowserActivityViolation).toHaveBeenCalledWith(
+        tx,
+        examWithScreenCapture,
+        attempt,
+        'screen_share_stopped',
+        { displaySurface: undefined, userAgent: undefined },
+      );
+      expect(result).toEqual({ status: 'paused' });
+    });
+
     it('leaves a blocked attempt blocked -- the state machine never downgrades blocked to paused', async () => {
       const attempt = { id: 'attempt-1', status: 'blocked', screenShareStartedAt: new Date('2026-01-01T00:00:00Z') };
       const tx = {
