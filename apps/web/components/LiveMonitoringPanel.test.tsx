@@ -298,6 +298,59 @@ describe('LiveMonitoringPanel', () => {
       expect(screen.getByText('Share ended by a page refresh or tab close — no strike')).toBeInTheDocument();
     });
 
+    it("does not render the 'no strike' label for a client-forged reason on an unrelated, strike-worthy event", async () => {
+      // ReportProctoringEventDto.metadata is a bare @IsObject() and sanitizeMetadataOrDrop only
+      // strips screenshot/snapshot-shaped keys -- a candidate can POST
+      // { eventType: 'tab_switch', metadata: { reason: 'absent' } } directly. Without the
+      // eventType/severity guard this would render a genuine, strike-worthy tab_switch
+      // annotated with an exculpatory "no strike" claim written by the accused.
+      jest.spyOn(useProctoringEventsModule, 'useProctoringEvents').mockReturnValue({
+        data: [
+          {
+            id: 'e1',
+            attemptId: 'a1',
+            eventType: 'tab_switch',
+            severity: 'high',
+            occurredAt: '2026-01-01T00:01:00Z',
+            metadataJson: JSON.stringify({ reason: 'absent' }),
+          },
+        ],
+        isLoading: false,
+      } as any);
+
+      renderPanelWithRoster(roster);
+      const user = userEvent.setup({ delay: null });
+      await user.click(screen.getByRole('button', { name: 'View log' }));
+
+      expect(screen.queryByText('Share ended by a page refresh or tab close — no strike')).not.toBeInTheDocument();
+    });
+
+    it("does not render the 'no strike' label for a forged reason on a high-severity screen_share_stopped (only the server's low-severity 'absent' row qualifies)", async () => {
+      // Same guard, other half: a real client-reported stop always gets 'high' from
+      // getProctoringEventSeverity, and the client cannot influence severity -- so a forged
+      // reason paired with the right eventType but the wrong (client-achievable) severity must
+      // still not render the label.
+      jest.spyOn(useProctoringEventsModule, 'useProctoringEvents').mockReturnValue({
+        data: [
+          {
+            id: 'e1',
+            attemptId: 'a1',
+            eventType: 'screen_share_stopped',
+            severity: 'high',
+            occurredAt: '2026-01-01T00:01:00Z',
+            metadataJson: JSON.stringify({ reason: 'absent' }),
+          },
+        ],
+        isLoading: false,
+      } as any);
+
+      renderPanelWithRoster(roster);
+      const user = userEvent.setup({ delay: null });
+      await user.click(screen.getByRole('button', { name: 'View log' }));
+
+      expect(screen.queryByText('Share ended by a page refresh or tab close — no strike')).not.toBeInTheDocument();
+    });
+
     it('renders a human-readable duration for a window_blur event, distinguishing sub-second from long blurs', async () => {
       jest.spyOn(useProctoringEventsModule, 'useProctoringEvents').mockReturnValue({
         data: [

@@ -57,7 +57,7 @@ function parseEventMetadata(metadataJson: string | null): Record<string, unknown
   }
 }
 
-function formatEventDetails(metadata: Record<string, unknown>): string[] {
+function formatEventDetails(metadata: Record<string, unknown>, event: { eventType: string; severity: string }): string[] {
   const details: string[] = [];
   if (typeof metadata.durationMs === 'number') {
     const seconds = metadata.durationMs / 1000;
@@ -75,7 +75,16 @@ function formatEventDetails(metadata: Record<string, unknown>): string[] {
   if (metadata.screenshotCapReached === true) {
     details.push('Screen-capture limit reached — no image for this event');
   }
-  if (metadata.reason === 'absent') {
+  // metadata.reason is client-reportable free-form data (ReportProctoringEventDto.metadata is a
+  // bare @IsObject(), and sanitizeMetadataOrDrop only strips screenshot/snapshot-shaped keys --
+  // `reason` passes straight through untouched). Gating on it alone would let a candidate POST
+  // { eventType: 'tab_switch', metadata: { reason: 'absent' } } and have a genuine,
+  // strike-worthy violation rendered with an exculpatory "no strike" label written by the
+  // accused. The server's screenShareState 'absent' arm is the only writer of a low-severity
+  // screen_share_stopped row -- a client-reported one always gets 'high' from
+  // getProctoringEventSeverity, and the client cannot influence severity -- so require both as
+  // server-controlled proof this is really that row.
+  if (metadata.reason === 'absent' && event.eventType === 'screen_share_stopped' && event.severity === 'low') {
     details.push('Share ended by a page refresh or tab close — no strike');
   }
   return details;
@@ -96,7 +105,7 @@ function ProctoringLogModal({ attemptId, onClose }: { attemptId: string; onClose
         <ul className="flex max-h-96 flex-col gap-2 overflow-y-auto">
           {events.map((event) => {
             const metadata = parseEventMetadata(event.metadataJson);
-            const details = metadata ? formatEventDetails(metadata) : [];
+            const details = metadata ? formatEventDetails(metadata, event) : [];
             const snapshot = metadata && typeof metadata.snapshot === 'string' && metadata.snapshot !== '' ? metadata.snapshot : null;
             const screenshot = metadata && typeof metadata.screenshot === 'string' && metadata.screenshot !== '' ? metadata.screenshot : null;
             return (

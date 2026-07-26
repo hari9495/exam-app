@@ -304,9 +304,27 @@ export class AttemptSettlementService {
         // followed within 60s by a real Stop-sharing click would otherwise find that row,
         // read isFreshStrike as false, and silently drop the strike. Repeating
         // refresh-then-stop indefinitely would hold this signal's strike count at zero forever
-        // and make "block after N strikes" enforcement conditionally inert for it. No other
-        // writer emits this metadata shape, so the predicate can't misfire on anything else.
-        NOT: { metadataJson: { contains: '"reason":"absent"' } },
+        // and make "block after N strikes" enforcement conditionally inert for it.
+        //
+        // `metadata_json` is nullable, and SQL's `NOT (col LIKE ...)` is UNKNOWN (excluded, not
+        // included) for a NULL column -- a bare `NOT: { metadataJson: { contains: ... } } }`
+        // would silently drop every NULL-metadata row out of the cooldown lookup entirely
+        // (right_click, tab_switch, idle_timeout, and every event on every screen-capture-off
+        // exam, since capture is a per-exam toggle -- NULL is the common case here, not an
+        // edge case). Explicitly re-admit NULL rows via the OR so the cooldown's behavior for
+        // every event type this predicate wasn't written for is unchanged.
+        //
+        // Any client can emit `{ reason: 'absent' }` through reportProctoringEvent's free-form
+        // metadata -- this predicate can only fail OPEN (make a row invisible to the cooldown,
+        // meaning more strikes land, never fewer), so a forged value can only cost the forger
+        // strikes, never suppress one. It is not a guarantee that only the server-written
+        // 'absent' row matches; it only has to be safe if something else does.
+        //
+        // SQL_Latin1_General_CP1_CI_AS folds case and width for LIKE, so `{"REASON":"ABSENT"}`
+        // and fullwidth-character variants also match this NOT -- same fail-open direction,
+        // so still not a defect, but written down here since the collation's breadth has been
+        // the exact class of surprise that cost several rounds of fixes elsewhere in this file.
+        OR: [{ metadataJson: null }, { NOT: { metadataJson: { contains: '"reason":"absent"' } } }],
       },
       orderBy: { occurredAt: 'desc' },
     });

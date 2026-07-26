@@ -7,6 +7,37 @@ import { IntegrityAnalysisService } from '../integrity/integrity-analysis.servic
 import { ApiInternalClient } from '../api-internal-client/api-internal.client';
 import { getProctoringEventSeverity } from '../attempts/proctoring-severity';
 
+// Faithfully emulates SQL Server's NULL semantics for the cooldown `where` clause, not just
+// jest.fn() call-shape assertions -- specifically that `NOT (metadata_json LIKE ...)` is UNKNOWN
+// (excluded from the result, same as false) for a NULL `metadata_json` column, and that an
+// `OR` branch of `{ metadataJson: null }` is what re-admits those rows. Used by the cooldown
+// tests below so they exercise the real interaction: a source regression to a bare `NOT` (no
+// `OR`) makes a NULL-metadataJson row stop matching, which is exactly the Critical this guards.
+function matchesCooldownWhere(row: { eventType: string; occurredAt: Date; metadataJson: string | null }, where: any): boolean {
+  if (row.eventType !== where.eventType) return false;
+  if (!(row.occurredAt > where.occurredAt.gt)) return false;
+
+  function clauseIsTrue(clause: any): boolean {
+    if (clause.metadataJson === null) {
+      return row.metadataJson === null;
+    }
+    if (clause.NOT?.metadataJson?.contains !== undefined) {
+      // NOT (NULL LIKE x) is SQL UNKNOWN, not true -- a NULL row never satisfies a bare NOT.
+      if (row.metadataJson === null) return false;
+      return !row.metadataJson.includes(clause.NOT.metadataJson.contains);
+    }
+    return true;
+  }
+
+  if (where.OR) {
+    return where.OR.some(clauseIsTrue);
+  }
+  if (where.NOT) {
+    return clauseIsTrue({ NOT: where.NOT });
+  }
+  return true;
+}
+
 describe('AttemptSettlementService', () => {
   let service: AttemptSettlementService;
   let broadcaster: { emitAttemptStatus: jest.Mock; emitMessageSent: jest.Mock };
@@ -969,7 +1000,7 @@ describe('AttemptSettlementService', () => {
           attemptId: 'attempt-1',
           eventType: 'copy_paste',
           occurredAt: { gt: expect.any(Date) },
-          NOT: { metadataJson: { contains: '"reason":"absent"' } },
+          OR: [{ metadataJson: null }, { NOT: { metadataJson: { contains: '"reason":"absent"' } } }],
         },
         orderBy: { occurredAt: 'desc' },
       });
@@ -980,10 +1011,10 @@ describe('AttemptSettlementService', () => {
       // no-strike 'absent' row (screenShareState's precondition-only pause) would satisfy the
       // cooldown's "same event type recently" check and silently swallow the very next real
       // stop's strike -- repeatable indefinitely by refreshing before every deliberate stop.
-      // This fake findFirst mimics the real Prisma NOT-filter behavior against the `where`
+      // matchesCooldownWhere mimics real Prisma/SQL NOT-filter behavior against the `where`
       // clause the code actually builds, so the test exercises the interaction, not just the
-      // call shape -- without the NOT predicate in the source, this row is still returned and
-      // the test fails.
+      // call shape -- without the predicate in the source, this row is still returned and the
+      // test fails.
       const absentRow = {
         id: 'evt-absent',
         eventType: 'screen_share_stopped',
@@ -993,14 +1024,7 @@ describe('AttemptSettlementService', () => {
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 0, status: 'in_progress' } as any;
       const tx = {
         proctoringEvent: {
-          findFirst: jest.fn((args: any) => {
-            const excludesAbsent = args.where?.NOT?.metadataJson?.contains === '"reason":"absent"';
-            const matches =
-              absentRow.eventType === args.where.eventType &&
-              absentRow.occurredAt > args.where.occurredAt.gt &&
-              !(excludesAbsent && absentRow.metadataJson.includes('"reason":"absent"'));
-            return Promise.resolve(matches ? absentRow : null);
-          }),
+          findFirst: jest.fn((args: any) => Promise.resolve(matchesCooldownWhere(absentRow, args.where) ? absentRow : null)),
           create: jest.fn().mockResolvedValue({ id: 'evt-2', eventType: 'screen_share_stopped', severity: 'high' }),
         },
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, browserActivityViolationCount: 1, status: 'paused' }) },
@@ -1010,6 +1034,41 @@ describe('AttemptSettlementService', () => {
 
       expect(strike).toBe(1); // the 'absent' row must not have suppressed this as a repeat incident
       expect(tx.attempt.update).toHaveBeenCalled();
+    });
+
+    it('still collapses repeats into one strike within the cooldown window for a NULL-metadataJson row (Critical fix round 4 regression)', async () => {
+      // metadata_json is nullable, and SQL's `NOT (col LIKE ...)` is UNKNOWN (excluded, not
+      // included) for a NULL column -- a bare NOT predicate would silently drop every
+      // NULL-metadata row out of this cooldown lookup, which is the common case (right_click,
+      // tab_switch, idle_timeout, dev_tools_detected, and every event on every
+      // screen-capture-off exam all have null metadataJson). Concretely: three right_clicks in
+      // ten seconds on a screen-capture-off exam with strikeLimit: 3 would go from 1 strike
+      // (correct, cooldown-collapsed) to 3 strikes and an unwarranted block. This row has no
+      // 'reason':'absent' marker at all -- it's a bare NULL, the ordinary shape for this event
+      // type -- and must still be found (and so still suppress the repeat) by the cooldown.
+      const priorRightClick = {
+        id: 'evt-prior',
+        eventType: 'right_click',
+        occurredAt: new Date(Date.now() - 2000),
+        metadataJson: null,
+      };
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 1, status: 'paused' } as any;
+      const tx = {
+        proctoringEvent: {
+          findFirst: jest.fn((args: any) => Promise.resolve(matchesCooldownWhere(priorRightClick, args.where) ? priorRightClick : null)),
+          create: jest.fn().mockResolvedValue({ id: 'evt-2', eventType: 'right_click', severity: 'low' }),
+        },
+        // Configured with a real return value (not a bare jest.fn()) so that if the cooldown
+        // fails to suppress this repeat, the assertions below fail cleanly on the wrong strike
+        // count/call rather than crashing on `updated.id` of an unconfigured mock's undefined
+        // return.
+        attempt: { update: jest.fn().mockResolvedValue({ ...attempt, browserActivityViolationCount: 2, status: 'blocked' }) },
+      } as any;
+
+      const { strike } = await service.registerBrowserActivityViolation(tx, exam, attempt, 'right_click');
+
+      expect(strike).toBe(1); // unchanged -- the NULL-metadata row IS the same ongoing incident
+      expect(tx.attempt.update).not.toHaveBeenCalled();
     });
 
     it('does not attempt a status transition or increment the strike when the attempt is already blocked', async () => {
