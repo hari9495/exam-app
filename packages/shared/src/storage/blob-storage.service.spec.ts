@@ -97,3 +97,49 @@ describe('BlobStorageService.deleteByUrl', () => {
     expect(deleteIfExists).not.toHaveBeenCalled();
   });
 });
+
+describe('BlobStorageService.uploadDataUri', () => {
+  let service: BlobStorageService;
+  let uploadData: jest.SpyInstance;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    const realContainer = new ContainerClient(CONTAINER_URL);
+    (BlobServiceClient.fromConnectionString as jest.Mock).mockReturnValue({
+      getContainerClient: () => realContainer,
+    });
+    process.env.AZURE_STORAGE_CONNECTION_STRING = 'UseDevelopmentStorage=true';
+    process.env.AZURE_STORAGE_CONTAINER = 'container';
+    service = new BlobStorageService();
+    uploadData = jest.spyOn(BlockBlobClient.prototype, 'uploadData').mockResolvedValue({} as never);
+  });
+
+  afterEach(() => {
+    uploadData.mockRestore();
+  });
+
+  it.each(['image/jpeg', 'image/png', 'image/webp'])('accepts a %s data URI and uploads it', async (contentType) => {
+    const url = await service.uploadDataUri('screen-captures/a.jpg', `data:${contentType};base64,AAAA`);
+
+    expect(url).toBe(`${CONTAINER_URL}/screen-captures/a.jpg`);
+    expect(uploadData).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a data URI whose declared content type is outside the image allowlist, without uploading', async () => {
+    // A candidate controls this content type -- data:text/html;base64,... would otherwise get
+    // live HTML hosted at a .jpg-looking path on the storage origin.
+    await expect(service.uploadDataUri('screen-captures/a.jpg', 'data:text/html;base64,PHNjcmlwdD48L3NjcmlwdD4=')).rejects.toThrow(
+      'Unsupported data URI content type: text/html',
+    );
+
+    expect(uploadData).not.toHaveBeenCalled();
+  });
+
+  it('rejects application/octet-stream (not on the allowlist) without uploading', async () => {
+    await expect(service.uploadDataUri('screen-captures/a.jpg', 'data:application/octet-stream;base64,AAAA')).rejects.toThrow(
+      'Unsupported data URI content type: application/octet-stream',
+    );
+
+    expect(uploadData).not.toHaveBeenCalled();
+  });
+});

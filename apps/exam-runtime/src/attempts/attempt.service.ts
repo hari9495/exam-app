@@ -588,7 +588,19 @@ export class AttemptService {
       if (!proctoring.webcamEnabled) {
         return { strike: attempt.webcamViolationCount, status: attempt.status };
       }
-      const snapshotUrl = await this.blobStorage.uploadDataUri(`webcam-snapshots/${attempt.id}-${Date.now()}.jpg`, dto.snapshot);
+      // Bounded and caught for the same reason as captureScreenshotMetadata's upload below: this
+      // runs inside the interactive transaction (Prisma's default 5s timeout), and a slow-but-
+      // eventually-successful upload would otherwise throw an uncaught "Transaction already
+      // closed" that 500s and loses the whole webcam violation -- worse than a lost image.
+      let snapshotUrl = '';
+      try {
+        snapshotUrl = await withTimeout(
+          this.blobStorage.uploadDataUri(`webcam-snapshots/${attempt.id}-${Date.now()}.jpg`, dto.snapshot),
+          SCREENSHOT_UPLOAD_TIMEOUT_MS,
+        );
+      } catch (error) {
+        this.logger.error('Failed to upload webcam snapshot', error as Error);
+      }
       // Same shared cap-count/withTimeout/upload path reportProctoringEvent uses for its
       // screenshot -- webcam strikes (no_face, multiple_faces, webcam_head_turned) are the
       // feature's motivating case (the most common machine misfire) and previously carried no
@@ -647,7 +659,18 @@ export class AttemptService {
     await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
       const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
       if (!attempt) return;
-      const snapshotUrl = await this.blobStorage.uploadDataUri(`webcam-snapshots/${attempt.id}-${Date.now()}.jpg`, dto.snapshot);
+      // Same bound-and-catch as webcamViolation above -- an unbounded upload inside this
+      // interactive transaction risks an uncaught "Transaction already closed"; this is only
+      // an informational periodic snapshot, so a lost image is fine but a 500 isn't.
+      let snapshotUrl = '';
+      try {
+        snapshotUrl = await withTimeout(
+          this.blobStorage.uploadDataUri(`webcam-snapshots/${attempt.id}-${Date.now()}.jpg`, dto.snapshot),
+          SCREENSHOT_UPLOAD_TIMEOUT_MS,
+        );
+      } catch (error) {
+        this.logger.error('Failed to upload periodic webcam snapshot', error as Error);
+      }
       await tx.proctoringEvent.create({
         data: { attemptId: attempt.id, eventType: 'webcam_snapshot', severity: 'low', metadataJson: JSON.stringify({ snapshot: snapshotUrl }) },
       });

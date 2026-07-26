@@ -2323,6 +2323,43 @@ describe('AttemptService', () => {
       expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
       expect(settlement.registerWebcamViolation).not.toHaveBeenCalled();
     });
+
+    it('still records the violation (with an empty snapshot) when the webcam-snapshot upload throws, rather than losing it to an uncaught rejection', async () => {
+      const attempt = { id: 'attempt-1', status: 'in_progress', webcamViolationCount: 0 };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
+      mockBootstrapThenScoped(tx);
+      const loggerErrorSpy = jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
+      blobStorage.uploadDataUri.mockRejectedValueOnce(new Error('blob storage unavailable'));
+      settlement.registerWebcamViolation = jest.fn().mockResolvedValue({ attempt: { ...attempt, status: 'paused', webcamViolationCount: 1 }, strike: 1 });
+
+      const result = await service.webcamViolation(session, { reason: 'no_face', snapshot: 'x' });
+
+      expect(result).toEqual({ strike: 1, status: 'paused' });
+      expect(settlement.registerWebcamViolation).toHaveBeenCalledWith(tx, exam, attempt, 'no_face', '', undefined);
+      expect(loggerErrorSpy).toHaveBeenCalledWith('Failed to upload webcam snapshot', expect.any(Error));
+    });
+
+    it('still records the violation when the webcam-snapshot upload does not resolve within the bound (guards the transaction timeout)', async () => {
+      jest.useFakeTimers();
+      try {
+        const attempt = { id: 'attempt-1', status: 'in_progress', webcamViolationCount: 0 };
+        const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
+        mockBootstrapThenScoped(tx);
+        const loggerErrorSpy = jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
+        blobStorage.uploadDataUri.mockReturnValueOnce(new Promise(() => {})); // never resolves
+        settlement.registerWebcamViolation = jest.fn().mockResolvedValue({ attempt: { ...attempt, status: 'paused', webcamViolationCount: 1 }, strike: 1 });
+
+        const resultPromise = service.webcamViolation(session, { reason: 'no_face', snapshot: 'x' });
+        await jest.advanceTimersByTimeAsync(3000);
+        const result = await resultPromise;
+
+        expect(result).toEqual({ strike: 1, status: 'paused' });
+        expect(settlement.registerWebcamViolation).toHaveBeenCalledWith(tx, exam, attempt, 'no_face', '', undefined);
+        expect(loggerErrorSpy).toHaveBeenCalledWith('Failed to upload webcam snapshot', expect.any(Error));
+      } finally {
+        jest.useRealTimers();
+      }
+    });
   });
 
   describe('webcamSnapshot', () => {
@@ -2340,6 +2377,20 @@ describe('AttemptService', () => {
       expect(created.data.severity).toBe('low');
       expect(JSON.parse(created.data.metadataJson).snapshot).toMatch(/^https:\/\/blob\.test\/webcam-snapshots\/attempt-1-/);
       expect(monitoringGateway.emitProctoringFlag).not.toHaveBeenCalled();
+    });
+
+    it('still records the (informational) event with an empty snapshot when the upload throws, rather than 500ing', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
+      mockBootstrapThenScoped(tx);
+      const loggerErrorSpy = jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
+      blobStorage.uploadDataUri.mockRejectedValueOnce(new Error('blob storage unavailable'));
+
+      const result = await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,abc' });
+
+      expect(result).toEqual({ ok: true });
+      const created = tx.proctoringEvent.create.mock.calls[0][0];
+      expect(JSON.parse(created.data.metadataJson).snapshot).toBe('');
+      expect(loggerErrorSpy).toHaveBeenCalledWith('Failed to upload periodic webcam snapshot', expect.any(Error));
     });
   });
 

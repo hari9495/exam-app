@@ -1,6 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { BlobServiceClient, ContainerClient } from '@azure/storage-blob';
 
+// Data URIs into uploadDataUri come straight from a candidate (webcam/screen captures), so
+// the content type is untrusted input, not a server-chosen value. Without an allowlist a
+// candidate could POST data:text/html;base64,... and get live HTML hosted at a .jpg path on
+// the storage origin. Every current caller uploads a JPEG; PNG/WebP are allowed too since
+// browsers can produce either from a canvas depending on support.
+const ALLOWED_DATA_URI_CONTENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
 @Injectable()
 export class BlobStorageService {
   private containerClient: ContainerClient | null = null;
@@ -29,6 +36,9 @@ export class BlobStorageService {
       throw new Error('Expected a base64 data URI');
     }
     const [, contentType, base64] = match;
+    if (!ALLOWED_DATA_URI_CONTENT_TYPES.has(contentType)) {
+      throw new Error(`Unsupported data URI content type: ${contentType}`);
+    }
     return this.upload(blobPath, Buffer.from(base64, 'base64'), contentType);
   }
 
