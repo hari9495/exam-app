@@ -280,6 +280,32 @@ describe('useProctoringMonitor', () => {
     });
   });
 
+  describe('capture (screen-capture screenshot)', () => {
+    function ProbeWithCapture({ enabled, capture }: { enabled: boolean; capture: () => string | null }) {
+      useProctoringMonitor(enabled, undefined, undefined, capture);
+      return null;
+    }
+
+    it('attaches the capture() screenshot to a strike-worthy report', () => {
+      const capture = jest.fn(() => 'data:image/jpeg;base64,SCREENSHOT');
+      render(<ProbeWithCapture enabled={true} capture={capture} />);
+
+      document.dispatchEvent(new Event('contextmenu'));
+
+      expect(capture).toHaveBeenCalled();
+      expect(report).toHaveBeenCalledWith('right_click', undefined, 'data:image/jpeg;base64,SCREENSHOT');
+    });
+
+    it('reports with no third argument when capture() has nothing to give (off, rate-limited, or capped)', () => {
+      const capture = jest.fn(() => null);
+      render(<ProbeWithCapture enabled={true} capture={capture} />);
+
+      document.dispatchEvent(new Event('contextmenu'));
+
+      expect(report).toHaveBeenCalledWith('right_click');
+    });
+  });
+
   describe('per-exam signal config', () => {
     function ConfigProbe({ enabled, config }: { enabled: boolean; config?: any }) {
       useProctoringMonitor(enabled, undefined, config);

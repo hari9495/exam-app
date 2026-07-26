@@ -739,5 +739,69 @@ describe('CandidateExamPage', () => {
       expect(screen.getByText('Screen sharing required')).toBeInTheDocument();
       expect(screen.getByText(/choose your entire screen, not a single tab or window/i)).toBeInTheDocument();
     });
+
+    it('does not re-POST { active: false } on an unrelated re-render while still inactive', () => {
+      const mutate = jest.fn();
+      (useScreenShareState as jest.Mock).mockReturnValue({ mutate, isPending: false });
+      (useScreenCapture as jest.Mock).mockReturnValue({ active: false, error: null, requestShare: jest.fn(), capture: jest.fn(() => null) });
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: attemptWithScreenCapture(), isError: false });
+
+      const { rerender } = render(<CandidateExamPage />);
+      expect(mutate).toHaveBeenCalledTimes(1);
+
+      // Re-renders caused by something unrelated (a countdown tick, a query refetch that
+      // doesn't change captureEnabled/active) must not re-fire the POST -- the once-per-episode
+      // guard must hold across renders, not just within the first one.
+      rerender(<CandidateExamPage />);
+      rerender(<CandidateExamPage />);
+
+      expect(mutate).toHaveBeenCalledTimes(1);
+    });
+
+    it('retries the { active: false } POST after a failed attempt once the effect runs again for the same stop event', () => {
+      let onEndedCallback: (() => void) | undefined;
+      let active = true;
+      (useScreenCapture as jest.Mock).mockImplementation((_enabled: boolean, onEnded: () => void) => {
+        onEndedCallback = onEnded;
+        return { active, error: null, requestShare: jest.fn(), capture: jest.fn(() => null) };
+      });
+      const mutate = jest.fn((_payload: unknown, options?: { onError?: () => void }) => {
+        // Fails the first attempt only, simulating a transient network error.
+        if (mutate.mock.calls.length === 1) options?.onError?.();
+      });
+      (useScreenShareState as jest.Mock).mockReturnValue({ mutate, isPending: false });
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: attemptWithScreenCapture(), isError: false });
+
+      const { rerender } = render(<CandidateExamPage />);
+
+      // Simulate the browser's own "Stop sharing" control firing -- this calls
+      // postShareInactive() directly (onEnded), which POSTs and (per the mock above) fails.
+      act(() => {
+        onEndedCallback?.();
+      });
+      expect(mutate).toHaveBeenCalledTimes(1);
+
+      // React then re-renders with active now false, as the real hook would report after
+      // stopStream() -- the effect runs again for this same stop event and must retry rather
+      // than find the guard still stuck from the failed first attempt.
+      active = false;
+      rerender(<CandidateExamPage />);
+
+      expect(mutate).toHaveBeenCalledTimes(2);
+    });
+
+    it('POSTs { active: true, displaySurface, userAgent } when the candidate shares their screen', async () => {
+      const mutate = jest.fn();
+      (useScreenShareState as jest.Mock).mockReturnValue({ mutate, isPending: false });
+      const requestShare = jest.fn().mockResolvedValue({ displaySurface: 'monitor', userAgent: 'test-agent' });
+      (useScreenCapture as jest.Mock).mockReturnValue({ active: false, error: null, requestShare, capture: jest.fn(() => null) });
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: attemptWithScreenCapture(), isError: false });
+
+      render(<CandidateExamPage />);
+      await userEvent.click(screen.getByRole('button', { name: 'Share my screen' }));
+
+      expect(requestShare).toHaveBeenCalled();
+      expect(mutate).toHaveBeenCalledWith({ active: true, displaySurface: 'monitor', userAgent: 'test-agent' });
+    });
   });
 });

@@ -9,7 +9,7 @@ interface ScreenShareRequiredOverlayProps {
 
 export function ScreenShareRequiredOverlay({ error, onShare, pending }: ScreenShareRequiredOverlayProps) {
   return (
-    <div className="fixed inset-0 z-20 flex items-center justify-center bg-candidate-text/40 p-4">
+    <div className="flex min-h-screen items-center justify-center bg-candidate-bg p-4">
       <div className="w-full max-w-sm rounded-lg bg-white p-6 text-center shadow-lg">
         <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-candidate-review-bg text-candidate-review">
           <ScreenShare className="h-5 w-5" aria-hidden="true" />

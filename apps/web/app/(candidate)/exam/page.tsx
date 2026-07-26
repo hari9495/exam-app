@@ -86,12 +86,19 @@ export default function CandidateExamPage() {
   const screenShareState = useScreenShareState();
   // Guards the "POST { active: false } once" requirement -- reset whenever a share becomes
   // active (below) so a later stop-and-restart cycle posts again, but not on every render
-  // while the candidate simply sits on the share-required overlay.
+  // while the candidate simply sits on the share-required overlay. Set true *before* mutating
+  // (not in onSuccess) because onEnded and this hook's own effect both call this for the same
+  // stop event, milliseconds apart -- onSuccess would leave a window where both fire the POST.
+  // Reset on error (rather than left permanently stuck) so the attempt isn't silently stuck
+  // in_progress with the clock running because one transient POST failed.
   const postedShareInactiveRef = useRef(false);
   function postShareInactive() {
     if (postedShareInactiveRef.current) return;
     postedShareInactiveRef.current = true;
-    screenShareState.mutate({ active: false });
+    screenShareState.mutate(
+      { active: false },
+      { onError: () => { postedShareInactiveRef.current = false; } },
+    );
   }
   // onEnded fires from the browser's own "Stop sharing" control (see useScreenCapture) --
   // it's identity-stable through that hook's internal ref mirror, so passing a fresh closure
@@ -105,10 +112,16 @@ export default function CandidateExamPage() {
     postShareInactive();
   }, [captureEnabled, screenCapture.active]);
 
+  const [isRequestingShare, setIsRequestingShare] = useState(false);
   async function handleShareScreen() {
-    const result = await screenCapture.requestShare();
-    if (result) {
-      screenShareState.mutate({ active: true, displaySurface: result.displaySurface, userAgent: result.userAgent });
+    setIsRequestingShare(true);
+    try {
+      const result = await screenCapture.requestShare();
+      if (result) {
+        screenShareState.mutate({ active: true, displaySurface: result.displaySurface, userAgent: result.userAgent });
+      }
+    } finally {
+      setIsRequestingShare(false);
     }
   }
 
@@ -220,7 +233,7 @@ export default function CandidateExamPage() {
   // The block overlay takes precedence -- a blocked attempt has nothing to resume into,
   // sharing again wouldn't change that, so don't mask it with the share prompt.
   if (captureEnabled && !screenCapture.active && !isBlocked) {
-    return <ScreenShareRequiredOverlay error={screenCapture.error} onShare={handleShareScreen} pending={screenShareState.isPending} />;
+    return <ScreenShareRequiredOverlay error={screenCapture.error} onShare={handleShareScreen} pending={isRequestingShare} />;
   }
 
   function toggleOption(optionId: string) {
