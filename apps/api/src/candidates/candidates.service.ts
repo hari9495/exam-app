@@ -24,13 +24,17 @@ interface CandidateFilters {
 // the same blobs.
 const EVIDENCE_DELETE_CONCURRENCY = 10;
 const EVIDENCE_DELETE_TIMEOUT_MS = 3000;
-// Overall ceiling on the delete phase's wall clock, on top of the per-call timeout above. This
-// runs synchronously inside a recruiter's HTTP request, so the budget is chosen to stay under
-// common reverse-proxy/gateway default request timeouts (e.g. a 30s nginx or Azure App Service
-// front door default) even in the worst case -- every one of the 10-wide batches degrading to
-// its full per-call timeout. At that worst case this still attempts 10 batches (100 blobs)
-// before giving up; a healthy store clears many times that in the same budget.
-const EVIDENCE_DELETE_BUDGET_MS = 30_000;
+// Overall ceiling on the delete phase's wall clock, on top of the per-call timeout above. A
+// batch is only admitted if it can finish inside this budget even in the worst case (every
+// delete in it degrading to the full per-call timeout) -- so the phase's own wall clock never
+// exceeds this number, unlike a plain "check the clock, then run anyway" loop which could run
+// one more full timeout past it. This phase runs synchronously inside a recruiter's HTTP
+// request, *after* the Prisma transaction and audit write already in that same request, so the
+// budget leaves headroom under common reverse-proxy/gateway default request timeouts (e.g. a
+// 30s nginx or Azure App Service front door default) rather than spending the whole 30s itself.
+// At worst case this still attempts 6 batches (60 blobs) before giving up; a healthy store
+// clears many times that in the same budget.
+const EVIDENCE_DELETE_BUDGET_MS = 20_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer!: ReturnType<typeof setTimeout>;
@@ -38,6 +42,21 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
     timer = setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+// The database reference to a failed-or-unattempted evidence blob is gone the moment this
+// function's caller returns (metadataJson is already null by then) -- this is the only
+// remaining way to point someone at the file. Safe to log: strips scheme, host, and any query
+// string (a SAS token, if this URL ever carried one), keeping only the path inside the
+// container so an operator can look the blob up by hand.
+function blobPathForLogging(blobUrl: string): string {
+  try {
+    const { pathname } = new URL(blobUrl);
+    const [, , ...containerRelative] = pathname.split('/');
+    return containerRelative.length > 0 ? containerRelative.join('/') : pathname;
+  } catch {
+    return '(unparseable evidence URL)';
+  }
 }
 
 export type CandidateListItem = Candidate & { invitationCount: number };
@@ -415,26 +434,40 @@ export class CandidatesService {
         const tally: Record<BlobDeleteOutcome, number> = {
           deleted: 0, 'not-found': 0, 'skipped-not-ours': 0, 'skipped-empty-name': 0, 'skipped-not-configured': 0,
         };
-        let failed = 0;
         let attempted = 0;
+        // Never the URL (host/query) -- but the path plus why it failed is exactly the
+        // information an operator needs to find and retry it later, and after this call
+        // returns it's the *only* place that information still exists (metadataJson is
+        // already null).
+        const failedBlobs: { path: string; error: string }[] = [];
         const deadline = Date.now() + EVIDENCE_DELETE_BUDGET_MS;
 
-        for (let i = 0; i < uniqueUrls.length && Date.now() < deadline; i += EVIDENCE_DELETE_CONCURRENCY) {
+        // Admit a batch only if it can *finish* inside the budget in the worst case (every
+        // delete in it hitting the full per-call timeout) -- checking the clock only at entry
+        // (`Date.now() < deadline`) would let one more full timeout run past the budget.
+        for (
+          let i = 0;
+          i < uniqueUrls.length && Date.now() + EVIDENCE_DELETE_TIMEOUT_MS <= deadline;
+          i += EVIDENCE_DELETE_CONCURRENCY
+        ) {
           const batch = uniqueUrls.slice(i, i + EVIDENCE_DELETE_CONCURRENCY);
           attempted += batch.length;
           const results = await Promise.allSettled(
             batch.map((url) => withTimeout(this.blobStorage.deleteByUrl(url), EVIDENCE_DELETE_TIMEOUT_MS)),
           );
-          for (const result of results) {
+          results.forEach((result, index) => {
             if (result.status === 'rejected') {
-              failed += 1;
+              const reason = result.reason as Error | undefined;
+              failedBlobs.push({ path: blobPathForLogging(batch[index]), error: reason?.message ?? String(reason) });
             } else {
               tally[result.value] += 1;
             }
-          }
+          });
         }
 
-        const unattempted = uniqueUrls.length - attempted;
+        const failed = failedBlobs.length;
+        const unattemptedUrls = uniqueUrls.slice(attempted);
+        const unattempted = unattemptedUrls.length;
         const clean = unattempted === 0 && failed === 0 && tally.deleted === uniqueUrls.length;
         const summary =
           `Proctoring evidence blob deletion for candidate ${candidateId}: ${uniqueUrls.length} total, ` +
@@ -447,7 +480,42 @@ export class CandidatesService {
           this.logger.log(summary);
         } else {
           this.logger.warn(summary);
+          // Paths (never full URLs) plus, for failures, the error -- so the summary's "this
+          // wasn't fully deleted" is paired with enough to actually go find the blob, instead of
+          // just proving it's lost.
+          const detailParts: string[] = [];
+          if (failedBlobs.length > 0) {
+            detailParts.push(`failed: ${failedBlobs.map((entry) => `${entry.path} (${entry.error})`).join(', ')}`);
+          }
+          if (unattemptedUrls.length > 0) {
+            detailParts.push(`unattempted: ${unattemptedUrls.map(blobPathForLogging).join(', ')}`);
+          }
+          if (detailParts.length > 0) {
+            this.logger.warn(`Proctoring evidence blob deletion detail for candidate ${candidateId}: ${detailParts.join(' | ')}`);
+          }
         }
+
+        // A companion audit entry (AuditService.record is create-only, so this can't be folded
+        // into the 'candidate.erased' entry above without moving that call after the delete loop
+        // and losing its crash-safety guarantee) -- this is the durable record of what actually
+        // happened to the evidence, since application logs typically retain far less time than
+        // the audit table.
+        await this.audit.record(context, {
+          actorUserId,
+          action: 'candidate.erased.evidence_deleted',
+          entityType: 'candidate',
+          entityId: candidateId,
+          metadata: {
+            total: uniqueUrls.length,
+            deleted: tally.deleted,
+            notFound: tally['not-found'],
+            failed,
+            skippedNotOurs: tally['skipped-not-ours'],
+            skippedEmptyName: tally['skipped-empty-name'],
+            skippedNotConfigured: tally['skipped-not-configured'],
+            unattempted,
+          },
+        });
       }
     }
 

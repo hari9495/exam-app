@@ -16,7 +16,7 @@ describe('CandidatesService', () => {
   let service: CandidatesService;
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
-  let blobStorage: { deleteByUrl: jest.Mock; isConfigured: jest.Mock; signIfOurs: jest.Mock };
+  let blobStorage: { deleteByUrl: jest.Mock; signIfOurs: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
@@ -24,7 +24,6 @@ describe('CandidatesService', () => {
     audit = { record: jest.fn() };
     blobStorage = {
       deleteByUrl: jest.fn().mockResolvedValue('deleted'),
-      isConfigured: jest.fn().mockReturnValue(true),
       // Identity pass-through by default -- signing behaviour itself is covered end to end below
       // and in packages/shared/src/storage/blob-storage.service.spec.ts.
       signIfOurs: jest.fn(async (value) => value),
@@ -679,7 +678,7 @@ describe('CandidatesService', () => {
       logSpy.mockRestore();
     });
 
-    it('still reports a successful erase, still deletes the remaining blobs, and logs the failure in the warn-level summary, when one blob delete throws', async () => {
+    it('still reports a successful erase, still deletes the remaining blobs, and logs the failing blob path + error in a companion warn line, when one blob delete throws', async () => {
       const tx = makeEraseTx({
         proctoringEvents: [
           { metadataJson: JSON.stringify({ snapshot: 'https://blob.test/container/webcam-snapshots/a.jpg' }) },
@@ -697,8 +696,16 @@ describe('CandidatesService', () => {
       expect(audit.record).toHaveBeenCalledWith(context, {
         actorUserId: 'user-1', action: 'candidate.erased', entityType: 'candidate', entityId: 'cand-1',
       });
-      expect(warnSpy).toHaveBeenCalledTimes(1);
+      // The summary line (counts only) plus a companion detail line -- the only place left, once
+      // this call returns, that identifies *which* blob failed and why (metadataJson is already
+      // null by now). The detail carries the container-relative path and the error message, but
+      // never the scheme/host, and never a query string (where a SAS token would live).
+      expect(warnSpy).toHaveBeenCalledTimes(2);
       expect(warnSpy.mock.calls[0][0]).toContain('1 failed');
+      const [detail] = warnSpy.mock.calls[1];
+      expect(detail).toContain('failed:');
+      expect(detail).toContain('webcam-snapshots/a.jpg (blob storage unavailable)');
+      expect(detail).not.toContain('https://blob.test');
 
       warnSpy.mockRestore();
     });
@@ -721,7 +728,26 @@ describe('CandidatesService', () => {
       logSpy.mockRestore();
     });
 
-    it('stops once the delete budget is exhausted, logs the unattempted count at warn, and still reports the erase as successful', async () => {
+    it('logs at .warn (not .log) when every blob resolves "not-found" -- an all-absent run is not a clean success', async () => {
+      const tx = makeEraseTx({
+        proctoringEvents: [{ metadataJson: JSON.stringify({ snapshot: 'https://blob.test/container/webcam-snapshots/a.jpg' }) }],
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      blobStorage.deleteByUrl.mockResolvedValue('not-found');
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+      await service.erase(context, 'user-1', 'cand-1');
+
+      expect(logSpy).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledTimes(1); // no failed/unattempted entries, so no companion detail line
+      expect(warnSpy.mock.calls[0][0]).toContain('1 not found');
+
+      warnSpy.mockRestore();
+      logSpy.mockRestore();
+    });
+
+    it('stops once the delete budget is exhausted, logs the unattempted paths at warn, and still reports the erase as successful', async () => {
       const urls = Array.from({ length: 25 }, (_, i) => `https://blob.test/container/webcam-snapshots/${i}.jpg`);
       const tx = makeEraseTx({
         proctoringEvents: urls.map((url) => ({ metadataJson: JSON.stringify({ snapshot: url }) })),
@@ -731,7 +757,7 @@ describe('CandidatesService', () => {
       // The budget is read via two real Date.now() calls (computing the deadline, then the first
       // loop-condition check) -- both true wall-clock reads, so the first 10-wide batch (the
       // concurrency limit) is genuinely allowed to start. From the third call on, time is pushed
-      // 60s into the future, well past the 30s budget, so the *second* loop-condition check finds
+      // 60s into the future, well past the 20s budget, so the *second* loop-condition check finds
       // the budget exhausted and the loop stops without a real 60-second wait.
       const realNow = Date.now.bind(Date);
       let calls = 0;
@@ -745,13 +771,44 @@ describe('CandidatesService', () => {
 
       expect(result).toEqual({ id: 'cand-1', erasedAt: expect.any(Date) });
       expect(blobStorage.deleteByUrl).toHaveBeenCalledTimes(10); // one concurrency-wide batch, then the budget check trips
-      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy).toHaveBeenCalledTimes(2);
       const [summary] = warnSpy.mock.calls[0];
       expect(summary).toContain('15 unattempted');
       expect(summary).toContain('budget exhausted');
+      const [detail] = warnSpy.mock.calls[1];
+      expect(detail).toContain('unattempted:');
+      // Every unattempted URL's path is present (still no scheme/host), so the 15 blobs left in
+      // place are individually findable, not just counted.
+      for (let i = 10; i < 25; i += 1) {
+        expect(detail).toContain(`webcam-snapshots/${i}.jpg`);
+      }
 
       (Date.now as jest.Mock).mockRestore();
       warnSpy.mockRestore();
+    });
+
+    it('writes a companion audit entry with the delete tally after the loop', async () => {
+      const tx = makeEraseTx({
+        proctoringEvents: [
+          { metadataJson: JSON.stringify({ snapshot: 'https://blob.test/container/webcam-snapshots/a.jpg' }) },
+          { metadataJson: JSON.stringify({ snapshot: 'https://blob.test/container/webcam-snapshots/b.jpg' }) },
+        ],
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      blobStorage.deleteByUrl.mockResolvedValueOnce('deleted').mockResolvedValueOnce('not-found');
+
+      await service.erase(context, 'user-1', 'cand-1');
+
+      expect(audit.record).toHaveBeenCalledWith(context, {
+        actorUserId: 'user-1',
+        action: 'candidate.erased.evidence_deleted',
+        entityType: 'candidate',
+        entityId: 'cand-1',
+        metadata: {
+          total: 2, deleted: 1, notFound: 1, failed: 0,
+          skippedNotOurs: 0, skippedEmptyName: 0, skippedNotConfigured: 0, unattempted: 0,
+        },
+      });
     });
 
     it('does not abort the erase when one proctoring event carries malformed metadataJson', async () => {
