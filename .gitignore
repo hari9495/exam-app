@@ -7,3 +7,7 @@ dist/
 apps/api/uploads/
 test-results/
 playwright-report/
+
+# Load-test fixtures: tokens.json holds live candidate invite tokens for a seeded
+# exam. Regenerate with `node load/seed-load-fixtures.js N` -- never commit it.
+load/tokens.json
