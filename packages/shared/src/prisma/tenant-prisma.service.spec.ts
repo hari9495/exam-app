@@ -11,7 +11,16 @@ describe('TenantPrismaService', () => {
     return new TenantPrismaService(prisma);
   }
 
-  it('returns the callback result and resets session context on success', async () => {
+  // $executeRaw is a tagged-template call: jest records each invocation as
+  // [templateStrings, ...interpolatedValues]. The reset statements hard-code
+  // NULL/0 as literal SQL text (no interpolation), so the raw joined text is
+  // what to assert on -- this fails if the reset is reordered, targets the
+  // wrong session-context key, or resets to the wrong value.
+  function resetSql(executeRaw: jest.Mock, callIndex: number) {
+    return (executeRaw.mock.calls[callIndex][0] as string[]).join('');
+  }
+
+  it('returns the callback result and resets session context to null/0 on success', async () => {
     const executeRaw = jest.fn().mockResolvedValue(undefined);
     const tx = { $executeRaw: executeRaw };
     const service = makeService((cb) => cb(tx));
@@ -21,9 +30,11 @@ describe('TenantPrismaService', () => {
     expect(result).toBe('ok');
     // set org, set super-admin, reset org, reset super-admin
     expect(executeRaw).toHaveBeenCalledTimes(4);
+    expect(resetSql(executeRaw, 2)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
+    expect(resetSql(executeRaw, 3)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
   });
 
-  it('still resets session context when the callback throws a non-P2028 error', async () => {
+  it('still resets session context to null/0 when the callback throws a non-P2028 error', async () => {
     const executeRaw = jest.fn().mockResolvedValue(undefined);
     const tx = { $executeRaw: executeRaw };
     const service = makeService((cb) => cb(tx));
@@ -35,6 +46,31 @@ describe('TenantPrismaService', () => {
     ).rejects.toThrow('boom');
 
     expect(executeRaw).toHaveBeenCalledTimes(4);
+    expect(resetSql(executeRaw, 2)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
+    expect(resetSql(executeRaw, 3)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
+  });
+
+  it('still resets session context when the callback throws an HttpException (business-logic 4xx/409)', async () => {
+    const executeRaw = jest.fn().mockResolvedValue(undefined);
+    const tx = { $executeRaw: executeRaw };
+    const service = makeService((cb) => cb(tx));
+    const conflict = new HttpException('Attempt already submitted', HttpStatus.CONFLICT);
+
+    let caught: unknown;
+    try {
+      await service.forTenant(context, async () => {
+        throw conflict;
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    // Must come back out exactly as thrown -- not turned into "server busy".
+    expect(caught).toBe(conflict);
+    expect((caught as HttpException).getStatus()).toBe(HttpStatus.CONFLICT);
+    expect(executeRaw).toHaveBeenCalledTimes(4);
+    expect(resetSql(executeRaw, 2)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
+    expect(resetSql(executeRaw, 3)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
   });
 
   it('maps a P2028 rejection from $transaction to a 503 with the { error, message } shape', async () => {
