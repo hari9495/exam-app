@@ -2,7 +2,7 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastProvider } from '../../components/ui';
 import { CandidateAuthProvider } from '../candidate-auth-context';
-import { useAttemptQuery, useAnswerMutation, useRunCode, useStartAttempt, useReportProctoringEvent } from './useAttempt';
+import { useAttemptQuery, useAnswerMutation, useRunCode, useStartAttempt, useReportProctoringEvent, useScreenShareState } from './useAttempt';
 
 const mockToast = jest.fn();
 jest.mock('../../components/ui', () => {
@@ -254,4 +254,50 @@ describe('useReportProctoringEvent', () => {
 
     await waitFor(() => expect(screen.getByText('status:paused')).toBeInTheDocument());
   });
+});
+
+describe('useScreenShareState', () => {
+  const originalFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('retries a transient POST failure automatically instead of giving up after one attempt', async () => {
+    // Covers the most common path a client-side "only fire once" guard cannot retry on its own:
+    // mount, capture required, never shared, active stays false forever -- nothing ever changes
+    // to re-trigger the caller. The mutation itself must be the thing that retries.
+    let shareStateCallCount = 0;
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/candidate-auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'tok', refreshToken: 'rt' }), { status: 200 });
+      }
+      if (String(url).endsWith('/attempt/screen-share-state')) {
+        shareStateCallCount += 1;
+        if (shareStateCallCount === 1) {
+          return new Response(JSON.stringify({ message: 'transient failure' }), { status: 500 });
+        }
+        return new Response(JSON.stringify({ status: 'paused' }), { status: 200 });
+      }
+      throw new Error(`Unexpected fetch to ${url}`);
+    }) as unknown as typeof fetch;
+
+    let mutate: ((payload: { active: boolean }) => void) | undefined;
+    function Probe() {
+      const mutation = useScreenShareState();
+      mutate = mutation.mutate;
+      return null;
+    }
+
+    render(<Probe />, { wrapper });
+    await waitFor(() => expect(mutate).toBeDefined());
+
+    act(() => {
+      mutate!({ active: false });
+    });
+
+    // The first POST fails; without a retry nothing else would ever call fetch again for this
+    // mutation (page.tsx's own guard only reruns its effect when captureEnabled/active change,
+    // neither of which happens here). React Query's default backoff retries automatically.
+    await waitFor(() => expect(shareStateCallCount).toBeGreaterThanOrEqual(2), { timeout: 8000 });
+  }, 10000);
 });

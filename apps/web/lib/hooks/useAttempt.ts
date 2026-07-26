@@ -179,6 +179,13 @@ export function useScreenShareState() {
         { method: 'POST', body: JSON.stringify({ active, displaySurface, userAgent }) },
         accessToken ?? undefined,
       ),
+    // A missed { active: false } leaves the attempt in_progress with the clock running behind a
+    // blocking overlay that claims otherwise -- and page.tsx's guard, once set, only retries on
+    // its own if captureEnabled/active later change, which doesn't happen on the most common
+    // path (mount, never shared, one transient failure). React Query retries with exponential
+    // backoff before onError ever fires, making the ref-reset there a last resort, not the
+    // only line of defense.
+    retry: 2,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] }),
   });
 }

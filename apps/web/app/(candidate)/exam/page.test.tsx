@@ -741,6 +741,11 @@ describe('CandidateExamPage', () => {
     });
 
     it('never shows the screen-share overlay when the exam has capture off', () => {
+      // Explicit screenShareRequired: false (not just omitted) -- the base fixture has no
+      // exam.proctoring.screenCaptureEnabled either, so without this the test would pass on an
+      // undefined screenShareRequired and no longer pin capture-off specifically.
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: { ...attemptState, screenShareRequired: false }, isError: false });
+
       render(<CandidateExamPage />);
 
       expect(screen.queryByText('Screen sharing required')).not.toBeInTheDocument();
