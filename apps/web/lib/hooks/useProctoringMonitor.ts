@@ -11,12 +11,18 @@ export function useProctoringMonitor(
   enabled: boolean,
   onViolation?: (eventType: ProctoringEventType) => void,
   config?: ExamProctoringConfig,
+  capture?: () => string | null,
 ): void {
   const report = useReportProctoringEvent();
   const reportRef = useRef(report);
   reportRef.current = report;
   const onViolationRef = useRef(onViolation);
   onViolationRef.current = onViolation;
+  // Mirrored through a ref for the same reason as configRef below -- useScreenCapture's
+  // `capture` is identity-stable, but mirroring costs nothing and keeps this hook's
+  // ref-per-callback convention uniform.
+  const captureRef = useRef(capture);
+  captureRef.current = capture;
   // Mirrored through a ref, not the effect's dep array: React Query hands us a new
   // object identity on every refetch (every 3-30s), and widening the deps would
   // tear down and re-arm every listener on that cadence.
@@ -35,7 +41,15 @@ export function useProctoringMonitor(
 
     function reportAndNotify(eventType: ProctoringEventType, metadata?: Record<string, unknown>) {
       if (!isSignalEnabled(eventType)) return;
-      if (metadata !== undefined) {
+      // Every call in this file reports a strike-worthy signal (STRIKE_WORTHY_EVENT_TYPES on
+      // the server), so attaching a frame unconditionally is correct -- no per-type filtering
+      // needed. capture() itself is a no-op (returns null) when screen capture is off or the
+      // rate limit/cap is hit, and the server ignores a screenshot for an exam that has capture
+      // disabled, so this is safe even when capture is never passed.
+      const screenshot = captureRef.current?.() ?? undefined;
+      if (screenshot !== undefined) {
+        reportRef.current(eventType, metadata, screenshot);
+      } else if (metadata !== undefined) {
         reportRef.current(eventType, metadata);
       } else {
         reportRef.current(eventType);
@@ -46,7 +60,12 @@ export function useProctoringMonitor(
     function debouncedReport(eventType: ProctoringEventType, windowMs: number, metadata?: Record<string, unknown>) {
       if (!isSignalEnabled(eventType)) return;
       if (debounceTimers.current[eventType]) return;
-      reportRef.current(eventType, metadata);
+      const screenshot = captureRef.current?.() ?? undefined;
+      if (screenshot !== undefined) {
+        reportRef.current(eventType, metadata, screenshot);
+      } else {
+        reportRef.current(eventType, metadata);
+      }
       onViolationRef.current?.(eventType);
       debounceTimers.current[eventType] = setTimeout(() => {
         delete debounceTimers.current[eventType];

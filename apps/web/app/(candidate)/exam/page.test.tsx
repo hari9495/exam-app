@@ -3,10 +3,11 @@ import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import { useRouter } from 'next/navigation';
 import * as useAttemptModule from '../../../lib/hooks/useAttempt';
-import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode, useWebcamResume, useCodeLanguages } from '../../../lib/hooks/useAttempt';
+import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode, useWebcamResume, useCodeLanguages, useScreenShareState } from '../../../lib/hooks/useAttempt';
 import { useCountdown } from '../../../lib/hooks/useCountdown';
 import { useProctoringMonitor } from '../../../lib/hooks/useProctoringMonitor';
 import { useWebcamMonitor } from '../../../lib/hooks/useWebcamMonitor';
+import { useScreenCapture } from '../../../lib/hooks/useScreenCapture';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
 import CandidateExamPage from './page';
 
@@ -20,7 +21,9 @@ jest.mock('../../../lib/hooks/useAttempt', () => ({
   useLeaderboard: jest.fn(),
   useCodeLanguages: jest.fn(),
   useReportProctoringEvent: jest.fn(() => jest.fn()),
+  useScreenShareState: jest.fn(),
 }));
+jest.mock('../../../lib/hooks/useScreenCapture', () => ({ useScreenCapture: jest.fn() }));
 
 const mockUseAttemptQuery = useAttemptQuery as jest.Mock;
 
@@ -168,6 +171,8 @@ describe('CandidateExamPage', () => {
     (useWebcamResume as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false, isError: false });
     (useCodeLanguages as jest.Mock).mockReturnValue({ data: [], isLoading: true });
     jest.spyOn(useAttemptModule, 'useLeaderboard').mockReturnValue({ data: { you: { rank: 3, correctCount: 2 }, top: [] }, isLoading: false } as any);
+    (useScreenShareState as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
+    (useScreenCapture as jest.Mock).mockReturnValue({ active: false, error: null, requestShare: jest.fn(), capture: jest.fn(() => null) });
   });
 
   afterEach(() => jest.useRealTimers());
@@ -670,8 +675,69 @@ describe('CandidateExamPage', () => {
       renderExamPage();
 
       await waitFor(() => expect(useProctoringMonitor).toHaveBeenCalled());
-      expect(useProctoringMonitor).toHaveBeenLastCalledWith(true, expect.any(Function), proctoring);
+      expect(useProctoringMonitor).toHaveBeenLastCalledWith(true, expect.any(Function), proctoring, expect.any(Function));
       expect(useWebcamMonitor).toHaveBeenLastCalledWith(true, expect.any(Function), proctoring);
+    });
+  });
+
+  describe('screen sharing', () => {
+    function attemptWithScreenCapture(overrides: Record<string, unknown> = {}) {
+      return {
+        ...attemptState,
+        exam: {
+          title: 'Test Exam',
+          proctoring: { webcamEnabled: true, enforcement: 'block' as const, strikeLimit: 3, disabledSignals: [], screenCaptureEnabled: true },
+        },
+        ...overrides,
+      };
+    }
+
+    it('blocks the questions with the screen-share overlay when capture is required and sharing is absent', () => {
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: attemptWithScreenCapture(), isError: false });
+
+      render(<CandidateExamPage />);
+
+      expect(screen.getByText('Screen sharing required')).toBeInTheDocument();
+      expect(screen.queryByText('What is 2 + 2?')).not.toBeInTheDocument();
+    });
+
+    it('renders the questions instead of the overlay once screen sharing is active', () => {
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: attemptWithScreenCapture(), isError: false });
+      (useScreenCapture as jest.Mock).mockReturnValue({ active: true, error: null, requestShare: jest.fn(), capture: jest.fn(() => null) });
+
+      render(<CandidateExamPage />);
+
+      expect(screen.queryByText('Screen sharing required')).not.toBeInTheDocument();
+      expect(screen.getByText('What is 2 + 2?')).toBeInTheDocument();
+    });
+
+    it('shows the block overlay instead of the screen-share overlay when the attempt is blocked', () => {
+      (useAttemptQuery as jest.Mock).mockReturnValue({
+        data: attemptWithScreenCapture({ status: 'blocked', webcamViolationCount: 3 }),
+        isError: false,
+      });
+
+      render(<CandidateExamPage />);
+
+      expect(screen.getByText(/recruiter needs to unblock/i)).toBeInTheDocument();
+      expect(screen.queryByText('Screen sharing required')).not.toBeInTheDocument();
+    });
+
+    it('never shows the screen-share overlay when the exam has capture off', () => {
+      render(<CandidateExamPage />);
+
+      expect(screen.queryByText('Screen sharing required')).not.toBeInTheDocument();
+      expect(screen.getByText('What is 2 + 2?')).toBeInTheDocument();
+    });
+
+    it('keeps the overlay up with the entire-screen hint after a wrong-surface rejection', () => {
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: attemptWithScreenCapture(), isError: false });
+      (useScreenCapture as jest.Mock).mockReturnValue({ active: false, error: 'wrong-surface', requestShare: jest.fn(), capture: jest.fn(() => null) });
+
+      render(<CandidateExamPage />);
+
+      expect(screen.getByText('Screen sharing required')).toBeInTheDocument();
+      expect(screen.getByText(/choose your entire screen, not a single tab or window/i)).toBeInTheDocument();
     });
   });
 });

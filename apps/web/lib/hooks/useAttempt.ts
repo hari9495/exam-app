@@ -140,17 +140,47 @@ export function useReportProctoringEvent() {
   const { accessToken } = useCandidateAuth();
   const queryClient = useQueryClient();
   const { mutate } = useMutation({
-    mutationFn: ({ eventType, metadata }: { eventType: ProctoringEventType; metadata?: Record<string, unknown> }) =>
+    mutationFn: ({
+      eventType,
+      metadata,
+      screenshot,
+    }: {
+      eventType: ProctoringEventType;
+      metadata?: Record<string, unknown>;
+      screenshot?: string;
+    }) =>
       candidateApiFetch(
         '/attempt/proctoring-event',
-        { method: 'POST', body: JSON.stringify({ eventType, metadata }) },
+        { method: 'POST', body: JSON.stringify({ eventType, metadata, screenshot }) },
         accessToken ?? undefined,
       ),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] }),
   });
-  return function report(eventType: ProctoringEventType, metadata?: Record<string, unknown>) {
-    mutate({ eventType, metadata });
+  return function report(eventType: ProctoringEventType, metadata?: Record<string, unknown>, screenshot?: string) {
+    mutate({ eventType, metadata, screenshot });
   };
+}
+
+export function useScreenShareState() {
+  const { accessToken } = useCandidateAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      active,
+      displaySurface,
+      userAgent,
+    }: {
+      active: boolean;
+      displaySurface?: string;
+      userAgent?: string;
+    }): Promise<{ status: string }> =>
+      candidateApiFetch(
+        '/attempt/screen-share-state',
+        { method: 'POST', body: JSON.stringify({ active, displaySurface, userAgent }) },
+        accessToken ?? undefined,
+      ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] }),
+  });
 }
 
 export interface WebcamViolationResult {

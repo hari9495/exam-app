@@ -11,11 +11,13 @@ import { CodeOutputPanel } from '../components/CodeOutputPanel';
 import { LeaderboardWidget } from '../components/LeaderboardWidget';
 import { QuestionNavigator, flattenQuestions } from '../components/QuestionNavigator';
 import { ProctoringWarningOverlay, ProctoringBlockOverlay } from '../components/ProctoringOverlay';
+import { ScreenShareRequiredOverlay } from '../components/ScreenShareRequiredOverlay';
 import { TimerBar } from '../components/TimerBar';
-import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode, useCodeLanguages, useWebcamResume, RunCodeResult } from '../../../lib/hooks/useAttempt';
+import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode, useCodeLanguages, useWebcamResume, useScreenShareState, RunCodeResult } from '../../../lib/hooks/useAttempt';
 import { useCountdown } from '../../../lib/hooks/useCountdown';
 import { useEditorTelemetry } from '../../../lib/hooks/useEditorTelemetry';
 import { useProctoringMonitor } from '../../../lib/hooks/useProctoringMonitor';
+import { useScreenCapture } from '../../../lib/hooks/useScreenCapture';
 import { useWebcamMonitor } from '../../../lib/hooks/useWebcamMonitor';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
 import { AttemptAnswerSummary, isAttemptStarted } from '../../../lib/types';
@@ -80,6 +82,36 @@ export default function CandidateExamPage() {
   const [lastViolationReason, setLastViolationReason] = useState<string>('no_face');
   const [lastViolationSource, setLastViolationSource] = useState<'webcam' | 'browser_activity'>('webcam');
   const hasLiveViolationSource = useRef(false);
+  const captureEnabled = proctoringConfig?.screenCaptureEnabled === true;
+  const screenShareState = useScreenShareState();
+  // Guards the "POST { active: false } once" requirement -- reset whenever a share becomes
+  // active (below) so a later stop-and-restart cycle posts again, but not on every render
+  // while the candidate simply sits on the share-required overlay.
+  const postedShareInactiveRef = useRef(false);
+  function postShareInactive() {
+    if (postedShareInactiveRef.current) return;
+    postedShareInactiveRef.current = true;
+    screenShareState.mutate({ active: false });
+  }
+  // onEnded fires from the browser's own "Stop sharing" control (see useScreenCapture) --
+  // it's identity-stable through that hook's internal ref mirror, so passing a fresh closure
+  // here every render is fine.
+  const screenCapture = useScreenCapture(captureEnabled, postShareInactive);
+  useEffect(() => {
+    if (!captureEnabled || screenCapture.active) {
+      postedShareInactiveRef.current = false;
+      return;
+    }
+    postShareInactive();
+  }, [captureEnabled, screenCapture.active]);
+
+  async function handleShareScreen() {
+    const result = await screenCapture.requestShare();
+    if (result) {
+      screenShareState.mutate({ active: true, displaySurface: result.displaySurface, userAgent: result.userAgent });
+    }
+  }
+
   useProctoringMonitor(
     started,
     (eventType) => {
@@ -88,6 +120,7 @@ export default function CandidateExamPage() {
       setLastViolationSource('browser_activity');
     },
     proctoringConfig,
+    screenCapture.capture,
   );
   useWebcamMonitor(
     started,
@@ -182,6 +215,12 @@ export default function CandidateExamPage() {
 
   if (!question || isTerminal) {
     return <p className="p-8 text-sm text-candidate-text-tertiary">Loading…</p>;
+  }
+
+  // The block overlay takes precedence -- a blocked attempt has nothing to resume into,
+  // sharing again wouldn't change that, so don't mask it with the share prompt.
+  if (captureEnabled && !screenCapture.active && !isBlocked) {
+    return <ScreenShareRequiredOverlay error={screenCapture.error} onShare={handleShareScreen} pending={screenShareState.isPending} />;
   }
 
   function toggleOption(optionId: string) {
