@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import { BlobServiceClient, BlockBlobClient, ContainerClient, BlobSASPermissions } from '@azure/storage-blob';
+import { Injectable, Logger } from '@nestjs/common';
+import { BlobServiceClient, BlockBlobClient, ContainerClient, BlobSASPermissions, SASProtocol } from '@azure/storage-blob';
 
 // Data URIs into uploadDataUri come straight from a candidate (webcam/screen captures), so
 // the content type is untrusted input, not a server-chosen value. Without an allowlist a
@@ -16,6 +16,7 @@ const SAS_CLOCK_SKEW_MS = 5 * 60_000;
 
 @Injectable()
 export class BlobStorageService {
+  private readonly logger = new Logger(BlobStorageService.name);
   private containerClient: ContainerClient | null = null;
 
   private getContainer(): ContainerClient {
@@ -105,19 +106,26 @@ export class BlobStorageService {
     if (typeof value !== 'string' || !value || !this.isConfigured()) {
       return value;
     }
+    const blob = this.resolveOwnedBlob(value);
+    if (!blob) {
+      return value;
+    }
     try {
-      const blob = this.resolveOwnedBlob(value);
-      if (!blob) {
-        return value;
-      }
       const now = Date.now();
       return await blob.generateSasUrl({
         permissions: BlobSASPermissions.parse('r'),
+        protocol: SASProtocol.Https,
         startsOn: new Date(now - SAS_CLOCK_SKEW_MS),
         expiresOn: new Date(now + SAS_READ_TTL_MS),
       });
-    } catch {
-      return value; // e.g. no shared-key credential to sign with -- degrade, don't throw
+    } catch (error) {
+      // Degrade, don't throw -- the caller falls back to the raw (unrenderable) URL rather than
+      // failing the whole request. But a silent fallback here is indistinguishable from the bug
+      // this file exists to fix, so log it -- blob *name* only, never the URL/token, since a
+      // credential failure means nothing was signed yet, but the input value could still be a
+      // previously-signed URL passed back through in some future caller.
+      this.logger.warn(`Failed to sign evidence blob URL for ${blob.name}`, error as Error);
+      return value;
     }
   }
 }

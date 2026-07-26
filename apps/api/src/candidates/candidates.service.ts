@@ -292,8 +292,10 @@ export class CandidatesService {
                     marksAwarded: answer.marksAwarded,
                   };
                 }),
-                // Staff download this GDPR export as raw JSON -- sign evidence URLs here too so a
-                // recruiter opening the file locally can still view the image, same as the log modal.
+                // Staff download this GDPR export as a retained JSON artifact -- sign evidence
+                // URLs here too, same as the log modal, but the signed link embeds a credential
+                // that expires in 15 minutes. It renders if opened promptly; the file itself
+                // does not stay viewable.
                 proctoringEvents: await Promise.all(
                   attempt.proctoringEvents.map(async (event) => ({
                     eventType: event.eventType, severity: event.severity, occurredAt: event.occurredAt,

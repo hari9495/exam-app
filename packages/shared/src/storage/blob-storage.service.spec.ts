@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { BlobServiceClient, ContainerClient, BlockBlobClient, StorageSharedKeyCredential } from '@azure/storage-blob';
 import { BlobStorageService } from './blob-storage.service';
 
@@ -133,6 +134,7 @@ describe('BlobStorageService.signIfOurs', () => {
 
     const params = new URLSearchParams(signed.split('?')[1]);
     expect(params.get('sp')).toBe('r'); // read-only permission
+    expect(params.get('spr')).toBe('https'); // cannot be replayed over plain HTTP
     // TTL is 15 minutes with a 5 minute clock-skew back-date on the start.
     const expiresOn = new Date(params.get('se')!).getTime();
     const startsOn = new Date(params.get('st')!).getTime();
@@ -168,6 +170,26 @@ describe('BlobStorageService.signIfOurs', () => {
     const traversalUrl = `${CONTAINER_URL}/../other-container/x.jpg`;
 
     await expect(service.signIfOurs(traversalUrl)).resolves.toBe(traversalUrl);
+  });
+
+  it('warns (logging the blob path, never the URL or a token) and returns the input unchanged when signing itself fails', async () => {
+    // A container client with no credential attached -- generateSasUrl genuinely throws
+    // ("...requires a StorageSharedKeyCredential...") rather than being mocked to.
+    const anonymousContainer = new ContainerClient(CONTAINER_URL);
+    (BlobServiceClient.fromConnectionString as jest.Mock).mockReturnValue({
+      getContainerClient: () => anonymousContainer,
+    });
+    const anonymousService = new BlobStorageService();
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const url = `${CONTAINER_URL}/webcam-snapshots/a.jpg`;
+
+    await expect(anonymousService.signIfOurs(url)).resolves.toBe(url);
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const [message] = warnSpy.mock.calls[0];
+    expect(message).toContain('webcam-snapshots/a.jpg'); // blob path
+    expect(message).not.toContain(CONTAINER_URL); // never the full URL
+    warnSpy.mockRestore();
   });
 });
 

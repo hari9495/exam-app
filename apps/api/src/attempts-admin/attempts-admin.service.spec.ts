@@ -115,6 +115,20 @@ describe('AttemptsAdminService', () => {
       expect(JSON.parse(result.metadataJson as string)).toEqual({ snapshot: 'data:image/jpeg;base64,AAAA' });
     });
 
+    it('returns a row with malformed metadataJson unchanged instead of 500ing the whole list', async () => {
+      const events = [{ id: 'event-1', metadataJson: '{not json' }];
+      const tx = {
+        attempt: { findFirst: jest.fn().mockResolvedValue({ id: 'attempt-1' }) },
+        proctoringEvent: { findMany: jest.fn().mockResolvedValue(events) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.listProctoringEvents(context, 'attempt-1');
+
+      expect(result).toEqual(events);
+      expect(blobStorage.signIfOurs).not.toHaveBeenCalled();
+    });
+
     describe('with the real BlobStorageService (offline SAS signing, no network)', () => {
       const CONTAINER_URL = 'https://fakeaccount.blob.core.windows.net/container';
       let realService: AttemptsAdminService;
