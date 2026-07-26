@@ -227,6 +227,38 @@ describe('useScreenCapture', () => {
     await runConcurrentRequestShareRace('B-first');
   });
 
+  it("a stale rejection from a call superseded by a concurrent winner does not clobber the winner's healthy state", async () => {
+    const trackB = makeTrack({ displaySurface: 'monitor' });
+    const streamB = makeStream(trackB);
+
+    let rejectA!: (reason?: unknown) => void;
+    let resolveB!: (value: unknown) => void;
+    const getDisplayMedia = jest
+      .fn()
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => (rejectA = reject)))
+      .mockImplementationOnce(() => new Promise((resolve) => (resolveB = resolve)));
+    Object.defineProperty(global.navigator, 'mediaDevices', { value: { getDisplayMedia }, configurable: true });
+
+    const { result } = renderHook(() => useScreenCapture(true, jest.fn()));
+
+    let outcomeA: unknown;
+    let outcomeB: unknown;
+    await act(async () => {
+      const promiseA = result.current.requestShare().then((r) => (outcomeA = r));
+      const promiseB = result.current.requestShare().then((r) => (outcomeB = r));
+      resolveB(streamB);
+      await promiseB; // B fully wins and settles active:true first
+      rejectA(new DOMException('denied', 'NotAllowedError')); // A's stale picker rejects afterward
+      await promiseA;
+    });
+
+    expect(outcomeA).toBeNull();
+    expect(outcomeB).toEqual({ displaySurface: 'monitor', userAgent: navigator.userAgent });
+    // The superseded call's rejection must not overwrite the winner's already-healthy state.
+    expect(result.current.active).toBe(true);
+    expect(result.current.error).toBeNull();
+  });
+
   it('does not leak a stream that resolves after enabled flips to false mid-request', async () => {
     const track = makeTrack({ displaySurface: 'monitor' });
     const stream = makeStream(track);
