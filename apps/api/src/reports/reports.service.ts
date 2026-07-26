@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { TenantPrismaService, TenantContext } from '@exam-platform/shared';
+import { TenantPrismaService, TenantContext, BlobStorageService } from '@exam-platform/shared';
 import { ExamsService, ExamResultRow, SETTLED_ATTEMPT_STATUSES } from '../exams/exams.service';
+import { signProctoringEvidence } from '../common/sign-proctoring-evidence';
 
 const SCORE_DISTRIBUTION_BUCKETS = [
   { rangeLabel: '0-20', min: 0, max: 20 },
@@ -122,6 +123,7 @@ export class ReportsService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly examsService: ExamsService,
+    private readonly blobStorage: BlobStorageService,
   ) {}
 
   async getSummary(context: TenantContext, examId: string): Promise<ExamResultsSummary> {
@@ -314,19 +316,22 @@ export class ReportsService {
         where: { attemptId: row.attemptId as string, eventType: { startsWith: 'webcam_' } },
         orderBy: { occurredAt: 'asc' },
       });
-      const webcamTimeline: WebcamTimelineEntry[] = webcamEvents.map((e) => {
-        const meta = e.metadataJson ? JSON.parse(e.metadataJson) : {};
-        if (e.eventType === 'webcam_snapshot') {
-          return { occurredAt: e.occurredAt.toISOString(), kind: 'periodic' as const, snapshot: meta.snapshot ?? '' };
-        }
-        return {
-          occurredAt: e.occurredAt.toISOString(),
-          kind: 'violation' as const,
-          reason: e.eventType.replace(/^webcam_/, ''),
-          strike: meta.strike,
-          snapshot: meta.snapshot ?? '',
-        };
-      });
+      const webcamTimeline: WebcamTimelineEntry[] = await Promise.all(
+        webcamEvents.map(async (e) => {
+          const parsed = e.metadataJson ? JSON.parse(e.metadataJson) : {};
+          const meta = (await signProctoringEvidence(this.blobStorage, parsed)) as { snapshot?: string; strike?: number };
+          if (e.eventType === 'webcam_snapshot') {
+            return { occurredAt: e.occurredAt.toISOString(), kind: 'periodic' as const, snapshot: meta.snapshot ?? '' };
+          }
+          return {
+            occurredAt: e.occurredAt.toISOString(),
+            kind: 'violation' as const,
+            reason: e.eventType.replace(/^webcam_/, ''),
+            strike: meta.strike,
+            snapshot: meta.snapshot ?? '',
+          };
+        }),
+      );
 
       const sectionSnapshot: SectionSnapshotEntryShape[] = JSON.parse(attempt.sectionSnapshotJson);
       const allQuestionIds = sectionSnapshot.flatMap((section) => section.questionIds);

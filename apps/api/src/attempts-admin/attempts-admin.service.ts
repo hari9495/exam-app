@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { AttemptInsight, CandidateMessage, CodeAnswerReview, ProctoringAnalysis, ProctoringEvent } from '@prisma/client';
-import { TenantPrismaService, TenantContext, AuditService } from '@exam-platform/shared';
+import { TenantPrismaService, TenantContext, AuditService, BlobStorageService } from '@exam-platform/shared';
 import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
+import { signProctoringEvidence } from '../common/sign-proctoring-evidence';
 
 @Injectable()
 export class AttemptsAdminService {
@@ -9,16 +10,36 @@ export class AttemptsAdminService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly audit: AuditService,
     private readonly examRuntime: ExamRuntimeInternalClient,
+    private readonly blobStorage: BlobStorageService,
   ) {}
 
+  // The recruiter "View log" modal. metadataJson is a raw JSON string on the Prisma row --
+  // parse it, sign any evidence URL it carries, and re-serialize back to a string so the
+  // response shape (and the client's own JSON.parse of this field) is unchanged.
   async listProctoringEvents(context: TenantContext, attemptId: string): Promise<ProctoringEvent[]> {
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+    const events = await this.tenantPrisma.forTenant(context, async (tx) => {
       const attempt = await tx.attempt.findFirst({ where: this.attemptOwnershipWhere(context, attemptId) });
       if (!attempt) {
         throw new NotFoundException(`Attempt ${attemptId} not found`);
       }
       return tx.proctoringEvent.findMany({ where: { attemptId }, orderBy: { occurredAt: 'asc' } });
     });
+
+    return Promise.all(
+      events.map(async (event) => {
+        if (!event.metadataJson) {
+          return event;
+        }
+        let meta: unknown;
+        try {
+          meta = JSON.parse(event.metadataJson);
+        } catch {
+          return event; // malformed JSON already sitting in the DB -- not this endpoint's problem to fix
+        }
+        const signed = await signProctoringEvidence(this.blobStorage, meta);
+        return { ...event, metadataJson: JSON.stringify(signed) };
+      }),
+    );
   }
 
   async forceSubmit(context: TenantContext, attemptId: string, actorUserId: string): Promise<{ status: string }> {

@@ -1,19 +1,34 @@
 import { Test } from '@nestjs/testing';
 import { ConflictException, NotFoundException } from '@nestjs/common';
+import { BlobServiceClient, ContainerClient, StorageSharedKeyCredential } from '@azure/storage-blob';
 import { CandidatesService } from './candidates.service';
 import { TenantPrismaService, AuditService, BlobStorageService } from '@exam-platform/shared';
+
+// Only BlobServiceClient.fromConnectionString is faked below (real-BlobStorageService nested
+// describe) -- ContainerClient/StorageSharedKeyCredential stay the real SDK classes, same
+// pattern as packages/shared/src/storage/blob-storage.service.spec.ts.
+jest.mock('@azure/storage-blob', () => {
+  const actual = jest.requireActual('@azure/storage-blob');
+  return { ...actual, BlobServiceClient: { fromConnectionString: jest.fn() } };
+});
 
 describe('CandidatesService', () => {
   let service: CandidatesService;
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
-  let blobStorage: { deleteByUrl: jest.Mock; isConfigured: jest.Mock };
+  let blobStorage: { deleteByUrl: jest.Mock; isConfigured: jest.Mock; signIfOurs: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
-    blobStorage = { deleteByUrl: jest.fn().mockResolvedValue(undefined), isConfigured: jest.fn().mockReturnValue(true) };
+    blobStorage = {
+      deleteByUrl: jest.fn().mockResolvedValue(undefined),
+      isConfigured: jest.fn().mockReturnValue(true),
+      // Identity pass-through by default -- signing behaviour itself is covered end to end below
+      // and in packages/shared/src/storage/blob-storage.service.spec.ts.
+      signIfOurs: jest.fn(async (value) => value),
+    };
     const moduleRef = await Test.createTestingModule({
       providers: [
         CandidatesService,
@@ -412,6 +427,83 @@ describe('CandidatesService', () => {
 
       await expect(service.exportData(context, 'user-1', 'cand-x')).rejects.toThrow(NotFoundException);
       expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    function exportTxWithProctoringEvent(metadataJson: string | null) {
+      return {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'a@test.com', name: 'Alice', phone: null, createdAt: new Date('2026-01-01') }),
+        },
+        invitation: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'inv-1', status: 'completed', invitedAt: new Date('2026-01-02'), expiresAt: new Date('2026-01-09'), revokedAt: null,
+              exam: { title: 'Backend Round' },
+              attempt: {
+                id: 'attempt-1', status: 'submitted', startedAt: new Date('2026-01-03'), submittedAt: new Date('2026-01-03'), deviceFingerprint: null,
+                result: null, answers: [],
+                proctoringEvents: [{ eventType: 'webcam_snapshot', severity: 'low', occurredAt: new Date('2026-01-03'), metadataJson }],
+                proctoringAnalysis: null, insight: null, messages: [],
+              },
+            },
+          ]),
+        },
+      };
+    }
+
+    it('signs a raw blob URL in an exported proctoring event', async () => {
+      const tx = exportTxWithProctoringEvent(JSON.stringify({ snapshot: 'https://blob.test/container/webcam-snapshots/a.jpg' }));
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      blobStorage.signIfOurs.mockImplementation(async (value: string) => `${value}?sig=signed`);
+
+      const result = await service.exportData(context, 'user-1', 'cand-1');
+
+      expect(blobStorage.signIfOurs).toHaveBeenCalledWith('https://blob.test/container/webcam-snapshots/a.jpg');
+      expect(result.attempts[0].proctoringEvents[0].metadata).toEqual({
+        snapshot: 'https://blob.test/container/webcam-snapshots/a.jpg?sig=signed',
+      });
+    });
+
+    it('leaves a data: URI identical in an exported proctoring event', async () => {
+      const tx = exportTxWithProctoringEvent(JSON.stringify({ snapshot: 'data:image/jpeg;base64,AAAA' }));
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.exportData(context, 'user-1', 'cand-1');
+
+      expect(result.attempts[0].proctoringEvents[0].metadata).toEqual({ snapshot: 'data:image/jpeg;base64,AAAA' });
+    });
+
+    describe('with the real BlobStorageService (offline SAS signing, no network)', () => {
+      const CONTAINER_URL = 'https://fakeaccount.blob.core.windows.net/container';
+      let realService: CandidatesService;
+
+      beforeEach(() => {
+        const credential = new StorageSharedKeyCredential('fakeaccount', Buffer.from('fake-key').toString('base64'));
+        const realContainer = new ContainerClient(CONTAINER_URL, credential);
+        (BlobServiceClient.fromConnectionString as jest.Mock).mockReturnValue({
+          getContainerClient: () => realContainer,
+        });
+        process.env.AZURE_STORAGE_CONNECTION_STRING = 'UseDevelopmentStorage=true';
+        process.env.AZURE_STORAGE_CONTAINER = 'container';
+        const realBlobStorage = new BlobStorageService();
+        realService = new CandidatesService(tenantPrisma as never, audit as never, realBlobStorage);
+      });
+
+      afterEach(() => {
+        delete process.env.AZURE_STORAGE_CONNECTION_STRING;
+        delete process.env.AZURE_STORAGE_CONTAINER;
+      });
+
+      it('resolves a raw blob URL to a genuinely signed SAS URL', async () => {
+        const tx = exportTxWithProctoringEvent(JSON.stringify({ snapshot: `${CONTAINER_URL}/webcam-snapshots/a.jpg` }));
+        tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+        const result = await realService.exportData(context, 'user-1', 'cand-1');
+        const { snapshot } = result.attempts[0].proctoringEvents[0].metadata as { snapshot: string };
+
+        expect(snapshot.startsWith(`${CONTAINER_URL}/webcam-snapshots/a.jpg?`)).toBe(true);
+        expect(new URLSearchParams(snapshot.split('?')[1]).get('sp')).toBe('r');
+      });
     });
   });
 

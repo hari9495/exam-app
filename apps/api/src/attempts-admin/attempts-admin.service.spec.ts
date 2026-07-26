@@ -1,10 +1,19 @@
 import { Test } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { validate } from 'class-validator';
+import { BlobServiceClient, ContainerClient, StorageSharedKeyCredential } from '@azure/storage-blob';
 import { AttemptsAdminService } from './attempts-admin.service';
-import { TenantPrismaService, AuditService } from '@exam-platform/shared';
+import { TenantPrismaService, AuditService, BlobStorageService } from '@exam-platform/shared';
 import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
 import { BypassProctoringDto } from './dto/bypass-proctoring.dto';
+
+// Only BlobServiceClient.fromConnectionString is faked below (real-BlobStorageService nested
+// describe) -- ContainerClient/StorageSharedKeyCredential stay the real SDK classes, same
+// pattern as packages/shared/src/storage/blob-storage.service.spec.ts.
+jest.mock('@azure/storage-blob', () => {
+  const actual = jest.requireActual('@azure/storage-blob');
+  return { ...actual, BlobServiceClient: { fromConnectionString: jest.fn() } };
+});
 
 describe('AttemptsAdminService', () => {
   let service: AttemptsAdminService;
@@ -20,6 +29,7 @@ describe('AttemptsAdminService', () => {
     applyProctoringBypass: jest.Mock;
     revokeProctoringBypass: jest.Mock;
   };
+  let blobStorage: { signIfOurs: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
@@ -35,6 +45,9 @@ describe('AttemptsAdminService', () => {
       applyProctoringBypass: jest.fn(),
       revokeProctoringBypass: jest.fn(),
     };
+    // Identity pass-through by default -- signing behaviour itself is covered end to end below
+    // and in packages/shared/src/storage/blob-storage.service.spec.ts.
+    blobStorage = { signIfOurs: jest.fn(async (value) => value) };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -42,6 +55,7 @@ describe('AttemptsAdminService', () => {
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: AuditService, useValue: audit },
         { provide: ExamRuntimeInternalClient, useValue: examRuntime },
+        { provide: BlobStorageService, useValue: blobStorage },
       ],
     }).compile();
     service = moduleRef.get(AttemptsAdminService);
@@ -55,8 +69,8 @@ describe('AttemptsAdminService', () => {
       await expect(service.listProctoringEvents(context, 'attempt-1')).rejects.toThrow(NotFoundException);
     });
 
-    it('returns the ordered proctoring events for an owned attempt', async () => {
-      const events = [{ id: 'event-1' }];
+    it('returns the ordered proctoring events for an owned attempt, unchanged when there is no metadata', async () => {
+      const events = [{ id: 'event-1', metadataJson: null }];
       const tx = {
         attempt: { findFirst: jest.fn().mockResolvedValue({ id: 'attempt-1' }) },
         proctoringEvent: { findMany: jest.fn().mockResolvedValue(events) },
@@ -66,7 +80,76 @@ describe('AttemptsAdminService', () => {
       const result = await service.listProctoringEvents(context, 'attempt-1');
 
       expect(tx.proctoringEvent.findMany).toHaveBeenCalledWith({ where: { attemptId: 'attempt-1' }, orderBy: { occurredAt: 'asc' } });
-      expect(result).toBe(events);
+      expect(result).toEqual(events);
+      expect(blobStorage.signIfOurs).not.toHaveBeenCalled();
+    });
+
+    it('signs an evidence URL inside metadataJson and re-serializes it back to a JSON string', async () => {
+      const events = [{ id: 'event-1', metadataJson: JSON.stringify({ snapshot: 'https://blob.test/container/webcam-snapshots/a.jpg', strike: 1 }) }];
+      const tx = {
+        attempt: { findFirst: jest.fn().mockResolvedValue({ id: 'attempt-1' }) },
+        proctoringEvent: { findMany: jest.fn().mockResolvedValue(events) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      blobStorage.signIfOurs.mockImplementation(async (value: string) => `${value}?sig=signed`);
+
+      const [result] = await service.listProctoringEvents(context, 'attempt-1');
+
+      expect(blobStorage.signIfOurs).toHaveBeenCalledWith('https://blob.test/container/webcam-snapshots/a.jpg');
+      expect(JSON.parse(result.metadataJson as string)).toEqual({
+        snapshot: 'https://blob.test/container/webcam-snapshots/a.jpg?sig=signed',
+        strike: 1,
+      });
+    });
+
+    it('leaves a data: URI in metadataJson identical after signing', async () => {
+      const events = [{ id: 'event-1', metadataJson: JSON.stringify({ snapshot: 'data:image/jpeg;base64,AAAA' }) }];
+      const tx = {
+        attempt: { findFirst: jest.fn().mockResolvedValue({ id: 'attempt-1' }) },
+        proctoringEvent: { findMany: jest.fn().mockResolvedValue(events) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const [result] = await service.listProctoringEvents(context, 'attempt-1');
+
+      expect(JSON.parse(result.metadataJson as string)).toEqual({ snapshot: 'data:image/jpeg;base64,AAAA' });
+    });
+
+    describe('with the real BlobStorageService (offline SAS signing, no network)', () => {
+      const CONTAINER_URL = 'https://fakeaccount.blob.core.windows.net/container';
+      let realService: AttemptsAdminService;
+
+      beforeEach(() => {
+        const credential = new StorageSharedKeyCredential('fakeaccount', Buffer.from('fake-key').toString('base64'));
+        const realContainer = new ContainerClient(CONTAINER_URL, credential);
+        (BlobServiceClient.fromConnectionString as jest.Mock).mockReturnValue({
+          getContainerClient: () => realContainer,
+        });
+        process.env.AZURE_STORAGE_CONNECTION_STRING = 'UseDevelopmentStorage=true';
+        process.env.AZURE_STORAGE_CONTAINER = 'container';
+        const realBlobStorage = new BlobStorageService();
+        realService = new AttemptsAdminService(tenantPrisma as never, audit as never, examRuntime as never, realBlobStorage);
+      });
+
+      afterEach(() => {
+        delete process.env.AZURE_STORAGE_CONNECTION_STRING;
+        delete process.env.AZURE_STORAGE_CONTAINER;
+      });
+
+      it('resolves a raw blob URL to a genuinely signed SAS URL', async () => {
+        const events = [{ id: 'event-1', metadataJson: JSON.stringify({ snapshot: `${CONTAINER_URL}/webcam-snapshots/a.jpg` }) }];
+        const tx = {
+          attempt: { findFirst: jest.fn().mockResolvedValue({ id: 'attempt-1' }) },
+          proctoringEvent: { findMany: jest.fn().mockResolvedValue(events) },
+        };
+        tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+        const [result] = await realService.listProctoringEvents(context, 'attempt-1');
+        const { snapshot } = JSON.parse(result.metadataJson as string);
+
+        expect(snapshot.startsWith(`${CONTAINER_URL}/webcam-snapshots/a.jpg?`)).toBe(true);
+        expect(new URLSearchParams(snapshot.split('?')[1]).get('sp')).toBe('r');
+      });
     });
   });
 

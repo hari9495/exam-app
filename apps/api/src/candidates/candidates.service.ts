@@ -8,6 +8,7 @@ import { CreateCandidateDto } from './dto/create-candidate.dto';
 import { UpdateCandidateDto } from './dto/update-candidate.dto';
 import { parseCandidateCsv } from './csv-parser';
 import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
+import { signProctoringEvidence } from '../common/sign-proctoring-evidence';
 
 interface CandidateFilters {
   page?: string;
@@ -270,37 +271,45 @@ export class CandidatesService {
           id: invitation.id, examTitle: invitation.exam.title, status: invitation.status,
           invitedAt: invitation.invitedAt, expiresAt: invitation.expiresAt, revokedAt: invitation.revokedAt,
         })),
-        attempts: invitations
-          .filter((invitation) => invitation.attempt !== null)
-          .map((invitation) => {
-            const attempt = invitation.attempt!;
-            return {
-              id: attempt.id, examTitle: invitation.exam.title, status: attempt.status,
-              startedAt: attempt.startedAt, submittedAt: attempt.submittedAt, deviceFingerprint: attempt.deviceFingerprint,
-              result: attempt.result
-                ? { score: attempt.result.score, maxScore: attempt.result.maxScore, percentage: attempt.result.percentage, passFail: attempt.result.passFail }
-                : null,
-              answers: attempt.answers.map((answer) => {
-                const selectedIds: string[] = JSON.parse(answer.selectedOptionIdsJson);
-                const optionTextById = new Map(answer.question.options.map((option) => [option.id, option.text]));
-                return {
-                  questionText: answer.question.text,
-                  selectedOptions: selectedIds.map((optionId) => optionTextById.get(optionId) ?? optionId),
-                  isCorrect: answer.isCorrect,
-                  marksAwarded: answer.marksAwarded,
-                };
-              }),
-              proctoringEvents: attempt.proctoringEvents.map((event) => ({
-                eventType: event.eventType, severity: event.severity, occurredAt: event.occurredAt,
-                metadata: event.metadataJson ? JSON.parse(event.metadataJson) : null,
-              })),
-              proctoringAnalysis: attempt.proctoringAnalysis
-                ? { status: attempt.proctoringAnalysis.status, riskLevel: attempt.proctoringAnalysis.riskLevel, summary: attempt.proctoringAnalysis.summary }
-                : null,
-              insight: attempt.insight ? { status: attempt.insight.status, summary: attempt.insight.summary } : null,
-              messages: attempt.messages.map((message) => ({ body: message.body, sentAt: message.sentAt, readAt: message.readAt })),
-            };
-          }),
+        attempts: await Promise.all(
+          invitations
+            .filter((invitation) => invitation.attempt !== null)
+            .map(async (invitation) => {
+              const attempt = invitation.attempt!;
+              return {
+                id: attempt.id, examTitle: invitation.exam.title, status: attempt.status,
+                startedAt: attempt.startedAt, submittedAt: attempt.submittedAt, deviceFingerprint: attempt.deviceFingerprint,
+                result: attempt.result
+                  ? { score: attempt.result.score, maxScore: attempt.result.maxScore, percentage: attempt.result.percentage, passFail: attempt.result.passFail }
+                  : null,
+                answers: attempt.answers.map((answer) => {
+                  const selectedIds: string[] = JSON.parse(answer.selectedOptionIdsJson);
+                  const optionTextById = new Map(answer.question.options.map((option) => [option.id, option.text]));
+                  return {
+                    questionText: answer.question.text,
+                    selectedOptions: selectedIds.map((optionId) => optionTextById.get(optionId) ?? optionId),
+                    isCorrect: answer.isCorrect,
+                    marksAwarded: answer.marksAwarded,
+                  };
+                }),
+                // Staff download this GDPR export as raw JSON -- sign evidence URLs here too so a
+                // recruiter opening the file locally can still view the image, same as the log modal.
+                proctoringEvents: await Promise.all(
+                  attempt.proctoringEvents.map(async (event) => ({
+                    eventType: event.eventType, severity: event.severity, occurredAt: event.occurredAt,
+                    metadata: event.metadataJson
+                      ? ((await signProctoringEvidence(this.blobStorage, JSON.parse(event.metadataJson))) as Record<string, unknown>)
+                      : null,
+                  })),
+                ),
+                proctoringAnalysis: attempt.proctoringAnalysis
+                  ? { status: attempt.proctoringAnalysis.status, riskLevel: attempt.proctoringAnalysis.riskLevel, summary: attempt.proctoringAnalysis.summary }
+                  : null,
+                insight: attempt.insight ? { status: attempt.insight.status, summary: attempt.insight.summary } : null,
+                messages: attempt.messages.map((message) => ({ body: message.body, sentAt: message.sentAt, readAt: message.readAt })),
+              };
+            }),
+        ),
       };
     });
 

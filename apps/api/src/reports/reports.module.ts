@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
+import { StorageModule } from '@exam-platform/shared';
 import { ExamsModule } from '../exams/exams.module';
 import { ReportsController } from './reports.controller';
 import { ReportsService } from './reports.service';
 
 @Module({
-  imports: [ExamsModule],
+  imports: [ExamsModule, StorageModule],
   controllers: [ReportsController],
   providers: [ReportsService],
 })

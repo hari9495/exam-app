@@ -1,4 +1,4 @@
-import { BlobServiceClient, ContainerClient, BlockBlobClient } from '@azure/storage-blob';
+import { BlobServiceClient, ContainerClient, BlockBlobClient, StorageSharedKeyCredential } from '@azure/storage-blob';
 import { BlobStorageService } from './blob-storage.service';
 
 // Only BlobServiceClient.fromConnectionString is faked -- ContainerClient/BlockBlobClient are
@@ -95,6 +95,79 @@ describe('BlobStorageService.deleteByUrl', () => {
     await expect(service.deleteByUrl(`${CONTAINER_URL}/%E0%A4%A`)).resolves.toBeUndefined();
 
     expect(deleteIfExists).not.toHaveBeenCalled();
+  });
+});
+
+describe('BlobStorageService.signIfOurs', () => {
+  let service: BlobStorageService;
+  // A syntactically valid account key (any base64 string works -- generateSasUrl signs locally
+  // via HMAC and never makes a network call, so this needs no real Azure credentials).
+  const FAKE_ACCOUNT_KEY = Buffer.from('fake-shared-key-for-tests-only').toString('base64');
+  const CREDENTIAL = new StorageSharedKeyCredential('fakeaccount', FAKE_ACCOUNT_KEY);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    const realContainer = new ContainerClient(CONTAINER_URL, CREDENTIAL);
+    (BlobServiceClient.fromConnectionString as jest.Mock).mockReturnValue({
+      getContainerClient: () => realContainer,
+    });
+    process.env.AZURE_STORAGE_CONNECTION_STRING = 'UseDevelopmentStorage=true';
+    process.env.AZURE_STORAGE_CONTAINER = 'container';
+    service = new BlobStorageService();
+  });
+
+  afterEach(() => {
+    delete process.env.AZURE_STORAGE_CONNECTION_STRING;
+    delete process.env.AZURE_STORAGE_CONTAINER;
+  });
+
+  it('signs a URL that lives inside our own container into a short-lived, read-only SAS URL', async () => {
+    const before = Date.now();
+    const result = await service.signIfOurs(`${CONTAINER_URL}/webcam-snapshots/a.jpg`);
+    const after = Date.now();
+
+    expect(typeof result).toBe('string');
+    const signed = result as string;
+    expect(signed).not.toBe(`${CONTAINER_URL}/webcam-snapshots/a.jpg`);
+    expect(signed.startsWith(`${CONTAINER_URL}/webcam-snapshots/a.jpg?`)).toBe(true);
+
+    const params = new URLSearchParams(signed.split('?')[1]);
+    expect(params.get('sp')).toBe('r'); // read-only permission
+    // TTL is 15 minutes with a 5 minute clock-skew back-date on the start.
+    const expiresOn = new Date(params.get('se')!).getTime();
+    const startsOn = new Date(params.get('st')!).getTime();
+    expect(expiresOn).toBeGreaterThanOrEqual(before + 15 * 60_000 - 5_000);
+    expect(expiresOn).toBeLessThanOrEqual(after + 15 * 60_000 + 5_000);
+    expect(startsOn).toBeGreaterThanOrEqual(before - 5 * 60_000 - 5_000);
+    expect(startsOn).toBeLessThanOrEqual(after - 5 * 60_000 + 5_000);
+  });
+
+  it('leaves an inline data: URI untouched', async () => {
+    const dataUri = 'data:image/jpeg;base64,AAAA';
+    await expect(service.signIfOurs(dataUri)).resolves.toBe(dataUri);
+  });
+
+  it('leaves a URL from a different container untouched, without signing it', async () => {
+    const otherUrl = 'https://fakeaccount.blob.core.windows.net/container-2/webcam-snapshots/a.jpg';
+    await expect(service.signIfOurs(otherUrl)).resolves.toBe(otherUrl);
+  });
+
+  it.each([null, undefined, '', 42, { snapshot: 'x' }, ['a']])('leaves %p untouched', async (value) => {
+    await expect(service.signIfOurs(value)).resolves.toBe(value);
+  });
+
+  it('returns the input unchanged when storage is not configured', async () => {
+    delete process.env.AZURE_STORAGE_CONNECTION_STRING;
+    delete process.env.AZURE_STORAGE_CONTAINER;
+    const url = `${CONTAINER_URL}/webcam-snapshots/a.jpg`;
+
+    await expect(service.signIfOurs(url)).resolves.toBe(url);
+  });
+
+  it('does not sign a path-traversal URL that string-matches the prefix but resolves outside our container', async () => {
+    const traversalUrl = `${CONTAINER_URL}/../other-container/x.jpg`;
+
+    await expect(service.signIfOurs(traversalUrl)).resolves.toBe(traversalUrl);
   });
 });
 

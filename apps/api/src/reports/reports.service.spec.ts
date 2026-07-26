@@ -1,23 +1,37 @@
 import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BlobServiceClient, ContainerClient, StorageSharedKeyCredential } from '@azure/storage-blob';
 import { ReportsService } from './reports.service';
-import { TenantPrismaService } from '@exam-platform/shared';
+import { TenantPrismaService, BlobStorageService } from '@exam-platform/shared';
 import { ExamsService, ExamResultRow } from '../exams/exams.service';
+
+// Only BlobServiceClient.fromConnectionString is faked below (real-BlobStorageService nested
+// describe) -- ContainerClient/StorageSharedKeyCredential stay the real SDK classes, same
+// pattern as packages/shared/src/storage/blob-storage.service.spec.ts.
+jest.mock('@azure/storage-blob', () => {
+  const actual = jest.requireActual('@azure/storage-blob');
+  return { ...actual, BlobServiceClient: { fromConnectionString: jest.fn() } };
+});
 
 describe('ReportsService', () => {
   let service: ReportsService;
   let tenantPrisma: { forTenant: jest.Mock };
   let examsService: { getResults: jest.Mock };
+  let blobStorage: { signIfOurs: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
     examsService = { getResults: jest.fn() };
+    // Identity pass-through by default -- signing behaviour itself is covered end to end below
+    // and in packages/shared/src/storage/blob-storage.service.spec.ts.
+    blobStorage = { signIfOurs: jest.fn(async (value) => value) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         ReportsService,
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: ExamsService, useValue: examsService },
+        { provide: BlobStorageService, useValue: blobStorage },
       ],
     }).compile();
     service = moduleRef.get(ReportsService);
@@ -413,6 +427,112 @@ describe('ReportsService', () => {
         { occurredAt: '2026-01-01T00:05:00.000Z', kind: 'violation', reason: 'multiple_faces', strike: 1, snapshot: 'a' },
         { occurredAt: '2026-01-01T00:10:00.000Z', kind: 'periodic', snapshot: 'b' },
       ]);
+    });
+
+    it('signs a raw blob URL snapshot and leaves a data: URI snapshot identical', async () => {
+      examsService.getResults.mockResolvedValue([
+        row({
+          candidateId: 'cand-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted',
+          score: 5, maxScore: 5, percentage: 100, passFail: 'pass',
+        }),
+      ]);
+      const tx = {
+        attempt: {
+          findFirst: jest.fn().mockResolvedValue({
+            sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
+            answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5 }],
+          }),
+        },
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'q1', text: 'Q1 text', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', text: 'A', isCorrect: true }] },
+          ]),
+        },
+        proctoringEvent: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              eventType: 'webcam_snapshot',
+              occurredAt: new Date('2026-01-01T00:10:00Z'),
+              metadataJson: JSON.stringify({ snapshot: 'https://blob.test/container/webcam-snapshots/b.jpg' }),
+            },
+            {
+              eventType: 'webcam_snapshot',
+              occurredAt: new Date('2026-01-01T00:15:00Z'),
+              metadataJson: JSON.stringify({ snapshot: 'data:image/jpeg;base64,AAAA' }),
+            },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      blobStorage.signIfOurs.mockImplementation(async (value: string) =>
+        value.startsWith('https://') ? `${value}?sig=signed` : value,
+      );
+
+      const detail = await service.getCandidateDetail(context, 'exam-1', 'cand-1');
+
+      expect(detail.webcamTimeline).toEqual([
+        { occurredAt: '2026-01-01T00:10:00.000Z', kind: 'periodic', snapshot: 'https://blob.test/container/webcam-snapshots/b.jpg?sig=signed' },
+        { occurredAt: '2026-01-01T00:15:00.000Z', kind: 'periodic', snapshot: 'data:image/jpeg;base64,AAAA' },
+      ]);
+    });
+
+    describe('with the real BlobStorageService (offline SAS signing, no network)', () => {
+      const CONTAINER_URL = 'https://fakeaccount.blob.core.windows.net/container';
+      let realService: ReportsService;
+
+      beforeEach(() => {
+        const credential = new StorageSharedKeyCredential('fakeaccount', Buffer.from('fake-key').toString('base64'));
+        const realContainer = new ContainerClient(CONTAINER_URL, credential);
+        (BlobServiceClient.fromConnectionString as jest.Mock).mockReturnValue({
+          getContainerClient: () => realContainer,
+        });
+        process.env.AZURE_STORAGE_CONNECTION_STRING = 'UseDevelopmentStorage=true';
+        process.env.AZURE_STORAGE_CONTAINER = 'container';
+        const realBlobStorage = new BlobStorageService();
+        realService = new ReportsService(tenantPrisma as never, examsService as never, realBlobStorage);
+      });
+
+      afterEach(() => {
+        delete process.env.AZURE_STORAGE_CONNECTION_STRING;
+        delete process.env.AZURE_STORAGE_CONTAINER;
+      });
+
+      it('resolves a raw blob URL to a genuinely signed SAS URL', async () => {
+        examsService.getResults.mockResolvedValue([
+          row({
+            candidateId: 'cand-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted',
+            score: 5, maxScore: 5, percentage: 100, passFail: 'pass',
+          }),
+        ]);
+        const tx = {
+          attempt: {
+            findFirst: jest.fn().mockResolvedValue({
+              sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
+              answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5 }],
+            }),
+          },
+          question: {
+            findMany: jest.fn().mockResolvedValue([
+              { id: 'q1', text: 'Q1 text', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', text: 'A', isCorrect: true }] },
+            ]),
+          },
+          proctoringEvent: {
+            findMany: jest.fn().mockResolvedValue([
+              {
+                eventType: 'webcam_snapshot',
+                occurredAt: new Date('2026-01-01T00:10:00Z'),
+                metadataJson: JSON.stringify({ snapshot: `${CONTAINER_URL}/webcam-snapshots/b.jpg` }),
+              },
+            ]),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+        const detail = await realService.getCandidateDetail(context, 'exam-1', 'cand-1');
+
+        expect(detail.webcamTimeline[0].snapshot.startsWith(`${CONTAINER_URL}/webcam-snapshots/b.jpg?`)).toBe(true);
+        expect(new URLSearchParams(detail.webcamTimeline[0].snapshot.split('?')[1]).get('sp')).toBe('r');
+      });
     });
   });
 
