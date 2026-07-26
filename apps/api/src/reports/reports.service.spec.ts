@@ -476,6 +476,100 @@ describe('ReportsService', () => {
       ]);
     });
 
+    it('carries screenshot alongside snapshot only when metadataJson actually has that key -- both, snapshot-only, and screenshot-only', async () => {
+      examsService.getResults.mockResolvedValue([
+        row({
+          candidateId: 'cand-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted',
+          score: 5, maxScore: 5, percentage: 100, passFail: 'pass',
+        }),
+      ]);
+      const tx = {
+        attempt: {
+          findFirst: jest.fn().mockResolvedValue({
+            sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
+            answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5 }],
+          }),
+        },
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'q1', text: 'Q1 text', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', text: 'A', isCorrect: true }] },
+          ]),
+        },
+        proctoringEvent: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              eventType: 'webcam_multiple_faces',
+              occurredAt: new Date('2026-01-01T00:05:00Z'),
+              metadataJson: JSON.stringify({ snapshot: 'a', screenshot: 'sc-a', strike: 1 }),
+            },
+            {
+              eventType: 'webcam_snapshot',
+              occurredAt: new Date('2026-01-01T00:10:00Z'),
+              metadataJson: JSON.stringify({ snapshot: 'b' }),
+            },
+            {
+              eventType: 'webcam_head_turned',
+              occurredAt: new Date('2026-01-01T00:15:00Z'),
+              metadataJson: JSON.stringify({ screenshot: 'sc-c', strike: 2 }),
+            },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const detail = await service.getCandidateDetail(context, 'exam-1', 'cand-1');
+
+      expect(detail.webcamTimeline).toEqual([
+        { occurredAt: '2026-01-01T00:05:00.000Z', kind: 'violation', reason: 'multiple_faces', strike: 1, snapshot: 'a', screenshot: 'sc-a' },
+        { occurredAt: '2026-01-01T00:10:00.000Z', kind: 'periodic', snapshot: 'b' },
+        { occurredAt: '2026-01-01T00:15:00.000Z', kind: 'violation', reason: 'head_turned', strike: 2, snapshot: '', screenshot: 'sc-c' },
+      ]);
+    });
+
+    it('does not throw and still returns the other events when one row has malformed metadataJson', async () => {
+      examsService.getResults.mockResolvedValue([
+        row({
+          candidateId: 'cand-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted',
+          score: 5, maxScore: 5, percentage: 100, passFail: 'pass',
+        }),
+      ]);
+      const tx = {
+        attempt: {
+          findFirst: jest.fn().mockResolvedValue({
+            sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
+            answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5 }],
+          }),
+        },
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'q1', text: 'Q1 text', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', text: 'A', isCorrect: true }] },
+          ]),
+        },
+        proctoringEvent: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              eventType: 'webcam_multiple_faces',
+              occurredAt: new Date('2026-01-01T00:05:00Z'),
+              metadataJson: '{not valid json',
+            },
+            {
+              eventType: 'webcam_snapshot',
+              occurredAt: new Date('2026-01-01T00:10:00Z'),
+              metadataJson: JSON.stringify({ snapshot: 'b' }),
+            },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const detail = await service.getCandidateDetail(context, 'exam-1', 'cand-1');
+
+      expect(detail.webcamTimeline).toEqual([
+        { occurredAt: '2026-01-01T00:05:00.000Z', kind: 'violation', reason: 'multiple_faces', snapshot: '' },
+        { occurredAt: '2026-01-01T00:10:00.000Z', kind: 'periodic', snapshot: 'b' },
+      ]);
+    });
+
     describe('with the real BlobStorageService (offline SAS signing, no network)', () => {
       const CONTAINER_URL = 'https://fakeaccount.blob.core.windows.net/container';
       let realService: ReportsService;
@@ -532,6 +626,87 @@ describe('ReportsService', () => {
 
         expect(detail.webcamTimeline[0].snapshot.startsWith(`${CONTAINER_URL}/webcam-snapshots/b.jpg?`)).toBe(true);
         expect(new URLSearchParams(detail.webcamTimeline[0].snapshot.split('?')[1]).get('sp')).toBe('r');
+      });
+
+      it('resolves both snapshot and screenshot to genuinely signed, read-only SAS URLs when an event carries both', async () => {
+        examsService.getResults.mockResolvedValue([
+          row({
+            candidateId: 'cand-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted',
+            score: 5, maxScore: 5, percentage: 100, passFail: 'pass',
+          }),
+        ]);
+        const tx = {
+          attempt: {
+            findFirst: jest.fn().mockResolvedValue({
+              sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
+              answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5 }],
+            }),
+          },
+          question: {
+            findMany: jest.fn().mockResolvedValue([
+              { id: 'q1', text: 'Q1 text', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', text: 'A', isCorrect: true }] },
+            ]),
+          },
+          proctoringEvent: {
+            findMany: jest.fn().mockResolvedValue([
+              {
+                eventType: 'webcam_multiple_faces',
+                occurredAt: new Date('2026-01-01T00:10:00Z'),
+                metadataJson: JSON.stringify({
+                  snapshot: `${CONTAINER_URL}/webcam-snapshots/b.jpg`,
+                  screenshot: `${CONTAINER_URL}/screen-captures/b.jpg`,
+                  strike: 1,
+                }),
+              },
+            ]),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+        const detail = await realService.getCandidateDetail(context, 'exam-1', 'cand-1');
+        const entry = detail.webcamTimeline[0];
+
+        expect(entry.snapshot.startsWith(`${CONTAINER_URL}/webcam-snapshots/b.jpg?`)).toBe(true);
+        expect(entry.screenshot?.startsWith(`${CONTAINER_URL}/screen-captures/b.jpg?`)).toBe(true);
+        expect(new URLSearchParams(entry.snapshot.split('?')[1]).get('sp')).toBe('r');
+        expect(new URLSearchParams(entry.screenshot!.split('?')[1]).get('sp')).toBe('r');
+      });
+
+      it('leaves a data: URI screenshot identical instead of mistaking it for an owned blob URL', async () => {
+        examsService.getResults.mockResolvedValue([
+          row({
+            candidateId: 'cand-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted',
+            score: 5, maxScore: 5, percentage: 100, passFail: 'pass',
+          }),
+        ]);
+        const tx = {
+          attempt: {
+            findFirst: jest.fn().mockResolvedValue({
+              sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
+              answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5 }],
+            }),
+          },
+          question: {
+            findMany: jest.fn().mockResolvedValue([
+              { id: 'q1', text: 'Q1 text', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', text: 'A', isCorrect: true }] },
+            ]),
+          },
+          proctoringEvent: {
+            findMany: jest.fn().mockResolvedValue([
+              {
+                eventType: 'webcam_multiple_faces',
+                occurredAt: new Date('2026-01-01T00:10:00Z'),
+                metadataJson: JSON.stringify({ snapshot: 'data:image/jpeg;base64,AAAA', screenshot: 'data:image/jpeg;base64,BBBB', strike: 1 }),
+              },
+            ]),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+        const detail = await realService.getCandidateDetail(context, 'exam-1', 'cand-1');
+
+        expect(detail.webcamTimeline[0].snapshot).toBe('data:image/jpeg;base64,AAAA');
+        expect(detail.webcamTimeline[0].screenshot).toBe('data:image/jpeg;base64,BBBB');
       });
     });
   });

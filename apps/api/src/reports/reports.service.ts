@@ -88,6 +88,7 @@ export interface WebcamTimelineEntry {
   reason?: string;
   strike?: number;
   snapshot: string;
+  screenshot?: string;
 }
 
 export interface CandidateDetail {
@@ -318,10 +319,28 @@ export class ReportsService {
       });
       const webcamTimeline: WebcamTimelineEntry[] = await Promise.all(
         webcamEvents.map(async (e) => {
-          const parsed = e.metadataJson ? JSON.parse(e.metadataJson) : {};
-          const meta = (await signProctoringEvidence(this.blobStorage, parsed)) as { snapshot?: string; strike?: number };
+          // metadataJson is a raw DB column: malformed/legacy rows must not break the whole
+          // timeline over one bad event, so a parse failure degrades to an empty object.
+          let parsed: unknown = {};
+          if (e.metadataJson) {
+            try {
+              parsed = JSON.parse(e.metadataJson);
+            } catch {
+              parsed = {};
+            }
+          }
+          const meta = (await signProctoringEvidence(this.blobStorage, parsed)) as {
+            snapshot?: string;
+            screenshot?: string;
+            strike?: number;
+          };
           if (e.eventType === 'webcam_snapshot') {
-            return { occurredAt: e.occurredAt.toISOString(), kind: 'periodic' as const, snapshot: meta.snapshot ?? '' };
+            return {
+              occurredAt: e.occurredAt.toISOString(),
+              kind: 'periodic' as const,
+              snapshot: meta.snapshot ?? '',
+              screenshot: meta.screenshot,
+            };
           }
           return {
             occurredAt: e.occurredAt.toISOString(),
@@ -329,6 +348,7 @@ export class ReportsService {
             reason: e.eventType.replace(/^webcam_/, ''),
             strike: meta.strike,
             snapshot: meta.snapshot ?? '',
+            screenshot: meta.screenshot,
           };
         }),
       );

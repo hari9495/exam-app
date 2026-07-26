@@ -471,6 +471,7 @@ export interface WebcamTimelineEntry {
   reason?: string;
   strike?: number;
   snapshot: string;
+  screenshot?: string;
 }
 
 export interface CandidateDetail {

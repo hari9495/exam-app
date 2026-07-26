@@ -208,5 +208,77 @@ describe('PanelCandidateDetailPage', () => {
 
       expect(screen.getByText('No webcam snapshots recorded.')).toBeInTheDocument();
     });
+
+    it('renders both the webcam snapshot and the screen capture for an entry that has both, each with its own enlarge affordance', async () => {
+      (useAttemptInsight as jest.Mock).mockReturnValue({ data: null, isLoading: false });
+      (useCandidateReport as jest.Mock).mockReturnValue({
+        data: {
+          ...candidateDetail,
+          webcamTimeline: [
+            {
+              occurredAt: '2026-01-01T00:05:00.000Z',
+              kind: 'violation',
+              reason: 'multiple_faces',
+              strike: 1,
+              snapshot: 'data:image/png;base64,snap',
+              screenshot: 'data:image/png;base64,screen',
+            },
+          ],
+        },
+        isLoading: false,
+      });
+
+      renderPage();
+
+      expect(screen.getByText('Screen capture')).toBeInTheDocument();
+      const snapshotButton = screen.getByRole('button', { name: /webcam snapshot/i });
+      const screenshotButton = screen.getByRole('button', { name: /screen capture/i });
+
+      await userEvent.click(screenshotButton);
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(within(screen.getByRole('dialog')).getByRole('img')).toHaveAttribute('src', 'data:image/png;base64,screen');
+      await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+      await userEvent.click(snapshotButton);
+      expect(within(screen.getByRole('dialog')).getByRole('img')).toHaveAttribute('src', 'data:image/png;base64,snap');
+    });
+
+    it('renders only the screen capture, with no "No image" placeholder, when an entry has a screenshot but no snapshot', () => {
+      (useAttemptInsight as jest.Mock).mockReturnValue({ data: null, isLoading: false });
+      (useCandidateReport as jest.Mock).mockReturnValue({
+        data: {
+          ...candidateDetail,
+          webcamTimeline: [
+            { occurredAt: '2026-01-01T00:05:00.000Z', kind: 'violation', reason: 'tab_switch', strike: 1, snapshot: '', screenshot: 'data:image/png;base64,screen' },
+          ],
+        },
+        isLoading: false,
+      });
+
+      renderPage();
+
+      expect(screen.getByRole('button', { name: /screen capture/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /webcam snapshot/i })).not.toBeInTheDocument();
+      expect(screen.queryByText('No image')).not.toBeInTheDocument();
+    });
+
+    it('renders the "No image" placeholder without breaking layout when an entry has neither snapshot nor screenshot', () => {
+      (useAttemptInsight as jest.Mock).mockReturnValue({ data: null, isLoading: false });
+      (useCandidateReport as jest.Mock).mockReturnValue({
+        data: {
+          ...candidateDetail,
+          webcamTimeline: [
+            { occurredAt: '2026-01-01T00:05:00.000Z', kind: 'violation', reason: 'tab_switch', strike: 1, snapshot: '' },
+          ],
+        },
+        isLoading: false,
+      });
+
+      renderPage();
+
+      expect(screen.getByText('No image')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /webcam snapshot/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /screen capture/i })).not.toBeInTheDocument();
+    });
   });
 });
