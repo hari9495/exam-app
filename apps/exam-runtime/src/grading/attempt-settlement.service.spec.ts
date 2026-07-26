@@ -965,9 +965,51 @@ describe('AttemptSettlementService', () => {
       await service.registerBrowserActivityViolation(tx, exam, attempt, 'copy_paste');
 
       expect(tx.proctoringEvent.findFirst).toHaveBeenCalledWith({
-        where: { attemptId: 'attempt-1', eventType: 'copy_paste', occurredAt: { gt: expect.any(Date) } },
+        where: {
+          attemptId: 'attempt-1',
+          eventType: 'copy_paste',
+          occurredAt: { gt: expect.any(Date) },
+          NOT: { metadataJson: { contains: '"reason":"absent"' } },
+        },
         orderBy: { occurredAt: 'desc' },
       });
+    });
+
+    it("does not let a screenShareState 'absent' row (no strike) arm the cooldown against a subsequent real stop", async () => {
+      // Regression for the refresh-then-Stop-sharing exploit: without the NOT filter, a
+      // no-strike 'absent' row (screenShareState's precondition-only pause) would satisfy the
+      // cooldown's "same event type recently" check and silently swallow the very next real
+      // stop's strike -- repeatable indefinitely by refreshing before every deliberate stop.
+      // This fake findFirst mimics the real Prisma NOT-filter behavior against the `where`
+      // clause the code actually builds, so the test exercises the interaction, not just the
+      // call shape -- without the NOT predicate in the source, this row is still returned and
+      // the test fails.
+      const absentRow = {
+        id: 'evt-absent',
+        eventType: 'screen_share_stopped',
+        occurredAt: new Date(Date.now() - 2000),
+        metadataJson: JSON.stringify({ reason: 'absent' }),
+      };
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 0, status: 'in_progress' } as any;
+      const tx = {
+        proctoringEvent: {
+          findFirst: jest.fn((args: any) => {
+            const excludesAbsent = args.where?.NOT?.metadataJson?.contains === '"reason":"absent"';
+            const matches =
+              absentRow.eventType === args.where.eventType &&
+              absentRow.occurredAt > args.where.occurredAt.gt &&
+              !(excludesAbsent && absentRow.metadataJson.includes('"reason":"absent"'));
+            return Promise.resolve(matches ? absentRow : null);
+          }),
+          create: jest.fn().mockResolvedValue({ id: 'evt-2', eventType: 'screen_share_stopped', severity: 'high' }),
+        },
+        attempt: { update: jest.fn().mockResolvedValue({ ...attempt, browserActivityViolationCount: 1, status: 'paused' }) },
+      } as any;
+
+      const { strike } = await service.registerBrowserActivityViolation(tx, exam, attempt, 'screen_share_stopped');
+
+      expect(strike).toBe(1); // the 'absent' row must not have suppressed this as a repeat incident
+      expect(tx.attempt.update).toHaveBeenCalled();
     });
 
     it('does not attempt a status transition or increment the strike when the attempt is already blocked', async () => {

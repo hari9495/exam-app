@@ -276,6 +276,28 @@ describe('LiveMonitoringPanel', () => {
       expect(screen.queryByRole('button', { name: 'Enlarge screen capture' })).not.toBeInTheDocument();
     });
 
+    it("labels a screen_share_stopped row from a refresh (reason: 'absent') so it isn't mistaken for a deliberate stop", async () => {
+      jest.spyOn(useProctoringEventsModule, 'useProctoringEvents').mockReturnValue({
+        data: [
+          {
+            id: 'e1',
+            attemptId: 'a1',
+            eventType: 'screen_share_stopped',
+            severity: 'low',
+            occurredAt: '2026-01-01T00:01:00Z',
+            metadataJson: JSON.stringify({ reason: 'absent' }),
+          },
+        ],
+        isLoading: false,
+      } as any);
+
+      renderPanelWithRoster(roster);
+      const user = userEvent.setup({ delay: null });
+      await user.click(screen.getByRole('button', { name: 'View log' }));
+
+      expect(screen.getByText('Share ended by a page refresh or tab close — no strike')).toBeInTheDocument();
+    });
+
     it('renders a human-readable duration for a window_blur event, distinguishing sub-second from long blurs', async () => {
       jest.spyOn(useProctoringEventsModule, 'useProctoringEvents').mockReturnValue({
         data: [

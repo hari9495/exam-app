@@ -295,7 +295,19 @@ export class AttemptSettlementService {
   ): Promise<{ attempt: Attempt; strike: number; event: { id: string; eventType: string; severity: string } }> {
     const cooldownCutoff = new Date(Date.now() - BROWSER_ACTIVITY_COOLDOWN_MS);
     const recentSameType = await tx.proctoringEvent.findFirst({
-      where: { attemptId: attempt.id, eventType, occurredAt: { gt: cooldownCutoff } },
+      where: {
+        attemptId: attempt.id,
+        eventType,
+        occurredAt: { gt: cooldownCutoff },
+        // A screenShareState 'absent' row (no strike, no enforcement -- see
+        // attempt.service.ts#screenShareState) must not itself arm this cooldown: a refresh
+        // followed within 60s by a real Stop-sharing click would otherwise find that row,
+        // read isFreshStrike as false, and silently drop the strike. Repeating
+        // refresh-then-stop indefinitely would hold this signal's strike count at zero forever
+        // and make "block after N strikes" enforcement conditionally inert for it. No other
+        // writer emits this metadata shape, so the predicate can't misfire on anything else.
+        NOT: { metadataJson: { contains: '"reason":"absent"' } },
+      },
       orderBy: { occurredAt: 'desc' },
     });
 

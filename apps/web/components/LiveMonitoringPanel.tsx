@@ -75,6 +75,9 @@ function formatEventDetails(metadata: Record<string, unknown>): string[] {
   if (metadata.screenshotCapReached === true) {
     details.push('Screen-capture limit reached — no image for this event');
   }
+  if (metadata.reason === 'absent') {
+    details.push('Share ended by a page refresh or tab close — no strike');
+  }
   return details;
 }
 
