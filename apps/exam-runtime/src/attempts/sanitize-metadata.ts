@@ -1,22 +1,30 @@
 import { Logger } from '@nestjs/common';
 
 // `screenshot`/`screenshotCapReached` are server-authoritative outcomes of a screen-capture
-// upload -- a client must never be able to set them itself. This is a separate concern from
-// the cap-count invariant below: forging one of these two keys (folded for case/width, see
-// isForgedScreenshotKey) lets a client's own metadata be mistaken for real capture evidence or
-// a real cap-reached marker. This check is deliberately broad, not narrow: it's a substring
-// match (`includes('screenshot')`), so it also eats `xscreenshotx`, `myScreenshotNote`, and any
-// key containing a raw quote -- on purpose, to close every key-shape variant the last several
-// rounds of fixes found one at a time. The cost of that breadth is that it also eats the
-// server's *own* `screenshot`/`screenshotCapReached` keys if they're ever run through it -- see
+// upload, and `snapshot` is the equivalent for a webcam upload (Task 9: candidates.service.ts's
+// GDPR erase treats a `metadataJson.snapshot`/`.screenshot` URL as a blob to delete, so a forged
+// `snapshot` is no longer just fake evidence -- it's a delete instruction the erase path will
+// run against whatever URL the client wrote) -- a client must never be able to set any of them
+// itself. This is a separate concern from the cap-count invariant below: forging one of these
+// keys (folded for case/width, see isForgedScreenshotKey) lets a client's own metadata be
+// mistaken for real capture evidence or a real cap-reached marker. This check is deliberately
+// broad, not narrow: it's a substring match (`includes('screenshot')` / `includes('snapshot')`),
+// so it also eats `xscreenshotx`, `myScreenshotNote`, and any key containing a raw quote -- on
+// purpose, to close every key-shape variant the last several rounds of fixes found one at a
+// time. The cost of that breadth is that it also eats the server's *own* `screenshot`/
+// `screenshotCapReached`/`snapshot` keys if they're ever run through it -- see
 // sanitizeMetadataOrDrop below and its callers for why server-set keys are composed in strictly
 // after this filter runs, never through it (fix round 6 regression, see scc-task-5-report.md).
+// The legitimate server-side `snapshot` writes (webcamViolation/webcamSnapshot in
+// attempt.service.ts, registerWebcamViolation in attempt-settlement.service.ts) build
+// metadataJson directly and never call this sanitizer at all, so widening the filter here
+// cannot strip them.
 const SOFT_HYPHEN = String.fromCharCode(0xad);
 const IGNORABLE_KEY_CHARS = new RegExp(`[\\p{Cf}${SOFT_HYPHEN}]`, 'gu');
 
 function isForgedScreenshotKey(key: string): boolean {
   const folded = key.replace(IGNORABLE_KEY_CHARS, '').normalize('NFKC').toLowerCase();
-  return folded.includes('screenshot') || key.includes('"');
+  return folded.includes('screenshot') || folded.includes('snapshot') || key.includes('"');
 }
 
 function stripForgedScreenshotKeys(metadata?: Record<string, unknown>): Record<string, unknown> | undefined {

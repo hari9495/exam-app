@@ -32,12 +32,33 @@ export class BlobStorageService {
     return this.upload(blobPath, Buffer.from(base64, 'base64'), contentType);
   }
 
+  // Checked once by callers doing a batch of deletes so a missing env var produces one
+  // log line, not one per blob (getContainer() below still throws for any other caller
+  // that skips this check).
+  isConfigured(): boolean {
+    return Boolean(process.env.AZURE_STORAGE_CONNECTION_STRING && process.env.AZURE_STORAGE_CONTAINER);
+  }
+
   async deleteByUrl(blobUrl: string): Promise<void> {
     const container = this.getContainer();
     const prefix = `${container.url}/`;
     if (!blobUrl.startsWith(prefix)) {
       return; // not ours -- never try to delete an arbitrary URL
     }
-    await container.getBlockBlobClient(decodeURIComponent(blobUrl.slice(prefix.length))).deleteIfExists();
+    let blob;
+    try {
+      blob = container.getBlockBlobClient(decodeURIComponent(blobUrl.slice(prefix.length)));
+    } catch {
+      return; // malformed percent-encoding in a database-sourced URL -- never ours to guess at
+    }
+    // The plain string check above passes a "../other-container/x.jpg" suffix (or its
+    // %2E%2E-encoded form) straight through -- the SDK resolves the ".." when it builds
+    // the client's own .url, landing outside our container. Round-trip through that
+    // instead of trusting the string check alone: this can never disagree with what
+    // deleteIfExists() below is actually about to address.
+    if (!blob.url.startsWith(prefix)) {
+      return;
+    }
+    await blob.deleteIfExists();
   }
 }

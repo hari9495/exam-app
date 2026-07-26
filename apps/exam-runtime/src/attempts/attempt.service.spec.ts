@@ -1905,6 +1905,23 @@ describe('AttemptService', () => {
         });
       });
 
+      it('strips a client-forged snapshot metadata key -- candidates.service.ts erase() now treats metadataJson.snapshot as a blob to delete, so a forged one is a delete instruction, not just fake evidence (fix round 1 regression)', async () => {
+        const tx = {
+          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          proctoringEvent: { create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }) },
+        };
+        mockScoped(examWithoutCapture, tx);
+
+        await service.reportProctoringEvent(session, {
+          eventType: 'looking_down',
+          metadata: { snapshot: 'https://attacker.example/other-candidates-webcam.jpg', note: 'legit' },
+        });
+
+        expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+          data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: 'medium', metadataJson: JSON.stringify({ note: 'legit' }) },
+        });
+      });
+
       it('strips a forged screenshot key nested inside an object one level deep -- a shallow strip would leave it matchable by the cap-count query', async () => {
         const tx = {
           attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },

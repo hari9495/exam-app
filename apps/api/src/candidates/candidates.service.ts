@@ -16,6 +16,22 @@ interface CandidateFilters {
   status?: string;
 }
 
+// A recruiter's erase-candidate click sits on this call, and one candidate's evidence blobs
+// span every attempt they ever sat -- unbounded, sequential deletes would turn that into a
+// multi-minute synchronous request. Bound both the fan-out and the per-call latency, mirroring
+// attempt.service.ts's SCREENSHOT_UPLOAD_TIMEOUT_MS/withTimeout pattern for the upload side of
+// the same blobs.
+const EVIDENCE_DELETE_CONCURRENCY = 10;
+const EVIDENCE_DELETE_TIMEOUT_MS = 3000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer!: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 export type CandidateListItem = Candidate & { invitationCount: number };
 
 export interface BulkUploadResult {
@@ -359,23 +375,42 @@ export class CandidatesService {
     });
 
     if (didErase) {
-      // Deleting the blobs is outside the transaction on purpose: a failed remote
-      // delete must not roll back the erase -- the database redaction is the part
-      // that's legally required, the blob cleanup is best-effort on top of it.
-      for (const url of evidenceUrls) {
-        try {
-          await this.blobStorage.deleteByUrl(url);
-        } catch (error) {
-          this.logger.error(`Failed to delete proctoring evidence blob for candidate ${candidateId}: ${url}`, error as Error);
-        }
-      }
-
+      // The audit record is written as soon as the transaction has committed, *before* the
+      // best-effort blob cleanup below -- a process kill or timeout during the delete loop
+      // must not leave a legally-erased candidate with no audit trail of that erasure.
       await this.audit.record(context, {
         actorUserId,
         action: 'candidate.erased',
         entityType: 'candidate',
         entityId: candidateId,
       });
+
+      // Deleting the blobs is outside the transaction on purpose: a failed remote delete
+      // must not roll back the erase -- the database redaction is the part that's legally
+      // required, the blob cleanup is best-effort on top of it.
+      const uniqueUrls = Array.from(new Set(evidenceUrls));
+      if (uniqueUrls.length > 0) {
+        if (!this.blobStorage.isConfigured()) {
+          // Checked once, not per URL -- an unconfigured environment would otherwise log the
+          // identical failure once per blob.
+          this.logger.error(`Skipping proctoring evidence blob deletion for candidate ${candidateId}: blob storage is not configured`);
+        } else {
+          for (let i = 0; i < uniqueUrls.length; i += EVIDENCE_DELETE_CONCURRENCY) {
+            const batch = uniqueUrls.slice(i, i + EVIDENCE_DELETE_CONCURRENCY);
+            const results = await Promise.allSettled(
+              batch.map((url) => withTimeout(this.blobStorage.deleteByUrl(url), EVIDENCE_DELETE_TIMEOUT_MS)),
+            );
+            results.forEach((result, index) => {
+              if (result.status === 'rejected') {
+                this.logger.error(
+                  `Failed to delete proctoring evidence blob for candidate ${candidateId}: ${batch[index]}`,
+                  result.reason as Error,
+                );
+              }
+            });
+          }
+        }
+      }
     }
 
     return { id: candidateId, erasedAt };

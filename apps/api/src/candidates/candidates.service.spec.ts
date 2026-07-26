@@ -7,13 +7,13 @@ describe('CandidatesService', () => {
   let service: CandidatesService;
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
-  let blobStorage: { deleteByUrl: jest.Mock };
+  let blobStorage: { deleteByUrl: jest.Mock; isConfigured: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
-    blobStorage = { deleteByUrl: jest.fn().mockResolvedValue(undefined) };
+    blobStorage = { deleteByUrl: jest.fn().mockResolvedValue(undefined), isConfigured: jest.fn().mockReturnValue(true) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         CandidatesService,
@@ -520,16 +520,21 @@ describe('CandidatesService', () => {
 
       await service.erase(context, 'user-1', 'cand-1');
 
-      // Ordering, not just occurrence: the read must happen strictly before the write that
-      // destroys the reference, and the remote delete must happen strictly after the
-      // transaction's last statement (i.e. after it has committed).
+      // Ordering, not just occurrence, using Jest's invocationCallOrder -- a single monotonic
+      // counter shared across every mock.fn() in this test, so it's a genuine proxy for real
+      // call order (moving the delete loop inside the transaction callback would fail this),
+      // even though `forTenant` itself is mocked rather than a real interactive transaction.
       const readOrder = tx.proctoringEvent.findMany.mock.invocationCallOrder[0];
       const nullOrder = tx.proctoringEvent.updateMany.mock.invocationCallOrder[0];
       const lastTxStatementOrder = tx.invitation.updateMany.mock.invocationCallOrder[0];
+      const auditOrder = audit.record.mock.invocationCallOrder[0];
       const deleteOrders = blobStorage.deleteByUrl.mock.invocationCallOrder;
 
       expect(readOrder).toBeLessThan(nullOrder);
-      expect(Math.min(...deleteOrders)).toBeGreaterThan(lastTxStatementOrder);
+      expect(auditOrder).toBeGreaterThan(lastTxStatementOrder);
+      // The audit record is the legally-required half; it must not wait on best-effort blob
+      // cleanup, so it's written before the delete loop starts, not after it finishes.
+      expect(auditOrder).toBeLessThan(Math.min(...deleteOrders));
 
       expect(tx.proctoringEvent.updateMany).toHaveBeenCalledWith({
         where: { attemptId: { in: ['attempt-1'] } }, data: { metadataJson: null },
@@ -537,6 +542,37 @@ describe('CandidatesService', () => {
       expect(blobStorage.deleteByUrl).toHaveBeenCalledWith('https://blob.test/container/webcam-snapshots/a.jpg');
       expect(blobStorage.deleteByUrl).toHaveBeenCalledWith('https://blob.test/container/screen-captures/b.jpg');
       expect(blobStorage.deleteByUrl).toHaveBeenCalledTimes(2);
+    });
+
+    it('deletes each collected URL only once even if the same evidence URL appears on more than one event', async () => {
+      const tx = makeEraseTx({
+        proctoringEvents: [
+          { metadataJson: JSON.stringify({ snapshot: 'https://blob.test/container/webcam-snapshots/a.jpg' }) },
+          { metadataJson: JSON.stringify({ snapshot: 'https://blob.test/container/webcam-snapshots/a.jpg' }) },
+        ],
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.erase(context, 'user-1', 'cand-1');
+
+      expect(blobStorage.deleteByUrl).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips the delete loop and logs once, rather than once per blob, when blob storage is not configured', async () => {
+      const tx = makeEraseTx({
+        proctoringEvents: [
+          { metadataJson: JSON.stringify({ snapshot: 'https://blob.test/container/webcam-snapshots/a.jpg' }) },
+          { metadataJson: JSON.stringify({ snapshot: 'https://blob.test/container/webcam-snapshots/b.jpg' }) },
+        ],
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      blobStorage.isConfigured.mockReturnValue(false);
+
+      const result = await service.erase(context, 'user-1', 'cand-1');
+
+      expect(result).toEqual({ id: 'cand-1', erasedAt: expect.any(Date) });
+      expect(blobStorage.deleteByUrl).not.toHaveBeenCalled();
+      expect(audit.record).toHaveBeenCalled();
     });
 
     it('still reports a successful erase, and still deletes the remaining blobs, when one blob delete throws', async () => {
