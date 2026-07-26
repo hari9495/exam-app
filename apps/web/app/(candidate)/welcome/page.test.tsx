@@ -454,6 +454,123 @@ describe('CandidateWelcomePage', () => {
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
   });
 
+  it('blocks starting and never calls startAttempt when screen capture is on but getDisplayMedia is unsupported', async () => {
+    setIsExtended(undefined);
+    Object.defineProperty(global.navigator, 'mediaDevices', { value: {}, configurable: true });
+    const mutateAsync = jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' });
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: {
+        exam: {
+          title: 'Backend Screening', instructions: null, durationMinutes: 45,
+          proctoring: { webcamEnabled: true, screenCaptureEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] },
+        },
+        sections: [],
+      },
+      isLoading: false,
+    });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync, isPending: false });
+    mockCameraGranted();
+
+    render(<CandidateWelcomePage />);
+    await skipPractice();
+    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
+    await checkConsent();
+    await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+
+    expect(
+      screen.getByText('This exam records your screen, which this browser does not support. Please use desktop Chrome, Edge or Firefox on a computer.'),
+    ).toBeInTheDocument();
+    expect(mutateAsync).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalledWith('/exam');
+  });
+
+  it('starts normally when screen capture is on and getDisplayMedia exists', async () => {
+    setIsExtended(undefined);
+    Object.defineProperty(global.navigator, 'mediaDevices', {
+      value: { getUserMedia: jest.fn().mockResolvedValue({ getTracks: () => [{ stop: jest.fn() }] }), getDisplayMedia: jest.fn() },
+      configurable: true,
+    });
+    const mutateAsync = jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' });
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: {
+        exam: {
+          title: 'Backend Screening', instructions: null, durationMinutes: 45,
+          proctoring: { webcamEnabled: true, screenCaptureEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] },
+        },
+        sections: [],
+      },
+      isLoading: false,
+    });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync, isPending: false });
+
+    render(<CandidateWelcomePage />);
+    await skipPractice();
+    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
+    await checkConsent();
+    await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/exam'));
+  });
+
+  it('starts normally regardless of getDisplayMedia support when screen capture is off', async () => {
+    setIsExtended(undefined);
+    Object.defineProperty(global.navigator, 'mediaDevices', { value: {}, configurable: true });
+    const mutateAsync = jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' });
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: {
+        exam: {
+          title: 'Backend Screening', instructions: null, durationMinutes: 45,
+          proctoring: { webcamEnabled: false, screenCaptureEnabled: false, enforcement: 'block', strikeLimit: 3, disabledSignals: [] },
+        },
+        sections: [],
+      },
+      isLoading: false,
+    });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync, isPending: false });
+
+    render(<CandidateWelcomePage />);
+    await skipPractice();
+    await checkConsent();
+    await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
+    expect(screen.queryByText(/does not support/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the screen-capture consent line only when screen capture is on', async () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: {
+        exam: {
+          title: 'Backend Screening', instructions: null, durationMinutes: 45,
+          proctoring: { webcamEnabled: true, screenCaptureEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] },
+        },
+        sections: [],
+      },
+      isLoading: false,
+    });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+
+    const { rerender } = render(<CandidateWelcomePage />);
+    await skipPractice();
+
+    expect(screen.getByText('Screenshots of your entire screen when a rule is broken')).toBeInTheDocument();
+
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: {
+        exam: {
+          title: 'Backend Screening', instructions: null, durationMinutes: 45,
+          proctoring: { webcamEnabled: true, screenCaptureEnabled: false, enforcement: 'block', strikeLimit: 3, disabledSignals: [] },
+        },
+        sections: [],
+      },
+      isLoading: false,
+    });
+    rerender(<CandidateWelcomePage />);
+
+    expect(screen.queryByText('Screenshots of your entire screen when a rule is broken')).not.toBeInTheDocument();
+  });
+
   it('does not request camera permission or show the camera step when webcam proctoring is off for this exam', async () => {
     setIsExtended(undefined);
     const mutateAsync = jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' });

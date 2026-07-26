@@ -20,6 +20,7 @@ export default function CandidateWelcomePage() {
   const [consentChecked, setConsentChecked] = useState(false);
   const [step, setStep] = useState<'practice' | 'consent'>('practice');
   const [multiMonitorBlocked, setMultiMonitorBlocked] = useState(false);
+  const [screenShareUnsupported, setScreenShareUnsupported] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !accessToken) {
@@ -69,6 +70,13 @@ export default function CandidateWelcomePage() {
       return;
     }
     setMultiMonitorBlocked(false);
+
+    if (proctoring?.screenCaptureEnabled && typeof navigator.mediaDevices?.getDisplayMedia !== 'function') {
+      setScreenShareUnsupported(true);
+      return;
+    }
+    setScreenShareUnsupported(false);
+
     try {
       await startAttempt.mutateAsync();
       router.push('/exam');
@@ -127,6 +135,7 @@ export default function CandidateWelcomePage() {
               <p className="mb-2 text-xs text-candidate-text-secondary">This exam is monitored. While you take it, we collect:</p>
               <ul className="mb-2 list-disc pl-4 text-xs text-candidate-text-secondary">
                 {proctoring?.webcamEnabled !== false ? <li>Webcam snapshots and face-presence checks</li> : null}
+                {proctoring?.screenCaptureEnabled ? <li>Screenshots of your entire screen when a rule is broken</li> : null}
                 <li>Browser activity (tab switches, fullscreen exits, copy/paste, right-click, developer tools)</li>
                 <li>Code-editor activity (paste sizes, typing-volume aggregates)</li>
               </ul>
@@ -151,6 +160,12 @@ export default function CandidateWelcomePage() {
             {multiMonitorBlocked ? (
               <div className="mb-3 rounded-md border border-candidate-danger-border bg-candidate-danger-bg p-3 text-sm text-candidate-danger">
                 Please disconnect additional displays before starting the exam.
+              </div>
+            ) : null}
+
+            {screenShareUnsupported ? (
+              <div className="mb-3 rounded-md border border-candidate-danger-border bg-candidate-danger-bg p-3 text-sm text-candidate-danger">
+                This exam records your screen, which this browser does not support. Please use desktop Chrome, Edge or Firefox on a computer.
               </div>
             ) : null}
 
