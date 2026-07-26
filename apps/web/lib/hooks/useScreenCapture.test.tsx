@@ -172,7 +172,7 @@ describe('useScreenCapture', () => {
     expect(secondTrack.stop).toHaveBeenCalled();
   });
 
-  it('discards the loser when two requestShare() calls race concurrently (double-clicked share button)', async () => {
+  async function runConcurrentRequestShareRace(settleOrder: 'A-first' | 'B-first') {
     const trackA = makeTrack({ displaySurface: 'monitor' });
     const streamA = makeStream(trackA);
     const trackB = makeTrack({ displaySurface: 'monitor' });
@@ -197,8 +197,13 @@ describe('useScreenCapture', () => {
       // getDisplayMedia picker promise.
       const promiseA = result.current.requestShare().then((r) => (outcomeA = r));
       const promiseB = result.current.requestShare().then((r) => (outcomeB = r));
-      resolveA(streamA);
-      resolveB(streamB);
+      if (settleOrder === 'A-first') {
+        resolveA(streamA);
+        resolveB(streamB);
+      } else {
+        resolveB(streamB);
+        resolveA(streamA);
+      }
       await Promise.all([promiseA, promiseB]);
     });
 
@@ -210,6 +215,47 @@ describe('useScreenCapture', () => {
     expect(trackB.stop).not.toHaveBeenCalled();
     expect(outcomeB).toEqual({ displaySurface: 'monitor', userAgent: navigator.userAgent });
     expect(result.current.active).toBe(true);
+    // The loser's rejection/discard must not clobber the winner's clean state.
+    expect(result.current.error).toBeNull();
+  }
+
+  it('discards the loser when two requestShare() calls race concurrently (double-clicked share button)', async () => {
+    await runConcurrentRequestShareRace('A-first');
+  });
+
+  it('discards the loser the same way regardless of which picker promise settles first', async () => {
+    await runConcurrentRequestShareRace('B-first');
+  });
+
+  it('does not leak a stream that resolves after enabled flips to false mid-request', async () => {
+    const track = makeTrack({ displaySurface: 'monitor' });
+    const stream = makeStream(track);
+    let resolveGetDisplayMedia!: (value: unknown) => void;
+    const getDisplayMedia = jest.fn().mockReturnValue(new Promise((resolve) => (resolveGetDisplayMedia = resolve)));
+    Object.defineProperty(global.navigator, 'mediaDevices', { value: { getDisplayMedia }, configurable: true });
+
+    const { result, rerender } = renderHook(({ enabled }) => useScreenCapture(enabled, jest.fn()), {
+      initialProps: { enabled: true },
+    });
+
+    let outcome: unknown;
+    let sharePromise!: Promise<void>;
+    act(() => {
+      sharePromise = result.current.requestShare().then((r) => {
+        outcome = r;
+      });
+    });
+
+    rerender({ enabled: false }); // the exam/feature is disabled while the picker is still open
+
+    await act(async () => {
+      resolveGetDisplayMedia(stream);
+      await sharePromise;
+    });
+
+    expect(track.stop).toHaveBeenCalled();
+    expect(outcome).toBeNull();
+    expect(result.current.active).toBe(false);
   });
 
   it('stops the stream if the component unmounts while getDisplayMedia is still pending', async () => {

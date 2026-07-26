@@ -90,6 +90,9 @@ export function useScreenCapture(
     try {
       stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
     } catch {
+      // A superseded call rejecting must not clobber the current call's state --
+      // e.g. a stale 'denied' landing after the winner already set active/error.
+      if (generationRef.current !== myGeneration) return null;
       setError('denied');
       return null;
     }
@@ -124,6 +127,8 @@ export function useScreenCapture(
       // by every teardown path (it was never assigned to streamRef), so it must be
       // stopped here rather than leaking a live share the candidate never sees used.
       stream.getTracks().forEach((t) => t.stop());
+      // Same supersession check as above -- don't clobber the current call's state.
+      if (generationRef.current !== myGeneration) return null;
       setError('denied');
       return null;
     }
