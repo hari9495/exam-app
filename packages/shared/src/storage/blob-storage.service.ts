@@ -14,6 +14,19 @@ const SAS_READ_TTL_MS = 15 * 60_000;
 // "not yet valid" -- back-date the start slightly instead of pinning it to exactly now().
 const SAS_CLOCK_SKEW_MS = 5 * 60_000;
 
+// What actually happened to one blob-delete request. A GDPR erase caller aggregates these across
+// a whole candidate's evidence and must be able to tell "we deleted everything" apart from "we
+// silently skipped everything" -- the three no-op cases used to all disappear into a `void`
+// return, indistinguishable from a real delete. A thrown error (storage genuinely unreachable,
+// etc.) is deliberately not one of these outcomes -- it still rejects, same as before, so callers
+// keep using their existing timeout/Promise.allSettled handling for that case.
+export type BlobDeleteOutcome =
+  | 'deleted'
+  | 'not-found'
+  | 'skipped-not-ours'
+  | 'skipped-empty-name'
+  | 'skipped-not-configured';
+
 @Injectable()
 export class BlobStorageService {
   private readonly logger = new Logger(BlobStorageService.name);
@@ -49,9 +62,8 @@ export class BlobStorageService {
     return this.upload(blobPath, Buffer.from(base64, 'base64'), contentType);
   }
 
-  // Checked once by callers doing a batch of deletes so a missing env var produces one
-  // log line, not one per blob (getContainer() below still throws for any other caller
-  // that skips this check).
+  // Guards signIfOurs and deleteByUrl so an unconfigured environment (local dev) degrades to a
+  // reported no-op instead of getContainer() below throwing.
   isConfigured(): boolean {
     return Boolean(process.env.AZURE_STORAGE_CONNECTION_STRING && process.env.AZURE_STORAGE_CONTAINER);
   }
@@ -63,34 +75,42 @@ export class BlobStorageService {
   // container. Round-tripping through the SDK's own URL resolution instead of trusting the
   // string check alone means this can never disagree with what the caller is actually about to
   // address (delete or sign).
-  private resolveOwnedBlob(blobUrl: string): BlockBlobClient | null {
+  //
+  // Returns a reason alongside the null case so deleteByUrl can report *why* a URL was skipped
+  // (not-ours vs. empty-name) without duplicating this resolution logic -- signIfOurs only ever
+  // needs the blob-or-not distinction, so it just checks `.blob`.
+  private resolveOwnedBlob(blobUrl: string): { blob: BlockBlobClient } | { blob: null; reason: 'not-ours' | 'empty-name' } {
     const container = this.getContainer();
     const prefix = `${container.url}/`;
     if (!blobUrl.startsWith(prefix)) {
-      return null; // not ours
+      return { blob: null, reason: 'not-ours' };
     }
     let name: string;
     try {
       name = decodeURIComponent(blobUrl.slice(prefix.length));
     } catch {
-      return null; // malformed percent-encoding in a database-sourced URL -- never ours to guess at
+      return { blob: null, reason: 'not-ours' }; // malformed percent-encoding in a database-sourced URL -- never ours to guess at
     }
     if (!name) {
-      return null; // the container URL plus a trailing slash decodes to an empty blob name -- nothing to address
+      return { blob: null, reason: 'empty-name' }; // the container URL plus a trailing slash decodes to an empty blob name -- nothing to address
     }
     const blob = container.getBlockBlobClient(name);
     if (!blob.url.startsWith(prefix)) {
-      return null;
+      return { blob: null, reason: 'not-ours' };
     }
-    return blob;
+    return { blob };
   }
 
-  async deleteByUrl(blobUrl: string): Promise<void> {
-    const blob = this.resolveOwnedBlob(blobUrl);
-    if (!blob) {
-      return; // not ours -- never try to delete an arbitrary URL
+  async deleteByUrl(blobUrl: string): Promise<BlobDeleteOutcome> {
+    if (!this.isConfigured()) {
+      return 'skipped-not-configured';
     }
-    await blob.deleteIfExists();
+    const resolved = this.resolveOwnedBlob(blobUrl);
+    if (!resolved.blob) {
+      return resolved.reason === 'empty-name' ? 'skipped-empty-name' : 'skipped-not-ours';
+    }
+    const response = await resolved.blob.deleteIfExists();
+    return response.succeeded ? 'deleted' : 'not-found';
   }
 
   // Response-shaping helper: mint a short-lived, read-only SAS URL for a value that came back
@@ -106,10 +126,11 @@ export class BlobStorageService {
     if (typeof value !== 'string' || !value || !this.isConfigured()) {
       return value;
     }
-    const blob = this.resolveOwnedBlob(value);
-    if (!blob) {
+    const resolved = this.resolveOwnedBlob(value);
+    if (!resolved.blob) {
       return value;
     }
+    const blob = resolved.blob;
     try {
       const now = Date.now();
       return await blob.generateSasUrl({

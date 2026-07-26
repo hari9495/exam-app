@@ -3,7 +3,7 @@ import { Candidate } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
-import { BlobStorageService } from '@exam-platform/shared';
+import { BlobStorageService, BlobDeleteOutcome } from '@exam-platform/shared';
 import { CreateCandidateDto } from './dto/create-candidate.dto';
 import { UpdateCandidateDto } from './dto/update-candidate.dto';
 import { parseCandidateCsv } from './csv-parser';
@@ -24,6 +24,13 @@ interface CandidateFilters {
 // the same blobs.
 const EVIDENCE_DELETE_CONCURRENCY = 10;
 const EVIDENCE_DELETE_TIMEOUT_MS = 3000;
+// Overall ceiling on the delete phase's wall clock, on top of the per-call timeout above. This
+// runs synchronously inside a recruiter's HTTP request, so the budget is chosen to stay under
+// common reverse-proxy/gateway default request timeouts (e.g. a 30s nginx or Azure App Service
+// front door default) even in the worst case -- every one of the 10-wide batches degrading to
+// its full per-call timeout. At that worst case this still attempts 10 batches (100 blobs)
+// before giving up; a healthy store clears many times that in the same budget.
+const EVIDENCE_DELETE_BUDGET_MS = 30_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer!: ReturnType<typeof setTimeout>;
@@ -401,25 +408,45 @@ export class CandidatesService {
       // required, the blob cleanup is best-effort on top of it.
       const uniqueUrls = Array.from(new Set(evidenceUrls));
       if (uniqueUrls.length > 0) {
-        if (!this.blobStorage.isConfigured()) {
-          // Checked once, not per URL -- an unconfigured environment would otherwise log the
-          // identical failure once per blob.
-          this.logger.error(`Skipping proctoring evidence blob deletion for candidate ${candidateId}: blob storage is not configured`);
-        } else {
-          for (let i = 0; i < uniqueUrls.length; i += EVIDENCE_DELETE_CONCURRENCY) {
-            const batch = uniqueUrls.slice(i, i + EVIDENCE_DELETE_CONCURRENCY);
-            const results = await Promise.allSettled(
-              batch.map((url) => withTimeout(this.blobStorage.deleteByUrl(url), EVIDENCE_DELETE_TIMEOUT_MS)),
-            );
-            results.forEach((result, index) => {
-              if (result.status === 'rejected') {
-                this.logger.error(
-                  `Failed to delete proctoring evidence blob for candidate ${candidateId}: ${batch[index]}`,
-                  result.reason as Error,
-                );
-              }
-            });
+        // Tally outcomes so a partial or total no-op is visible instead of looking identical to
+        // a clean full delete -- never log the URLs/paths of the underlying blobs themselves,
+        // only counts, since these are evidence locations for someone who just exercised an
+        // erasure right.
+        const tally: Record<BlobDeleteOutcome, number> = {
+          deleted: 0, 'not-found': 0, 'skipped-not-ours': 0, 'skipped-empty-name': 0, 'skipped-not-configured': 0,
+        };
+        let failed = 0;
+        let attempted = 0;
+        const deadline = Date.now() + EVIDENCE_DELETE_BUDGET_MS;
+
+        for (let i = 0; i < uniqueUrls.length && Date.now() < deadline; i += EVIDENCE_DELETE_CONCURRENCY) {
+          const batch = uniqueUrls.slice(i, i + EVIDENCE_DELETE_CONCURRENCY);
+          attempted += batch.length;
+          const results = await Promise.allSettled(
+            batch.map((url) => withTimeout(this.blobStorage.deleteByUrl(url), EVIDENCE_DELETE_TIMEOUT_MS)),
+          );
+          for (const result of results) {
+            if (result.status === 'rejected') {
+              failed += 1;
+            } else {
+              tally[result.value] += 1;
+            }
           }
+        }
+
+        const unattempted = uniqueUrls.length - attempted;
+        const clean = unattempted === 0 && failed === 0 && tally.deleted === uniqueUrls.length;
+        const summary =
+          `Proctoring evidence blob deletion for candidate ${candidateId}: ${uniqueUrls.length} total, ` +
+          `${tally.deleted} deleted, ${tally['not-found']} not found, ${failed} failed, ` +
+          `${tally['skipped-not-ours']} skipped (not ours), ${tally['skipped-empty-name']} skipped (empty name), ` +
+          `${tally['skipped-not-configured']} skipped (not configured), ${unattempted} unattempted` +
+          (unattempted > 0 ? ' (delete budget exhausted)' : '');
+
+        if (clean) {
+          this.logger.log(summary);
+        } else {
+          this.logger.warn(summary);
         }
       }
     }

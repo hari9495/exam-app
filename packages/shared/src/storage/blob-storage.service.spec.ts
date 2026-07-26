@@ -39,7 +39,7 @@ describe('BlobStorageService.deleteByUrl', () => {
     // above this are the genuine SDK.
     deleteIfExists = jest.spyOn(BlockBlobClient.prototype, 'deleteIfExists').mockImplementation(async function (this: BlockBlobClient) {
       addressed.push(this.url);
-      return {} as never;
+      return { succeeded: true } as never;
     });
   });
 
@@ -47,14 +47,23 @@ describe('BlobStorageService.deleteByUrl', () => {
     deleteIfExists.mockRestore();
   });
 
-  it('deletes the blob addressed by a URL that lives inside our own container', async () => {
-    await service.deleteByUrl(`${CONTAINER_URL}/webcam-snapshots/a.jpg`);
+  it('deletes the blob addressed by a URL that lives inside our own container and reports "deleted"', async () => {
+    await expect(service.deleteByUrl(`${CONTAINER_URL}/webcam-snapshots/a.jpg`)).resolves.toBe('deleted');
 
     expect(addressed).toEqual([`${CONTAINER_URL}/webcam-snapshots/a.jpg`]);
   });
 
+  it('reports "not-found" when the SDK says the blob never existed', async () => {
+    deleteIfExists.mockImplementation(async function (this: BlockBlobClient) {
+      addressed.push(this.url);
+      return { succeeded: false } as never;
+    });
+
+    await expect(service.deleteByUrl(`${CONTAINER_URL}/webcam-snapshots/a.jpg`)).resolves.toBe('not-found');
+  });
+
   it('decodes a URL-encoded blob path before deleting', async () => {
-    await service.deleteByUrl(`${CONTAINER_URL}/screen-captures/att%201-1.jpg`);
+    await expect(service.deleteByUrl(`${CONTAINER_URL}/screen-captures/att%201-1.jpg`)).resolves.toBe('deleted');
 
     // Not just "one call" -- the resolved address must be the *decoded* name. Deleting the
     // decodeURIComponent call in the source would re-encode the literal "%20" and still pass a
@@ -62,40 +71,57 @@ describe('BlobStorageService.deleteByUrl', () => {
     expect(addressed).toEqual([`${CONTAINER_URL}/screen-captures/att%201-1.jpg`]);
   });
 
-  it('does not attempt a delete for a container URL plus a trailing slash (empty blob name)', async () => {
-    await expect(service.deleteByUrl(`${CONTAINER_URL}/`)).resolves.toBeUndefined();
+  it('reports "skipped-empty-name" for a container URL plus a trailing slash, without attempting a delete', async () => {
+    await expect(service.deleteByUrl(`${CONTAINER_URL}/`)).resolves.toBe('skipped-empty-name');
 
     expect(deleteIfExists).not.toHaveBeenCalled();
   });
 
-  it('rejects a URL from a different container that merely starts the same, without attempting a delete', async () => {
+  it('reports "skipped-not-ours" for a URL from a different container that merely starts the same, without attempting a delete', async () => {
     // "container-2" is a different container that happens to share "container" as a string
     // prefix -- the safety property is that this must never be treated as ours.
-    await service.deleteByUrl('https://fakeaccount.blob.core.windows.net/container-2/webcam-snapshots/a.jpg');
+    await expect(
+      service.deleteByUrl('https://fakeaccount.blob.core.windows.net/container-2/webcam-snapshots/a.jpg'),
+    ).resolves.toBe('skipped-not-ours');
 
     expect(deleteIfExists).not.toHaveBeenCalled();
   });
 
-  it('rejects a path-traversal URL that string-matches the prefix but resolves outside our container (fix round 1 regression)', async () => {
+  it('reports "skipped-not-ours" for a path-traversal URL that string-matches the prefix but resolves outside our container (fix round 1 regression)', async () => {
     // "../other-container/x.jpg" passes a plain `startsWith(prefix)` string check (it follows
     // immediately after our prefix), but the SDK resolves the ".." when it builds
     // BlockBlobClient#url, landing in a sibling container. A guard that trusts the string
     // check alone hands this straight to deleteIfExists.
-    await service.deleteByUrl(`${CONTAINER_URL}/../other-container/x.jpg`);
+    await expect(service.deleteByUrl(`${CONTAINER_URL}/../other-container/x.jpg`)).resolves.toBe('skipped-not-ours');
 
     expect(deleteIfExists).not.toHaveBeenCalled();
   });
 
-  it('rejects a percent-encoded traversal, which a check running before decode cannot see (fix round 1 regression)', async () => {
-    await service.deleteByUrl(`${CONTAINER_URL}/%2E%2E/other-container/x.jpg`);
+  it('reports "skipped-not-ours" for a percent-encoded traversal, which a check running before decode cannot see (fix round 1 regression)', async () => {
+    await expect(service.deleteByUrl(`${CONTAINER_URL}/%2E%2E/other-container/x.jpg`)).resolves.toBe('skipped-not-ours');
 
     expect(deleteIfExists).not.toHaveBeenCalled();
   });
 
-  it('skips the delete without throwing when the URL has malformed percent-encoding', async () => {
-    await expect(service.deleteByUrl(`${CONTAINER_URL}/%E0%A4%A`)).resolves.toBeUndefined();
+  it('reports "skipped-not-ours" without throwing when the URL has malformed percent-encoding', async () => {
+    await expect(service.deleteByUrl(`${CONTAINER_URL}/%E0%A4%A`)).resolves.toBe('skipped-not-ours');
 
     expect(deleteIfExists).not.toHaveBeenCalled();
+  });
+
+  it('reports "skipped-not-configured" and never touches the container when storage is not configured', async () => {
+    delete process.env.AZURE_STORAGE_CONNECTION_STRING;
+    delete process.env.AZURE_STORAGE_CONTAINER;
+
+    await expect(service.deleteByUrl(`${CONTAINER_URL}/webcam-snapshots/a.jpg`)).resolves.toBe('skipped-not-configured');
+
+    expect(deleteIfExists).not.toHaveBeenCalled();
+  });
+
+  it('rejects (does not swallow) when the network call itself throws', async () => {
+    deleteIfExists.mockRejectedValue(new Error('storage unreachable'));
+
+    await expect(service.deleteByUrl(`${CONTAINER_URL}/webcam-snapshots/a.jpg`)).rejects.toThrow('storage unreachable');
   });
 });
 

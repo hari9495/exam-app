@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { ConflictException, Logger, NotFoundException } from '@nestjs/common';
 import { BlobServiceClient, ContainerClient, StorageSharedKeyCredential } from '@azure/storage-blob';
 import { CandidatesService } from './candidates.service';
 import { TenantPrismaService, AuditService, BlobStorageService } from '@exam-platform/shared';
@@ -23,7 +23,7 @@ describe('CandidatesService', () => {
     tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
     blobStorage = {
-      deleteByUrl: jest.fn().mockResolvedValue(undefined),
+      deleteByUrl: jest.fn().mockResolvedValue('deleted'),
       isConfigured: jest.fn().mockReturnValue(true),
       // Identity pass-through by default -- signing behaviour itself is covered end to end below
       // and in packages/shared/src/storage/blob-storage.service.spec.ts.
@@ -650,7 +650,7 @@ describe('CandidatesService', () => {
       expect(blobStorage.deleteByUrl).toHaveBeenCalledTimes(1);
     });
 
-    it('skips the delete loop and logs once, rather than once per blob, when blob storage is not configured', async () => {
+    it('attempts every blob (deleteByUrl reports the skip itself) and logs a warn-level summary, rather than one log per blob, when blob storage is not configured', async () => {
       const tx = makeEraseTx({
         proctoringEvents: [
           { metadataJson: JSON.stringify({ snapshot: 'https://blob.test/container/webcam-snapshots/a.jpg' }) },
@@ -658,16 +658,28 @@ describe('CandidatesService', () => {
         ],
       });
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
-      blobStorage.isConfigured.mockReturnValue(false);
+      blobStorage.deleteByUrl.mockResolvedValue('skipped-not-configured');
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
 
       const result = await service.erase(context, 'user-1', 'cand-1');
 
       expect(result).toEqual({ id: 'cand-1', erasedAt: expect.any(Date) });
-      expect(blobStorage.deleteByUrl).not.toHaveBeenCalled();
+      expect(blobStorage.deleteByUrl).toHaveBeenCalledTimes(2);
       expect(audit.record).toHaveBeenCalled();
+      // One summary line reflecting both skips, at warn (a non-clean outcome), never at .log,
+      // and never containing the blob URL/path itself.
+      expect(logSpy).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const [summary] = warnSpy.mock.calls[0];
+      expect(summary).toContain('2 skipped (not configured)');
+      expect(summary).not.toContain('blob.test');
+
+      warnSpy.mockRestore();
+      logSpy.mockRestore();
     });
 
-    it('still reports a successful erase, and still deletes the remaining blobs, when one blob delete throws', async () => {
+    it('still reports a successful erase, still deletes the remaining blobs, and logs the failure in the warn-level summary, when one blob delete throws', async () => {
       const tx = makeEraseTx({
         proctoringEvents: [
           { metadataJson: JSON.stringify({ snapshot: 'https://blob.test/container/webcam-snapshots/a.jpg' }) },
@@ -676,6 +688,7 @@ describe('CandidatesService', () => {
       });
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
       blobStorage.deleteByUrl.mockRejectedValueOnce(new Error('blob storage unavailable'));
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
 
       const result = await service.erase(context, 'user-1', 'cand-1');
 
@@ -684,6 +697,61 @@ describe('CandidatesService', () => {
       expect(audit.record).toHaveBeenCalledWith(context, {
         actorUserId: 'user-1', action: 'candidate.erased', entityType: 'candidate', entityId: 'cand-1',
       });
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toContain('1 failed');
+
+      warnSpy.mockRestore();
+    });
+
+    it('logs a clean summary at .log (not .warn) when every blob deletes cleanly', async () => {
+      const tx = makeEraseTx({
+        proctoringEvents: [{ metadataJson: JSON.stringify({ snapshot: 'https://blob.test/container/webcam-snapshots/a.jpg' }) }],
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+      await service.erase(context, 'user-1', 'cand-1');
+
+      expect(warnSpy).not.toHaveBeenCalled();
+      expect(logSpy).toHaveBeenCalledTimes(1);
+      expect(logSpy.mock.calls[0][0]).toContain('1 deleted');
+
+      warnSpy.mockRestore();
+      logSpy.mockRestore();
+    });
+
+    it('stops once the delete budget is exhausted, logs the unattempted count at warn, and still reports the erase as successful', async () => {
+      const urls = Array.from({ length: 25 }, (_, i) => `https://blob.test/container/webcam-snapshots/${i}.jpg`);
+      const tx = makeEraseTx({
+        proctoringEvents: urls.map((url) => ({ metadataJson: JSON.stringify({ snapshot: url }) })),
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      // The budget is read via two real Date.now() calls (computing the deadline, then the first
+      // loop-condition check) -- both true wall-clock reads, so the first 10-wide batch (the
+      // concurrency limit) is genuinely allowed to start. From the third call on, time is pushed
+      // 60s into the future, well past the 30s budget, so the *second* loop-condition check finds
+      // the budget exhausted and the loop stops without a real 60-second wait.
+      const realNow = Date.now.bind(Date);
+      let calls = 0;
+      jest.spyOn(Date, 'now').mockImplementation(() => {
+        calls += 1;
+        return calls <= 2 ? realNow() : realNow() + 60_000;
+      });
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      const result = await service.erase(context, 'user-1', 'cand-1');
+
+      expect(result).toEqual({ id: 'cand-1', erasedAt: expect.any(Date) });
+      expect(blobStorage.deleteByUrl).toHaveBeenCalledTimes(10); // one concurrency-wide batch, then the budget check trips
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const [summary] = warnSpy.mock.calls[0];
+      expect(summary).toContain('15 unattempted');
+      expect(summary).toContain('budget exhausted');
+
+      (Date.now as jest.Mock).mockRestore();
+      warnSpy.mockRestore();
     });
 
     it('does not abort the erase when one proctoring event carries malformed metadataJson', async () => {
