@@ -793,8 +793,9 @@ export class AttemptService {
         // navigation, so the mount-time effect reports reason:'absent' -- indistinguishable
         // from deliberate tampering, so it must not cost a strike. Only reason:'ended' (the
         // browser's Stop-sharing control, or a missing reason from an older client) is a
-        // genuine stop and goes through registerBrowserActivityViolation. Either way the
-        // timestamp is cleared, which is what makes a repeated active:false call a no-op.
+        // genuine stop and goes through registerBrowserActivityViolation, which is also the
+        // only writer of screen_share_stopped anywhere. Either way the timestamp is cleared,
+        // which is what makes a repeated active:false call a no-op.
         if ((dto.reason ?? 'ended') === 'ended') {
           const { attempt: struck } = await this.attemptSettlement.registerBrowserActivityViolation(
             tx,
@@ -804,6 +805,21 @@ export class AttemptService {
             shareMetadata,
           );
           current = struck;
+        } else {
+          // 'absent' skips the strike, but must not skip the record -- registerBrowserActivityViolation
+          // above is the only writer of this event type, so skipping it entirely would leave a
+          // tampered client that always sends 'absent' free to stop sharing with zero trace in
+          // the recruiter's proctoring log (emitAttemptStatus is a websocket event, not
+          // persisted). Low severity and a { reason: 'absent' } marker distinguish this from a
+          // real, strike-worthy stop in the log.
+          await tx.proctoringEvent.create({
+            data: {
+              attemptId: attempt.id,
+              eventType: 'screen_share_stopped',
+              severity: 'low',
+              metadataJson: JSON.stringify({ reason: 'absent' }),
+            },
+          });
         }
         current = await tx.attempt.update({ where: { id: current.id }, data: { screenShareStartedAt: null } });
       }

@@ -762,6 +762,20 @@ describe('CandidateExamPage', () => {
       expect(screen.getByText(/choose your entire screen, not a single tab or window/i)).toBeInTheDocument();
     });
 
+    it("gives a 'denied' rejection both an exit and a retry, since a dismissed picker and a browser/org block share the same NotAllowedError", () => {
+      // The client cannot tell a candidate-dismissed picker apart from a Permissions-Policy or
+      // enterprise block by err.name -- both land in 'denied', so the copy must cover both
+      // rather than assume dismissal and dead-end the blocked candidate.
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: attemptWithScreenCapture(), isError: false });
+      (useScreenCapture as jest.Mock).mockReturnValue({ active: false, error: 'denied', requestShare: jest.fn(), capture: jest.fn(() => null) });
+
+      render(<CandidateExamPage />);
+
+      expect(screen.getByText('Screen sharing required')).toBeInTheDocument();
+      expect(screen.getByText(/you dismissed the prompt.*click again/i)).toBeInTheDocument();
+      expect(screen.getByText(/browser or organization may be blocking it.*contact your recruiter/i)).toBeInTheDocument();
+    });
+
     it('tells a blocked candidate to contact their recruiter instead of a dead-end retry, when sharing is unavailable', () => {
       (useAttemptQuery as jest.Mock).mockReturnValue({ data: attemptWithScreenCapture(), isError: false });
       (useScreenCapture as jest.Mock).mockReturnValue({ active: false, error: 'unavailable', requestShare: jest.fn(), capture: jest.fn(() => null) });

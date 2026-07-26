@@ -22,7 +22,14 @@ export function ScreenShareRequiredOverlay({ error, onShare, pending }: ScreenSh
         {error === 'wrong-surface' ? (
           <p className="mb-4 text-xs text-candidate-danger">Please choose your entire screen, not a single tab or window.</p>
         ) : error === 'denied' ? (
-          <p className="mb-4 text-xs text-candidate-danger">You dismissed the prompt — click again and choose your entire screen.</p>
+          // A browser/org-level display-capture block (Permissions-Policy, an enterprise
+          // ScreenCaptureAllowed policy, a missing OS screen-recording grant) rejects with the
+          // exact same NotAllowedError as a candidate dismissing the picker -- the client
+          // cannot tell these apart, so this copy has to cover both rather than assume denial.
+          <p className="mb-4 text-xs text-candidate-danger">
+            You dismissed the prompt — click again and choose your entire screen. If you didn&apos;t see a sharing prompt, your
+            browser or organization may be blocking it — contact your recruiter, they can let you continue without it.
+          </p>
         ) : error === 'unavailable' || error === 'unsupported' ? (
           <p className="mb-4 text-xs text-candidate-danger">
             Your browser or organization is blocking screen sharing. Contact your recruiter — they can let you continue without it.

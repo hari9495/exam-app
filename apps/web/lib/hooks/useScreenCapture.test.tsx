@@ -354,7 +354,9 @@ describe('useScreenCapture', () => {
     expect(outcome).toBeNull();
   });
 
-  it('stops the stream and sets denied when video.play() rejects', async () => {
+  it('stops the stream and sets unavailable (not denied) when video.play() rejects', async () => {
+    // The candidate already picked a screen -- play() itself failing (Safari/low-power mode)
+    // is not a picker outcome, so 'denied' ("click again") would be actively wrong here.
     const track = makeTrack({ displaySurface: 'monitor' });
     const stream = makeStream(track);
     Object.defineProperty(global.navigator, 'mediaDevices', {
@@ -370,7 +372,7 @@ describe('useScreenCapture', () => {
     });
 
     expect(outcome).toBeNull();
-    expect(result.current.error).toBe('denied');
+    expect(result.current.error).toBe('unavailable');
     expect(result.current.active).toBe(false);
     expect(track.stop).toHaveBeenCalled(); // otherwise unreachable by every teardown path
   });

@@ -2568,7 +2568,7 @@ describe('AttemptService', () => {
       expect(result).toEqual({ status: 'paused' });
     });
 
-    it("pauses without striking when reason:'absent' arrives while a share was running (a refresh can't survive navigation)", async () => {
+    it("pauses without striking when reason:'absent' arrives while a share was running (a refresh can't survive navigation), but still records a low-severity trace event", async () => {
       const attempt = { id: 'attempt-1', status: 'in_progress', screenShareStartedAt: new Date('2026-01-01T00:00:00Z') };
       const tx = {
         attempt: {
@@ -2578,12 +2578,24 @@ describe('AttemptService', () => {
             .mockResolvedValueOnce({ ...attempt, screenShareStartedAt: null })
             .mockResolvedValueOnce({ ...attempt, screenShareStartedAt: null, status: 'paused' }),
         },
+        proctoringEvent: { create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'screen_share_stopped', severity: 'low' }) },
       };
       mockScoped(examWithScreenCapture, tx);
 
       const result = await service.screenShareState(session, { active: false, reason: 'absent' });
 
       expect(settlement.registerBrowserActivityViolation).not.toHaveBeenCalled();
+      // registerBrowserActivityViolation is the only other writer of screen_share_stopped --
+      // skipping it to skip the strike must not also skip the audit trail (a tampered client
+      // that always sends 'absent' would otherwise stop sharing with zero trace in the log).
+      expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+        data: {
+          attemptId: 'attempt-1',
+          eventType: 'screen_share_stopped',
+          severity: 'low',
+          metadataJson: JSON.stringify({ reason: 'absent' }),
+        },
+      });
       expect(tx.attempt.update).toHaveBeenNthCalledWith(1, { where: { id: 'attempt-1' }, data: { screenShareStartedAt: null } });
       expect(tx.attempt.update).toHaveBeenNthCalledWith(2, { where: { id: 'attempt-1' }, data: { status: 'paused', pausedAt: expect.any(Date) } });
       expect(result).toEqual({ status: 'paused' });

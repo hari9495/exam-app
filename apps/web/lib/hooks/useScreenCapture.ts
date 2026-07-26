@@ -93,12 +93,12 @@ export function useScreenCapture(
       // A superseded call rejecting must not clobber the current call's state --
       // e.g. a stale 'denied' landing after the winner already set active/error.
       if (generationRef.current !== myGeneration) return null;
-      // NotAllowedError is the candidate dismissing the picker or denying the prompt --
-      // clicking "Share my screen" again gets them straight back to it. Anything else (an
-      // enterprise policy, or a Permissions-Policy: display-capture block) never shows a
-      // picker at all: retrying the same click reproduces the exact same silent failure, so
-      // that needs different, unblocking copy rather than "try again" (see
-      // ScreenShareRequiredOverlay).
+      // NotAllowedError covers both a candidate dismissing the picker AND a browser/org-level
+      // display-capture block (Permissions-Policy, an enterprise ScreenCaptureAllowed policy, a
+      // missing OS screen-recording grant) -- the client cannot tell these apart by err.name,
+      // so 'denied' has to carry copy for both rather than assume a dismissal (see
+      // ScreenShareRequiredOverlay). Anything else (NotFoundError/NotReadableError/AbortError/
+      // InvalidStateError) is unambiguous device/state failure, not a picker outcome at all.
       setError(err instanceof DOMException && err.name === 'NotAllowedError' ? 'denied' : 'unavailable');
       return null;
     }
@@ -135,7 +135,9 @@ export function useScreenCapture(
       stream.getTracks().forEach((t) => t.stop());
       // Same supersession check as above -- don't clobber the current call's state.
       if (generationRef.current !== myGeneration) return null;
-      setError('denied');
+      // Not a picker outcome at all -- the candidate already picked a screen, play() itself
+      // failed. 'denied' ("click again") would be actively wrong here; 'unavailable' is.
+      setError('unavailable');
       return null;
     }
 

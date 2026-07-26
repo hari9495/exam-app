@@ -15,6 +15,9 @@ export class ScreenShareStateDto {
   // a page refresh, which cannot carry a getDisplayMedia stream across navigation): pause
   // only, never strike, since a refresh is indistinguishable from a tab crash. Missing
   // entirely (older client) defaults to 'ended' so today's behaviour doesn't silently change.
+  // Typed as the literal union, not string -- @IsIn guards the wire, but
+  // `(dto.reason ?? 'ended') === 'ended'` downstream is a bare string compare with no tsc
+  // backstop; a typo like 'Ended' would silently take the no-strike branch.
   @IsOptional() @IsIn(['ended', 'absent'])
-  reason?: string;
+  reason?: 'ended' | 'absent';
 }
