@@ -137,6 +137,11 @@ export type AttemptCurrentResponse = AttemptPreviewResponse | AttemptStateRespon
 // This timeout forces a slow upload to fail fast enough to still land in that catch.
 const SCREENSHOT_UPLOAD_TIMEOUT_MS = 3000;
 
+// Server-authoritative screen-capture cap, enforced against Attempt.screenCaptureCount (see
+// captureScreenshotMetadata below) -- not the client's own MAX_CAPTURES in useScreenCapture.ts,
+// which is a separate, non-authoritative politeness limit.
+const MAX_SCREEN_CAPTURES = 150;
+
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer!: ReturnType<typeof setTimeout>;
   const timeout = new Promise<never>((_, reject) => {
@@ -529,7 +534,7 @@ export class AttemptService {
       // own keys through it would strip them right back out (that regression, and the fix, are
       // in scc-task-5-report.md fix round 6).
       const metadata = sanitizeMetadataOrDrop(dto.metadata, this.logger, attempt.id, dto.eventType);
-      const serverMetadata = await this.captureScreenshotMetadata(tx, attempt.id, dto.screenshot, proctoring.screenCaptureEnabled);
+      const serverMetadata = await this.captureScreenshotMetadata(tx, attempt, dto.screenshot, proctoring.screenCaptureEnabled);
 
       if (isStrikeWorthy(dto.eventType)) {
         const { attempt: updated, strike, event } = await this.attemptSettlement.registerBrowserActivityViolation(
@@ -612,7 +617,7 @@ export class AttemptService {
       // screenshot -- webcam strikes (no_face, multiple_faces, webcam_head_turned) are the
       // feature's motivating case (the most common machine misfire) and previously carried no
       // screen evidence at all.
-      const screenMetadata = await this.captureScreenshotMetadata(tx, attempt.id, dto.screenshot, proctoring.screenCaptureEnabled);
+      const screenMetadata = await this.captureScreenshotMetadata(tx, attempt, dto.screenshot, proctoring.screenCaptureEnabled);
       const { attempt: updated, strike } = await this.attemptSettlement.registerWebcamViolation(
         tx,
         exam,
@@ -630,32 +635,40 @@ export class AttemptService {
   // sanitization (see the sanitizeMetadataOrDrop comment in reportProctoringEvent) -- these
   // keys are server-authoritative and must never pass back through the client-metadata filter.
   // Ignored (not rejected) when the exam has capture off, same as the disabled-signal guard.
+  //
+  // The cap is read from Attempt.screenCaptureCount, a real counter column -- not a scan over
+  // stored metadataJson. The old design counted prior events with a `LIKE '%"screenshot":%'`
+  // query, which five review rounds each found a new way to fool (a nested key, a quote-smuggled
+  // key, a fullwidth key, fullwidth punctuation inside an ordinary value -- see
+  // sanitize-metadata.ts's history). A JS filter can never fully mirror what a SQL collation
+  // folds, and a collation change to `_AI` would have reopened it silently. A counter has no
+  // text to fool: it only moves when this function itself increments it, and only after a real
+  // upload lands (never on a skipped or failed one). The increment runs in the same interactive
+  // transaction as the cap check and the event write, closing the old design's TOCTOU window
+  // where the count and the write could land in separate transactions under READ COMMITTED.
   private async captureScreenshotMetadata(
     tx: Prisma.TransactionClient,
-    attemptId: string,
+    attempt: { id: string; screenCaptureCount: number },
     screenshot: string | undefined,
     screenCaptureEnabled: boolean,
   ): Promise<Record<string, unknown> | undefined> {
     if (!screenshot || !screenCaptureEnabled) {
       return undefined;
     }
-    // Match the JSON key, not the bare word: `screenshotCapReached` also contains the
-    // substring "screenshot", and would otherwise inflate this count once the cap is hit.
-    const priorScreenshots = await tx.proctoringEvent.count({
-      where: { attemptId, metadataJson: { contains: '"screenshot":' } },
-    });
-    if (priorScreenshots >= 150) {
+    if (attempt.screenCaptureCount >= MAX_SCREEN_CAPTURES) {
       return { screenshotCapReached: true };
     }
     try {
       const screenshotUrl = await withTimeout(
-        this.blobStorage.uploadDataUri(`screen-captures/${attemptId}-${Date.now()}.jpg`, screenshot),
+        this.blobStorage.uploadDataUri(`screen-captures/${attempt.id}-${Date.now()}.jpg`, screenshot),
         SCREENSHOT_UPLOAD_TIMEOUT_MS,
       );
+      await tx.attempt.update({ where: { id: attempt.id }, data: { screenCaptureCount: { increment: 1 } } });
       return { screenshot: screenshotUrl };
     } catch (error) {
       // The violation record is what matters -- losing the image is acceptable, losing the
-      // violation is not.
+      // violation is not. Not incrementing here is deliberate too: the counter must only ever
+      // reflect images actually stored.
       this.logger.error('Failed to upload screen capture', error as Error);
       return undefined;
     }

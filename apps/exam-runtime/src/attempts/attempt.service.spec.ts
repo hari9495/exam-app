@@ -1729,12 +1729,14 @@ describe('AttemptService', () => {
           .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
       }
 
-      it('uploads it and merges the resulting URL into the event metadata when screenCaptureEnabled is true', async () => {
+      it('uploads it, merges the resulting URL into the event metadata, and atomically increments Attempt.screenCaptureCount in the same transaction when screenCaptureEnabled is true', async () => {
         const tx = {
-          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          attempt: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress', screenCaptureCount: 0 }),
+            update: jest.fn().mockResolvedValue({ id: 'attempt-1', screenCaptureCount: 1 }),
+          },
           proctoringEvent: {
             create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }),
-            count: jest.fn().mockResolvedValue(0),
           },
         };
         mockScoped(examWithCapture, tx);
@@ -1743,6 +1745,7 @@ describe('AttemptService', () => {
 
         expect(blobStorage.uploadDataUri).toHaveBeenCalledWith(expect.stringContaining('screen-captures/attempt-1-'), 'data:image/jpeg;base64,abc');
         const uploadedUrl = await blobStorage.uploadDataUri.mock.results[0].value;
+        expect(tx.attempt.update).toHaveBeenCalledWith({ where: { id: 'attempt-1' }, data: { screenCaptureCount: { increment: 1 } } });
         expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
           data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: 'medium', metadataJson: JSON.stringify({ screenshot: uploadedUrl }) },
         });
@@ -1766,10 +1769,12 @@ describe('AttemptService', () => {
 
       it('uploads to the screen-captures/ prefix keyed by attempt id, mirroring the webcam snapshot path shape', async () => {
         const tx = {
-          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          attempt: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress', screenCaptureCount: 0 }),
+            update: jest.fn().mockResolvedValue({ id: 'attempt-1', screenCaptureCount: 1 }),
+          },
           proctoringEvent: {
             create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }),
-            count: jest.fn().mockResolvedValue(0),
           },
         };
         mockScoped(examWithCapture, tx);
@@ -1782,34 +1787,39 @@ describe('AttemptService', () => {
         );
       });
 
-      it('skips the upload and records screenshotCapReached once 150 screenshots already exist for the attempt', async () => {
+      it('skips the upload and records screenshotCapReached once Attempt.screenCaptureCount is already at the 150 cap -- reads the counter column, not a metadata scan', async () => {
         const tx = {
-          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          attempt: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress', screenCaptureCount: 150 }),
+            update: jest.fn(),
+          },
           proctoringEvent: {
             create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }),
-            count: jest.fn().mockResolvedValue(150),
+            // Deliberately no `count` mock: if the cap check still fell back to scanning prior
+            // events (the old `LIKE '%"screenshot":%'` grep), calling it here would throw a
+            // TypeError instead of reaching the assertions below.
           },
         };
         mockScoped(examWithCapture, tx);
 
         const result = await service.reportProctoringEvent(session, { eventType: 'looking_down', screenshot: 'data:image/jpeg;base64,abc' });
 
-        expect(tx.proctoringEvent.count).toHaveBeenCalledWith({
-          where: { attemptId: 'attempt-1', metadataJson: { contains: '"screenshot":' } },
-        });
         expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
+        expect(tx.attempt.update).not.toHaveBeenCalled();
         expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
           data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: 'medium', metadataJson: JSON.stringify({ screenshotCapReached: true }) },
         });
         expect(result.id).toBe('evt-1');
       });
 
-      it('still records the violation without an image when the upload throws', async () => {
+      it('still records the violation without an image, and does not increment the counter, when the upload throws', async () => {
         const tx = {
-          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          attempt: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress', screenCaptureCount: 0 }),
+            update: jest.fn(),
+          },
           proctoringEvent: {
             create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }),
-            count: jest.fn().mockResolvedValue(0),
           },
         };
         mockScoped(examWithCapture, tx);
@@ -1818,6 +1828,7 @@ describe('AttemptService', () => {
 
         const result = await service.reportProctoringEvent(session, { eventType: 'looking_down', screenshot: 'data:image/jpeg;base64,abc' });
 
+        expect(tx.attempt.update).not.toHaveBeenCalled();
         expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
           data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: 'medium', metadataJson: null },
         });
@@ -1825,14 +1836,16 @@ describe('AttemptService', () => {
         expect(loggerErrorSpy).toHaveBeenCalledWith('Failed to upload screen capture', expect.any(Error));
       });
 
-      it('records the violation without an image when the upload does not resolve within the bound (guards the transaction timeout)', async () => {
+      it('records the violation without an image, and does not increment the counter, when the upload does not resolve within the bound (guards the transaction timeout)', async () => {
         jest.useFakeTimers();
         try {
           const tx = {
-            attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+            attempt: {
+              findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress', screenCaptureCount: 0 }),
+              update: jest.fn(),
+            },
             proctoringEvent: {
               create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }),
-              count: jest.fn().mockResolvedValue(0),
             },
           };
           mockScoped(examWithCapture, tx);
@@ -1847,6 +1860,7 @@ describe('AttemptService', () => {
           await jest.advanceTimersByTimeAsync(3000);
           const result = await resultPromise;
 
+          expect(tx.attempt.update).not.toHaveBeenCalled();
           expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
             data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: 'medium', metadataJson: null },
           });
@@ -1862,10 +1876,9 @@ describe('AttemptService', () => {
         // serverMetadata argument, not merged into the client metadata argument -- merging it in
         // would have it sanitized (and stripped) right back out. See
         // AttemptSettlementService.registerBrowserActivityViolation and scc-task-5-report.md.
-        const attempt = { id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' };
+        const attempt = { id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress', screenCaptureCount: 0 };
         const tx = {
-          attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
-          proctoringEvent: { count: jest.fn().mockResolvedValue(0) },
+          attempt: { findUnique: jest.fn().mockResolvedValue(attempt), update: jest.fn().mockResolvedValue({ ...attempt, screenCaptureCount: 1 }) },
         };
         mockScoped(examWithCapture, tx);
         settlement.registerBrowserActivityViolation.mockResolvedValue({
@@ -2068,32 +2081,95 @@ describe('AttemptService', () => {
         });
       });
 
-      it('drops metadata entirely when a plain VALUE (no forged key at all) folds to the cap-count literal via fullwidth punctuation', async () => {
+      it('no longer drops metadata whose plain VALUE happens to fold to the old cap-count literal via fullwidth punctuation -- that serialized-text guard is deleted (task 6804) because the cap no longer scans metadata at all', async () => {
         const tx = {
           attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
           proctoringEvent: { create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }) },
         };
         mockScoped(examWithoutCapture, tx);
-        const loggerErrorSpy = jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
 
-        // U+FF02 FULLWIDTH QUOTATION MARK + U+FF1A FULLWIDTH COLON -- confirmed against the
-        // actual dev database (SQL_Latin1_General_CP1_CI_AS) to LIKE-match the ASCII `":` the
-        // cap query greps for. No key here is even inspected by the key filter -- this is an
-        // ordinary metadata *value*, which is exactly why the fix moved from guessing at key
-        // shapes to checking the serialized text itself.
+        // U+FF02 FULLWIDTH QUOTATION MARK + U+FF1A FULLWIDTH COLON -- this used to fold, under
+        // the deleted NFKC check, to a literal that would have dropped the whole metadata
+        // object. No key here is forged (`trigger` isn't screenshot-shaped), so the key-strip
+        // half leaves it untouched, and there is no other guard left to drop it.
         const result = await service.reportProctoringEvent(session, {
           eventType: 'looking_down',
           metadata: { trigger: '＂screenshot＂：' },
         });
 
         expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
-          data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: 'medium', metadataJson: null },
+          data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: 'medium', metadataJson: JSON.stringify({ trigger: '＂screenshot＂：' }) },
         });
         expect(result.id).toBe('evt-1');
-        expect(loggerErrorSpy).toHaveBeenCalledWith(
-          'Dropping unprocessable proctoring event metadata (attempt attempt-1, event looking_down)',
-          expect.any(Error),
-        );
+      });
+
+      describe('the four previously-smuggled payloads can no longer affect the cap at all (task 6804 regression)', () => {
+        // Each of these used to be able to inflate the old LIKE-based scan of prior events'
+        // metadataJson and trip the cap early (a self-inflicted evidence blackout for the
+        // candidate, or -- run the other way -- let a candidate who wanted to keep capturing
+        // dodge it). The cap now reads only Attempt.screenCaptureCount, a real counter no
+        // metadata content can reach, so none of these payloads change the outcome any more.
+        it.each([
+          ['a screenshot key nested one level deep', { evidence: { screenshot: 'https://attacker.example/x.jpg' } }],
+          ['a key that smuggles a raw quote character', { '"screenshot': 1 }],
+          ['a fullwidth Unicode variant of the key', { 'ｓcreenshot': 'https://attacker.example/x.jpg' }],
+          ['fullwidth quote+colon inside an ordinary value', { trigger: '＂screenshot＂：' }],
+        ])('%s has no effect on whether the upload proceeds or the counter increments', async (_label, smuggledMetadata) => {
+          const tx = {
+            attempt: {
+              findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress', screenCaptureCount: 149 }),
+              update: jest.fn().mockResolvedValue({ id: 'attempt-1', screenCaptureCount: 150 }),
+            },
+            proctoringEvent: {
+              create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }),
+              // Deliberately no `count`: the old grep would have called this to fold the
+              // smuggled payload into its scan. Its absence here means a resurrected grep
+              // fails the test with a TypeError rather than silently passing.
+            },
+          };
+          mockScoped(examWithCapture, tx);
+
+          const result = await service.reportProctoringEvent(session, {
+            eventType: 'looking_down',
+            screenshot: 'data:image/jpeg;base64,abc',
+            metadata: smuggledMetadata,
+          });
+
+          // screenCaptureCount was 149 (one under the cap) regardless of the smuggled payload --
+          // the real upload proceeds and the real counter increments by exactly 1.
+          expect(blobStorage.uploadDataUri).toHaveBeenCalled();
+          expect(tx.attempt.update).toHaveBeenCalledWith({ where: { id: 'attempt-1' }, data: { screenCaptureCount: { increment: 1 } } });
+          expect(result.id).toBe('evt-1');
+        });
+
+        it('the same four payloads cannot suppress the cap either, once Attempt.screenCaptureCount is genuinely at 150', async () => {
+          const tx = {
+            attempt: {
+              findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress', screenCaptureCount: 150 }),
+              update: jest.fn(),
+            },
+            proctoringEvent: {
+              create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }),
+            },
+          };
+          mockScoped(examWithCapture, tx);
+
+          const result = await service.reportProctoringEvent(session, {
+            eventType: 'looking_down',
+            screenshot: 'data:image/jpeg;base64,abc',
+            // Both keys are entirely forged (one quote-smuggled, one fullwidth), so the
+            // sanitizer strips them down to an empty object before it's merged with
+            // serverMetadata below -- keeps the expected metadataJson exactly { screenshotCapReached: true }.
+            metadata: { '"screenshot': 1, 'ｓcreenshot': 'x' },
+          });
+
+          expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
+          expect(tx.attempt.update).not.toHaveBeenCalled();
+          expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
+            data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: 'medium', metadataJson: JSON.stringify({ screenshotCapReached: true }) },
+          });
+          expect(result.id).toBe('evt-1');
+        });
       });
     });
   });
@@ -2271,10 +2347,9 @@ describe('AttemptService', () => {
     it('threads a screenshot through the same cap-count/upload helper reportProctoringEvent uses, landing it in registerWebcamViolation', async () => {
       const screenCaptureExam = { ...exam, screenCaptureEnabled: true };
       const invitationWithScreenCapture = { ...invitationRecord, exam: screenCaptureExam };
-      const attempt = { id: 'attempt-1', status: 'in_progress', webcamViolationCount: 0 };
+      const attempt = { id: 'attempt-1', status: 'in_progress', webcamViolationCount: 0, screenCaptureCount: 0 };
       const tx = {
-        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
-        proctoringEvent: { count: jest.fn().mockResolvedValue(0) },
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt), update: jest.fn().mockResolvedValue({ ...attempt, screenCaptureCount: 1 }) },
       };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve(invitationWithScreenCapture))
@@ -2285,6 +2360,7 @@ describe('AttemptService', () => {
 
       expect(blobStorage.uploadDataUri).toHaveBeenCalledWith(expect.stringContaining('screen-captures/attempt-1-'), 'data:image/jpeg;base64,abc');
       const screenshotUrl = await blobStorage.uploadDataUri.mock.results[1].value;
+      expect(tx.attempt.update).toHaveBeenCalledWith({ where: { id: 'attempt-1' }, data: { screenCaptureCount: { increment: 1 } } });
       expect(settlement.registerWebcamViolation).toHaveBeenCalledWith(
         tx,
         screenCaptureExam,
@@ -2759,13 +2835,12 @@ describe('AttemptService', () => {
       expect(settlement.registerBrowserActivityViolation).toHaveBeenCalledWith(tx, examWithScreenCapture, attempt, 'screen_share_stopped', undefined);
     });
 
-    it('drops displaySurface/userAgent metadata that would fold to the cap-count literal, rather than writing it raw', async () => {
+    it('no longer drops displaySurface/userAgent metadata that used to fold to the cap-count literal -- writes it through as-is (task 6804: that serialized-text guard is gone)', async () => {
       // displaySurface/userAgent are client-controlled free text written directly here, not
-      // through reportProctoringEvent's dto.metadata -- this write site needed its own guard
-      // (see sanitize-metadata.ts). Fullwidth quote/colon (U+FF02/U+FF1A) fold to ASCII under
-      // the same collation that folds width for the cap-count query, confirmed against the
-      // actual dev database (scc-task-5-report.md fix round 5) -- a 13-character value, well
-      // inside the DTO's 50-char MaxLength, with no forged key involved at all.
+      // through reportProctoringEvent's dto.metadata -- this write site goes through the same
+      // sanitizeMetadataOrDrop (see sanitize-metadata.ts). Fullwidth quote/colon (U+FF02/U+FF1A)
+      // used to fold to ASCII under the now-deleted NFKC literal check; with that check gone and
+      // no forged key present, this value passes through untouched.
       const attempt = { id: 'attempt-1', status: 'paused', screenShareStartedAt: null, browserActivityViolationCount: 2 };
       const startedAttempt = { ...attempt, screenShareStartedAt: new Date('2026-07-26T00:00:00Z') };
       const tx = {
@@ -2777,7 +2852,6 @@ describe('AttemptService', () => {
       };
       mockScoped(examWithScreenCapture, tx);
       settlement.resumeFromPause.mockResolvedValue({ ...startedAttempt, status: 'in_progress' });
-      const loggerErrorSpy = jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
 
       await service.screenShareState(session, { active: true, displaySurface: '＂screenshot＂：', userAgent: 'Mozilla' });
 
@@ -2786,13 +2860,9 @@ describe('AttemptService', () => {
           attemptId: 'attempt-1',
           eventType: 'screen_share_started',
           severity: getProctoringEventSeverity('screen_share_started'),
-          metadataJson: null,
+          metadataJson: JSON.stringify({ displaySurface: '＂screenshot＂：', userAgent: 'Mozilla' }),
         },
       });
-      expect(loggerErrorSpy).toHaveBeenCalledWith(
-        'Dropping unprocessable proctoring event metadata (attempt attempt-1, event screen_share_started)',
-        expect.any(Error),
-      );
     });
 
     it('does not resume a blocked attempt on active:true -- still records screen_share_started, but stays blocked', async () => {
