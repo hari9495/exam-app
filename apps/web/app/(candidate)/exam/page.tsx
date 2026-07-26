@@ -155,18 +155,19 @@ export default function CandidateExamPage() {
     screenCapture.capture,
   );
   // If this mount never saw a live violation event (e.g. the page reloaded while
-  // already paused/blocked from an earlier session), infer which system caused the
-  // pause from the server-reported counters instead of defaulting to webcam --
-  // otherwise a browser-activity pause would render the wrong heading/strike count
-  // after a refresh.
+  // already paused/blocked from an earlier session), use the server-reported pause
+  // owner instead of defaulting to webcam -- otherwise a browser-activity pause would
+  // render the wrong heading/strike count after a refresh. This reads the
+  // server-authoritative reason directly rather than guessing from the counters (which
+  // could be wrong, e.g. on a tie, or once a strike escalates past the other owner's count).
   useEffect(() => {
     if (hasLiveViolationSource.current) return;
     if (!attemptState || (attemptState.status !== 'paused' && attemptState.status !== 'blocked')) return;
-    if (attemptState.browserActivityViolationCount > attemptState.webcamViolationCount) {
+    if (attemptState.pausedReason === 'browser_activity') {
       setLastViolationReason('browser_activity_unspecified');
       setLastViolationSource('browser_activity');
     }
-  }, [attemptState?.status, attemptState?.browserActivityViolationCount, attemptState?.webcamViolationCount]);
+  }, [attemptState?.status, attemptState?.pausedReason]);
   // Resuming from a browser-activity pause has nothing to re-verify (unlike webcam, which
   // re-checks face presence) -- it's the same generic "clear the pause" transition either way,
   // so the existing webcam-resume endpoint/mutation is reused rather than adding a duplicate one.

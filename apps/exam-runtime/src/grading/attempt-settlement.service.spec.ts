@@ -809,7 +809,7 @@ describe('AttemptSettlementService', () => {
       });
       expect(tx.attempt.update).toHaveBeenCalledWith({
         where: { id: 'attempt-1' },
-        data: { webcamViolationCount: 1, status: 'paused', pausedAt: expect.any(Date) },
+        data: { webcamViolationCount: 1, status: 'paused', pausedAt: expect.any(Date), pausedReason: 'webcam' },
       });
     });
 
@@ -881,7 +881,7 @@ describe('AttemptSettlementService', () => {
       });
       expect(tx.attempt.update).toHaveBeenCalledWith({
         where: { id: 'attempt-1' },
-        data: { browserActivityViolationCount: 1, status: 'paused', pausedAt: expect.any(Date) },
+        data: { browserActivityViolationCount: 1, status: 'paused', pausedAt: expect.any(Date), pausedReason: 'browser_activity' },
       });
     });
 
@@ -1156,6 +1156,7 @@ describe('AttemptSettlementService', () => {
       expect(data.browserActivityViolationCount).toBe(6);
       expect(data.status).toBe('in_progress');
       expect(data.pausedAt).toBeNull();
+      expect(data.pausedReason).toBeNull();
     });
 
     it('blocks a webcam violation at the configured limit and marks it high severity there', async () => {
@@ -1189,6 +1190,77 @@ describe('AttemptSettlementService', () => {
       const data = tx.attempt.update.mock.calls[0][0].data;
       expect(data.status).toBe('in_progress');
       expect(data.pausedAt).toBeNull();
+      expect(data.pausedReason).toBeNull();
+    });
+  });
+
+  describe('registerBrowserActivityViolation -- re-pause guard (owner-tagged pauses, time-loss fix)', () => {
+    it('tags a fresh pause with the browser_activity owner', async () => {
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 0, status: 'in_progress' } as any;
+      const tx = {
+        proctoringEvent: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'tab_switch', severity: 'medium' }) },
+        attempt: { update: jest.fn().mockResolvedValue({ ...attempt, browserActivityViolationCount: 1, status: 'paused', pausedReason: 'browser_activity' }) },
+      } as any;
+
+      await service.registerBrowserActivityViolation(tx, exam, attempt, 'tab_switch');
+
+      expect(tx.attempt.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ pausedReason: 'browser_activity' }) }),
+      );
+    });
+
+    // Regression test for the time-loss bug: registerBrowserActivityViolation had no guard against
+    // an attempt that is already paused, so a fresh (non-cooldown) strike of a different event
+    // type would unconditionally re-stamp pausedAt. Because resumeFromPause credits
+    // Date.now() - pausedAt, the wall-clock between the *original* pause and this re-stamp was
+    // never added back to pausedDurationMs once the candidate resumed -- a silent loss of exam
+    // time. This test fails without the wasAlreadyPaused guard in the source.
+    it('does not re-stamp pausedAt/pausedReason when a fresh strike of a different event type arrives while already paused', async () => {
+      const originalPausedAt = new Date(Date.now() - 30_000); // paused 30s ago by an earlier tab_switch strike
+      const attempt = {
+        id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1',
+        browserActivityViolationCount: 1, status: 'paused', pausedAt: originalPausedAt, pausedReason: 'browser_activity',
+      } as any;
+      const tx = {
+        proctoringEvent: {
+          findFirst: jest.fn().mockResolvedValue(null), // window_blur has no recent same-type event -- this is a fresh strike
+          create: jest.fn().mockResolvedValue({ id: 'evt-2', eventType: 'window_blur', severity: 'medium' }),
+        },
+        attempt: { update: jest.fn().mockResolvedValue({ ...attempt, browserActivityViolationCount: 2 }) },
+      } as any;
+
+      await service.registerBrowserActivityViolation(tx, exam, attempt, 'window_blur');
+
+      const data = tx.attempt.update.mock.calls[0][0].data;
+      expect(data.browserActivityViolationCount).toBe(2); // the strike still counts
+      expect(data).not.toHaveProperty('pausedAt'); // but the freeze point must not move
+      expect(data).not.toHaveProperty('pausedReason'); // and the owner must not be touched
+    });
+
+    it('still escalates to blocked from an already-paused attempt once the strike limit is hit, without re-stamping pausedAt', async () => {
+      const originalPausedAt = new Date(Date.now() - 45_000);
+      const attempt = {
+        id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1',
+        browserActivityViolationCount: 2, status: 'paused', pausedAt: originalPausedAt, pausedReason: 'browser_activity',
+      } as any;
+      const tx = {
+        proctoringEvent: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'evt-3', eventType: 'right_click', severity: 'low' }),
+        },
+        attempt: { update: jest.fn().mockResolvedValue({ ...attempt, browserActivityViolationCount: 3, status: 'blocked' }) },
+      } as any;
+
+      const { attempt: updated, strike } = await service.registerBrowserActivityViolation(tx, exam, attempt, 'right_click');
+
+      expect(strike).toBe(3);
+      expect(updated.status).toBe('blocked');
+      const data = tx.attempt.update.mock.calls[0][0].data;
+      expect(data.status).toBe('blocked');
+      // Escalation still works, but the original freeze point from the first pause is preserved --
+      // re-stamping it here would be the same time-loss bug, just on the paused -> blocked edge.
+      expect(data).not.toHaveProperty('pausedAt');
+      expect(data).not.toHaveProperty('pausedReason');
     });
   });
 
@@ -1239,6 +1311,25 @@ describe('AttemptSettlementService', () => {
       expect(data.webcamViolationCount).toBe(0);
       expect(data.browserActivityViolationCount).toBe(0);
     });
+
+    // resumeFromPause is the one place a paused/blocked attempt can ever become in_progress
+    // again (submit/settleIfExpired/forceSubmit all require in_progress), so it is the single
+    // correct place to null pausedReason -- every caller relies on that, including the
+    // reason-agnostic recruiter overrides (unblock, proctoring-bypass apply/revoke), which must
+    // clear it unconditionally regardless of which owner set it.
+    it.each(['webcam', 'browser_activity', 'screen_share'] as const)(
+      'clears pausedReason regardless of which owner set it (%s)',
+      async (pausedReason) => {
+        const tx = { attempt: { update: jest.fn() } } as any;
+        tx.attempt.update.mockResolvedValue({ id: 'a1', examId: 'exam-1', status: 'in_progress' });
+
+        await service.resumeFromPause(tx, {
+          id: 'a1', examId: 'exam-1', candidateId: 'c1', pausedAt: new Date(), pausedDurationMs: 0, pausedReason,
+        } as never);
+
+        expect(tx.attempt.update.mock.calls[0][0].data.pausedReason).toBeNull();
+      },
+    );
   });
 
   describe('bypassed attempts are never paused or blocked', () => {

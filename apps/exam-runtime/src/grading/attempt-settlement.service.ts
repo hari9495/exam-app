@@ -13,6 +13,14 @@ import { sanitizeMetadataOrDrop } from '../attempts/sanitize-metadata';
 
 const BROWSER_ACTIVITY_COOLDOWN_MS = 60_000;
 
+// The three owners a pause can be attributed to. browser_activity is a bucket shared by all
+// nine event types registerBrowserActivityViolation handles (including screen_share_stopped,
+// a strike distinct from screen_share's own precondition pause below). webcam and
+// browser_activity share one resume action (resumeFromPause, called with no reason filter by
+// webcamResume) since both are strike pauses cleared by acknowledgement; screen_share is a
+// precondition, only cleared by screenShareState's active:true path.
+export type PauseReason = 'webcam' | 'browser_activity' | 'screen_share';
+
 export interface SettlementExam {
   id: string;
   organizationId: string;
@@ -271,12 +279,17 @@ export class AttemptSettlementService {
     });
     // Warn-only records and counts but never interrupts the candidate.
     const status = enforcement === 'warn' ? attempt.status : atLimit ? 'blocked' : 'paused';
+    // This is only ever reached from an in_progress attempt -- the caller (attempt.service.ts's
+    // webcamViolation) already throws before this if the attempt is paused/blocked, so there is
+    // no "already paused by someone else" case to guard against here (unlike the browser-activity
+    // path below, which has no such call-site guard).
     const updated = await tx.attempt.update({
       where: { id: attempt.id },
       data: {
         webcamViolationCount: strike,
         status,
         pausedAt: enforcement === 'warn' ? null : new Date(),
+        pausedReason: enforcement === 'warn' ? null : 'webcam',
       },
     });
     void this.broadcaster
@@ -356,13 +369,28 @@ export class AttemptSettlementService {
 
     const { enforcement, strikeLimit } = resolveProctoringConfig(exam, attempt);
     const strike = attempt.browserActivityViolationCount + 1;
+    // Unlike registerWebcamViolation, this has no call-site guard keeping it to in_progress
+    // attempts only -- reportProctoringEvent and screenShareState's stop path both call this
+    // regardless of current status (blocked is excluded above, but paused is not). Without this,
+    // a strike arriving while already paused (by this owner or a different one) would
+    // unconditionally re-stamp pausedAt below, and the wall-clock between the original pause and
+    // this strike would never be credited back in resumeFromPause's elapsedMs -- a silent loss of
+    // exam time. Escalation to blocked must still work from an already-paused attempt (a
+    // persistent violator shouldn't be shielded from the strike limit by being paused), so only
+    // the pausedAt/pausedReason stamp -- not the strike count or the status transition -- is
+    // skipped when already paused.
+    const wasAlreadyPaused = attempt.status === 'paused';
     const status = enforcement === 'warn' ? attempt.status : strike >= strikeLimit ? 'blocked' : 'paused';
     const updated = await tx.attempt.update({
       where: { id: attempt.id },
       data: {
         browserActivityViolationCount: strike,
         status,
-        pausedAt: enforcement === 'warn' ? null : new Date(),
+        ...(enforcement === 'warn'
+          ? { pausedAt: null, pausedReason: null }
+          : wasAlreadyPaused
+            ? {}
+            : { pausedAt: new Date(), pausedReason: 'browser_activity' as const }),
       },
     });
     void this.broadcaster
@@ -382,6 +410,12 @@ export class AttemptSettlementService {
       data: {
         status: 'in_progress',
         pausedAt: null,
+        // Unconditional, same as pausedAt -- this is the single place a paused/blocked attempt
+        // ever transitions back to in_progress (submit/settleIfExpired/forceSubmit all require
+        // in_progress already), so there is no other place that needs to null it. Every caller
+        // that shouldn't be able to clear a given owner's pause (e.g. webcamResume clearing a
+        // screen_share pause) is responsible for checking pausedReason itself before calling in.
+        pausedReason: null,
         pausedDurationMs: attempt.pausedDurationMs + elapsedMs,
         // Only a recruiter unblock clears the slate. Doing this on the candidate's
         // own webcam self-resume would let them trip the same rule forever.

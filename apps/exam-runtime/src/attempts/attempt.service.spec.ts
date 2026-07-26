@@ -176,6 +176,31 @@ describe('AttemptService', () => {
       expect((result as any).browserActivityViolationCount).toBe(2);
     });
 
+    it('exposes the server-authoritative pausedReason for a paused attempt, instead of leaving the client to guess from counters', async () => {
+      const attempt = {
+        id: 'attempt-1', status: 'paused', startedAt: new Date(),
+        questionOrderJson: JSON.stringify(['q1']),
+        sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', targetDurationMinutes: null, questionIds: ['q1'] }]),
+        optionOrderJson: null,
+        webcamViolationCount: 0,
+        browserActivityViolationCount: 1,
+        pausedReason: 'browser_activity',
+      };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'single_mcq', marks: 5, languageMode: 'fixed', allowedLanguages: null, starterCode: null, allowStdin: false, snippetCode: null, snippetLanguage: null, imageUrl: null, options: [] }]) },
+        answer: { findMany: jest.fn().mockResolvedValue([]) },
+        candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+      };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      settlement.remainingSeconds.mockReturnValue(1000);
+      mockBootstrapWithLogoThenScoped(tx);
+
+      const result = await service.getCurrent(session);
+
+      expect((result as any).pausedReason).toBe('browser_activity');
+    });
+
     it('reports enforcement "warn" for a bypassed attempt even when the exam is configured to block', async () => {
       const attempt = {
         id: 'attempt-1', status: 'in_progress', startedAt: new Date(),
@@ -2571,6 +2596,30 @@ describe('AttemptService', () => {
       expect(result).toEqual({ status: 'in_progress' });
       expect(settlement.resumeFromPause).toHaveBeenCalledWith(tx, attempt);
     });
+
+    // webcam and browser_activity are both strike pauses cleared by the same acknowledgement;
+    // screen_share is a precondition, only clearable by actually sharing again through
+    // screenShareState's active:true path -- letting this endpoint clear it would let a
+    // candidate wave away a still-unmet "must be sharing" requirement without ever sharing.
+    it('rejects resuming an attempt paused for screen_share', async () => {
+      const attempt = { id: 'attempt-1', status: 'paused', pausedReason: 'screen_share' };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
+      mockBootstrapThenScoped(tx);
+
+      await expect(service.webcamResume(session)).rejects.toThrow(BadRequestException);
+      expect(settlement.resumeFromPause).not.toHaveBeenCalled();
+    });
+
+    it('still resumes an attempt paused for webcam', async () => {
+      const attempt = { id: 'attempt-1', status: 'paused', pausedReason: 'webcam' };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
+      mockBootstrapThenScoped(tx);
+      settlement.resumeFromPause = jest.fn().mockResolvedValue({ ...attempt, status: 'in_progress' });
+
+      const result = await service.webcamResume(session);
+
+      expect(result).toEqual({ status: 'in_progress' });
+    });
   });
 
   describe('screenShareState', () => {
@@ -2615,7 +2664,7 @@ describe('AttemptService', () => {
 
       expect(settlement.registerBrowserActivityViolation).not.toHaveBeenCalled();
       expect(tx.attempt.update).toHaveBeenCalledTimes(1);
-      expect(tx.attempt.update).toHaveBeenCalledWith({ where: { id: 'attempt-1' }, data: { status: 'paused', pausedAt: expect.any(Date) } });
+      expect(tx.attempt.update).toHaveBeenCalledWith({ where: { id: 'attempt-1' }, data: { status: 'paused', pausedAt: expect.any(Date), pausedReason: 'screen_share' } });
       expect(monitoringGateway.emitAttemptStatus).toHaveBeenCalledWith('exam-1', { attemptId: 'attempt-1', candidateId: 'cand-1', status: 'paused' });
       expect(result).toEqual({ status: 'paused' });
     });
@@ -2678,7 +2727,7 @@ describe('AttemptService', () => {
         },
       });
       expect(tx.attempt.update).toHaveBeenNthCalledWith(1, { where: { id: 'attempt-1' }, data: { screenShareStartedAt: null } });
-      expect(tx.attempt.update).toHaveBeenNthCalledWith(2, { where: { id: 'attempt-1' }, data: { status: 'paused', pausedAt: expect.any(Date) } });
+      expect(tx.attempt.update).toHaveBeenNthCalledWith(2, { where: { id: 'attempt-1' }, data: { status: 'paused', pausedAt: expect.any(Date), pausedReason: 'screen_share' } });
       expect(result).toEqual({ status: 'paused' });
     });
 
@@ -2916,6 +2965,30 @@ describe('AttemptService', () => {
       expect(result).toEqual({ status: 'in_progress' });
     });
 
+    // Regression coverage for the reason-blind resume defect: before pausedReason existed,
+    // active:true resumed ANY paused attempt, so a candidate paused for a webcam violation could
+    // be shown "share your screen", share, and have the webcam pause cleared without the webcam
+    // condition ever being satisfied.
+    it.each(['webcam', 'browser_activity'] as const)(
+      'does not resume a pause owned by %s on active:true -- only a screen_share (or legacy null) owner may be cleared this way',
+      async (pausedReason) => {
+        const attempt = { id: 'attempt-1', status: 'paused', screenShareStartedAt: null, pausedReason };
+        const tx = {
+          attempt: {
+            findUnique: jest.fn().mockResolvedValue(attempt),
+            update: jest.fn().mockResolvedValue({ ...attempt, screenShareStartedAt: new Date('2026-07-26T00:00:00Z') }),
+          },
+          proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
+        };
+        mockScoped(examWithScreenCapture, tx);
+
+        const result = await service.screenShareState(session, { active: true });
+
+        expect(settlement.resumeFromPause).not.toHaveBeenCalled();
+        expect(result).toEqual({ status: 'paused' });
+      },
+    );
+
     it('is idempotent across repeated active:true calls -- second call does not re-write the timestamp or double-record the event', async () => {
       const initialAttempt = { id: 'attempt-1', status: 'paused', screenShareStartedAt: null };
       const startedAttempt = { ...initialAttempt, screenShareStartedAt: new Date('2026-07-26T00:00:00Z') };
@@ -3037,7 +3110,7 @@ describe('AttemptService', () => {
       const result = await service.screenShareState(session, { active: false });
 
       expect(tx.attempt.update).toHaveBeenCalledTimes(2);
-      expect(tx.attempt.update).toHaveBeenNthCalledWith(2, { where: { id: 'attempt-1' }, data: { status: 'paused', pausedAt: expect.any(Date) } });
+      expect(tx.attempt.update).toHaveBeenNthCalledWith(2, { where: { id: 'attempt-1' }, data: { status: 'paused', pausedAt: expect.any(Date), pausedReason: 'screen_share' } });
       expect(monitoringGateway.emitAttemptStatus).toHaveBeenCalledWith('exam-1', { attemptId: 'attempt-1', candidateId: 'cand-1', status: 'paused' });
       expect(result).toEqual({ status: 'paused' });
     });

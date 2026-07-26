@@ -473,9 +473,9 @@ describe('CandidateExamPage', () => {
       expect(screen.getByText('Warning 1/3')).toBeInTheDocument();
     });
 
-    it('resumes via the same webcam-resume mutation regardless of which system caused the pause', async () => {
+    it('resumes via the same webcam-resume mutation for both webcam and browser_activity pauses', async () => {
       (useAttemptQuery as jest.Mock).mockReturnValue({
-        data: { ...attemptState, status: 'paused', webcamViolationCount: 0, browserActivityViolationCount: 1 },
+        data: { ...attemptState, status: 'paused', webcamViolationCount: 0, browserActivityViolationCount: 1, pausedReason: 'browser_activity' },
         isError: false,
       });
       (useProctoringMonitor as jest.Mock).mockImplementation((_enabled: boolean, onViolation?: (eventType: string) => void) => {
@@ -492,9 +492,9 @@ describe('CandidateExamPage', () => {
       expect(resumeMutate).toHaveBeenCalled();
     });
 
-    it('infers the browser-activity source from server counters when the page remounts with no live violation event', () => {
+    it('infers the browser-activity source from the server-reported pausedReason when the page remounts with no live violation event', () => {
       (useAttemptQuery as jest.Mock).mockReturnValue({
-        data: { ...attemptState, status: 'paused', webcamViolationCount: 0, browserActivityViolationCount: 2 },
+        data: { ...attemptState, status: 'paused', webcamViolationCount: 0, browserActivityViolationCount: 2, pausedReason: 'browser_activity' },
         isError: false,
       });
       // No onViolation/onViolationReason callback fires -- simulates a page reload while

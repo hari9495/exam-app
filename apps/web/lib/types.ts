@@ -351,6 +351,9 @@ export interface AttemptState {
   remainingSeconds: number;
   webcamViolationCount: number;
   browserActivityViolationCount: number;
+  // Server-authoritative owner of the current pause -- use this instead of guessing from the
+  // violation counters. Null if not paused/blocked, or for a pause predating this field.
+  pausedReason: 'webcam' | 'browser_activity' | 'screen_share' | null;
   exam: { title: string; proctoring: ExamProctoringConfig };
   // Server-authoritative "must maintain a share to avoid the block" gate -- distinct from
   // exam.proctoring.screenCaptureEnabled, which a bypass deliberately leaves true (a bypass

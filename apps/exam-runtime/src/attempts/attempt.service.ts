@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { TenantPrismaService, AuditService, isIpAllowed, BlobStorageService } from '@exam-platform/shared';
-import { AttemptSettlementService } from '../grading/attempt-settlement.service';
+import { AttemptSettlementService, PauseReason } from '../grading/attempt-settlement.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { LeaderboardService, AUTO_GRADABLE_QUESTION_TYPES, CandidateLeaderboardResponse } from '../leaderboard/leaderboard.service';
 import { CandidateSession } from '../candidate-auth/current-candidate.decorator';
@@ -111,6 +111,10 @@ interface AttemptStateResponse {
   remainingSeconds: number;
   webcamViolationCount: number;
   browserActivityViolationCount: number;
+  // Server-authoritative owner of the current pause -- null if not paused/blocked, or if this
+  // attempt was already paused before this column shipped (no backfill; see resumeFromPause).
+  // The client uses this instead of guessing from the violation counters.
+  pausedReason: PauseReason | null;
   exam: { title: string; proctoring: ExamProctoringConfig };
   // Server-authoritative "must maintain a share" gate for the candidate's blocking overlay --
   // deliberately excludes "is currently sharing" (the client already knows that instantly via
@@ -215,6 +219,7 @@ export class AttemptService {
         remainingSeconds: this.attemptSettlement.remainingSeconds(exam, settled),
         webcamViolationCount: settled.webcamViolationCount,
         browserActivityViolationCount: settled.browserActivityViolationCount,
+        pausedReason: settled.pausedReason as PauseReason | null,
         exam: { title: exam.title, proctoring: resolveProctoringConfig(exam, settled) },
         screenShareRequired: exam.screenCaptureEnabled && !isProctoringBypassActive(settled),
         sections,
@@ -742,6 +747,13 @@ export class AttemptService {
       if (attempt.status !== 'paused') {
         throw new BadRequestException(`Cannot resume — attempt status is "${attempt.status}"`);
       }
+      // webcam and browser_activity are both strike pauses cleared by acknowledgement and share
+      // this one resume action; screen_share is a precondition, only clearable by actually
+      // sharing again (screenShareState's active:true path) -- resuming it here would let the
+      // candidate wave away a still-unmet "must be sharing" requirement.
+      if (attempt.pausedReason === 'screen_share') {
+        throw new BadRequestException('Cannot resume — this attempt is paused pending screen sharing, not a strike');
+      }
       const updated = await this.attemptSettlement.resumeFromPause(tx, attempt);
       return { status: updated.status };
     });
@@ -810,6 +822,13 @@ export class AttemptService {
         if (current.status !== 'paused') {
           return { status: current.status };
         }
+        // A pause owned by webcam or browser_activity must not be cleared by resharing --
+        // that only satisfies *this* precondition, not whatever strike actually paused the
+        // attempt. (A pausedReason predating this column is null and falls through here,
+        // same safe default as everywhere else.)
+        if (current.pausedReason === 'webcam' || current.pausedReason === 'browser_activity') {
+          return { status: current.status };
+        }
         // Meeting a precondition is not a recruiter pardon: resume without resetting counters.
         const resumed = await this.attemptSettlement.resumeFromPause(tx, current);
         return { status: resumed.status };
@@ -857,7 +876,7 @@ export class AttemptService {
       // in warn mode, and never downgrades an already-blocked attempt. A bypassed attempt
       // is exempt from the pause entirely (but not from the strike recorded above).
       if (current.status === 'in_progress' && !isProctoringBypassActive(current)) {
-        current = await tx.attempt.update({ where: { id: current.id }, data: { status: 'paused', pausedAt: new Date() } });
+        current = await tx.attempt.update({ where: { id: current.id }, data: { status: 'paused', pausedAt: new Date(), pausedReason: 'screen_share' } });
         this.monitoringGateway.emitAttemptStatus(exam.id, {
           attemptId: current.id,
           candidateId: invitation.candidateId,
