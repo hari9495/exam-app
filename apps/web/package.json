@@ -5,7 +5,8 @@
     "dev": "next dev",
     "build": "next build",
     "test": "jest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "postbuild": "node scripts/copy-standalone-assets.mjs"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^0.10.14",
