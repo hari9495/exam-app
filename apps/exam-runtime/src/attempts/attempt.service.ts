@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Attempt, Prisma } from '@prisma/client';
 import { TenantPrismaService, AuditService, isIpAllowed, BlobStorageService } from '@exam-platform/shared';
-import { AttemptSettlementService, PauseReason } from '../grading/attempt-settlement.service';
+import { AttemptSettlementService, PauseReason, SettlementExam } from '../grading/attempt-settlement.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { LeaderboardService, AUTO_GRADABLE_QUESTION_TYPES, CandidateLeaderboardResponse } from '../leaderboard/leaderboard.service';
 import { CandidateSession } from '../candidate-auth/current-candidate.decorator';
@@ -500,8 +500,14 @@ export class AttemptService {
     dto: ReportProctoringEventDto,
   ): Promise<{ id: string; eventType: string; severity: string; strike: number; status: string }> {
     const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
+    const context = { organizationId, isSuperAdmin: false };
 
-    return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+    // Phase 1: read-only decision, inside a transaction (RLS needs the session context set --
+    // see TenantPrismaService.forTenant). No network I/O happens in here. If there's no screen
+    // capture to upload -- capture off, no screenshot supplied, or already at the 150 cap -- this
+    // phase does the entire write itself and returns a final result; see ADO #6810 for why an
+    // upload must never be attempted inside this transaction.
+    const phase1 = await this.tenantPrisma.forTenant(context, async (tx) => {
       const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
       if (!attempt) {
         throw new NotFoundException('No attempt has been started');
@@ -513,11 +519,14 @@ export class AttemptService {
       const proctoring = resolveProctoringConfig(exam, attempt);
       if (!isSignalEnabled(proctoring, dto.eventType)) {
         return {
-          id: '',
-          eventType: dto.eventType,
-          severity: 'low',
-          strike: attempt.browserActivityViolationCount,
-          status: attempt.status,
+          pending: false as const,
+          result: {
+            id: '',
+            eventType: dto.eventType,
+            severity: 'low',
+            strike: attempt.browserActivityViolationCount,
+            status: attempt.status,
+          },
         };
       }
 
@@ -539,57 +548,100 @@ export class AttemptService {
       // own keys through it would strip them right back out (that regression, and the fix, are
       // in scc-task-5-report.md fix round 6).
       const metadata = sanitizeMetadataOrDrop(dto.metadata, this.logger, attempt.id, dto.eventType);
-      const serverMetadata = await this.captureScreenshotMetadata(tx, attempt, dto.screenshot, proctoring.screenCaptureEnabled);
+      const screenDecision = this.decideScreenCapture(attempt, dto.screenshot, proctoring.screenCaptureEnabled);
 
-      if (isStrikeWorthy(dto.eventType)) {
-        const { attempt: updated, strike, event } = await this.attemptSettlement.registerBrowserActivityViolation(
-          tx,
-          exam,
-          attempt,
-          dto.eventType,
-          metadata,
-          serverMetadata,
-        );
-        this.monitoringGateway.emitProctoringFlag(exam.id, {
-          attemptId: attempt.id,
-          candidateId: invitation.candidateId,
-          eventType: event.eventType,
-          severity: event.severity,
-          occurredAt: new Date(),
-        });
-        return { id: event.id, eventType: event.eventType, severity: event.severity, strike, status: updated.status };
+      if (!screenDecision.shouldUpload) {
+        const serverMetadata = screenDecision.capReached ? { screenshotCapReached: true } : undefined;
+        const result = await this.writeProctoringEvent(tx, exam, invitation, attempt, dto.eventType, metadata, serverMetadata);
+        return { pending: false as const, result };
       }
 
-      const combinedMetadata = metadata || serverMetadata ? { ...metadata, ...serverMetadata } : undefined;
-      const event = await tx.proctoringEvent.create({
-        data: {
-          attemptId: attempt.id,
-          eventType: dto.eventType,
-          severity: getProctoringEventSeverity(dto.eventType),
-          metadataJson: combinedMetadata ? JSON.stringify(combinedMetadata) : null,
-        },
-      });
+      // A real upload is needed -- nothing has been written yet, so this transaction can just
+      // commit here. The upload happens with no transaction open; a second, short transaction
+      // (phase 3 below) writes the result.
+      return { pending: true as const, attempt, metadata };
+    });
+
+    if (!phase1.pending) {
+      return phase1.result;
+    }
+
+    // Phase 2: the slow part, outside any transaction.
+    const { attempt, metadata } = phase1;
+    const screenshotUrl = await this.uploadScreenCapture(attempt.id, dto.screenshot as string);
+
+    // Phase 3: write the result -- fast, DB-only, no I/O wait.
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const serverMetadata = await this.commitScreenCapture(tx, attempt.id, { capReached: false }, screenshotUrl);
+      return this.writeProctoringEvent(tx, exam, invitation, attempt, dto.eventType, metadata, serverMetadata);
+    });
+  }
+
+  // Shared by both branches of reportProctoringEvent (single-transaction fast path and the
+  // upload-then-commit slow path) -- the strike-worthy/non-strike-worthy split and the event
+  // write itself don't care which path got them here.
+  private async writeProctoringEvent(
+    tx: Prisma.TransactionClient,
+    exam: SettlementExam,
+    invitation: { candidateId: string },
+    attempt: Attempt,
+    eventType: string,
+    metadata: Record<string, unknown> | undefined,
+    serverMetadata: Record<string, unknown> | undefined,
+  ): Promise<{ id: string; eventType: string; severity: string; strike: number; status: string }> {
+    if (isStrikeWorthy(eventType)) {
+      const { attempt: updated, strike, event } = await this.attemptSettlement.registerBrowserActivityViolation(
+        tx,
+        exam,
+        attempt,
+        eventType,
+        metadata,
+        serverMetadata,
+      );
       this.monitoringGateway.emitProctoringFlag(exam.id, {
         attemptId: attempt.id,
         candidateId: invitation.candidateId,
         eventType: event.eventType,
         severity: event.severity,
-        occurredAt: event.occurredAt,
+        occurredAt: new Date(),
       });
-      return {
-        id: event.id,
-        eventType: event.eventType,
-        severity: event.severity,
-        strike: attempt.browserActivityViolationCount,
-        status: attempt.status,
-      };
+      return { id: event.id, eventType: event.eventType, severity: event.severity, strike, status: updated.status };
+    }
+
+    const combinedMetadata = metadata || serverMetadata ? { ...metadata, ...serverMetadata } : undefined;
+    const event = await tx.proctoringEvent.create({
+      data: {
+        attemptId: attempt.id,
+        eventType,
+        severity: getProctoringEventSeverity(eventType),
+        metadataJson: combinedMetadata ? JSON.stringify(combinedMetadata) : null,
+      },
     });
+    this.monitoringGateway.emitProctoringFlag(exam.id, {
+      attemptId: attempt.id,
+      candidateId: invitation.candidateId,
+      eventType: event.eventType,
+      severity: event.severity,
+      occurredAt: event.occurredAt,
+    });
+    return {
+      id: event.id,
+      eventType: event.eventType,
+      severity: event.severity,
+      strike: attempt.browserActivityViolationCount,
+      status: attempt.status,
+    };
   }
 
   async webcamViolation(session: CandidateSession, dto: WebcamViolationDto): Promise<{ strike: number; status: string }> {
     const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
+    const context = { organizationId, isSuperAdmin: false };
 
-    return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+    // Phase 1: read-only decision (see reportProctoringEvent above for the same shape and why).
+    // Unlike the screen capture, the webcam snapshot itself has no "skip" case once webcam
+    // proctoring is enabled -- it always uploads -- so any non-skipped webcam violation needs
+    // the full three-phase split.
+    const phase1 = await this.tenantPrisma.forTenant(context, async (tx) => {
       const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
       if (!attempt) {
         throw new NotFoundException('No attempt has been started');
@@ -603,26 +655,28 @@ export class AttemptService {
       // the same reason as the disabled-signal guard above.
       const proctoring = resolveProctoringConfig(exam, attempt);
       if (!proctoring.webcamEnabled) {
-        return { strike: attempt.webcamViolationCount, status: attempt.status };
+        return { skip: true as const, strike: attempt.webcamViolationCount, status: attempt.status };
       }
-      // Bounded and caught for the same reason as captureScreenshotMetadata's upload below: this
-      // runs inside the interactive transaction (Prisma's default 5s timeout), and a slow-but-
-      // eventually-successful upload would otherwise throw an uncaught "Transaction already
-      // closed" that 500s and loses the whole webcam violation -- worse than a lost image.
-      let snapshotUrl = '';
-      try {
-        snapshotUrl = await withTimeout(
-          this.blobStorage.uploadDataUri(`webcam-snapshots/${attempt.id}-${Date.now()}.jpg`, dto.snapshot),
-          SCREENSHOT_UPLOAD_TIMEOUT_MS,
-        );
-      } catch (error) {
-        this.logger.error('Failed to upload webcam snapshot', error as Error);
-      }
-      // Same shared cap-count/withTimeout/upload path reportProctoringEvent uses for its
-      // screenshot -- webcam strikes (no_face, multiple_faces, webcam_head_turned) are the
-      // feature's motivating case (the most common machine misfire) and previously carried no
-      // screen evidence at all.
-      const screenMetadata = await this.captureScreenshotMetadata(tx, attempt, dto.screenshot, proctoring.screenCaptureEnabled);
+      const screenDecision = this.decideScreenCapture(attempt, dto.screenshot, proctoring.screenCaptureEnabled);
+      return { skip: false as const, attempt, screenDecision };
+    });
+
+    if (phase1.skip) {
+      return { strike: phase1.strike, status: phase1.status };
+    }
+    const { attempt, screenDecision } = phase1;
+
+    // Phase 2: the slow part -- outside any transaction, and run concurrently rather than
+    // sequentially (this alone used to halve the worst case, back when both still ran inside the
+    // transaction; see ADO #6810). Neither upload holds a pooled DB connection anymore.
+    const [snapshotUrl, screenCaptureUrl] = await Promise.all([
+      this.uploadWebcamSnapshot(attempt.id, dto.snapshot),
+      screenDecision.shouldUpload ? this.uploadScreenCapture(attempt.id, dto.screenshot as string) : Promise.resolve(undefined),
+    ]);
+
+    // Phase 3: write the result -- fast, DB-only, no I/O wait.
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const screenMetadata = await this.commitScreenCapture(tx, attempt.id, screenDecision, screenCaptureUrl);
       const { attempt: updated, strike } = await this.attemptSettlement.registerWebcamViolation(
         tx,
         exam,
@@ -635,60 +689,107 @@ export class AttemptService {
     });
   }
 
-  // Shared by reportProctoringEvent and webcamViolation: uploads a client-supplied screen
-  // capture and returns the metadata overlay to merge into the event's metadataJson *after*
-  // sanitization (see the sanitizeMetadataOrDrop comment in reportProctoringEvent) -- these
-  // keys are server-authoritative and must never pass back through the client-metadata filter.
-  // Ignored (not rejected) when the exam has capture off, same as the disabled-signal guard.
+  // Runs with no open transaction -- see SCREENSHOT_UPLOAD_TIMEOUT_MS and ADO #6810 for why the
+  // webcam snapshot upload must never run inside forTenant's interactive transaction. A failed or
+  // slow upload logs and resolves to '' rather than throwing: the violation record is what
+  // matters, losing the image is acceptable (registerWebcamViolation stores whatever string it's
+  // given, including an empty one).
+  private async uploadWebcamSnapshot(attemptId: string, snapshot: string): Promise<string> {
+    try {
+      return await withTimeout(
+        this.blobStorage.uploadDataUri(`webcam-snapshots/${attemptId}-${Date.now()}.jpg`, snapshot),
+        SCREENSHOT_UPLOAD_TIMEOUT_MS,
+      );
+    } catch (error) {
+      this.logger.error('Failed to upload webcam snapshot', error as Error);
+      return '';
+    }
+  }
+
+  // Shared by reportProctoringEvent and webcamViolation. Split into three steps (decide / upload
+  // / commit, below) so the upload -- the slow part -- runs with no Prisma transaction open. See
+  // ADO #6810: the old shape ran this upload (and, for webcamViolation, the webcam snapshot
+  // upload too) inside the same interactive transaction as the DB writes, which routinely blew
+  // Prisma's 5s timeout on its own, with no contention required, and lost the violation outright
+  // when it did.
   //
   // The cap is read from Attempt.screenCaptureCount, a real counter column -- not a scan over
   // stored metadataJson. The old design counted prior events with a `LIKE '%"screenshot":%'`
   // query, which five review rounds each found a new way to fool (a nested key, a quote-smuggled
   // key, a fullwidth key, fullwidth punctuation inside an ordinary value -- see
   // sanitize-metadata.ts's history). A JS filter can never fully mirror what a SQL collation
-  // folds, and a collation change to `_AI` would have reopened it silently. A counter has no
-  // text to fool: it only moves when this function itself increments it, and only after a real
-  // upload lands (never on a skipped or failed one). The increment runs in the same interactive
-  // transaction as the cap check and the event write, so the two can never land separately --
-  // but the cap check itself is still a plain, non-locking read of Attempt.screenCaptureCount
-  // taken at the top of that transaction, so concurrent requests arriving before either commits
-  // can each see a count under the cap and each upload; the overshoot is bounded by the number
-  // of requests in flight at that instant and one-shot (the atomic `{ increment: 1 }` can't lose
-  // an update, so the counter is exactly correct once everything commits). Accepted as-is: the
-  // only exploitable direction is *extra* screenshots, not the evidence blackout this feature
-  // exists to prevent. If strict enforcement is ever wanted, replace the read+update pair with
+  // folds, and a collation change to `_AI` would have reopened it silently. A counter has no text
+  // to fool: it only moves when commitScreenCapture below increments it, and only after a real
+  // upload lands (never on a skipped or failed one).
+  //
+  // decideScreenCapture's read and commitScreenCapture's increment are no longer in the same
+  // transaction -- they're now separated by the upload, which runs entirely outside either one.
+  // That does not widen the cap's existing race window: the read was already a plain, non-locking
+  // read of Attempt.screenCaptureCount reused as a stale JS value across the (already slow)
+  // upload and the later increment, so the gap between "decide" and "commit" is the same upload
+  // duration either way -- only its location moved, from inside one transaction to between two.
+  // Concurrent requests arriving before either commits can still each see a count under the cap
+  // and each upload; the overshoot is bounded by the number of requests in flight at that instant
+  // and one-shot (the atomic `{ increment: 1 }` can't lose an update, so the counter is exactly
+  // correct once everything commits). Accepted as-is, same as before this split: the only
+  // exploitable direction is *extra* screenshots, not the evidence blackout this feature exists
+  // to prevent. If strict enforcement is ever wanted, replace commitScreenCapture's read+update
+  // pair with
   // `tx.attempt.updateMany({ where: { id, screenCaptureCount: { lt: MAX_SCREEN_CAPTURES } }, data: { screenCaptureCount: { increment: 1 } } })`
   // and check its affected count.
-  private async captureScreenshotMetadata(
-    tx: Prisma.TransactionClient,
-    attempt: { id: string; screenCaptureCount: number },
+
+  // No I/O -- server-authoritative decision taken from the same in-transaction attempt read the
+  // caller already has. Gates whether uploadScreenCapture below should even be attempted.
+  private decideScreenCapture(
+    attempt: { screenCaptureCount: number },
     screenshot: string | undefined,
     screenCaptureEnabled: boolean,
-  ): Promise<Record<string, unknown> | undefined> {
+  ): { shouldUpload: boolean; capReached: boolean } {
     if (!screenshot || !screenCaptureEnabled) {
-      return undefined;
+      return { shouldUpload: false, capReached: false };
     }
     if (attempt.screenCaptureCount >= MAX_SCREEN_CAPTURES) {
-      return { screenshotCapReached: true };
+      return { shouldUpload: false, capReached: true };
     }
-    let screenshotUrl: string;
+    return { shouldUpload: true, capReached: false };
+  }
+
+  // Runs with no open transaction. A failed or slow upload logs and resolves to undefined rather
+  // than throwing or blocking -- the violation record is what matters, losing the image isn't
+  // fatal.
+  private async uploadScreenCapture(attemptId: string, screenshot: string): Promise<string | undefined> {
     try {
-      screenshotUrl = await withTimeout(
-        this.blobStorage.uploadDataUri(`screen-captures/${attempt.id}-${Date.now()}.jpg`, screenshot),
+      return await withTimeout(
+        this.blobStorage.uploadDataUri(`screen-captures/${attemptId}-${Date.now()}.jpg`, screenshot),
         SCREENSHOT_UPLOAD_TIMEOUT_MS,
       );
     } catch (error) {
-      // The violation record is what matters -- losing the image is acceptable, losing the
-      // violation is not. Not incrementing here is deliberate too: the counter must only ever
-      // reflect images actually stored.
       this.logger.error('Failed to upload screen capture', error as Error);
+      return undefined;
+    }
+  }
+
+  // Called inside the write transaction, after the upload (if any) has already finished outside
+  // it. Only increments Attempt.screenCaptureCount when a real upload actually landed -- never on
+  // a skipped, disabled, capped, or failed upload -- so the counter only ever reflects images
+  // actually stored.
+  private async commitScreenCapture(
+    tx: Prisma.TransactionClient,
+    attemptId: string,
+    decision: { capReached: boolean },
+    screenshotUrl: string | undefined,
+  ): Promise<Record<string, unknown> | undefined> {
+    if (decision.capReached) {
+      return { screenshotCapReached: true };
+    }
+    if (!screenshotUrl) {
       return undefined;
     }
     try {
       // Kept in its own try/catch so a DB failure here isn't misreported as an upload failure --
       // the upload already succeeded, so the event still gets its screenshot url either way;
       // only the counter risks drifting low if this throws.
-      await tx.attempt.update({ where: { id: attempt.id }, data: { screenCaptureCount: { increment: 1 } } });
+      await tx.attempt.update({ where: { id: attemptId }, data: { screenCaptureCount: { increment: 1 } } });
     } catch (error) {
       this.logger.error('Failed to increment screenCaptureCount after a successful screen-capture upload', error as Error);
     }

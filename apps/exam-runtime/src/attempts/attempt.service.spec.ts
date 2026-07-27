@@ -88,6 +88,18 @@ describe('AttemptService', () => {
       .mockImplementationOnce((_ctx, fn) => fn(scopedTx));
   }
 
+  // reportProctoringEvent and webcamViolation split their work across two separate scoped
+  // forTenant calls when a screenshot actually needs uploading (decide -- upload with no
+  // transaction open -- commit; see ADO #6810). Both scoped calls operate on the same
+  // underlying tx mock, exactly as two separate interactive transactions against the same
+  // tenant would.
+  function mockBootstrapThenTwoScopedCalls(scopedTx: unknown, invitation: unknown = invitationRecord) {
+    tenantPrisma.forTenant
+      .mockImplementationOnce(() => Promise.resolve(invitation))
+      .mockImplementationOnce((_ctx, fn) => fn(scopedTx))
+      .mockImplementationOnce((_ctx, fn) => fn(scopedTx));
+  }
+
   // getCurrent additionally looks up the org's logo (for candidate-facing branding) via a
   // third bootstrap-scoped forTenant call, sandwiched between the invitation lookup and the
   // scoped attempt-data call that the other methods' mockBootstrapThenScoped doesn't need.
@@ -1754,7 +1766,17 @@ describe('AttemptService', () => {
           .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
       }
 
-      it('uploads it, merges the resulting URL into the event metadata, and atomically increments Attempt.screenCaptureCount in the same transaction when screenCaptureEnabled is true', async () => {
+      // Same as mockScoped, but for the cases that actually upload a screen capture: those run
+      // a second, separate scoped forTenant call (the commit phase) after the upload -- see
+      // ADO #6810 and mockBootstrapThenTwoScopedCalls above.
+      function mockScopedTwice(examOverride: unknown, tx: unknown) {
+        tenantPrisma.forTenant
+          .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examOverride }))
+          .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx))
+          .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
+      }
+
+      it('uploads it outside the transaction, then merges the resulting URL into the event metadata and atomically increments Attempt.screenCaptureCount in a second, separate transaction when screenCaptureEnabled is true', async () => {
         const tx = {
           attempt: {
             findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress', screenCaptureCount: 0 }),
@@ -1764,7 +1786,7 @@ describe('AttemptService', () => {
             create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }),
           },
         };
-        mockScoped(examWithCapture, tx);
+        mockScopedTwice(examWithCapture, tx);
 
         await service.reportProctoringEvent(session, { eventType: 'looking_down', screenshot: 'data:image/jpeg;base64,abc' });
 
@@ -1774,6 +1796,18 @@ describe('AttemptService', () => {
         expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
           data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: 'medium', metadataJson: JSON.stringify({ screenshot: uploadedUrl }) },
         });
+        // The upload must happen strictly after the first (decide) transaction's read and
+        // strictly before the second (commit) transaction's writes -- i.e. outside both.
+        const findOrder = tx.attempt.findUnique.mock.invocationCallOrder[0];
+        const uploadOrder = blobStorage.uploadDataUri.mock.invocationCallOrder[0];
+        const updateOrder = tx.attempt.update.mock.invocationCallOrder[0];
+        const createOrder = tx.proctoringEvent.create.mock.invocationCallOrder[0];
+        expect(findOrder).toBeLessThan(uploadOrder);
+        expect(uploadOrder).toBeLessThan(updateOrder);
+        expect(uploadOrder).toBeLessThan(createOrder);
+        // Three separate forTenant calls -- bootstrap, decide, commit -- proves the upload isn't
+        // nested inside either scoped transaction.
+        expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(3);
       });
 
       it('is ignored silently when screenCaptureEnabled is false -- no upload, the violation is still recorded without an image', async () => {
@@ -1847,7 +1881,7 @@ describe('AttemptService', () => {
             create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }),
           },
         };
-        mockScoped(examWithCapture, tx);
+        mockScopedTwice(examWithCapture, tx);
         const loggerErrorSpy = jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
         blobStorage.uploadDataUri.mockRejectedValueOnce(new Error('blob storage unavailable'));
 
@@ -1873,7 +1907,7 @@ describe('AttemptService', () => {
               create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'looking_down', severity: 'medium' }),
             },
           };
-          mockScoped(examWithCapture, tx);
+          mockScopedTwice(examWithCapture, tx);
           const loggerErrorSpy = jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
           // Never resolves -- simulates a blob upload that outlives the bound.
           blobStorage.uploadDataUri.mockReturnValueOnce(new Promise(() => {}));
@@ -1905,7 +1939,7 @@ describe('AttemptService', () => {
         const tx = {
           attempt: { findUnique: jest.fn().mockResolvedValue(attempt), update: jest.fn().mockResolvedValue({ ...attempt, screenCaptureCount: 1 }) },
         };
-        mockScoped(examWithCapture, tx);
+        mockScopedTwice(examWithCapture, tx);
         settlement.registerBrowserActivityViolation.mockResolvedValue({
           attempt: { ...attempt, browserActivityViolationCount: 1, status: 'paused' },
           strike: 1,
@@ -2152,7 +2186,7 @@ describe('AttemptService', () => {
               // fails the test with a TypeError rather than silently passing.
             },
           };
-          mockScoped(examWithCapture, tx);
+          mockScopedTwice(examWithCapture, tx);
 
           const result = await service.reportProctoringEvent(session, {
             eventType: 'looking_down',
@@ -2363,7 +2397,7 @@ describe('AttemptService', () => {
     it('delegates to AttemptSettlementService.registerWebcamViolation and returns strike/status', async () => {
       const attempt = { id: 'attempt-1', status: 'in_progress', webcamViolationCount: 0 };
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
-      mockBootstrapThenScoped(tx);
+      mockBootstrapThenTwoScopedCalls(tx);
       settlement.registerWebcamViolation = jest.fn().mockResolvedValue({ attempt: { ...attempt, status: 'paused', webcamViolationCount: 1 }, strike: 1 });
 
       const result = await service.webcamViolation(session, { reason: 'no_face', snapshot: 'x' });
@@ -2372,18 +2406,19 @@ describe('AttemptService', () => {
       expect(blobStorage.uploadDataUri).toHaveBeenCalledWith(expect.stringContaining('webcam-snapshots/attempt-1-'), 'x');
       const uploadedUrl = await blobStorage.uploadDataUri.mock.results[0].value;
       expect(settlement.registerWebcamViolation).toHaveBeenCalledWith(tx, exam, attempt, 'no_face', uploadedUrl, undefined);
+      // Three separate forTenant calls -- bootstrap, decide, commit -- proves the upload isn't
+      // nested inside either scoped transaction (see ADO #6810).
+      expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(3);
     });
 
-    it('threads a screenshot through the same cap-count/upload helper reportProctoringEvent uses, landing it in registerWebcamViolation', async () => {
+    it('threads a screenshot through the same cap-count/upload helper reportProctoringEvent uses, landing it in registerWebcamViolation, with both uploads run outside either transaction', async () => {
       const screenCaptureExam = { ...exam, screenCaptureEnabled: true };
       const invitationWithScreenCapture = { ...invitationRecord, exam: screenCaptureExam };
       const attempt = { id: 'attempt-1', status: 'in_progress', webcamViolationCount: 0, screenCaptureCount: 0 };
       const tx = {
         attempt: { findUnique: jest.fn().mockResolvedValue(attempt), update: jest.fn().mockResolvedValue({ ...attempt, screenCaptureCount: 1 }) },
       };
-      tenantPrisma.forTenant
-        .mockImplementationOnce(() => Promise.resolve(invitationWithScreenCapture))
-        .mockImplementationOnce((_ctx, fn) => fn(tx));
+      mockBootstrapThenTwoScopedCalls(tx, invitationWithScreenCapture);
       settlement.registerWebcamViolation = jest.fn().mockResolvedValue({ attempt: { ...attempt, status: 'paused', webcamViolationCount: 1 }, strike: 1 });
 
       await service.webcamViolation(session, { reason: 'no_face', snapshot: 'x', screenshot: 'data:image/jpeg;base64,abc' });
@@ -2399,12 +2434,23 @@ describe('AttemptService', () => {
         expect.any(String),
         { screenshot: screenshotUrl },
       );
+      // Ordering, in the spirit of candidates.service.spec.ts's invocationCallOrder assertions:
+      // both uploads must land strictly after the decide phase's read and strictly before the
+      // commit phase's writes -- proving neither upload runs inside a transaction.
+      const findOrder = tx.attempt.findUnique.mock.invocationCallOrder[0];
+      const uploadOrders = blobStorage.uploadDataUri.mock.invocationCallOrder;
+      const updateOrder = tx.attempt.update.mock.invocationCallOrder[0];
+      const registerOrder = (settlement.registerWebcamViolation as jest.Mock).mock.invocationCallOrder[0];
+      expect(findOrder).toBeLessThan(Math.min(...uploadOrders));
+      expect(Math.max(...uploadOrders)).toBeLessThan(updateOrder);
+      expect(updateOrder).toBeLessThan(registerOrder);
+      expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(3);
     });
 
     it('ignores a supplied screenshot silently when the exam has screenCaptureEnabled false', async () => {
       const attempt = { id: 'attempt-1', status: 'in_progress', webcamViolationCount: 0 };
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
-      mockBootstrapThenScoped(tx);
+      mockBootstrapThenTwoScopedCalls(tx);
       settlement.registerWebcamViolation = jest.fn().mockResolvedValue({ attempt: { ...attempt, status: 'paused', webcamViolationCount: 1 }, strike: 1 });
 
       await service.webcamViolation(session, { reason: 'no_face', snapshot: 'x', screenshot: 'data:image/jpeg;base64,abc' });
@@ -2433,7 +2479,7 @@ describe('AttemptService', () => {
     it('still records the violation (with an empty snapshot) when the webcam-snapshot upload throws, rather than losing it to an uncaught rejection', async () => {
       const attempt = { id: 'attempt-1', status: 'in_progress', webcamViolationCount: 0 };
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
-      mockBootstrapThenScoped(tx);
+      mockBootstrapThenTwoScopedCalls(tx);
       const loggerErrorSpy = jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
       blobStorage.uploadDataUri.mockRejectedValueOnce(new Error('blob storage unavailable'));
       settlement.registerWebcamViolation = jest.fn().mockResolvedValue({ attempt: { ...attempt, status: 'paused', webcamViolationCount: 1 }, strike: 1 });
@@ -2450,7 +2496,7 @@ describe('AttemptService', () => {
       try {
         const attempt = { id: 'attempt-1', status: 'in_progress', webcamViolationCount: 0 };
         const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
-        mockBootstrapThenScoped(tx);
+        mockBootstrapThenTwoScopedCalls(tx);
         const loggerErrorSpy = jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
         blobStorage.uploadDataUri.mockReturnValueOnce(new Promise(() => {})); // never resolves
         settlement.registerWebcamViolation = jest.fn().mockResolvedValue({ attempt: { ...attempt, status: 'paused', webcamViolationCount: 1 }, strike: 1 });
