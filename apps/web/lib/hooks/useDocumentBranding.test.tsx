@@ -47,12 +47,37 @@ describe('useDocumentBranding', () => {
     expect(document.title).toBe('Prudent Hire');
   });
 
-  it('reuses the existing icon link instead of appending a second one', () => {
+  it('does not append another icon link when one already exists', () => {
     seedNextIconLink();
     renderHook(() => useDocumentBranding('Acme Corp', 'https://blob.example/acme.png'));
 
-    // Browsers pick unpredictably between duplicate icon links.
-    expect(document.querySelectorAll('link[rel="icon"]')).toHaveLength(1);
+    expect(document.querySelectorAll('link[rel~="icon"]')).toHaveLength(1);
+  });
+
+  // Regression from production: React re-inserts its own copy of the
+  // app/icon.png link during hydration, so head really does end up with two.
+  // Updating only the first left the second pointing at the product icon, and
+  // browsers pick between duplicates unpredictably -- the org logo would have
+  // been shown or ignored at random.
+  it('updates every icon link when the document has duplicates', () => {
+    seedNextIconLink();
+    seedNextIconLink();
+
+    renderHook(() => useDocumentBranding('Acme Corp', 'https://blob.example/acme.png'));
+
+    const hrefs = [...document.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]')].map((l) => l.getAttribute('href'));
+    expect(hrefs).toHaveLength(2);
+    expect(hrefs.every((h) => h === 'https://blob.example/acme.png')).toBe(true);
+  });
+
+  it('resets every duplicate back to the default when branding goes away', () => {
+    seedNextIconLink();
+    seedNextIconLink();
+
+    renderHook(() => useDocumentBranding(null, null));
+
+    const hrefs = [...document.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]')].map((l) => l.getAttribute('href'));
+    expect(hrefs.every((h) => h === '/icon.png')).toBe(true);
   });
 
   it('drops the size/type hints Next set for its own 512x512 PNG', () => {

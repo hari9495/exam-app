@@ -28,24 +28,33 @@ export function useDocumentBranding(name: string | null | undefined, logoUrl: st
   useEffect(() => {
     document.title = name || DEFAULT_TITLE;
 
-    // Next emits <link rel="icon"> from app/icon.png. Reuse that element rather
-    // than appending another: browsers pick unpredictably between duplicates.
-    let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-    if (!link) {
-      link = document.createElement('link');
-      link.rel = 'icon';
-      document.head.appendChild(link);
+    // EVERY icon link is updated, not just the first, and this is deliberate.
+    // Next renders <link rel="icon"> from app/icon.png, and React re-inserts its
+    // own copy during hydration -- so head genuinely ends up with two of them
+    // (confirmed in production, not theorised). Browsers choose between
+    // duplicates unpredictably, so updating only the first would have shown the
+    // product icon instead of the organisation's whenever the other won.
+    //
+    // Deleting React's node would be the other option, but removing DOM that
+    // React manages risks a reconciliation error later. Pointing them all at
+    // the same href is inert by comparison and correct whichever one wins.
+    const links = document.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]');
+    if (links.length === 0) {
+      const created = document.createElement('link');
+      created.rel = 'icon';
+      document.head.appendChild(created);
     }
 
-    // The org logo is arbitrary in size and aspect ratio, so drop the sizes/type
-    // hints Next set for its own 512x512 PNG -- leaving them would describe the
-    // file incorrectly.
-    if (logoUrl) {
-      link.removeAttribute('sizes');
-      link.removeAttribute('type');
-      link.href = logoUrl;
-    } else {
-      link.href = DEFAULT_ICON;
+    for (const link of document.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]')) {
+      if (logoUrl) {
+        // The org logo is arbitrary in size and format, so drop the hints Next
+        // set for its own 512x512 PNG -- leaving them would describe it wrongly.
+        link.removeAttribute('sizes');
+        link.removeAttribute('type');
+        link.href = logoUrl;
+      } else {
+        link.href = DEFAULT_ICON;
+      }
     }
 
     // No cleanup that restores defaults: this runs on every branding/pathname
