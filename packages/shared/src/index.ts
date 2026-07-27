@@ -8,6 +8,7 @@ export * from './crypto/crypto.module';
 export * from './crypto/org-secrets-crypto.service';
 export * from './crypto/ai-api-key-resolver.service';
 export * from './crypto/refresh-token-hash';
+export * from './network/trust-proxy';
 export * from './ai/ai-provider';
 export * from './ai/anthropic-provider';
 export * from './ai/openai-compatible-provider';
