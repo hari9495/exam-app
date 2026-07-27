@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { BadRequestException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import * as argon2 from 'argon2';
+import { hashRefreshToken } from '@exam-platform/shared';
 import { CandidateAuthService } from './candidate-auth.service';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
@@ -263,7 +263,7 @@ describe('CandidateAuthService', () => {
 
     it('issues a new token pair on a valid, unrevoked refresh token', async () => {
       const refreshToken = jwt.sign({ sub: 'inv-1', familyId: 'family-1' }, { secret: process.env.CANDIDATE_JWT_REFRESH_SECRET });
-      const tokenHash = await argon2.hash(refreshToken);
+      const tokenHash = hashRefreshToken(refreshToken);
       prisma.candidateRefreshToken.findFirst.mockResolvedValue({ id: 'crt-1', tokenHash, revokedAt: null });
       prisma.candidateRefreshToken.update.mockResolvedValue({});
       prisma.candidateRefreshToken.create.mockResolvedValue({});
@@ -280,7 +280,7 @@ describe('CandidateAuthService', () => {
 
     it('revokes the token family and throws UnauthorizedException when the underlying invitation was revoked', async () => {
       const refreshToken = jwt.sign({ sub: 'inv-1', familyId: 'family-1' }, { secret: process.env.CANDIDATE_JWT_REFRESH_SECRET });
-      const tokenHash = await argon2.hash(refreshToken);
+      const tokenHash = hashRefreshToken(refreshToken);
       prisma.candidateRefreshToken.findFirst.mockResolvedValue({ id: 'crt-1', tokenHash, revokedAt: null });
       prisma.candidateRefreshToken.update.mockResolvedValue({});
       prisma.invitation.findUnique.mockResolvedValue({ id: 'inv-1', status: 'revoked' });

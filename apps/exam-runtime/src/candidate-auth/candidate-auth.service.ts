@@ -1,9 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Prisma } from '@prisma/client';
-import * as argon2 from 'argon2';
 import { randomUUID } from 'crypto';
-import { PrismaService } from '@exam-platform/shared';
+import { PrismaService, hashRefreshToken, isLegacyArgon2Hash, refreshTokenMatches } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { AuditService, isIpAllowed } from '@exam-platform/shared';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
@@ -87,7 +86,17 @@ export class CandidateAuthService {
       orderBy: { createdAt: 'desc' },
     });
 
-    if (!stored || !(await argon2.verify(stored.tokenHash, refreshToken).catch(() => false))) {
+    // A row written under the previous argon2 scheme can never match a SHA-256
+    // digest. Retire it as an ordinary expired session: falling through to the
+    // reuse branch below would revoke the family and tell the candidate their
+    // session was compromised, which is both untrue and alarming for what is
+    // only a hashing cutover.
+    if (stored && isLegacyArgon2Hash(stored.tokenHash)) {
+      await this.prisma.candidateRefreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    if (!stored || !refreshTokenMatches(stored.tokenHash, refreshToken)) {
       await this.prisma.candidateRefreshToken.updateMany({
         where: { invitationId: payload.sub, familyId: payload.familyId },
         data: { revokedAt: new Date() },
@@ -135,7 +144,7 @@ export class CandidateAuthService {
       { sub: invitationId, familyId },
       { secret: process.env.CANDIDATE_JWT_REFRESH_SECRET, expiresIn: `${process.env.CANDIDATE_REFRESH_TOKEN_TTL_DAYS ?? 1}d` as `${number}d` },
     );
-    const tokenHash = await argon2.hash(refreshToken);
+    const tokenHash = hashRefreshToken(refreshToken);
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + Number(process.env.CANDIDATE_REFRESH_TOKEN_TTL_DAYS ?? 1));
 

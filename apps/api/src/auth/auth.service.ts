@@ -2,7 +2,10 @@ import { BadRequestException, Injectable, Logger, NotFoundException, Unauthorize
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { randomBytes, createHash, randomUUID } from 'crypto';
-import { PrismaService } from '@exam-platform/shared';
+// argon2 above is retained deliberately: it still hashes PASSWORDS (lines 54,
+// 112), which are the low-entropy input it exists for. Only refresh tokens moved
+// to SHA-256 -- see refresh-token-hash.ts for why.
+import { PrismaService, hashRefreshToken, isLegacyArgon2Hash, refreshTokenMatches } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { LoginDto } from './dto/login.dto';
 import { AuditService } from '@exam-platform/shared';
@@ -147,7 +150,18 @@ export class AuthService {
       orderBy: { createdAt: 'desc' },
     });
 
-    if (!stored || !(await argon2.verify(stored.tokenHash, refreshToken).catch(() => false))) {
+    // A row written under the previous argon2 scheme can never match a SHA-256
+    // digest. Retire it as an ordinary expired session rather than letting it
+    // fall into the reuse branch below, which revokes the family AND writes an
+    // auth.token_reuse_detected audit entry -- a security event meaning a
+    // possibly-stolen token. Every session predating the cutover would have
+    // produced one, poisoning the audit trail with false positives.
+    if (stored && isLegacyArgon2Hash(stored.tokenHash)) {
+      await this.prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    if (!stored || !refreshTokenMatches(stored.tokenHash, refreshToken)) {
       // Reuse of an already-rotated/unknown token: revoke the whole family.
       await this.prisma.refreshToken.updateMany({
         where: { userId: payload.sub, familyId: payload.familyId },
@@ -268,7 +282,7 @@ export class AuthService {
       { sub: userId, familyId },
       { secret: process.env.JWT_REFRESH_SECRET, expiresIn: `${process.env.REFRESH_TOKEN_TTL_DAYS ?? 30}d` as `${number}d` },
     );
-    const tokenHash = await argon2.hash(refreshToken);
+    const tokenHash = hashRefreshToken(refreshToken);
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + Number(process.env.REFRESH_TOKEN_TTL_DAYS ?? 30));
 
