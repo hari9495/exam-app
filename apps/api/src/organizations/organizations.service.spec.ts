@@ -27,7 +27,7 @@ describe('OrganizationsService', () => {
   let audit: { record: jest.Mock };
   let emailService: { send: jest.Mock };
   let cryptoService: { encrypt: jest.Mock; decrypt: jest.Mock };
-  let blobStorage: { upload: jest.Mock; uploadDataUri: jest.Mock };
+  let blobStorage: { upload: jest.Mock; uploadDataUri: jest.Mock; signIfOurs: jest.Mock };
 
   beforeEach(async () => {
     mockTransporterVerify.mockReset();
@@ -42,7 +42,7 @@ describe('OrganizationsService', () => {
     audit = { record: jest.fn() };
     emailService = { send: jest.fn().mockResolvedValue({ success: true }) };
     cryptoService = { encrypt: jest.fn(), decrypt: jest.fn() };
-    blobStorage = { upload: jest.fn(), uploadDataUri: jest.fn() };
+    blobStorage = { upload: jest.fn(), uploadDataUri: jest.fn(), signIfOurs: jest.fn(async (value: unknown) => value) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         OrganizationsService,
@@ -213,30 +213,54 @@ describe('OrganizationsService', () => {
 
   describe('getBranding', () => {
     it('returns null logoUrl/colors for an org with nothing set', async () => {
-      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', logoPath: null, primaryColor: null, accentColor: null });
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme Corp', logoPath: null, primaryColor: null, accentColor: null });
 
       const result = await service.getBranding({ organizationId: 'org-1', isSuperAdmin: false });
 
-      expect(result).toEqual({ logoUrl: null, primaryColor: null, accentColor: null });
+      expect(result).toEqual({ name: 'Acme Corp', logoUrl: null, primaryColor: null, accentColor: null });
     });
 
     it('returns logoUrl as the stored logoPath blob URL', async () => {
-      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', logoPath: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png', primaryColor: '#1a73e8', accentColor: '#fbbc04' });
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme Corp', logoPath: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png', primaryColor: '#1a73e8', accentColor: '#fbbc04' });
 
       const result = await service.getBranding({ organizationId: 'org-1', isSuperAdmin: false });
 
-      expect(result).toEqual({ logoUrl: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png', primaryColor: '#1a73e8', accentColor: '#fbbc04' });
+      expect(result).toEqual({ name: 'Acme Corp', logoUrl: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png', primaryColor: '#1a73e8', accentColor: '#fbbc04' });
     });
 
     it('throws BadRequestException when the caller has no organization context', async () => {
       await expect(service.getBranding({ organizationId: null, isSuperAdmin: true })).rejects.toThrow(BadRequestException);
       expect(prisma.organization.findUnique).not.toHaveBeenCalled();
     });
+
+    // The blob container is private, so an unsigned logo URL 403s in the
+    // browser -- an <img src> or a favicon href pointing at it renders nothing.
+    // signIfOurs is mocked as a pass-through here (matching its real behaviour
+    // when storage is unconfigured), which means dropping the call would leave
+    // every other assertion in this file green. Assert the call itself.
+    it('signs the logo URL, because the container is private', async () => {
+      const logoPath = 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png';
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme Corp', logoPath, primaryColor: null, accentColor: null });
+      blobStorage.signIfOurs.mockResolvedValueOnce(`${logoPath}?sig=redacted`);
+
+      const result = await service.getBranding({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(blobStorage.signIfOurs).toHaveBeenCalledWith(logoPath);
+      expect(result.logoUrl).toBe(`${logoPath}?sig=redacted`);
+    });
+
+    it('passes null through signing rather than fabricating a URL', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme Corp', logoPath: null, primaryColor: null, accentColor: null });
+
+      const result = await service.getBranding({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result.logoUrl).toBeNull();
+    });
   });
 
   describe('updateBrandingColors', () => {
     it('updates only the provided fields and returns the fresh branding', async () => {
-      prisma.organization.update.mockResolvedValue({ id: 'org-1', logoPath: null, primaryColor: '#1a73e8', accentColor: null });
+      prisma.organization.update.mockResolvedValue({ id: 'org-1', name: 'Acme Corp', logoPath: null, primaryColor: '#1a73e8', accentColor: null });
 
       const result = await service.updateBrandingColors({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', { primaryColor: '#1a73e8' });
 
@@ -245,7 +269,7 @@ describe('OrganizationsService', () => {
         { organizationId: 'org-1', isSuperAdmin: false },
         { actorUserId: 'user-1', action: 'organization.branding_updated', entityType: 'organization', entityId: 'org-1' },
       );
-      expect(result).toEqual({ logoUrl: null, primaryColor: '#1a73e8', accentColor: null });
+      expect(result).toEqual({ name: 'Acme Corp', logoUrl: null, primaryColor: '#1a73e8', accentColor: null });
     });
 
     it('throws BadRequestException when the caller has no organization context', async () => {
@@ -307,12 +331,12 @@ describe('OrganizationsService', () => {
 
   describe('getPublicBrandingBySlug', () => {
     it('returns branding for an existing slug, with no auth/tenant context required', async () => {
-      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', logoPath: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png', primaryColor: '#1a73e8', accentColor: null });
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme Corp', logoPath: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png', primaryColor: '#1a73e8', accentColor: null });
 
       const result = await service.getPublicBrandingBySlug('acme');
 
       expect(prisma.organization.findUnique).toHaveBeenCalledWith({ where: { slug: 'acme' } });
-      expect(result).toEqual({ logoUrl: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png', primaryColor: '#1a73e8', accentColor: null });
+      expect(result).toEqual({ name: 'Acme Corp', logoUrl: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png', primaryColor: '#1a73e8', accentColor: null });
     });
 
     it('throws NotFoundException for an unknown slug', async () => {

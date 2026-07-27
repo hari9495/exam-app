@@ -10,6 +10,7 @@ import { useAuth, SSO_PENDING_SLUG_KEY } from '../../lib/auth-context';
 import { decodeJwtPayload } from '../../lib/jwt';
 import { Button, Input } from '../../components/ui';
 import { useBranding } from '../../lib/hooks/useBranding';
+import { useDocumentBranding } from '../../lib/hooks/useDocumentBranding';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -23,6 +24,7 @@ export default function LoginPage() {
   const [ssoEnabled, setSsoEnabled] = useState(false);
   const [usePasswordInstead, setUsePasswordInstead] = useState(false);
   const { data: branding } = useBranding(organizationSlug || null);
+  useDocumentBranding(branding?.name, branding?.logoUrl);
 
   async function handleSlugBlur() {
     setUsePasswordInstead(false);

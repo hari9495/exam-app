@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import clsx from 'clsx';
 import { useAttemptQuery } from '../../../lib/hooks/useAttempt';
+import { useDocumentBranding } from '../../../lib/hooks/useDocumentBranding';
 import { onPrimaryTextColor } from '../../../lib/candidate-theme';
 
 // The exam-taking screen packs real content (timer, questions) directly below
@@ -12,6 +13,10 @@ import { onPrimaryTextColor } from '../../../lib/candidate-theme';
 export function CandidateThemeProvider({ children }: { children: React.ReactNode }) {
   const { data } = useAttemptQuery();
   const primaryColor = data?.organizationPrimaryColor ?? null;
+  // A candidate never sees a login screen, so the tab is their only cue about
+  // whose assessment this is. The org here comes from the invitation token, not
+  // a session.
+  useDocumentBranding(data?.organizationName, data?.organizationLogoUrl);
   const pathname = usePathname();
   const isExamPage = pathname?.startsWith('/exam') ?? false;
 

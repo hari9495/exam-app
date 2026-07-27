@@ -6,7 +6,9 @@ import { QueryProvider } from '../../lib/query-provider';
 import { fakeJwt } from '../../lib/test-utils/fake-jwt';
 
 const mockPush = jest.fn();
-jest.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush }) }));
+// usePathname is needed because the page applies organisation branding to the
+// browser tab (useDocumentBranding), which re-asserts the title on route change.
+jest.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush }), usePathname: () => '/login' }));
 
 describe('LoginPage', () => {
   const originalFetch = global.fetch;

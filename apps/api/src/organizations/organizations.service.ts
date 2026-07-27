@@ -19,6 +19,10 @@ import { UpdateWebhookUrlDto } from './dto/update-webhook-url.dto';
 import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
 
 export interface BrandingResponse {
+  // The organisation's own display name. Consumers render this in place of the
+  // product name wherever branding applies -- including the browser tab title,
+  // which previously always read "Prudent Hire" because nothing exposed this.
+  name: string;
   logoUrl: string | null;
   primaryColor: string | null;
   accentColor: string | null;
@@ -483,9 +487,22 @@ export class OrganizationsService {
     return context.organizationId;
   }
 
-  private toBrandingResponse(org: Pick<Organization, 'logoPath' | 'primaryColor' | 'accentColor'>): BrandingResponse {
+  // logoPath holds the FULL blob URL returned by blobStorage.upload(), which is
+  // its only writer. The evidence container is private, so that raw URL is not
+  // fetchable by a browser -- an <img src> or a favicon href pointing at it gets
+  // a 403. signIfOurs() mints a short-lived read-only SAS for blobs we own and
+  // passes anything else (a foreign URL, or storage being unconfigured in local
+  // dev) through untouched. The value comes from our own row, never from client
+  // input, which is the condition signIfOurs documents for safe use.
+  //
+  // Signing on the PUBLIC by-slug endpoint is intended: a login page has to show
+  // the organisation's logo before anyone has authenticated.
+  private async toBrandingResponse(
+    org: Pick<Organization, 'name' | 'logoPath' | 'primaryColor' | 'accentColor'>,
+  ): Promise<BrandingResponse> {
     return {
-      logoUrl: org.logoPath ?? null,
+      name: org.name,
+      logoUrl: ((await this.blobStorage.signIfOurs(org.logoPath ?? null)) as string | null) ?? null,
       primaryColor: org.primaryColor,
       accentColor: org.accentColor,
     };

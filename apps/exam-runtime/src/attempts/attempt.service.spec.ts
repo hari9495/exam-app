@@ -35,7 +35,7 @@ describe('AttemptService', () => {
   let runLimiter: { checkAndIncrement: jest.Mock };
   let leaderboardService: { computeRecruiterView: jest.Mock; computeCandidateView: jest.Mock };
   let audit: { record: jest.Mock };
-  let blobStorage: { upload: jest.Mock; uploadDataUri: jest.Mock };
+  let blobStorage: { upload: jest.Mock; uploadDataUri: jest.Mock; signIfOurs: jest.Mock };
   const session = { invitationId: 'inv-1' };
   const exam = {
     id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false,
@@ -63,7 +63,11 @@ describe('AttemptService', () => {
     runLimiter = { checkAndIncrement: jest.fn() };
     leaderboardService = { computeRecruiterView: jest.fn(), computeCandidateView: jest.fn() };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
-    blobStorage = { upload: jest.fn(), uploadDataUri: jest.fn().mockImplementation((path, dataUri) => Promise.resolve(`https://blob.test/${path}`)) };
+    blobStorage = {
+      upload: jest.fn(),
+      uploadDataUri: jest.fn().mockImplementation((path, dataUri) => Promise.resolve(`https://blob.test/${path}`)),
+      signIfOurs: jest.fn(async (value: unknown) => value),
+    };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -114,7 +118,7 @@ describe('AttemptService', () => {
   function mockBootstrapWithLogoThenScoped(scopedTx: unknown, logoPath: string | null = null) {
     tenantPrisma.forTenant
       .mockImplementationOnce(() => Promise.resolve(invitationRecord))
-      .mockImplementationOnce(() => Promise.resolve({ logoPath }))
+      .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath }))
       .mockImplementationOnce((_ctx, fn) => fn(scopedTx));
   }
 
@@ -151,6 +155,7 @@ describe('AttemptService', () => {
           { title: 'Section One', questionCount: 2 },
           { title: 'Section Two', questionCount: 5 },
         ],
+        organizationName: 'Acme Corp',
         organizationLogoUrl: null,
         organizationPrimaryColor: null,
       });
@@ -163,7 +168,7 @@ describe('AttemptService', () => {
       };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve(invitationRecord))
-        .mockImplementationOnce(() => Promise.resolve({ logoPath: null, primaryColor: '#B23B3B' }))
+        .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null, primaryColor: '#B23B3B' }))
         .mockImplementationOnce((_ctx, fn) => fn(tx));
 
       const result = await service.getCurrent(session);
@@ -263,7 +268,7 @@ describe('AttemptService', () => {
         const attempt = { ...attemptBase, proctoringBypassedAt: null, proctoringBypassRevokedAt: null };
         tenantPrisma.forTenant
           .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examWithCapture }))
-          .mockImplementationOnce(() => Promise.resolve({ logoPath: null }))
+          .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null }))
           .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(txFor(attempt)));
         settlement.settleIfExpired.mockResolvedValue(attempt);
         settlement.remainingSeconds.mockReturnValue(1000);
@@ -278,7 +283,7 @@ describe('AttemptService', () => {
         const attempt = { ...attemptBase, proctoringBypassedAt: null, proctoringBypassRevokedAt: null };
         tenantPrisma.forTenant
           .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examWithoutCapture }))
-          .mockImplementationOnce(() => Promise.resolve({ logoPath: null }))
+          .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null }))
           .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(txFor(attempt)));
         settlement.settleIfExpired.mockResolvedValue(attempt);
         settlement.remainingSeconds.mockReturnValue(1000);
@@ -298,7 +303,7 @@ describe('AttemptService', () => {
         const attempt = { ...attemptBase, proctoringBypassedAt: new Date(), proctoringBypassRevokedAt: null };
         tenantPrisma.forTenant
           .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examWithCapture }))
-          .mockImplementationOnce(() => Promise.resolve({ logoPath: null }))
+          .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null }))
           .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(txFor(attempt)));
         settlement.settleIfExpired.mockResolvedValue(attempt);
         settlement.remainingSeconds.mockReturnValue(1000);
@@ -330,7 +335,7 @@ describe('AttemptService', () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, extraTimePercent: 50 }))
-        .mockImplementationOnce(() => Promise.resolve({ logoPath: null }))
+        .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null }))
         .mockImplementationOnce((_ctx, fn) => fn(tx));
 
       const result = await service.getCurrent(session);
@@ -393,6 +398,7 @@ describe('AttemptService', () => {
         answers: [{ questionId: 'q1', selectedOptionIds: ['opt-a'], isMarkedForReview: false }],
         messages: [],
         feedback: null,
+        organizationName: 'Acme Corp',
         organizationLogoUrl: null,
         organizationPrimaryColor: null,
       });
@@ -653,7 +659,7 @@ describe('AttemptService', () => {
       tenantPrisma.forTenant.mockReset();
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve(examWithVisibility))
-        .mockImplementationOnce(() => Promise.resolve({ logoPath: null }))
+        .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null }))
         .mockImplementationOnce((_ctx, fn) => fn(tx));
 
       const result = await service.getCurrent(session);
@@ -680,7 +686,7 @@ describe('AttemptService', () => {
       const examWithVisibility = { ...invitationRecord, exam: { ...exam, feedbackVisibility: 'none' } };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve(examWithVisibility))
-        .mockImplementationOnce(() => Promise.resolve({ logoPath: null }))
+        .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null }))
         .mockImplementationOnce((_ctx, fn) => fn(tx));
 
       const result = await service.getCurrent(session);
@@ -707,7 +713,7 @@ describe('AttemptService', () => {
       const examWithVisibility = { ...invitationRecord, exam: { ...exam, feedbackVisibility: 'score' } };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve(examWithVisibility))
-        .mockImplementationOnce(() => Promise.resolve({ logoPath: null }))
+        .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null }))
         .mockImplementationOnce((_ctx, fn) => fn(tx));
 
       const result = await service.getCurrent(session);
@@ -749,7 +755,7 @@ describe('AttemptService', () => {
       tenantPrisma.forTenant.mockReset();
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve(examWithVisibility))
-        .mockImplementationOnce(() => Promise.resolve({ logoPath: null }))
+        .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null }))
         .mockImplementationOnce((_ctx, fn) => fn(tx));
 
       const result = await service.getCurrent(session);
@@ -1184,7 +1190,7 @@ describe('AttemptService', () => {
     function mockInvitationWithExamAndLogo(scopedTx: unknown, scheduledExam: Record<string, unknown>) {
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: scheduledExam }))
-        .mockImplementationOnce(() => Promise.resolve({ logoPath: null }))
+        .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null }))
         .mockImplementationOnce((_ctx, fn) => fn(scopedTx));
     }
 
@@ -1205,6 +1211,7 @@ describe('AttemptService', () => {
         },
         schedulingWindowState: 'not_open',
         sections: [],
+        organizationName: 'Acme Corp',
         organizationLogoUrl: null,
         organizationPrimaryColor: null,
       });

@@ -8,6 +8,7 @@ import clsx from 'clsx';
 import { LayoutDashboard, FileText, BookOpen, Users, History, ShieldCheck, Settings, KeyRound, LogOut } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
 import { useBranding } from '../../lib/hooks/useBranding';
+import { useDocumentBranding } from '../../lib/hooks/useDocumentBranding';
 import { useCurrentUser } from '../../lib/hooks/useCurrentUser';
 
 const BASE_NAV_ITEMS = [
@@ -31,6 +32,7 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const { accessToken, organizationSlug, role, actingSuperAdmin, isLoading, logout } = useAuth();
   const { data: branding } = useBranding(organizationSlug);
+  useDocumentBranding(branding?.name, branding?.logoUrl);
   const { data: currentUser } = useCurrentUser();
 
   useEffect(() => {

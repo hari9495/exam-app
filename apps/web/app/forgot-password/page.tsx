@@ -7,6 +7,7 @@ import { Building2, Mail, AlertCircle } from 'lucide-react';
 import { apiFetch } from '../../lib/api-client';
 import { Button, Input } from '../../components/ui';
 import { useBranding } from '../../lib/hooks/useBranding';
+import { useDocumentBranding } from '../../lib/hooks/useDocumentBranding';
 
 export default function ForgotPasswordPage() {
   const [organizationSlug, setOrganizationSlug] = useState('');
@@ -15,6 +16,7 @@ export default function ForgotPasswordPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { data: branding } = useBranding(organizationSlug || null);
+  useDocumentBranding(branding?.name, branding?.logoUrl);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

@@ -191,6 +191,7 @@ export interface SuperAdminSummary {
 }
 
 export interface BrandingResponse {
+  name: string;
   logoUrl: string | null;
   primaryColor: string | null;
   accentColor: string | null;
@@ -327,6 +328,7 @@ export interface AttemptPreview {
   };
   schedulingWindowState: 'not_open' | 'open' | 'closed' | null;
   sections: AttemptSectionSummary[];
+  organizationName: string | null;
   organizationLogoUrl: string | null;
   organizationPrimaryColor: string | null;
 }
@@ -364,6 +366,7 @@ export interface AttemptState {
   answers: AttemptAnswerSummary[];
   messages: AttemptMessageSummary[];
   feedback: AttemptFeedback | null;
+  organizationName: string | null;
   organizationLogoUrl: string | null;
   organizationPrimaryColor: string | null;
 }

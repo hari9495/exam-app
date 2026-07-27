@@ -87,6 +87,7 @@ interface AttemptPreviewResponse {
   };
   schedulingWindowState: 'not_open' | 'open' | 'closed' | null;
   sections: AttemptSectionSummary[];
+  organizationName: string | null;
   organizationLogoUrl: string | null;
   organizationPrimaryColor: string | null;
 }
@@ -127,6 +128,7 @@ interface AttemptStateResponse {
   answers: AttemptAnswerSummary[];
   messages: AttemptMessageSummary[];
   feedback: AttemptFeedback | null;
+  organizationName: string | null;
   organizationLogoUrl: string | null;
   organizationPrimaryColor: string | null;
 }
@@ -175,7 +177,11 @@ export class AttemptService {
 
   async getCurrent(session: CandidateSession): Promise<AttemptCurrentResponse> {
     const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
-    const { logoUrl: organizationLogoUrl, primaryColor: organizationPrimaryColor } = await this.getOrganizationBranding(organizationId);
+    const {
+      name: organizationName,
+      logoUrl: organizationLogoUrl,
+      primaryColor: organizationPrimaryColor,
+    } = await this.getOrganizationBranding(organizationId);
 
     return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
       const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
@@ -201,6 +207,7 @@ export class AttemptService {
             title: section.title,
             questionCount: section.selectionMode === 'pool' ? (section.poolSize ?? 0) : section.questions.length,
           })),
+          organizationName,
           organizationLogoUrl,
           organizationPrimaryColor,
         };
@@ -235,6 +242,7 @@ export class AttemptService {
         })),
         messages: unreadMessages.map((message) => ({ id: message.id, body: message.body, sentAt: message.sentAt })),
         feedback,
+        organizationName,
         organizationLogoUrl,
         organizationPrimaryColor,
       };
@@ -1040,12 +1048,25 @@ export class AttemptService {
     return { organizationId: exam.organizationId, exam, invitation };
   }
 
-  private async getOrganizationBranding(organizationId: string): Promise<{ logoUrl: string | null; primaryColor: string | null }> {
+  private async getOrganizationBranding(
+    organizationId: string,
+  ): Promise<{ name: string | null; logoUrl: string | null; primaryColor: string | null }> {
     const organization = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
-      tx.organization.findUnique({ where: { id: organizationId }, select: { logoPath: true, primaryColor: true } }),
+      tx.organization.findUnique({ where: { id: organizationId }, select: { name: true, logoPath: true, primaryColor: true } }),
     );
     return {
-      logoUrl: organization?.logoPath ? `${process.env.API_ORIGIN}/uploads/${organization.logoPath}` : null,
+      name: organization?.name ?? null,
+      // logoPath holds the FULL blob URL that blobStorage.upload() returns -- it is the
+      // only writer of the column. This previously built `${API_ORIGIN}/uploads/${logoPath}`,
+      // which concatenated an origin onto an absolute URL and produced an unfetchable
+      // address. It went unnoticed because no organisation in production has ever uploaded
+      // a logo (logo_path is NULL), so the branch never ran; it would have broken every
+      // candidate-facing logo the moment one did.
+      //
+      // signIfOurs() then mints a short-lived read-only SAS, because the blob container is
+      // private and the raw URL 403s in a browser. It passes through unchanged for a
+      // foreign URL or when storage is unconfigured (local dev), and never throws.
+      logoUrl: ((await this.blobStorage.signIfOurs(organization?.logoPath ?? null)) as string | null) ?? null,
       primaryColor: organization?.primaryColor ?? null,
     };
   }

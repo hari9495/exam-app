@@ -8,6 +8,7 @@ import clsx from 'clsx';
 import { Users, History, ShieldCheck, Settings, Plug, KeyRound, LogOut, LayoutDashboard, FileText, BookOpen } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
 import { useBranding } from '../../lib/hooks/useBranding';
+import { useDocumentBranding } from '../../lib/hooks/useDocumentBranding';
 import { useCurrentUser } from '../../lib/hooks/useCurrentUser';
 
 const BASE_NAV_ITEMS = [
@@ -32,6 +33,7 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
   const pathname = usePathname();
   const { accessToken, organizationSlug, role, actingSuperAdmin, isLoading, logout } = useAuth();
   const { data: branding } = useBranding(organizationSlug);
+  useDocumentBranding(branding?.name, branding?.logoUrl);
   const { data: currentUser } = useCurrentUser();
 
   useEffect(() => {

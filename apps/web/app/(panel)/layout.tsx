@@ -8,6 +8,7 @@ import { MotionConfig } from 'framer-motion';
 import { LogOut, LayoutDashboard, BookOpen, Users, History, ShieldCheck, Settings, KeyRound } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
 import { useBranding } from '../../lib/hooks/useBranding';
+import { useDocumentBranding } from '../../lib/hooks/useDocumentBranding';
 import { useCurrentUser } from '../../lib/hooks/useCurrentUser';
 
 const ACTING_EXTRA_NAV_ITEMS = [
@@ -26,6 +27,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const { accessToken, organizationSlug, role, actingSuperAdmin, isLoading, logout } = useAuth();
   const { data: branding } = useBranding(organizationSlug);
+  useDocumentBranding(branding?.name, branding?.logoUrl);
   const { data: currentUser } = useCurrentUser();
 
   useEffect(() => {
