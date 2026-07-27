@@ -88,8 +88,15 @@ export class TenantPrismaService {
   // it can be counted and alerted on.
   private async resetSessionContext(tx: Prisma.TransactionClient): Promise<void> {
     try {
-      await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_current_org', @value = NULL`;
+      // Order matters: these are sequential awaits in one try, so a failure on
+      // the first short-circuits the second, leaving whichever one runs
+      // second still set on the pooled connection. RLS ORs "is super admin"
+      // with "org matches" -- a stray app_is_super_admin=1 bypasses RLS on
+      // every tenant, while a stray app_current_org only scopes to one org.
+      // Clear the more dangerous flag first so a partial failure never
+      // strands it.
       await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0`;
+      await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_current_org', @value = NULL`;
     } catch (resetError) {
       const message = resetError instanceof Error ? resetError.message : String(resetError);
       this.logger.error(`TENANT_SESSION_CONTEXT_RESET_FAILED: pooled connection may retain tenant context -- ${message}`);

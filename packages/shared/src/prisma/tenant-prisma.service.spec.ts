@@ -30,8 +30,11 @@ describe('TenantPrismaService', () => {
     expect(result).toBe('ok');
     // set org, set super-admin, reset org, reset super-admin
     expect(executeRaw).toHaveBeenCalledTimes(4);
-    expect(resetSql(executeRaw, 2)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
-    expect(resetSql(executeRaw, 3)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
+    // Super-admin is cleared first: it's the more dangerous flag to strand
+    // (full RLS bypass vs. single-org scoping) if a partial reset failure
+    // short-circuits the second statement.
+    expect(resetSql(executeRaw, 2)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
+    expect(resetSql(executeRaw, 3)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
   });
 
   it('still resets session context to null/0 when the callback throws a non-P2028 error', async () => {
@@ -46,8 +49,11 @@ describe('TenantPrismaService', () => {
     ).rejects.toThrow('boom');
 
     expect(executeRaw).toHaveBeenCalledTimes(4);
-    expect(resetSql(executeRaw, 2)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
-    expect(resetSql(executeRaw, 3)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
+    // Super-admin is cleared first: it's the more dangerous flag to strand
+    // (full RLS bypass vs. single-org scoping) if a partial reset failure
+    // short-circuits the second statement.
+    expect(resetSql(executeRaw, 2)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
+    expect(resetSql(executeRaw, 3)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
   });
 
   it('still resets session context when the callback throws an HttpException (business-logic 4xx/409)', async () => {
@@ -69,8 +75,11 @@ describe('TenantPrismaService', () => {
     expect(caught).toBe(conflict);
     expect((caught as HttpException).getStatus()).toBe(HttpStatus.CONFLICT);
     expect(executeRaw).toHaveBeenCalledTimes(4);
-    expect(resetSql(executeRaw, 2)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
-    expect(resetSql(executeRaw, 3)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
+    // Super-admin is cleared first: it's the more dangerous flag to strand
+    // (full RLS bypass vs. single-org scoping) if a partial reset failure
+    // short-circuits the second statement.
+    expect(resetSql(executeRaw, 2)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
+    expect(resetSql(executeRaw, 3)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
   });
 
   it('maps a P2028 rejection from $transaction to a 503 with the { error, message } shape', async () => {
@@ -125,8 +134,8 @@ describe('TenantPrismaService', () => {
         .fn()
         .mockResolvedValueOnce(undefined) // set org
         .mockResolvedValueOnce(undefined) // set super-admin
-        .mockRejectedValueOnce(resetError) // reset org
-        .mockRejectedValueOnce(resetError); // reset super-admin
+        .mockRejectedValueOnce(resetError) // reset super-admin (runs first)
+        .mockRejectedValueOnce(resetError); // reset org
       return { tx: { $executeRaw: executeRaw }, executeRaw, resetError };
     }
 
@@ -139,8 +148,8 @@ describe('TenantPrismaService', () => {
 
       // The caller must see the callback's own result -- not have it replaced
       // or masked by the reset failure. Only 3 calls: set org, set
-      // super-admin, reset org (which throws and short-circuits the second
-      // reset statement).
+      // super-admin, reset super-admin (which throws and short-circuits the
+      // second reset statement).
       expect(result).toBe('ok');
       expect(executeRaw).toHaveBeenCalledTimes(3);
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('TENANT_SESSION_CONTEXT_RESET_FAILED'));
