@@ -255,11 +255,12 @@ export class AttemptSettlementService {
     attempt: Attempt,
     reason: WebcamViolationReason,
     snapshot: string,
-    // Screen-capture overlay from AttemptService.captureScreenshotMetadata -- server-authoritative
-    // (an upload URL or a screenshotCapReached flag), applied directly here with no sanitization
-    // pass. That's deliberate, not an oversight: unlike registerBrowserActivityViolation, this
-    // method never merges in client-supplied metadata, so there is no forged-key filter for a
-    // server-set `screenshot` key to collide with in the first place.
+    // Screen-capture overlay from AttemptService's decideScreenCapture/uploadScreenCapture/
+    // commitScreenCapture split -- server-authoritative (an upload URL or a screenshotCapReached
+    // flag), applied directly here with no sanitization pass. That's deliberate, not an
+    // oversight: unlike registerBrowserActivityViolation, this method never merges in
+    // client-supplied metadata, so there is no forged-key filter for a server-set `screenshot`
+    // key to collide with in the first place.
     screenshotMetadata?: Record<string, unknown>,
   ): Promise<{ attempt: Attempt; strike: number }> {
     const { enforcement, strikeLimit } = resolveProctoringConfig(exam, attempt);
@@ -279,17 +280,27 @@ export class AttemptSettlementService {
     });
     // Warn-only records and counts but never interrupts the candidate.
     const status = enforcement === 'warn' ? attempt.status : atLimit ? 'blocked' : 'paused';
-    // This is only ever reached from an in_progress attempt -- the caller (attempt.service.ts's
-    // webcamViolation) already throws before this if the attempt is paused/blocked, so there is
-    // no "already paused by someone else" case to guard against here (unlike the browser-activity
-    // path below, which has no such call-site guard).
+    // The caller (attempt.service.ts's webcamViolation) only ever reaches this with an attempt
+    // that was in_progress when *read* -- but as of ADO #6810 fix round 1, that read and this
+    // write are no longer in the same transaction: the write lands in a later, separate
+    // transaction, up to the upload's duration afterwards. A different owner (screen_share,
+    // browser_activity) can pause the attempt in that gap; the caller re-reads the attempt fresh
+    // immediately before calling this, so `attempt.status`/`attempt.pausedReason` here reflect
+    // that. Mirrors registerBrowserActivityViolation's wasAlreadyPaused guard below: escalation to
+    // blocked still happens, but a strike landing on top of an existing pause -- from any owner --
+    // must not restamp pausedAt/pausedReason and steal it (the exact bug fixed in 8351bc0 for the
+    // browser-activity path).
+    const wasAlreadyPaused = attempt.status === 'paused';
     const updated = await tx.attempt.update({
       where: { id: attempt.id },
       data: {
         webcamViolationCount: strike,
         status,
-        pausedAt: enforcement === 'warn' ? null : new Date(),
-        pausedReason: enforcement === 'warn' ? null : 'webcam',
+        ...(wasAlreadyPaused
+          ? {}
+          : enforcement === 'warn'
+            ? { pausedAt: null, pausedReason: null }
+            : { pausedAt: new Date(), pausedReason: 'webcam' as const }),
       },
     });
     void this.broadcaster

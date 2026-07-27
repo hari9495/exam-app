@@ -858,6 +858,35 @@ describe('AttemptSettlementService', () => {
 
       expect(tx.proctoringEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: 'webcam_multiple_faces' }) }));
     });
+
+    // ADO #6810 fix round 1: as of the decide/upload/commit split, this write can land up to the
+    // upload's duration after attempt.service.ts's webcamViolation last checked status, long
+    // enough for a different owner (screen_share here) to have paused the attempt in that gap.
+    // Mirrors registerBrowserActivityViolation's "does not clear an existing screen_share pause"
+    // test above -- the caller is expected to pass the attempt's *current* state (see
+    // attempt.service.ts's phase-3 re-read), so this attempt argument is already paused.
+    it('does not steal an existing screen_share pause when a webcam violation lands while already paused', async () => {
+      const originalPausedAt = new Date('2026-01-01T00:00:00.000Z');
+      const attempt = {
+        id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', webcamViolationCount: 0,
+        status: 'paused', pausedAt: originalPausedAt, pausedReason: 'screen_share',
+      } as any;
+      const tx = {
+        proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
+        attempt: { update: jest.fn().mockResolvedValue({ ...attempt, webcamViolationCount: 1 }) },
+      } as any;
+
+      const { attempt: updated, strike } = await service.registerWebcamViolation(tx, exam, attempt, 'no_face', 'data:image/jpeg;base64,abc');
+
+      expect(strike).toBe(1);
+      const data = tx.attempt.update.mock.calls[0][0].data;
+      expect(data).not.toHaveProperty('pausedAt');
+      expect(data).not.toHaveProperty('pausedReason');
+      // The strike still counts and status stays paused -- only the owner/timestamp are protected.
+      expect(data.webcamViolationCount).toBe(1);
+      expect(data.status).toBe('paused');
+      expect(updated.webcamViolationCount).toBe(1);
+    });
   });
 
   describe('registerBrowserActivityViolation', () => {

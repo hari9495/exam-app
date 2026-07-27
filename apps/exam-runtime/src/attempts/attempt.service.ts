@@ -133,17 +133,20 @@ interface AttemptStateResponse {
 
 export type AttemptCurrentResponse = AttemptPreviewResponse | AttemptStateResponse;
 
-// The blob upload runs inside the tenant-scoped interactive transaction (see
-// TenantPrismaService.forTenant), which has Prisma's default 5s timeout. A slow-but-eventually-
-// successful upload wouldn't throw on its own, so without a bound the transaction would already
-// be closed by the time we tried to write the event -- an uncaught "Transaction already closed"
-// that 500s and loses the violation, which is exactly what the catch below exists to prevent.
-// This timeout forces a slow upload to fail fast enough to still land in that catch.
+// As of ADO #6810 fix round 1, none of this file's three upload call sites (webcamViolation,
+// reportProctoringEvent, webcamSnapshot) run the blob upload inside a Prisma transaction anymore
+// -- each does decide / upload / commit as separate forTenant calls, so a slow upload can no
+// longer expire the interactive transaction's 5s timeout and lose a violation to an uncaught
+// "Transaction already closed". This bound now exists purely to cap candidate-visible latency: an
+// unbounded blob call would otherwise let a slow storage backend hang the HTTP response
+// indefinitely. Keep bounding every upload site added to this file even though none of the
+// current ones need it for the transaction-timeout reason anymore -- that reason returns instantly
+// if an upload is ever moved back inside a transaction.
 const SCREENSHOT_UPLOAD_TIMEOUT_MS = 3000;
 
 // Server-authoritative screen-capture cap, enforced against Attempt.screenCaptureCount (see
-// captureScreenshotMetadata below) -- not the client's own MAX_CAPTURES in useScreenCapture.ts,
-// which is a separate, non-authoritative politeness limit.
+// decideScreenCapture/commitScreenCapture below) -- not the client's own MAX_CAPTURES in
+// useScreenCapture.ts, which is a separate, non-authoritative politeness limit.
 const MAX_SCREEN_CAPTURES = 150;
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -572,8 +575,13 @@ export class AttemptService {
 
     // Phase 3: write the result -- fast, DB-only, no I/O wait.
     return this.tenantPrisma.forTenant(context, async (tx) => {
+      // Same re-read as webcamViolation's phase 3 above, and for the same reason: this matters
+      // when dto.eventType is strike-worthy, since registerBrowserActivityViolation's
+      // wasAlreadyPaused guard needs the attempt's *current* status/pausedReason, not phase 1's
+      // pre-upload snapshot.
+      const current = (await tx.attempt.findUnique({ where: { id: attempt.id } })) ?? attempt;
       const serverMetadata = await this.commitScreenCapture(tx, attempt.id, { capReached: false }, screenshotUrl);
-      return this.writeProctoringEvent(tx, exam, invitation, attempt, dto.eventType, metadata, serverMetadata);
+      return this.writeProctoringEvent(tx, exam, invitation, current, dto.eventType, metadata, serverMetadata);
     });
   }
 
@@ -676,11 +684,17 @@ export class AttemptService {
 
     // Phase 3: write the result -- fast, DB-only, no I/O wait.
     return this.tenantPrisma.forTenant(context, async (tx) => {
+      // Re-read the attempt fresh rather than reusing phase 1's snapshot: that read is now up to
+      // the upload's duration stale (see ADO #6810 fix round 1), long enough for a different
+      // pause owner (screen_share, browser_activity) to have committed in the meantime.
+      // registerWebcamViolation's wasAlreadyPaused guard needs the current status/pausedReason,
+      // not the one read before the upload started.
+      const current = (await tx.attempt.findUnique({ where: { id: attempt.id } })) ?? attempt;
       const screenMetadata = await this.commitScreenCapture(tx, attempt.id, screenDecision, screenCaptureUrl);
       const { attempt: updated, strike } = await this.attemptSettlement.registerWebcamViolation(
         tx,
         exam,
-        attempt,
+        current,
         dto.reason,
         snapshotUrl,
         screenMetadata,
@@ -798,23 +812,25 @@ export class AttemptService {
 
   async webcamSnapshot(session: CandidateSession, dto: WebcamSnapshotDto): Promise<{ ok: true }> {
     const { organizationId, invitation } = await this.resolveContext(session.invitationId);
-    await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+    const context = { organizationId, isSuperAdmin: false };
+
+    // Same decide/upload/commit split as webcamViolation and reportProctoringEvent (see ADO
+    // #6810 fix round 1) -- this fires unconditionally every 120-180s for the whole exam
+    // (useWebcamMonitor.ts), so at volume it holds far more of the pool's 25 slots over time
+    // than the bursty violation paths ever would.
+    const attemptId = await this.tenantPrisma.forTenant(context, async (tx) => {
       const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
-      if (!attempt) return;
-      // Same bound-and-catch as webcamViolation above -- an unbounded upload inside this
-      // interactive transaction risks an uncaught "Transaction already closed"; this is only
-      // an informational periodic snapshot, so a lost image is fine but a 500 isn't.
-      let snapshotUrl = '';
-      try {
-        snapshotUrl = await withTimeout(
-          this.blobStorage.uploadDataUri(`webcam-snapshots/${attempt.id}-${Date.now()}.jpg`, dto.snapshot),
-          SCREENSHOT_UPLOAD_TIMEOUT_MS,
-        );
-      } catch (error) {
-        this.logger.error('Failed to upload periodic webcam snapshot', error as Error);
-      }
+      return attempt?.id ?? null;
+    });
+    if (!attemptId) {
+      return { ok: true };
+    }
+
+    const snapshotUrl = await this.uploadWebcamSnapshot(attemptId, dto.snapshot);
+
+    await this.tenantPrisma.forTenant(context, async (tx) => {
       await tx.proctoringEvent.create({
-        data: { attemptId: attempt.id, eventType: 'webcam_snapshot', severity: 'low', metadataJson: JSON.stringify({ snapshot: snapshotUrl }) },
+        data: { attemptId, eventType: 'webcam_snapshot', severity: 'low', metadataJson: JSON.stringify({ snapshot: snapshotUrl }) },
       });
     });
     return { ok: true };

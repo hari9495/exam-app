@@ -1796,17 +1796,10 @@ describe('AttemptService', () => {
         expect(tx.proctoringEvent.create).toHaveBeenCalledWith({
           data: { attemptId: 'attempt-1', eventType: 'looking_down', severity: 'medium', metadataJson: JSON.stringify({ screenshot: uploadedUrl }) },
         });
-        // The upload must happen strictly after the first (decide) transaction's read and
-        // strictly before the second (commit) transaction's writes -- i.e. outside both.
-        const findOrder = tx.attempt.findUnique.mock.invocationCallOrder[0];
-        const uploadOrder = blobStorage.uploadDataUri.mock.invocationCallOrder[0];
-        const updateOrder = tx.attempt.update.mock.invocationCallOrder[0];
-        const createOrder = tx.proctoringEvent.create.mock.invocationCallOrder[0];
-        expect(findOrder).toBeLessThan(uploadOrder);
-        expect(uploadOrder).toBeLessThan(updateOrder);
-        expect(uploadOrder).toBeLessThan(createOrder);
-        // Three separate forTenant calls -- bootstrap, decide, commit -- proves the upload isn't
-        // nested inside either scoped transaction.
+        // Three separate forTenant calls -- bootstrap, decide, commit -- is what actually
+        // discriminates this from the pre-split shape: call order alone (find, then upload, then
+        // update/create) would look identical whether or not the upload sat inside a single
+        // transaction, so it isn't asserted here.
         expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(3);
       });
 
@@ -2434,16 +2427,10 @@ describe('AttemptService', () => {
         expect.any(String),
         { screenshot: screenshotUrl },
       );
-      // Ordering, in the spirit of candidates.service.spec.ts's invocationCallOrder assertions:
-      // both uploads must land strictly after the decide phase's read and strictly before the
-      // commit phase's writes -- proving neither upload runs inside a transaction.
-      const findOrder = tx.attempt.findUnique.mock.invocationCallOrder[0];
-      const uploadOrders = blobStorage.uploadDataUri.mock.invocationCallOrder;
-      const updateOrder = tx.attempt.update.mock.invocationCallOrder[0];
-      const registerOrder = (settlement.registerWebcamViolation as jest.Mock).mock.invocationCallOrder[0];
-      expect(findOrder).toBeLessThan(Math.min(...uploadOrders));
-      expect(Math.max(...uploadOrders)).toBeLessThan(updateOrder);
-      expect(updateOrder).toBeLessThan(registerOrder);
+      // Three separate forTenant calls -- bootstrap, decide, commit -- is what actually
+      // discriminates this from the pre-split shape (call order alone would look the same
+      // either way, since find/upload/update run in that sequence regardless of which
+      // transaction, if any, holds them).
       expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(3);
     });
 
@@ -2517,7 +2504,7 @@ describe('AttemptService', () => {
   describe('webcamSnapshot', () => {
     it('stores a low-severity webcam_snapshot event and does not emit a live flag', async () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
-      mockBootstrapThenScoped(tx);
+      mockBootstrapThenTwoScopedCalls(tx);
 
       const result = await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,abc' });
 
@@ -2529,11 +2516,15 @@ describe('AttemptService', () => {
       expect(created.data.severity).toBe('low');
       expect(JSON.parse(created.data.metadataJson).snapshot).toMatch(/^https:\/\/blob\.test\/webcam-snapshots\/attempt-1-/);
       expect(monitoringGateway.emitProctoringFlag).not.toHaveBeenCalled();
+      // Bootstrap, decide (phase 1), commit (phase 2) -- proves the upload isn't nested inside
+      // either scoped transaction (ADO #6810 fix round 1: webcamSnapshot is the third caller of
+      // the shared decide/upload/commit split).
+      expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(3);
     });
 
     it('still records the (informational) event with an empty snapshot when the upload throws, rather than 500ing', async () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
-      mockBootstrapThenScoped(tx);
+      mockBootstrapThenTwoScopedCalls(tx);
       const loggerErrorSpy = jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
       blobStorage.uploadDataUri.mockRejectedValueOnce(new Error('blob storage unavailable'));
 
@@ -2542,7 +2533,9 @@ describe('AttemptService', () => {
       expect(result).toEqual({ ok: true });
       const created = tx.proctoringEvent.create.mock.calls[0][0];
       expect(JSON.parse(created.data.metadataJson).snapshot).toBe('');
-      expect(loggerErrorSpy).toHaveBeenCalledWith('Failed to upload periodic webcam snapshot', expect.any(Error));
+      // uploadWebcamSnapshot is the same shared helper webcamViolation uses, so it's the same
+      // message -- this call site no longer has its own distinct "periodic" wording.
+      expect(loggerErrorSpy).toHaveBeenCalledWith('Failed to upload webcam snapshot', expect.any(Error));
     });
   });
 
