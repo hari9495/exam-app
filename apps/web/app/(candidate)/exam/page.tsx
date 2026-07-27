@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import Editor from '@monaco-editor/react';
+// Side-effect import: points the Monaco loader at self-hosted /monaco/vs before
+// the editor mounts, so a code question works on CDN-blocked exam networks.
+import '../../../lib/monaco-setup';
 import { Bookmark, ChevronDown, ChevronLeft, ChevronRight, Play } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '../../../components/ui';

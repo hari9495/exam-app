@@ -56,6 +56,9 @@ jest.mock('@monaco-editor/react', () => ({
   default: ({ value, onChange }: { value?: string; onChange?: (value: string | undefined) => void }) => (
     <textarea aria-label="code-editor" value={value} onChange={(event) => onChange?.(event.target.value)} />
   ),
+  // lib/monaco-setup (imported by the exam page) calls loader.config to self-host
+  // Monaco; the mock must expose it or the module throws at import.
+  loader: { config: jest.fn() },
 }));
 
 const attemptState = {
