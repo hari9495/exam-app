@@ -686,9 +686,10 @@ export class AttemptService {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       // Re-read the attempt fresh rather than reusing phase 1's snapshot: that read is now up to
       // the upload's duration stale (see ADO #6810 fix round 1), long enough for a different
-      // pause owner (screen_share, browser_activity) to have committed in the meantime.
-      // registerWebcamViolation's wasAlreadyPaused guard needs the current status/pausedReason,
-      // not the one read before the upload started.
+      // pause owner (screen_share, browser_activity) -- or a terminal state (blocked, submitted,
+      // expired) -- to have committed in the meantime. registerWebcamViolation's isLive/
+      // keepExistingPause guard needs the current status/pausedReason, not the one read before
+      // the upload started.
       const current = (await tx.attempt.findUnique({ where: { id: attempt.id } })) ?? attempt;
       const screenMetadata = await this.commitScreenCapture(tx, attempt.id, screenDecision, screenCaptureUrl);
       const { attempt: updated, strike } = await this.attemptSettlement.registerWebcamViolation(

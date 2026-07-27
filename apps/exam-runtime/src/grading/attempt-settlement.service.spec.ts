@@ -829,7 +829,7 @@ describe('AttemptSettlementService', () => {
     });
 
     it('merges the screenshot overlay into metadataJson directly, alongside snapshot/strike', async () => {
-      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', webcamViolationCount: 0 } as any;
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', status: 'in_progress', webcamViolationCount: 0 } as any;
       const tx = {
         proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, status: 'paused', webcamViolationCount: 1 }) },
@@ -848,7 +848,7 @@ describe('AttemptSettlementService', () => {
     });
 
     it('maps multiple_faces to the webcam_multiple_faces event type', async () => {
-      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', webcamViolationCount: 0 } as any;
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', status: 'in_progress', webcamViolationCount: 0 } as any;
       const tx = {
         proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, status: 'paused', webcamViolationCount: 1 }) },
@@ -908,7 +908,7 @@ describe('AttemptSettlementService', () => {
 
       expect(strike).toBe(2);
       const data = tx.attempt.update.mock.calls[0][0].data;
-      expect(data.status).not.toBe('paused');
+      expect(data.status).toBe('blocked');
       expect(data).not.toHaveProperty('pausedReason');
       expect(data).not.toHaveProperty('pausedAt');
       expect(data.webcamViolationCount).toBe(2);
