@@ -114,4 +114,62 @@ describe('TenantPrismaService', () => {
 
     await expect(service.forTenant(context, async () => 'unreachable')).rejects.toBe(genericError);
   });
+
+  describe('when the session-context reset itself fails', () => {
+    // Simulates the P2028-expiry hazard: the callback ran against a
+    // transaction that's now dead, so the two reset $executeRaw calls
+    // (indices 2 and 3) reject too.
+    function makeResetFailingTx() {
+      const resetError = new Error('Transaction already closed');
+      const executeRaw = jest
+        .fn()
+        .mockResolvedValueOnce(undefined) // set org
+        .mockResolvedValueOnce(undefined) // set super-admin
+        .mockRejectedValueOnce(resetError) // reset org
+        .mockRejectedValueOnce(resetError); // reset super-admin
+      return { tx: { $executeRaw: executeRaw }, executeRaw, resetError };
+    }
+
+    it('still returns the callback result when the reset throws, and logs the failure', async () => {
+      const { tx, executeRaw } = makeResetFailingTx();
+      const service = makeService((cb) => cb(tx));
+      const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+      const result = await service.forTenant(context, async () => 'ok');
+
+      // The caller must see the callback's own result -- not have it replaced
+      // or masked by the reset failure. Only 3 calls: set org, set
+      // super-admin, reset org (which throws and short-circuits the second
+      // reset statement).
+      expect(result).toBe('ok');
+      expect(executeRaw).toHaveBeenCalledTimes(3);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('TENANT_SESSION_CONTEXT_RESET_FAILED'));
+      // No connection string, org id, or candidate data in the log line.
+      expect(errorSpy.mock.calls[0][0]).not.toMatch(/org-1/);
+      errorSpy.mockRestore();
+    });
+
+    it('still surfaces the callback error (not the reset error) when both throw, and logs the reset failure', async () => {
+      const { tx, executeRaw } = makeResetFailingTx();
+      const service = makeService((cb) => cb(tx));
+      const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      const callbackError = new Error('callback boom');
+
+      let caught: unknown;
+      try {
+        await service.forTenant(context, async () => {
+          throw callbackError;
+        });
+      } catch (error) {
+        caught = error;
+      }
+
+      // The caller must see the callback's own error -- the reset's error
+      // must not mask it.
+      expect(caught).toBe(callbackError);
+      expect(executeRaw).toHaveBeenCalledTimes(3);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('TENANT_SESSION_CONTEXT_RESET_FAILED'));
+      errorSpy.mockRestore();
+    });
+  });
 });

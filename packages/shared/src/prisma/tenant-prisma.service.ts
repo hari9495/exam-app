@@ -37,8 +37,16 @@ export class TenantPrismaService {
           // connection to its pool once this callback resolves, so without this
           // reset a later query that bypasses forTenant on the same pooled
           // connection would silently inherit this request's tenant context.
-          await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_current_org', @value = NULL`;
-          await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0`;
+          //
+          // This can itself fail -- e.g. a P2028 transaction-expiry means the
+          // callback already ran against a now-dead transaction, and these
+          // resets fail right along with it. resetSessionContext() swallows
+          // that failure internally (see its own comment) precisely so this
+          // `finally` never throws: if it did, a throw here would replace
+          // fn(tx)'s successful return value, or mask fn(tx)'s own error, with
+          // the reset's error instead. Callers must see fn(tx)'s outcome and
+          // nothing else.
+          await this.resetSessionContext(tx);
         }
       });
     } catch (error) {
@@ -62,6 +70,29 @@ export class TenantPrismaService {
         throw new HttpException(POOL_EXHAUSTED_RESPONSE, HttpStatus.SERVICE_UNAVAILABLE);
       }
       throw error;
+    }
+  }
+
+  // Best-effort clear of the connection-scoped session context. Must never
+  // throw: it runs in forTenant's `finally`, and a throw there would
+  // overwrite fn(tx)'s own result/error (see the call site's comment).
+  //
+  // A failure here means the pooled connection may still carry
+  // app_current_org for whoever gets it next -- there is no known way to
+  // evict/discard just this connection from the pool (see the investigation
+  // in the round's report; Prisma's JS client exposes no per-connection
+  // handle or eviction hook without a driver adapter, which this project
+  // doesn't use, and $disconnect() would tear down the whole shared pool).
+  // So this can only make the failure visible, not fix it: log a distinctly
+  // grep-able line -- no connection string, org id, or candidate data -- so
+  // it can be counted and alerted on.
+  private async resetSessionContext(tx: Prisma.TransactionClient): Promise<void> {
+    try {
+      await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_current_org', @value = NULL`;
+      await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0`;
+    } catch (resetError) {
+      const message = resetError instanceof Error ? resetError.message : String(resetError);
+      this.logger.error(`TENANT_SESSION_CONTEXT_RESET_FAILED: pooled connection may retain tenant context -- ${message}`);
     }
   }
 }
