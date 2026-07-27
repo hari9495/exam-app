@@ -812,15 +812,17 @@ export class AttemptService {
   }
 
   async webcamSnapshot(session: CandidateSession, dto: WebcamSnapshotDto): Promise<{ ok: true }> {
-    const { organizationId, invitation } = await this.resolveContext(session.invitationId);
-    const context = { organizationId, isSuperAdmin: false };
+    const { invitation } = await this.resolveContext(session.invitationId);
 
-    // Same decide/upload/commit split as webcamViolation and reportProctoringEvent (see ADO
-    // #6810 fix round 1) -- this fires unconditionally every 120-180s for the whole exam
-    // (useWebcamMonitor.ts), so at volume it holds far more of the pool's 25 slots over time
-    // than the bursty violation paths ever would.
-    const attemptId = await this.tenantPrisma.forTenant(context, async (tx) => {
-      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
+    // Unlike webcamViolation/reportProctoringEvent, this touches only Attempt (a single read) and
+    // ProctoringEvent (a single create) -- neither RLS-protected -- and needs no multi-statement
+    // atomicity, so both calls run on the plain client instead of forTenant (see ADO #6809).
+    // Isolation still comes from invitation.id, resolved above through the candidate's own
+    // session, not from an organizationId predicate or RLS. This fires unconditionally every
+    // 120-180s for the whole exam (useWebcamMonitor.ts), so at volume it used to hold far more of
+    // the pool's 25 slots over time than the bursty violation paths ever would.
+    const attemptId = await this.tenantPrisma.withoutTenantScope(async (client) => {
+      const attempt = await client.attempt.findUnique({ where: { invitationId: invitation.id } });
       return attempt?.id ?? null;
     });
     if (!attemptId) {
@@ -829,8 +831,8 @@ export class AttemptService {
 
     const snapshotUrl = await this.uploadWebcamSnapshot(attemptId, dto.snapshot);
 
-    await this.tenantPrisma.forTenant(context, async (tx) => {
-      await tx.proctoringEvent.create({
+    await this.tenantPrisma.withoutTenantScope(async (client) => {
+      await client.proctoringEvent.create({
         data: { attemptId, eventType: 'webcam_snapshot', severity: 'low', metadataJson: JSON.stringify({ snapshot: snapshotUrl }) },
       });
     });

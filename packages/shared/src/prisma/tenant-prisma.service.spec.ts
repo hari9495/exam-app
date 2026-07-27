@@ -181,4 +181,61 @@ describe('TenantPrismaService', () => {
       errorSpy.mockRestore();
     });
   });
+
+  // ADO #6809: webcamSnapshot's two queries moved off forTenant onto the plain client (isolation
+  // comes from an ID chain already resolved through the candidate's own invitationId, not from
+  // organizationId/RLS, and neither query needs multi-statement atomicity). withoutTenantScope
+  // must still take a connection per call (no $transaction wrapper, no session-context
+  // set/reset) while reusing forTenant's exact P2028 -> 503 mapping, since a plain call still
+  // draws from the same pool and can still hit it.
+  describe('withoutTenantScope', () => {
+    function makePlainService() {
+      const transaction = jest.fn();
+      const prisma = { $transaction: transaction } as unknown as PrismaService;
+      return { service: new TenantPrismaService(prisma), prisma, transaction };
+    }
+
+    it('runs fn directly against the plain client and returns its result, without opening a transaction', async () => {
+      const { service, prisma, transaction } = makePlainService();
+
+      const result = await service.withoutTenantScope(async (client) => {
+        expect(client).toBe(prisma);
+        return 'plain-result';
+      });
+
+      expect(result).toBe('plain-result');
+      expect(transaction).not.toHaveBeenCalled();
+    });
+
+    it('maps a P2028 rejection to the same 503 as forTenant', async () => {
+      const { service } = makePlainService();
+      const p2028 = new Prisma.PrismaClientKnownRequestError('Unable to start a transaction in the given time', {
+        code: 'P2028',
+        clientVersion: '5.10.0',
+      });
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      let caught: unknown;
+      try {
+        await service.withoutTenantScope(() => Promise.reject(p2028));
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toBeInstanceOf(HttpException);
+      const httpError = caught as HttpException;
+      expect(httpError.getStatus()).toBe(HttpStatus.SERVICE_UNAVAILABLE);
+      expect(httpError.getResponse()).toEqual(POOL_EXHAUSTED_RESPONSE);
+      expect(JSON.stringify(httpError.getResponse())).not.toMatch(/P2028|Prisma|transaction/i);
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('P2028'));
+      warnSpy.mockRestore();
+    });
+
+    it('propagates a non-P2028 error unchanged', async () => {
+      const { service } = makePlainService();
+      const genericError = new Error('connection refused');
+
+      await expect(service.withoutTenantScope(() => Promise.reject(genericError))).rejects.toBe(genericError);
+    });
+  });
 });

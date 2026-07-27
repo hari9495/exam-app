@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
-import { BadRequestException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, HttpException, HttpStatus, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { AttemptService } from './attempt.service';
-import { TenantPrismaService, AuditService, BlobStorageService } from '@exam-platform/shared';
+import { TenantPrismaService, AuditService, BlobStorageService, POOL_EXHAUSTED_RESPONSE } from '@exam-platform/shared';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { LeaderboardService } from '../leaderboard/leaderboard.service';
@@ -20,7 +20,7 @@ function foldForCapCheck(text: string): string {
 
 describe('AttemptService', () => {
   let service: AttemptService;
-  let tenantPrisma: { forTenant: jest.Mock };
+  let tenantPrisma: { forTenant: jest.Mock; withoutTenantScope: jest.Mock };
   let settlement: {
     settleIfExpired: jest.Mock;
     finalize: jest.Mock;
@@ -48,7 +48,7 @@ describe('AttemptService', () => {
   const invitationRecord = { id: 'inv-1', candidateId: 'cand-1', examId: 'exam-1', exam, extraTimePercent: 0, candidate: { name: 'Ada Lovelace' } };
 
   beforeEach(async () => {
-    tenantPrisma = { forTenant: jest.fn() };
+    tenantPrisma = { forTenant: jest.fn(), withoutTenantScope: jest.fn() };
     settlement = {
       settleIfExpired: jest.fn(),
       finalize: jest.fn(),
@@ -98,6 +98,14 @@ describe('AttemptService', () => {
       .mockImplementationOnce(() => Promise.resolve(invitation))
       .mockImplementationOnce((_ctx, fn) => fn(scopedTx))
       .mockImplementationOnce((_ctx, fn) => fn(scopedTx));
+  }
+
+  // webcamSnapshot (ADO #6809): only resolveContext's invitation lookup still goes through
+  // forTenant -- the attempt read and the event write run on the plain client via
+  // withoutTenantScope instead, so both scoped calls just invoke fn against the same stub client.
+  function mockBootstrapThenPlainClient(client: unknown, invitation: unknown = invitationRecord) {
+    tenantPrisma.forTenant.mockImplementationOnce(() => Promise.resolve(invitation));
+    tenantPrisma.withoutTenantScope.mockImplementation((fn: (client: unknown) => unknown) => fn(client));
   }
 
   // getCurrent additionally looks up the org's logo (for candidate-facing branding) via a
@@ -2503,53 +2511,68 @@ describe('AttemptService', () => {
 
   describe('webcamSnapshot', () => {
     it('stores a low-severity webcam_snapshot event and does not emit a live flag', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
-      mockBootstrapThenTwoScopedCalls(tx);
+      const client = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
+      mockBootstrapThenPlainClient(client);
 
       const result = await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,abc' });
 
       expect(result).toEqual({ ok: true });
       expect(blobStorage.uploadDataUri).toHaveBeenCalledWith(expect.stringContaining('webcam-snapshots/attempt-1-'), 'data:image/jpeg;base64,abc');
-      const created = tx.proctoringEvent.create.mock.calls[0][0];
+      const created = client.proctoringEvent.create.mock.calls[0][0];
       expect(created.data.attemptId).toBe('attempt-1');
       expect(created.data.eventType).toBe('webcam_snapshot');
       expect(created.data.severity).toBe('low');
       expect(JSON.parse(created.data.metadataJson).snapshot).toMatch(/^https:\/\/blob\.test\/webcam-snapshots\/attempt-1-/);
       expect(monitoringGateway.emitProctoringFlag).not.toHaveBeenCalled();
-      // Bootstrap, decide (phase 1), commit (phase 3) -- proves the upload isn't nested inside
-      // either scoped transaction (ADO #6810 fix round 1: webcamSnapshot is the third caller of
-      // the shared decide/upload/commit split).
-      expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(3);
+      // ADO #6809: the attempt read and the event write now run on the plain client instead of
+      // forTenant -- only resolveContext's own invitation bootstrap still goes through forTenant
+      // on this path. This is the assertion that would fail if someone reverted the fix.
+      expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(1);
+      expect(tenantPrisma.withoutTenantScope).toHaveBeenCalledTimes(2);
     });
 
     it('still records the (informational) event with an empty snapshot when the upload throws, rather than 500ing', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
-      mockBootstrapThenTwoScopedCalls(tx);
+      const client = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
+      mockBootstrapThenPlainClient(client);
       const loggerErrorSpy = jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
       blobStorage.uploadDataUri.mockRejectedValueOnce(new Error('blob storage unavailable'));
 
       const result = await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,abc' });
 
       expect(result).toEqual({ ok: true });
-      const created = tx.proctoringEvent.create.mock.calls[0][0];
+      const created = client.proctoringEvent.create.mock.calls[0][0];
       expect(JSON.parse(created.data.metadataJson).snapshot).toBe('');
       // uploadWebcamSnapshot is the same shared helper webcamViolation uses, so it's the same
       // message -- this call site no longer has its own distinct "periodic" wording.
       expect(loggerErrorSpy).toHaveBeenCalledWith('Failed to upload webcam snapshot', expect.any(Error));
     });
 
-    // Previously untested, and now load-bearing for the toHaveBeenCalledTimes(3) assertion above
-    // (ADO #6810 fix round 2): no attempt means phase 1 returns null and the function must return
-    // early -- no upload, no second (commit) transaction.
-    it('does nothing when no attempt has been started, without uploading or opening a second transaction', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) } };
-      mockBootstrapThenScoped(tx);
+    // Previously untested, and now load-bearing for the toHaveBeenCalledTimes(2) assertion above:
+    // no attempt means phase 1 returns null and the function must return early -- no upload, no
+    // second (commit) call.
+    it('does nothing when no attempt has been started, without uploading or writing an event', async () => {
+      const client = { attempt: { findUnique: jest.fn().mockResolvedValue(null) } };
+      mockBootstrapThenPlainClient(client);
 
       const result = await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,abc' });
 
       expect(result).toEqual({ ok: true });
       expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
-      expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(2);
+      expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(1);
+      expect(tenantPrisma.withoutTenantScope).toHaveBeenCalledTimes(1);
+    });
+
+    // ADO #6809: a plain-client call still draws from the same pool, so pool exhaustion is still
+    // reachable here. webcamSnapshot must not swallow or downgrade it -- the candidate-facing
+    // 503 (mapped by TenantPrismaService.withoutTenantScope; see tenant-prisma.service.spec.ts)
+    // has to come straight through, not surface as an unhandled 500.
+    it('propagates a pool-exhausted 503 from the plain-client read rather than swallowing it', async () => {
+      const poolExhausted = new HttpException(POOL_EXHAUSTED_RESPONSE, HttpStatus.SERVICE_UNAVAILABLE);
+      tenantPrisma.forTenant.mockImplementationOnce(() => Promise.resolve(invitationRecord));
+      tenantPrisma.withoutTenantScope.mockImplementationOnce(() => Promise.reject(poolExhausted));
+
+      await expect(service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,abc' })).rejects.toBe(poolExhausted);
+      expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
     });
   });
 

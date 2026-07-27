@@ -50,27 +50,46 @@ export class TenantPrismaService {
         }
       });
     } catch (error) {
-      // P2028 is Prisma's generic "Transaction API error" -- it covers pool
-      // exhaustion (maxWait timeout), transaction expiry (a slow callback
-      // hitting the default 5s `timeout`), and "Transaction not found". These
-      // are different failure modes with different fixes, so don't collapse
-      // them into one claimed cause; error.message (Prisma-generated, no query
-      // values/org id/connection string) is what actually distinguishes them.
-      // Everything else (a bad query, a genuine constraint violation, a
-      // non-Prisma bug) must propagate unchanged so this catch never masks a
-      // real failure.
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2028') {
-        this.logger.warn(`Prisma P2028 (transaction unavailable): ${error.message}`);
-        // ponytail: this only sets the body + status. A real `Retry-After` header
-        // needs something with response access (global filter or interceptor) to
-        // read POOL_EXHAUSTED_RETRY_AFTER_SECONDS -- out of scope here per the
-        // brief ("do not introduce a global exception filter"). Add that filter,
-        // keyed on this exception's response.error === 'server_busy', when the
-        // header is actually needed on the wire.
-        throw new HttpException(POOL_EXHAUSTED_RESPONSE, HttpStatus.SERVICE_UNAVAILABLE);
-      }
-      throw error;
+      this.rethrowMappingPoolExhaustion(error);
     }
+  }
+
+  // For call sites whose isolation already comes from an ID chain resolved
+  // through the candidate/caller's own session (not from an organizationId
+  // predicate or RLS) and that touch no RLS-protected table -- see ADO #6809.
+  // Runs the query against the plain client instead of forTenant's interactive
+  // transaction, so it only holds a pooled connection per statement rather
+  // than for the whole method. Pool exhaustion is still reachable here (same
+  // pool), so this reuses forTenant's exact P2028 -> 503 mapping rather than
+  // letting a raw Prisma error surface as a candidate-facing 500.
+  async withoutTenantScope<T>(fn: (client: PrismaService) => Promise<T>): Promise<T> {
+    try {
+      return await fn(this.prisma);
+    } catch (error) {
+      this.rethrowMappingPoolExhaustion(error);
+    }
+  }
+
+  // P2028 is Prisma's generic "Transaction API error" -- it covers pool
+  // exhaustion (maxWait timeout), transaction expiry (a slow callback hitting
+  // the default 5s `timeout`), and "Transaction not found". These are
+  // different failure modes with different fixes, so don't collapse them into
+  // one claimed cause; error.message (Prisma-generated, no query values/org
+  // id/connection string) is what actually distinguishes them. Everything
+  // else (a bad query, a genuine constraint violation, a non-Prisma bug) must
+  // propagate unchanged so this never masks a real failure. Always throws.
+  private rethrowMappingPoolExhaustion(error: unknown): never {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2028') {
+      this.logger.warn(`Prisma P2028 (transaction unavailable): ${error.message}`);
+      // ponytail: this only sets the body + status. A real `Retry-After` header
+      // needs something with response access (global filter or interceptor) to
+      // read POOL_EXHAUSTED_RETRY_AFTER_SECONDS -- out of scope here per the
+      // brief ("do not introduce a global exception filter"). Add that filter,
+      // keyed on this exception's response.error === 'server_busy', when the
+      // header is actually needed on the wire.
+      throw new HttpException(POOL_EXHAUSTED_RESPONSE, HttpStatus.SERVICE_UNAVAILABLE);
+    }
+    throw error;
   }
 
   // Best-effort clear of the connection-scoped session context. Must never
