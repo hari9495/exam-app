@@ -575,7 +575,7 @@ export class AttemptService {
 
     // Phase 3: write the result -- fast, DB-only, no I/O wait.
     return this.tenantPrisma.forTenant(context, async (tx) => {
-      // Same re-read as webcamViolation's phase 3 above, and for the same reason: this matters
+      // Same re-read as webcamViolation's phase 3 below, and for the same reason: this matters
       // when dto.eventType is strike-worthy, since registerBrowserActivityViolation's
       // wasAlreadyPaused guard needs the attempt's *current* status/pausedReason, not phase 1's
       // pre-upload snapshot.

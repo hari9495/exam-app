@@ -278,25 +278,33 @@ export class AttemptSettlementService {
         metadataJson: JSON.stringify({ snapshot, strike, ...screenshotMetadata }),
       },
     });
-    // Warn-only records and counts but never interrupts the candidate.
-    const status = enforcement === 'warn' ? attempt.status : atLimit ? 'blocked' : 'paused';
     // The caller (attempt.service.ts's webcamViolation) only ever reaches this with an attempt
     // that was in_progress when *read* -- but as of ADO #6810 fix round 1, that read and this
     // write are no longer in the same transaction: the write lands in a later, separate
-    // transaction, up to the upload's duration afterwards. A different owner (screen_share,
-    // browser_activity) can pause the attempt in that gap; the caller re-reads the attempt fresh
+    // transaction, up to the upload's duration afterwards. The caller re-reads the attempt fresh
     // immediately before calling this, so `attempt.status`/`attempt.pausedReason` here reflect
-    // that. Mirrors registerBrowserActivityViolation's wasAlreadyPaused guard below: escalation to
-    // blocked still happens, but a strike landing on top of an existing pause -- from any owner --
-    // must not restamp pausedAt/pausedReason and steal it (the exact bug fixed in 8351bc0 for the
-    // browser-activity path).
-    const wasAlreadyPaused = attempt.status === 'paused';
+    // whatever landed in that gap -- which is no longer just "a different owner paused it"
+    // (mirroring registerBrowserActivityViolation's wasAlreadyPaused guard below), it can also be
+    // a terminal state: `blocked` (a different violation path already ended the attempt) or
+    // `submitted`/`expired` (the candidate finished during the upload window). `isLive` covers
+    // all three: for a non-live attempt, don't touch status at all (no resurrecting a submitted
+    // attempt back to `paused`, and no downgrading `blocked` back to `paused` the way a bare
+    // `atLimit ? 'blocked' : 'paused'` would for a strike that isn't itself at the limit), and
+    // don't stamp pausedAt/pausedReason either -- `webcamResume`
+    // (attempt.service.ts's webcamResume) only accepts pausedReason 'webcam', so overwriting a
+    // blocked attempt's fields with a webcam owner would let a candidate resume out of a block a
+    // different path deliberately imposed (the exact invariant screenShareState and
+    // registerBrowserActivityViolation's own blocked-early-return both protect). Warn-only still
+    // records and counts but never interrupts the candidate, live or not.
+    const isLive = attempt.status === 'in_progress' || attempt.status === 'paused';
+    const status = enforcement === 'warn' || !isLive ? attempt.status : atLimit ? 'blocked' : 'paused';
+    const keepExistingPause = !isLive || attempt.status === 'paused';
     const updated = await tx.attempt.update({
       where: { id: attempt.id },
       data: {
         webcamViolationCount: strike,
         status,
-        ...(wasAlreadyPaused
+        ...(keepExistingPause
           ? {}
           : enforcement === 'warn'
             ? { pausedAt: null, pausedReason: null }

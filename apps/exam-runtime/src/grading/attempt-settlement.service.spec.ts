@@ -794,7 +794,7 @@ describe('AttemptSettlementService', () => {
 
   describe('registerWebcamViolation', () => {
     it('pauses the attempt and logs a medium-severity event on strike 1', async () => {
-      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', webcamViolationCount: 0 } as any;
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', status: 'in_progress', webcamViolationCount: 0 } as any;
       const tx = {
         proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, status: 'paused', webcamViolationCount: 1 }) },
@@ -814,7 +814,7 @@ describe('AttemptSettlementService', () => {
     });
 
     it('blocks the attempt with high severity on strike 3', async () => {
-      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', webcamViolationCount: 2 } as any;
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', status: 'in_progress', webcamViolationCount: 2 } as any;
       const tx = {
         proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, status: 'blocked', webcamViolationCount: 3 }) },
@@ -886,6 +886,33 @@ describe('AttemptSettlementService', () => {
       expect(data.webcamViolationCount).toBe(1);
       expect(data.status).toBe('paused');
       expect(updated.webcamViolationCount).toBe(1);
+    });
+
+    // ADO #6810 fix round 2: `blocked` is a terminal state, not just "a different pause owner".
+    // The phase-3 re-read can return `blocked` (a different violation path already ended the
+    // attempt) as easily as `paused` -- a bare `atLimit ? 'blocked' : 'paused'` would downgrade it
+    // back to `paused` for a strike that isn't itself at the limit, and stamping
+    // `pausedReason: 'webcam'` over it would let webcamResume (which only accepts
+    // pausedReason 'webcam') resume an attempt a different path deliberately blocked.
+    it('does not downgrade an already-blocked attempt back to paused, and does not stamp a webcam pause over the block', async () => {
+      const attempt = {
+        id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', webcamViolationCount: 1,
+        status: 'blocked', pausedAt: null, pausedReason: null,
+      } as any;
+      const tx = {
+        proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
+        attempt: { update: jest.fn().mockResolvedValue({ ...attempt, webcamViolationCount: 2 }) },
+      } as any;
+
+      const { attempt: updated, strike } = await service.registerWebcamViolation(tx, exam, attempt, 'no_face', 'data:image/jpeg;base64,abc');
+
+      expect(strike).toBe(2);
+      const data = tx.attempt.update.mock.calls[0][0].data;
+      expect(data.status).not.toBe('paused');
+      expect(data).not.toHaveProperty('pausedReason');
+      expect(data).not.toHaveProperty('pausedAt');
+      expect(data.webcamViolationCount).toBe(2);
+      expect(updated.webcamViolationCount).toBe(2);
     });
   });
 
@@ -1194,7 +1221,7 @@ describe('AttemptSettlementService', () => {
       await service.registerWebcamViolation(
         tx,
         strictExam,
-        { id: 'a1', examId: 'exam-1', candidateId: 'c1', webcamViolationCount: 1, pausedDurationMs: 0 } as never,
+        { id: 'a1', examId: 'exam-1', candidateId: 'c1', status: 'in_progress', webcamViolationCount: 1, pausedDurationMs: 0 } as never,
         'no_face',
         'https://blob/snap.jpg',
       );

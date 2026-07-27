@@ -2516,7 +2516,7 @@ describe('AttemptService', () => {
       expect(created.data.severity).toBe('low');
       expect(JSON.parse(created.data.metadataJson).snapshot).toMatch(/^https:\/\/blob\.test\/webcam-snapshots\/attempt-1-/);
       expect(monitoringGateway.emitProctoringFlag).not.toHaveBeenCalled();
-      // Bootstrap, decide (phase 1), commit (phase 2) -- proves the upload isn't nested inside
+      // Bootstrap, decide (phase 1), commit (phase 3) -- proves the upload isn't nested inside
       // either scoped transaction (ADO #6810 fix round 1: webcamSnapshot is the third caller of
       // the shared decide/upload/commit split).
       expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(3);
@@ -2536,6 +2536,20 @@ describe('AttemptService', () => {
       // uploadWebcamSnapshot is the same shared helper webcamViolation uses, so it's the same
       // message -- this call site no longer has its own distinct "periodic" wording.
       expect(loggerErrorSpy).toHaveBeenCalledWith('Failed to upload webcam snapshot', expect.any(Error));
+    });
+
+    // Previously untested, and now load-bearing for the toHaveBeenCalledTimes(3) assertion above
+    // (ADO #6810 fix round 2): no attempt means phase 1 returns null and the function must return
+    // early -- no upload, no second (commit) transaction.
+    it('does nothing when no attempt has been started, without uploading or opening a second transaction', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) } };
+      mockBootstrapThenScoped(tx);
+
+      const result = await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,abc' });
+
+      expect(result).toEqual({ ok: true });
+      expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
+      expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(2);
     });
   });
 
