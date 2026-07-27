@@ -1,9 +1,11 @@
 import { ExecutionContext, HttpException, Injectable, Logger } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
+import { candidateThrottleKey } from './candidate-throttle-key';
 
-// This file has a byte-identical twin in the other app (apps/api and
-// apps/exam-runtime each carry one copy, since monorepo apps don't
-// cross-import internals). Keep them in sync; the unit spec lives in apps/api.
+// A near-twin of apps/api's FailOpenThrottlerGuard (monorepo apps don't
+// cross-import internals). The fail-open behaviour below is shared; the
+// getTracker override is exam-runtime-only, because only this app serves
+// candidates who share an office/exam-hall IP. Keep the fail-open half in sync.
 //
 // ThrottlerGuard awaits the Redis-backed storage on every request with no
 // fallback, which would turn a Redis outage into a 500 on every route. A
@@ -14,6 +16,15 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 @Injectable()
 export class FailOpenThrottlerGuard extends ThrottlerGuard {
   private readonly failOpenLogger = new Logger(FailOpenThrottlerGuard.name);
+
+  // Bucket candidate requests by candidate identity, not client IP, so an office
+  // full of candidates behind one NAT each get their own allowance instead of
+  // sharing the office's single IP bucket (which would reject nearly every
+  // request once a cohort is polling). Anonymous/foreign traffic still keys on
+  // IP via super.getTracker. See candidate-throttle-key.ts and ADO #6823.
+  protected async getTracker(req: Record<string, unknown>): Promise<string> {
+    return candidateThrottleKey(req) ?? (await super.getTracker(req));
+  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     try {
