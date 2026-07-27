@@ -153,34 +153,36 @@ export class AuthService {
         where: { userId: payload.sub, familyId: payload.familyId },
         data: { revokedAt: new Date() },
       });
-      // Routed through forTenant (super_admin bypass), not the raw client: `users` is
-      // RLS-protected and the raw client sets no session context, so a bare findUnique
-      // would silently match zero rows for every user, always falling through to the
-      // null branch below. Same pattern as completePasswordReset and this method's own
-      // success path further down. findUnique (not OrThrow): a token whose user was
-      // actually deleted is a real case that must still fall through to null below.
-      const compromisedUser = await this.tenantPrisma.forTenant(
-        { organizationId: null, isSuperAdmin: true },
-        (tx) => tx.user.findUnique({ where: { id: payload.sub } }),
-      );
-      // When compromisedUser is null (the token's user no longer exists -- e.g. deleted,
-      // or a stale token from before a reset), organizationId is also null. A null
-      // organizationId with isSuperAdmin: false is unwritable under this table's RLS
-      // block predicate: NULL = NULL evaluates to UNKNOWN in SQL, so the predicate
-      // rejects every such row, regardless of load. Route this case through the
-      // super_admin bypass instead -- correct both mechanically (it's the only way to
-      // write a null-org row) and semantically (a token attributable to no known user
-      // isn't attributable to any tenant either).
-      const isSuperAdmin = compromisedUser ? compromisedUser.role === 'super_admin' : true;
+      // The lookup below and the audit write both live inside this one try: the family
+      // revocation above has already committed, so nothing security-critical is lost if
+      // either fails, and a failure here -- whether the RLS-bypass transaction or the
+      // audit write itself -- must not prevent the client from being told their session
+      // was revoked. Surfacing a 500/503 here instead of the 401 below would leave them
+      // retrying with the same compromised token.
       try {
+        // Routed through forTenant (super_admin bypass), not the raw client: `users` is
+        // RLS-protected and the raw client sets no session context, so a bare findUnique
+        // would silently match zero rows for every user, always falling through to the
+        // null branch below. Same pattern as resetPassword and this method's own success
+        // path further down. findUnique (not OrThrow): a token whose user was actually
+        // deleted is a real case that must still fall through to null below.
+        const compromisedUser = await this.tenantPrisma.forTenant(
+          { organizationId: null, isSuperAdmin: true },
+          (tx) => tx.user.findUnique({ where: { id: payload.sub } }),
+        );
+        // When compromisedUser is null (the token's user no longer exists, e.g. deleted),
+        // organizationId is also null. A null organizationId with isSuperAdmin: false is
+        // unwritable under this table's RLS block predicate: NULL = NULL evaluates to
+        // UNKNOWN in SQL, so the predicate rejects every such row, regardless of load.
+        // Route this case through the super_admin bypass instead -- correct both
+        // mechanically (it's the only way to write a null-org row) and semantically (a
+        // token attributable to no known user isn't attributable to any tenant either).
+        const isSuperAdmin = compromisedUser ? compromisedUser.role === 'super_admin' : true;
         await this.audit.record(
           { organizationId: compromisedUser?.organizationId ?? null, isSuperAdmin },
           { actorUserId: payload.sub, action: 'auth.token_reuse_detected', entityType: 'user', entityId: payload.sub },
         );
       } catch (error) {
-        // A failure to write the audit trail must not prevent the client from being
-        // told their session was revoked -- surfacing a 500 here instead of the 401
-        // below would leave them retrying with the same compromised token.
         this.logger.error('Failed to record auth.token_reuse_detected audit entry', error as Error);
       }
       throw new UnauthorizedException('Refresh token reuse detected — session revoked');

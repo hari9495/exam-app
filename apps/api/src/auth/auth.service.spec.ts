@@ -151,7 +151,21 @@ describe('AuthService', () => {
     prisma.user.findUnique.mockResolvedValue({ id: 'user-1', organizationId: 'org-1', role: 'org_admin' });
     audit.record.mockRejectedValue(new Error('DB unavailable'));
 
-    await expect(service.refresh(refreshToken)).rejects.toThrow(UnauthorizedException);
+    await expect(service.refresh(refreshToken)).rejects.toThrow('Refresh token reuse detected — session revoked');
+  });
+
+  it('still throws the same 401 (not a 503) when the compromised-user forTenant lookup itself throws', async () => {
+    // The lookup is now a multi-statement RLS-bypass transaction, so it can fail on its
+    // own (e.g. a P2028 transaction timeout) independently of the audit write. The family
+    // has already been revoked by this point, so nothing security-critical is lost by
+    // swallowing this and still returning the 401 -- exactly the path an attacker replays
+    // in bursts, so it must never surface as a 500/503 instead.
+    const refreshToken = jwt.sign({ sub: 'user-1', familyId: 'family-1' }, { secret: process.env.JWT_REFRESH_SECRET });
+    prisma.refreshToken.findFirst.mockResolvedValue(null);
+    tenantPrisma.forTenant.mockRejectedValue(new Error('P2028: Transaction timed out'));
+
+    await expect(service.refresh(refreshToken)).rejects.toThrow('Refresh token reuse detected — session revoked');
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   describe('forgotPassword', () => {
