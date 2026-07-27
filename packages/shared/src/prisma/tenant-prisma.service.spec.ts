@@ -82,7 +82,7 @@ describe('TenantPrismaService', () => {
     expect(resetSql(executeRaw, 3)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
   });
 
-  it('maps a P2028 rejection from $transaction to a 503 with the { error, message } shape', async () => {
+  it('maps a P2028 (transaction unavailable) rejection from $transaction to a 503 with the { error, message } shape', async () => {
     const p2028 = new Prisma.PrismaClientKnownRequestError('Unable to start a transaction in the given time', {
       code: 'P2028',
       clientVersion: '5.10.0',
@@ -104,6 +104,33 @@ describe('TenantPrismaService', () => {
     // Candidate-facing message must not leak Prisma internals.
     expect(JSON.stringify(httpError.getResponse())).not.toMatch(/P2028|Prisma|transaction/i);
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('P2028'));
+    warnSpy.mockRestore();
+  });
+
+  // P2024 ("timed out fetching a new connection from the pool") is the non-transactional
+  // counterpart to P2028 -- $transaction itself can reject with it before the callback ever
+  // runs, if the pool is exhausted before an interactive transaction is even opened. An earlier
+  // review flagged this code as unmatched by the original P2028-only guard; must map the same way.
+  it('maps a P2024 (pool exhausted) rejection from $transaction to the same 503', async () => {
+    const p2024 = new Prisma.PrismaClientKnownRequestError('Timed out fetching a new connection from the connection pool', {
+      code: 'P2024',
+      clientVersion: '5.10.0',
+    });
+    const service = makeService(() => Promise.reject(p2024));
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+    let caught: unknown;
+    try {
+      await service.forTenant(context, async () => 'unreachable');
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(HttpException);
+    const httpError = caught as HttpException;
+    expect(httpError.getStatus()).toBe(HttpStatus.SERVICE_UNAVAILABLE);
+    expect(httpError.getResponse()).toEqual(POOL_EXHAUSTED_RESPONSE);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('P2024'));
     warnSpy.mockRestore();
   });
 
@@ -186,8 +213,10 @@ describe('TenantPrismaService', () => {
   // comes from an ID chain already resolved through the candidate's own invitationId, not from
   // organizationId/RLS, and neither query needs multi-statement atomicity). withoutTenantScope
   // must still take a connection per call (no $transaction wrapper, no session-context
-  // set/reset) while reusing forTenant's exact P2028 -> 503 mapping, since a plain call still
-  // draws from the same pool and can still hit it.
+  // set/reset) while mapping pool exhaustion to the same 503 as forTenant -- but since a plain
+  // query never opens an interactive transaction, the pool-exhausted rejection it actually gets
+  // is P2024 ("timed out fetching a new connection"), not forTenant's P2028. Round-1 fix: the
+  // shared mapping now matches both codes (see rethrowMappingPoolExhaustion).
   describe('withoutTenantScope', () => {
     function makePlainService() {
       const transaction = jest.fn();
@@ -228,6 +257,33 @@ describe('TenantPrismaService', () => {
       expect(httpError.getResponse()).toEqual(POOL_EXHAUSTED_RESPONSE);
       expect(JSON.stringify(httpError.getResponse())).not.toMatch(/P2028|Prisma|transaction/i);
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('P2028'));
+      warnSpy.mockRestore();
+    });
+
+    // This is the case that actually happens in production: a plain query blocked on the pool
+    // rejects with P2024, not P2028 -- there's no interactive transaction here to reject with
+    // P2028. Fails against a P2028-only guard (the round-1 gap: an unmapped 500, no warn line).
+    it('maps a P2024 (pool exhausted) rejection to the same 503, since that is what a plain query actually gets', async () => {
+      const { service } = makePlainService();
+      const p2024 = new Prisma.PrismaClientKnownRequestError('Timed out fetching a new connection from the connection pool', {
+        code: 'P2024',
+        clientVersion: '5.10.0',
+      });
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      let caught: unknown;
+      try {
+        await service.withoutTenantScope(() => Promise.reject(p2024));
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toBeInstanceOf(HttpException);
+      const httpError = caught as HttpException;
+      expect(httpError.getStatus()).toBe(HttpStatus.SERVICE_UNAVAILABLE);
+      expect(httpError.getResponse()).toEqual(POOL_EXHAUSTED_RESPONSE);
+      expect(JSON.stringify(httpError.getResponse())).not.toMatch(/P2024|Prisma|transaction/i);
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('P2024'));
       warnSpy.mockRestore();
     });
 

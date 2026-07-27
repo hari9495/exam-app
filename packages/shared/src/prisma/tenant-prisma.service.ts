@@ -3,12 +3,15 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from './prisma.service';
 import { TenantContext } from './tenant-context';
 
-// Candidate-facing retry hint for a P2028 ("transaction unavailable")
-// rejection -- covers pool exhaustion, transaction expiry, and "transaction
-// not found" alike; the response itself doesn't claim which one it was (see
-// the log line in forTenant() for that). Mirrors the { error, message } shape
-// attempt.service.ts already uses for a Piston outage -- see forTenant()
-// below for why this can't yet be a real `Retry-After` HTTP header.
+// Candidate-facing retry hint for a P2028 ("transaction unavailable") or
+// P2024 ("timed out fetching a new connection from the pool") rejection --
+// together these cover pool exhaustion (both interactive-transaction and
+// plain-query paths), transaction expiry, and "transaction not found" alike;
+// the response itself doesn't claim which one it was (see the log line in
+// rethrowMappingPoolExhaustion() for that). Mirrors the { error, message }
+// shape attempt.service.ts already uses for a Piston outage -- see
+// forTenant() below for why this can't yet be a real `Retry-After` HTTP
+// header.
 export const POOL_EXHAUSTED_RESPONSE = {
   error: 'server_busy',
   message: 'The server is busier than usual right now. Please try again in a few seconds.',
@@ -60,9 +63,19 @@ export class TenantPrismaService {
   // Runs the query against the plain client instead of forTenant's interactive
   // transaction, so it only holds a pooled connection per statement rather
   // than for the whole method. Pool exhaustion is still reachable here (same
-  // pool), so this reuses forTenant's exact P2028 -> 503 mapping rather than
-  // letting a raw Prisma error surface as a candidate-facing 500.
-  async withoutTenantScope<T>(fn: (client: PrismaService) => Promise<T>): Promise<T> {
+  // pool) -- but a non-transactional query blocked on the pool rejects with
+  // P2024 ("timed out fetching a new connection"), not forTenant's P2028
+  // ("transaction unavailable"), since there's no interactive transaction to
+  // reject here. rethrowMappingPoolExhaustion() matches both, so this still
+  // maps to the same candidate-facing 503 rather than a raw 500.
+  //
+  // Narrowed to the two delegates this path is actually cleared for (see the
+  // RLS analysis in ADO #6809's report): widening this to the full
+  // PrismaService would let a future caller reach an RLS-protected table
+  // (e.g. `question`) through here and silently get zero rows back instead
+  // of a compile error. Widen deliberately, per call site, if a new
+  // RLS-free/no-atomicity query needs it.
+  async withoutTenantScope<T>(fn: (client: Pick<PrismaService, 'attempt' | 'proctoringEvent'>) => Promise<T>): Promise<T> {
     try {
       return await fn(this.prisma);
     } catch (error) {
@@ -70,17 +83,23 @@ export class TenantPrismaService {
     }
   }
 
-  // P2028 is Prisma's generic "Transaction API error" -- it covers pool
+  // P2028 is Prisma's generic interactive-transaction error -- it covers pool
   // exhaustion (maxWait timeout), transaction expiry (a slow callback hitting
-  // the default 5s `timeout`), and "Transaction not found". These are
-  // different failure modes with different fixes, so don't collapse them into
-  // one claimed cause; error.message (Prisma-generated, no query values/org
-  // id/connection string) is what actually distinguishes them. Everything
-  // else (a bad query, a genuine constraint violation, a non-Prisma bug) must
-  // propagate unchanged so this never masks a real failure. Always throws.
+  // the default 5s `timeout`), and "Transaction not found" for $transaction
+  // callers (forTenant). P2024 is the non-transactional counterpart -- "timed
+  // out fetching a new connection from the pool" -- which is what a plain
+  // query (withoutTenantScope) gets instead when the pool itself is
+  // exhausted, since it never opens an interactive transaction to expire.
+  // Both are pool-exhaustion-shaped failures from the caller's perspective,
+  // so both map to the same 503; error.message (Prisma-generated, no query
+  // values/org id/connection string) and error.code are what actually
+  // distinguish which one happened, so log those rather than collapsing them
+  // into one claimed cause. Everything else (a bad query, a genuine
+  // constraint violation, a non-Prisma bug) must propagate unchanged so this
+  // never masks a real failure. Always throws.
   private rethrowMappingPoolExhaustion(error: unknown): never {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2028') {
-      this.logger.warn(`Prisma P2028 (transaction unavailable): ${error.message}`);
+    if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2028' || error.code === 'P2024')) {
+      this.logger.warn(`Prisma ${error.code} (pool exhausted / transaction unavailable): ${error.message}`);
       // ponytail: this only sets the body + status. A real `Retry-After` header
       // needs something with response access (global filter or interceptor) to
       // read POOL_EXHAUSTED_RETRY_AFTER_SECONDS -- out of scope here per the
