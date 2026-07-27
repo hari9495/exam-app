@@ -98,7 +98,7 @@ describe('AuthService', () => {
     expect(decoded.role).toBe('org_admin');
   });
 
-  it('revokes the whole refresh-token family and audits the incident on reuse detection', async () => {
+  it('revokes the whole refresh-token family and audits the incident, attributed to the compromised user\'s real org, on reuse detection', async () => {
     const refreshToken = jwt.sign({ sub: 'user-1', familyId: 'family-1' }, { secret: process.env.JWT_REFRESH_SECRET });
     prisma.refreshToken.findFirst.mockResolvedValue(null);
     prisma.user.findUnique.mockResolvedValue({ id: 'user-1', organizationId: 'org-1', role: 'org_admin' });
@@ -109,13 +109,22 @@ describe('AuthService', () => {
       where: { userId: 'user-1', familyId: 'family-1' },
       data: { revokedAt: expect.any(Date) },
     });
+    // The compromised-user lookup must go through forTenant's super_admin bypass, not
+    // the raw client -- `users` is RLS-protected, so a bare findUnique would silently
+    // match zero rows and this would always fall through to the null/org-less branch,
+    // misattributing every reuse-detection audit entry away from the real tenant.
+    expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(1);
+    expect(tenantPrisma.forTenant).toHaveBeenCalledWith(
+      { organizationId: null, isSuperAdmin: true },
+      expect.any(Function),
+    );
     expect(audit.record).toHaveBeenCalledWith(
       { organizationId: 'org-1', isSuperAdmin: false },
       { actorUserId: 'user-1', action: 'auth.token_reuse_detected', entityType: 'user', entityId: 'user-1' },
     );
   });
 
-  it('audits reuse detection with isSuperAdmin: true when the token\'s user no longer exists', async () => {
+  it('audits reuse detection with isSuperAdmin: true when the token\'s user is genuinely absent', async () => {
     // organizationId: null with isSuperAdmin: false is unwritable under this table's RLS
     // block predicate (NULL = NULL is UNKNOWN in SQL, never TRUE) -- this must route
     // through the super_admin bypass instead, or the audit write always fails.
@@ -125,6 +134,11 @@ describe('AuthService', () => {
 
     await expect(service.refresh(refreshToken)).rejects.toThrow(UnauthorizedException);
 
+    expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(1);
+    expect(tenantPrisma.forTenant).toHaveBeenCalledWith(
+      { organizationId: null, isSuperAdmin: true },
+      expect.any(Function),
+    );
     expect(audit.record).toHaveBeenCalledWith(
       { organizationId: null, isSuperAdmin: true },
       { actorUserId: 'ghost-user', action: 'auth.token_reuse_detected', entityType: 'user', entityId: 'ghost-user' },

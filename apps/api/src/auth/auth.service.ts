@@ -153,7 +153,16 @@ export class AuthService {
         where: { userId: payload.sub, familyId: payload.familyId },
         data: { revokedAt: new Date() },
       });
-      const compromisedUser = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+      // Routed through forTenant (super_admin bypass), not the raw client: `users` is
+      // RLS-protected and the raw client sets no session context, so a bare findUnique
+      // would silently match zero rows for every user, always falling through to the
+      // null branch below. Same pattern as completePasswordReset and this method's own
+      // success path further down. findUnique (not OrThrow): a token whose user was
+      // actually deleted is a real case that must still fall through to null below.
+      const compromisedUser = await this.tenantPrisma.forTenant(
+        { organizationId: null, isSuperAdmin: true },
+        (tx) => tx.user.findUnique({ where: { id: payload.sub } }),
+      );
       // When compromisedUser is null (the token's user no longer exists -- e.g. deleted,
       // or a stale token from before a reset), organizationId is also null. A null
       // organizationId with isSuperAdmin: false is unwritable under this table's RLS
