@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { candidateApiFetch, setCandidateUnauthorizedHandler } from './candidate-api-client';
+import { withRetry } from './retry';
 
 interface CandidateAuthContextValue {
   accessToken: string | null;
@@ -49,7 +50,13 @@ export function CandidateAuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   async function redeem(token: string) {
-    const result = await candidateApiFetch('/candidate-auth/redeem', { method: 'POST', body: JSON.stringify({ token }) });
+    // Redeem runs unattended on mount and is the candidate's only way into the
+    // exam, so a transient 5xx here used to strand them on an error card with
+    // no recourse but a manual reload. withRetry's predicate keeps this from
+    // spending the endpoint's 5/min per-IP budget on a spent or invalid token.
+    const result = await withRetry(() =>
+      candidateApiFetch('/candidate-auth/redeem', { method: 'POST', body: JSON.stringify({ token }) }),
+    );
     setAccessToken(result.accessToken);
   }
 

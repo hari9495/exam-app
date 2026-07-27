@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, seconds } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
@@ -12,6 +12,7 @@ import { GradingModule } from './grading/grading.module';
 import { LocalMonitoringBridgeModule } from './monitoring/local-monitoring-bridge.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
 import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
+import { ServerBusyRetryAfterFilter } from './server-busy-retry-after.filter';
 
 @Module({
   imports: [
@@ -37,6 +38,9 @@ import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
     GradingModule,
     LocalMonitoringBridgeModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: FailOpenThrottlerGuard }],
+  providers: [
+    { provide: APP_GUARD, useClass: FailOpenThrottlerGuard },
+    { provide: APP_FILTER, useClass: ServerBusyRetryAfterFilter },
+  ],
 })
 export class AppModule {}

@@ -3,25 +3,10 @@ import { useRef } from 'react';
 import { candidateApiFetch } from '../candidate-api-client';
 import { useCandidateAuth } from '../candidate-auth-context';
 import { useToast } from '../../components/ui';
+import { isRetryableError, withRetry } from '../retry';
 import { AttemptCurrent, ProctoringEventType, CandidateLeaderboardResponse, AnswerTelemetry } from '../types';
 
 const ANSWER_DEBOUNCE_MS = 800;
-const RETRY_ATTEMPTS = 3;
-
-async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error;
-      if (attempt < RETRY_ATTEMPTS - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 2 ** attempt * 500));
-      }
-    }
-  }
-  throw lastError;
-}
 
 export function useAttemptQuery() {
   const { accessToken } = useCandidateAuth();
@@ -133,6 +118,13 @@ export function useRunCode() {
   return useMutation({
     mutationFn: ({ questionId, code, codeLanguage, stdin }: { questionId: string; code: string; codeLanguage: string; stdin?: string }): Promise<RunCodeResult> =>
       candidateApiFetch('/attempt/run-code', { method: 'POST', body: JSON.stringify({ questionId, code, codeLanguage, stdin }) }, accessToken ?? undefined),
+    // Deliberately opted out of the global mutation retry. Each run consumes one
+    // of a hard 10/min per-IP budget (STRICT_CODE_RUN_THROTTLE) and re-executes
+    // code in the external sandbox, so an automatic retry spends a scarce,
+    // candidate-visible resource -- runsRemaining is on screen -- to re-do work
+    // that may well have already run. The candidate presses Run again if they
+    // want another attempt.
+    retry: false,
   });
 }
 
@@ -190,7 +182,10 @@ export function useScreenShareState() {
     // path (mount, never shared, one transient failure). React Query retries with exponential
     // backoff before onError ever fires, making the ref-reset there a last resort, not the
     // only line of defense.
-    retry: 2,
+    // Keeps its own two retries rather than the global three, but defers to the
+    // shared predicate so a 4xx (which no number of retries will change) stops
+    // immediately instead of being repeated.
+    retry: (failureCount, error) => failureCount < 3 && isRetryableError(error),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] }),
   });
 }

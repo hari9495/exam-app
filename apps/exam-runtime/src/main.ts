@@ -22,7 +22,11 @@ async function bootstrap() {
   app.use(json({ limit: JSON_BODY_LIMIT }));
   app.use(urlencoded({ extended: true, limit: JSON_BODY_LIMIT }));
   app.use(cookieParser());
-  app.enableCors({ origin: process.env.WEB_ORIGIN, credentials: true });
+  // `Retry-After` is not a CORS-safelisted response header, so without exposing it
+  // the candidate app -- which runs on a different origin -- can see the 503 but not
+  // the server's own backoff hint, and would fall back to guessing one. See
+  // ServerBusyRetryAfterFilter for what sets it.
+  app.enableCors({ origin: process.env.WEB_ORIGIN, credentials: true, exposedHeaders: ['Retry-After'] });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
   app.setGlobalPrefix('api/v1');
   await app.listen(process.env.EXAM_RUNTIME_PORT ?? 3002);

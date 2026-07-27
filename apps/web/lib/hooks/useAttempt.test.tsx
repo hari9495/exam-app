@@ -170,9 +170,12 @@ describe('useAnswerMutation', () => {
       hook!.saveAnswer('q1', ['a']);
     });
 
-    // debounce (800ms) + retry backoffs (500ms + 1000ms) across 3 attempts
+    // debounce (800ms) + retry backoffs across 3 attempts. The backoffs are
+    // jittered by +/-25% (see lib/retry.ts -- it stops a shared Retry-After
+    // from resynchronising every client), so advance past the worst case,
+    // 625ms + 1250ms, rather than the nominal 500ms + 1000ms.
     await act(async () => {
-      await jest.advanceTimersByTimeAsync(800 + 500 + 1000);
+      await jest.advanceTimersByTimeAsync(800 + 625 + 1250 + 100);
     });
 
     expect(answerAttempts).toBe(3);
