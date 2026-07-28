@@ -342,7 +342,10 @@ export default function CandidateExamPage() {
               <ChevronDown className="h-3 w-3" aria-hidden="true" />
             </span>
           </button>
-          <div className="flex flex-col items-end">
+          {/* ml-auto, not justify-between alone: the Q-navigator button beside this is
+              lg:hidden, so on desktop this block is the row's only child and would
+              otherwise sit flush left, misaligned under the timer. */}
+          <div className="ml-auto flex flex-col items-end text-right">
             <span className="hidden text-sm font-bold text-candidate-text lg:inline">{attemptState.exam.title}</span>
             <span className="text-xs text-candidate-text-tertiary">{attemptState.candidateName}</span>
           </div>
@@ -354,13 +357,14 @@ export default function CandidateExamPage() {
         <div className="flex-1 rounded-lg bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-start justify-between gap-3">
             <div className="flex min-w-0 flex-col gap-1.5">
-              {/* Which section this question belongs to. flattenQuestions already carries
-                  sectionTitle through, so candidates can see where they are in the paper. */}
-              {question.sectionTitle ? (
-                <span className="w-fit max-w-full truncate rounded-md bg-candidate-primary-light px-2.5 py-1 text-xs font-semibold text-candidate-primary">
-                  {question.sectionTitle}
-                </span>
-              ) : null}
+              {/* Where the candidate is in the paper. The word "Section" and the position are
+                  what carry the meaning for a first-timer -- the title itself is whatever the
+                  recruiter typed ("test", "S1"), so it is shown as a suffix, not on its own.
+                  The position is only added when there is more than one section to move between. */}
+              <span className="w-fit max-w-full truncate rounded-md bg-candidate-primary-light px-2.5 py-1 text-xs font-semibold text-candidate-primary">
+                Section{attemptState.sections.length > 1 ? ` ${question.sectionIndex + 1} of ${attemptState.sections.length}` : ''}
+                {question.sectionTitle ? `: ${question.sectionTitle}` : ''}
+              </span>
               <span className="text-xs font-semibold uppercase tracking-wide text-candidate-text-tertiary">
                 Question {currentIndex + 1} of {questions.length} ·{' '}
                 {question.type === 'code' ? 'Code' : question.type === 'multi_mcq' ? 'Multiple choice' : 'Single choice'} ·{' '}

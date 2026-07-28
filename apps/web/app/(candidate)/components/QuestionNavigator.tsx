@@ -4,7 +4,11 @@ import clsx from 'clsx';
 import { AttemptAnswerSummary, AttemptSection } from '../../../lib/types';
 
 export function flattenQuestions(sections: AttemptSection[]) {
-  return sections.flatMap((section) => section.questions.map((question) => ({ ...question, sectionTitle: section.title })));
+  // sectionIndex rides along so the exam page can say "Section 2 of 3" -- a section's own
+  // title is whatever the recruiter typed and may mean nothing to a first-time candidate.
+  return sections.flatMap((section, sectionIndex) =>
+    section.questions.map((question) => ({ ...question, sectionTitle: section.title, sectionIndex })),
+  );
 }
 
 interface QuestionNavigatorProps {

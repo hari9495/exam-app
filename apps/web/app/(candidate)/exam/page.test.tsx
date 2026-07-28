@@ -591,10 +591,33 @@ describe('CandidateExamPage', () => {
     expect(screen.getByTestId('dimmable-content')).not.toHaveAttribute('inert');
   });
 
-  it('shows which section the current question belongs to', () => {
+  // A bare section title ("test", "S1") tells a first-time candidate nothing, so the label
+  // itself has to carry the meaning.
+  it('labels the current section so a first-time candidate understands it', () => {
     render(<CandidateExamPage />);
 
-    expect(screen.getByText('Section One')).toBeInTheDocument();
+    expect(screen.getByText(/^Section: Section One$/)).toBeInTheDocument();
+  });
+
+  it('adds the section position only when there is more than one section to move between', () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: {
+        ...attemptState,
+        sections: [
+          ...attemptState.sections,
+          {
+            title: 'Coding Round',
+            targetDurationMinutes: null,
+            questions: [{ id: 'q9', text: 'Second section question', type: 'single_mcq', marks: 1, options: [{ id: 'o9', text: 'yes' }] }],
+          },
+        ],
+      },
+      isError: false,
+    });
+
+    render(<CandidateExamPage />);
+
+    expect(screen.getByText(/^Section 1 of 2: Section One$/)).toBeInTheDocument();
   });
 
   // The candidate-facing leaderboard was removed at the client's request, so there is no
