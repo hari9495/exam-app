@@ -313,9 +313,9 @@ export function LiveMonitoringPanel({
         </div>
         <div className="flex items-center gap-2">
           {notificationPermission === 'default' ? (
-            <button onClick={onEnableNotifications} className="rounded-full border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-50">
+            <Button size="sm" variant="secondary" onClick={onEnableNotifications}>
               Enable alerts
-            </button>
+            </Button>
           ) : null}
           <Badge variant={connectionStatus === 'connected' ? 'success' : connectionStatus === 'connecting' ? 'default' : 'danger'}>
             {connectionStatus === 'connected' ? 'Connected' : connectionStatus === 'connecting' ? 'Connecting…' : 'Disconnected'}
@@ -377,19 +377,16 @@ export function LiveMonitoringPanel({
             className="mb-4 w-full rounded border border-gray-300 px-3 py-2 text-sm"
           />
           <div className="flex justify-end gap-2">
-            <button
-              onClick={() => { setBypassAttemptId(null); setBypassReason(''); }}
-              className="rounded-full border border-gray-300 px-3 py-1 text-xs text-gray-700 hover:bg-gray-50"
-            >
+            <Button size="sm" variant="secondary" onClick={() => { setBypassAttemptId(null); setBypassReason(''); }}>
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
+              size="sm"
               onClick={handleConfirmBypass}
               disabled={!bypassReason.trim() || bypassProctoring.isPending}
-              className="rounded-full bg-primary px-3 py-1 text-xs text-white disabled:opacity-50"
             >
               Confirm
-            </button>
+            </Button>
           </div>
         </Modal>
       ) : null}
