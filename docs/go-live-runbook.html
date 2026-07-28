@@ -1,0 +1,428 @@
+<title>Prudent Hire — Saturday Go-Live Runbook</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --accent: #0057f0;
+    --accent-soft: #e3ebff;
+    --paper: #f6f8fc;
+    --card: #ffffff;
+    --ink: #101725;
+    --ink-2: #3a4457;
+    --ink-3: #6b7688;
+    --line: #dfe4ee;
+    --line-2: #eef1f7;
+    --go: #12805c;
+    --go-bg: #e2f4ec;
+    --watch: #9a6a00;
+    --watch-bg: #fbf0d6;
+    --stop: #c0362c;
+    --stop-bg: #fbe4e1;
+    --freeze: #2960c8;
+    --freeze-bg: #e4ecfb;
+    --shadow: 0 1px 2px rgba(16,23,37,.05), 0 8px 24px rgba(16,23,37,.06);
+    --radius: 14px;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --accent: #6b9bff;
+      --accent-soft: #16223d;
+      --paper: #0b0f18;
+      --card: #131a27;
+      --ink: #eef2f9;
+      --ink-2: #b3bdce;
+      --ink-3: #7a8698;
+      --line: #263145;
+      --line-2: #1c2534;
+      --go: #4cc794;
+      --go-bg: #10261e;
+      --watch: #e3ad4c;
+      --watch-bg: #2a2210;
+      --stop: #f0837a;
+      --stop-bg: #2c1512;
+      --freeze: #7fa8ff;
+      --freeze-bg: #16223d;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --accent: #6b9bff; --accent-soft: #16223d; --paper: #0b0f18; --card: #131a27;
+    --ink: #eef2f9; --ink-2: #b3bdce; --ink-3: #7a8698; --line: #263145; --line-2: #1c2534;
+    --go: #4cc794; --go-bg: #10261e; --watch: #e3ad4c; --watch-bg: #2a2210;
+    --stop: #f0837a; --stop-bg: #2c1512; --freeze: #7fa8ff; --freeze-bg: #16223d;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+  :root[data-theme="light"] {
+    --accent: #0057f0; --accent-soft: #e3ebff; --paper: #f6f8fc; --card: #ffffff;
+    --ink: #101725; --ink-2: #3a4457; --ink-3: #6b7688; --line: #dfe4ee; --line-2: #eef1f7;
+    --go: #12805c; --go-bg: #e2f4ec; --watch: #9a6a00; --watch-bg: #fbf0d6;
+    --stop: #c0362c; --stop-bg: #fbe4e1; --freeze: #2960c8; --freeze-bg: #e4ecfb;
+    --shadow: 0 1px 2px rgba(16,23,37,.05), 0 8px 24px rgba(16,23,37,.06);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--sans); line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 80px; }
+
+  /* ---- sticky progress ---- */
+  .bar {
+    position: sticky; top: 0; z-index: 20;
+    background: color-mix(in srgb, var(--paper) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+    padding: 10px 20px;
+  }
+  .bar-inner { max-width: 860px; margin: 0 auto; display: flex; align-items: center; gap: 14px; }
+  .bar-label { font: 600 12px/1 var(--sans); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+  .track { flex: 1; height: 7px; border-radius: 99px; background: var(--line); overflow: hidden; }
+  .fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, var(--go))); transition: width .35s cubic-bezier(.4,0,.2,1); }
+  .count { font: 600 13px/1 var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  /* ---- header ---- */
+  header { margin: 34px 0 26px; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 8px; font: 600 12px/1 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; }
+  .eyebrow .dot { width: 8px; height: 8px; border-radius: 99px; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+  h1 { font: 700 clamp(28px, 5vw, 40px)/1.08 var(--sans); letter-spacing: -.02em; margin: 0 0 12px; text-wrap: balance; }
+  .lede { font-size: 16px; color: var(--ink-2); max-width: 60ch; margin: 0; }
+  .lede strong { color: var(--ink); font-weight: 600; }
+
+  /* ---- readiness strip ---- */
+  .ready { margin: 26px 0; padding: 18px 20px; background: var(--go-bg); border: 1px solid color-mix(in srgb, var(--go) 30%, transparent); border-radius: var(--radius); }
+  .ready-head { display: flex; align-items: center; gap: 9px; font: 600 13px/1 var(--sans); letter-spacing: .02em; color: var(--go); text-transform: uppercase; margin-bottom: 12px; }
+  .ready-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 20px; }
+  .ready-grid li { list-style: none; display: flex; gap: 9px; align-items: baseline; font-size: 14px; color: var(--ink-2); padding: 3px 0; }
+  .ready-grid li b { color: var(--ink); font-weight: 600; }
+  .chk { color: var(--go); font-weight: 700; flex: none; }
+  ul.ready-grid { margin: 0; padding: 0; }
+
+  /* ---- measured capacity ---- */
+  .cap { margin: 18px 0; padding: 20px 22px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .cap-head { font: 600 12px/1 var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); margin-bottom: 16px; }
+  .cap-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
+  .stat { padding: 14px 16px; background: var(--line-2); border-radius: 10px; }
+  .stat-n { font: 700 30px/1 var(--sans); letter-spacing: -.02em; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .stat-u { font-size: 15px; font-weight: 600; color: var(--ink-3); margin-left: 2px; }
+  .stat-l { font-size: 13px; color: var(--ink-2); margin-top: 8px; line-height: 1.45; }
+  .stat-l b { color: var(--ink); font-weight: 600; }
+  .cap-note { font-size: 13.5px; color: var(--ink-2); margin: 16px 0 0; line-height: 1.6; }
+  .cap-note b { color: var(--ink); font-weight: 600; }
+
+  /* ---- phase ---- */
+  .phase { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); margin: 18px 0; overflow: hidden; }
+  .phase-head { display: flex; align-items: center; gap: 14px; padding: 18px 22px; border-bottom: 1px solid var(--line-2); }
+  .num { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font: 700 15px/1 var(--mono); background: var(--accent-soft); color: var(--accent); }
+  .phase-title { margin: 0; font: 700 18px/1.2 var(--sans); letter-spacing: -.01em; }
+  .when { margin-left: auto; font: 600 11px/1 var(--mono); letter-spacing: .03em; text-transform: uppercase; color: var(--ink-3); background: var(--line-2); padding: 6px 10px; border-radius: 99px; white-space: nowrap; }
+
+  .items { padding: 6px 10px 12px; }
+  .item { display: flex; gap: 13px; padding: 12px 12px; border-radius: 10px; align-items: flex-start; cursor: pointer; transition: background .15s; }
+  .item:hover { background: var(--line-2); }
+  .item input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .box { flex: none; margin-top: 1px; width: 21px; height: 21px; border-radius: 6px; border: 2px solid var(--line); background: var(--card); display: grid; place-items: center; transition: all .15s; }
+  .box svg { width: 13px; height: 13px; stroke: #fff; stroke-width: 3.4; fill: none; opacity: 0; transform: scale(.5); transition: all .15s; }
+  .item input:checked + .box { background: var(--go); border-color: var(--go); }
+  .item input:checked + .box svg { opacity: 1; transform: scale(1); }
+  .item input:focus-visible + .box { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .txt { flex: 1; }
+  .txt .t { font-size: 15px; font-weight: 600; color: var(--ink); transition: color .15s; }
+  .txt .d { font-size: 14px; color: var(--ink-3); margin-top: 3px; }
+  .txt .d code, code.k { font-family: var(--mono); font-size: .86em; background: var(--accent-soft); color: var(--accent); padding: 1.5px 6px; border-radius: 5px; word-break: break-word; }
+  .item input:checked ~ .txt .t { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line); }
+  .item input:checked ~ .txt .d { opacity: .55; }
+  .crit { color: var(--stop); font: 700 10px/1 var(--sans); letter-spacing: .06em; text-transform: uppercase; margin-left: 8px; vertical-align: 1px; }
+
+  .pill { display: inline-flex; align-items: center; gap: 6px; font: 700 10px/1 var(--sans); letter-spacing: .05em; text-transform: uppercase; padding: 5px 9px; border-radius: 99px; }
+  .pill.freeze { background: var(--freeze-bg); color: var(--freeze); }
+  .pill.stop { background: var(--stop-bg); color: var(--stop); }
+
+  /* ---- callout ---- */
+  .callout { margin: 10px 12px; padding: 13px 15px; border-radius: 10px; font-size: 14px; display: flex; gap: 11px; align-items: flex-start; }
+  .callout.freeze { background: var(--freeze-bg); color: color-mix(in srgb, var(--freeze) 82%, var(--ink)); }
+  .callout.stop { background: var(--stop-bg); color: color-mix(in srgb, var(--stop) 82%, var(--ink)); }
+  .callout b { font-weight: 700; }
+  .callout .ic { flex: none; font-size: 15px; line-height: 1.4; }
+
+  /* ---- reference sections ---- */
+  h2.sec { font: 700 15px/1 var(--sans); letter-spacing: .03em; text-transform: uppercase; color: var(--ink-3); margin: 40px 4px 14px; }
+  .tablecard { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+  .tscroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 560px; }
+  th { text-align: left; font: 600 11px/1 var(--sans); letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--line-2); }
+  td { padding: 13px 16px; border-bottom: 1px solid var(--line-2); vertical-align: top; color: var(--ink-2); }
+  tr:last-child td { border-bottom: 0; }
+  td.sig { color: var(--ink); font-weight: 600; position: relative; padding-left: 20px; }
+  td.sig::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 4px; border-radius: 4px; background: var(--sev, var(--line)); }
+  td.sig.ok { --sev: var(--go); } td.sig.warn { --sev: var(--watch); } td.sig.bad { --sev: var(--stop); }
+  td code, td .k { font-family: var(--mono); font-size: .86em; }
+  .status-tag { font-family: var(--mono); font-weight: 600; }
+
+  .emergency { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 8px 6px; }
+  .erow { display: flex; gap: 13px; padding: 13px 14px; align-items: flex-start; border-bottom: 1px solid var(--line-2); }
+  .erow:last-child { border-bottom: 0; }
+  .erow .ekey { flex: none; width: 150px; font: 600 13px/1.4 var(--sans); color: var(--ink); }
+  .erow .eval { font-size: 14px; color: var(--ink-2); }
+  .erow .eval code, .erow .eval .k { font-family: var(--mono); font-size: .86em; background: var(--line-2); padding: 1.5px 6px; border-radius: 5px; }
+
+  footer { margin-top: 44px; padding: 22px; border-radius: var(--radius); background: var(--accent-soft); color: color-mix(in srgb, var(--accent) 75%, var(--ink)); font-size: 14px; }
+  footer h3 { margin: 0 0 8px; font: 700 13px/1 var(--sans); letter-spacing: .04em; text-transform: uppercase; color: var(--accent); }
+  footer p { margin: 6px 0; }
+  footer .fnum { font-family: var(--mono); font-weight: 700; color: var(--ink); }
+
+  .toolbar { display: flex; gap: 10px; margin: 22px 0 0; flex-wrap: wrap; }
+  button.act { font: 600 13px/1 var(--sans); padding: 9px 15px; border-radius: 9px; border: 1px solid var(--line); background: var(--card); color: var(--ink-2); cursor: pointer; transition: all .15s; }
+  button.act:hover { border-color: var(--accent); color: var(--accent); }
+  button.act:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  @media print {
+    .bar, .toolbar { display: none; }
+    body { background: #fff; }
+    .phase, .tablecard, .emergency { box-shadow: none; break-inside: avoid; }
+    .item input:not(:checked) + .box { border-color: #888; }
+  }
+</style>
+
+<div class="bar">
+  <div class="bar-inner">
+    <span class="bar-label">Runbook progress</span>
+    <div class="track"><div class="fill" id="fill"></div></div>
+    <span class="count" id="count">0 / 0</span>
+  </div>
+</div>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow"><span class="dot"></span>Prudent Hire · Live exam operations</span>
+    <h1>Saturday Go-Live Runbook</h1>
+    <p class="lede">A single client cohort of <strong>~1000 candidates</strong>, arriving over a <strong>15-minute staggered window</strong> from one office network. Every known blocker is fixed and deployed. <strong>No VM or database upgrade is required for this pattern.</strong> Work top to bottom; check items as you go.</p>
+    <div class="toolbar">
+      <button class="act" onclick="window.print()">Print / Save PDF</button>
+      <button class="act" id="resetBtn">Reset all checks</button>
+    </div>
+  </header>
+
+  <div class="ready">
+    <div class="ready-head">✓ Already fixed &amp; live — no action needed</div>
+    <ul class="ready-grid">
+      <li><span class="chk">✓</span><span><b>Login capacity</b> — password-hash swap; 8/sec → effectively unlimited</span></li>
+      <li><span class="chk">✓</span><span><b>Rate limits</b> — now per-candidate, not per-office-IP</span></li>
+      <li><span class="chk">✓</span><span><b>Code editor</b> — Monaco self-hosted, no CDN</span></li>
+      <li><span class="chk">✓</span><span><b>Webcam proctoring</b> — MediaPipe self-hosted, no CDN</span></li>
+      <li><span class="chk">✓</span><span><b>Page assets</b> — outage fixed + build-time guard</span></li>
+      <li><span class="chk">✓</span><span><b>Burst headroom</b> — DB connection pools raised 2×</span></li>
+    </ul>
+  </div>
+
+  <!-- MEASURED CAPACITY -->
+  <section class="cap">
+    <div class="cap-head">Measured on production · 28 Jul</div>
+    <div class="cap-grid">
+      <div class="stat"><div class="stat-n">1000<span class="stat-u">/1000</span></div><div class="stat-l"><b>started</b> at your staggered pace — 100%, fast (~60ms). No failures.</div></div>
+      <div class="stat"><div class="stat-n">0<span class="stat-u"> fails</span></div><div class="stat-l"><b>1000 taking the exam at once</b> for 2 min — poll + leaderboard + answer. Zero failures, p95 &lt; 0.75s.</div></div>
+      <div class="stat"><div class="stat-n">~2<span class="stat-u">/sec</span></div><div class="stat-l">your actual staggered peak — a <b>tiny fraction</b> of what was proven.</div></div>
+    </div>
+    <p class="cap-note"><b>Both halves proven on the real production system:</b> 1000 candidates starting (staggered), <em>and</em> 1000 actively taking the exam at once — zero failures. <b>Runs on the candidate's own device, not your server:</b> webcam face-detection and all UI/editor rendering — these scale for free across 1000 laptops. <b>One real bottleneck was found and fixed during testing:</b> the live leaderboard recomputed on every poll; it's now cached, so 1000 pollers cost one recompute per interval instead of thousands.</p>
+  </section>
+
+  <!-- PHASE 1 -->
+  <section class="phase">
+    <div class="phase-head">
+      <span class="num">1</span>
+      <h2 class="phase-title">Before the day</h2>
+      <span class="when">This week</span>
+    </div>
+    <div class="items" data-phase="1">
+      <label class="item">
+        <input type="checkbox" data-id="p1-dryrun" />
+        <span class="box"><svg viewBox="0 0 16 16"><polyline points="3,8.5 6.5,12 13,4"/></svg></span>
+        <span class="txt"><span class="t">Dry run on the actual office network <span class="crit">Critical</span></span><span class="d">On the real office Wi-Fi, complete one full attempt end to end: log in → answer an MCQ → open the <b>code question</b> (editor must load, not spin) → turn the <b>webcam on</b> (proctoring must start) → run code → submit. The office firewall is the one thing I can't test remotely. If this is clean, you're ready.</span></span>
+      </label>
+      <label class="item">
+        <input type="checkbox" data-id="p1-published" />
+        <span class="box"><svg viewBox="0 0 16 16"><polyline points="3,8.5 6.5,12 13,4"/></svg></span>
+        <span class="txt"><span class="t">Confirm the exam is published &amp; correct</span><span class="d">Questions, order, duration, section timing, pass mark, and proctoring settings (webcam / screen-share) all match what the client agreed.</span></span>
+      </label>
+      <label class="item">
+        <input type="checkbox" data-id="p1-invites" />
+        <span class="box"><svg viewBox="0 0 16 16"><polyline points="3,8.5 6.5,12 13,4"/></svg></span>
+        <span class="txt"><span class="t">Confirm every candidate has their invite link</span><span class="d">Check the invitation list is complete and emails delivered. Invites shouldn't be expired or revoked before Saturday.</span></span>
+      </label>
+      <label class="item">
+        <input type="checkbox" data-id="p1-window" />
+        <span class="box"><svg viewBox="0 0 16 16"><polyline points="3,8.5 6.5,12 13,4"/></svg></span>
+        <span class="txt"><span class="t">Tell candidates the staggered start window</span><span class="d">Message them: <b>“begin any time between [START] and [START + 15 min]”</b> — not all at the same second. This spread is exactly what the platform is sized for; a hard simultaneous start is the only case that would need more.</span></span>
+      </label>
+      <label class="item">
+        <input type="checkbox" data-id="p1-devices" />
+        <span class="box"><svg viewBox="0 0 16 16"><polyline points="3,8.5 6.5,12 13,4"/></svg></span>
+        <span class="txt"><span class="t">Send candidate device requirements</span><span class="d">Laptop/desktop with a <b>working webcam</b>, <b>Chrome or Edge</b>, a stable connection, and a quiet, well-lit space. Camera-based monitoring is on.</span></span>
+      </label>
+      <label class="item">
+        <input type="checkbox" data-id="p1-freeze" />
+        <span class="box"><svg viewBox="0 0 16 16"><polyline points="3,8.5 6.5,12 13,4"/></svg></span>
+        <span class="txt"><span class="t">Freeze deploys once the dry run passes <span class="pill freeze">Freeze</span></span><span class="d">No code changes or redeploys in the days before, and none on exam day. Redeploying logs staff out and can leave already-open browser tabs on a stale build — avoid it entirely once you're green.</span></span>
+      </label>
+    </div>
+  </section>
+
+  <!-- PHASE 2 -->
+  <section class="phase">
+    <div class="phase-head">
+      <span class="num">2</span>
+      <h2 class="phase-title">Saturday morning</h2>
+      <span class="when">T − 60 min</span>
+    </div>
+    <div class="items" data-phase="2">
+      <label class="item">
+        <input type="checkbox" data-id="p2-health" />
+        <span class="box"><svg viewBox="0 0 16 16"><polyline points="3,8.5 6.5,12 13,4"/></svg></span>
+        <span class="txt"><span class="t">Full health check (ask me to run it)</span><span class="d">Site returns <code class="k">200</code>, page assets load, and the self-hosted <code class="k">/monaco/vs/loader.js</code> and <code class="k">/mediapipe/</code> assets serve from the app origin. Verified by fetching assets, not just the homepage.</span></span>
+      </label>
+      <label class="item">
+        <input type="checkbox" data-id="p2-services" />
+        <span class="box"><svg viewBox="0 0 16 16"><polyline points="3,8.5 6.5,12 13,4"/></svg></span>
+        <span class="txt"><span class="t">All three services online</span><span class="d"><code class="k">api</code>, <code class="k">exam-runtime</code>, and <code class="k">web</code> show <b>online</b> in pm2, plus Redis up (rate limiting depends on it).</span></span>
+      </label>
+      <label class="item">
+        <input type="checkbox" data-id="p2-refresh" />
+        <span class="box"><svg viewBox="0 0 16 16"><polyline points="3,8.5 6.5,12 13,4"/></svg></span>
+        <span class="txt"><span class="t">Recruiters/admins: hard-refresh &amp; log in fresh</span><span class="d">Every staff person does <code class="k">Ctrl+Shift+R</code> and logs in again. Today's security change signed out older sessions; a fresh login avoids a surprise logout mid-exam.</span></span>
+      </label>
+      <label class="item">
+        <input type="checkbox" data-id="p2-monitor" />
+        <span class="box"><svg viewBox="0 0 16 16"><polyline points="3,8.5 6.5,12 13,4"/></svg></span>
+        <span class="txt"><span class="t">Open the live monitoring dashboard</span><span class="d">Recruiter console → live monitoring, so you can watch candidates start and progress in real time.</span></span>
+      </label>
+      <label class="item">
+        <input type="checkbox" data-id="p2-standby" />
+        <span class="box"><svg viewBox="0 0 16 16"><polyline points="3,8.5 6.5,12 13,4"/></svg></span>
+        <span class="txt"><span class="t">Put me on standby to watch logs</span><span class="d">Ping me right before the window opens and I'll tail the production logs live, so anything unusual is caught the moment it happens rather than after.</span></span>
+      </label>
+    </div>
+  </section>
+
+  <!-- PHASE 3 -->
+  <section class="phase">
+    <div class="phase-head">
+      <span class="num">3</span>
+      <h2 class="phase-title">During the exam</h2>
+      <span class="when">Window open</span>
+    </div>
+    <div class="items" data-phase="3">
+      <label class="item">
+        <input type="checkbox" data-id="p3-watch" />
+        <span class="box"><svg viewBox="0 0 16 16"><polyline points="3,8.5 6.5,12 13,4"/></svg></span>
+        <span class="txt"><span class="t">Watch candidates come in on the dashboard</span><span class="d">Expect a steady trickle over the 15-minute window, not a wall of 1000 at once. Attempts moving to “in progress” is the healthy signal.</span></span>
+      </label>
+      <label class="item">
+        <input type="checkbox" data-id="p3-signatures" />
+        <span class="box"><svg viewBox="0 0 16 16"><polyline points="3,8.5 6.5,12 13,4"/></svg></span>
+        <span class="txt"><span class="t">Use the failure-signature table if anything looks off</span><span class="d">If a candidate reports a problem, match the symptom in the table below before reacting — most have a fast, known cause.</span></span>
+      </label>
+      <label class="item">
+        <input type="checkbox" data-id="p3-nodeploy" />
+        <span class="box"><svg viewBox="0 0 16 16"><polyline points="3,8.5 6.5,12 13,4"/></svg></span>
+        <span class="txt"><span class="t">Do not redeploy or restart anything mid-exam <span class="pill stop">Hold</span></span><span class="d">Restarting a service drops in-flight requests and can log candidates out. If something genuinely needs a fix, we assess it together first — a restart mid-exam is a last resort, not a reflex.</span></span>
+      </label>
+    </div>
+  </section>
+
+  <!-- FAILURE SIGNATURES -->
+  <h2 class="sec">If something goes wrong — signature reference</h2>
+  <div class="tablecard"><div class="tscroll">
+    <table>
+      <thead><tr><th>What the candidate sees</th><th>Likely cause</th><th>What it means / action</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="sig ok">Plain, unstyled page</td>
+          <td>Web assets not served</td>
+          <td>The build-time guard makes this unlikely now. If it appears: the <code>web</code> service needs a restart — flag me, don't guess.</td>
+        </tr>
+        <tr>
+          <td class="sig ok">Code question stuck on “Loading…”</td>
+          <td>Editor asset blocked</td>
+          <td>Should be fixed (Monaco is self-hosted). Check <code>/monaco/vs/loader.js</code> returns <span class="status-tag">200</span> from the office network — if not, the firewall is blocking the app's own origin, which is a network issue, not the app.</td>
+        </tr>
+        <tr>
+          <td class="sig ok">Webcam won't start / proctoring stuck</td>
+          <td>MediaPipe asset blocked</td>
+          <td>Should be fixed (self-hosted). Confirm <code>/mediapipe/wasm/…</code> and the model return <span class="status-tag">200</span>. Also check the candidate actually granted camera permission.</td>
+        </tr>
+        <tr>
+          <td class="sig warn">“The server is busier than usual… try again”</td>
+          <td>Brief overload (503)</td>
+          <td>Retry-able and the app auto-retries. At a staggered pace you should see essentially none. A cluster of these means real load — tell me, don't restart.</td>
+        </tr>
+        <tr>
+          <td class="sig warn">“Too many requests” (429)</td>
+          <td>Rate limit hit</td>
+          <td>Limits are per-candidate now, so a normal candidate won't hit this. If one does, their client is likely stuck in a loop — have them hard-refresh.</td>
+        </tr>
+        <tr>
+          <td class="sig bad">“Can't open this invitation”</td>
+          <td>Token invalid / used / expired</td>
+          <td>Check that specific invitation in the recruiter console — revoked, already redeemed on another device, or past its window. Re-issue if needed.</td>
+        </tr>
+        <tr>
+          <td class="sig bad">Logged out unexpectedly</td>
+          <td>Stale tab / expired session</td>
+          <td>One <code>Ctrl+Shift+R</code> and re-login fixes it. Widespread occurrence only happens if a deploy slipped through the freeze — which is why the freeze matters.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div></div>
+
+  <!-- EMERGENCY -->
+  <h2 class="sec">Emergency reference</h2>
+  <div class="emergency">
+    <div class="erow"><div class="ekey">First move</div><div class="eval">Message me. I'll run the health check and tail logs to locate it fast — faster than restarting blind.</div></div>
+    <div class="erow"><div class="ekey">Golden rule</div><div class="eval">Don't panic-deploy or panic-restart. Every fix mid-exam risks more than the symptom. Diagnose first.</div></div>
+    <div class="erow"><div class="ekey">Known revert</div><div class="eval">The connection-pool change has a saved backup on the server (<code>.env.bak_…</code>); it can be reverted in one step if ever needed. It won't be, at this load.</div></div>
+    <div class="erow"><div class="ekey">Server access note</div><div class="eval">SSH to the VM is occasionally slow to connect (background bot traffic on port 22 — harmless, can't get in). If I go quiet for a minute during an intervention, that's why; I retry automatically.</div></div>
+    <div class="erow"><div class="ekey">Capacity headroom</div><div class="eval">If load ever spikes beyond plan, the database (<span class="k">GP_Gen5_2</span>) and VM can be scaled up in minutes with no data migration — but at a 15-min staggered start this is not expected.</div></div>
+  </div>
+
+  <footer>
+    <h3>Why you're in good shape</h3>
+    <p>At your staggered pace, arrivals peak around <span class="fnum">~2 logins/second</span> — a tiny fraction of capacity. With all ~1000 candidates mid-exam at once, the database sits near <span class="fnum">0%</span> CPU and the app uses roughly <span class="fnum">20%</span> of one core.</p>
+    <p>The database has <span class="fnum">200</span> worker slots against at most <span class="fnum">75</span> connections the app can open. That's the margin behind “no upgrade needed.”</p>
+    <p>The single remaining unknown is your office firewall — which is exactly what item 1, the dry run, exists to close.</p>
+  </footer>
+</div>
+
+<script>
+  (function () {
+    var boxes = Array.prototype.slice.call(document.querySelectorAll('.item input[type=checkbox]'));
+    var fill = document.getElementById('fill');
+    var count = document.getElementById('count');
+    var KEY = 'phire-golive-v1';
+    var saved = {};
+    try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { saved = {}; }
+
+    function render() {
+      var done = boxes.filter(function (b) { return b.checked; }).length;
+      var total = boxes.length;
+      fill.style.width = (total ? (done / total * 100) : 0) + '%';
+      count.textContent = done + ' / ' + total;
+    }
+    function persist() {
+      var o = {};
+      boxes.forEach(function (b) { o[b.dataset.id] = b.checked; });
+      try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (e) {}
+    }
+    boxes.forEach(function (b) {
+      if (saved[b.dataset.id]) b.checked = true;
+      b.addEventListener('change', function () { persist(); render(); });
+    });
+    document.getElementById('resetBtn').addEventListener('click', function () {
+      boxes.forEach(function (b) { b.checked = false; });
+      persist(); render();
+    });
+    render();
+  })();
+</script>
