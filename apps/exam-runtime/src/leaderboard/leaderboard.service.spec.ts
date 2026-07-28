@@ -261,4 +261,47 @@ describe('LeaderboardService', () => {
       expect(result).toEqual({ you: null, top: [] });
     });
   });
+
+  describe('caching', () => {
+    const q1 = mcqQuestion('q1', 'q1-correct');
+    const attempts = [
+      { id: 'a1', invitationId: 'inv-1', candidateId: 'c1', questionOrderJson: JSON.stringify(['q1']), answers: [] },
+    ];
+
+    it('recomputes once per exam within the TTL, no matter how many polls arrive', async () => {
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(mockTx([q1], attempts)));
+
+      await service.compute(context, 'exam-hot');
+      await service.compute(context, 'exam-hot');
+      await service.compute(context, 'exam-hot');
+
+      // The whole point: 1000 candidates polling must not be 1000 recomputes.
+      expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(1);
+    });
+
+    it('shares one in-flight computation across concurrent pollers (single-flight)', async () => {
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(mockTx([q1], attempts)));
+
+      await Promise.all([service.compute(context, 'exam-hot'), service.compute(context, 'exam-hot'), service.compute(context, 'exam-hot')]);
+
+      expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps different exams isolated', async () => {
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(mockTx([], [])));
+
+      await service.compute(context, 'exam-a');
+      await service.compute(context, 'exam-b');
+
+      expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not cache a failed computation', async () => {
+      tenantPrisma.forTenant.mockRejectedValueOnce(new Error('db down'));
+      await expect(service.compute(context, 'exam-x')).rejects.toThrow('db down');
+
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(mockTx([], [])));
+      await expect(service.compute(context, 'exam-x')).resolves.toEqual([]);
+    });
+  });
 });

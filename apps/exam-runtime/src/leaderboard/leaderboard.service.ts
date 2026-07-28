@@ -37,11 +37,46 @@ function isAnswerCorrect(correctOptionIds: string[], selectedOptionIds: string[]
   return selectedSet.size === correctSet.size && [...selectedSet].every((id) => correctSet.has(id));
 }
 
+// The candidate leaderboard is polled by EVERY candidate for the whole exam.
+// compute() loads every attempt WITH every answer and recomputes the full
+// ranking, so without a cache 1000 candidates = ~33 full-exam recomputes/sec,
+// each holding a pooled connection long enough to exhaust the pool and starve
+// the exam's own poll/answer requests. A load test at 1000 reproduced exactly
+// this. The ranking is identical for all viewers of an exam, so it is computed
+// at most once per TTL and shared. See ADO #6828.
+const LEADERBOARD_CACHE_TTL_MS = 15_000;
+
 @Injectable()
 export class LeaderboardService {
   constructor(private readonly tenantPrisma: TenantPrismaService) {}
 
+  // Keyed on examId (a globally-unique id owned by one org), so sharing a cached
+  // result across viewers of the same exam never crosses a tenant boundary.
+  private readonly entriesCache = new Map<string, { at: number; promise: Promise<LeaderboardEntry[]> }>();
+  private readonly labelsCache = new Map<string, { at: number; promise: Promise<Map<string, string>> }>();
+
+  // Single-flight TTL memo: concurrent callers within the TTL share ONE in-flight
+  // promise (no thundering-herd recompute); a rejection is evicted so failures
+  // aren't cached.
+  private memo<T>(store: Map<string, { at: number; promise: Promise<T> }>, key: string, factory: () => Promise<T>): Promise<T> {
+    const now = Date.now();
+    const hit = store.get(key);
+    if (hit && now - hit.at < LEADERBOARD_CACHE_TTL_MS) {
+      return hit.promise;
+    }
+    const promise = factory();
+    store.set(key, { at: now, promise });
+    promise.catch(() => {
+      if (store.get(key)?.promise === promise) store.delete(key);
+    });
+    return promise;
+  }
+
   async compute(context: TenantContext, examId: string): Promise<LeaderboardEntry[]> {
+    return this.memo(this.entriesCache, examId, () => this.computeUncached(context, examId));
+  }
+
+  private async computeUncached(context: TenantContext, examId: string): Promise<LeaderboardEntry[]> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const attempts = await tx.attempt.findMany({ where: { examId }, include: { answers: true } });
       if (attempts.length === 0) {
@@ -123,23 +158,29 @@ export class LeaderboardService {
     examId: string,
     viewerInvitationId: string,
   ): Promise<CandidateLeaderboardResponse> {
-    const entries = await this.compute(context, examId);
+    // Both the rankings and the label map are cached, so a warm poll does ZERO
+    // database work and the per-viewer "you"/isYou filtering is pure in-memory.
+    const [entries, labelByInvitationId] = await Promise.all([this.compute(context, examId), this.labelMap(context, examId)]);
     const you = entries.find((entry) => entry.invitationId === viewerInvitationId);
     const top = entries.slice(0, TOP_N);
 
-    return this.tenantPrisma.forTenant(context, async (tx) => {
-      const invitations = await tx.invitation.findMany({ where: { examId }, orderBy: { invitedAt: 'asc' } });
-      const labelByInvitationId = new Map(invitations.map((invitation, index) => [invitation.id, `Candidate ${index + 1}`]));
+    return {
+      you: you ? { rank: you.rank, correctCount: you.correctCount } : null,
+      top: top.map((entry) => ({
+        rank: entry.rank,
+        correctCount: entry.correctCount,
+        isYou: entry.invitationId === viewerInvitationId,
+        label: entry.invitationId === viewerInvitationId ? 'You' : (labelByInvitationId.get(entry.invitationId) ?? 'Candidate'),
+      })),
+    };
+  }
 
-      return {
-        you: you ? { rank: you.rank, correctCount: you.correctCount } : null,
-        top: top.map((entry) => ({
-          rank: entry.rank,
-          correctCount: entry.correctCount,
-          isYou: entry.invitationId === viewerInvitationId,
-          label: entry.invitationId === viewerInvitationId ? 'You' : (labelByInvitationId.get(entry.invitationId) ?? 'Candidate'),
-        })),
-      };
-    });
+  private labelMap(context: TenantContext, examId: string): Promise<Map<string, string>> {
+    return this.memo(this.labelsCache, examId, () =>
+      this.tenantPrisma.forTenant(context, async (tx) => {
+        const invitations = await tx.invitation.findMany({ where: { examId }, orderBy: { invitedAt: 'asc' } });
+        return new Map(invitations.map((invitation, index) => [invitation.id, `Candidate ${index + 1}`]));
+      }),
+    );
   }
 }
