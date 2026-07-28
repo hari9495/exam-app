@@ -345,7 +345,13 @@ export default function CandidateExamPage() {
         // experimental.d.ts does) — cast bridges that gap so keyboard/screen-reader users
         // can't reach the dimmed content while an overlay covers it.
         {...(((isPaused || isBlocked) ? { inert: '' } : {}) as React.HTMLAttributes<HTMLDivElement>)}
-        className={clsx('mx-auto max-w-6xl p-4', (isPaused || isBlocked) && 'pointer-events-none blur-sm select-none')}
+        // Grows with the viewport instead of stopping dead at 1152px, which left ~380px of
+        // empty margin each side on a 1920px laptop. Still capped at 1440px: past that the
+        // question text runs to an uncomfortable line length rather than reading better.
+        className={clsx(
+          'mx-auto max-w-6xl p-4 xl:max-w-7xl xl:p-6 2xl:max-w-[90rem]',
+          (isPaused || isBlocked) && 'pointer-events-none blur-sm select-none',
+        )}
       >
       <div className="mb-4 rounded-lg border border-candidate-border bg-white px-4 py-3 shadow-sm">
         <div className="mb-2 flex items-center justify-between">
@@ -369,7 +375,7 @@ export default function CandidateExamPage() {
         <TimerBar remainingSeconds={remainingSeconds} totalSeconds={totalSecondsRef.current ?? remainingSeconds} />
       </div>
 
-      <div className="flex gap-4">
+      <div className="flex gap-4 xl:gap-6">
         <div className="flex-1 rounded-lg bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-start justify-between gap-3">
             <div className="flex min-w-0 flex-col gap-1.5">
@@ -532,7 +538,9 @@ export default function CandidateExamPage() {
           </div>
         </div>
 
-        <div className="hidden w-56 shrink-0 lg:block">
+        {/* The extra width on a large screen goes to the navigator rather than stretching the
+            question text further — the numbers and per-section counts genuinely read better. */}
+        <div className="hidden w-56 shrink-0 lg:block xl:w-64 2xl:w-72">
           <QuestionNavigator sections={attemptState.sections} answers={answers} currentIndex={currentIndex} onSelect={setCurrentIndex} />
           <CandidateButton onClick={() => setConfirmOpen(true)} className="mt-3 w-full text-xs">
             Review & Submit
