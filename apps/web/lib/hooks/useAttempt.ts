@@ -246,7 +246,11 @@ export function useLeaderboard(enabled: boolean) {
     queryKey: ['attempt', 'leaderboard'],
     queryFn: () => candidateApiFetch('/attempt/leaderboard', {}, accessToken ?? undefined),
     enabled: Boolean(accessToken) && enabled,
-    refetchInterval: 5_000,
+    // 30s, matched to the /attempt/current poll. At 5s this was ~70% of all
+    // steady-state server load for a large cohort (12 req/min/candidate =
+    // ~200 req/s at 1000), and second-by-second rankings mid-exam aren't
+    // worth that cost. See ADO #6827.
+    refetchInterval: 30_000,
   });
 }
 
