@@ -258,7 +258,17 @@ export function useCodeLanguages(enabled: boolean) {
   const { accessToken } = useCandidateAuth();
   return useQuery<{ language: string; version: string }[]>({
     queryKey: ['attempt', 'code-languages'],
-    queryFn: () => candidateApiFetch('/attempt/code-languages', {}, accessToken ?? undefined),
+    // The endpoint wraps its list ({ languages: [...] }) but consumers are typed for the
+    // bare array and .map over data directly — unwrap here, exactly like the recruiter
+    // path does server-side (questions.service.ts listAvailableLanguages). Returning the
+    // raw object made `.map` throw during render, which tore down the whole exam page for
+    // every code question in "any language" mode.
+    queryFn: async () => {
+      const result = (await candidateApiFetch('/attempt/code-languages', {}, accessToken ?? undefined)) as {
+        languages?: { language: string; version: string }[];
+      };
+      return result.languages ?? [];
+    },
     enabled: Boolean(accessToken) && enabled,
     staleTime: 60 * 60 * 1000,
   });

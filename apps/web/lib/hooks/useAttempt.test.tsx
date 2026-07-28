@@ -2,7 +2,7 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastProvider } from '../../components/ui';
 import { CandidateAuthProvider } from '../candidate-auth-context';
-import { useAttemptQuery, useAnswerMutation, useRunCode, useStartAttempt, useReportProctoringEvent, useScreenShareState } from './useAttempt';
+import { useAttemptQuery, useAnswerMutation, useCodeLanguages, useRunCode, useStartAttempt, useReportProctoringEvent, useScreenShareState } from './useAttempt';
 
 const mockToast = jest.fn();
 jest.mock('../../components/ui', () => {
@@ -47,6 +47,40 @@ describe('useAttemptQuery', () => {
 
     render(<AttemptProbe />, { wrapper });
     await waitFor(() => expect(screen.getByText('preview:Preview Exam')).toBeInTheDocument());
+  });
+});
+
+describe('useCodeLanguages', () => {
+  const originalFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  // Regression: the endpoint wraps its list ({ languages: [...] }). The hook must unwrap —
+  // returning the raw object made the exam page's `.map` over data throw during render and
+  // tear down the whole page for any-language code questions.
+  it('unwraps the { languages } envelope into the bare array consumers map over', async () => {
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/candidate-auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'tok', refreshToken: 'rt' }), { status: 200 });
+      }
+      if (String(url).endsWith('/attempt/code-languages')) {
+        return new Response(
+          JSON.stringify({ languages: [{ language: 'python', version: '3.10.0' }, { language: 'javascript', version: '18.15.0' }] }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`Unexpected fetch to ${url}`);
+    }) as unknown as typeof fetch;
+
+    function Probe() {
+      const { data } = useCodeLanguages(true);
+      if (!data) return <p>Loading</p>;
+      return <p>{`langs:${data.map((entry) => entry.language).join(',')}`}</p>;
+    }
+    render(<Probe />, { wrapper });
+
+    await waitFor(() => expect(screen.getByText('langs:python,javascript')).toBeInTheDocument());
   });
 });
 
