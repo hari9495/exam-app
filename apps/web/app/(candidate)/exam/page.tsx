@@ -342,10 +342,10 @@ export default function CandidateExamPage() {
               <ChevronDown className="h-3 w-3" aria-hidden="true" />
             </span>
           </button>
-          {/* ml-auto, not justify-between alone: the Q-navigator button beside this is
-              lg:hidden, so on desktop this block is the row's only child and would
-              otherwise sit flush left, misaligned under the timer. */}
-          <div className="ml-auto flex flex-col items-end text-right">
+          {/* Left-aligned by request. On desktop the Q-navigator button beside this is
+              lg:hidden, so this block is the row's only child and justify-between leaves it
+              at the start; on mobile the button takes the left slot and this sits opposite. */}
+          <div className="flex flex-col items-start text-left">
             <span className="hidden text-sm font-bold text-candidate-text lg:inline">{attemptState.exam.title}</span>
             <span className="text-xs text-candidate-text-tertiary">{attemptState.candidateName}</span>
           </div>
