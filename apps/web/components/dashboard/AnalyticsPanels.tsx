@@ -89,7 +89,7 @@ function ScorePanel({ scores }: { scores: DashboardAnalytics['scores'] }) {
                 <XAxis dataKey="bucket" tick={{ fontSize: 10, fill: C.axis }} tickLine={false} axisLine={{ stroke: C.grid }} interval={0} angle={-30} textAnchor="end" height={38} />
                 <YAxis tick={{ fontSize: 10, fill: C.axis }} tickLine={false} axisLine={false} allowDecimals={false} width={30} />
                 <Tooltip content={<ChartTooltip suffix=" candidates" />} cursor={{ fill: '#00000008' }} />
-                <Bar dataKey="count" radius={[3, 3, 0, 0]}>
+                <Bar dataKey="count" radius={[3, 3, 0, 0]} isAnimationActive={false}>
                   {scores.distribution.map((entry, i) => (
                     // Fail band (below ~40) tinted danger, pass band brand blue -- the pass line is score-dependent per exam, so this is a soft visual cue, not a hard threshold.
                     <Cell key={entry.bucket} fill={i < 4 ? '#C9739F33' : C.primary} />
@@ -128,7 +128,7 @@ function IntegrityPanel({ integrity }: { integrity: DashboardAnalytics['integrit
             <div className="relative h-28 w-28">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={donut} dataKey="value" innerRadius={38} outerRadius={54} startAngle={90} endAngle={-270} paddingAngle={2}>
+                  <Pie data={donut} dataKey="value" innerRadius={38} outerRadius={54} startAngle={90} endAngle={-270} paddingAngle={2} isAnimationActive={false}>
                     {donut.map((d) => (
                       <Cell key={d.name} fill={d.fill} />
                     ))}
@@ -156,7 +156,7 @@ function IntegrityPanel({ integrity }: { integrity: DashboardAnalytics['integrit
                     <XAxis type="number" hide allowDecimals={false} />
                     <YAxis type="category" dataKey="label" tick={{ fontSize: 10, fill: C.axis }} tickLine={false} axisLine={false} width={92} />
                     <Tooltip content={<ChartTooltip />} cursor={{ fill: '#00000008' }} />
-                    <Bar dataKey="count" fill={C.warning} radius={[0, 3, 3, 0]} barSize={12} />
+                    <Bar dataKey="count" fill={C.warning} radius={[0, 3, 3, 0]} barSize={12} isAnimationActive={false} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -213,7 +213,7 @@ function ThroughputPanel({ funnel, timing }: { funnel: DashboardAnalytics['funne
                 <XAxis dataKey="bucket" tick={{ fontSize: 10, fill: C.axis }} tickLine={false} axisLine={{ stroke: C.grid }} interval={0} />
                 <YAxis tick={{ fontSize: 10, fill: C.axis }} tickLine={false} axisLine={false} allowDecimals={false} width={28} />
                 <Tooltip content={<ChartTooltip suffix=" candidates" />} cursor={{ fill: '#00000008' }} />
-                <Bar dataKey="count" fill={C.accent} radius={[3, 3, 0, 0]} />
+                <Bar dataKey="count" fill={C.accent} radius={[3, 3, 0, 0]} isAnimationActive={false} />
               </BarChart>
             </ResponsiveContainer>
           </div>
