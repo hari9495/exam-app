@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { MotionConfig } from 'framer-motion';
 import clsx from 'clsx';
-import { LayoutDashboard, FileText, BookOpen, Users, History, ShieldCheck, Settings, KeyRound, LogOut } from 'lucide-react';
+import { LayoutDashboard, FileText, BookOpen, Users, History, ShieldCheck, Settings, KeyRound, LogOut, BarChart3 } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
 import { useBranding } from '../../lib/hooks/useBranding';
 import { useDocumentBranding } from '../../lib/hooks/useDocumentBranding';
@@ -16,10 +16,13 @@ const BASE_NAV_ITEMS = [
   { href: '/exams', label: 'Exams', icon: FileText },
   { href: '/questions', label: 'Question Bank', icon: BookOpen },
   { href: '/candidates', label: 'Candidates', icon: Users },
+  // Results (scores, pass/fail, CSV/XLSX/PDF export) previously only appeared for a
+  // super-admin impersonating an org, so a plain recruiter had no way to reach the
+  // reports console at all -- despite the recruiter role already holding results:view.
+  { href: '/reports', label: 'Results', icon: BarChart3 },
 ];
 
 const ACTING_EXTRA_NAV_ITEMS = [
-  { href: '/reports', label: 'Reports', icon: FileText },
   { href: '/users', label: 'Staff Users', icon: Users },
   { href: '/audit-log', label: 'Audit Log', icon: History },
   { href: '/data-rights', label: 'Candidate Data Rights', icon: ShieldCheck },

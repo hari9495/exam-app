@@ -40,8 +40,23 @@ describe('Panel layout', () => {
     expect(await screen.findByRole('link', { name: 'Exams' })).toBeInTheDocument();
   });
 
-  it('redirects a recruiter (wrong role) to /login instead of rendering the panel shell', async () => {
+  // The /reports routes live in this route group and a URL can only be served by one
+  // group, so recruiters are admitted here rather than duplicating every reports page.
+  // They hold results:view already; redirecting them was what left recruiters with no
+  // way to see scores, pass/fail, or the results export at all.
+  it('admits a recruiter and offers links back to their own console', async () => {
     renderLayout('recruiter');
+    // For a recruiter the /reports link reads "Results", so it doesn't collide with the
+    // "Exams" link back to their own console.
+    expect(await screen.findByRole('link', { name: 'Results' })).toHaveAttribute('href', '/reports');
+    expect(mockPush).not.toHaveBeenCalledWith('/login');
+    expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Exams' })).toHaveAttribute('href', '/exams');
+    expect(screen.getByRole('link', { name: 'Candidates' })).toBeInTheDocument();
+  });
+
+  it('still redirects an unrelated role (org_admin) to /login', async () => {
+    renderLayout('org_admin');
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/login'));
     expect(screen.queryByRole('link', { name: 'Exams' })).not.toBeInTheDocument();
   });

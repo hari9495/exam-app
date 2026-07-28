@@ -109,7 +109,6 @@ describe('Recruiter layout', () => {
 
     expect(await screen.findByRole('link', { name: /Dashboard/i })).toBeInTheDocument();
     expect(mockPush).not.toHaveBeenCalledWith('/login');
-    expect(screen.getByRole('link', { name: 'Reports' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Staff Users' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Audit Log' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Candidate Data Rights' })).toBeInTheDocument();
@@ -121,7 +120,14 @@ describe('Recruiter layout', () => {
     renderLayout();
     await screen.findByRole('link', { name: /Dashboard/i });
     expect(screen.queryByRole('link', { name: 'Staff Users' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Reports' })).not.toBeInTheDocument();
+  });
+
+  // Regression: Results sat in the acting-super-admin-only group, so a plain recruiter had
+  // no route to scores, pass/fail, or the CSV/XLSX/PDF export -- even though the recruiter
+  // role already carries results:view.
+  it('shows the Results link to a normal recruiter', async () => {
+    renderLayout();
+    expect(await screen.findByRole('link', { name: 'Results' })).toHaveAttribute('href', '/reports');
   });
 
   it('renders each nav item with an icon and marks the active route', async () => {

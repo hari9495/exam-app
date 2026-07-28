@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import clsx from 'clsx';
 import { MotionConfig } from 'framer-motion';
-import { LogOut, LayoutDashboard, BookOpen, Users, History, ShieldCheck, Settings, KeyRound } from 'lucide-react';
+import { LogOut, LayoutDashboard, BookOpen, Users, History, ShieldCheck, Settings, KeyRound, FileText } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
 import { useBranding } from '../../lib/hooks/useBranding';
 import { useDocumentBranding } from '../../lib/hooks/useDocumentBranding';
@@ -22,6 +22,18 @@ const ACTING_EXTRA_NAV_ITEMS = [
   { href: '/settings/sso', label: 'Single Sign-On', icon: KeyRound },
 ];
 
+// Recruiters need the results/reports console too (they hold results:view), but the
+// /reports routes live in this route group, and a URL can only be served by one group --
+// so recruiters are admitted here rather than duplicating every reports page. These links
+// give them their own console back, since this shell replaces the recruiter sidebar.
+const RECRUITER_NAV_ITEMS = [
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/exams', label: 'Exams', icon: FileText },
+  { href: '/candidates', label: 'Candidates', icon: Users },
+];
+
+const ALLOWED_ROLES = ['panel', 'recruiter'];
+
 export default function PanelLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -33,7 +45,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
   useEffect(() => {
     if (!isLoading && !accessToken) {
       router.push('/login');
-    } else if (!isLoading && accessToken && role && role !== 'panel' && !actingSuperAdmin) {
+    } else if (!isLoading && accessToken && role && !ALLOWED_ROLES.includes(role) && !actingSuperAdmin) {
       router.push('/login');
     }
   }, [isLoading, accessToken, role, actingSuperAdmin, router]);
@@ -43,7 +55,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
     ...(branding?.accentColor ? { '--color-accent': branding.accentColor } : {}),
   } as React.CSSProperties;
 
-  if (isLoading || !accessToken || (role !== null && role !== 'panel' && !actingSuperAdmin)) {
+  if (isLoading || !accessToken || (role !== null && !ALLOWED_ROLES.includes(role) && !actingSuperAdmin)) {
     return <p className="p-8 text-sm text-gray-500">Loading…</p>;
   }
 
@@ -54,7 +66,8 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
 
   // Real name from useCurrentUser() once loaded; falls back to a per-role
   // placeholder only while loading or if the user has never set one.
-  const displayName = currentUser?.name || 'Panel';
+  const displayName = currentUser?.name || (role === 'recruiter' ? 'Recruiter' : 'Panel');
+  const roleLabel = role === 'recruiter' ? 'Recruiter' : 'Panel';
   const initials = displayName
     .split(' ')
     .map((part) => part[0])
@@ -75,8 +88,24 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
                 pathname?.startsWith('/reports') ? 'bg-primary text-white' : 'text-gray-700 hover:bg-gray-100',
               )}
             >
-              Exams
+              {/* This link goes to /reports. "Exams" reads fine for a panel member browsing
+                  exams to review, but a recruiter arriving here wants results -- and would
+                  otherwise see two different links both labelled "Exams". */}
+              {role === 'recruiter' ? 'Results' : 'Exams'}
             </Link>
+            {!actingSuperAdmin && role === 'recruiter' &&
+              RECRUITER_NAV_ITEMS.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={clsx(
+                    'rounded px-3 py-2 text-sm font-medium transition-colors duration-150',
+                    pathname?.startsWith(item.href) ? 'bg-primary text-white' : 'text-gray-700 hover:bg-gray-100',
+                  )}
+                >
+                  {item.label}
+                </Link>
+              ))}
             {actingSuperAdmin &&
               ACTING_EXTRA_NAV_ITEMS.map((item) => (
                 <Link
@@ -101,7 +130,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
               </div>
               <div className="min-w-0">
                 <p className="truncate text-xs font-semibold text-gray-900">{displayName}</p>
-                <p className="text-[10.5px] text-gray-500">Panel</p>
+                <p className="text-[10.5px] text-gray-500">{roleLabel}</p>
               </div>
             </Link>
             <button
