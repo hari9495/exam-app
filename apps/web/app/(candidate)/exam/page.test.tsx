@@ -214,6 +214,51 @@ describe('CandidateExamPage', () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith('/submitted'));
   });
 
+  // The submit dialog's tallies are the last thing a candidate sees before committing, so
+  // they double as navigation: press one and land on the first question in that state.
+  it('jumps to the first unanswered question from the submit dialog', async () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: {
+        ...attemptState,
+        sections: [
+          {
+            title: 'Section One',
+            targetDurationMinutes: null,
+            questions: [
+              { id: 'q1', text: 'Answered one', type: 'single_mcq', marks: 1, options: [{ id: 'o1', text: 'a' }] },
+              { id: 'q2', text: 'Still blank', type: 'single_mcq', marks: 1, options: [{ id: 'o2', text: 'b' }] },
+            ],
+          },
+        ],
+        answers: [{ questionId: 'q1', selectedOptionIds: ['o1'], isMarkedForReview: false, answerText: null, codeLanguage: null }],
+      },
+      isError: false,
+    });
+    render(<CandidateExamPage />);
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'Review & Submit' })[0]);
+    await userEvent.click(screen.getByRole('button', { name: /Go to the first of 1 unanswered questions/ }));
+
+    // Dialog closes and the second (unanswered) question is now on screen.
+    expect(screen.queryByRole('button', { name: 'Submit' })).not.toBeInTheDocument();
+    expect(screen.getByText('Still blank')).toBeInTheDocument();
+  });
+
+  it('does not offer a dead control when nothing is unanswered or marked', async () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: {
+        ...attemptState,
+        answers: [{ questionId: 'q1', selectedOptionIds: ['o1'], isMarkedForReview: false, answerText: null, codeLanguage: null }],
+      },
+      isError: false,
+    });
+    render(<CandidateExamPage />);
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'Review & Submit' })[0]);
+
+    expect(screen.queryByRole('button', { name: /Go to the first of/ })).not.toBeInTheDocument();
+  });
+
   it('redirects to /session-ended when the attempt query errors (dead session)', () => {
     (useAttemptQuery as jest.Mock).mockReturnValue({ data: undefined, isError: true });
 

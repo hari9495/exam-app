@@ -231,13 +231,21 @@ export default function CandidateExamPage() {
   const needsLanguagePick = question?.type === 'code' && !currentCodeLanguage;
   const codeLanguagesQuery = useCodeLanguages(Boolean(question && question.type === 'code' && question.languageMode === 'any'));
   const languageOptions = question?.type === 'code' ? (question.languageMode === 'fixed' ? question.allowedLanguages : (codeLanguagesQuery.data ?? []).map((entry) => entry.language)) : [];
-  const answeredCount = questions.filter((q) => {
+  // Single source of truth for "is this answered": the submit dialog counts these AND jumps
+  // to them, so a second copy of the rule would eventually disagree with the tally shown.
+  const isQuestionAnswered = (q: (typeof questions)[number]) => {
     const a = answers.find((ans) => ans.questionId === q.id);
     if (q.type === 'code') return Boolean(a && a.answerText && a.answerText.trim() !== '');
     return Boolean(a && a.selectedOptionIds.length > 0);
-  }).length;
-  const reviewCount = questions.filter((q) => answers.find((ans) => ans.questionId === q.id)?.isMarkedForReview).length;
+  };
+  const isQuestionMarkedForReview = (q: (typeof questions)[number]) =>
+    Boolean(answers.find((ans) => ans.questionId === q.id)?.isMarkedForReview);
+
+  const answeredCount = questions.filter(isQuestionAnswered).length;
+  const reviewCount = questions.filter(isQuestionMarkedForReview).length;
   const unansweredCount = questions.length - answeredCount;
+  const firstReviewIndex = questions.findIndex(isQuestionMarkedForReview);
+  const firstUnansweredIndex = questions.findIndex((q) => !isQuestionAnswered(q));
 
   if (isError || !attemptState) {
     return <p className="p-8 text-sm text-candidate-text-tertiary">Loading…</p>;
@@ -308,6 +316,14 @@ export default function CandidateExamPage() {
   async function handleConfirmSubmit() {
     setConfirmOpen(false);
     await finishSubmit();
+  }
+
+  // Lets the candidate act on the submit dialog's tallies instead of just reading them:
+  // jump straight to the first question in that state and close the dialog.
+  function jumpToQuestion(index: number) {
+    if (index < 0) return;
+    setCurrentIndex(index);
+    setConfirmOpen(false);
   }
 
   return (
@@ -547,14 +563,45 @@ export default function CandidateExamPage() {
             <div className="text-lg font-bold text-candidate-primary">{answeredCount}</div>
             <div className="text-[10px] uppercase tracking-wide text-candidate-text-tertiary">Answered</div>
           </div>
-          <div className="rounded-md bg-candidate-review-bg p-2 text-center">
-            <div className="text-lg font-bold text-candidate-review">{reviewCount}</div>
-            <div className="text-[10px] uppercase tracking-wide text-candidate-text-tertiary">For review</div>
-          </div>
-          <div className="rounded-md bg-candidate-bg p-2 text-center">
-            <div className="text-lg font-bold text-candidate-text-secondary">{unansweredCount}</div>
-            <div className="text-[10px] uppercase tracking-wide text-candidate-text-tertiary">Unanswered</div>
-          </div>
+          {/* Clickable when there is somewhere to go: takes the candidate straight to the
+              first question in that state. Rendered as a plain tile at zero so there is no
+              dead control to press. */}
+          {reviewCount > 0 ? (
+            <button
+              type="button"
+              onClick={() => jumpToQuestion(firstReviewIndex)}
+              aria-label={`Go to the first of ${reviewCount} questions marked for review`}
+              className="rounded-md bg-candidate-review-bg p-2 text-center transition hover:ring-2 hover:ring-inset hover:ring-candidate-review-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-candidate-review-border"
+            >
+              <div className="text-lg font-bold text-candidate-review">{reviewCount}</div>
+              <div className="inline-flex items-center gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-candidate-review">
+                For review <ChevronRight className="h-3 w-3" aria-hidden="true" />
+              </div>
+            </button>
+          ) : (
+            <div className="rounded-md bg-candidate-review-bg p-2 text-center">
+              <div className="text-lg font-bold text-candidate-review">{reviewCount}</div>
+              <div className="text-[10px] uppercase tracking-wide text-candidate-text-tertiary">For review</div>
+            </div>
+          )}
+          {unansweredCount > 0 ? (
+            <button
+              type="button"
+              onClick={() => jumpToQuestion(firstUnansweredIndex)}
+              aria-label={`Go to the first of ${unansweredCount} unanswered questions`}
+              className="rounded-md bg-candidate-bg p-2 text-center transition hover:ring-2 hover:ring-inset hover:ring-candidate-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-candidate-primary"
+            >
+              <div className="text-lg font-bold text-candidate-text-secondary">{unansweredCount}</div>
+              <div className="inline-flex items-center gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-candidate-text-secondary">
+                Unanswered <ChevronRight className="h-3 w-3" aria-hidden="true" />
+              </div>
+            </button>
+          ) : (
+            <div className="rounded-md bg-candidate-bg p-2 text-center">
+              <div className="text-lg font-bold text-candidate-text-secondary">{unansweredCount}</div>
+              <div className="text-[10px] uppercase tracking-wide text-candidate-text-tertiary">Unanswered</div>
+            </div>
+          )}
         </div>
         <div className="flex justify-end gap-2">
           <CandidateButton variant="secondary" onClick={() => setConfirmOpen(false)}>
