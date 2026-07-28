@@ -70,4 +70,13 @@ export class DashboardController {
     }
     return this.dashboardService.getFunnel(tenant, examId, window as Window);
   }
+
+  @Get('analytics')
+  @RequireAnyPermission('exam:manage', 'results:view')
+  getAnalytics(@CurrentTenant() tenant: TenantContext, @Query('window') window?: string) {
+    if (!window || !(WINDOWS as readonly string[]).includes(window)) {
+      throw new BadRequestException(`window must be one of ${WINDOWS.join(', ')}`);
+    }
+    return this.dashboardService.getAnalytics(tenant, window as Window);
+  }
 }

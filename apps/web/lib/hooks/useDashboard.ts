@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../api-client';
 import {
+  DashboardAnalytics,
   DashboardExamPerformance,
   DashboardFunnel,
   DashboardPerformanceLimit,
@@ -44,6 +45,15 @@ export function useDashboardFunnel(examId: string, window: DashboardWindow) {
   return useQuery<DashboardFunnel>({
     queryKey: ['dashboard-funnel', examId, window],
     queryFn: () => apiFetch(`/dashboard/funnel?examId=${examId}&window=${window}`, {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken),
+  });
+}
+
+export function useDashboardAnalytics(window: DashboardWindow) {
+  const { accessToken } = useAuth();
+  return useQuery<DashboardAnalytics>({
+    queryKey: ['dashboard-analytics', window],
+    queryFn: () => apiFetch(`/dashboard/analytics?window=${window}`, {}, accessToken ?? undefined),
     enabled: Boolean(accessToken),
   });
 }

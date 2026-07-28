@@ -451,4 +451,64 @@ describe('DashboardService', () => {
       expect(result.attention.pendingGrading).toEqual([{ examId: 'exam-1', examTitle: 'Backend Round', count: 9 }]);
     });
   });
+
+  describe('getAnalytics', () => {
+    it('computes scores, integrity, timing, exam quality, and question difficulty', async () => {
+      const submittedAt = new Date('2026-07-20T10:00:00Z');
+      const startedAt = new Date('2026-07-20T09:30:00Z'); // 30 minutes
+      const results = [
+        { percentage: 80, passFail: 'pass', attempt: { examId: 'exam-1', candidateId: 'c1', startedAt, submittedAt } },
+        { percentage: 30, passFail: 'fail', attempt: { examId: 'exam-1', candidateId: 'c2', startedAt, submittedAt } },
+      ];
+      const tx = {
+        exam: { findMany: jest.fn().mockResolvedValue([{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60 }]) },
+        result: { findMany: jest.fn().mockResolvedValue(results), count: jest.fn().mockResolvedValue(1) },
+        attempt: {
+          findMany: jest.fn().mockResolvedValue([
+            { webcamViolationCount: 2, browserActivityViolationCount: 0 },
+            { webcamViolationCount: 0, browserActivityViolationCount: 0 },
+          ]),
+          count: jest.fn().mockResolvedValue(2),
+        },
+        invitation: { count: jest.fn().mockResolvedValue(4) },
+        proctoringEvent: {
+          groupBy: jest
+            .fn()
+            .mockResolvedValueOnce([{ eventType: 'tab_switch', _count: { _all: 3 } }])
+            .mockResolvedValueOnce([{ severity: 'high', _count: { _all: 1 } }]),
+        },
+        answer: {
+          groupBy: jest
+            .fn()
+            .mockResolvedValueOnce([{ questionId: 'q1', _count: { _all: 10 } }])
+            .mockResolvedValueOnce([{ questionId: 'q1', _count: { _all: 2 } }]),
+        },
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Hardest question' }]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
+
+      const result = await service.getAnalytics(context, 'all');
+
+      expect(result.scores.count).toBe(2);
+      expect(result.scores.avg).toBe(55);
+      expect(result.scores.passRate).toBe(50);
+      expect(result.integrity.flaggedAttempts).toBe(1);
+      expect(result.integrity.flaggedRate).toBe(50);
+      expect(result.integrity.byType[0]).toEqual({ type: 'tab_switch', count: 3 });
+      expect(result.timing.avgMinutes).toBe(30);
+      expect(result.examQuality[0]).toMatchObject({ examTitle: 'Backend Round', avgScore: 55, passRate: 50, candidateCount: 2, allottedMinutes: 60 });
+      expect(result.questionDifficulty[0]).toMatchObject({ text: 'Hardest question', correctRate: 20, answered: 10 });
+    });
+
+    it('returns empty analytics when the org has no exams', async () => {
+      const tx = { exam: { findMany: jest.fn().mockResolvedValue([]) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
+
+      const result = await service.getAnalytics(context, 'all');
+
+      expect(result.scores.count).toBe(0);
+      expect(result.examQuality).toEqual([]);
+      expect(result.questionDifficulty).toEqual([]);
+    });
+  });
 });

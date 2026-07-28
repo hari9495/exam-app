@@ -4,12 +4,11 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Users, Mail, Play, FileEdit, AlertTriangle, Clock, CheckCircle2, FileEdit as FileEditIcon, Plus, CalendarClock } from 'lucide-react';
-import { useDashboardExamPerformance, useDashboardFunnel, useDashboardSummary, useDashboardTrend } from '../../../lib/hooks/useDashboard';
+import { useDashboardAnalytics, useDashboardSummary, useDashboardTrend } from '../../../lib/hooks/useDashboard';
 import { DashboardTrendMetric, DashboardWindow } from '../../../lib/types';
 import { Card, Button, Select, type SelectOption } from '../../../components/ui';
 import { Sparkline } from '../../../components/charts/Sparkline';
-import { GroupedBarChart } from '../../../components/charts/GroupedBarChart';
-import { FunnelChart } from '../../../components/charts/FunnelChart';
+import { AnalyticsPanels } from '../../../components/dashboard/AnalyticsPanels';
 
 function activityIconFor(description: string) {
   if (description.includes('invited')) return Mail;
@@ -81,59 +80,10 @@ function StatCard({ icon: Icon, value, label, metric, color, delay, range }: Sta
   );
 }
 
-function ExamPerformanceCard({ range }: { range: DashboardWindow }) {
-  const { data } = useDashboardExamPerformance(5, range);
-  const exams = data?.exams ?? [];
-
-  const groups = exams.map((exam) => ({
-    label: exam.examTitle,
-    series: [
-      { key: 'passRate', value: exam.passRate, color: '#0d9488' },
-      { key: 'avgScore', value: exam.avgScore, color: '#d4a017' },
-    ],
-  }));
-
-  return (
-    <Card>
-      <h2 className="mb-3 text-sm font-bold text-recruiter-text">Exam performance</h2>
-      {groups.length === 0 ? (
-        <p className="text-sm text-recruiter-text-tertiary">No settled attempts yet.</p>
-      ) : (
-        <div className="h-64 w-full">
-          <GroupedBarChart
-            groups={groups}
-            legend={[
-              { label: 'Pass rate', color: '#0d9488' },
-              { label: 'Avg score', color: '#d4a017' },
-            ]}
-          />
-        </div>
-      )}
-    </Card>
-  );
-}
-
-function CandidateFunnelCard({ range }: { range: DashboardWindow }) {
-  const { data: funnel } = useDashboardFunnel('all', range);
-
-  const stages = [
-    { label: 'Invited', value: funnel?.invited ?? 0 },
-    { label: 'Started', value: funnel?.started ?? 0 },
-    { label: 'Submitted', value: funnel?.submitted ?? 0 },
-    { label: 'Passed', value: funnel?.passed ?? 0 },
-  ];
-
-  return (
-    <Card>
-      <h2 className="mb-3 text-sm font-bold text-recruiter-text">Candidate funnel</h2>
-      <FunnelChart stages={stages} />
-    </Card>
-  );
-}
-
 export default function DashboardPage() {
   const [range, setRange] = useState<DashboardWindow>('14d');
   const { data, isLoading, isError } = useDashboardSummary(range);
+  const { data: analytics } = useDashboardAnalytics(range);
   // ponytail: a range change always mints a new react-query key with no cached data, so
   // `data` briefly goes undefined again on every switch. Keep showing the last-loaded
   // summary while the new range fetches so the page (Select + cards) doesn't unmount and
@@ -197,20 +147,24 @@ export default function DashboardPage() {
         />
       </div>
 
-      <div className="mb-5 grid grid-cols-2 gap-4">
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.16 }}>
-          <CandidateFunnelCard range={range} />
-        </motion.div>
-
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.2 }}>
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.16 }} className="mb-5">
+        {analytics ? (
+          <AnalyticsPanels data={analytics} />
+        ) : (
           <Card>
-            <h2 className="mb-3 flex items-center gap-1.5 text-sm font-bold text-recruiter-text">
-              <CalendarClock size={14} />
-              Upcoming exams
-            </h2>
-            {summary.upcomingExams.length === 0 ? (
-              <p className="text-sm text-recruiter-text-tertiary">No upcoming exams.</p>
-            ) : (
+            <p className="py-8 text-center text-sm text-recruiter-text-tertiary">Loading analytics…</p>
+          </Card>
+        )}
+      </motion.div>
+
+      {summary.upcomingExams.length > 0 && (
+        <div className="mb-5">
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.2 }}>
+            <Card>
+              <h2 className="mb-3 flex items-center gap-1.5 text-sm font-bold text-recruiter-text">
+                <CalendarClock size={14} />
+                Upcoming exams
+              </h2>
               <ul>
                 {summary.upcomingExams.map((exam) => (
                   <li key={exam.examId} className="border-b border-recruiter-border last:border-0">
@@ -221,16 +175,10 @@ export default function DashboardPage() {
                   </li>
                 ))}
               </ul>
-            )}
-          </Card>
-        </motion.div>
-      </div>
-
-      <div className="mb-5">
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.2 }}>
-          <ExamPerformanceCard range={range} />
-        </motion.div>
-      </div>
+            </Card>
+          </motion.div>
+        </div>
+      )}
 
       <div className="grid grid-cols-[1.3fr_1fr] gap-4">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.24 }}>

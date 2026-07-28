@@ -621,3 +621,40 @@ export interface DashboardFunnel {
   submitted: number;
   passed: number;
 }
+
+export interface DashboardAnalytics {
+  scores: {
+    count: number;
+    passRate: number | null;
+    avg: number | null;
+    median: number | null;
+    p25: number | null;
+    p75: number | null;
+    distribution: { bucket: string; count: number }[];
+  };
+  integrity: {
+    submittedAttempts: number;
+    cleanAttempts: number;
+    flaggedAttempts: number;
+    flaggedRate: number;
+    byType: { type: string; count: number }[];
+    bySeverity: { severity: string; count: number }[];
+  };
+  funnel: DashboardFunnel & { completionRate: number; abandoned: number };
+  timing: {
+    avgMinutes: number | null;
+    medianMinutes: number | null;
+    distribution: { bucket: string; count: number }[];
+  };
+  examQuality: {
+    examId: string;
+    examTitle: string;
+    candidateCount: number;
+    avgScore: number;
+    passRate: number;
+    scoreSpread: number;
+    avgMinutes: number | null;
+    allottedMinutes: number;
+  }[];
+  questionDifficulty: { questionId: string; text: string; correctRate: number; answered: number }[];
+}

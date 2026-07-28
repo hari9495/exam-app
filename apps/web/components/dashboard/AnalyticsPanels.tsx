@@ -1,0 +1,308 @@
+'use client';
+
+import {
+  Bar,
+  BarChart,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import { ShieldCheck, ShieldAlert, Timer, Target, TrendingDown, Users2 } from 'lucide-react';
+import { Card } from '../ui';
+import { DashboardAnalytics } from '../../lib/types';
+
+// Charts read against the recruiter palette rather than recharts' defaults, so the
+// dashboard looks like one system. Semantic colours (pass=green, flagged=red) are
+// separate from the neutral brand blue used for plain magnitude bars.
+const C = {
+  primary: '#0057f0',
+  accent: '#c98a00',
+  success: '#2F6F5E',
+  warning: '#8A5A00',
+  danger: '#B23B3B',
+  grid: '#EAECEB',
+  axis: '#9AA5A0',
+};
+
+function ChartTooltip({ active, payload, label, suffix }: { active?: boolean; payload?: { value: number }[]; label?: string; suffix?: string }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-md border border-recruiter-border bg-white px-2.5 py-1.5 text-xs shadow-sm">
+      <span className="font-semibold text-recruiter-text">{label}</span>
+      <span className="ml-2 tabular-nums text-recruiter-text-secondary">
+        {payload[0].value}
+        {suffix ?? ''}
+      </span>
+    </div>
+  );
+}
+
+function PanelHeader({ icon: Icon, title, hint }: { icon: typeof Target; title: string; hint?: string }) {
+  return (
+    <div className="mb-4 flex items-center gap-2">
+      <span className="flex h-7 w-7 items-center justify-center rounded-md bg-recruiter-bg-subtle text-primary">
+        <Icon size={15} />
+      </span>
+      <h2 className="text-sm font-bold text-recruiter-text">{title}</h2>
+      {hint ? <span className="ml-auto text-xs text-recruiter-text-tertiary">{hint}</span> : null}
+    </div>
+  );
+}
+
+function Stat({ value, label, tone }: { value: string; label: string; tone?: 'good' | 'warn' | 'bad' }) {
+  const color = tone === 'good' ? 'text-status-success' : tone === 'warn' ? 'text-status-warning' : tone === 'bad' ? 'text-status-danger' : 'text-recruiter-text';
+  return (
+    <div className="rounded-lg bg-recruiter-bg-subtle px-3 py-2">
+      <p className={`text-xl font-bold tabular-nums ${color}`}>{value}</p>
+      <p className="text-[11px] uppercase tracking-wide text-recruiter-text-tertiary">{label}</p>
+    </div>
+  );
+}
+
+function EmptyNote({ children }: { children: React.ReactNode }) {
+  return <p className="py-8 text-center text-sm text-recruiter-text-tertiary">{children}</p>;
+}
+
+// ---- 1. Candidate performance ----
+function ScorePanel({ scores }: { scores: DashboardAnalytics['scores'] }) {
+  const hasData = scores.count > 0;
+  return (
+    <Card>
+      <PanelHeader icon={Target} title="Score distribution" hint={hasData ? `${scores.count} graded` : undefined} />
+      {!hasData ? (
+        <EmptyNote>No graded results in this range yet.</EmptyNote>
+      ) : (
+        <>
+          <div className="mb-4 grid grid-cols-4 gap-2">
+            <Stat value={`${scores.avg}%`} label="Average" />
+            <Stat value={`${scores.median}%`} label="Median" />
+            <Stat value={`${scores.p25}–${scores.p75}`} label="Middle 50%" />
+            <Stat value={`${scores.passRate}%`} label="Pass rate" tone={scores.passRate !== null && scores.passRate >= 50 ? 'good' : 'warn'} />
+          </div>
+          <div className="h-52 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={scores.distribution} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                <XAxis dataKey="bucket" tick={{ fontSize: 10, fill: C.axis }} tickLine={false} axisLine={{ stroke: C.grid }} interval={0} angle={-30} textAnchor="end" height={38} />
+                <YAxis tick={{ fontSize: 10, fill: C.axis }} tickLine={false} axisLine={false} allowDecimals={false} width={30} />
+                <Tooltip content={<ChartTooltip suffix=" candidates" />} cursor={{ fill: '#00000008' }} />
+                <Bar dataKey="count" radius={[3, 3, 0, 0]}>
+                  {scores.distribution.map((entry, i) => (
+                    // Fail band (below ~40) tinted danger, pass band brand blue -- the pass line is score-dependent per exam, so this is a soft visual cue, not a hard threshold.
+                    <Cell key={entry.bucket} fill={i < 4 ? '#C9739F33' : C.primary} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="mt-1 text-center text-[11px] text-recruiter-text-tertiary">score %</p>
+        </>
+      )}
+    </Card>
+  );
+}
+
+// ---- 2. Integrity & proctoring ----
+function IntegrityPanel({ integrity }: { integrity: DashboardAnalytics['integrity'] }) {
+  const hasData = integrity.submittedAttempts > 0;
+  const donut = [
+    { name: 'Clean', value: integrity.cleanAttempts, fill: C.success },
+    { name: 'Flagged', value: integrity.flaggedAttempts, fill: C.danger },
+  ];
+  const topTypes = integrity.byType.slice(0, 5).map((t) => ({ ...t, label: t.type.replace(/_/g, ' ') }));
+  return (
+    <Card>
+      <PanelHeader
+        icon={integrity.flaggedRate > 0 ? ShieldAlert : ShieldCheck}
+        title="Proctoring integrity"
+        hint={hasData ? `${integrity.submittedAttempts} attempts` : undefined}
+      />
+      {!hasData ? (
+        <EmptyNote>No completed attempts to analyse yet.</EmptyNote>
+      ) : (
+        <div className="grid grid-cols-[auto_1fr] gap-4">
+          <div className="flex flex-col items-center">
+            <div className="relative h-28 w-28">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={donut} dataKey="value" innerRadius={38} outerRadius={54} startAngle={90} endAngle={-270} paddingAngle={2}>
+                    {donut.map((d) => (
+                      <Cell key={d.name} fill={d.fill} />
+                    ))}
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                <span className={`text-lg font-bold tabular-nums ${integrity.flaggedRate > 20 ? 'text-status-danger' : 'text-recruiter-text'}`}>{integrity.flaggedRate}%</span>
+                <span className="text-[10px] uppercase text-recruiter-text-tertiary">flagged</span>
+              </div>
+            </div>
+            <div className="mt-2 flex gap-3 text-[11px]">
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: C.success }} />{integrity.cleanAttempts} clean</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: C.danger }} />{integrity.flaggedAttempts} flagged</span>
+            </div>
+          </div>
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-recruiter-text-tertiary">Violations by type</p>
+            {topTypes.length === 0 ? (
+              <p className="py-6 text-sm text-status-success">No violations recorded.</p>
+            ) : (
+              <div className="h-32 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={topTypes} layout="vertical" margin={{ top: 0, right: 8, left: 0, bottom: 0 }}>
+                    <XAxis type="number" hide allowDecimals={false} />
+                    <YAxis type="category" dataKey="label" tick={{ fontSize: 10, fill: C.axis }} tickLine={false} axisLine={false} width={92} />
+                    <Tooltip content={<ChartTooltip />} cursor={{ fill: '#00000008' }} />
+                    <Bar dataKey="count" fill={C.warning} radius={[0, 3, 3, 0]} barSize={12} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ---- 3. Funnel & throughput ----
+function ThroughputPanel({ funnel, timing }: { funnel: DashboardAnalytics['funnel']; timing: DashboardAnalytics['timing'] }) {
+  const stages = [
+    { label: 'Invited', value: funnel.invited },
+    { label: 'Started', value: funnel.started },
+    { label: 'Submitted', value: funnel.submitted },
+    { label: 'Passed', value: funnel.passed },
+  ];
+  const max = Math.max(1, funnel.invited);
+  return (
+    <Card>
+      <PanelHeader icon={Users2} title="Hiring funnel & throughput" />
+      <div className="grid grid-cols-3 gap-2">
+        <Stat value={`${funnel.completionRate}%`} label="Completion" tone={funnel.completionRate >= 70 ? 'good' : 'warn'} />
+        <Stat value={String(funnel.abandoned)} label="Abandoned" tone={funnel.abandoned > 0 ? 'warn' : undefined} />
+        <Stat value={timing.medianMinutes !== null ? `${timing.medianMinutes}m` : '—'} label="Median time" />
+      </div>
+      <div className="mt-4 flex flex-col gap-1.5">
+        {stages.map((stage, i) => {
+          const pct = Math.round((stage.value / max) * 100);
+          const conv = i > 0 && stages[i - 1].value > 0 ? Math.round((stage.value / stages[i - 1].value) * 100) : null;
+          return (
+            <div key={stage.label} className="flex items-center gap-2">
+              <span className="w-16 text-xs text-recruiter-text-secondary">{stage.label}</span>
+              <div className="relative h-6 flex-1 overflow-hidden rounded bg-recruiter-bg-subtle">
+                <div className="flex h-full items-center rounded px-2" style={{ width: `${Math.max(pct, 8)}%`, background: i === 3 ? C.success : C.primary }}>
+                  <span className="text-[11px] font-semibold tabular-nums text-white">{stage.value}</span>
+                </div>
+              </div>
+              <span className="w-10 text-right text-[11px] tabular-nums text-recruiter-text-tertiary">{conv !== null ? `${conv}%` : ''}</span>
+            </div>
+          );
+        })}
+      </div>
+      {timing.distribution.some((d) => d.count > 0) && (
+        <div className="mt-4">
+          <p className="mb-1 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-recruiter-text-tertiary">
+            <Timer size={11} /> Completion time
+          </p>
+          <div className="h-24 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={timing.distribution} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
+                <XAxis dataKey="bucket" tick={{ fontSize: 10, fill: C.axis }} tickLine={false} axisLine={{ stroke: C.grid }} interval={0} />
+                <YAxis tick={{ fontSize: 10, fill: C.axis }} tickLine={false} axisLine={false} allowDecimals={false} width={28} />
+                <Tooltip content={<ChartTooltip suffix=" candidates" />} cursor={{ fill: '#00000008' }} />
+                <Bar dataKey="count" fill={C.accent} radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ---- 4. Exam quality + question difficulty ----
+function ExamQualityPanel({ examQuality, questionDifficulty }: Pick<DashboardAnalytics, 'examQuality' | 'questionDifficulty'>) {
+  return (
+    <Card>
+      <PanelHeader icon={TrendingDown} title="Exam quality" hint="hardest first" />
+      {examQuality.length === 0 ? (
+        <EmptyNote>No settled attempts to compare exams yet.</EmptyNote>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-recruiter-border text-left text-[11px] uppercase tracking-wide text-recruiter-text-tertiary">
+                <th className="pb-2 font-semibold">Exam</th>
+                <th className="pb-2 text-right font-semibold">Cand.</th>
+                <th className="pb-2 text-right font-semibold">Avg</th>
+                <th className="pb-2 text-right font-semibold">Pass</th>
+                <th className="pb-2 text-right font-semibold">Spread</th>
+                <th className="pb-2 text-right font-semibold">Time used</th>
+              </tr>
+            </thead>
+            <tbody>
+              {examQuality.map((exam) => {
+                const usedPct = exam.avgMinutes !== null && exam.allottedMinutes > 0 ? Math.round((exam.avgMinutes / exam.allottedMinutes) * 100) : null;
+                return (
+                  <tr key={exam.examId} className="border-b border-recruiter-border last:border-0">
+                    <td className="py-2 pr-2 text-recruiter-text">{exam.examTitle}</td>
+                    <td className="py-2 text-right tabular-nums text-recruiter-text-secondary">{exam.candidateCount}</td>
+                    <td className="py-2 text-right tabular-nums text-recruiter-text">{exam.avgScore}%</td>
+                    <td className="py-2 text-right tabular-nums">
+                      <span className={exam.passRate >= 50 ? 'text-status-success' : 'text-status-warning'}>{exam.passRate}%</span>
+                    </td>
+                    <td className="py-2 text-right tabular-nums text-recruiter-text-secondary" title="Score standard deviation — low spread can mean the exam doesn't separate candidates well">
+                      ±{exam.scoreSpread}
+                    </td>
+                    <td className="py-2 text-right tabular-nums text-recruiter-text-secondary">
+                      {exam.avgMinutes !== null ? `${exam.avgMinutes}m` : '—'}
+                      {usedPct !== null ? <span className="ml-1 text-[11px] text-recruiter-text-tertiary">({usedPct}%)</span> : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {questionDifficulty.length > 0 && (
+        <div className="mt-5">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-recruiter-text-tertiary">Most-missed questions</p>
+          <ul className="flex flex-col gap-2">
+            {questionDifficulty.slice(0, 6).map((q) => (
+              <li key={q.questionId} className="flex items-center gap-3">
+                <span className="min-w-0 flex-1 truncate text-xs text-recruiter-text" title={q.text}>{q.text}</span>
+                <div className="h-1.5 w-24 overflow-hidden rounded-full bg-recruiter-bg-subtle">
+                  <div
+                    className="h-full rounded-full"
+                    style={{ width: `${q.correctRate}%`, background: q.correctRate < 40 ? C.danger : q.correctRate < 70 ? C.warning : C.success }}
+                  />
+                </div>
+                <span className="w-16 text-right text-[11px] tabular-nums text-recruiter-text-tertiary">{q.correctRate}% · {q.answered}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+export function AnalyticsPanels({ data }: { data: DashboardAnalytics }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <ScorePanel scores={data.scores} />
+        <IntegrityPanel integrity={data.integrity} />
+      </div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <ThroughputPanel funnel={data.funnel} timing={data.timing} />
+        <ExamQualityPanel examQuality={data.examQuality} questionDifficulty={data.questionDifficulty} />
+      </div>
+    </div>
+  );
+}

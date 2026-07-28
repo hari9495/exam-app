@@ -35,6 +35,79 @@ export interface DashboardFunnel {
   passed: number;
 }
 
+export interface DashboardAnalytics {
+  scores: {
+    count: number;
+    passRate: number | null;
+    avg: number | null;
+    median: number | null;
+    p25: number | null;
+    p75: number | null;
+    distribution: { bucket: string; count: number }[];
+  };
+  integrity: {
+    submittedAttempts: number;
+    cleanAttempts: number;
+    flaggedAttempts: number;
+    flaggedRate: number;
+    byType: { type: string; count: number }[];
+    bySeverity: { severity: string; count: number }[];
+  };
+  funnel: DashboardFunnel & { completionRate: number; abandoned: number };
+  timing: {
+    avgMinutes: number | null;
+    medianMinutes: number | null;
+    distribution: { bucket: string; count: number }[];
+  };
+  examQuality: {
+    examId: string;
+    examTitle: string;
+    candidateCount: number;
+    avgScore: number;
+    passRate: number;
+    scoreSpread: number;
+    avgMinutes: number | null;
+    allottedMinutes: number;
+  }[];
+  questionDifficulty: { questionId: string; text: string; correctRate: number; answered: number }[];
+}
+
+function percentile(sortedAsc: number[], p: number): number | null {
+  if (sortedAsc.length === 0) return null;
+  const idx = Math.min(sortedAsc.length - 1, Math.floor((p / 100) * sortedAsc.length));
+  return sortedAsc[idx];
+}
+
+// Ten evenly-spaced score buckets: 0-9, 10-19, ..., 90-100 (100 folds into the top).
+function scoreHistogram(percentages: number[]): { bucket: string; count: number }[] {
+  const buckets = Array.from({ length: 10 }, (_, i) => ({ bucket: `${i * 10}-${i * 10 + 9}`, count: 0 }));
+  buckets[9].bucket = '90-100';
+  for (const value of percentages) {
+    const i = Math.min(9, Math.max(0, Math.floor(value / 10)));
+    buckets[i].count += 1;
+  }
+  return buckets;
+}
+
+// Completion-time buckets in minutes, chosen to read well for typical exam lengths.
+const DURATION_BUCKETS: { label: string; maxMinutes: number }[] = [
+  { label: '<5m', maxMinutes: 5 },
+  { label: '5-15m', maxMinutes: 15 },
+  { label: '15-30m', maxMinutes: 30 },
+  { label: '30-60m', maxMinutes: 60 },
+  { label: '60-90m', maxMinutes: 90 },
+  { label: '90m+', maxMinutes: Infinity },
+];
+
+function durationHistogram(minutes: number[]): { bucket: string; count: number }[] {
+  const counts = DURATION_BUCKETS.map((b) => ({ bucket: b.label, count: 0 }));
+  for (const m of minutes) {
+    const i = DURATION_BUCKETS.findIndex((b) => m < b.maxMinutes);
+    counts[i === -1 ? DURATION_BUCKETS.length - 1 : i].count += 1;
+  }
+  return counts;
+}
+
 function daysAgo(days: number): Date {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
@@ -342,5 +415,154 @@ export class DashboardService {
 
       return { invited, started, submitted, passed };
     });
+  }
+
+  // One comprehensive analytics read for the dashboard (recruiter-only, low
+  // traffic, so a single fat call is fine). Everything is windowed by the
+  // attempt's submittedAt so the numbers describe completed assessments.
+  async getAnalytics(context: TenantContext, window: Window): Promise<DashboardAnalytics> {
+    const organizationId = context.organizationId as string;
+
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const exams = await tx.exam.findMany({
+        where: { organizationId },
+        select: { id: true, title: true, durationMinutes: true },
+      });
+      const examIds = exams.map((exam) => exam.id);
+      const examById = new Map(exams.map((exam) => [exam.id, exam]));
+      const windowStart = resolveWindowStart(window);
+      const submittedInWindow = windowStart ? { submittedAt: { gte: windowStart } } : { submittedAt: { not: null } };
+
+      if (examIds.length === 0) {
+        return this.emptyAnalytics();
+      }
+
+      const [results, submittedAttempts, eventsByType, eventsBySeverity, funnel, answerRows, questions] = await Promise.all([
+        tx.result.findMany({
+          where: { attempt: { examId: { in: examIds }, ...submittedInWindow } },
+          select: { percentage: true, passFail: true, attempt: { select: { examId: true, candidateId: true, startedAt: true, submittedAt: true } } },
+        }),
+        tx.attempt.findMany({
+          where: { examId: { in: examIds }, ...submittedInWindow },
+          select: { webcamViolationCount: true, browserActivityViolationCount: true },
+        }),
+        tx.proctoringEvent.groupBy({ by: ['eventType'], where: { attempt: { examId: { in: examIds }, ...submittedInWindow } }, _count: { _all: true } }),
+        tx.proctoringEvent.groupBy({ by: ['severity'], where: { attempt: { examId: { in: examIds }, ...submittedInWindow } }, _count: { _all: true } }),
+        this.getFunnel(context, 'all', window),
+        tx.answer.groupBy({
+          by: ['questionId'],
+          where: { attempt: { examId: { in: examIds }, ...submittedInWindow }, isCorrect: { not: null } },
+          _count: { _all: true },
+          _sum: { marksAwarded: true },
+        }),
+        tx.answer.groupBy({
+          by: ['questionId'],
+          where: { attempt: { examId: { in: examIds }, ...submittedInWindow }, isCorrect: true },
+          _count: { _all: true },
+        }),
+      ]);
+
+      // ----- Scores -----
+      const percentages = results.map((r) => r.percentage).sort((a, b) => a - b);
+      const passCount = results.filter((r) => r.passFail === 'pass').length;
+      const scores = {
+        count: results.length,
+        passRate: results.length ? Math.round((passCount / results.length) * 100) : null,
+        avg: percentages.length ? Math.round(percentages.reduce((s, v) => s + v, 0) / percentages.length) : null,
+        median: percentile(percentages, 50) === null ? null : Math.round(percentile(percentages, 50)!),
+        p25: percentile(percentages, 25) === null ? null : Math.round(percentile(percentages, 25)!),
+        p75: percentile(percentages, 75) === null ? null : Math.round(percentile(percentages, 75)!),
+        distribution: scoreHistogram(percentages),
+      };
+
+      // ----- Integrity -----
+      const flaggedAttempts = submittedAttempts.filter((a) => a.webcamViolationCount + a.browserActivityViolationCount > 0).length;
+      const integrity = {
+        submittedAttempts: submittedAttempts.length,
+        cleanAttempts: submittedAttempts.length - flaggedAttempts,
+        flaggedAttempts,
+        flaggedRate: submittedAttempts.length ? Math.round((flaggedAttempts / submittedAttempts.length) * 100) : 0,
+        byType: eventsByType.map((g) => ({ type: g.eventType, count: g._count._all })).sort((a, b) => b.count - a.count),
+        bySeverity: eventsBySeverity.map((g) => ({ severity: g.severity, count: g._count._all })).sort((a, b) => b.count - a.count),
+      };
+
+      // ----- Funnel (+ completion / abandoned) -----
+      const funnelOut = {
+        ...funnel,
+        completionRate: funnel.started ? Math.round((funnel.submitted / funnel.started) * 100) : 0,
+        abandoned: Math.max(0, funnel.started - funnel.submitted),
+      };
+
+      // ----- Timing -----
+      const durations = results
+        .map((r) => (r.attempt.submittedAt ? (r.attempt.submittedAt.getTime() - r.attempt.startedAt.getTime()) / 60000 : null))
+        .filter((m): m is number => m !== null && m >= 0)
+        .sort((a, b) => a - b);
+      const timing = {
+        avgMinutes: durations.length ? Math.round(durations.reduce((s, v) => s + v, 0) / durations.length) : null,
+        medianMinutes: percentile(durations, 50) === null ? null : Math.round(percentile(durations, 50)!),
+        distribution: durationHistogram(durations),
+      };
+
+      // ----- Exam quality -----
+      const perExam = new Map<string, { scores: number[]; pass: number; candidateIds: Set<string>; durations: number[] }>();
+      for (const r of results) {
+        const bucket = perExam.get(r.attempt.examId) ?? { scores: [], pass: 0, candidateIds: new Set<string>(), durations: [] };
+        bucket.scores.push(r.percentage);
+        if (r.passFail === 'pass') bucket.pass += 1;
+        bucket.candidateIds.add(r.attempt.candidateId);
+        if (r.attempt.submittedAt) bucket.durations.push((r.attempt.submittedAt.getTime() - r.attempt.startedAt.getTime()) / 60000);
+        perExam.set(r.attempt.examId, bucket);
+      }
+      const examQuality = Array.from(perExam.entries())
+        .map(([examId, b]) => {
+          const avg = b.scores.reduce((s, v) => s + v, 0) / b.scores.length;
+          const variance = b.scores.reduce((s, v) => s + (v - avg) ** 2, 0) / b.scores.length;
+          const validDurations = b.durations.filter((m) => m >= 0);
+          return {
+            examId,
+            examTitle: examById.get(examId)?.title ?? 'Unknown exam',
+            candidateCount: b.candidateIds.size,
+            avgScore: Math.round(avg),
+            passRate: Math.round((b.pass / b.scores.length) * 100),
+            scoreSpread: Math.round(Math.sqrt(variance)),
+            avgMinutes: validDurations.length ? Math.round(validDurations.reduce((s, v) => s + v, 0) / validDurations.length) : null,
+            allottedMinutes: examById.get(examId)?.durationMinutes ?? 0,
+          };
+        })
+        .sort((a, b) => b.candidateCount - a.candidateCount);
+
+      // ----- Question difficulty (lowest correct-rate first) -----
+      const correctByQuestion = new Map(questions.map((g) => [g.questionId, g._count._all]));
+      const difficulty = answerRows
+        .map((g) => ({ questionId: g.questionId, answered: g._count._all, correct: correctByQuestion.get(g.questionId) ?? 0 }))
+        .filter((row) => row.answered >= 3) // ignore near-zero-sample questions
+        .map((row) => ({ questionId: row.questionId, answered: row.answered, correctRate: Math.round((row.correct / row.answered) * 100) }))
+        .sort((a, b) => a.correctRate - b.correctRate)
+        .slice(0, 8);
+      const questionTexts = difficulty.length
+        ? await tx.question.findMany({ where: { id: { in: difficulty.map((d) => d.questionId) } }, select: { id: true, text: true } })
+        : [];
+      const textById = new Map(questionTexts.map((q) => [q.id, q.text]));
+      const questionDifficulty = difficulty.map((d) => ({
+        questionId: d.questionId,
+        text: textById.get(d.questionId) ?? 'Question',
+        correctRate: d.correctRate,
+        answered: d.answered,
+      }));
+
+      return { scores, integrity, funnel: funnelOut, timing, examQuality, questionDifficulty };
+    });
+  }
+
+  private emptyAnalytics(): DashboardAnalytics {
+    return {
+      scores: { count: 0, passRate: null, avg: null, median: null, p25: null, p75: null, distribution: scoreHistogram([]) },
+      integrity: { submittedAttempts: 0, cleanAttempts: 0, flaggedAttempts: 0, flaggedRate: 0, byType: [], bySeverity: [] },
+      funnel: { invited: 0, started: 0, submitted: 0, passed: 0, completionRate: 0, abandoned: 0 },
+      timing: { avgMinutes: null, medianMinutes: null, distribution: durationHistogram([]) },
+      examQuality: [],
+      questionDifficulty: [],
+    };
   }
 }
