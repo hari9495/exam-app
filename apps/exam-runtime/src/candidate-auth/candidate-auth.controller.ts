@@ -9,6 +9,22 @@ import { resolveClientIp } from '../network/resolve-client-ip';
 
 const CANDIDATE_REFRESH_COOKIE = 'candidate_refresh_token';
 
+// Persistent (not session) cookie so a full browser close + reopen on the same machine
+// silently resumes via /refresh, rather than forcing the candidate to re-click the email
+// link (an email re-redeem also raises a spurious multi_login proctoring flag). maxAge
+// mirrors the refresh token's own TTL so cookie and token expire together. Read at call
+// time — the same way the service reads this env — so it honours a configured TTL
+// regardless of import ordering. secure is on in production (HTTPS) and off elsewhere so
+// local HTTP dev and the e2e suite still receive the cookie.
+function refreshCookieOptions() {
+  return {
+    httpOnly: true,
+    sameSite: 'lax' as const,
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: Number(process.env.CANDIDATE_REFRESH_TOKEN_TTL_DAYS ?? 1) * 24 * 60 * 60 * 1000,
+  };
+}
+
 @Controller('candidate-auth')
 export class CandidateAuthController {
   constructor(private readonly candidateAuthService: CandidateAuthService) {}
@@ -18,7 +34,7 @@ export class CandidateAuthController {
   @Throttle(STRICT_AUTH_THROTTLE)
   async redeem(@Body() dto: RedeemInvitationDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const tokens = await this.candidateAuthService.redeem(dto.token, resolveClientIp(req));
-    res.cookie(CANDIDATE_REFRESH_COOKIE, tokens.refreshToken, { httpOnly: true, sameSite: 'lax', secure: false });
+    res.cookie(CANDIDATE_REFRESH_COOKIE, tokens.refreshToken, refreshCookieOptions());
     return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
   }
 
@@ -31,7 +47,7 @@ export class CandidateAuthController {
       throw new UnauthorizedException('Refresh token required');
     }
     const tokens = await this.candidateAuthService.refresh(refreshToken);
-    res.cookie(CANDIDATE_REFRESH_COOKIE, tokens.refreshToken, { httpOnly: true, sameSite: 'lax', secure: false });
+    res.cookie(CANDIDATE_REFRESH_COOKIE, tokens.refreshToken, refreshCookieOptions());
     return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
   }
 
