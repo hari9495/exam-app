@@ -9,9 +9,14 @@ import { ExamProctoringConfig } from '../types';
 const SAMPLE_INTERVAL_MS = 500;
 const PERIODIC_SNAPSHOT_MIN_MS = 120_000;
 const PERIODIC_SNAPSHOT_MAX_MS = 180_000;
-const MEDIAPIPE_WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
-const FACE_LANDMARKER_MODEL_URL =
-  'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+// Self-hosted from the app's own origin, NOT jsdelivr / storage.googleapis.com.
+// Candidates take proctored exams on locked-down office networks that block
+// third-party CDNs; loading the MediaPipe runtime or model cross-origin left
+// webcam proctoring unable to initialise, which on a webcam-required exam blocks
+// the candidate entirely. scripts/copy-mediapipe.mjs populates /mediapipe/* at
+// build time (wasm from node_modules, model vendored in the repo). See ADO #6826.
+const MEDIAPIPE_WASM_URL = '/mediapipe/wasm';
+const FACE_LANDMARKER_MODEL_URL = '/mediapipe/face_landmarker.task';
 
 function captureSnapshot(video: HTMLVideoElement): string {
   const canvas = document.createElement('canvas');
