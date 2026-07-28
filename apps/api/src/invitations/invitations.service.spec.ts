@@ -61,7 +61,11 @@ describe('InvitationsService', () => {
     await new Promise((resolve) => setImmediate(resolve));
 
     expect(emailService.send).toHaveBeenCalledWith(
-      expect.objectContaining({ to: 'a@test.com', subject: 'Registration Confirmed — Backend Round Assessment', organizationId: 'org-1' }),
+      expect.objectContaining({
+        to: 'a@test.com',
+        subject: 'Your Backend Round assessment — invitation and instructions',
+        organizationId: 'org-1',
+      }),
     );
     const html = emailService.send.mock.calls[0][0].html;
     // No logo uploaded for this org (orgTx resolves logoPath: null) -- the email should
@@ -70,6 +74,12 @@ describe('InvitationsService', () => {
     expect(html).toContain('Dear Alice,');
     expect(html).toContain('Duration:</strong> 60 minutes');
     expect(html).toContain('Best regards,<br/>Acme Hiring');
+    // This invites the candidate to SIT the exam; it must not read as a completion notice.
+    expect(html).toContain('You have been invited to take the "Backend Round" assessment');
+    expect(html).not.toMatch(/registration .*(completed|confirmed)/i);
+    // It is sent from a no-reply mailbox, so it must never ask the candidate to reply.
+    expect(html).not.toMatch(/reply to this email/i);
+    expect(html).toContain('please do not reply');
     // Not a scheduled exam (schedulingEnabled: false) -- no Date & Time line should appear.
     expect(html).not.toContain('Date &amp; Time');
     expect(notifTx.notification.create).toHaveBeenCalledWith({
