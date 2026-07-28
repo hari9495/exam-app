@@ -2,9 +2,11 @@ import { ButtonHTMLAttributes } from 'react';
 import clsx from 'clsx';
 
 type Variant = 'primary' | 'secondary' | 'danger';
+type Size = 'md' | 'sm';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
+  size?: Size;
   loading?: boolean;
 }
 
@@ -14,11 +16,20 @@ const VARIANT_CLASSES: Record<Variant, string> = {
   danger: 'bg-red-600 text-white hover:bg-red-700',
 };
 
-export function Button({ variant = 'primary', className, disabled, loading, children, ...props }: ButtonProps) {
+// 'sm' is for actions sitting inside a dense table row. whitespace-nowrap matters there:
+// in a narrow actions column a two-word label like "View log" otherwise wraps onto two
+// lines and stops reading as a button at all.
+const SIZE_CLASSES: Record<Size, string> = {
+  md: 'px-4 py-2 text-sm',
+  sm: 'whitespace-nowrap px-2.5 py-1 text-xs',
+};
+
+export function Button({ variant = 'primary', size = 'md', className, disabled, loading, children, ...props }: ButtonProps) {
   return (
     <button
       className={clsx(
-        'rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+        'rounded-md font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+        SIZE_CLASSES[size],
         loading && 'inline-flex items-center justify-center gap-2',
         VARIANT_CLASSES[variant],
         className,

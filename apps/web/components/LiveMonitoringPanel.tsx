@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useUnblockAttempt, useBypassProctoring, useRevokeProctoringBypass } from '../lib/hooks/useAttemptModeration';
 import { useProctoringEvents } from '../lib/hooks/useProctoringEvents';
-import { Table, Badge, Card, Modal, useToast, type Column } from './ui';
+import { Table, Badge, Button, Card, Modal, useToast, type Column } from './ui';
 import { RosterRow, ProctoringFlag, ConnectionStatus } from '../lib/types';
 
 const STATUS_VARIANT: Record<string, 'default' | 'success' | 'warning' | 'danger'> = {
@@ -247,7 +247,8 @@ export function LiveMonitoringPanel({
       render: (row) => (
         <div className="flex items-center gap-2">
           {row.status === 'blocked' && row.attemptId ? (
-            <button
+            <Button
+              size="sm"
               onClick={() => {
                 unblockAttempt.mutate(row.attemptId as string, {
                   onSuccess: () => toast('Candidate unblocked.', 'success'),
@@ -255,21 +256,19 @@ export function LiveMonitoringPanel({
                 });
               }}
               disabled={unblockAttempt.isPending}
-              className="rounded-full border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-50"
             >
               Unblock
-            </button>
+            </Button>
           ) : null}
           {row.attemptId ? (
-            <button
-              onClick={() => setLogAttemptId(row.attemptId)}
-              className="rounded-full border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-50"
-            >
+            <Button size="sm" variant="secondary" onClick={() => setLogAttemptId(row.attemptId)}>
               View log
-            </button>
+            </Button>
           ) : null}
           {row.attemptId && BYPASSABLE_STATUSES.includes(row.status) && row.proctoringBypassed ? (
-            <button
+            <Button
+              size="sm"
+              variant="secondary"
               onClick={() => {
                 revokeProctoringBypass.mutate(row.attemptId as string, {
                   onSuccess: () => toast('Proctoring restored.', 'success'),
@@ -277,18 +276,14 @@ export function LiveMonitoringPanel({
                 });
               }}
               disabled={revokeProctoringBypass.isPending}
-              className="rounded-full border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-50"
             >
               Restore proctoring
-            </button>
+            </Button>
           ) : null}
           {row.attemptId && BYPASSABLE_STATUSES.includes(row.status) && !row.proctoringBypassed ? (
-            <button
-              onClick={() => setBypassAttemptId(row.attemptId)}
-              className="rounded-full border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-50"
-            >
+            <Button size="sm" variant="secondary" onClick={() => setBypassAttemptId(row.attemptId)}>
               Relax proctoring
-            </button>
+            </Button>
           ) : null}
         </div>
       ),
