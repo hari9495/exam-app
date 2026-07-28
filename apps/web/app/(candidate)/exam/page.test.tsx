@@ -591,10 +591,20 @@ describe('CandidateExamPage', () => {
     expect(screen.getByTestId('dimmable-content')).not.toHaveAttribute('inert');
   });
 
-  it('shows the leaderboard widget with the candidate\'s current rank', () => {
+  it('shows which section the current question belongs to', () => {
     render(<CandidateExamPage />);
 
-    expect(screen.getByText(/#3/)).toBeInTheDocument();
+    expect(screen.getByText('Section One')).toBeInTheDocument();
+  });
+
+  // The candidate-facing leaderboard was removed at the client's request, so there is no
+  // longer a rank widget on the exam page. The recruiter's own Leaderboard tab is separate
+  // and unaffected.
+  it('does not show a leaderboard rank to the candidate', () => {
+    render(<CandidateExamPage />);
+
+    expect(screen.queryByText(/Leaderboard/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/#3/)).not.toBeInTheDocument();
   });
 
   it('renders the code snippet, question image, and option images when present', () => {
@@ -642,19 +652,13 @@ describe('CandidateExamPage', () => {
     expect(screen.getByAltText('Option illustration')).toHaveAttribute('src', 'http://localhost:3001/uploads/question-images/opt-a.png');
   });
 
-  it('stops leaderboard polling while paused', () => {
-    const leaderboardSpy = jest.spyOn(useAttemptModule, 'useLeaderboard').mockReturnValue({
-      data: { you: { rank: 3, correctCount: 2 }, top: [] },
-      isLoading: false,
-    } as any);
-    (useAttemptQuery as jest.Mock).mockReturnValue({
-      data: { ...attemptState, status: 'paused', webcamViolationCount: 1 },
-      isError: false,
-    });
-
+  // Was 'stops leaderboard polling while paused' -- obsolete now that the candidate-facing
+  // leaderboard is gone: nothing polls it from this page at all.
+  it('never polls the leaderboard from the candidate exam page', () => {
+    const leaderboardSpy = jest.spyOn(useAttemptModule, 'useLeaderboard');
     render(<CandidateExamPage />);
 
-    expect(leaderboardSpy).toHaveBeenCalledWith(false);
+    expect(leaderboardSpy).not.toHaveBeenCalled();
   });
 
   it('auto-selects the language and shows the editor immediately for a fixed single-language question', () => {

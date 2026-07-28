@@ -11,7 +11,6 @@ import { useRouter } from 'next/navigation';
 import { Modal } from '../../../components/ui';
 import { CandidateButton } from '../components/CandidateButton';
 import { CodeOutputPanel } from '../components/CodeOutputPanel';
-import { LeaderboardWidget } from '../components/LeaderboardWidget';
 import { QuestionNavigator, flattenQuestions } from '../components/QuestionNavigator';
 import { ProctoringWarningOverlay, ProctoringBlockOverlay } from '../components/ProctoringOverlay';
 import { ScreenShareRequiredOverlay } from '../components/ScreenShareRequiredOverlay';
@@ -27,8 +26,12 @@ import { AttemptAnswerSummary, isAttemptStarted } from '../../../lib/types';
 
 function markButtonClasses(marked: boolean | undefined) {
   return clsx(
-    'rounded-full border px-2 py-0.5 text-xs',
-    marked ? 'border-candidate-review-border bg-candidate-review-bg text-candidate-review' : 'border-candidate-border text-candidate-text-faint',
+    // Sized as a real button, not a hairline pill: candidates were struggling to hit it.
+    // whitespace-nowrap keeps "Mark for review" on one line beside the question meta.
+    'whitespace-nowrap rounded-md border px-3 py-2 text-sm font-medium transition-colors',
+    marked
+      ? 'border-candidate-review-border bg-candidate-review-bg text-candidate-review'
+      : 'border-candidate-border text-candidate-text-secondary hover:bg-candidate-bg',
   );
 }
 
@@ -339,7 +342,6 @@ export default function CandidateExamPage() {
               <ChevronDown className="h-3 w-3" aria-hidden="true" />
             </span>
           </button>
-          <LeaderboardWidget enabled={started} />
           <div className="flex flex-col items-end">
             <span className="hidden text-sm font-bold text-candidate-text lg:inline">{attemptState.exam.title}</span>
             <span className="text-xs text-candidate-text-tertiary">{attemptState.candidateName}</span>
@@ -350,15 +352,24 @@ export default function CandidateExamPage() {
 
       <div className="flex gap-4">
         <div className="flex-1 rounded-lg bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wide text-candidate-text-tertiary">
-              Question {currentIndex + 1} of {questions.length} ·{' '}
-              {question.type === 'code' ? 'Code' : question.type === 'multi_mcq' ? 'Multiple choice' : 'Single choice'} ·{' '}
-              {question.marks} marks
-            </span>
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div className="flex min-w-0 flex-col gap-1.5">
+              {/* Which section this question belongs to. flattenQuestions already carries
+                  sectionTitle through, so candidates can see where they are in the paper. */}
+              {question.sectionTitle ? (
+                <span className="w-fit max-w-full truncate rounded-md bg-candidate-primary-light px-2.5 py-1 text-xs font-semibold text-candidate-primary">
+                  {question.sectionTitle}
+                </span>
+              ) : null}
+              <span className="text-xs font-semibold uppercase tracking-wide text-candidate-text-tertiary">
+                Question {currentIndex + 1} of {questions.length} ·{' '}
+                {question.type === 'code' ? 'Code' : question.type === 'multi_mcq' ? 'Multiple choice' : 'Single choice'} ·{' '}
+                {question.marks} marks
+              </span>
+            </div>
             <button onClick={toggleMarkForReview} className={markButtonClasses(existingAnswer?.isMarkedForReview)}>
-              <span className="inline-flex items-center gap-1">
-                <Bookmark className="h-3 w-3" fill={existingAnswer?.isMarkedForReview ? 'currentColor' : 'none'} aria-hidden="true" />
+              <span className="inline-flex items-center gap-1.5">
+                <Bookmark className="h-4 w-4" fill={existingAnswer?.isMarkedForReview ? 'currentColor' : 'none'} aria-hidden="true" />
                 {existingAnswer?.isMarkedForReview ? 'Marked for review' : 'Mark for review'}
               </span>
             </button>
@@ -501,7 +512,7 @@ export default function CandidateExamPage() {
           </div>
         </div>
 
-        <div className="hidden w-40 shrink-0 lg:block">
+        <div className="hidden w-56 shrink-0 lg:block">
           <QuestionNavigator sections={attemptState.sections} answers={answers} currentIndex={currentIndex} onSelect={setCurrentIndex} />
           <CandidateButton onClick={() => setConfirmOpen(true)} className="mt-3 w-full text-xs">
             Review & Submit

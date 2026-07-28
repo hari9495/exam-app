@@ -19,9 +19,9 @@ export function QuestionNavigator({ sections, answers, currentIndex, onSelect }:
   const answersByQuestionId = new Map(answers.map((answer) => [answer.questionId, answer]));
 
   return (
-    <div className="rounded-lg border border-candidate-border bg-white p-3 shadow-sm">
-      <p className="mb-2 text-xs font-bold uppercase tracking-wide text-candidate-text-tertiary">Questions</p>
-      <div className="grid grid-cols-4 gap-1.5">
+    <div className="rounded-lg border border-candidate-border bg-white p-4 shadow-sm">
+      <p className="mb-3 text-sm font-bold uppercase tracking-wide text-candidate-text-tertiary">Questions</p>
+      <div className="grid grid-cols-4 gap-2">
         {questions.map((question, index) => {
           const answer = answersByQuestionId.get(question.id);
           const isCurrent = index === currentIndex;
@@ -33,7 +33,7 @@ export function QuestionNavigator({ sections, answers, currentIndex, onSelect }:
               onClick={() => onSelect(index)}
               aria-label={`Question ${index + 1}`}
               className={clsx(
-                'flex aspect-square items-center justify-center rounded text-xs font-medium',
+                'flex aspect-square items-center justify-center rounded-md text-sm font-semibold transition-colors',
                 isCurrent && 'border-[1.5px] border-candidate-primary bg-candidate-primary-light text-candidate-primary',
                 !isCurrent && isMarked && 'border border-candidate-review-border bg-candidate-review-bg text-candidate-review',
                 !isCurrent && !isMarked && isAnswered && 'bg-candidate-primary text-candidate-on-primary',
@@ -45,15 +45,15 @@ export function QuestionNavigator({ sections, answers, currentIndex, onSelect }:
           );
         })}
       </div>
-      <div className="mt-3 flex flex-col gap-1.5 border-t border-candidate-border pt-3 text-[11px] text-candidate-text-tertiary">
-        <span className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-sm bg-candidate-primary" /> Answered
+      <div className="mt-4 flex flex-col gap-2 border-t border-candidate-border pt-3 text-xs text-candidate-text-tertiary">
+        <span className="flex items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-sm bg-candidate-primary" /> Answered
         </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-sm border border-candidate-review-border bg-candidate-review-bg" /> Marked for review
+        <span className="flex items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-sm border border-candidate-review-border bg-candidate-review-bg" /> Marked for review
         </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-sm bg-candidate-bg" /> Not answered
+        <span className="flex items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-sm bg-candidate-bg" /> Not answered
         </span>
       </div>
     </div>
