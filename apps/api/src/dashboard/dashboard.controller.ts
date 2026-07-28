@@ -73,10 +73,20 @@ export class DashboardController {
 
   @Get('analytics')
   @RequireAnyPermission('exam:manage', 'results:view')
-  getAnalytics(@CurrentTenant() tenant: TenantContext, @Query('window') window?: string) {
-    if (!window || !(WINDOWS as readonly string[]).includes(window)) {
-      throw new BadRequestException(`window must be one of ${WINDOWS.join(', ')}`);
-    }
-    return this.dashboardService.getAnalytics(tenant, window as Window);
+  getAnalytics(
+    @CurrentTenant() tenant: TenantContext,
+    @Query('window') window?: string,
+    @Query('examId') examId?: string,
+    @Query('candidateId') candidateId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    // window is the fallback when no explicit from/to range is given.
+    const resolvedWindow: Window = window && (WINDOWS as readonly string[]).includes(window) ? (window as Window) : 'all';
+    // Dates are yyyy-mm-dd; reject anything else so a bad value can't silently widen the range.
+    const isoDate = /^\d{4}-\d{2}-\d{2}$/;
+    if (from && !isoDate.test(from)) throw new BadRequestException('from must be a yyyy-mm-dd date');
+    if (to && !isoDate.test(to)) throw new BadRequestException('to must be a yyyy-mm-dd date');
+    return this.dashboardService.getAnalytics(tenant, { window: resolvedWindow, examId, candidateId, from, to });
   }
 }

@@ -49,11 +49,29 @@ export function useDashboardFunnel(examId: string, window: DashboardWindow) {
   });
 }
 
-export function useDashboardAnalytics(window: DashboardWindow) {
+export interface AnalyticsFilters {
+  window: DashboardWindow;
+  examId?: string;
+  candidateId?: string;
+  from?: string;
+  to?: string;
+}
+
+export function useDashboardAnalytics(filters: AnalyticsFilters) {
   const { accessToken } = useAuth();
+  const query = new URLSearchParams();
+  // An explicit from/to custom range wins over the relative window.
+  if (filters.from || filters.to) {
+    if (filters.from) query.set('from', filters.from);
+    if (filters.to) query.set('to', filters.to);
+  } else {
+    query.set('window', filters.window);
+  }
+  if (filters.examId) query.set('examId', filters.examId);
+  if (filters.candidateId) query.set('candidateId', filters.candidateId);
   return useQuery<DashboardAnalytics>({
-    queryKey: ['dashboard-analytics', window],
-    queryFn: () => apiFetch(`/dashboard/analytics?window=${window}`, {}, accessToken ?? undefined),
+    queryKey: ['dashboard-analytics', filters],
+    queryFn: () => apiFetch(`/dashboard/analytics?${query.toString()}`, {}, accessToken ?? undefined),
     enabled: Boolean(accessToken),
   });
 }

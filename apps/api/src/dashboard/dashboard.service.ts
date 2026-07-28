@@ -72,6 +72,34 @@ export interface DashboardAnalytics {
   questionDifficulty: { questionId: string; text: string; correctRate: number; answered: number }[];
 }
 
+export interface AnalyticsFilter {
+  // Relative window, used only when an explicit from/to range isn't given.
+  window: Window;
+  examId?: string; // scope to one exam (else all of the org's)
+  candidateId?: string; // scope to one candidate's attempts
+  from?: string; // inclusive ISO date (yyyy-mm-dd) for a custom range / a specific month or year
+  to?: string; // inclusive ISO date
+}
+
+// Resolves the filter's time bounds. An explicit from/to wins; otherwise the
+// relative window's start with an open (now) end. Returns null bounds for "all
+// time". `to` is treated as inclusive to the end of that day.
+function resolveRange(filter: AnalyticsFilter): { start: Date | null; end: Date | null } {
+  if (filter.from || filter.to) {
+    const start = filter.from ? new Date(`${filter.from}T00:00:00.000Z`) : null;
+    const end = filter.to ? new Date(`${filter.to}T23:59:59.999Z`) : null;
+    return { start, end };
+  }
+  return { start: resolveWindowStart(filter.window), end: null };
+}
+
+function dateWithin(field: string, start: Date | null, end: Date | null): Record<string, unknown> {
+  const bound: Record<string, Date> = {};
+  if (start) bound.gte = start;
+  if (end) bound.lte = end;
+  return Object.keys(bound).length ? { [field]: bound } : {};
+}
+
 function percentile(sortedAsc: number[], p: number): number | null {
   if (sortedAsc.length === 0) return null;
   const idx = Math.min(sortedAsc.length - 1, Math.floor((p / 100) * sortedAsc.length));
@@ -420,47 +448,55 @@ export class DashboardService {
   // One comprehensive analytics read for the dashboard (recruiter-only, low
   // traffic, so a single fat call is fine). Everything is windowed by the
   // attempt's submittedAt so the numbers describe completed assessments.
-  async getAnalytics(context: TenantContext, window: Window): Promise<DashboardAnalytics> {
+  async getAnalytics(context: TenantContext, filter: AnalyticsFilter): Promise<DashboardAnalytics> {
     const organizationId = context.organizationId as string;
 
     return this.tenantPrisma.forTenant(context, async (tx) => {
-      const exams = await tx.exam.findMany({
+      const allExams = await tx.exam.findMany({
         where: { organizationId },
         select: { id: true, title: true, durationMinutes: true },
       });
+      // Scope to one exam if asked; the filter never widens past the org's own exams.
+      const exams = filter.examId ? allExams.filter((exam) => exam.id === filter.examId) : allExams;
       const examIds = exams.map((exam) => exam.id);
       const examById = new Map(exams.map((exam) => [exam.id, exam]));
-      const windowStart = resolveWindowStart(window);
-      const submittedInWindow = windowStart ? { submittedAt: { gte: windowStart } } : { submittedAt: { not: null } };
 
       if (examIds.length === 0) {
         return this.emptyAnalytics();
       }
 
-      const [results, submittedAttempts, eventsByType, eventsBySeverity, funnel, answerRows, questions] = await Promise.all([
+      const { start, end } = resolveRange(filter);
+      const candidateFilter = filter.candidateId ? { candidateId: filter.candidateId } : {};
+      // Completed-assessment scope: an attempt that was submitted inside the range.
+      // With no range, "submitted at all" (submittedAt not null) still applies so the
+      // numbers describe finished attempts, not in-progress ones.
+      const submittedScope = {
+        examId: { in: examIds },
+        ...candidateFilter,
+        ...(start || end ? dateWithin('submittedAt', start, end) : { submittedAt: { not: null } }),
+      };
+
+      const [results, submittedAttempts, eventsByType, eventsBySeverity, invited, started, submitted, passed, answerRows, questions] = await Promise.all([
         tx.result.findMany({
-          where: { attempt: { examId: { in: examIds }, ...submittedInWindow } },
+          where: { attempt: submittedScope },
           select: { percentage: true, passFail: true, attempt: { select: { examId: true, candidateId: true, startedAt: true, submittedAt: true } } },
         }),
         tx.attempt.findMany({
-          where: { examId: { in: examIds }, ...submittedInWindow },
+          where: submittedScope,
           select: { webcamViolationCount: true, browserActivityViolationCount: true },
         }),
-        tx.proctoringEvent.groupBy({ by: ['eventType'], where: { attempt: { examId: { in: examIds }, ...submittedInWindow } }, _count: { _all: true } }),
-        tx.proctoringEvent.groupBy({ by: ['severity'], where: { attempt: { examId: { in: examIds }, ...submittedInWindow } }, _count: { _all: true } }),
-        this.getFunnel(context, 'all', window),
-        tx.answer.groupBy({
-          by: ['questionId'],
-          where: { attempt: { examId: { in: examIds }, ...submittedInWindow }, isCorrect: { not: null } },
-          _count: { _all: true },
-          _sum: { marksAwarded: true },
-        }),
-        tx.answer.groupBy({
-          by: ['questionId'],
-          where: { attempt: { examId: { in: examIds }, ...submittedInWindow }, isCorrect: true },
-          _count: { _all: true },
-        }),
+        tx.proctoringEvent.groupBy({ by: ['eventType'], where: { attempt: submittedScope }, _count: { _all: true } }),
+        tx.proctoringEvent.groupBy({ by: ['severity'], where: { attempt: submittedScope }, _count: { _all: true } }),
+        // Funnel computed inline so it honours the exam/candidate/date filters. Each
+        // stage is bounded by its own relevant timestamp.
+        tx.invitation.count({ where: { examId: { in: examIds }, ...candidateFilter, ...dateWithin('invitedAt', start, end) } }),
+        tx.attempt.count({ where: { examId: { in: examIds }, ...candidateFilter, ...dateWithin('startedAt', start, end) } }),
+        tx.attempt.count({ where: submittedScope }),
+        tx.result.count({ where: { attempt: submittedScope, passFail: 'pass' } }),
+        tx.answer.groupBy({ by: ['questionId'], where: { attempt: submittedScope, isCorrect: { not: null } }, _count: { _all: true }, _sum: { marksAwarded: true } }),
+        tx.answer.groupBy({ by: ['questionId'], where: { attempt: submittedScope, isCorrect: true }, _count: { _all: true } }),
       ]);
+      const funnel = { invited, started, submitted, passed };
 
       // ----- Scores -----
       const percentages = results.map((r) => r.percentage).sort((a, b) => a - b);

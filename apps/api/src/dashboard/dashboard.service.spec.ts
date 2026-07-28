@@ -487,7 +487,7 @@ describe('DashboardService', () => {
       };
       tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
 
-      const result = await service.getAnalytics(context, 'all');
+      const result = await service.getAnalytics(context, { window: 'all' });
 
       expect(result.scores.count).toBe(2);
       expect(result.scores.avg).toBe(55);
@@ -504,7 +504,7 @@ describe('DashboardService', () => {
       const tx = { exam: { findMany: jest.fn().mockResolvedValue([]) } };
       tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
 
-      const result = await service.getAnalytics(context, 'all');
+      const result = await service.getAnalytics(context, { window: 'all' });
 
       expect(result.scores.count).toBe(0);
       expect(result.examQuality).toEqual([]);

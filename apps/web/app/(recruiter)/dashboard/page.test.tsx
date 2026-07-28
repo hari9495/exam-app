@@ -64,6 +64,8 @@ describe('DashboardPage', () => {
       if (u.includes('/dashboard/summary')) return new Response(JSON.stringify(summary), { status: 200 });
       if (u.includes('/dashboard/analytics')) return new Response(JSON.stringify(analytics), { status: 200 });
       if (u.includes('/dashboard/trend')) return new Response(JSON.stringify({ points: [] }), { status: 200 });
+      if (u.includes('/exams')) return new Response(JSON.stringify({ data: [{ id: 'exam-1', title: 'Backend Round' }], total: 1, page: 1, pageSize: 200, totalPages: 1 }), { status: 200 });
+      if (u.includes('/candidates')) return new Response(JSON.stringify({ data: [{ id: 'cand-1', name: 'Ada Lovelace' }], total: 1, page: 1, pageSize: 200, totalPages: 1 }), { status: 200 });
       return new Response(JSON.stringify({}), { status: 200 });
     }) as unknown as typeof fetch;
   }
@@ -107,8 +109,8 @@ describe('DashboardPage', () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/analytics?window=14d'))).toBe(true);
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/trend?metric=candidates&days=14'))).toBe(true);
 
-    fireEvent.click(screen.getByLabelText('Date range'));
-    fireEvent.click(await screen.findByText('30 days'));
+    fireEvent.click(screen.getByLabelText('Range'));
+    fireEvent.click(await screen.findByText('Last 30 days'));
 
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/summary?window=30d'))).toBe(true));
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/analytics?window=30d'))).toBe(true);
@@ -119,15 +121,41 @@ describe('DashboardPage', () => {
     mockDashboardFetch(emptySummary);
     renderPage();
 
-    await waitFor(() => expect(screen.getByLabelText('Date range')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText('Range')).toBeInTheDocument());
     const fetchMock = global.fetch as jest.Mock;
 
-    fireEvent.click(screen.getByLabelText('Date range'));
+    fireEvent.click(screen.getByLabelText('Range'));
     fireEvent.click(await screen.findByText('All time'));
 
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/summary?window=all'))).toBe(true));
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/analytics?window=all'))).toBe(true);
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/trend?metric=candidates&days=90'))).toBe(true);
+  });
+
+  it('filters analytics by exam when an exam is selected', async () => {
+    mockDashboardFetch(emptySummary);
+    renderPage();
+
+    await waitFor(() => expect(screen.getByLabelText('Exam')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('Exam'));
+    // 'Backend Round' also appears in the exam-quality table, so target the dropdown option.
+    fireEvent.click(await screen.findByRole('option', { name: 'Backend Round' }));
+
+    const fetchMock = global.fetch as jest.Mock;
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/analytics') && String(url).includes('examId=exam-1'))).toBe(true));
+  });
+
+  it('filters analytics to a specific month via a from/to range', async () => {
+    mockDashboardFetch(emptySummary);
+    renderPage();
+
+    await waitFor(() => expect(screen.getByLabelText('Period')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('Period'));
+    fireEvent.click(await screen.findByText('By month'));
+
+    const fetchMock = global.fetch as jest.Mock;
+    // Month mode emits a from/to range instead of a relative window.
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard/analytics') && String(url).includes('from=') && String(url).includes('to='))).toBe(true));
   });
 
   it('renders the score-distribution stats from analytics', async () => {

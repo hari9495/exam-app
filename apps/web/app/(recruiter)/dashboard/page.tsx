@@ -5,10 +5,19 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Users, Mail, Play, FileEdit, AlertTriangle, Clock, CheckCircle2, FileEdit as FileEditIcon, Plus, CalendarClock } from 'lucide-react';
 import { useDashboardAnalytics, useDashboardSummary, useDashboardTrend } from '../../../lib/hooks/useDashboard';
+import { useExams } from '../../../lib/hooks/useExams';
+import { useCandidates } from '../../../lib/hooks/useCandidates';
 import { DashboardTrendMetric, DashboardWindow } from '../../../lib/types';
-import { Card, Button, Select, type SelectOption } from '../../../components/ui';
+import { Card, Button } from '../../../components/ui';
 import { Sparkline } from '../../../components/charts/Sparkline';
 import { AnalyticsPanels } from '../../../components/dashboard/AnalyticsPanels';
+import {
+  DashboardFilterBar,
+  defaultFilterState,
+  describeTimeFilter,
+  toAnalyticsFilters,
+  type DashboardFilterState,
+} from '../../../components/dashboard/DashboardFilterBar';
 
 function activityIconFor(description: string) {
   if (description.includes('invited')) return Mail;
@@ -16,14 +25,6 @@ function activityIconFor(description: string) {
   if (description.includes('graded')) return FileEditIcon;
   return CheckCircle2;
 }
-
-const GLOBAL_RANGE_OPTIONS: SelectOption[] = [
-  { value: '7d', label: '7 days' },
-  { value: '14d', label: '14 days' },
-  { value: '30d', label: '30 days' },
-  { value: '90d', label: '90 days' },
-  { value: 'all', label: 'All time' },
-];
 
 const RANGE_TO_TREND_DAYS: Record<DashboardWindow, 7 | 14 | 30 | 90> = {
   '7d': 7,
@@ -81,13 +82,19 @@ function StatCard({ icon: Icon, value, label, metric, color, delay, range }: Sta
 }
 
 export default function DashboardPage() {
-  const [range, setRange] = useState<DashboardWindow>('14d');
-  const { data, isLoading, isError } = useDashboardSummary(range);
-  const { data: analytics } = useDashboardAnalytics(range);
-  // ponytail: a range change always mints a new react-query key with no cached data, so
+  const [filters, setFilters] = useState<DashboardFilterState>(defaultFilterState());
+  // The KPI row + trends are org-wide operational counts and only speak the relative
+  // window; a specific month/year/custom range applies to the analytical panels below.
+  const summaryWindow: DashboardWindow = filters.timeMode === 'relative' ? filters.window : 'all';
+  const { data, isLoading, isError } = useDashboardSummary(summaryWindow);
+  const { data: analytics } = useDashboardAnalytics(toAnalyticsFilters(filters));
+  const { data: examsData } = useExams(undefined, { pageSize: 200 });
+  const { data: candidatesData } = useCandidates({ pageSize: 200 });
+  const exams = (examsData?.data ?? []).map((e) => ({ id: e.id, title: e.title }));
+  const candidates = (candidatesData?.data ?? []).map((c) => ({ id: c.id, name: c.name }));
+  // ponytail: a filter change always mints a new react-query key with no cached data, so
   // `data` briefly goes undefined again on every switch. Keep showing the last-loaded
-  // summary while the new range fetches so the page (Select + cards) doesn't unmount and
-  // flash back to the full-page loading state on every filter change.
+  // summary while the new one fetches so the page doesn't flash the full-page loader.
   const [lastSummary, setLastSummary] = useState<typeof data>(undefined);
   useEffect(() => {
     if (data) setLastSummary(data);
@@ -119,14 +126,13 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-recruiter-text">Dashboard</h1>
-        <Select label="Date range" value={range} onChange={(value) => setRange(value as DashboardWindow)} options={GLOBAL_RANGE_OPTIONS} />
-      </div>
+      <h1 className="mb-4 text-2xl font-semibold text-recruiter-text">Dashboard</h1>
+
+      <DashboardFilterBar value={filters} onChange={setFilters} exams={exams} candidates={candidates} />
 
       <div className="mb-5 grid grid-cols-4 gap-3">
-        <StatCard icon={Users} value={summary.stats.totalCandidates} label="Total candidates" metric="candidates" color="#0d9488" delay={0} range={range} />
-        <StatCard icon={Mail} value={summary.stats.invitationsSent} label="Invitations sent" metric="invitations" color="#334155" delay={0.04} range={range} />
+        <StatCard icon={Users} value={summary.stats.totalCandidates} label="Total candidates" metric="candidates" color="#0d9488" delay={0} range={summaryWindow} />
+        <StatCard icon={Mail} value={summary.stats.invitationsSent} label="Invitations sent" metric="invitations" color="#334155" delay={0.04} range={summaryWindow} />
         <StatCard
           icon={Play}
           value={summary.stats.attemptsInProgress}
@@ -134,7 +140,7 @@ export default function DashboardPage() {
           metric="attempts"
           color="#d4a017"
           delay={0.08}
-          range={range}
+          range={summaryWindow}
         />
         <StatCard
           icon={FileEdit}
@@ -143,8 +149,17 @@ export default function DashboardPage() {
           metric="pendingGrading"
           color="#f2765f"
           delay={0.12}
-          range={range}
+          range={summaryWindow}
         />
+      </div>
+
+      <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-recruiter-text-tertiary">
+        <span className="font-semibold uppercase tracking-wide">Analysis</span>
+        <span className="rounded-full bg-recruiter-bg-subtle px-2 py-0.5">{filters.examId === 'all' ? 'All exams' : exams.find((e) => e.id === filters.examId)?.title ?? 'Exam'}</span>
+        {filters.candidateId !== 'all' && (
+          <span className="rounded-full bg-recruiter-bg-subtle px-2 py-0.5">{candidates.find((c) => c.id === filters.candidateId)?.name ?? 'Candidate'}</span>
+        )}
+        <span className="rounded-full bg-recruiter-bg-subtle px-2 py-0.5">{describeTimeFilter(filters)}</span>
       </div>
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.16 }} className="mb-5">
