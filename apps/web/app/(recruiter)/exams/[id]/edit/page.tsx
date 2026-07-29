@@ -14,6 +14,7 @@ import { useExamMonitoring } from '../../../../../lib/hooks/useExamMonitoring';
 import { useAttentionNotifications } from '../../../../../lib/hooks/useAttentionNotifications';
 import { flaggedAttemptIds } from '../../../../../lib/attention-alert';
 import { Tabs, TabsList, TabsTrigger, TabsContent, Button, useToast } from '../../../../../components/ui';
+import { BackLink } from '../../../../../components/BackLink';
 
 export default function EditExamPage() {
   const params = useParams<{ id: string }>();
@@ -61,6 +62,7 @@ export default function EditExamPage() {
 
   return (
     <div>
+      <BackLink href="/exams" label="Back to exams" />
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">{exam.title}</h1>
         <div className="flex gap-2">

@@ -8,6 +8,7 @@ import {
 } from '../../../../lib/hooks/useInvitations';
 import { useExams } from '../../../../lib/hooks/useExams';
 import { Button, Select, useToast } from '../../../../components/ui';
+import { BackLink } from '../../../../components/BackLink';
 
 export default function BulkUploadInviteCandidatesPage() {
   const [examId, setExamId] = useState('');
@@ -58,6 +59,7 @@ export default function BulkUploadInviteCandidatesPage() {
 
   return (
     <div className="max-w-2xl">
+      <BackLink href="/candidates" label="Back to candidates" />
       <h1 className="mb-6 text-2xl font-semibold">Bulk Upload &amp; Invite Candidates</h1>
       <div className="mb-4">
         <Select

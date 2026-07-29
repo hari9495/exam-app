@@ -2,10 +2,10 @@
 
 import { useMemo } from 'react';
 import { useParams } from 'next/navigation';
-import Link from 'next/link';
 import { useExam } from '../../../../../lib/hooks/useExams';
 import { useQuestions } from '../../../../../lib/hooks/useQuestions';
 import { Card } from '../../../../../components/ui';
+import { BackLink } from '../../../../../components/BackLink';
 import type { Question } from '../../../../../lib/types';
 
 const QUESTION_TYPE_LABEL: Record<Question['type'], string> = {
@@ -38,9 +38,7 @@ export default function PreviewPage() {
     // Widened, but still capped and centred: this is a read-through of question text, and
     // full-bleed prose across a 2560px screen is harder to review, not easier.
     <div className="mx-auto max-w-4xl xl:max-w-5xl 2xl:max-w-6xl">
-      <Link href={`/exams/${exam.id}/edit`} className="mb-4 inline-block text-sm font-medium text-primary hover:underline">
-        ← Back to exam
-      </Link>
+      <BackLink href={`/exams/${exam.id}/edit`} label="Back to exam" />
       <h1 className="mb-2 text-2xl font-semibold text-recruiter-text">{exam.title}</h1>
       {exam.instructions && <p className="mb-6 text-sm text-recruiter-text-secondary">{exam.instructions}</p>}
       <div className="flex flex-col gap-6">

@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { QuestionForm } from '../../../../components/QuestionForm';
+import { BackLink } from '../../../../components/BackLink';
 import { useCreateQuestion, useTags } from '../../../../lib/hooks/useQuestions';
 import { useToast } from '../../../../components/ui';
 
@@ -13,6 +14,7 @@ export default function NewQuestionPage() {
 
   return (
     <div>
+      <BackLink href="/questions" label="Back to question bank" />
       <h1 className="mb-6 text-2xl font-semibold">New question</h1>
       <QuestionForm
         tags={tags ?? []}
