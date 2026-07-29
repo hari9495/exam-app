@@ -345,11 +345,12 @@ export default function CandidateExamPage() {
         // experimental.d.ts does) — cast bridges that gap so keyboard/screen-reader users
         // can't reach the dimmed content while an overlay covers it.
         {...(((isPaused || isBlocked) ? { inert: '' } : {}) as React.HTMLAttributes<HTMLDivElement>)}
-        // Grows with the viewport instead of stopping dead at 1152px, which left ~380px of
-        // empty margin each side on a 1920px laptop. Still capped at 1440px: past that the
-        // question text runs to an uncomfortable line length rather than reading better.
+        // Fills the screen on large displays rather than stopping at a fixed width and
+        // leaving hundreds of pixels of dead margin. Past 2xl the cap is dropped entirely and
+        // the padding becomes the gutter; the width is kept usable by widening the navigator
+        // and splitting the options into two columns rather than stretching single rows.
         className={clsx(
-          'mx-auto max-w-6xl p-4 xl:max-w-7xl xl:p-6 2xl:max-w-[90rem]',
+          'mx-auto max-w-6xl p-4 xl:max-w-7xl xl:p-6 2xl:max-w-none 2xl:px-10',
           (isPaused || isBlocked) && 'pointer-events-none blur-sm select-none',
         )}
       >
@@ -495,7 +496,9 @@ export default function CandidateExamPage() {
               )}
             </>
           ) : (
-            <div className="flex flex-col gap-2">
+            // Two columns once there is real width to use: a single option row stretched
+            // across a 2560px screen is mostly empty space with a radio button on the left.
+            <div className="grid grid-cols-1 gap-2 2xl:grid-cols-2">
               {question.options.map((option) => {
                 const selected = selectedOptionIds.includes(option.id);
                 return (
@@ -540,7 +543,7 @@ export default function CandidateExamPage() {
 
         {/* The extra width on a large screen goes to the navigator rather than stretching the
             question text further — the numbers and per-section counts genuinely read better. */}
-        <div className="hidden w-56 shrink-0 lg:block xl:w-64 2xl:w-72">
+        <div className="hidden w-56 shrink-0 lg:block xl:w-64 2xl:w-80">
           <QuestionNavigator sections={attemptState.sections} answers={answers} currentIndex={currentIndex} onSelect={setCurrentIndex} />
           <CandidateButton onClick={() => setConfirmOpen(true)} className="mt-3 w-full text-xs">
             Review & Submit
