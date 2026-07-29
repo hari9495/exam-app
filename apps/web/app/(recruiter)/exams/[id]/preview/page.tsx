@@ -34,7 +34,10 @@ export default function PreviewPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl">
+    // 672px meant scrolling through a whole paper in a narrow ribbon on a large monitor.
+    // Widened, but still capped and centred: this is a read-through of question text, and
+    // full-bleed prose across a 2560px screen is harder to review, not easier.
+    <div className="mx-auto max-w-4xl xl:max-w-5xl 2xl:max-w-6xl">
       <Link href={`/exams/${exam.id}/edit`} className="mb-4 inline-block text-sm font-medium text-primary hover:underline">
         ← Back to exam
       </Link>
