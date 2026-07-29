@@ -532,15 +532,12 @@ export class ExamsService {
         },
       });
 
-      if (section.questions.length > 0) {
-        await tx.examSectionQuestion.createMany({
-          data: section.questions.map((link) => ({
-            sectionId: clone.id,
-            questionId: link.questionId,
-            orderIndex: link.orderIndex,
-          })),
-        });
-      }
+      // Deliberately NOT copying the source section's fixed question links: every question is
+      // in the source section already, so copying them would put the same question in two
+      // sections of one exam -- the exact duplication that breaks answer/mark state for
+      // candidates (a question is answered once per attempt, not once per section). The clone
+      // keeps the section's structure and pool tags; the recruiter fills it with its own
+      // (distinct) questions. Pool sections are unaffected -- they carry no fixed links.
 
       return clone;
     });
@@ -573,6 +570,23 @@ export class ExamsService {
       });
       if (questions.length !== uniqueQuestionIds.length) {
         throw new NotFoundException('One or more questions were not found in this organization');
+      }
+
+      // A question must not appear in more than one section of the same exam. Answers are keyed
+      // by (attempt, question), so a duplicated question shares a single answer row -- marking or
+      // answering it in one section silently affects the other, and the candidate navigator lights
+      // up the wrong cell. This surfaced when an exam had the same question in Aptitude and
+      // Salesforce and a candidate's "mark for review" on Q12 appeared on Q6.
+      const otherSectionLinks = await tx.examSectionQuestion.findMany({
+        where: { section: { examId }, sectionId: { not: sectionId } },
+        select: { questionId: true },
+      });
+      const inAnotherSection = new Set(otherSectionLinks.map((link) => link.questionId));
+      const conflicts = uniqueQuestionIds.filter((id) => inAnotherSection.has(id));
+      if (conflicts.length > 0) {
+        throw new BadRequestException(
+          `These questions are already used in another section of this exam and can't be added twice: ${conflicts.join(', ')}`,
+        );
       }
 
       validateSectionQuestionsReplace(questionIds, currentlyLinkedQuestionIds, questions);

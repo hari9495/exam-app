@@ -917,7 +917,7 @@ describe('ExamsService', () => {
   });
 
   describe('duplicateSection', () => {
-    it("clones a fixed-mode section's title, settings, and questions, appending it at the end", async () => {
+    it("clones a fixed-mode section's title and settings WITHOUT copying its questions", async () => {
       const tx = {
         exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'draft' }) },
         attempt: { count: jest.fn().mockResolvedValue(0) },
@@ -954,12 +954,9 @@ describe('ExamsService', () => {
           targetDurationMinutes: 10,
         },
       });
-      expect(tx.examSectionQuestion.createMany).toHaveBeenCalledWith({
-        data: [
-          { sectionId: 'section-3', questionId: 'q1', orderIndex: 0 },
-          { sectionId: 'section-3', questionId: 'q2', orderIndex: 1 },
-        ],
-      });
+      // Questions must NOT be copied: doing so would put the same question in two sections of
+      // one exam, which corrupts the candidate's per-question answer/mark state.
+      expect(tx.examSectionQuestion.createMany).not.toHaveBeenCalled();
       expect(result).toEqual({ id: 'section-3', title: 'Aptitude (Copy)' });
     });
 
@@ -1101,7 +1098,9 @@ describe('ExamsService', () => {
           .mockResolvedValueOnce(updatedSection),
       },
       examSectionQuestion: {
-        findMany: jest.fn().mockResolvedValue([{ questionId: 'q1' }]),
+        // First findMany = this section's current links; second = other sections' links
+        // (empty here, so nothing conflicts across sections).
+        findMany: jest.fn().mockResolvedValueOnce([{ questionId: 'q1' }]).mockResolvedValueOnce([]),
         deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
         createMany: jest.fn().mockResolvedValue({ count: 2 }),
       },
@@ -1124,6 +1123,34 @@ describe('ExamsService', () => {
         { sectionId: 'section-1', questionId: 'q2', orderIndex: 1 },
       ],
     });
+  });
+
+  it('rejects replaceSectionQuestions when a question is already in another section of the exam', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
+      attempt: { count: jest.fn().mockResolvedValue(0) },
+      examSection: { findFirst: jest.fn().mockResolvedValueOnce({ id: 'section-2' }) },
+      examSectionQuestion: {
+        // section-2 currently empty; q2 already lives in another section of this exam.
+        findMany: jest.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([{ questionId: 'q2' }]),
+        deleteMany: jest.fn(),
+        createMany: jest.fn(),
+      },
+      question: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'q1', status: 'active' },
+          { id: 'q2', status: 'active' },
+        ]),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.replaceSectionQuestions(context, 'exam-1', 'section-2', ['q1', 'q2'])).rejects.toThrow(
+      /already used in another section/,
+    );
+    // Must not have mutated anything.
+    expect(tx.examSectionQuestion.deleteMany).not.toHaveBeenCalled();
+    expect(tx.examSectionQuestion.createMany).not.toHaveBeenCalled();
   });
 
   it('publishes a draft exam that has at least one section with at least one question in each', async () => {
