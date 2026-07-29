@@ -235,7 +235,7 @@ describe('CandidateExamPage', () => {
 
   // The submit dialog's tallies are the last thing a candidate sees before committing, so
   // they double as navigation: press one and land on the first question in that state.
-  it('jumps to the first unanswered question from the submit dialog', async () => {
+  it('enters a filtered review of only the unanswered questions from the submit dialog', async () => {
     (useAttemptQuery as jest.Mock).mockReturnValue({
       data: {
         ...attemptState,
@@ -245,22 +245,37 @@ describe('CandidateExamPage', () => {
             targetDurationMinutes: null,
             questions: [
               { id: 'q1', text: 'Answered one', type: 'single_mcq', marks: 1, options: [{ id: 'o1', text: 'a' }] },
-              { id: 'q2', text: 'Still blank', type: 'single_mcq', marks: 1, options: [{ id: 'o2', text: 'b' }] },
+              { id: 'q2', text: 'Blank two', type: 'single_mcq', marks: 1, options: [{ id: 'o2', text: 'b' }] },
+              { id: 'q3', text: 'Answered three', type: 'single_mcq', marks: 1, options: [{ id: 'o3', text: 'c' }] },
+              { id: 'q4', text: 'Blank four', type: 'single_mcq', marks: 1, options: [{ id: 'o4', text: 'd' }] },
             ],
           },
         ],
-        answers: [{ questionId: 'q1', selectedOptionIds: ['o1'], isMarkedForReview: false, answerText: null, codeLanguage: null }],
+        answers: [
+          { questionId: 'q1', selectedOptionIds: ['o1'], isMarkedForReview: false, answerText: null, codeLanguage: null },
+          { questionId: 'q3', selectedOptionIds: ['o3'], isMarkedForReview: false, answerText: null, codeLanguage: null },
+        ],
       },
       isError: false,
     });
     render(<CandidateExamPage />);
 
     await userEvent.click(screen.getAllByRole('button', { name: 'Review & Submit' })[0]);
-    await userEvent.click(screen.getByRole('button', { name: /Go to the first of 1 unanswered questions/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Review the 2 unanswered questions/ }));
 
-    // Dialog closes and the second (unanswered) question is now on screen.
+    // Dialog closes; the first unanswered question (q2) is shown, with a filter banner.
     expect(screen.queryByRole('button', { name: 'Submit' })).not.toBeInTheDocument();
-    expect(screen.getByText('Still blank')).toBeInTheDocument();
+    expect(screen.getByText('Blank two')).toBeInTheDocument();
+    expect(screen.getByText(/Reviewing unanswered — 1 of 2/)).toBeInTheDocument();
+
+    // "Next" within the banner skips the answered q3 and lands on the next unanswered (q4).
+    await userEvent.click(screen.getByRole('button', { name: 'Next unanswered question' }));
+    expect(screen.getByText('Blank four')).toBeInTheDocument();
+    expect(screen.getByText(/Reviewing unanswered — 2 of 2/)).toBeInTheDocument();
+
+    // Leaving review mode hides the banner.
+    await userEvent.click(screen.getByRole('button', { name: 'Show all questions' }));
+    expect(screen.queryByText(/Reviewing unanswered/)).not.toBeInTheDocument();
   });
 
   it('does not offer a dead control when nothing is unanswered or marked', async () => {
@@ -275,7 +290,7 @@ describe('CandidateExamPage', () => {
 
     await userEvent.click(screen.getAllByRole('button', { name: 'Review & Submit' })[0]);
 
-    expect(screen.queryByRole('button', { name: /Go to the first of/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Review the .* questions/ })).not.toBeInTheDocument();
   });
 
   it('redirects to /session-ended when the attempt query errors (dead session)', () => {

@@ -74,6 +74,10 @@ export default function CandidateExamPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [navigatorOpen, setNavigatorOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // When set, the candidate is stepping through only the questions in that state (reached from
+  // the submit dialog's "For review" / "Unanswered" tiles). A banner then lets them cycle just
+  // that subset instead of walking every question.
+  const [reviewFilter, setReviewFilter] = useState<'marked' | 'unanswered' | null>(null);
   const [localSelections, setLocalSelections] = useState<Record<string, string[]>>({});
   const [localCodeValues, setLocalCodeValues] = useState<Record<string, string>>({});
   const [stdinValues, setStdinValues] = useState<Record<string, string>>({});
@@ -275,8 +279,16 @@ export default function CandidateExamPage() {
   const answeredCount = questions.filter(isQuestionAnswered).length;
   const reviewCount = questions.filter(isQuestionMarkedForReview).length;
   const unansweredCount = questions.length - answeredCount;
-  const firstReviewIndex = questions.findIndex(isQuestionMarkedForReview);
-  const firstUnansweredIndex = questions.findIndex((q) => !isQuestionAnswered(q));
+  const markedIndices = questions.reduce<number[]>((acc, q, i) => (isQuestionMarkedForReview(q) ? [...acc, i] : acc), []);
+  const unansweredIndices = questions.reduce<number[]>((acc, q, i) => (!isQuestionAnswered(q) ? [...acc, i] : acc), []);
+  const activeFilterIndices = reviewFilter === 'marked' ? markedIndices : reviewFilter === 'unanswered' ? unansweredIndices : [];
+  const reviewPos = activeFilterIndices.indexOf(currentIndex); // -1 if the current question no longer matches
+
+  // Leave review mode once nothing matches (e.g. the last unanswered question got answered, or
+  // the last mark was cleared) so the banner doesn't linger empty.
+  useEffect(() => {
+    if (reviewFilter && activeFilterIndices.length === 0) setReviewFilter(null);
+  }, [reviewFilter, activeFilterIndices.length]);
 
   if (isError || !attemptState) {
     return <p className="p-8 text-sm text-candidate-text-tertiary">Loading…</p>;
@@ -353,12 +365,23 @@ export default function CandidateExamPage() {
     await finishSubmit();
   }
 
-  // Lets the candidate act on the submit dialog's tallies instead of just reading them:
-  // jump straight to the first question in that state and close the dialog.
-  function jumpToQuestion(index: number) {
-    if (index < 0) return;
-    setCurrentIndex(index);
+  // From the submit dialog's tallies: enter a mode that steps through only the questions in
+  // that state. Jumps to the first match, opens the review banner, and closes the dialog.
+  function enterReviewFilter(filter: 'marked' | 'unanswered') {
+    const indices = filter === 'marked' ? markedIndices : unansweredIndices;
+    if (indices.length === 0) return;
+    setReviewFilter(filter);
+    setCurrentIndex(indices[0]);
     setConfirmOpen(false);
+  }
+
+  // Move to the next/previous question within the active filter. If the current question is no
+  // longer in the set (e.g. it was just answered), step to the first/last remaining match.
+  function stepReview(dir: -1 | 1) {
+    if (activeFilterIndices.length === 0) return;
+    const nextPos = reviewPos === -1 ? (dir === 1 ? 0 : activeFilterIndices.length - 1) : reviewPos + dir;
+    if (nextPos < 0 || nextPos >= activeFilterIndices.length) return;
+    setCurrentIndex(activeFilterIndices[nextPos]);
   }
 
   return (
@@ -410,6 +433,54 @@ export default function CandidateExamPage() {
         </div>
         <TimerBar remainingSeconds={remainingSeconds} totalSeconds={totalSecondsRef.current ?? remainingSeconds} />
       </div>
+
+      {reviewFilter && activeFilterIndices.length > 0 ? (
+        <div
+          className={clsx(
+            'mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-2.5',
+            reviewFilter === 'marked'
+              ? 'border-candidate-review-border bg-candidate-review-bg'
+              : 'border-candidate-border bg-candidate-bg',
+          )}
+        >
+          <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-candidate-text">
+            {reviewFilter === 'marked' ? (
+              <Bookmark className="h-4 w-4 text-candidate-review" fill="currentColor" aria-hidden="true" />
+            ) : null}
+            Reviewing {reviewFilter === 'marked' ? 'marked for review' : 'unanswered'} — {(reviewPos === -1 ? 0 : reviewPos) + 1} of{' '}
+            {activeFilterIndices.length}
+          </span>
+          <div className="flex items-center gap-2">
+            <CandidateButton
+              variant="secondary"
+              onClick={() => stepReview(-1)}
+              disabled={reviewPos <= 0}
+              aria-label={`Previous ${reviewFilter === 'marked' ? 'marked-for-review' : 'unanswered'} question`}
+            >
+              <span className="inline-flex items-center gap-1">
+                <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" /> Prev
+              </span>
+            </CandidateButton>
+            <CandidateButton
+              variant="secondary"
+              onClick={() => stepReview(1)}
+              disabled={reviewPos !== -1 && reviewPos >= activeFilterIndices.length - 1}
+              aria-label={`Next ${reviewFilter === 'marked' ? 'marked-for-review' : 'unanswered'} question`}
+            >
+              <span className="inline-flex items-center gap-1">
+                Next <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </span>
+            </CandidateButton>
+            <button
+              type="button"
+              onClick={() => setReviewFilter(null)}
+              className="rounded-md px-2.5 py-2 text-sm font-medium text-candidate-text-secondary hover:bg-white/60"
+            >
+              Show all questions
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="flex gap-4 xl:gap-6">
         <div className="flex-1 rounded-lg bg-white p-4 shadow-sm">
@@ -609,14 +680,14 @@ export default function CandidateExamPage() {
             <div className="text-lg font-bold text-candidate-primary">{answeredCount}</div>
             <div className="text-[10px] uppercase tracking-wide text-candidate-text-tertiary">Answered</div>
           </div>
-          {/* Clickable when there is somewhere to go: takes the candidate straight to the
-              first question in that state. Rendered as a plain tile at zero so there is no
-              dead control to press. */}
+          {/* Clickable when there is somewhere to go: enters a mode that steps through only the
+              questions in that state. Rendered as a plain tile at zero so there is no dead
+              control to press. */}
           {reviewCount > 0 ? (
             <button
               type="button"
-              onClick={() => jumpToQuestion(firstReviewIndex)}
-              aria-label={`Go to the first of ${reviewCount} questions marked for review`}
+              onClick={() => enterReviewFilter('marked')}
+              aria-label={`Review the ${reviewCount} questions marked for review`}
               className="rounded-md bg-candidate-review-bg p-2 text-center transition hover:ring-2 hover:ring-inset hover:ring-candidate-review-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-candidate-review-border"
             >
               <div className="text-lg font-bold text-candidate-review">{reviewCount}</div>
@@ -633,8 +704,8 @@ export default function CandidateExamPage() {
           {unansweredCount > 0 ? (
             <button
               type="button"
-              onClick={() => jumpToQuestion(firstUnansweredIndex)}
-              aria-label={`Go to the first of ${unansweredCount} unanswered questions`}
+              onClick={() => enterReviewFilter('unanswered')}
+              aria-label={`Review the ${unansweredCount} unanswered questions`}
               className="rounded-md bg-candidate-bg p-2 text-center transition hover:ring-2 hover:ring-inset hover:ring-candidate-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-candidate-primary"
             >
               <div className="text-lg font-bold text-candidate-text-secondary">{unansweredCount}</div>
