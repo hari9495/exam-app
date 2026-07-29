@@ -186,7 +186,10 @@ describe('CandidateExamPage', () => {
     expect(screen.getByText('What is 2 + 2?')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /4/ }));
 
-    expect(saveAnswer).toHaveBeenCalledWith('q1', ['o1'], undefined);
+    // markedForReview resolves to the current (false) review state, not undefined -- the
+    // answer DTO expects a boolean, and preserving it is what stops answering from clearing
+    // a review flag.
+    expect(saveAnswer).toHaveBeenCalledWith('q1', ['o1'], false);
   });
 
   it('shows the candidate name in the toolbar so shared devices are not confusing', () => {
@@ -199,6 +202,22 @@ describe('CandidateExamPage', () => {
     render(<CandidateExamPage />);
     await userEvent.click(screen.getByRole('button', { name: /Mark for review/ }));
     expect(saveAnswer).toHaveBeenCalledWith('q1', [], true);
+  });
+
+  // Regression: the button appearance used to read only off the server answer, so it stayed
+  // "Mark for review" until the debounced save round-tripped (~3s of dead-feeling clicks).
+  // It must flip immediately, before saveAnswer resolves and without any refetch.
+  it('flips the mark-for-review label immediately on click, before the server responds', async () => {
+    render(<CandidateExamPage />);
+
+    const button = screen.getByRole('button', { name: 'Mark for review' });
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+
+    await userEvent.click(button);
+
+    // useAttemptQuery is a static mock here -- it never returns the marked answer -- so the
+    // only way this reads "Marked for review" is the optimistic local state.
+    expect(screen.getByRole('button', { name: 'Marked for review' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('flushes pending answers and submits on confirm', async () => {
@@ -322,7 +341,7 @@ describe('CandidateExamPage', () => {
     render(<CandidateExamPage />);
     await userEvent.type(screen.getByLabelText('code-editor'), 'x');
 
-    expect(saveAnswer).toHaveBeenCalledWith('q1', [], undefined, expect.any(String), expect.any(Object), 'javascript');
+    expect(saveAnswer).toHaveBeenCalledWith('q1', [], false, expect.any(String), expect.any(Object), 'javascript');
   });
 
   it('does not wipe answerText when toggling mark-for-review on a code question', async () => {

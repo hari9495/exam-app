@@ -28,7 +28,9 @@ function markButtonClasses(marked: boolean | undefined) {
   return clsx(
     // Sized as a real button, not a hairline pill: candidates were struggling to hit it.
     // whitespace-nowrap keeps "Mark for review" on one line beside the question meta.
-    'whitespace-nowrap rounded-md border px-3 py-2 text-sm font-medium transition-colors',
+    // active:scale + focus ring give an immediate press response so the toggle feels
+    // instant, independent of the debounced save behind it.
+    'whitespace-nowrap rounded-md border px-3 py-2 text-sm font-medium transition-all active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-candidate-review-border',
     marked
       ? 'border-candidate-review-border bg-candidate-review-bg text-candidate-review'
       : 'border-candidate-border text-candidate-text-secondary hover:bg-candidate-bg',
@@ -78,6 +80,10 @@ export default function CandidateExamPage() {
   const [runResults, setRunResults] = useState<Record<string, RunCodeResult>>({});
   const [runErrors, setRunErrors] = useState<Record<string, string>>({});
   const [selectedLanguages, setSelectedLanguages] = useState<Record<string, string>>({});
+  // Optimistic mark-for-review state: the button appearance is otherwise driven off the
+  // server answer, which only updates after the 800ms save debounce + round-trip + refetch --
+  // so the toggle felt dead for ~3s. Track the intended value locally and show it immediately.
+  const [localMarkedForReview, setLocalMarkedForReview] = useState<Record<string, boolean>>({});
 
   const attemptState = current && isAttemptStarted(current) ? current : null;
   const isPaused = attemptState?.status === 'paused';
@@ -216,6 +222,31 @@ export default function CandidateExamPage() {
   const editorTelemetry = useEditorTelemetry(question?.type === 'code' ? question.id : null);
   const answers: AttemptAnswerSummary[] = attemptState?.answers ?? [];
   const existingAnswer = answers.find((answer) => answer.questionId === question?.id);
+  // The mark-for-review flag a question is currently shown with: the optimistic local value
+  // if the candidate just toggled it, otherwise whatever the server last returned.
+  const markedForReview = (questionId: string, serverValue: boolean | undefined) =>
+    localMarkedForReview[questionId] ?? Boolean(serverValue);
+  const currentMarked = question ? markedForReview(question.id, existingAnswer?.isMarkedForReview) : false;
+
+  // Drop an optimistic override once the server's answer agrees with it, so a stale local
+  // value can never mask a later server change (e.g. a recruiter action on another device).
+  useEffect(() => {
+    setLocalMarkedForReview((prev) => {
+      const keys = Object.keys(prev);
+      if (keys.length === 0) return prev;
+      let changed = false;
+      const next = { ...prev };
+      for (const qid of keys) {
+        const server = Boolean(answers.find((a) => a.questionId === qid)?.isMarkedForReview);
+        if (server === prev[qid]) {
+          delete next[qid];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [answers]);
   const selectedOptionIds = question ? localSelections[question.id] ?? existingAnswer?.selectedOptionIds ?? [] : [];
   const codeValue = question ? localCodeValues[question.id] ?? existingAnswer?.answerText ?? question.starterCode ?? '' : '';
   const stdinValue = question ? stdinValues[question.id] ?? '' : '';
@@ -239,7 +270,7 @@ export default function CandidateExamPage() {
     return Boolean(a && a.selectedOptionIds.length > 0);
   };
   const isQuestionMarkedForReview = (q: (typeof questions)[number]) =>
-    Boolean(answers.find((ans) => ans.questionId === q.id)?.isMarkedForReview);
+    markedForReview(q.id, answers.find((ans) => ans.questionId === q.id)?.isMarkedForReview);
 
   const answeredCount = questions.filter(isQuestionAnswered).length;
   const reviewCount = questions.filter(isQuestionMarkedForReview).length;
@@ -271,21 +302,25 @@ export default function CandidateExamPage() {
         : [...selectedOptionIds, optionId]
       : [optionId];
     setLocalSelections((prev) => ({ ...prev, [question!.id]: next }));
-    saveAnswer(question!.id, next, existingAnswer?.isMarkedForReview);
+    // Preserve the current (possibly optimistic) review flag so answering doesn't clear it.
+    saveAnswer(question!.id, next, currentMarked);
   }
 
   function toggleMarkForReview() {
+    const next = !currentMarked;
+    // Flip the UI immediately; the debounced save + refetch reconciles it afterwards.
+    setLocalMarkedForReview((prev) => ({ ...prev, [question!.id]: next }));
     if (question!.type === 'code') {
-      saveAnswer(question!.id, [], !existingAnswer?.isMarkedForReview, codeValue, editorTelemetry.snapshot(), currentCodeLanguage);
+      saveAnswer(question!.id, [], next, codeValue, editorTelemetry.snapshot(), currentCodeLanguage);
     } else {
-      saveAnswer(question!.id, selectedOptionIds, !existingAnswer?.isMarkedForReview);
+      saveAnswer(question!.id, selectedOptionIds, next);
     }
   }
 
   function handleCodeChange(value: string | undefined) {
     const next = value ?? '';
     setLocalCodeValues((prev) => ({ ...prev, [question!.id]: next }));
-    saveAnswer(question!.id, [], existingAnswer?.isMarkedForReview, next, editorTelemetry.snapshot(), currentCodeLanguage);
+    saveAnswer(question!.id, [], currentMarked, next, editorTelemetry.snapshot(), currentCodeLanguage);
   }
 
   function handleRun() {
@@ -394,10 +429,10 @@ export default function CandidateExamPage() {
                 {question.marks} marks
               </span>
             </div>
-            <button onClick={toggleMarkForReview} className={markButtonClasses(existingAnswer?.isMarkedForReview)}>
+            <button type="button" onClick={toggleMarkForReview} aria-pressed={currentMarked} className={markButtonClasses(currentMarked)}>
               <span className="inline-flex items-center gap-1.5">
-                <Bookmark className="h-4 w-4" fill={existingAnswer?.isMarkedForReview ? 'currentColor' : 'none'} aria-hidden="true" />
-                {existingAnswer?.isMarkedForReview ? 'Marked for review' : 'Mark for review'}
+                <Bookmark className="h-4 w-4" fill={currentMarked ? 'currentColor' : 'none'} aria-hidden="true" />
+                {currentMarked ? 'Marked for review' : 'Mark for review'}
               </span>
             </button>
           </div>
