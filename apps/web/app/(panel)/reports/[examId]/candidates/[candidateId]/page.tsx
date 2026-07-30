@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
+import { Download } from 'lucide-react';
 import {
   useCandidateReport,
   useAttemptInsight,
@@ -12,6 +13,7 @@ import {
 } from '../../../../../../lib/hooks/usePanelReports';
 import type { WebcamTimelineEntry } from '../../../../../../lib/types';
 import { Badge, Button, Card, Modal, StatusBadge, IntegrityBadge, useToast, type StatusTone } from '../../../../../../components/ui';
+import { BackLink } from '../../../../../../components/BackLink';
 
 const PASS_FAIL_VARIANT: Record<string, 'success' | 'danger'> = { pass: 'success', fail: 'danger' };
 const SEVERITY_TONE: Record<string, StatusTone> = { high: 'danger', medium: 'warning', low: 'neutral' };
@@ -55,9 +57,14 @@ export default function PanelCandidateDetailPage() {
 
   return (
     <div>
+      <BackLink href={`/reports/${examId}`} label="Back to results" className="print:hidden" />
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">{candidate.candidateName}</h1>
         <div className="flex items-center gap-2">
+          <Button variant="secondary" onClick={() => window.print()} className="inline-flex items-center print:hidden">
+            <Download size={16} className="mr-1.5" />
+            Export report
+          </Button>
           {candidate.passFail && <Badge variant={PASS_FAIL_VARIANT[candidate.passFail] ?? 'default'}>{candidate.passFail}</Badge>}
           <IntegrityBadge level={integrity?.level} />
         </div>

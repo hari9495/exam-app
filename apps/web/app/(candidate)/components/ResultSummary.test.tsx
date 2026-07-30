@@ -7,9 +7,11 @@ describe('ResultSummary', () => {
     expect(screen.queryByText(/pass|fail|%/i)).not.toBeInTheDocument();
   });
 
-  it('shows a still-being-reviewed message when status is pending_review, regardless of visibility', () => {
-    render(<ResultSummary feedback={{ status: 'pending_review', visibility: 'breakdown', passFail: null, percentage: null, sections: null }} />);
-    expect(screen.getByText(/still being reviewed/i)).toBeInTheDocument();
+  it('renders nothing for status pending_review (the submitted page owns the "under review" copy)', () => {
+    const { container } = render(
+      <ResultSummary feedback={{ status: 'pending_review', visibility: 'breakdown', passFail: null, percentage: null, sections: null }} />,
+    );
+    expect(container).toBeEmptyDOMElement();
   });
 
   it('shows pass/fail for visibility "pass_fail"', () => {

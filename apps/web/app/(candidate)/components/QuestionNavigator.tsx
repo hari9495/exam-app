@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
 import { AttemptAnswerSummary, AttemptSection } from '../../../lib/types';
 
@@ -41,6 +43,17 @@ export function QuestionNavigator({ sections, answers, currentIndex, onSelect }:
   // With a single section the heading would just repeat "Questions" -- only worth the
   // vertical space when there is more than one section to tell apart.
   const showSectionHeadings = groups.length > 1;
+  const currentGroupIndex = groups.findIndex(
+    (group) => currentIndex >= group.startIndex && currentIndex < group.startIndex + group.questions.length,
+  );
+
+  // Collapsible sections (accordion) keep the navigator short enough to fit without its own
+  // scrollbar. The section holding the current question is always kept open so the active cell
+  // is reachable; the candidate can open any other section to jump across the paper.
+  const [openSection, setOpenSection] = useState<number>(currentGroupIndex < 0 ? 0 : currentGroupIndex);
+  useEffect(() => {
+    if (currentGroupIndex >= 0) setOpenSection(currentGroupIndex);
+  }, [currentGroupIndex]);
 
   return (
     <div className="rounded-lg border border-candidate-border bg-white p-4 shadow-sm">
@@ -53,26 +66,34 @@ export function QuestionNavigator({ sections, answers, currentIndex, onSelect }:
           ).length;
           const isCurrentGroup =
             currentIndex >= group.startIndex && currentIndex < group.startIndex + group.questions.length;
+          const isOpen = !showSectionHeadings || openSection === groupIndex;
 
           return (
             <div key={`${group.title}-${groupIndex}`} className="flex flex-col gap-2">
               {showSectionHeadings ? (
-                <div className="flex items-baseline justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOpenSection(isOpen ? -1 : groupIndex)}
+                  aria-expanded={isOpen}
+                  className="flex items-center justify-between gap-2 text-left"
+                >
                   <span
                     className={clsx(
-                      'min-w-0 truncate text-xs font-semibold',
+                      'inline-flex min-w-0 items-center gap-1 text-xs font-semibold',
                       isCurrentGroup ? 'text-candidate-primary' : 'text-candidate-text-secondary',
                     )}
                     title={group.title}
                   >
-                    {group.title}
+                    <ChevronDown className={clsx('h-3.5 w-3.5 shrink-0 transition-transform', !isOpen && '-rotate-90')} aria-hidden="true" />
+                    <span className="truncate">{group.title}</span>
                   </span>
                   <span className="shrink-0 text-[11px] tabular-nums text-candidate-text-tertiary">
                     {answeredInGroup}/{group.questions.length}
                   </span>
-                </div>
+                </button>
               ) : null}
 
+              {isOpen ? (
               <div className="grid grid-cols-4 gap-2">
                 {group.questions.map((question, positionInGroup) => {
                   const index = group.startIndex + positionInGroup;
@@ -99,6 +120,7 @@ export function QuestionNavigator({ sections, answers, currentIndex, onSelect }:
                   );
                 })}
               </div>
+              ) : null}
             </div>
           );
         })}

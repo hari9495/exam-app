@@ -385,7 +385,7 @@ export default function CandidateExamPage() {
   }
 
   return (
-    <div className="relative">
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
       {isPaused ? (
         <ProctoringWarningOverlay
           strike={lastViolationSource === 'browser_activity' ? attemptState.browserActivityViolationCount : attemptState.webcamViolationCount}
@@ -408,11 +408,11 @@ export default function CandidateExamPage() {
         // the padding becomes the gutter; the width is kept usable by widening the navigator
         // and splitting the options into two columns rather than stretching single rows.
         className={clsx(
-          'mx-auto max-w-6xl p-4 xl:max-w-7xl xl:p-6 2xl:max-w-none 2xl:px-10',
+          'mx-auto flex w-full min-h-0 max-w-6xl flex-1 flex-col overflow-hidden p-4 xl:max-w-7xl xl:p-6 2xl:max-w-none 2xl:px-10',
           (isPaused || isBlocked) && 'pointer-events-none blur-sm select-none',
         )}
       >
-      <div className="mb-4 rounded-lg border border-candidate-border bg-white px-4 py-3 shadow-sm">
+      <div className="mb-4 shrink-0 rounded-lg border border-candidate-border bg-white px-4 py-3 shadow-sm">
         <div className="mb-2 flex items-center justify-between">
           <button
             onClick={() => setNavigatorOpen((open) => !open)}
@@ -482,8 +482,8 @@ export default function CandidateExamPage() {
         </div>
       ) : null}
 
-      <div className="flex gap-4 xl:gap-6">
-        <div className="flex-1 rounded-lg bg-white p-4 shadow-sm">
+      <div className="flex min-h-0 flex-1 gap-4 overflow-hidden xl:gap-6">
+        <div className="flex-1 overflow-y-auto rounded-lg bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-start justify-between gap-3">
             <div className="flex min-w-0 flex-col gap-1.5">
               {/* Where the candidate is in the paper. The word "Section" and the position are
@@ -649,7 +649,7 @@ export default function CandidateExamPage() {
 
         {/* The extra width on a large screen goes to the navigator rather than stretching the
             question text further — the numbers and per-section counts genuinely read better. */}
-        <div className="hidden w-56 shrink-0 lg:block xl:w-64 2xl:w-80">
+        <div className="hidden w-56 shrink-0 overflow-y-auto lg:block xl:w-64 2xl:w-80">
           <QuestionNavigator sections={attemptState.sections} answers={answers} currentIndex={currentIndex} onSelect={setCurrentIndex} />
           <CandidateButton onClick={() => setConfirmOpen(true)} className="mt-3 w-full text-xs">
             Review & Submit

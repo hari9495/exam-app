@@ -29,8 +29,14 @@ export function CandidateThemeProvider({ children }: { children: React.ReactNode
     : undefined;
 
   return (
-    <div className="flex min-h-screen flex-col bg-candidate-bg" style={themeStyle}>
-      <div className={clsx('flex justify-center px-4', isExamPage ? 'pt-4' : 'pt-28')}>
+    <div
+      // The exam page is a fixed viewport shell (no page scroll) -- lock the whole candidate frame to
+      // the screen height there so the logo bar + exam fill exactly one viewport. Other candidate pages
+      // (welcome/consent) keep min-h-screen so their content can grow and scroll normally.
+      className={clsx('flex flex-col bg-candidate-bg', isExamPage ? 'h-screen overflow-hidden' : 'min-h-screen')}
+      style={themeStyle}
+    >
+      <div className={clsx('flex shrink-0 justify-center px-4', isExamPage ? 'pt-4' : 'pt-28')}>
         {data?.organizationLogoUrl ? (
           <img
             src={data.organizationLogoUrl}
@@ -45,7 +51,7 @@ export function CandidateThemeProvider({ children }: { children: React.ReactNode
           />
         )}
       </div>
-      <div className="flex flex-1 flex-col">{children}</div>
+      <div className="flex min-h-0 flex-1 flex-col">{children}</div>
     </div>
   );
 }

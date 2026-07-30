@@ -3,6 +3,7 @@
 import { useParams, useSearchParams } from 'next/navigation';
 import { useCandidateComparison } from '../../../../../lib/hooks/usePanelReports';
 import { IntegrityBadge } from '../../../../../components/ui';
+import { BackLink } from '../../../../../components/BackLink';
 
 export default function PanelComparePage() {
   const { examId } = useParams<{ examId: string }>();
@@ -11,10 +12,17 @@ export default function PanelComparePage() {
 
   const { data: rows, isLoading } = useCandidateComparison(examId, candidateIds);
 
+  const header = (
+    <>
+      <BackLink href={`/reports/${examId}`} label="Back to results" />
+      <h1 className="mb-6 text-2xl font-semibold">Compare candidates</h1>
+    </>
+  );
+
   if (candidateIds.length < 2) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-semibold">Compare candidates</h1>
+        {header}
         <p className="text-sm text-gray-500">Select at least 2 candidates to compare.</p>
       </div>
     );
@@ -23,7 +31,7 @@ export default function PanelComparePage() {
   if (isLoading || !rows) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-semibold">Compare candidates</h1>
+        {header}
         <p className="text-sm text-gray-500">Loading…</p>
       </div>
     );
@@ -33,7 +41,7 @@ export default function PanelComparePage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-semibold">Compare candidates</h1>
+      {header}
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-sm">
           <thead>

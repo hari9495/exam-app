@@ -84,6 +84,9 @@ describe('QuestionNavigator', () => {
     const onSelect = jest.fn();
     render(<QuestionNavigator sections={multiSections} answers={[]} currentIndex={0} onSelect={onSelect} />);
 
+    // Salesforce isn't the section holding the current question, so it's collapsed by default --
+    // expand it first, then its question cells are reachable.
+    await userEvent.click(screen.getByRole('button', { name: /Salesforce/ }));
     await userEvent.click(screen.getByRole('button', { name: 'Question 3, Salesforce' }));
     expect(onSelect).toHaveBeenCalledWith(2);
   });
