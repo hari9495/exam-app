@@ -391,6 +391,81 @@ describe('OrganizationsService', () => {
     });
   });
 
+  describe('updatePlatform', () => {
+    beforeEach(() => {
+      // updatePlatform re-enriches the updated row, which reads RLS-protected
+      // tables through forTenant.
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(prisma));
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.user.groupBy.mockResolvedValue([]);
+      prisma.exam.groupBy.mockResolvedValue([]);
+    });
+
+    function seedExisting() {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', status: 'active' });
+      prisma.organization.update.mockResolvedValue({
+        id: 'org-1', name: 'Acme Inc', slug: 'acme', region: 'eu', status: 'active', createdAt: new Date('2026-01-01'),
+      });
+    }
+
+    it('updates name and region and audits the change', async () => {
+      seedExisting();
+
+      const result = await service.updatePlatform('actor-1', 'org-1', { name: 'Acme Inc', region: 'eu' });
+
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { name: 'Acme Inc', region: 'eu' },
+        select: expect.objectContaining({ id: true, name: true, slug: true, status: true }),
+      });
+      expect(result).toMatchObject({ id: 'org-1', name: 'Acme Inc', region: 'eu' });
+      expect(audit.record).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: true },
+        { actorUserId: 'actor-1', action: 'platform.organization_updated', entityType: 'organization', entityId: 'org-1' },
+      );
+    });
+
+    it('omits fields the caller did not send', async () => {
+      seedExisting();
+
+      await service.updatePlatform('actor-1', 'org-1', { name: 'Acme Inc' });
+
+      expect(prisma.organization.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { name: 'Acme Inc' } }),
+      );
+    });
+
+    it('never writes the slug, even if one is smuggled into the payload', async () => {
+      // The slug appears in invitation URLs and SAML entity IDs; changing it
+      // would break live links. The DTO has no slug field, but a stray property
+      // must not reach Prisma either.
+      seedExisting();
+
+      await service.updatePlatform('actor-1', 'org-1', { name: 'Acme Inc', slug: 'hijacked' } as never);
+
+      const data = prisma.organization.update.mock.calls[0][0].data;
+      expect(data).not.toHaveProperty('slug');
+    });
+
+    it('returns the row re-enriched, not fabricated zeros', async () => {
+      seedExisting();
+      prisma.user.groupBy.mockResolvedValue([{ organizationId: 'org-1', _count: { _all: 7 } }]);
+      prisma.exam.groupBy.mockResolvedValue([{ organizationId: 'org-1', _count: { _all: 2 } }]);
+
+      const result = await service.updatePlatform('actor-1', 'org-1', { name: 'Acme Inc' });
+
+      expect(result).toMatchObject({ userCount: 7, examCount: 2 });
+    });
+
+    it('throws NotFound for an unknown organization and writes nothing', async () => {
+      prisma.organization.findUnique.mockResolvedValue(null);
+
+      await expect(service.updatePlatform('actor-1', 'nope', { name: 'X' })).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getBranding', () => {
     it('returns null logoUrl/colors for an org with nothing set', async () => {
       prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme Corp', logoPath: null, primaryColor: null, accentColor: null });

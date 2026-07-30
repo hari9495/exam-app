@@ -17,6 +17,7 @@ import { UpdateSmtpSettingsDto } from './dto/update-smtp-settings.dto';
 import { UpdateAiKeyDto } from './dto/update-ai-key.dto';
 import { UpdateWebhookUrlDto } from './dto/update-webhook-url.dto';
 import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
+import { UpdateOrganizationDto } from './dto/update-organization.dto';
 
 export interface BrandingResponse {
   // The organisation's own display name. Consumers render this in place of the
@@ -183,6 +184,36 @@ export class OrganizationsService {
 
     const items = await this.enrichForList(organizations);
     return buildPaginatedResponse(items, total, page, pageSize);
+  }
+
+  async updatePlatform(actorUserId: string, id: string, dto: UpdateOrganizationDto): Promise<OrganizationListItem> {
+    const existing = await this.prisma.organization.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException(`Organization ${id} not found`);
+    }
+
+    const updated = await this.prisma.organization.update({
+      where: { id },
+      // Fields are copied across one at a time rather than spreading the DTO:
+      // the slug must never be writable here (it is baked into invitation URLs
+      // and SAML entity IDs), and a spread would carry through any stray
+      // property that slipped past validation.
+      data: {
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.region !== undefined && { region: dto.region }),
+      },
+      select: ORGANIZATION_LIST_SELECT,
+    });
+
+    await this.audit.record(
+      { organizationId: id, isSuperAdmin: true },
+      { actorUserId, action: 'platform.organization_updated', entityType: 'organization', entityId: id },
+    );
+
+    // Re-enrich rather than padding the response with zeros: a caller reading
+    // userCount off this response would otherwise get a fabricated number.
+    const [item] = await this.enrichForList([updated]);
+    return item;
   }
 
   /**

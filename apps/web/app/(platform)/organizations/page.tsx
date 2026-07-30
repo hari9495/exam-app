@@ -10,12 +10,14 @@ import { useAuth } from '../../../lib/auth-context';
 import { ListView } from '../components/ListView';
 import { RowActions } from '../components/RowActions';
 import { CreateOrganizationModal } from './CreateOrganizationModal';
+import { EditOrganizationModal } from './EditOrganizationModal';
 
 export default function OrganizationsPage() {
   const router = useRouter();
   const { switchIntoOrg } = useAuth();
   const { data, isLoading, isError } = useOrganizations();
   const [createOpen, setCreateOpen] = useState(false);
+  const [editing, setEditing] = useState<Organization | null>(null);
 
   const organizations = useMemo(() => data?.data ?? [], [data]);
 
@@ -44,6 +46,7 @@ export default function OrganizationsPage() {
             label={`Actions for ${org.name}`}
             actions={[
               { label: 'Switch into', onSelect: () => void handleSwitchInto(org.id) },
+              { label: 'Edit', onSelect: () => setEditing(org) },
               // The All Users directory carries organizationName, not a slug.
               { label: 'View users', onSelect: () => router.push(`/all-users?org=${encodeURIComponent(org.name)}`) },
             ]}
@@ -76,6 +79,7 @@ export default function OrganizationsPage() {
         actions={<Button onClick={() => setCreateOpen(true)}>New</Button>}
       />
       <CreateOrganizationModal open={createOpen} onClose={() => setCreateOpen(false)} />
+      <EditOrganizationModal organization={editing} onClose={() => setEditing(null)} />
     </>
   );
 }

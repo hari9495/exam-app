@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Patch, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -14,6 +14,7 @@ import { UpdateSmtpSettingsDto } from './dto/update-smtp-settings.dto';
 import { UpdateAiKeyDto } from './dto/update-ai-key.dto';
 import { UpdateWebhookUrlDto } from './dto/update-webhook-url.dto';
 import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
+import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 
 @Controller('organizations')
@@ -121,5 +122,14 @@ export class OrganizationsController {
   @Throttle(MODERATE_UPLOAD_THROTTLE)
   uploadLogo(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @UploadedFile() file: Express.Multer.File) {
     return this.organizationsService.uploadLogo(tenant, userId, file);
+  }
+
+  // MUST stay last. Nest matches routes in declaration order, and a single-segment
+  // `:id` placed above @Patch('sso') or @Patch('branding') would swallow both --
+  // they would resolve here with id="sso" instead of reaching their handlers.
+  @Patch(':id')
+  @RequirePermissions('platform:manage_organizations')
+  updatePlatform(@CurrentUserId() userId: string, @Param('id') id: string, @Body() dto: UpdateOrganizationDto) {
+    return this.organizationsService.updatePlatform(userId, id, dto);
   }
 }

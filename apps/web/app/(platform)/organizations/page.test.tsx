@@ -131,6 +131,22 @@ describe('OrganizationsPage', () => {
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/dashboard'));
   });
 
+  it('opens the edit modal prefilled from the row that was chosen', async () => {
+    renderPage();
+    await screen.findByText('Beta');
+
+    // Deliberately the SECOND row: a modal that seeds once on mount would show
+    // the first row's values here.
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for Beta' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }));
+
+    expect(await screen.findByLabelText('Name')).toHaveValue('Beta');
+    // Scope to the dialog: "beta" is also the Slug cell in the table behind it.
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getByText('beta')).toBeInTheDocument();
+    expect(dialog.getByText(/slug cannot be changed/i)).toBeInTheDocument();
+  });
+
   it('links View users to the all-users tab filtered by organization name', async () => {
     renderPage();
     await screen.findByText('Acme');

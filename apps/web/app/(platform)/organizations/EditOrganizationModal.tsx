@@ -1,0 +1,79 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useUpdateOrganization } from '../../../lib/hooks/useOrganizations';
+import { Modal, Input, Select, Button, useToast } from '../../../components/ui';
+import { Organization } from '../../../lib/types';
+
+const REGION_OPTIONS = [
+  { value: 'us', label: 'US' },
+  { value: 'eu', label: 'EU' },
+];
+
+export function EditOrganizationModal({
+  organization,
+  onClose,
+}: {
+  organization: Organization | null;
+  onClose: () => void;
+}) {
+  const updateOrganization = useUpdateOrganization();
+  const { toast } = useToast();
+  const [name, setName] = useState(organization?.name ?? '');
+  const [region, setRegion] = useState(organization?.region ?? 'us');
+  const [error, setError] = useState<string | null>(null);
+
+  // The modal stays mounted across row selections, so the fields must re-seed
+  // when a different organization is chosen. Without this the second row opened
+  // would show the first row's values -- and saving would write them to the
+  // wrong organization.
+  useEffect(() => {
+    setName(organization?.name ?? '');
+    setRegion(organization?.region ?? 'us');
+    setError(null);
+  }, [organization]);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!organization) return;
+    setError(null);
+    updateOrganization.mutate(
+      { id: organization.id, name, region },
+      {
+        onSuccess: () => {
+          toast(`Updated ${name}.`);
+          onClose();
+        },
+        onError: (err) => setError(err instanceof Error ? err.message : 'Failed to update organization'),
+      },
+    );
+  }
+
+  return (
+    <Modal open={organization !== null} title="Edit organization" onClose={onClose}>
+      {organization && (
+        <>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+            <Input label="Name" value={name} onChange={setName} required />
+            <div className="text-sm">
+              <span className="block text-xs font-medium text-recruiter-text-tertiary">Slug</span>
+              <span className="text-gray-900">{organization.slug}</span>
+              <p className="mt-1 text-xs text-recruiter-text-tertiary">
+                The slug cannot be changed — it appears in invitation links and SSO configuration.
+              </p>
+            </div>
+            <Select label="Region" value={region} onChange={setRegion} options={REGION_OPTIONS} />
+            <Button type="submit" loading={updateOrganization.isPending}>
+              Save
+            </Button>
+          </form>
+          {error && (
+            <p role="alert" className="mt-3 text-sm text-status-danger">
+              {error}
+            </p>
+          )}
+        </>
+      )}
+    </Modal>
+  );
+}
