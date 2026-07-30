@@ -16,9 +16,12 @@ interface TableProps<T> {
   rows: T[];
   rowKey: (row: T) => string;
   emptyMessage?: string;
+  /** Fires whenever the user changes the sort. Sort state stays owned here; this
+   *  only reports it, so a caller can label the active sort without lifting it. */
+  onSortChange?: (sort: { key: string; header: string; direction: 'asc' | 'desc' }) => void;
 }
 
-export function Table<T>({ columns, rows, rowKey, emptyMessage = 'No results.' }: TableProps<T>) {
+export function Table<T>({ columns, rows, rowKey, emptyMessage = 'No results.', onSortChange }: TableProps<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
@@ -34,12 +37,10 @@ export function Table<T>({ columns, rows, rowKey, emptyMessage = 'No results.' }
 
   function handleSort(column: Column<T>) {
     if (!column.sortValue) return;
-    if (sortKey === column.key) {
-      setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortKey(column.key);
-      setSortDir('asc');
-    }
+    const nextDir = sortKey === column.key && sortDir === 'asc' ? 'desc' : 'asc';
+    setSortKey(column.key);
+    setSortDir(nextDir);
+    onSortChange?.({ key: column.key, header: column.header, direction: nextDir });
   }
 
   if (rows.length === 0) {

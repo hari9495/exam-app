@@ -46,4 +46,30 @@ describe('Table', () => {
     expect(screen.getAllByRole('cell')[0]).toHaveTextContent('Bravo');
     expect(header).toHaveAttribute('aria-sort', 'descending');
   });
+
+  it('reports the column and direction as the user cycles the sort', () => {
+    const onSortChange = jest.fn();
+    render(<Table columns={columns} rows={rows} rowKey={(row) => row.id} onSortChange={onSortChange} />);
+
+    fireEvent.click(screen.getByText('Name'));
+    expect(onSortChange).toHaveBeenLastCalledWith({ key: 'name', header: 'Name', direction: 'asc' });
+
+    fireEvent.click(screen.getByText('Name'));
+    expect(onSortChange).toHaveBeenLastCalledWith({ key: 'name', header: 'Name', direction: 'desc' });
+
+    // Switching columns starts that column ascending rather than inheriting
+    // the previous column's direction.
+    fireEvent.click(screen.getByText('Score'));
+    expect(onSortChange).toHaveBeenLastCalledWith({ key: 'score', header: 'Score', direction: 'asc' });
+  });
+
+  it('does not report a sort for a column with no sortValue', () => {
+    const onSortChange = jest.fn();
+    const withPlain: Column<Row>[] = [...columns, { key: 'plain', header: 'Plain', render: () => 'x' }];
+    render(<Table columns={withPlain} rows={rows} rowKey={(row) => row.id} onSortChange={onSortChange} />);
+
+    fireEvent.click(screen.getByText('Plain'));
+
+    expect(onSortChange).not.toHaveBeenCalled();
+  });
 });
