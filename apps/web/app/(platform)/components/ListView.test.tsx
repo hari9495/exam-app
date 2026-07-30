@@ -157,6 +157,19 @@ describe('ListView', () => {
     expect(screen.getByTestId('list-view-meta')).toHaveTextContent('showing 2 of 250');
   });
 
+  it('tells a searching user their results are incomplete, not to narrow further', async () => {
+    // Narrowing cannot reveal rows that were never fetched. The real risk is the
+    // user reading an incomplete result set as complete.
+    renderListView({ totalCount: 250 });
+
+    await userEvent.type(screen.getByRole('searchbox'), 'acme');
+
+    const meta = screen.getByTestId('list-view-meta');
+    expect(meta).toHaveTextContent('searched only the first 2 of 250');
+    expect(meta).toHaveTextContent('there may be more matches');
+    expect(meta).not.toHaveTextContent('search to reach the rest');
+  });
+
   it('does not warn when the fetched rows are the whole set', () => {
     renderListView({ totalCount: 2 });
     expect(screen.getByTestId('list-view-meta')).not.toHaveTextContent('showing');

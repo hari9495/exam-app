@@ -1,41 +1,45 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import OrganizationsPage from './page';
 import { AuthProvider } from '../../../lib/auth-context';
 import { QueryProvider } from '../../../lib/query-provider';
 import { ToastProvider } from '../../../components/ui';
 import { fakeJwt } from '../../../lib/test-utils/fake-jwt';
+import { Organization } from '../../../lib/types';
 
 const mockPush = jest.fn();
 jest.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush }) }));
 
-function renderPage() {
+const ORGS: Organization[] = [
+  {
+    id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', status: 'active',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    primaryAdminName: 'Ada', primaryAdminEmail: 'ada@acme.test', userCount: 12, examCount: 8,
+  },
+  {
+    id: 'org-2', name: 'Beta', slug: 'beta', region: 'eu', status: 'active',
+    createdAt: '2026-01-02T00:00:00.000Z',
+    // Creation stores only the email, so a fresh org has no admin name yet.
+    primaryAdminName: null, primaryAdminEmail: 'admin@beta.test', userCount: 0, examCount: 0,
+  },
+];
+
+function renderPage(orgs: Organization[] = ORGS) {
+  localStorage.clear();
   const token = fakeJwt({ sub: 'u1', organizationId: null, role: 'super_admin' });
   const actingToken = fakeJwt({ sub: 'u1', organizationId: 'org-1', role: 'super_admin', actingSuperAdmin: true, actingOrgName: 'Acme' });
-  global.fetch = jest.fn(async (url, options) => {
+  global.fetch = jest.fn(async (url: unknown, options?: RequestInit) => {
     if (String(url).endsWith('/auth/refresh')) {
       return new Response(JSON.stringify({ accessToken: token }), { status: 200 });
     }
-    if (String(url).includes('/organizations') && (!options || options.method === undefined)) {
-      return new Response(
-        JSON.stringify({
-          data: [{ id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', createdAt: '2026-01-01T00:00:00.000Z' }],
-          total: 1,
-          page: 1,
-          pageSize: 20,
-          totalPages: 1,
-        }),
-        { status: 200 },
-      );
-    }
-    if (String(url).endsWith('/organizations') && options?.method === 'POST') {
-      return new Response(
-        JSON.stringify({ id: 'org-2', name: 'Beta', slug: 'beta', region: 'us', createdAt: '2026-01-02T00:00:00.000Z' }),
-        { status: 200 },
-      );
-    }
     if (String(url).endsWith('/auth/super-admin/switch-into/org-1') && options?.method === 'POST') {
       return new Response(JSON.stringify({ accessToken: actingToken }), { status: 200 });
+    }
+    if (String(url).includes('/organizations') && options?.method === undefined) {
+      return new Response(
+        JSON.stringify({ data: orgs, total: orgs.length, page: 1, pageSize: 200, totalPages: 1 }),
+        { status: 200 },
+      );
     }
     return new Response(JSON.stringify({}), { status: 200 });
   }) as unknown as typeof fetch;
@@ -51,6 +55,12 @@ function renderPage() {
   );
 }
 
+// Table marks sortable <th> with role="button", so columnheader queries do not
+// match. Scope to the table when asserting on columns or cells.
+function inTable() {
+  return within(screen.getByRole('table'));
+}
+
 describe('OrganizationsPage', () => {
   const originalFetch = global.fetch;
   afterEach(() => {
@@ -58,46 +68,117 @@ describe('OrganizationsPage', () => {
     mockPush.mockClear();
   });
 
-  it('lists existing organizations', async () => {
+  it('renders organizations as table rows with admin and counts', async () => {
     renderPage();
+
     expect(await screen.findByText('Acme')).toBeInTheDocument();
-    expect(screen.getByText('acme')).toBeInTheDocument();
+    expect(inTable().getByText('ada@acme.test')).toBeInTheDocument();
+    expect(inTable().getByText('Ada')).toBeInTheDocument();
+    expect(inTable().getByText('12')).toBeInTheDocument();
   });
 
-  it('submits the create-organization form with the entered fields', async () => {
+  it('renders an em dash when the primary admin has no name yet', async () => {
+    renderPage();
+
+    await screen.findByText('Beta');
+    expect(inTable().getByText('admin@beta.test')).toBeInTheDocument();
+    expect(inTable().getAllByText('—').length).toBeGreaterThan(0);
+  });
+
+  it('shows the item count', async () => {
     renderPage();
     await screen.findByText('Acme');
-    await userEvent.type(screen.getByLabelText('Name'), 'Beta');
-    await userEvent.type(screen.getByLabelText('Slug'), 'beta');
-    await userEvent.type(screen.getByLabelText('Admin email'), 'admin@beta.test');
-    await userEvent.click(screen.getByRole('button', { name: 'Create organization' }));
-
-    await waitFor(() => {
-      const postCall = (global.fetch as jest.Mock).mock.calls.find(
-        ([url, options]) => String(url).endsWith('/organizations') && options?.method === 'POST',
-      );
-      expect(postCall).toBeDefined();
-      expect(JSON.parse(postCall[1].body)).toEqual({
-        name: 'Beta',
-        slug: 'beta',
-        region: 'us',
-        adminEmail: 'admin@beta.test',
-      });
-    });
+    expect(screen.getByTestId('list-view-meta')).toHaveTextContent('2 items');
   });
 
-  it('switches into an organization when "Switch into" is clicked', async () => {
+  it('hides the exam count column by default and reveals it from the chooser', async () => {
     renderPage();
     await screen.findByText('Acme');
 
-    await userEvent.click(screen.getByRole('button', { name: /switch into/i }));
+    expect(inTable().queryByText('Exams')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Choose columns' }));
+    await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Exams' }));
+    await userEvent.keyboard('{Escape}');
+
+    expect(inTable().getByText('Exams')).toBeInTheDocument();
+  });
+
+  it('does not show the create form until New is pressed', async () => {
+    renderPage();
+    await screen.findByText('Acme');
+
+    expect(screen.queryByLabelText('Slug')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'New' }));
+
+    expect(await screen.findByLabelText('Slug')).toBeInTheDocument();
+  });
+
+  it('switches into an organization from the row menu', async () => {
+    renderPage();
+    await screen.findByText('Acme');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for Acme' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Switch into' }));
 
     await waitFor(() => {
-      const switchCall = (global.fetch as jest.Mock).mock.calls.find(([url]) =>
-        String(url).endsWith('/auth/super-admin/switch-into/org-1'),
+      const call = (global.fetch as jest.Mock).mock.calls.find(([u]) =>
+        String(u).endsWith('/auth/super-admin/switch-into/org-1'),
       );
-      expect(switchCall).toBeDefined();
+      expect(call).toBeDefined();
     });
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/dashboard'));
+  });
+
+  it('links View users to the all-users tab filtered by organization name', async () => {
+    renderPage();
+    await screen.findByText('Acme');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for Acme' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'View users' }));
+
+    // Directory rows carry organizationName, not a slug, so the filter must be
+    // the name or it would match nothing.
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/all-users?org=Acme'));
+  });
+
+  it('filters the table by the search box', async () => {
+    renderPage();
+    await screen.findByText('Acme');
+
+    await userEvent.type(screen.getByRole('searchbox'), 'beta');
+
+    expect(inTable().getByText('Beta')).toBeInTheDocument();
+    expect(inTable().queryByText('Acme')).not.toBeInTheDocument();
+  });
+
+  it('searches by admin email too, not just name and slug', async () => {
+    renderPage();
+    await screen.findByText('Acme');
+
+    await userEvent.type(screen.getByRole('searchbox'), 'ada@');
+
+    expect(inTable().getByText('Acme')).toBeInTheDocument();
+    expect(inTable().queryByText('Beta')).not.toBeInTheDocument();
+  });
+
+  it('sorts across the whole list, not just the first 20 rows', async () => {
+    // The old page size was 20. Sorting a paginated slice would put the first
+    // row of page one on top instead of the global first -- the exact bug that
+    // fetching everything removes.
+    const many: Organization[] = Array.from({ length: 45 }, (_, i) => ({
+      ...ORGS[0],
+      id: `org-${i}`,
+      name: `Org ${String(45 - i).padStart(2, '0')}`,
+      slug: `org-${i}`,
+    }));
+    renderPage(many);
+    await screen.findByText('Org 45');
+
+    await userEvent.click(screen.getByText('Name'));
+
+    const firstDataRow = screen.getAllByRole('row')[1];
+    expect(within(firstDataRow).getByText('Org 01')).toBeInTheDocument();
   });
 });

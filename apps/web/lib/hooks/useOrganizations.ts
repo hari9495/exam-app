@@ -20,9 +20,13 @@ function buildOrganizationsQuery(params: UseOrganizationsParams): string {
 
 // Under ~50 organizations, fetching everything lets the browser sort and filter
 // the whole list. Sorting a paginated slice would sort only the visible page,
-// which reads as a broken sort rather than as a pagination limit. If `total` ever
-// exceeds what came back, the list view says so rather than silently truncating.
-export const ORGANIZATION_PAGE_SIZE = 200;
+// which reads as a broken sort rather than as a pagination limit.
+//
+// 100 is not arbitrary: resolvePaginationParams caps pageSize at MAX_PAGE_SIZE =
+// 100 server-side, so anything larger is silently clamped. Asking for more would
+// make this constant a lie. Past 100 organizations the list view reports
+// "showing 100 of N" rather than quietly truncating -- see ListView's totalCount.
+export const ORGANIZATION_PAGE_SIZE = 100;
 
 export function useOrganizations(params: UseOrganizationsParams = {}) {
   const { accessToken } = useAuth();

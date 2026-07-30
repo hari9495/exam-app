@@ -105,7 +105,16 @@ export function ListView<T>({
         <p data-testid="list-view-meta" className="text-xs text-recruiter-text-tertiary">
           {visibleRows.length} {visibleRows.length === 1 ? 'item' : 'items'}
           {sort ? ` • Sorted by ${sort.header}` : ''}
-          {truncated ? ` • showing ${rows.length} of ${totalCount} — narrow your search to see the rest` : ''}
+          {/* Two different warnings, because the advice differs. With no search
+              active the rest can still be reached. Once a search IS active,
+              "narrow your search" is wrong advice -- narrowing further cannot
+              reveal rows that were never fetched, and the real risk is the user
+              believing an incomplete result set is complete. */}
+          {truncated
+            ? query
+              ? ` • searched only the first ${rows.length} of ${totalCount} — there may be more matches`
+              : ` • showing ${rows.length} of ${totalCount} — search to reach the rest`
+            : ''}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           {filters}

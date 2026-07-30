@@ -75,7 +75,10 @@ describe('useOrganizations', () => {
     renderHook(() => useOrganizations(), { wrapper });
 
     expect(await listCallUrl(fetchMock)).toContain(`pageSize=${ORGANIZATION_PAGE_SIZE}`);
-    expect(ORGANIZATION_PAGE_SIZE).toBe(200);
+    // Must not exceed the server's MAX_PAGE_SIZE in
+    // apps/api/src/common/paginated-response.ts -- above it the request is
+    // silently clamped and this constant would misdescribe what actually happens.
+    expect(ORGANIZATION_PAGE_SIZE).toBe(100);
   });
 
   it('lets an explicit pageSize override the default', async () => {

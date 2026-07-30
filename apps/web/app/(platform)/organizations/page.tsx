@@ -1,116 +1,81 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
-import { useOrganizations, useCreateOrganization } from '../../../lib/hooks/useOrganizations';
-import { CardGrid, Input, Select, Button, Card, useToast, Pagination } from '../../../components/ui';
+import { Building2 } from 'lucide-react';
+import { useOrganizations } from '../../../lib/hooks/useOrganizations';
+import { Button, type Column } from '../../../components/ui';
 import { Organization } from '../../../lib/types';
 import { useAuth } from '../../../lib/auth-context';
-
-const REGION_OPTIONS = [
-  { value: 'us', label: 'US' },
-  { value: 'eu', label: 'EU' },
-];
+import { ListView } from '../components/ListView';
+import { RowActions } from '../components/RowActions';
+import { CreateOrganizationModal } from './CreateOrganizationModal';
 
 export default function OrganizationsPage() {
   const router = useRouter();
   const { switchIntoOrg } = useAuth();
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const { data: organizationsResponse, isLoading, isError } = useOrganizations({ page, pageSize: 20, search: search || undefined });
-  const createOrganization = useCreateOrganization();
-  const { toast } = useToast();
-  const [name, setName] = useState('');
-  const [slug, setSlug] = useState('');
-  const [region, setRegion] = useState('us');
-  const [adminEmail, setAdminEmail] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const { data, isLoading, isError } = useOrganizations();
+  const [createOpen, setCreateOpen] = useState(false);
 
-  async function handleSwitchInto(orgId: string) {
-    await switchIntoOrg(orgId);
-    router.push('/dashboard');
-  }
+  const organizations = useMemo(() => data?.data ?? [], [data]);
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    createOrganization.mutate(
-      { name, slug, region, adminEmail },
+  const columns: Column<Organization>[] = useMemo(() => {
+    async function handleSwitchInto(orgId: string) {
+      await switchIntoOrg(orgId);
+      router.push('/dashboard');
+    }
+
+    return [
+      { key: 'name', header: 'Name', render: (org) => <span className="font-medium text-gray-900">{org.name}</span>, sortValue: (org) => org.name },
+      { key: 'slug', header: 'Slug', render: (org) => org.slug, sortValue: (org) => org.slug },
+      // Creation stores only the admin's email; the name arrives when they set
+      // their own password, so this is empty for a freshly created organization.
+      { key: 'primaryAdmin', header: 'Primary admin', render: (org) => org.primaryAdminName ?? '—', sortValue: (org) => org.primaryAdminName ?? '' },
+      { key: 'adminEmail', header: 'Admin email', render: (org) => org.primaryAdminEmail ?? '—', sortValue: (org) => org.primaryAdminEmail ?? '' },
+      { key: 'region', header: 'Region', render: (org) => org.region.toUpperCase(), sortValue: (org) => org.region },
+      { key: 'users', header: 'Users', render: (org) => org.userCount, sortValue: (org) => org.userCount },
+      { key: 'exams', header: 'Exams', render: (org) => org.examCount, sortValue: (org) => org.examCount },
+      { key: 'created', header: 'Created', render: (org) => new Date(org.createdAt).toLocaleDateString(), sortValue: (org) => org.createdAt },
       {
-        onSuccess: () => {
-          toast(`Created ${name}. A setup email was sent to ${adminEmail}.`);
-          setName('');
-          setSlug('');
-          setRegion('us');
-          setAdminEmail('');
-        },
-        onError: (err) => setError(err instanceof Error ? err.message : 'Failed to create organization'),
+        key: 'actions',
+        header: '',
+        render: (org) => (
+          <RowActions
+            label={`Actions for ${org.name}`}
+            actions={[
+              { label: 'Switch into', onSelect: () => void handleSwitchInto(org.id) },
+              // The All Users directory carries organizationName, not a slug.
+              { label: 'View users', onSelect: () => router.push(`/all-users?org=${encodeURIComponent(org.name)}`) },
+            ]}
+          />
+        ),
       },
-    );
-  }
-
-  function renderCard(org: Organization) {
-    return (
-      <div className="flex flex-col gap-1">
-        <p className="truncate text-sm font-semibold text-gray-900">{org.name}</p>
-        <p className="text-xs text-gray-500">{org.slug}</p>
-        <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
-          <span>{org.region.toUpperCase()}</span>
-          <span>{new Date(org.createdAt).toLocaleDateString()}</span>
-        </div>
-        <Button variant="secondary" onClick={() => handleSwitchInto(org.id)} className="mt-2">
-          Switch into
-        </Button>
-      </div>
-    );
-  }
+    ];
+  }, [router, switchIntoOrg]);
 
   return (
-    <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold text-gray-900">Organizations</h1>
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, ease: 'easeOut' }}
-      >
-        <Card className="max-w-lg">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">Create organization</h2>
-          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-            <Input label="Name" value={name} onChange={setName} required />
-            <Input label="Slug" value={slug} onChange={setSlug} required />
-            <Select label="Region" value={region} onChange={setRegion} options={REGION_OPTIONS} />
-            <Input label="Admin email" type="email" value={adminEmail} onChange={setAdminEmail} required />
-            <Button type="submit">Create organization</Button>
-          </form>
-          {error && (
-            <p role="alert" className="mt-3 text-sm text-status-danger">
-              {error}
-            </p>
-          )}
-        </Card>
-      </motion.div>
-      <Input
-        label="Search organizations"
-        placeholder="Name or slug…"
-        value={search}
-        onChange={(value) => {
-          setSearch(value);
-          setPage(1);
-        }}
+    <>
+      <ListView<Organization>
+        title="Organizations"
+        icon={<Building2 size={22} />}
+        columns={columns}
+        rows={organizations}
+        rowKey={(org) => org.id}
+        searchMatch={(org, query) =>
+          org.name.toLowerCase().includes(query) ||
+          org.slug.toLowerCase().includes(query) ||
+          (org.primaryAdminEmail ?? '').toLowerCase().includes(query)
+        }
+        storageKey="organizations"
+        defaultHiddenColumns={['exams']}
+        searchPlaceholder="Search organizations…"
+        emptyMessage="No organizations yet."
+        isLoading={isLoading}
+        isError={isError}
+        totalCount={data?.total}
+        actions={<Button onClick={() => setCreateOpen(true)}>New</Button>}
       />
-      {isLoading && <p className="text-sm text-gray-500">Loading organizations…</p>}
-      {isError && (
-        <p role="alert" className="text-sm text-status-danger">
-          Failed to load organizations.
-        </p>
-      )}
-      {!isLoading && !isError && (
-        <>
-          <CardGrid items={organizationsResponse?.data ?? []} cardKey={(org) => org.id} renderCard={renderCard} emptyMessage="No organizations yet." />
-          <Pagination page={organizationsResponse?.page ?? 1} totalPages={organizationsResponse?.totalPages ?? 1} onPageChange={setPage} />
-        </>
-      )}
-    </div>
+      <CreateOrganizationModal open={createOpen} onClose={() => setCreateOpen(false)} />
+    </>
   );
 }
