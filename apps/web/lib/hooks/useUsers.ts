@@ -42,3 +42,42 @@ export function useCreateUser() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
   });
 }
+
+export function useUpdateUser() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; role?: string; name?: string }) =>
+      apiFetch(
+        `/users/${input.id}`,
+        { method: 'PATCH', body: JSON.stringify({ role: input.role, name: input.name }) },
+        accessToken ?? undefined,
+      ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+  });
+}
+
+function usersAction(path: (id: string) => string, method: 'POST') {
+  return function useAction() {
+    const { accessToken } = useAuth();
+    const queryClient = useQueryClient();
+    return useMutation({
+      mutationFn: (id: string) => apiFetch(path(id), { method, body: JSON.stringify({}) }, accessToken ?? undefined),
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+    });
+  };
+}
+
+export const useDeactivateUser = usersAction((id) => `/users/${id}/deactivate`, 'POST');
+export const useReactivateUser = usersAction((id) => `/users/${id}/reactivate`, 'POST');
+export const useResetUserPassword = usersAction((id) => `/users/${id}/reset-password`, 'POST');
+
+export function useBulkCreateUsers() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { emails: string[]; role: string }) =>
+      apiFetch('/users/bulk', { method: 'POST', body: JSON.stringify(input) }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+  });
+}
