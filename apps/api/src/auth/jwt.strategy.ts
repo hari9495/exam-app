@@ -8,6 +8,8 @@ export interface JwtPayload {
   role: string;
   actingSuperAdmin?: boolean;
   actingOrgName?: string;
+  impersonatorUserId?: string;
+  impersonatorEmail?: string;
 }
 
 @Injectable()
@@ -26,6 +28,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       organizationId: payload.organizationId,
       role: payload.role,
       actingSuperAdmin: payload.actingSuperAdmin ?? false,
+      impersonatorUserId: payload.impersonatorUserId,
+      impersonatorEmail: payload.impersonatorEmail,
     };
   }
 }
