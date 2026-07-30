@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
-import { UnauthorizedException, NotFoundException } from '@nestjs/common';
+import { UnauthorizedException, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { createHash } from 'crypto';
 import { AuthService } from './auth.service';
@@ -394,6 +394,55 @@ describe('AuthService', () => {
         { organizationId: 'org-1', isSuperAdmin: true },
         { actorUserId: 'super-admin-1', action: 'super_admin.org_switch_out', entityType: 'organization', entityId: 'org-1' },
       );
+    });
+  });
+
+  describe('impersonate', () => {
+    beforeEach(() => {
+      jwt.sign = jest.fn().mockReturnValue('signed.jwt.token');
+    });
+
+    function mockTarget(target: unknown, caller: unknown) {
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) =>
+        fn({ user: { findUnique: jest.fn().mockImplementation(({ where }: { where: { id: string } }) =>
+          where.id === 'target1' ? Promise.resolve(target) : Promise.resolve(caller)) } }),
+      );
+    }
+
+    it('lets a super_admin impersonate a recruiter in another org', async () => {
+      mockTarget({ id: 'target1', role: 'recruiter', organizationId: 'orgB', status: 'active', email: 't@x.com' }, { id: 'admin1', email: 'admin@x.com' });
+      const token = await service.impersonate({ userId: 'admin1', organizationId: null, role: 'super_admin' }, 'target1');
+      expect(token).toBe('signed.jwt.token');
+      expect(jwt.sign).toHaveBeenCalledWith(expect.objectContaining({ sub: 'target1', role: 'recruiter', impersonatorUserId: 'admin1' }), expect.anything());
+      expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'user.impersonate_start' }));
+    });
+
+    it('forbids a super_admin impersonating another super_admin', async () => {
+      mockTarget({ id: 'target1', role: 'super_admin', organizationId: null, status: 'active', email: 't@x.com' }, { id: 'admin1', email: 'admin@x.com' });
+      await expect(service.impersonate({ userId: 'admin1', organizationId: null, role: 'super_admin' }, 'target1')).rejects.toThrow(ForbiddenException);
+    });
+
+    it('forbids an org_admin impersonating a user in another org', async () => {
+      mockTarget({ id: 'target1', role: 'recruiter', organizationId: 'orgB', status: 'active', email: 't@x.com' }, { id: 'admin1', email: 'admin@x.com' });
+      await expect(service.impersonate({ userId: 'admin1', organizationId: 'orgA', role: 'org_admin' }, 'target1')).rejects.toThrow(ForbiddenException);
+    });
+
+    it('forbids an org_admin impersonating another org_admin', async () => {
+      mockTarget({ id: 'target1', role: 'org_admin', organizationId: 'orgA', status: 'active', email: 't@x.com' }, { id: 'admin1', email: 'admin@x.com' });
+      await expect(service.impersonate({ userId: 'admin1', organizationId: 'orgA', role: 'org_admin' }, 'target1')).rejects.toThrow(ForbiddenException);
+    });
+
+    it('rejects a deactivated target', async () => {
+      mockTarget({ id: 'target1', role: 'recruiter', organizationId: 'orgA', status: 'deactivated', email: 't@x.com' }, { id: 'admin1', email: 'admin@x.com' });
+      await expect(service.impersonate({ userId: 'admin1', organizationId: 'orgA', role: 'org_admin' }, 'target1')).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects self-impersonation', async () => {
+      await expect(service.impersonate({ userId: 'admin1', organizationId: 'orgA', role: 'org_admin' }, 'admin1')).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects nested impersonation', async () => {
+      await expect(service.impersonate({ userId: 'admin1', organizationId: 'orgA', role: 'org_admin', impersonatorUserId: 'x' }, 'target1')).rejects.toThrow(BadRequestException);
     });
   });
 });

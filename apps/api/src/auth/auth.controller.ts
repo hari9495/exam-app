@@ -132,4 +132,24 @@ export class AuthController {
     await this.authService.recordSwitchOut(userId, user.actingSuperAdmin ? user.organizationId : null);
     return { success: true };
   }
+
+  @Post('impersonate/:userId')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  async impersonate(@Req() req: Request, @Param('userId') userId: string) {
+    const caller = req.user as { userId: string; organizationId: string | null; role: string; impersonatorUserId?: string };
+    const accessToken = await this.authService.impersonate(caller, userId);
+    return { accessToken };
+  }
+
+  @Post('impersonate/stop')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  async stopImpersonating(@Req() req: Request) {
+    const user = req.user as { userId: string; impersonatorUserId?: string };
+    if (user.impersonatorUserId) {
+      await this.authService.recordImpersonationStop(user.impersonatorUserId, user.userId);
+    }
+    return { success: true };
+  }
 }

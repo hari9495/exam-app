@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { randomBytes, createHash, randomUUID } from 'crypto';
@@ -266,12 +266,73 @@ export class AuthService {
     );
   }
 
+  async impersonate(
+    caller: { userId: string; organizationId: string | null; role: string; impersonatorUserId?: string },
+    targetUserId: string,
+  ): Promise<string> {
+    if (caller.impersonatorUserId) {
+      throw new BadRequestException('Already impersonating another user');
+    }
+    if (caller.userId === targetUserId) {
+      throw new BadRequestException('You cannot impersonate yourself');
+    }
+
+    const isSuper = caller.role === 'super_admin';
+    const lookupContext = { organizationId: isSuper ? null : caller.organizationId, isSuperAdmin: isSuper };
+    const { target, callerRecord } = await this.tenantPrisma.forTenant(lookupContext, async (tx) => ({
+      target: await tx.user.findUnique({ where: { id: targetUserId } }),
+      callerRecord: await tx.user.findUnique({ where: { id: caller.userId } }),
+    }));
+
+    if (!target) {
+      throw new NotFoundException('User not found');
+    }
+    if (target.status !== 'active') {
+      throw new BadRequestException('Cannot impersonate a deactivated user');
+    }
+    if (isSuper) {
+      if (target.role === 'super_admin') {
+        throw new ForbiddenException('Cannot impersonate another platform administrator');
+      }
+    } else if (caller.role === 'org_admin') {
+      const inOrg = target.organizationId === caller.organizationId;
+      const impersonatable = target.role === 'recruiter' || target.role === 'panel';
+      if (!inOrg || !impersonatable) {
+        throw new ForbiddenException('You can only impersonate recruiter or panel users in your own organization');
+      }
+    } else {
+      throw new ForbiddenException('You are not allowed to impersonate users');
+    }
+
+    await this.audit.record(
+      { organizationId: target.organizationId, isSuperAdmin: isSuper },
+      { actorUserId: caller.userId, action: 'user.impersonate_start', entityType: 'user', entityId: target.id },
+    );
+
+    return this.signAccessToken({
+      sub: target.id,
+      organizationId: target.organizationId,
+      role: target.role,
+      impersonatorUserId: caller.userId,
+      impersonatorEmail: callerRecord?.email ?? undefined,
+    });
+  }
+
+  async recordImpersonationStop(impersonatorUserId: string, targetUserId: string): Promise<void> {
+    await this.audit.record(
+      { organizationId: null, isSuperAdmin: true },
+      { actorUserId: impersonatorUserId, action: 'user.impersonate_stop', entityType: 'user', entityId: targetUserId },
+    );
+  }
+
   private signAccessToken(payload: {
     sub: string;
     organizationId: string | null;
     role: string;
     actingSuperAdmin?: boolean;
     actingOrgName?: string;
+    impersonatorUserId?: string;
+    impersonatorEmail?: string;
   }): string {
     return this.jwt.sign(payload, {
       secret: process.env.JWT_ACCESS_SECRET,
