@@ -19,7 +19,7 @@ interface AuthContextValue {
   impersonating: boolean;
   impersonatorEmail: string | null;
   impersonate: (userId: string) => Promise<void>;
-  stopImpersonating: () => Promise<void>;
+  stopImpersonating: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -125,14 +125,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryClient.removeQueries({ queryKey: ['currentUser'] });
   }
 
-  async function stopImpersonating(): Promise<void> {
+  async function stopImpersonating(): Promise<string | null> {
     await apiFetch(
       '/auth/impersonate/stop',
       { method: 'POST', body: JSON.stringify({}) },
       accessTokenRef.current ?? undefined,
     ).catch(() => undefined);
-    await silentRefresh();
+    // silentRefresh restores the admin's own token from the (untouched) refresh cookie.
+    // Return its role so the caller can navigate back to the admin's console rather than
+    // leaving them on an impersonated-console route their real role can't access.
+    const token = await silentRefresh();
     queryClient.removeQueries({ queryKey: ['currentUser'] });
+    const payload = token ? decodeJwtPayload(token) : null;
+    return payload && typeof payload.role === 'string' ? payload.role : null;
   }
 
   return (
