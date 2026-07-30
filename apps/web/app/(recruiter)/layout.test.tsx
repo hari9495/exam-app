@@ -78,7 +78,8 @@ describe('Recruiter layout', () => {
       </QueryProvider>,
     );
 
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/login'));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/users'));
+    expect(mockPush).not.toHaveBeenCalledWith('/login');
     expect(screen.queryByRole('link', { name: 'Dashboard' })).not.toBeInTheDocument();
   });
 

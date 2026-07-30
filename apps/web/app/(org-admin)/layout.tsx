@@ -7,6 +7,7 @@ import { MotionConfig } from 'framer-motion';
 import clsx from 'clsx';
 import { Users, History, ShieldCheck, Settings, Plug, KeyRound, LogOut, LayoutDashboard, FileText, BookOpen } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
+import { staffLandingPath } from '../../lib/staff-landing';
 import { SUPER_ADMIN_FULL_NAV } from '../../lib/super-admin-nav';
 import { useBranding } from '../../lib/hooks/useBranding';
 import { useDocumentBranding } from '../../lib/hooks/useDocumentBranding';
@@ -36,7 +37,9 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
     if (!isLoading && !accessToken) {
       router.push('/login');
     } else if (!isLoading && accessToken && role && role !== 'org_admin' && !actingSuperAdmin) {
-      router.push('/login');
+      // Authenticated but on the wrong console (e.g. mid Login-as / return-to-admin, when the
+      // role flips while still mounted here): send them to their own console, not to /login.
+      router.push(staffLandingPath(role));
     }
   }, [isLoading, accessToken, role, actingSuperAdmin, router]);
 

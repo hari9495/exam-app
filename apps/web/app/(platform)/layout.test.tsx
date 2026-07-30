@@ -43,9 +43,10 @@ describe('Platform layout', () => {
     expect(await screen.findByText('Page content')).toBeInTheDocument();
   });
 
-  it('redirects an org_admin (wrong role) to /login instead of rendering the platform shell', async () => {
+  it('sends an authenticated org_admin (wrong console) to their own console, not to /login', async () => {
     renderLayout('org_admin');
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/login'));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/users'));
+    expect(mockPush).not.toHaveBeenCalledWith('/login');
     expect(screen.queryByText('Page content')).not.toBeInTheDocument();
   });
 

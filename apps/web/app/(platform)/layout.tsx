@@ -7,6 +7,7 @@ import { LogOut } from 'lucide-react';
 import { MotionConfig } from 'framer-motion';
 import clsx from 'clsx';
 import { useAuth } from '../../lib/auth-context';
+import { staffLandingPath } from '../../lib/staff-landing';
 
 const NAV_LINKS = [
   { href: '/organizations', label: 'Organizations' },
@@ -23,7 +24,8 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
     if (!isLoading && !accessToken) {
       router.push('/login');
     } else if (!isLoading && accessToken && role && role !== 'super_admin') {
-      router.push('/login');
+      // Authenticated non-super on the platform console: route to their own console, not /login.
+      router.push(staffLandingPath(role));
     }
   }, [isLoading, accessToken, role, router]);
 

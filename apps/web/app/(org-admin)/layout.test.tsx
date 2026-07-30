@@ -40,7 +40,7 @@ describe('Org admin layout', () => {
     expect(screen.getByRole('link', { name: 'Candidate Data Rights' })).toBeInTheDocument();
   });
 
-  it('redirects a recruiter (wrong role) to /login instead of rendering the org-admin shell', async () => {
+  it('sends an authenticated recruiter (wrong console) to their own console, not to /login', async () => {
     const recruiterToken = fakeJwt({ sub: 'u1', organizationId: 'org1', role: 'recruiter' });
     global.fetch = jest.fn(async (url) => {
       if (String(url).endsWith('/auth/refresh')) {
@@ -59,7 +59,9 @@ describe('Org admin layout', () => {
       </QueryProvider>,
     );
 
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/login'));
+    // A logged-in recruiter who lands here (e.g. mid Login-as/return) goes to /dashboard, not /login.
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/dashboard'));
+    expect(mockPush).not.toHaveBeenCalledWith('/login');
     expect(screen.queryByRole('link', { name: 'Staff Users' })).not.toBeInTheDocument();
   });
 
@@ -94,7 +96,7 @@ describe('Org admin layout', () => {
     expect(screen.getByRole('link', { name: /Exams/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Question Bank/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Candidates/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Reports' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Results' })).toBeInTheDocument();
   });
 
   it('does not show cross-shell nav links for a normal (non-acting) org_admin', async () => {

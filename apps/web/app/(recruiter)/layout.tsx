@@ -7,6 +7,7 @@ import { MotionConfig } from 'framer-motion';
 import clsx from 'clsx';
 import { LayoutDashboard, FileText, BookOpen, Users, History, ShieldCheck, Settings, KeyRound, LogOut, BarChart3 } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
+import { staffLandingPath } from '../../lib/staff-landing';
 import { SUPER_ADMIN_FULL_NAV } from '../../lib/super-admin-nav';
 import { useBranding } from '../../lib/hooks/useBranding';
 import { useDocumentBranding } from '../../lib/hooks/useDocumentBranding';
@@ -38,7 +39,9 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
     if (!isLoading && !accessToken) {
       router.push('/login');
     } else if (!isLoading && accessToken && role && role !== 'recruiter' && !actingSuperAdmin) {
-      router.push('/login');
+      // Authenticated but wrong console (e.g. returning from impersonation while still mounted
+      // here): route to the role's own console instead of bouncing to /login.
+      router.push(staffLandingPath(role));
     }
   }, [isLoading, accessToken, role, actingSuperAdmin, router]);
 

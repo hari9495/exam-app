@@ -55,9 +55,10 @@ describe('Panel layout', () => {
     expect(screen.getByRole('link', { name: 'Candidates' })).toBeInTheDocument();
   });
 
-  it('still redirects an unrelated role (org_admin) to /login', async () => {
+  it('sends an unrelated authenticated role (org_admin) to their own console, not to /login', async () => {
     renderLayout('org_admin');
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/login'));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/users'));
+    expect(mockPush).not.toHaveBeenCalledWith('/login');
     expect(screen.queryByRole('link', { name: 'Exams' })).not.toBeInTheDocument();
   });
 
