@@ -7,6 +7,7 @@ import { MotionConfig } from 'framer-motion';
 import clsx from 'clsx';
 import { Users, History, ShieldCheck, Settings, Plug, KeyRound, LogOut, LayoutDashboard, FileText, BookOpen } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
+import { SUPER_ADMIN_FULL_NAV } from '../../lib/super-admin-nav';
 import { useBranding } from '../../lib/hooks/useBranding';
 import { useDocumentBranding } from '../../lib/hooks/useDocumentBranding';
 import { useCurrentUser } from '../../lib/hooks/useCurrentUser';
@@ -20,13 +21,8 @@ const BASE_NAV_ITEMS = [
   { href: '/settings/sso', label: 'Single Sign-On', icon: KeyRound },
 ];
 
-const ACTING_EXTRA_NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/exams', label: 'Exams', icon: FileText },
-  { href: '/questions', label: 'Question Bank', icon: BookOpen },
-  { href: '/candidates', label: 'Candidates', icon: Users },
-  { href: '/reports', label: 'Reports', icon: FileText },
-];
+// A super_admin acting into an org sees the complete feature nav (SUPER_ADMIN_FULL_NAV), not this
+// shell's scoped subset, so nothing is hidden by which console they're on.
 
 export default function OrgAdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -58,7 +54,7 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
     return <p className="p-8 text-sm text-recruiter-text-tertiary">Loading…</p>;
   }
 
-  const navItems = actingSuperAdmin ? [...BASE_NAV_ITEMS, ...ACTING_EXTRA_NAV_ITEMS] : BASE_NAV_ITEMS;
+  const navItems = actingSuperAdmin ? SUPER_ADMIN_FULL_NAV : BASE_NAV_ITEMS;
 
   // Real name from useCurrentUser() once loaded; falls back to a per-role
   // placeholder only while loading or if the user has never set one.
@@ -75,7 +71,7 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
   return (
     <MotionConfig reducedMotion="user">
     <div style={themeStyle} className="flex min-h-screen">
-      <nav className="flex w-56 shrink-0 flex-col border-r border-recruiter-border bg-white">
+      <nav className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r border-recruiter-border bg-white">
         <div className="flex items-center gap-2 border-b border-recruiter-border px-4 py-4">
           {branding?.logoUrl ? (
             <img src={branding.logoUrl} alt="Organization logo" className="max-h-7 max-w-7 rounded" />

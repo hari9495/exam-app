@@ -7,20 +7,14 @@ import clsx from 'clsx';
 import { MotionConfig } from 'framer-motion';
 import { LogOut, LayoutDashboard, BookOpen, Users, History, ShieldCheck, Settings, KeyRound, FileText } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
+import { SUPER_ADMIN_FULL_NAV } from '../../lib/super-admin-nav';
 import { useBranding } from '../../lib/hooks/useBranding';
 import { useDocumentBranding } from '../../lib/hooks/useDocumentBranding';
 import { useCurrentUser } from '../../lib/hooks/useCurrentUser';
 
-const ACTING_EXTRA_NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/questions', label: 'Question Bank', icon: BookOpen },
-  { href: '/candidates', label: 'Candidates', icon: Users },
-  { href: '/users', label: 'Staff Users', icon: Users },
-  { href: '/audit-log', label: 'Audit Log', icon: History },
-  { href: '/data-rights', label: 'Candidate Data Rights', icon: ShieldCheck },
-  { href: '/settings/branding', label: 'Org Settings', icon: Settings },
-  { href: '/settings/sso', label: 'Single Sign-On', icon: KeyRound },
-];
+// A super_admin acting into an org sees the complete feature nav (SUPER_ADMIN_FULL_NAV) here too, so
+// nothing is hidden by which console they landed on. It already includes /reports, so the top
+// Results/Exams link below is gated to non-acting users to avoid a duplicate.
 
 // Recruiters need the results/reports console too (they hold results:view), but the
 // /reports routes live in this route group, and a URL can only be served by one group --
@@ -78,21 +72,23 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
   return (
     <MotionConfig reducedMotion="user">
       <div style={themeStyle} className="min-h-screen bg-gray-50">
-        <div className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
+        <div className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4 print:hidden">
           <div className="flex items-center gap-4">
             {branding?.logoUrl && <img src={branding.logoUrl} alt="Organization logo" className="max-h-8" />}
-            <Link
-              href="/reports"
-              className={clsx(
-                'rounded px-3 py-2 text-sm font-medium transition-colors duration-150',
-                pathname?.startsWith('/reports') ? 'bg-primary text-white' : 'text-gray-700 hover:bg-gray-100',
-              )}
-            >
-              {/* This link goes to /reports. "Exams" reads fine for a panel member browsing
-                  exams to review, but a recruiter arriving here wants results -- and would
-                  otherwise see two different links both labelled "Exams". */}
-              {role === 'recruiter' ? 'Results' : 'Exams'}
-            </Link>
+            {!actingSuperAdmin && (
+              <Link
+                href="/reports"
+                className={clsx(
+                  'rounded px-3 py-2 text-sm font-medium transition-colors duration-150',
+                  pathname?.startsWith('/reports') ? 'bg-primary text-white' : 'text-gray-700 hover:bg-gray-100',
+                )}
+              >
+                {/* This link goes to /reports. "Exams" reads fine for a panel member browsing
+                    exams to review, but a recruiter arriving here wants results -- and would
+                    otherwise see two different links both labelled "Exams". */}
+                {role === 'recruiter' ? 'Results' : 'Exams'}
+              </Link>
+            )}
             {!actingSuperAdmin && role === 'recruiter' &&
               RECRUITER_NAV_ITEMS.map((item) => (
                 <Link
@@ -107,7 +103,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
                 </Link>
               ))}
             {actingSuperAdmin &&
-              ACTING_EXTRA_NAV_ITEMS.map((item) => (
+              SUPER_ADMIN_FULL_NAV.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
