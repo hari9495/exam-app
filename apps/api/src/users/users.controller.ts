@@ -85,6 +85,20 @@ export class UsersController {
     return this.usersService.update(tenant, id, dto);
   }
 
+  @Post(':id/deactivate')
+  @HttpCode(200)
+  @RequirePermissions('org:manage_users')
+  deactivate(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.usersService.setStatus(tenant, id, 'deactivated', userId);
+  }
+
+  @Post(':id/reactivate')
+  @HttpCode(200)
+  @RequirePermissions('org:manage_users')
+  reactivate(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.usersService.setStatus(tenant, id, 'active', userId);
+  }
+
   @Post('me/change-password')
   @HttpCode(200)
   async changePassword(

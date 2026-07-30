@@ -163,6 +163,40 @@ export class UsersService {
     });
   }
 
+  async setStatus(
+    context: TenantContext,
+    targetUserId: string,
+    status: 'active' | 'deactivated',
+    actorUserId: string,
+  ): Promise<SafeUser> {
+    if (targetUserId === actorUserId) {
+      throw new ForbiddenException('You cannot change your own active status');
+    }
+    if (!context.organizationId) {
+      throw new BadRequestException('A user must be updated within an organization');
+    }
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const target = await tx.user.findFirst({ where: { id: targetUserId, organizationId: context.organizationId } });
+      if (!target) {
+        throw new NotFoundException('User not found');
+      }
+      if (target.role === 'super_admin') {
+        throw new ForbiddenException('Cannot change a platform administrator');
+      }
+      const updated = await tx.user.update({ where: { id: targetUserId }, data: { status }, select: SAFE_USER_SELECT });
+      if (status === 'deactivated') {
+        await tx.refreshToken.updateMany({ where: { userId: targetUserId, revokedAt: null }, data: { revokedAt: new Date() } });
+      }
+      await this.audit.record(context, {
+        actorUserId,
+        action: status === 'deactivated' ? 'user.deactivated' : 'user.reactivated',
+        entityType: 'user',
+        entityId: targetUserId,
+      });
+      return updated;
+    });
+  }
+
   async changePassword(
     context: TenantContext,
     userId: string,

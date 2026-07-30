@@ -385,6 +385,64 @@ describe('UsersService', () => {
     });
   });
 
+  describe('setStatus', () => {
+    const ctx = { organizationId: 'org1', isSuperAdmin: false };
+    const safe = { id: 't1', email: 'a@b.com', role: 'recruiter', name: null, organizationId: 'org1', status: 'deactivated', lastLoginAt: null, createdAt: new Date() };
+
+    it('deactivates an in-org user and revokes their refresh tokens', async () => {
+      const tx = {
+        user: {
+          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1' }),
+          update: jest.fn().mockResolvedValue(safe),
+        },
+        refreshToken: { updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      const result = await service.setStatus(ctx, 't1', 'deactivated', 'admin1');
+      expect(result.status).toBe('deactivated');
+      expect(tx.refreshToken.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: 't1', revokedAt: null } }));
+      expect(audit.record).toHaveBeenCalledWith(ctx, expect.objectContaining({ action: 'user.deactivated', actorUserId: 'admin1' }));
+    });
+
+    it('refuses to deactivate yourself', async () => {
+      await expect(service.setStatus(ctx, 'admin1', 'deactivated', 'admin1')).rejects.toThrow(ForbiddenException);
+    });
+
+    it('refuses to deactivate a super_admin', async () => {
+      const tx = { user: { findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'super_admin', organizationId: null }) }, refreshToken: { updateMany: jest.fn() } };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      await expect(service.setStatus(ctx, 't1', 'deactivated', 'admin1')).rejects.toThrow(ForbiddenException);
+    });
+
+    it('throws NotFound when the target is out of scope', async () => {
+      const tx = { user: { findFirst: jest.fn().mockResolvedValue(null) }, refreshToken: { updateMany: jest.fn() } };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      await expect(service.setStatus(ctx, 'nope', 'deactivated', 'admin1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects when there is no organization context', async () => {
+      await expect(
+        service.setStatus({ organizationId: null, isSuperAdmin: true }, 't1', 'deactivated', 'admin1'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('reactivates a user without touching refresh tokens', async () => {
+      const activeSafe = { ...safe, status: 'active' };
+      const tx = {
+        user: {
+          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1' }),
+          update: jest.fn().mockResolvedValue(activeSafe),
+        },
+        refreshToken: { updateMany: jest.fn() },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      const result = await service.setStatus(ctx, 't1', 'active', 'admin1');
+      expect(result.status).toBe('active');
+      expect(tx.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(audit.record).toHaveBeenCalledWith(ctx, expect.objectContaining({ action: 'user.reactivated', actorUserId: 'admin1' }));
+    });
+  });
+
   describe('update', () => {
     const ctx = { organizationId: 'org1', isSuperAdmin: false };
 
