@@ -12,6 +12,7 @@ import { AuditService } from '@exam-platform/shared';
 import { randomBytes, createHash } from 'crypto';
 import { EmailService } from '../email/email.service';
 import { SuperAdminEmailDto } from './dto/super-admin-email.dto';
+import { BulkCreateUsersDto } from './dto/bulk-create-users.dto';
 import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
 
 /**
@@ -370,6 +371,49 @@ export class UsersService {
       entityId: targetUserId,
     });
     return { success: true };
+  }
+
+  async bulkCreate(
+    context: TenantContext,
+    dto: BulkCreateUsersDto,
+    actorUserId: string,
+  ): Promise<{ created: SafeUser[]; skipped: { email: string; reason: string }[] }> {
+    if (!context.organizationId) {
+      throw new BadRequestException('Users must be created within an organization');
+    }
+    const created: SafeUser[] = [];
+    const skipped: { email: string; reason: string }[] = [];
+    for (const email of dto.emails) {
+      const outcome = await this.tenantPrisma.forTenant<
+        { created: SafeUser } | { skipped: { email: string; reason: string } }
+      >(context, async (tx) => {
+        const existing = await tx.user.findFirst({ where: { email, organizationId: context.organizationId } });
+        if (existing) {
+          return { skipped: { email, reason: 'already exists' } };
+        }
+        const passwordHash = await argon2.hash(randomBytes(32).toString('hex'));
+        const user = await tx.user.create({
+          data: { organizationId: context.organizationId as string, email, passwordHash, role: dto.role },
+          select: SAFE_USER_SELECT,
+        });
+        const rawToken = randomBytes(32).toString('hex');
+        const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+        await tx.passwordResetToken.create({
+          data: { userId: user.id, tokenHash, expiresAt: new Date(Date.now() + PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000) },
+        });
+        this.dispatchResetLink(email, rawToken).catch((error) =>
+          this.logger.error(`Failed to dispatch invite email to ${email}`, error as Error),
+        );
+        return { created: user };
+      });
+      if ('created' in outcome) {
+        created.push(outcome.created);
+        await this.audit.record(context, { actorUserId, action: 'user.created', entityType: 'user', entityId: outcome.created.id });
+      } else {
+        skipped.push(outcome.skipped);
+      }
+    }
+    return { created, skipped };
   }
 
   private async dispatchResetLink(email: string, rawToken: string): Promise<void> {

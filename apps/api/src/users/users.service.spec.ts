@@ -513,4 +513,25 @@ describe('UsersService', () => {
       ).rejects.toThrow(BadRequestException);
     });
   });
+
+  describe('bulkCreate', () => {
+    const ctx = { organizationId: 'org1', isSuperAdmin: false };
+    it('creates new emails and skips existing ones', async () => {
+      const created = { id: 'n1', email: 'new@b.com', role: 'recruiter', name: null, organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date() };
+      const tx = {
+        user: {
+          findFirst: jest.fn()
+            .mockResolvedValueOnce({ id: 'dup' }) // exists@b.com -> skipped
+            .mockResolvedValueOnce(null),          // new@b.com    -> created
+          create: jest.fn().mockResolvedValue(created),
+        },
+        passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'tok' }) },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      const result = await service.bulkCreate(ctx, { emails: ['exists@b.com', 'new@b.com'], role: 'recruiter' }, 'admin1');
+      expect(result.created).toHaveLength(1);
+      expect(result.skipped).toEqual([{ email: 'exists@b.com', reason: 'already exists' }]);
+      expect(emailService.send).toHaveBeenCalledTimes(1);
+    });
+  });
 });

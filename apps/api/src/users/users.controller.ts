@@ -12,6 +12,7 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { SuperAdminEmailDto } from './dto/super-admin-email.dto';
+import { BulkCreateUsersDto } from './dto/bulk-create-users.dto';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -22,6 +23,12 @@ export class UsersController {
   @RequirePermissions('org:manage_users')
   create(@CurrentTenant() tenant: TenantContext, @Body() dto: CreateUserDto) {
     return this.usersService.create(tenant, dto);
+  }
+
+  @Post('bulk')
+  @RequirePermissions('org:manage_users')
+  bulkCreate(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: BulkCreateUsersDto) {
+    return this.usersService.bulkCreate(tenant, dto, userId);
   }
 
   @Get()
