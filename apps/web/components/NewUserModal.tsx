@@ -55,6 +55,11 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
   function submitSingle(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    // native `required` blocks an empty value but not whitespace-only input.
+    if (!email.trim()) {
+      setError('Enter an email address.');
+      return;
+    }
     const onError = (err: unknown) => setError(err instanceof Error ? err.message : 'Failed to add user');
 
     if (sendLink) {
@@ -75,6 +80,10 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
     e.preventDefault();
     setError(null);
     const emails = emailsText.split('\n').map((line) => line.trim()).filter(Boolean);
+    if (emails.length === 0) {
+      setError('Enter at least one email.');
+      return;
+    }
     bulkCreateUsers.mutate(
       { emails, role: bulkRole },
       {

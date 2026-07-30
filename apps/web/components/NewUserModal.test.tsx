@@ -67,3 +67,13 @@ it('splits/trims/drops blank lines on the Multiple tab and shows the created/ski
   expect(mockBulkMutate).toHaveBeenCalledWith({ emails: ['a@x.com', 'b@x.com'], role: 'recruiter' }, expect.anything());
   expect(screen.getByText(/created 2 \/ skipped 1/i)).toBeInTheDocument();
 });
+
+it('does not submit the Multiple tab when the textarea is empty or whitespace-only', async () => {
+  renderModal();
+  await userEvent.click(screen.getByRole('tab', { name: /multiple/i }));
+  fireEvent.change(screen.getByLabelText(/emails/i), { target: { value: '   \n  \n' } });
+  await userEvent.click(screen.getByRole('button', { name: /create users/i }));
+
+  expect(mockBulkMutate).not.toHaveBeenCalled();
+  expect(screen.getByText(/enter at least one email/i)).toBeInTheDocument();
+});
