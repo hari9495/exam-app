@@ -4,6 +4,7 @@ import { AuthProvider } from '../lib/auth-context';
 import { QueryProvider } from '../lib/query-provider';
 import { ToastProvider } from '../components/ui';
 import { SuperAdminActingBanner } from '../components/SuperAdminActingBanner';
+import { ImpersonationBanner } from '../components/ImpersonationBanner';
 
 // Without this the browser tab fell back to showing the raw hostname, and with
 // no icon file it showed the generic globe. `template` lets an individual page
@@ -27,6 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <ToastProvider>
             <AuthProvider>
               <SuperAdminActingBanner />
+              <ImpersonationBanner />
               {children}
             </AuthProvider>
           </ToastProvider>
