@@ -1,6 +1,7 @@
 'use client';
 
 import { ReactNode, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { UsersRound } from 'lucide-react';
 import { StatusBadge, Select, Input, Button, Modal, useToast, type Column, type StatusTone } from './ui';
 import { ListView } from '../app/(platform)/components/ListView';
@@ -69,6 +70,7 @@ export function StaffUsersTable({
   actions,
 }: StaffUsersTableProps) {
   const { impersonate } = useAuth();
+  const router = useRouter();
   const { toast } = useToast();
   const updateUser = useUpdateUser();
   const deactivateUser = useDeactivateUser();
@@ -108,9 +110,13 @@ export function StaffUsersTable({
     );
   }
 
-  function handleImpersonate(target: StaffUser) {
+  async function handleImpersonate(target: StaffUser) {
     if (!confirm(`Log in as ${target.email}? You will act as this user until you return.`)) return;
-    impersonate(target.id);
+    await impersonate(target.id);
+    // The token is now the target's role with actingSuperAdmin=false, but we're still on
+    // /users (an (org-admin) route). Without navigating, that layout's guard ejects the
+    // now-lower-privileged session to /login. Send them to the target role's own console.
+    router.push(target.role === 'org_admin' ? '/users' : target.role === 'panel' ? '/reports' : '/dashboard');
   }
 
   function renderActions(u: StaffUser) {

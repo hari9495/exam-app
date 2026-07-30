@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ToastProvider } from './ui';
 import { StaffUsersTable } from './StaffUsersTable';
@@ -7,7 +7,10 @@ const users = [
   { id: 't1', organizationId: 'o1', email: 'rec@x.com', name: 'Rec One', role: 'recruiter', status: 'active', lastLoginAt: null, createdAt: '2026-01-01T00:00:00Z' },
 ];
 
-jest.mock('../lib/auth-context', () => ({ useAuth: () => ({ impersonate: jest.fn() }) }));
+const mockImpersonate = jest.fn();
+const mockPush = jest.fn();
+jest.mock('../lib/auth-context', () => ({ useAuth: () => ({ impersonate: mockImpersonate }) }));
+jest.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush }) }));
 jest.mock('../lib/hooks/useUsers', () => ({
   useUpdateUser: () => ({ mutate: jest.fn(), isPending: false }),
   useDeactivateUser: () => ({ mutate: jest.fn(), isPending: false }),
@@ -17,7 +20,12 @@ jest.mock('../lib/hooks/useUsers', () => ({
 
 // ListView persists column visibility in localStorage; clear it so one test's
 // hidden column does not leak into the next.
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  localStorage.clear();
+  mockImpersonate.mockReset();
+  mockImpersonate.mockResolvedValue(undefined);
+  mockPush.mockReset();
+});
 
 // useToast() throws outside a ToastProvider (a mutation success path calls it), so
 // every render here needs the provider even though most tests never fire a mutation.
@@ -34,6 +42,17 @@ it('renders a staff user row with a Login-as action for an org_admin', () => {
   expect(screen.getByText('rec@x.com')).toBeInTheDocument();
   expect(screen.getByText('Rec One')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /login as/i })).toBeInTheDocument();
+});
+
+it('navigates to the impersonated user\'s console after Login as, instead of being left on /users', async () => {
+  const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+  renderTable({ users, currentUserRole: 'org_admin', isActingSuperAdmin: false, currentUserId: 'admin1' });
+  await userEvent.click(screen.getByRole('button', { name: /login as/i }));
+  expect(mockImpersonate).toHaveBeenCalledWith('t1');
+  // The target is a recruiter, so we must land in the recruiter console -- otherwise the
+  // (org-admin) route guard ejects the now-recruiter session straight to /login.
+  await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/dashboard'));
+  confirmSpy.mockRestore();
 });
 
 it('shows no row menu for a user the current user cannot manage', () => {
