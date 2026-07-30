@@ -7,14 +7,18 @@ interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChan
   onChange: (value: string) => void;
   error?: string;
   icon?: ReactNode;
+  /** Keep the label for screen readers but hide it visually. For toolbar inputs
+   *  whose purpose is obvious from context -- passing label="" instead would
+   *  ship an empty <label> and leave the input with no accessible name. */
+  hideLabel?: boolean;
 }
 
-export function Input({ label, value, onChange, error, icon, className, id, ...props }: InputProps) {
+export function Input({ label, value, onChange, error, icon, className, id, hideLabel, ...props }: InputProps) {
   const generatedId = useId();
   const inputId = id ?? generatedId;
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={inputId} className="text-sm font-medium text-gray-700">
+      <label htmlFor={inputId} className={clsx('text-sm font-medium text-gray-700', hideLabel && 'sr-only')}>
         {label}
       </label>
       <div className="relative">
