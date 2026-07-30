@@ -60,9 +60,10 @@ describe('UsersPage', () => {
 
     await waitFor(() => expect(screen.getByText('admin@demo-org.test')).toBeInTheDocument());
 
+    await userEvent.click(screen.getByRole('button', { name: 'New User' }));
     await userEvent.type(screen.getByLabelText('Email'), 'new@demo-org.test');
     await userEvent.type(screen.getByLabelText('Password'), 'Passw0rd!2026');
-    await userEvent.click(screen.getByRole('button', { name: 'Add staff member' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add user' }));
 
     await waitFor(() =>
       expect(fetchMock.mock.calls.some((call) => String(call[0]).endsWith('/users') && call[1]?.method === 'POST')).toBe(true),
@@ -146,9 +147,10 @@ describe('UsersPage', () => {
 
       await waitFor(() => expect(screen.getByText('admin@demo-org.test')).toBeInTheDocument());
 
+      await userEvent.click(screen.getByRole('button', { name: 'New User' }));
       await userEvent.type(screen.getByLabelText('Email'), 'duplicate@demo-org.test');
       await userEvent.type(screen.getByLabelText('Password'), 'Passw0rd!2026');
-      await userEvent.click(screen.getByRole('button', { name: 'Add staff member' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Add user' }));
 
       await waitFor(() =>
         expect(fetchMock.mock.calls.some((call) => String(call[0]).endsWith('/users') && call[1]?.method === 'POST')).toBe(true),
