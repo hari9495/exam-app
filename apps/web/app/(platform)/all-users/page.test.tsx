@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import UsersDirectoryPage from './page';
 import * as authContext from '../../../lib/auth-context';
@@ -8,10 +8,16 @@ jest.mock('../../../lib/auth-context');
 jest.mock('../../../lib/hooks/useUserDirectory');
 
 const mockPush = jest.fn();
-jest.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush }) }));
+let mockSearchParams = new URLSearchParams();
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: mockPush }),
+  useSearchParams: () => mockSearchParams,
+}));
 
 const useAuth = authContext.useAuth as jest.Mock;
 const useUserDirectory = userDirectoryHook.useUserDirectory as jest.Mock;
+
+beforeEach(() => { mockSearchParams = new URLSearchParams(); localStorage.clear(); });
 
 describe('UsersDirectoryPage', () => {
   afterEach(() => {
@@ -51,10 +57,12 @@ describe('UsersDirectoryPage', () => {
     expect(await screen.findByText('a@acme.test')).toBeInTheDocument();
     expect(screen.getByText('Acme Inc')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: /manage/i }));
+    // Manage now lives in the per-row action menu rather than as a bare button.
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for a@acme.test' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Manage' }));
 
-    expect(switchIntoOrg).toHaveBeenCalledWith('org-1');
-    expect(mockPush).toHaveBeenCalledWith('/users');
+    await waitFor(() => expect(switchIntoOrg).toHaveBeenCalledWith('org-1'));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/users'));
   });
 
   it('renders each row with its own organization, not a single echoed value', async () => {

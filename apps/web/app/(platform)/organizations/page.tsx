@@ -11,6 +11,7 @@ import { ListView } from '../components/ListView';
 import { RowActions } from '../components/RowActions';
 import { CreateOrganizationModal } from './CreateOrganizationModal';
 import { EditOrganizationModal } from './EditOrganizationModal';
+import { DeleteOrganizationDialog } from './DeleteOrganizationDialog';
 
 export default function OrganizationsPage() {
   const router = useRouter();
@@ -18,6 +19,7 @@ export default function OrganizationsPage() {
   const { data, isLoading, isError } = useOrganizations();
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Organization | null>(null);
+  const [deleting, setDeleting] = useState<Organization | null>(null);
   const setStatus = useSetOrganizationStatus();
   const { toast } = useToast();
 
@@ -74,6 +76,7 @@ export default function OrganizationsPage() {
                 : { label: 'Reactivate', onSelect: () => handleSetStatus(org, 'active') },
               // The All Users directory carries organizationName, not a slug.
               { label: 'View users', onSelect: () => router.push(`/all-users?org=${encodeURIComponent(org.name)}`) },
+              { label: 'Delete', onSelect: () => setDeleting(org), danger: true },
             ]}
           />
         ),
@@ -105,6 +108,7 @@ export default function OrganizationsPage() {
       />
       <CreateOrganizationModal open={createOpen} onClose={() => setCreateOpen(false)} />
       <EditOrganizationModal organization={editing} onClose={() => setEditing(null)} />
+      <DeleteOrganizationDialog organization={deleting} onClose={() => setDeleting(null)} />
     </>
   );
 }

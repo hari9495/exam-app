@@ -73,6 +73,16 @@ export function useSetOrganizationStatus() {
   });
 }
 
+export function useDeleteOrganization() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string): Promise<{ id: string; status: string }> =>
+      apiFetch(`/organizations/${id}`, { method: 'DELETE' }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['organizations'] }),
+  });
+}
+
 export function useCreateOrganization() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();

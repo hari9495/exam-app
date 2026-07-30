@@ -1,147 +1,133 @@
 'use client';
 
-import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { useMemo, useState } from 'react';
+import { ShieldCheck } from 'lucide-react';
 import { useSuperAdmins, useInviteSuperAdmin, usePromoteSuperAdmin } from '../../../lib/hooks/useSuperAdmins';
-import { CardGrid, Input, Button, Card, Modal, useToast, Pagination } from '../../../components/ui';
+import { Input, Button, Modal, useToast, type Column } from '../../../components/ui';
 import { SuperAdminSummary } from '../../../lib/types';
+import { ListView } from '../components/ListView';
 
-type PendingAction = { kind: 'invite' | 'promote'; email: string } | null;
+// Matches the server's MAX_PAGE_SIZE; see the note in useOrganizations.
+const SUPER_ADMIN_PAGE_SIZE = 100;
+
+type GrantKind = 'invite' | 'promote';
 
 export default function PlatformAdminsPage() {
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const { data: superAdminsResponse, isLoading, isError } = useSuperAdmins({ page, pageSize: 20, search: search || undefined });
+  const { data, isLoading, isError } = useSuperAdmins({ pageSize: SUPER_ADMIN_PAGE_SIZE });
   const inviteSuperAdmin = useInviteSuperAdmin();
   const promoteSuperAdmin = usePromoteSuperAdmin();
   const { toast } = useToast();
 
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [promoteEmail, setPromoteEmail] = useState('');
-  const [pending, setPending] = useState<PendingAction>(null);
+  // One modal serves both grants: the form is the same single field, and only
+  // the mutation differs. The confirm step is preserved from the old page --
+  // granting super_admin cannot be undone from this screen.
+  const [openForm, setOpenForm] = useState<GrantKind | null>(null);
+  const [email, setEmail] = useState('');
+  const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function confirmPending() {
-    if (!pending) return;
+  const superAdmins = useMemo(() => data?.data ?? [], [data]);
+
+  function closeAll() {
+    setOpenForm(null);
+    setConfirming(false);
+    setEmail('');
     setError(null);
-    const mutation = pending.kind === 'invite' ? inviteSuperAdmin : promoteSuperAdmin;
+  }
+
+  function confirmGrant() {
+    if (!openForm) return;
+    setError(null);
+    const mutation = openForm === 'invite' ? inviteSuperAdmin : promoteSuperAdmin;
     mutation.mutate(
-      { email: pending.email },
+      { email },
       {
         onSuccess: () => {
-          toast(`Granted super_admin access to ${pending.email}.`);
-          if (pending.kind === 'invite') setInviteEmail('');
-          else setPromoteEmail('');
-          setPending(null);
+          toast(`Granted super_admin access to ${email}.`);
+          closeAll();
         },
         onError: (err) => {
           setError(err instanceof Error ? err.message : 'Action failed');
-          setPending(null);
+          setConfirming(false);
         },
       },
     );
   }
 
-  function renderCard(sa: SuperAdminSummary) {
-    return (
-      <div className="flex items-center justify-between gap-2">
-        <p className="truncate text-sm font-semibold text-gray-900">{sa.email}</p>
-        <p className="shrink-0 text-xs text-gray-500">{new Date(sa.createdAt).toLocaleDateString()}</p>
-      </div>
-    );
-  }
+  const columns: Column<SuperAdminSummary>[] = useMemo(
+    () => [
+      { key: 'email', header: 'Email', render: (sa) => <span className="font-medium text-gray-900">{sa.email}</span>, sortValue: (sa) => sa.email },
+      { key: 'created', header: 'Created', render: (sa) => new Date(sa.createdAt).toLocaleDateString(), sortValue: (sa) => sa.createdAt },
+    ],
+    [],
+  );
 
   return (
-    <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold text-gray-900">Platform Admins</h1>
-
-      <div className="grid max-w-3xl grid-cols-1 gap-6 sm:grid-cols-2">
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0, ease: 'easeOut' }}
-        >
-          <Card>
-            <h2 className="mb-4 text-lg font-semibold text-gray-900">Invite new admin</h2>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                setPending({ kind: 'invite', email: inviteEmail });
-              }}
-              className="flex flex-col gap-3"
-            >
-              <Input label="Invite by email" type="email" value={inviteEmail} onChange={setInviteEmail} required />
-              <Button type="submit">Invite</Button>
-            </form>
-          </Card>
-        </motion.div>
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.05, ease: 'easeOut' }}
-        >
-          <Card>
-            <h2 className="mb-4 text-lg font-semibold text-gray-900">Promote existing user</h2>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                setPending({ kind: 'promote', email: promoteEmail });
-              }}
-              className="flex flex-col gap-3"
-            >
-              <Input label="Promote by email" type="email" value={promoteEmail} onChange={setPromoteEmail} required />
-              <Button type="submit">Promote</Button>
-            </form>
-          </Card>
-        </motion.div>
-      </div>
-
-      {error && (
-        <p role="alert" className="text-sm text-status-danger">
-          {error}
-        </p>
-      )}
-
-      <Input
-        label="Search platform admins"
-        placeholder="Email…"
-        value={search}
-        onChange={(value) => {
-          setSearch(value);
-          setPage(1);
-        }}
+    <>
+      <ListView<SuperAdminSummary>
+        title="Platform Admins"
+        icon={<ShieldCheck size={22} />}
+        columns={columns}
+        rows={superAdmins}
+        rowKey={(sa) => sa.id}
+        searchMatch={(sa, query) => sa.email.toLowerCase().includes(query)}
+        storageKey="platform-admins"
+        searchPlaceholder="Search platform admins…"
+        emptyMessage="No platform admins yet."
+        isLoading={isLoading}
+        isError={isError}
+        totalCount={data?.total}
+        actions={
+          <>
+            <Button onClick={() => setOpenForm('invite')}>Invite admin</Button>
+            <Button variant="secondary" onClick={() => setOpenForm('promote')}>
+              Promote user
+            </Button>
+          </>
+        }
       />
 
-      {isLoading && <p className="text-sm text-gray-500">Loading platform admins…</p>}
-      {isError && (
-        <p role="alert" className="text-sm text-status-danger">
-          Failed to load platform admins.
-        </p>
-      )}
-      {!isLoading && !isError && (
-        <>
-          <CardGrid items={superAdminsResponse?.data ?? []} cardKey={(sa) => sa.id} renderCard={renderCard} emptyMessage="No platform admins yet." />
-          <Pagination page={superAdminsResponse?.page ?? 1} totalPages={superAdminsResponse?.totalPages ?? 1} onPageChange={setPage} />
-        </>
-      )}
+      <Modal
+        open={openForm !== null && !confirming}
+        title={openForm === 'promote' ? 'Promote existing user' : 'Invite new admin'}
+        onClose={closeAll}
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setConfirming(true);
+          }}
+          className="flex flex-col gap-3"
+        >
+          <Input
+            label={openForm === 'promote' ? 'Promote by email' : 'Invite by email'}
+            type="email"
+            value={email}
+            onChange={setEmail}
+            required
+          />
+          <Button type="submit">{openForm === 'promote' ? 'Promote' : 'Invite'}</Button>
+        </form>
+        {error && (
+          <p role="alert" className="mt-3 text-sm text-status-danger">
+            {error}
+          </p>
+        )}
+      </Modal>
 
-      <Modal open={pending !== null} title="Confirm" onClose={() => setPending(null)}>
+      <Modal open={confirming} title="Confirm" onClose={() => setConfirming(false)}>
         <p className="mb-4 text-sm text-gray-700">
-          Grant super_admin access to {pending?.email}? This cannot be undone from this screen.
+          Grant super_admin access to {email}? This cannot be undone from this screen.
         </p>
         <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={() => setPending(null)}>
+          <Button variant="secondary" onClick={() => setConfirming(false)}>
             Cancel
           </Button>
-          <Button
-            variant="danger"
-            onClick={confirmPending}
-            loading={inviteSuperAdmin.isPending || promoteSuperAdmin.isPending}
-          >
+          <Button variant="danger" onClick={confirmGrant} loading={inviteSuperAdmin.isPending || promoteSuperAdmin.isPending}>
             Confirm
           </Button>
         </div>
       </Modal>
-    </div>
+    </>
   );
 }

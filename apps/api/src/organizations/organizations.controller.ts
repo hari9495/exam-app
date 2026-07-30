@@ -138,4 +138,13 @@ export class OrganizationsController {
   updatePlatform(@CurrentUserId() userId: string, @Param('id') id: string, @Body() dto: UpdateOrganizationDto) {
     return this.organizationsService.updatePlatform(userId, id, dto);
   }
+
+  // Also last among @Delete routes: @Delete('integrations/api-key') is two
+  // segments so it cannot be shadowed, but keeping the wildcard at the bottom
+  // is the rule that stays true when someone adds a one-segment @Delete later.
+  @Delete(':id')
+  @RequirePermissions('platform:manage_organizations')
+  softDelete(@CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.organizationsService.softDelete(userId, id);
+  }
 }

@@ -23,7 +23,8 @@ describe('OrganizationsService', () => {
     plan: { findFirst: jest.Mock };
     webhookDelivery: { findMany: jest.Mock };
     user: { findMany: jest.Mock; groupBy: jest.Mock };
-    exam: { groupBy: jest.Mock };
+    exam: { groupBy: jest.Mock; findMany: jest.Mock };
+    attempt: { count: jest.Mock };
   };
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
@@ -40,7 +41,8 @@ describe('OrganizationsService', () => {
       plan: { findFirst: jest.fn() },
       webhookDelivery: { findMany: jest.fn() },
       user: { findMany: jest.fn(), groupBy: jest.fn() },
-      exam: { groupBy: jest.fn() },
+      exam: { groupBy: jest.fn(), findMany: jest.fn() },
+      attempt: { count: jest.fn() },
     };
     tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
@@ -226,7 +228,7 @@ describe('OrganizationsService', () => {
         totalPages: 1,
       });
       expect(prisma.organization.findMany).toHaveBeenCalledWith({
-        where: {},
+        where: { status: { not: 'deleted' } },
         select: LIST_SELECT,
         orderBy: { createdAt: 'desc' },
         skip: 0,
@@ -241,7 +243,7 @@ describe('OrganizationsService', () => {
       await service.list({ search: 'acm' });
 
       expect(prisma.organization.findMany).toHaveBeenCalledWith({
-        where: { OR: [{ name: { contains: 'acm' } }, { slug: { contains: 'acm' } }] },
+        where: { status: { not: 'deleted' }, OR: [{ name: { contains: 'acm' } }, { slug: { contains: 'acm' } }] },
         select: LIST_SELECT,
         orderBy: { createdAt: 'desc' },
         skip: 0,
@@ -522,6 +524,103 @@ describe('OrganizationsService', () => {
 
       await expect(service.setStatus('actor-1', 'nope', 'suspended')).rejects.toBeInstanceOf(NotFoundException);
       expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('softDelete', () => {
+    beforeEach(() => {
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(prisma));
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.user.groupBy.mockResolvedValue([]);
+      prisma.exam.groupBy.mockResolvedValue([]);
+      prisma.exam.findMany.mockResolvedValue([{ id: 'exam-1' }]);
+      prisma.attempt.count.mockResolvedValue(0);
+    });
+
+    function seedActive() {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', status: 'active' });
+      prisma.organization.update.mockResolvedValue({ id: 'org-1', status: 'deleted' });
+    }
+
+    it('marks the organization deleted and audits it', async () => {
+      seedActive();
+
+      const result = await service.softDelete('actor-1', 'org-1');
+
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { status: 'deleted' },
+        select: { id: true, status: true },
+      });
+      expect(result).toEqual({ id: 'org-1', status: 'deleted' });
+      expect(audit.record).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: true },
+        { actorUserId: 'actor-1', action: 'platform.organization_deleted', entityType: 'organization', entityId: 'org-1' },
+      );
+    });
+
+    it('refuses while an exam is in progress and leaves the status unchanged', async () => {
+      seedActive();
+      prisma.attempt.count.mockResolvedValue(2);
+
+      await expect(service.softDelete('actor-1', 'org-1')).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('scopes the live-attempt count to the org via its exam ids', async () => {
+      // Attempt has no `exam` relation -- only a scalar examId -- so the org
+      // filter has to go through exam ids. `exams` IS RLS-protected, hence the
+      // super-admin bypass; without it the exam list comes back empty and the
+      // guard would pass while an exam was live.
+      seedActive();
+
+      await service.softDelete('actor-1', 'org-1');
+
+      expect(tenantPrisma.forTenant).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: true },
+        expect.any(Function),
+      );
+      expect(prisma.exam.findMany).toHaveBeenCalledWith({ where: { organizationId: 'org-1' }, select: { id: true } });
+      expect(prisma.attempt.count).toHaveBeenCalledWith({
+        where: { status: 'in_progress', examId: { in: ['exam-1'] } },
+      });
+    });
+
+    it('skips the attempt count entirely for an organization with no exams', async () => {
+      seedActive();
+      prisma.exam.findMany.mockResolvedValue([]);
+
+      await service.softDelete('actor-1', 'org-1');
+
+      expect(prisma.attempt.count).not.toHaveBeenCalled();
+      expect(prisma.organization.update).toHaveBeenCalled();
+    });
+
+    it('is idempotent for an already-deleted organization', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', status: 'deleted' });
+
+      const result = await service.softDelete('actor-1', 'org-1');
+
+      expect(result).toEqual({ id: 'org-1', status: 'deleted' });
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFound for an unknown organization', async () => {
+      prisma.organization.findUnique.mockResolvedValue(null);
+
+      await expect(service.softDelete('actor-1', 'nope')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('excludes deleted organizations from the list', async () => {
+      prisma.organization.findMany.mockResolvedValue([]);
+      prisma.organization.count.mockResolvedValue(0);
+
+      await service.list();
+
+      expect(prisma.organization.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ status: { not: 'deleted' } }) }),
+      );
     });
   });
 

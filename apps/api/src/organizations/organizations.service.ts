@@ -174,9 +174,12 @@ export class OrganizationsService {
 
   async list(filters: { page?: string; pageSize?: string; search?: string } = {}): Promise<PaginatedResponse<OrganizationListItem>> {
     const { page, pageSize, skip, take } = resolvePaginationParams(filters.page, filters.pageSize);
-    const where = filters.search
-      ? { OR: [{ name: { contains: filters.search } }, { slug: { contains: filters.search } }] }
-      : {};
+    const where = {
+      status: { not: 'deleted' },
+      ...(filters.search
+        ? { OR: [{ name: { contains: filters.search } }, { slug: { contains: filters.search } }] }
+        : {}),
+    };
     const [organizations, total] = await Promise.all([
       this.prisma.organization.findMany({ where, select: ORGANIZATION_LIST_SELECT, orderBy: { createdAt: 'desc' }, skip, take }),
       this.prisma.organization.count({ where }),
@@ -245,6 +248,51 @@ export class OrganizationsService {
 
     const [item] = await this.enrichForList([updated]);
     return item;
+  }
+
+  async softDelete(actorUserId: string, id: string): Promise<{ id: string; status: string }> {
+    const existing = await this.prisma.organization.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException(`Organization ${id} not found`);
+    }
+    if (existing.status === 'deleted') {
+      return { id: existing.id, status: existing.status };
+    }
+
+    // `attempts` carries no RLS policy, but `exams` does -- and Attempt has no
+    // `exam` relation, only a scalar examId, so the org filter has to go through
+    // exam ids explicitly. Reading those ids on the raw client would return an
+    // empty list and the guard would pass while an exam was live, so this runs
+    // under the super-admin bypass.
+    const liveAttempts = await this.tenantPrisma.forTenant({ organizationId: id, isSuperAdmin: true }, async (tx) => {
+      const exams = await tx.exam.findMany({ where: { organizationId: id }, select: { id: true } });
+      if (exams.length === 0) {
+        return 0;
+      }
+      return tx.attempt.count({ where: { status: 'in_progress', examId: { in: exams.map((exam) => exam.id) } } });
+    });
+    if (liveAttempts > 0) {
+      throw new ConflictException(
+        `Cannot delete this organization while ${liveAttempts} exam${liveAttempts === 1 ? ' is' : 's are'} in progress`,
+      );
+    }
+
+    // Soft delete. The organization owns exams, attempts, results and audit logs;
+    // a cascade would destroy the audit trail recording this very deletion, and a
+    // partial failure would strand rows behind an RLS boundary where they are hard
+    // to find. Physical erasure belongs with the GDPR erase flow.
+    const updated = await this.prisma.organization.update({
+      where: { id },
+      data: { status: 'deleted' },
+      select: { id: true, status: true },
+    });
+
+    await this.audit.record(
+      { organizationId: id, isSuperAdmin: true },
+      { actorUserId, action: 'platform.organization_deleted', entityType: 'organization', entityId: id },
+    );
+
+    return updated;
   }
 
   /**
