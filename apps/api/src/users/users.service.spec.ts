@@ -391,7 +391,7 @@ describe('UsersService', () => {
     it('updates role and name for an in-org staff user', async () => {
       const tx = {
         user: {
-          findUnique: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1' }),
+          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1' }),
           update: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'panel', name: 'Al', organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date() }),
         },
       };
@@ -403,15 +403,27 @@ describe('UsersService', () => {
     });
 
     it('refuses to modify a super_admin target', async () => {
-      const tx = { user: { findUnique: jest.fn().mockResolvedValue({ id: 't1', role: 'super_admin', organizationId: null }) } };
+      const tx = { user: { findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'super_admin', organizationId: null }) } };
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
       await expect(service.update(ctx, 't1', { name: 'x' })).rejects.toThrow(ForbiddenException);
     });
 
     it('throws NotFound when the target is out of scope', async () => {
-      const tx = { user: { findUnique: jest.fn().mockResolvedValue(null) } };
+      const tx = { user: { findFirst: jest.fn().mockResolvedValue(null) } };
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
       await expect(service.update(ctx, 'nope', { name: 'x' })).rejects.toThrow(NotFoundException);
+    });
+
+    it('updates only name without clobbering role when role is omitted', async () => {
+      const tx = {
+        user: {
+          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1' }),
+          update: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', name: 'X', organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date() }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      await service.update(ctx, 't1', { name: 'X' });
+      expect(tx.user.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 't1' }, data: { name: 'X' } }));
     });
   });
 });

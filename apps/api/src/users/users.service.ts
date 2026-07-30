@@ -131,11 +131,14 @@ export class UsersService {
   }
 
   async update(context: TenantContext, targetUserId: string, dto: UpdateUserDto): Promise<SafeUser> {
+    if (!context.organizationId) {
+      throw new BadRequestException('A user must be updated within an organization');
+    }
     if (dto.role === 'super_admin') {
       throw new ForbiddenException('Cannot assign the super_admin role here');
     }
     return this.tenantPrisma.forTenant(context, async (tx) => {
-      const target = await tx.user.findUnique({ where: { id: targetUserId } });
+      const target = await tx.user.findFirst({ where: { id: targetUserId, organizationId: context.organizationId } });
       if (!target) {
         throw new NotFoundException('User not found');
       }
