@@ -22,6 +22,8 @@ describe('OrganizationsService', () => {
     organization: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock; findMany: jest.Mock; count: jest.Mock };
     plan: { findFirst: jest.Mock };
     webhookDelivery: { findMany: jest.Mock };
+    user: { findMany: jest.Mock; groupBy: jest.Mock };
+    exam: { groupBy: jest.Mock };
   };
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
@@ -37,6 +39,8 @@ describe('OrganizationsService', () => {
       organization: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), findMany: jest.fn(), count: jest.fn() },
       plan: { findFirst: jest.fn() },
       webhookDelivery: { findMany: jest.fn() },
+      user: { findMany: jest.fn(), groupBy: jest.fn() },
+      exam: { groupBy: jest.fn() },
     };
     tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
@@ -189,6 +193,22 @@ describe('OrganizationsService', () => {
       createdAt: true,
     };
 
+    // `users` and `exams` carry RLS filter predicates, so the service reads them
+    // through forTenant's super-admin bypass. Run the callback against the same
+    // mocked client so the enrichment queries are observable.
+    function runForTenantAgainstMock() {
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(prisma));
+    }
+
+    function seedEnrichment() {
+      runForTenantAgainstMock();
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.user.groupBy.mockResolvedValue([]);
+      prisma.exam.groupBy.mockResolvedValue([]);
+    }
+
+    beforeEach(seedEnrichment);
+
     it('returns a paginated page of organizations ordered by newest first', async () => {
       prisma.organization.findMany.mockResolvedValue([
         { id: 'org-2', name: 'Beta', slug: 'beta', region: 'eu', createdAt: new Date('2026-01-02') },
@@ -252,6 +272,122 @@ describe('OrganizationsService', () => {
       for (const key of Object.keys(select)) {
         expect(key).not.toMatch(/encrypted|hash|certificate|secret/i);
       }
+    });
+
+    describe('enrichment (primary admin + counts)', () => {
+      function seedTwoOrgs() {
+        prisma.organization.findMany.mockResolvedValue([
+          { id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', status: 'active', createdAt: new Date('2026-01-01') },
+          { id: 'org-2', name: 'Beta', slug: 'beta', region: 'eu', status: 'active', createdAt: new Date('2026-01-02') },
+        ]);
+        prisma.organization.count.mockResolvedValue(2);
+        prisma.user.findMany.mockResolvedValue([
+          { organizationId: 'org-1', name: 'Ada', email: 'ada@acme.test', createdAt: new Date('2026-01-01') },
+          { organizationId: 'org-1', name: 'Bob', email: 'bob@acme.test', createdAt: new Date('2026-02-01') },
+        ]);
+        prisma.user.groupBy.mockResolvedValue([{ organizationId: 'org-1', _count: { _all: 5 } }]);
+        prisma.exam.groupBy.mockResolvedValue([{ organizationId: 'org-1', _count: { _all: 3 } }]);
+      }
+
+      it('returns the earliest org_admin as the primary admin', async () => {
+        seedTwoOrgs();
+
+        const result = await service.list();
+
+        expect(result.data[0]).toMatchObject({
+          id: 'org-1',
+          primaryAdminName: 'Ada',
+          primaryAdminEmail: 'ada@acme.test',
+        });
+      });
+
+      it('asks the database for org_admins oldest-first, since the first seen wins', async () => {
+        seedTwoOrgs();
+
+        await service.list();
+
+        expect(prisma.user.findMany).toHaveBeenCalledWith({
+          where: { organizationId: { in: ['org-1', 'org-2'] }, role: 'org_admin' },
+          select: { organizationId: true, name: true, email: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
+        });
+      });
+
+      it('returns a null primary admin for an organization with no org_admin', async () => {
+        seedTwoOrgs();
+
+        const result = await service.list();
+
+        expect(result.data[1]).toMatchObject({
+          id: 'org-2',
+          primaryAdminName: null,
+          primaryAdminEmail: null,
+        });
+      });
+
+      it('renders a name-less admin as null rather than inventing one', async () => {
+        // User.name is nullable and organization creation does not set it, so a
+        // freshly created org has an admin with an email but no name.
+        seedTwoOrgs();
+        prisma.user.findMany.mockResolvedValue([
+          { organizationId: 'org-1', name: null, email: 'ada@acme.test', createdAt: new Date('2026-01-01') },
+        ]);
+
+        const result = await service.list();
+
+        expect(result.data[0]).toMatchObject({ primaryAdminName: null, primaryAdminEmail: 'ada@acme.test' });
+      });
+
+      it('returns user and exam counts, defaulting to zero', async () => {
+        seedTwoOrgs();
+
+        const result = await service.list();
+
+        expect(result.data[0]).toMatchObject({ userCount: 5, examCount: 3 });
+        expect(result.data[1]).toMatchObject({ userCount: 0, examCount: 0 });
+      });
+
+      it('reads the RLS-protected tables through the super-admin bypass', async () => {
+        // `users` and `exams` carry RLS filter predicates. On the raw client the
+        // predicate sees no session context, matches nothing, and every count
+        // silently reads 0 -- no error, just wrong numbers.
+        seedTwoOrgs();
+
+        await service.list();
+
+        expect(tenantPrisma.forTenant).toHaveBeenCalledWith(
+          { organizationId: null, isSuperAdmin: true },
+          expect.any(Function),
+        );
+      });
+
+      it('issues a constant number of queries regardless of organization count', async () => {
+        // One forTenant call holds one pooled connection; per-organization
+        // queries would hold 3N and the pool is this platform's known ceiling.
+        seedTwoOrgs();
+        prisma.organization.findMany.mockResolvedValue(
+          Array.from({ length: 25 }, (_, i) => ({
+            id: `org-${i}`, name: `Org ${i}`, slug: `org-${i}`, region: 'us', status: 'active', createdAt: new Date('2026-01-01'),
+          })),
+        );
+
+        await service.list();
+
+        expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(1);
+        expect(prisma.user.findMany).toHaveBeenCalledTimes(1);
+        expect(prisma.user.groupBy).toHaveBeenCalledTimes(1);
+        expect(prisma.exam.groupBy).toHaveBeenCalledTimes(1);
+      });
+
+      it('does not open a transaction when there are no organizations', async () => {
+        prisma.organization.findMany.mockResolvedValue([]);
+        prisma.organization.count.mockResolvedValue(0);
+
+        const result = await service.list();
+
+        expect(result.data).toEqual([]);
+        expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+      });
     });
   });
 

@@ -50,6 +50,10 @@ export interface OrganizationListItem {
   region: string;
   status: string;
   createdAt: Date;
+  primaryAdminName: string | null;
+  primaryAdminEmail: string | null;
+  userCount: number;
+  examCount: number;
 }
 
 export interface AiCreditUsageResponse {
@@ -176,7 +180,71 @@ export class OrganizationsService {
       this.prisma.organization.findMany({ where, select: ORGANIZATION_LIST_SELECT, orderBy: { createdAt: 'desc' }, skip, take }),
       this.prisma.organization.count({ where }),
     ]);
-    return buildPaginatedResponse(organizations, total, page, pageSize);
+
+    const items = await this.enrichForList(organizations);
+    return buildPaginatedResponse(items, total, page, pageSize);
+  }
+
+  /**
+   * Adds each organization's primary admin and its user/exam counts.
+   *
+   * `users` and `exams` carry RLS filter predicates, and `this.prisma` sets no
+   * session context -- on the raw client the predicate matches nothing, so every
+   * lookup here would come back empty with no error and every count would read
+   * zero. Hence the super-admin bypass.
+   *
+   * All three reads share one forTenant call, which is one pooled connection.
+   * Querying per organization would hold 3N, and the connection pool is this
+   * platform's known concurrency ceiling.
+   */
+  private async enrichForList(
+    organizations: { id: string; name: string; slug: string; region: string; status: string; createdAt: Date }[],
+  ): Promise<OrganizationListItem[]> {
+    if (organizations.length === 0) {
+      return [];
+    }
+    const organizationIds = organizations.map((org) => org.id);
+
+    const { admins, userCounts, examCounts } = await this.tenantPrisma.forTenant(
+      { organizationId: null, isSuperAdmin: true },
+      async (tx) => ({
+        admins: await tx.user.findMany({
+          where: { organizationId: { in: organizationIds }, role: 'org_admin' },
+          select: { organizationId: true, name: true, email: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
+        }),
+        userCounts: await tx.user.groupBy({
+          by: ['organizationId'],
+          where: { organizationId: { in: organizationIds } },
+          _count: { _all: true },
+        }),
+        examCounts: await tx.exam.groupBy({
+          by: ['organizationId'],
+          where: { organizationId: { in: organizationIds } },
+          _count: { _all: true },
+        }),
+      }),
+    );
+
+    // An organization can have several org_admins. `admins` is ordered oldest
+    // first, so the first entry seen for an organization is its earliest -- in
+    // practice the admin created alongside the organization itself.
+    const primaryAdmins = new Map<string, { name: string | null; email: string }>();
+    for (const admin of admins) {
+      if (admin.organizationId && !primaryAdmins.has(admin.organizationId)) {
+        primaryAdmins.set(admin.organizationId, { name: admin.name, email: admin.email });
+      }
+    }
+    const userCountByOrg = new Map(userCounts.map((row) => [row.organizationId, row._count._all]));
+    const examCountByOrg = new Map(examCounts.map((row) => [row.organizationId, row._count._all]));
+
+    return organizations.map((org) => ({
+      ...org,
+      primaryAdminName: primaryAdmins.get(org.id)?.name ?? null,
+      primaryAdminEmail: primaryAdmins.get(org.id)?.email ?? null,
+      userCount: userCountByOrg.get(org.id) ?? 0,
+      examCount: examCountByOrg.get(org.id) ?? 0,
+    }));
   }
 
   async getBranding(context: TenantContext): Promise<BrandingResponse> {
