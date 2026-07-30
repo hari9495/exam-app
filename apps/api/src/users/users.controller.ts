@@ -99,6 +99,13 @@ export class UsersController {
     return this.usersService.setStatus(tenant, id, 'active', userId);
   }
 
+  @Post(':id/reset-password')
+  @HttpCode(200)
+  @RequirePermissions('org:manage_users')
+  resetUserPassword(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.usersService.requestPasswordReset(tenant, id, userId);
+  }
+
   @Post('me/change-password')
   @HttpCode(200)
   async changePassword(

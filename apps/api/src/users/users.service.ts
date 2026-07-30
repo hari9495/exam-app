@@ -344,6 +344,43 @@ export class UsersService {
     return promoted;
   }
 
+  async requestPasswordReset(context: TenantContext, targetUserId: string, actorUserId: string): Promise<{ success: true }> {
+    if (!context.organizationId) {
+      throw new BadRequestException('A user must be within an organization');
+    }
+    await this.tenantPrisma.forTenant(context, async (tx) => {
+      const target = await tx.user.findFirst({ where: { id: targetUserId, organizationId: context.organizationId } });
+      if (!target) {
+        throw new NotFoundException('User not found');
+      }
+      const rawToken = randomBytes(32).toString('hex');
+      const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+      await tx.passwordResetToken.create({
+        data: { userId: target.id, tokenHash, expiresAt: new Date(Date.now() + PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000) },
+      });
+      // dispatched below, outside the tenant transaction, fire-and-forget
+      this.dispatchResetLink(target.email, rawToken).catch((error) =>
+        this.logger.error(`Failed to dispatch password reset email to ${target.email}`, error as Error),
+      );
+    });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'user.password_reset_requested',
+      entityType: 'user',
+      entityId: targetUserId,
+    });
+    return { success: true };
+  }
+
+  private async dispatchResetLink(email: string, rawToken: string): Promise<void> {
+    const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/reset-password/${rawToken}`;
+    await this.emailService.send({
+      to: email,
+      subject: 'Reset your Examination Platform password',
+      html: `<p>A password reset was requested for your account. Click the link below to set a new password. This link expires in 15 minutes.</p><p><a href="${link}">${link}</a></p>`,
+    });
+  }
+
   private async dispatchInviteEmail(email: string, rawToken: string): Promise<void> {
     const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/reset-password/${rawToken}`;
     await this.emailService.send({

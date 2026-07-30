@@ -484,4 +484,33 @@ describe('UsersService', () => {
       expect(tx.user.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 't1' }, data: { name: 'X' } }));
     });
   });
+
+  describe('requestPasswordReset', () => {
+    const ctx = { organizationId: 'org1', isSuperAdmin: false };
+
+    it('creates a reset token and emails the target', async () => {
+      const tx = {
+        user: { findFirst: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', organizationId: 'org1' }) },
+        passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'tok1' }) },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      const result = await service.requestPasswordReset(ctx, 't1', 'admin1');
+      expect(result).toEqual({ success: true });
+      expect(tx.passwordResetToken.create).toHaveBeenCalled();
+      expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'a@b.com' }));
+      expect(audit.record).toHaveBeenCalledWith(ctx, expect.objectContaining({ action: 'user.password_reset_requested' }));
+    });
+
+    it('throws NotFound when the target is out of scope', async () => {
+      const tx = { user: { findFirst: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      await expect(service.requestPasswordReset(ctx, 'nope', 'admin1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects when there is no organization context', async () => {
+      await expect(
+        service.requestPasswordReset({ organizationId: null, isSuperAdmin: true }, 't1', 'admin1'),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
 });
