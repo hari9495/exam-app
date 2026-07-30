@@ -1,0 +1,220 @@
+'use client';
+
+import { ReactNode, useMemo, useState } from 'react';
+import { UsersRound } from 'lucide-react';
+import { StatusBadge, Select, Input, Button, Modal, useToast, type Column, type StatusTone } from './ui';
+import { ListView } from '../app/(platform)/components/ListView';
+import { RowActions, type RowAction } from '../app/(platform)/components/RowActions';
+import { useAuth } from '../lib/auth-context';
+import { useUpdateUser, useDeactivateUser, useReactivateUser, useResetUserPassword } from '../lib/hooks/useUsers';
+import { StaffUser } from '../lib/types';
+
+// Lifted from users/page.tsx -- this component now owns them.
+const ROLE_TONE: Record<string, StatusTone> = { org_admin: 'purple', recruiter: 'info', panel: 'neutral' };
+const ROLE_LABEL: Record<string, string> = { org_admin: 'Org Admin', recruiter: 'Recruiter', panel: 'Interview Panel' };
+
+const ROLE_FILTER_OPTIONS = [
+  { value: '', label: 'All roles' },
+  { value: 'org_admin', label: 'Org Admin' },
+  { value: 'recruiter', label: 'Recruiter' },
+  { value: 'panel', label: 'Interview Panel' },
+];
+const STATUS_FILTER_OPTIONS = [
+  { value: '', label: 'All statuses' },
+  { value: 'active', label: 'Active' },
+  { value: 'deactivated', label: 'Deactivated' },
+];
+const EDIT_ROLE_OPTIONS = [
+  { value: 'org_admin', label: 'Org Admin' },
+  { value: 'recruiter', label: 'Recruiter' },
+  { value: 'panel', label: 'Interview Panel' },
+];
+
+interface StaffUsersTableProps {
+  users: StaffUser[];
+  currentUserRole: string | null;
+  isActingSuperAdmin: boolean;
+  currentUserId: string;
+  isLoading?: boolean;
+  isError?: boolean;
+  totalCount?: number;
+  actions?: ReactNode;
+}
+
+// Mirrors the server matrix: an org_admin (or a super_admin acting on this org) may
+// manage any staff member except a super_admin and except themselves.
+function canManage(target: StaffUser, currentUserRole: string | null, isActingSuperAdmin: boolean, currentUserId: string): boolean {
+  if (target.id === currentUserId) return false;
+  if (target.role === 'super_admin') return false;
+  return isActingSuperAdmin || currentUserRole === 'org_admin';
+}
+
+// A super_admin may log in as anyone but another super_admin; an org_admin may only
+// log in as the roles they manage day to day (recruiter, panel) -- never another admin.
+function canImpersonate(target: StaffUser, currentUserRole: string | null, isActingSuperAdmin: boolean, currentUserId: string): boolean {
+  if (target.id === currentUserId) return false;
+  if (target.role === 'super_admin') return false;
+  if (isActingSuperAdmin) return true;
+  return currentUserRole === 'org_admin' && (target.role === 'recruiter' || target.role === 'panel');
+}
+
+export function StaffUsersTable({
+  users,
+  currentUserRole,
+  isActingSuperAdmin,
+  currentUserId,
+  isLoading,
+  isError,
+  totalCount,
+  actions,
+}: StaffUsersTableProps) {
+  const { impersonate } = useAuth();
+  const { toast } = useToast();
+  const updateUser = useUpdateUser();
+  const deactivateUser = useDeactivateUser();
+  const reactivateUser = useReactivateUser();
+  const resetPassword = useResetUserPassword();
+
+  const [roleFilter, setRoleFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [editing, setEditing] = useState<StaffUser | null>(null);
+  const [editRole, setEditRole] = useState('');
+  const [editName, setEditName] = useState('');
+
+  // ListView holds no filter state -- it renders whatever rows it is given, and its
+  // item count follows them. Filter here, before handing rows over.
+  const rows = useMemo(
+    () => users.filter((u) => (!roleFilter || u.role === roleFilter) && (!statusFilter || u.status === statusFilter)),
+    [users, roleFilter, statusFilter],
+  );
+
+  function openEdit(target: StaffUser) {
+    setEditing(target);
+    setEditRole(target.role);
+    setEditName(target.name ?? '');
+  }
+
+  function submitEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editing) return;
+    updateUser.mutate(
+      { id: editing.id, role: editRole, name: editName },
+      {
+        onSuccess: () => {
+          toast(`Updated ${editing.email}.`);
+          setEditing(null);
+        },
+      },
+    );
+  }
+
+  function handleImpersonate(target: StaffUser) {
+    if (!confirm(`Log in as ${target.email}? You will act as this user until you return.`)) return;
+    impersonate(target.id);
+  }
+
+  function renderActions(u: StaffUser) {
+    const manage = canManage(u, currentUserRole, isActingSuperAdmin, currentUserId);
+    const rowActions: RowAction[] = manage
+      ? [
+          { label: 'Edit', onSelect: () => openEdit(u) },
+          u.status === 'active'
+            ? {
+                label: 'Deactivate',
+                danger: true,
+                onSelect: () => deactivateUser.mutate(u.id, { onSuccess: () => toast(`Deactivated ${u.email}.`) }),
+              }
+            : { label: 'Reactivate', onSelect: () => reactivateUser.mutate(u.id, { onSuccess: () => toast(`Reactivated ${u.email}.`) }) },
+          {
+            label: 'Reset password',
+            onSelect: () => resetPassword.mutate(u.id, { onSuccess: () => toast(`Password reset email sent to ${u.email}.`) }),
+          },
+        ]
+      : [];
+
+    return (
+      <div className="flex items-center justify-end gap-1.5">
+        {canImpersonate(u, currentUserRole, isActingSuperAdmin, currentUserId) && (
+          <Button size="sm" variant="secondary" onClick={() => handleImpersonate(u)}>
+            Login as
+          </Button>
+        )}
+        <RowActions label={`Actions for ${u.email}`} actions={rowActions} />
+      </div>
+    );
+  }
+
+  const columns: Column<StaffUser>[] = useMemo(
+    () => [
+      { key: 'name', header: 'Full Name', render: (u) => u.name ?? '—', sortValue: (u) => u.name ?? '' },
+      { key: 'email', header: 'Email', render: (u) => u.email, sortValue: (u) => u.email },
+      {
+        key: 'role',
+        header: 'Role',
+        render: (u) => <StatusBadge tone={ROLE_TONE[u.role] ?? 'neutral'}>{ROLE_LABEL[u.role] ?? u.role}</StatusBadge>,
+        sortValue: (u) => u.role,
+      },
+      {
+        key: 'status',
+        header: 'Status',
+        render: (u) => <StatusBadge tone={u.status === 'active' ? 'success' : 'neutral'}>{u.status}</StatusBadge>,
+        sortValue: (u) => u.status,
+      },
+      {
+        key: 'lastLoginAt',
+        header: 'Last Login',
+        render: (u) => (u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'Never'),
+        sortValue: (u) => u.lastLoginAt ?? '',
+      },
+      { key: 'createdAt', header: 'Created', render: (u) => new Date(u.createdAt).toLocaleDateString(), sortValue: (u) => u.createdAt },
+      { key: 'actions', header: '', render: renderActions },
+    ],
+    // renderActions closes over currentUserRole/isActingSuperAdmin/currentUserId (the
+    // gating inputs) and the mutation objects, which are stable per render of this hook.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentUserRole, isActingSuperAdmin, currentUserId],
+  );
+
+  return (
+    <>
+      <ListView<StaffUser>
+        title="Staff Users"
+        icon={<UsersRound size={22} />}
+        columns={columns}
+        rows={rows}
+        rowKey={(u) => u.id}
+        searchMatch={(u, query) => u.email.toLowerCase().includes(query) || (u.name ?? '').toLowerCase().includes(query)}
+        storageKey="staff-users"
+        searchPlaceholder="Search staff users…"
+        emptyMessage="No staff users yet."
+        isLoading={isLoading}
+        isError={isError}
+        totalCount={totalCount}
+        actions={actions}
+        filters={
+          <>
+            <Select label="" value={roleFilter} onChange={setRoleFilter} options={ROLE_FILTER_OPTIONS} />
+            <Select label="" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTER_OPTIONS} />
+          </>
+        }
+      />
+
+      {editing && (
+        <Modal open title={`Edit ${editing.email}`} onClose={() => setEditing(null)}>
+          <form onSubmit={submitEdit} className="flex flex-col gap-3">
+            <Input label="Name" value={editName} onChange={setEditName} />
+            <Select label="Role" value={editRole} onChange={setEditRole} options={EDIT_ROLE_OPTIONS} />
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={() => setEditing(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" loading={updateUser.isPending}>
+                Save
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </>
+  );
+}

@@ -97,7 +97,7 @@ describe('UsersPage', () => {
     );
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument(), { timeout: 2000 });
-    expect(screen.getByText('Failed to load users.')).toBeInTheDocument();
+    expect(screen.getByText('Failed to load Staff Users.')).toBeInTheDocument();
   });
 
   it(
@@ -199,9 +199,9 @@ describe('UsersPage', () => {
 
     await waitFor(() => expect(screen.getByText('admin@demo-org.test')).toBeInTheDocument());
     const emailElement = screen.getByText('admin@demo-org.test');
-    const card = emailElement.closest('.group') as HTMLElement;
-    expect(card).toBeInTheDocument();
-    expect(within(card).getByText('Org Admin')).toBeInTheDocument();
-    expect(within(card).getByText('Active')).toBeInTheDocument();
+    const row = emailElement.closest('.group') as HTMLElement;
+    expect(row).toBeInTheDocument();
+    expect(within(row).getByText('Org Admin')).toBeInTheDocument();
+    expect(within(row).getByText('active')).toBeInTheDocument();
   });
 });
