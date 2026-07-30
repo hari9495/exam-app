@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
@@ -9,6 +9,7 @@ import { TenantContext } from '@exam-platform/shared';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { SuperAdminEmailDto } from './dto/super-admin-email.dto';
 
@@ -76,6 +77,12 @@ export class UsersController {
   @Patch('me')
   updateMe(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateProfileDto) {
     return this.usersService.updateMe(tenant, userId, dto);
+  }
+
+  @Patch(':id')
+  @RequirePermissions('org:manage_users')
+  update(@CurrentTenant() tenant: TenantContext, @Param('id') id: string, @Body() dto: UpdateUserDto) {
+    return this.usersService.update(tenant, id, dto);
   }
 
   @Post('me/change-password')

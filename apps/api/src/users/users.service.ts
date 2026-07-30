@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { User } from '@prisma/client';
 import * as argon2 from 'argon2';
@@ -6,6 +6,7 @@ import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuditService } from '@exam-platform/shared';
 import { randomBytes, createHash } from 'crypto';
@@ -127,6 +128,36 @@ export class UsersService {
     return this.tenantPrisma.forTenant(context, (tx) =>
       tx.user.update({ where: { id: userId }, data: { name: dto.name }, select: SAFE_USER_SELECT }),
     );
+  }
+
+  async update(context: TenantContext, targetUserId: string, dto: UpdateUserDto): Promise<SafeUser> {
+    if (dto.role === 'super_admin') {
+      throw new ForbiddenException('Cannot assign the super_admin role here');
+    }
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const target = await tx.user.findUnique({ where: { id: targetUserId } });
+      if (!target) {
+        throw new NotFoundException('User not found');
+      }
+      if (target.role === 'super_admin') {
+        throw new ForbiddenException('Cannot modify a platform administrator');
+      }
+      const updated = await tx.user.update({
+        where: { id: targetUserId },
+        data: {
+          ...(dto.role !== undefined ? { role: dto.role } : {}),
+          ...(dto.name !== undefined ? { name: dto.name } : {}),
+        },
+        select: SAFE_USER_SELECT,
+      });
+      await this.audit.record(context, {
+        actorUserId: null,
+        action: 'user.updated',
+        entityType: 'user',
+        entityId: targetUserId,
+      });
+      return updated;
+    });
   }
 
   async changePassword(

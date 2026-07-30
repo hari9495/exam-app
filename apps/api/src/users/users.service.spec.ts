@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { BadRequestException, ConflictException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { UsersService } from './users.service';
@@ -382,6 +382,36 @@ describe('UsersService', () => {
         expect.objectContaining({ id: 'u1', organizationName: 'Acme Inc' }),
         expect.objectContaining({ id: 'u2', organizationName: null }),
       ]);
+    });
+  });
+
+  describe('update', () => {
+    const ctx = { organizationId: 'org1', isSuperAdmin: false };
+
+    it('updates role and name for an in-org staff user', async () => {
+      const tx = {
+        user: {
+          findUnique: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1' }),
+          update: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'panel', name: 'Al', organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date() }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      const result = await service.update(ctx, 't1', { role: 'panel', name: 'Al' });
+      expect(result.role).toBe('panel');
+      expect(tx.user.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 't1' }, data: { role: 'panel', name: 'Al' } }));
+      expect(audit.record).toHaveBeenCalledWith(ctx, expect.objectContaining({ action: 'user.updated', entityId: 't1' }));
+    });
+
+    it('refuses to modify a super_admin target', async () => {
+      const tx = { user: { findUnique: jest.fn().mockResolvedValue({ id: 't1', role: 'super_admin', organizationId: null }) } };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      await expect(service.update(ctx, 't1', { name: 'x' })).rejects.toThrow(ForbiddenException);
+    });
+
+    it('throws NotFound when the target is out of scope', async () => {
+      const tx = { user: { findUnique: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      await expect(service.update(ctx, 'nope', { name: 'x' })).rejects.toThrow(NotFoundException);
     });
   });
 });
