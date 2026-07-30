@@ -185,6 +185,21 @@ describe('AuthService', () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
+  it('rejects refreshing a token for a deactivated user, even though the stored refresh token itself is still valid', async () => {
+    const refreshToken = jwt.sign({ sub: 'user-1', familyId: 'family-1' }, { secret: process.env.JWT_REFRESH_SECRET });
+    const tokenHash = createHash('sha256').update(refreshToken).digest('hex');
+    prisma.refreshToken.findFirst.mockResolvedValue({ id: 'rt-1', tokenHash, createdAt: new Date() });
+    tenantPrisma.forTenant.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn({
+        user: {
+          findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'user-1', organizationId: 'org-1', role: 'recruiter', status: 'deactivated' }),
+        },
+      }),
+    );
+
+    await expect(service.refresh(refreshToken)).rejects.toThrow('This account has been deactivated');
+  });
+
   describe('forgotPassword', () => {
     it('creates a hashed reset token and emails a link when the org and user match', async () => {
       prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });

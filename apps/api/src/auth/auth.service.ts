@@ -212,6 +212,10 @@ export class AuthService {
       tx.user.findUniqueOrThrow({ where: { id: payload.sub } }),
     );
 
+    if (user.status !== 'active') {
+      throw new UnauthorizedException('This account has been deactivated');
+    }
+
     return this.issueTokenPair(user.id, user.organizationId, user.role, payload.familyId);
   }
 
