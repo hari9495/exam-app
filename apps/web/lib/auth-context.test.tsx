@@ -179,4 +179,93 @@ describe('AuthProvider', () => {
     expect(auth?.actingSuperAdmin).toBe(false);
     expect(auth?.accessToken).toBe(restoredToken);
   });
+
+  it('decodes impersonating and impersonatorEmail off the access token after impersonate', async () => {
+    const tokenA = fakeJwt({ sub: 'adminA', organizationId: 'org1', role: 'org_admin' });
+    const impersonatedToken = fakeJwt({
+      sub: 'userB',
+      organizationId: 'org1',
+      role: 'recruiter',
+      impersonatorUserId: 'adminA',
+      impersonatorEmail: 'admin@example.com',
+    });
+
+    global.fetch = jest.fn(async (url) => {
+      const u = String(url);
+      if (u.endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: tokenA }), { status: 200 });
+      }
+      if (u.endsWith('/auth/impersonate/userB')) {
+        return new Response(JSON.stringify({ accessToken: impersonatedToken }), { status: 200 });
+      }
+      throw new Error(`Unexpected fetch to ${u}`);
+    }) as unknown as typeof fetch;
+
+    let auth: ReturnType<typeof useAuth> | undefined;
+    function Consumer() {
+      auth = useAuth();
+      return null;
+    }
+
+    renderWithQueryClient(
+      <AuthProvider>
+        <Consumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(auth?.accessToken).toBe(tokenA));
+
+    await act(async () => {
+      await auth!.impersonate('userB');
+    });
+
+    expect(auth?.impersonating).toBe(true);
+    expect(auth?.impersonatorEmail).toBe('admin@example.com');
+  });
+
+  it('stopImpersonating calls the stop endpoint and restores the original token via silent refresh', async () => {
+    const impersonatedToken = fakeJwt({
+      sub: 'userB',
+      organizationId: 'org1',
+      role: 'recruiter',
+      impersonatorUserId: 'adminA',
+      impersonatorEmail: 'admin@example.com',
+    });
+    const restoredToken = fakeJwt({ sub: 'adminA', organizationId: 'org1', role: 'org_admin' });
+
+    let refreshCallCount = 0;
+    global.fetch = jest.fn(async (url) => {
+      const u = String(url);
+      if (u.endsWith('/auth/refresh')) {
+        refreshCallCount += 1;
+        const token = refreshCallCount === 1 ? impersonatedToken : restoredToken;
+        return new Response(JSON.stringify({ accessToken: token }), { status: 200 });
+      }
+      if (u.endsWith('/auth/impersonate/stop')) {
+        return new Response(JSON.stringify({ success: true }), { status: 200 });
+      }
+      throw new Error(`Unexpected fetch to ${u}`);
+    }) as unknown as typeof fetch;
+
+    let auth: ReturnType<typeof useAuth> | undefined;
+    function Consumer() {
+      auth = useAuth();
+      return null;
+    }
+
+    renderWithQueryClient(
+      <AuthProvider>
+        <Consumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(auth?.impersonating).toBe(true));
+
+    await act(async () => {
+      await auth!.stopImpersonating();
+    });
+
+    expect(auth?.impersonating).toBe(false);
+    expect(auth?.accessToken).toBe(restoredToken);
+  });
 });

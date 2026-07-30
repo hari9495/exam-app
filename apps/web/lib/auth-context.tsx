@@ -16,6 +16,10 @@ interface AuthContextValue {
   logout: () => Promise<void>;
   switchIntoOrg: (orgId: string) => Promise<void>;
   switchOutOfOrg: () => Promise<void>;
+  impersonating: boolean;
+  impersonatorEmail: string | null;
+  impersonate: (userId: string) => Promise<void>;
+  stopImpersonating: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -35,6 +39,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<string | null>(null);
   const [actingSuperAdmin, setActingSuperAdmin] = useState(false);
   const [actingOrgName, setActingOrgName] = useState<string | null>(null);
+  const [impersonating, setImpersonating] = useState(false);
+  const [impersonatorEmail, setImpersonatorEmail] = useState<string | null>(null);
   const [organizationSlug, setOrganizationSlug] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const accessTokenRef = useRef<string | null>(null);
@@ -47,6 +53,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRole(payload && typeof payload.role === 'string' ? payload.role : null);
     setActingSuperAdmin(Boolean(payload?.actingSuperAdmin));
     setActingOrgName(payload && typeof payload.actingOrgName === 'string' ? payload.actingOrgName : null);
+    setImpersonating(Boolean(payload?.impersonatorUserId));
+    setImpersonatorEmail(payload && typeof payload.impersonatorEmail === 'string' ? payload.impersonatorEmail : null);
   }
 
   async function silentRefresh(): Promise<string | null> {
@@ -107,6 +115,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await silentRefresh();
   }
 
+  async function impersonate(userId: string): Promise<void> {
+    const result = await apiFetch(
+      `/auth/impersonate/${userId}`,
+      { method: 'POST', body: JSON.stringify({}) },
+      accessTokenRef.current ?? undefined,
+    );
+    applyToken(result.accessToken);
+    queryClient.removeQueries({ queryKey: ['currentUser'] });
+  }
+
+  async function stopImpersonating(): Promise<void> {
+    await apiFetch(
+      '/auth/impersonate/stop',
+      { method: 'POST', body: JSON.stringify({}) },
+      accessTokenRef.current ?? undefined,
+    ).catch(() => undefined);
+    await silentRefresh();
+    queryClient.removeQueries({ queryKey: ['currentUser'] });
+  }
+
   return (
     <AuthContext.Provider
       value={{
@@ -120,6 +148,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         switchIntoOrg,
         switchOutOfOrg,
+        impersonating,
+        impersonatorEmail,
+        impersonate,
+        stopImpersonating,
       }}
     >
       {children}
