@@ -177,6 +177,18 @@ describe('OrganizationsService', () => {
   });
 
   describe('list', () => {
+    // Mirrors ORGANIZATION_LIST_SELECT in the service. Deliberately duplicated
+    // rather than imported: if someone widens the service's select to include a
+    // secret, these assertions must fail rather than silently follow it.
+    const LIST_SELECT = {
+      id: true,
+      name: true,
+      slug: true,
+      region: true,
+      status: true,
+      createdAt: true,
+    };
+
     it('returns a paginated page of organizations ordered by newest first', async () => {
       prisma.organization.findMany.mockResolvedValue([
         { id: 'org-2', name: 'Beta', slug: 'beta', region: 'eu', createdAt: new Date('2026-01-02') },
@@ -193,7 +205,13 @@ describe('OrganizationsService', () => {
         pageSize: 20,
         totalPages: 1,
       });
-      expect(prisma.organization.findMany).toHaveBeenCalledWith({ where: {}, orderBy: { createdAt: 'desc' }, skip: 0, take: 20 });
+      expect(prisma.organization.findMany).toHaveBeenCalledWith({
+        where: {},
+        select: LIST_SELECT,
+        orderBy: { createdAt: 'desc' },
+        skip: 0,
+        take: 20,
+      });
     });
 
     it('filters by name or slug when search is provided', async () => {
@@ -204,10 +222,36 @@ describe('OrganizationsService', () => {
 
       expect(prisma.organization.findMany).toHaveBeenCalledWith({
         where: { OR: [{ name: { contains: 'acm' } }, { slug: { contains: 'acm' } }] },
+        select: LIST_SELECT,
         orderBy: { createdAt: 'desc' },
         skip: 0,
         take: 20,
       });
+    });
+
+    it('selects only non-sensitive columns', async () => {
+      // Without an explicit select, Prisma returns every scalar column and the
+      // controller hands them straight to the browser -- including
+      // smtpPasswordEncrypted, aiApiKeyEncrypted, apiKeyHash,
+      // webhookSecretEncrypted and samlIdpCertificate. Asserting on the response
+      // would only test the mock, so assert on the call: that is the real contract.
+      prisma.organization.findMany.mockResolvedValue([]);
+      prisma.organization.count.mockResolvedValue(0);
+
+      await service.list();
+
+      const { select } = prisma.organization.findMany.mock.calls[0][0];
+      expect(select).toEqual({
+        id: true,
+        name: true,
+        slug: true,
+        region: true,
+        status: true,
+        createdAt: true,
+      });
+      for (const key of Object.keys(select)) {
+        expect(key).not.toMatch(/encrypted|hash|certificate|secret/i);
+      }
     });
   });
 

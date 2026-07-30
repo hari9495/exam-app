@@ -28,6 +28,30 @@ export interface BrandingResponse {
   accentColor: string | null;
 }
 
+// The platform-admin list is the ONLY consumer of the organizations table that
+// reaches a browser, and this table holds every one of an org's secrets. Without
+// an explicit select Prisma returns all scalars -- smtpPasswordEncrypted,
+// aiApiKeyEncrypted, apiKeyHash, webhookSecretEncrypted, samlIdpCertificate --
+// and the controller returns them verbatim. Add columns here deliberately; never
+// widen this to a bare findMany.
+const ORGANIZATION_LIST_SELECT = {
+  id: true,
+  name: true,
+  slug: true,
+  region: true,
+  status: true,
+  createdAt: true,
+} as const;
+
+export interface OrganizationListItem {
+  id: string;
+  name: string;
+  slug: string;
+  region: string;
+  status: string;
+  createdAt: Date;
+}
+
 export interface AiCreditUsageResponse {
   aiCreditLimit: number;
   totalUsed: number;
@@ -143,13 +167,13 @@ export class OrganizationsService {
     });
   }
 
-  async list(filters: { page?: string; pageSize?: string; search?: string } = {}): Promise<PaginatedResponse<Organization>> {
+  async list(filters: { page?: string; pageSize?: string; search?: string } = {}): Promise<PaginatedResponse<OrganizationListItem>> {
     const { page, pageSize, skip, take } = resolvePaginationParams(filters.page, filters.pageSize);
     const where = filters.search
       ? { OR: [{ name: { contains: filters.search } }, { slug: { contains: filters.search } }] }
       : {};
     const [organizations, total] = await Promise.all([
-      this.prisma.organization.findMany({ where, orderBy: { createdAt: 'desc' }, skip, take }),
+      this.prisma.organization.findMany({ where, select: ORGANIZATION_LIST_SELECT, orderBy: { createdAt: 'desc' }, skip, take }),
       this.prisma.organization.count({ where }),
     ]);
     return buildPaginatedResponse(organizations, total, page, pageSize);
