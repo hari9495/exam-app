@@ -17,6 +17,27 @@
 - **Status values** are the closed set `'active'` / `'deactivated'`. No migration (the `users.status` column already exists as a string defaulting to `'active'`).
 - **Return shape:** services return `SafeUser` (`Omit<User,'passwordHash'>`) via `SAFE_USER_SELECT` — never leak `passwordHash`.
 - Reuse `TenantPrismaService.forTenant(context, tx => ...)`; never touch RLS-protected tables on the raw client without the super-admin bypass.
+- **Shared list-view shell (added 2026-07-31).** The table chrome — object header, item count, search box, column chooser, row-action menu — is **not** built in this plan. It comes from `ListView` and `RowActions`, owned by the concurrent Platform Admin plan. Tasks 11 and 12 were amended accordingly. Do not build a second table shell.
+
+## Coordination with the Platform Admin list view
+
+A second workstream is running concurrently on this branch: **Platform Admin List View**
+(`docs/superpowers/plans/2026-07-31-platform-admin-list-view.md`), rebuilding the three
+`(platform)` tabs — Organizations, Platform Admins, All Users — in the same Salesforce
+style. Both plans were independently designing a table; they were reconciled on
+2026-07-31, after this plan's Tasks 1–4 (all backend) and before either wrote any frontend.
+
+**That plan owns the shared shell**: `ListView`, `RowActions`, and an additive
+`onSortChange` callback on the existing `Table`. This plan consumes them.
+
+- **Task 11 is blocked** until `apps/web/app/(platform)/components/ListView.tsx` and
+  `RowActions.tsx` exist (that plan's Tasks 4–6, frontend-only and independent of the rest
+  of it). Check before starting; report BLOCKED rather than building a local table.
+- Tasks 5–10 here are unaffected and can proceed in parallel.
+- **`auth.service.ts` and `auth.controller.ts` have two writers.** This plan adds
+  per-*user* deactivation guards; that plan adds per-*organization* suspension guards, in
+  the same functions. Both are needed and they are not interchangeable. Re-read before
+  editing rather than trusting a quoted block.
 
 ---
 
@@ -1076,14 +1097,34 @@ git commit -m "feat(web): user-management mutation hooks"
 
 ## Task 11: StaffUsersTable — columns, filters, row actions
 
+> **AMENDED 2026-07-31 — shared shell.** A concurrent workstream, the Platform Admin
+> list view (`docs/superpowers/plans/2026-07-31-platform-admin-list-view.md`), builds a
+> generic `ListView` shell and a `RowActions` menu for the three `(platform)` tabs. Both
+> plans were independently building a Salesforce-style table; unifying them now, while
+> neither has written any frontend, avoids shipping two different table shells in one app.
+>
+> **What changed in this task:** `StaffUsersTable` renders `ListView` instead of `Table`
+> directly, and its row menu is `RowActions` instead of a bespoke `DropdownMenu`. The page
+> header, item count, search box and column chooser now come from `ListView`.
+>
+> **What did not change:** the columns, the permission matrix, the visible **Login as**
+> button, and every mutation hook from Task 10. The domain logic is unaffected.
+>
+> **Blocking dependency:** Tasks 4, 5 and 6 of the Platform Admin plan (`Table`
+> `onSortChange`, `ListView`, `RowActions`) must be merged before starting this task.
+> Verify with `ls apps/web/app/\(platform\)/components/ListView.tsx`. If it is absent,
+> report BLOCKED rather than rebuilding a local table — a second shell is the exact
+> outcome this amendment exists to prevent.
+
 **Files:**
 - Create: `apps/web/components/StaffUsersTable.tsx`
-- Modify: `apps/web/app/(org-admin)/users/page.tsx` (swap `CardGrid` → `StaffUsersTable`, add role/status filters)
+- Modify: `apps/web/app/(org-admin)/users/page.tsx` (drop `CardGrid`, `Pagination`, the page `<h1>` and the loading/error blocks — `ListView` owns all four)
 - Test: `apps/web/components/StaffUsersTable.test.tsx`
 
 **Interfaces:**
-- Consumes: `StaffUser[]`, `useAuth()` (`role`, `actingSuperAdmin`), the Task 10 hooks, `useAuth().impersonate`.
-- Produces: `<StaffUsersTable users={StaffUser[]} currentUserRole={string|null} isActingSuperAdmin={boolean} currentUserId={string} />` rendering the `Table` with columns Full Name, Email, Role, Status, Last Login, Created, Actions.
+- Consumes: `StaffUser[]`, `useAuth()` (`role`, `actingSuperAdmin`, `impersonate`), the Task 10 hooks, and from the Platform Admin plan: `ListView` (`apps/web/app/(platform)/components/ListView.tsx`) and `RowActions` (`.../components/RowActions.tsx`).
+- Produces: `<StaffUsersTable users={StaffUser[]} currentUserRole={string|null} isActingSuperAdmin={boolean} currentUserId={string} isLoading={boolean} isError={boolean} totalCount={number|undefined} actions={ReactNode|undefined} />` rendering a `ListView` with columns Full Name, Email, Role, Status, Last Login, Created, Actions. `actions` is forwarded straight to `ListView`'s action-bar slot — Task 12 uses it for the **New User** button.
+- **`StaffUsersTable` owns the Role and Status filter state** and passes the controls into `ListView`'s `filters` slot, filtering `users` itself before handing rows to `ListView`. `ListView` holds no filter state.
 - Row-action visibility mirrors the server matrix: **Login as** shown when `isActingSuperAdmin` (target not super_admin) or (`currentUserRole==='org_admin'` and target role ∈ {recruiter,panel}); Edit/Deactivate/Reset shown when `isActingSuperAdmin || currentUserRole==='org_admin'` and target is not super_admin and not self.
 
 - [ ] **Step 1: Write the failing test**:
@@ -1102,20 +1143,116 @@ jest.mock('../lib/hooks/useUsers', () => ({
   useReactivateUser: () => ({ mutate: jest.fn() }), useResetUserPassword: () => ({ mutate: jest.fn() }),
 }));
 
+// ListView persists column visibility in localStorage; clear it so one test's
+// hidden column does not leak into the next.
+beforeEach(() => localStorage.clear());
+
 it('renders a staff user row with a Login-as action for an org_admin', () => {
   render(<StaffUsersTable users={users} currentUserRole="org_admin" isActingSuperAdmin={false} currentUserId="admin1" />);
   expect(screen.getByText('rec@x.com')).toBeInTheDocument();
   expect(screen.getByText('Rec One')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /login as/i })).toBeInTheDocument();
 });
+
+it('shows no row menu for a user the current user cannot manage', () => {
+  const selfRow = [{ ...users[0], id: 'admin1', email: 'admin@x.com', role: 'org_admin' }];
+  render(<StaffUsersTable users={selfRow} currentUserRole="org_admin" isActingSuperAdmin={false} currentUserId="admin1" />);
+  // RowActions renders null for an empty action list, so gating produces no menu.
+  expect(screen.queryByRole('button', { name: /actions for/i })).not.toBeInTheDocument();
+});
+
+it('filters rows by role and the item count follows', async () => {
+  const mixed = [
+    { ...users[0] },
+    { ...users[0], id: 't2', email: 'admin@x.com', name: 'Admin Two', role: 'org_admin' },
+  ];
+  render(<StaffUsersTable users={mixed} currentUserRole="org_admin" isActingSuperAdmin={false} currentUserId="admin1" />);
+  expect(screen.getByText(/2 items/)).toBeInTheDocument();
+
+  await userEvent.selectOptions(screen.getAllByRole('combobox')[0], 'recruiter');
+
+  expect(screen.getByText('rec@x.com')).toBeInTheDocument();
+  expect(screen.queryByText('admin@x.com')).not.toBeInTheDocument();
+  expect(screen.getByText(/1 item(?!s)/)).toBeInTheDocument();
+});
 ```
+
+Add `import userEvent from '@testing-library/user-event';` to the test file.
 
 - [ ] **Step 2: Run to verify failure**
 
 Run: `cd apps/web && npx jest StaffUsersTable`
 Expected: FAIL (module not found).
 
-- [ ] **Step 3: Implement `StaffUsersTable.tsx`** using the `Table` primitive (`Column<StaffUser>[]`), `DropdownMenu` for the `⋯` menu, `StatusBadge` for role/status, and a `confirm()`-guarded Login-as button that calls `useAuth().impersonate(user.id)`. Compute `canManage(target)` and `canImpersonate(target)` from the props per the matrix above. Columns:
+- [ ] **Step 3: Implement `StaffUsersTable.tsx`** rendering `ListView` (not `Table` directly), with `RowActions` for the `▾` menu, `StatusBadge` for role/status, and a `confirm()`-guarded Login-as button that calls `useAuth().impersonate(user.id)`. Compute `canManage(target)` and `canImpersonate(target)` from the props per the matrix above.
+
+The component shape:
+
+```tsx
+'use client';
+
+import { useMemo, useState } from 'react';
+import { UsersRound } from 'lucide-react';
+import { StatusBadge, Select, type Column, type StatusTone } from './ui';
+import { ListView } from '../app/(platform)/components/ListView';
+import { RowActions } from '../app/(platform)/components/RowActions';
+import { StaffUser } from '../lib/types';
+
+// Lifted from users/page.tsx — this component now owns them.
+const ROLE_TONE: Record<string, StatusTone> = { org_admin: 'purple', recruiter: 'info', panel: 'neutral' };
+const ROLE_LABEL: Record<string, string> = { org_admin: 'Org Admin', recruiter: 'Recruiter', panel: 'Interview Panel' };
+
+const ROLE_FILTER_OPTIONS = [
+  { value: '', label: 'All roles' },
+  { value: 'org_admin', label: 'Org Admin' },
+  { value: 'recruiter', label: 'Recruiter' },
+  { value: 'panel', label: 'Interview Panel' },
+];
+const STATUS_FILTER_OPTIONS = [
+  { value: '', label: 'All statuses' },
+  { value: 'active', label: 'Active' },
+  { value: 'deactivated', label: 'Deactivated' },
+];
+
+export function StaffUsersTable({ users, currentUserRole, isActingSuperAdmin, currentUserId, isLoading, isError, totalCount }: StaffUsersTableProps) {
+  const [roleFilter, setRoleFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+
+  // ListView holds no filter state -- it renders whatever rows it is given, and
+  // its item count follows them. Filter here, before handing rows over.
+  const rows = useMemo(
+    () => users.filter((u) => (!roleFilter || u.role === roleFilter) && (!statusFilter || u.status === statusFilter)),
+    [users, roleFilter, statusFilter],
+  );
+
+  const columns: Column<StaffUser>[] = useMemo(() => [ /* the seven columns below */ ], []);
+
+  return (
+    <ListView<StaffUser>
+      title="Staff Users"
+      icon={<UsersRound size={22} />}
+      columns={columns}
+      rows={rows}
+      rowKey={(u) => u.id}
+      searchMatch={(u, query) => u.email.toLowerCase().includes(query) || (u.name ?? '').toLowerCase().includes(query)}
+      storageKey="staff-users"
+      searchPlaceholder="Search staff users…"
+      emptyMessage="No staff users yet."
+      isLoading={isLoading}
+      isError={isError}
+      totalCount={totalCount}
+      filters={
+        <>
+          <Select label="" value={roleFilter} onChange={setRoleFilter} options={ROLE_FILTER_OPTIONS} />
+          <Select label="" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTER_OPTIONS} />
+        </>
+      }
+    />
+  );
+}
+```
+
+Columns:
 
 ```typescript
 const columns: Column<StaffUser>[] = [
@@ -1129,28 +1266,55 @@ const columns: Column<StaffUser>[] = [
 ];
 ```
 
-`renderActions` renders (per gating): a **Login as** `<button>` (`confirm('Log in as ' + u.email + '? You will act as this user until you return.')` → `impersonate(u.id)`), an inline **Edit** (a small role `<Select>` + name `<Input>` in a `Modal`, submitting `useUpdateUser().mutate`), and a `DropdownMenu` with **Deactivate**/**Reactivate** (toggle by `u.status`) and **Reset password** items wired to their hooks with a success toast. Reuse `ROLE_TONE`/`ROLE_LABEL` maps already defined in `users/page.tsx` (lift them into this component).
+`renderActions` renders, per gating:
 
-- [ ] **Step 4: Update `users/page.tsx`** — replace the `CardGrid` block with the table + add filter dropdowns:
+1. A visible **Login as** `<button>` — `confirm('Log in as ' + u.email + '? You will act as this user until you return.')` → `impersonate(u.id)`. This stays a visible button, not a menu item: it is the primary action, and Salesforce's own Users list surfaces Login-as the same way.
+2. A `RowActions` menu for the rest:
 
-```typescript
-// state
-const [roleFilter, setRoleFilter] = useState('');   // '' = all
-const [statusFilter, setStatusFilter] = useState(''); // '' = all
-// derive
-const rows = (usersResponse?.data ?? []).filter((u) =>
-  (!roleFilter || u.role === roleFilter) && (!statusFilter || u.status === statusFilter),
-);
-// render (replace CardGrid):
-<StaffUsersTable
-  users={rows}
-  currentUserRole={role}
-  isActingSuperAdmin={actingSuperAdmin}
-  currentUserId={currentUser?.id ?? ''}
+```tsx
+<RowActions
+  label={`Actions for ${u.email}`}
+  actions={[
+    ...(canManage(u) ? [{ label: 'Edit', onSelect: () => setEditing(u) }] : []),
+    ...(canManage(u)
+      ? [u.status === 'active'
+          ? { label: 'Deactivate', onSelect: () => deactivateUser.mutate(u.id), danger: true }
+          : { label: 'Reactivate', onSelect: () => reactivateUser.mutate(u.id) }]
+      : []),
+    ...(canManage(u) ? [{ label: 'Reset password', onSelect: () => resetPassword.mutate(u.id) }] : []),
+  ]}
 />
 ```
 
-Add two `<Select>`s (Role: All/Org Admin/Recruiter/Panel; Status: All/Active/Deactivated) beside the search box, and pull `role`, `actingSuperAdmin` from `useAuth()` and `currentUser` from `useCurrentUser()`.
+`RowActions` renders `null` for an empty action list, so a row the current user cannot manage shows no menu — which is the gating behaviour, for free. Each mutation fires a success toast as before. **Edit** opens the same role-`<Select>`-plus-name-`<Input>` `Modal` submitting `useUpdateUser().mutate`.
+
+- [ ] **Step 4: Update `users/page.tsx`** — the page shrinks to data fetching plus the create form. `ListView` now supplies the `<h1>`, the loading and error states, the search box and the item count, so all four come out of the page:
+
+```tsx
+export default function UsersPage() {
+  const { role, actingSuperAdmin } = useAuth();
+  const { data: currentUser } = useCurrentUser();
+  const { data: usersResponse, isLoading, isError } = useUsers({ pageSize: 200 });
+
+  return (
+    <>
+      {/* The inline create form stays here until Task 12 moves it into NewUserModal
+          behind ListView's `actions` slot. */}
+      <StaffUsersTable
+        users={usersResponse?.data ?? []}
+        currentUserRole={role}
+        isActingSuperAdmin={actingSuperAdmin}
+        currentUserId={currentUser?.id ?? ''}
+        isLoading={isLoading}
+        isError={isError}
+        totalCount={usersResponse?.total}
+      />
+    </>
+  );
+}
+```
+
+Drop the local `page` state and `Pagination`: `ListView` sorts and filters the rows it is handed, and sorting a paginated slice would sort only the visible page. Fetch one large page instead, matching how the Platform Admin tabs do it. Move `ROLE_TONE` and `ROLE_LABEL` into `StaffUsersTable.tsx`; `ROLE_OPTIONS` stays here for the create form until Task 12 takes it.
 
 - [ ] **Step 5: Run tests + existing page test**
 
@@ -1202,14 +1366,27 @@ Expected: FAIL.
 
 - [ ] **Step 3: Implement `NewUserModal.tsx`** with `Modal` + `Tabs`/`TabsList`/`TabsTrigger`/`TabsContent`. Single-tab submit calls `useCreateUser().mutate({ email, password, role })` (or the bulk endpoint with one email when "send link" is checked); Multiple-tab splits the textarea on newlines, trims/filters blanks, and calls `useBulkCreateUsers().mutate({ emails, role })`, rendering the returned `{ created, skipped }` summary and a toast.
 
-- [ ] **Step 4: Wire into `users/page.tsx`** — remove the inline `<form>` (lines ~103–113), add:
+- [ ] **Step 4: Wire into `users/page.tsx`** — remove the inline `<form>`, and put the button in the action bar.
 
-```typescript
+**Amended 2026-07-31:** after Task 11 the page has no header row of its own — `ListView` renders the object header and its right-aligned action bar. Pass the button through instead of placing it on the page:
+
+```tsx
 const [showNew, setShowNew] = useState(false);
-// in the header row:
-<Button onClick={() => setShowNew(true)}>New User</Button>
+
+<StaffUsersTable
+  users={usersResponse?.data ?? []}
+  currentUserRole={role}
+  isActingSuperAdmin={actingSuperAdmin}
+  currentUserId={currentUser?.id ?? ''}
+  isLoading={isLoading}
+  isError={isError}
+  totalCount={usersResponse?.total}
+  actions={<Button onClick={() => setShowNew(true)}>New User</Button>}
+/>
 <NewUserModal open={showNew} onClose={() => setShowNew(false)} />
 ```
+
+This requires `StaffUsersTable` to accept an `actions?: ReactNode` prop and forward it to `ListView`'s `actions` slot — add it in Task 11.
 
 - [ ] **Step 5: Run tests**
 

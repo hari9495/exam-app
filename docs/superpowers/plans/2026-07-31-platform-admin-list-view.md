@@ -23,6 +23,31 @@
 
 **Task order note:** the spec lists Phase 1 (frontend list view) before Phase 2 (the real columns). This plan inverts them — the backend list shape lands first (Tasks 1–2) so the frontend builds every column once, rather than building a table and immediately widening it.
 
+## Coordination with the Staff Users console
+
+A second workstream is running concurrently on this branch: **Staff Users Admin Console**
+(`docs/superpowers/plans/2026-07-31-staff-users-admin-console.md`, ledger at
+`.superpowers/sdd/progress.md`). It is also Salesforce-styled, for the `/users` page. As of
+2026-07-31 its Tasks 1–4 are complete and all four were backend-only; no frontend exists on
+either side. The two plans were reconciled at that point.
+
+**This plan owns the shared shell.** `ListView`, `RowActions` and the `Table`
+`onSortChange` callback are built here (Tasks 4–6) and consumed by four pages: the three
+`(platform)` tabs and the staff users page. That plan's Task 11 was amended to render
+`ListView` rather than build a second table, and carries a BLOCKED instruction if
+`ListView` is not yet present.
+
+Two consequences for execution:
+
+1. **Tasks 4, 5 and 6 are on another team's critical path.** They are frontend-only and
+   depend on nothing else in this plan, so they can run before Tasks 1–3 if the staff-users
+   workstream reaches its Task 11 first. Nothing else here needs reordering.
+2. **`apps/api/src/auth/auth.service.ts` and `auth.controller.ts` have two writers.** That
+   plan adds per-*user* deactivation guards; this plan's Task 12 adds per-*organization*
+   suspension guards, in the same functions. Task 12 quotes the file as of commit
+   `1177461`. Re-read before editing — an exact-match edit against a stale quote is how one
+   of the two guards gets silently deleted.
+
 ---
 
 ## File Structure
@@ -625,6 +650,7 @@ interface ListViewProps<T> {
   searchMatch: (row: T, query: string) => boolean;
   storageKey: string;
   actions?: ReactNode;
+  filters?: ReactNode;
   defaultHiddenColumns?: string[];
   searchPlaceholder?: string;
   emptyMessage?: string;
@@ -636,6 +662,8 @@ export function ListView<T>(props: ListViewProps<T>): JSX.Element;
 ```
 
 `searchMatch` receives the query already lowercased and trimmed. `storageKey` namespaces column visibility in `localStorage`. `totalCount` is the server-reported total; when it exceeds `rows.length`, the metadata line says so rather than implying the list is complete.
+
+`filters` renders caller-supplied controls beside the search box. `ListView` does **not** own filter state — the caller filters `rows` before passing them in. A generic filter model would have to know each page's field names and value sets; a slot costs one prop and no coupling. This slot exists because the Staff Users console (`docs/superpowers/plans/2026-07-31-staff-users-admin-console.md`, Task 11) needs Role and Status dropdowns here.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -741,6 +769,18 @@ describe('ListView', () => {
     expect(screen.getByRole('button', { name: 'New' })).toBeInTheDocument();
   });
 
+  it('renders caller-supplied filters beside the search box', () => {
+    renderListView({ filters: <button type="button">Role: All</button> });
+    expect(screen.getByRole('button', { name: 'Role: All' })).toBeInTheDocument();
+  });
+
+  it('counts the rows it was given, so a caller-side filter is reflected', () => {
+    // Filtering is the caller's job; the count must follow `rows`, not some
+    // internal unfiltered copy, or a filtered page would report the wrong total.
+    renderListView({ rows: [rows[0]] });
+    expect(screen.getByText(/1 item(?!s)/)).toBeInTheDocument();
+  });
+
   it('shows an error message instead of the table when isError', () => {
     renderListView({ isError: true });
     expect(screen.getByRole('alert')).toHaveTextContent('Failed to load Organizations.');
@@ -783,6 +823,9 @@ interface ListViewProps<T> {
   searchMatch: (row: T, query: string) => boolean;
   storageKey: string;
   actions?: ReactNode;
+  /** Caller-supplied filter controls, rendered beside the search box. The caller
+   *  filters `rows` itself — ListView holds no filter state. */
+  filters?: ReactNode;
   defaultHiddenColumns?: string[];
   searchPlaceholder?: string;
   emptyMessage?: string;
@@ -814,6 +857,7 @@ export function ListView<T>({
   searchMatch,
   storageKey,
   actions,
+  filters,
   defaultHiddenColumns = [],
   searchPlaceholder = 'Search…',
   emptyMessage = 'Nothing here yet.',
@@ -864,7 +908,8 @@ export function ListView<T>({
           {sort && ` • Sorted by ${sort.header}`}
           {truncated && ` • showing ${rows.length} of ${totalCount} — narrow your search to see the rest`}
         </p>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {filters}
           <Input label="" placeholder={searchPlaceholder} value={search} onChange={setSearch} />
           <DropdownMenu>
             <DropdownMenuTrigger aria-label="Choose columns" className="rounded border border-recruiter-border p-2">
@@ -2223,12 +2268,28 @@ import { isOrganizationActive, ORGANIZATION_INACTIVE_MESSAGE } from '@exam-platf
 
 - [ ] **Step 4: Guard refresh rotation**
 
-In the same file, in `refresh()`, after the successful `findUniqueOrThrow` for `user` and before `issueTokenPair`:
+The Staff Users console shipped a **per-user** deactivation guard into this exact block (commit `40ed775`, its Task 3). Do not remove it — the new check goes immediately after it. Both are needed and they are different things: that one blocks a deactivated *person*, this one blocks an active person in a suspended *organization*.
+
+The block currently reads:
 
 ```ts
     const user = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
       tx.user.findUniqueOrThrow({ where: { id: payload.sub } }),
     );
+
+    if (user.status !== 'active') {
+      throw new UnauthorizedException('This account has been deactivated');
+    }
+
+    return this.issueTokenPair(user.id, user.organizationId, user.role, payload.familyId);
+```
+
+Insert between the existing guard and the return:
+
+```ts
+    if (user.status !== 'active') {
+      throw new UnauthorizedException('This account has been deactivated');
+    }
 
     // A super admin has no organization to suspend. For everyone else, checking
     // only at login would let a suspended organization's staff keep rotating
@@ -2242,6 +2303,8 @@ In the same file, in `refresh()`, after the successful `findUniqueOrThrow` for `
 
     return this.issueTokenPair(user.id, user.organizationId, user.role, payload.familyId);
 ```
+
+**If this block no longer matches, stop and re-read the file.** `auth.service.ts` is being edited by a second workstream; an exact-match edit against a stale quote is how one of the two guards gets silently deleted.
 
 - [ ] **Step 5: Guard SSO exchange**
 
