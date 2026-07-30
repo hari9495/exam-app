@@ -30,7 +30,7 @@ describe('AuthController.ssoExchange', () => {
     prisma.ssoLoginCode.findUnique.mockResolvedValue({
       id: 'code-row-1', codeHash, userId: 'user-1', expiresAt: new Date(Date.now() + 30_000),
     });
-    tenantPrisma.forTenant.mockResolvedValue({ id: 'user-1', organizationId: 'org-1', role: 'recruiter' });
+    tenantPrisma.forTenant.mockResolvedValue({ id: 'user-1', organizationId: 'org-1', role: 'recruiter', status: 'active' });
     authService.issueTokensForSso.mockResolvedValue({ accessToken: 'access-1', refreshToken: 'refresh-1' });
     const res = { cookie: jest.fn() };
 

@@ -95,6 +95,10 @@ export class AuthController {
       throw new UnauthorizedException('This sign-in link is invalid or has expired');
     }
 
+    if (user.status !== 'active') {
+      throw new UnauthorizedException('This account has been deactivated');
+    }
+
     const tokens = await this.authService.issueTokensForSso(user.id, user.organizationId, user.role);
     res.cookie(REFRESH_COOKIE, tokens.refreshToken, { httpOnly: true, sameSite: 'lax', secure: false });
     return { accessToken: tokens.accessToken };

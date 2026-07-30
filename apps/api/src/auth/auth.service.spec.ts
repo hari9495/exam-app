@@ -82,7 +82,7 @@ describe('AuthService', () => {
     const passwordHash = await argon2.hash('correct-password');
     prisma.organization.findUnique.mockResolvedValue({ id: 'org-1' });
     tenantPrisma.forTenant.mockResolvedValueOnce({
-      id: 'user-1', organizationId: 'org-1', role: 'org_admin', passwordHash,
+      id: 'user-1', organizationId: 'org-1', role: 'org_admin', status: 'active', passwordHash,
     });
     tenantPrisma.forTenant.mockResolvedValueOnce(undefined);
     prisma.refreshToken.create.mockResolvedValue({});
@@ -96,6 +96,23 @@ describe('AuthService', () => {
     const decoded = jwt.decode(result.accessToken) as { organizationId: string; role: string };
     expect(decoded.organizationId).toBe('org-1');
     expect(decoded.role).toBe('org_admin');
+  });
+
+  it('rejects login for a deactivated user even with the correct password', async () => {
+    const passwordHash = await argon2.hash('password1');
+    prisma.organization.findUnique.mockResolvedValue({ id: 'org1' });
+    tenantPrisma.forTenant.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn({
+        user: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'u1', organizationId: 'org1', role: 'recruiter', status: 'deactivated', passwordHash,
+          }),
+        },
+      }),
+    );
+    await expect(
+      service.login({ organizationSlug: 'acme', email: 'a@b.com', password: 'password1' }),
+    ).rejects.toThrow('This account has been deactivated');
   });
 
   it('revokes the whole refresh-token family and audits the incident, attributed to the compromised user\'s real org, on reuse detection', async () => {

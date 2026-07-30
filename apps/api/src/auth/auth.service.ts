@@ -58,6 +58,10 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    if (user.status !== 'active') {
+      throw new UnauthorizedException('This account has been deactivated');
+    }
+
     const tokens = await this.issueTokenPair(user.id, user.organizationId, user.role);
     await this.audit.record(
       { organizationId: user.organizationId, isSuperAdmin: user.role === 'super_admin' },
