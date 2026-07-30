@@ -63,7 +63,7 @@ describe('InvitationsService', () => {
     expect(emailService.send).toHaveBeenCalledWith(
       expect.objectContaining({
         to: 'a@test.com',
-        subject: 'Your Backend Round assessment — invitation and instructions',
+        subject: 'Your Backend Round assessment - invitation and instructions',
         organizationId: 'org-1',
       }),
     );
@@ -75,7 +75,7 @@ describe('InvitationsService', () => {
     expect(html).toContain('Duration:</strong> 60 minutes');
     expect(html).toContain('Best regards,<br/>Acme Hiring');
     // This invites the candidate to SIT the exam; it must not read as a completion notice.
-    expect(html).toContain('You have been invited to take the "Backend Round" assessment');
+    expect(html).toContain('You have been invited to take the <strong>Backend Round</strong> assessment');
     expect(html).not.toMatch(/registration .*(completed|confirmed)/i);
     // It is sent from a no-reply mailbox, so it must never ask the candidate to reply.
     expect(html).not.toMatch(/reply to this email/i);

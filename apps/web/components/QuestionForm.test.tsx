@@ -48,6 +48,22 @@ describe('QuestionForm', () => {
     );
   });
 
+  it('submits the entered Topic and Category so the question-bank Group by filter can use them', async () => {
+    const onSubmit = jest.fn();
+    render(<QuestionForm tags={[]} onSubmit={onSubmit} submitLabel="Create question" />);
+
+    await userEvent.type(screen.getByLabelText('Question text'), 'Q?');
+    await userEvent.type(screen.getByLabelText('Topic (optional)'), 'Arrays');
+    await userEvent.type(screen.getByLabelText('Category (optional)'), 'DSA');
+    const optionInputs = screen.getAllByLabelText(/Option \d text/);
+    await userEvent.type(optionInputs[0], 'a');
+    await userEvent.type(optionInputs[1], 'b');
+    await userEvent.click(screen.getAllByRole('radio')[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Create question' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ topic: 'Arrays', category: 'DSA' }));
+  });
+
   it('pre-fills every field from an initial question for editing', () => {
     render(
       <QuestionForm

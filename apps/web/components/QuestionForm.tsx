@@ -55,6 +55,8 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
   const [difficulty, setDifficulty] = useState<Difficulty>(initialQuestion?.difficulty ?? 'easy');
   const [marks, setMarks] = useState(String(initialQuestion?.marks ?? 1));
   const [negativeMarks, setNegativeMarks] = useState(String(initialQuestion?.negativeMarks ?? 0));
+  const [topic, setTopic] = useState(initialQuestion?.topic ?? '');
+  const [category, setCategory] = useState(initialQuestion?.category ?? '');
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(initialQuestion?.tags?.map((tag) => tag.id) ?? []);
   const [languageMode, setLanguageMode] = useState<'fixed' | 'any'>(initialQuestion?.languageMode ?? 'fixed');
   const [allowedLanguages, setAllowedLanguages] = useState<string[]>(initialQuestion?.allowedLanguages ?? []);
@@ -104,6 +106,8 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
       difficulty,
       marks: Number(marks),
       negativeMarks: Number(negativeMarks),
+      topic: topic.trim() || undefined,
+      category: category.trim() || undefined,
       tags: selectedTagIds,
       languageMode: type === 'code' ? languageMode : undefined,
       allowedLanguages: type === 'code' && languageMode === 'fixed' ? allowedLanguages : undefined,
@@ -136,6 +140,12 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
       <div className="flex gap-4">
         <Input label="Marks" type="number" min={1} value={marks} onChange={setMarks} />
         <Input label="Negative marks" type="number" min={0} value={negativeMarks} onChange={setNegativeMarks} />
+      </div>
+      {/* Topic and Category are what the question-bank "Group by" filter groups on, so the form
+          has to let a recruiter set them -- otherwise those grouping options are always empty. */}
+      <div className="flex gap-4">
+        <Input label="Topic (optional)" value={topic} onChange={setTopic} />
+        <Input label="Category (optional)" value={category} onChange={setCategory} />
       </div>
 
       {type === 'code' ? (

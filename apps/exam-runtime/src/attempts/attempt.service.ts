@@ -1140,35 +1140,47 @@ export class AttemptService {
     const questionsById = new Map(questions.map((question) => [question.id, question]));
     const optionOrder: Record<string, string[]> | null = optionOrderJson ? JSON.parse(optionOrderJson) : null;
 
-    return snapshot.map((section) => ({
-      title: section.title,
-      targetDurationMinutes: section.targetDurationMinutes,
-      questions: section.questionIds
-        .map((questionId) => questionsById.get(questionId))
-        .filter((question): question is NonNullable<typeof question> => question !== undefined)
-        .map((question) => {
-          const order = optionOrder?.[question.id];
-          const orderedOptions = order
-            ? order
-                .map((optionId) => question.options.find((option) => option.id === optionId))
-                .filter((option): option is NonNullable<typeof option> => option !== undefined)
-            : question.options;
-          return {
-            id: question.id,
-            text: question.text,
-            type: question.type,
-            marks: question.marks,
-            languageMode: question.languageMode,
-            allowedLanguages: question.allowedLanguages ? JSON.parse(question.allowedLanguages) : [],
-            starterCode: question.starterCode,
-            allowStdin: question.allowStdin,
-            snippetCode: question.snippetCode,
-            snippetLanguage: question.snippetLanguage,
-            imageUrl: question.imageUrl,
-            options: orderedOptions.map((option) => ({ id: option.id, text: option.text, imageUrl: option.imageUrl })),
-          };
-        }),
-    }));
+    // Question/option images live in the private blob container, so the raw stored URL 404s for the
+    // candidate's browser -- mint a short-lived read SAS the same way logos/proctoring evidence do.
+    return Promise.all(
+      snapshot.map(async (section) => ({
+        title: section.title,
+        targetDurationMinutes: section.targetDurationMinutes,
+        questions: await Promise.all(
+          section.questionIds
+            .map((questionId) => questionsById.get(questionId))
+            .filter((question): question is NonNullable<typeof question> => question !== undefined)
+            .map(async (question) => {
+              const order = optionOrder?.[question.id];
+              const orderedOptions = order
+                ? order
+                    .map((optionId) => question.options.find((option) => option.id === optionId))
+                    .filter((option): option is NonNullable<typeof option> => option !== undefined)
+                : question.options;
+              return {
+                id: question.id,
+                text: question.text,
+                type: question.type,
+                marks: question.marks,
+                languageMode: question.languageMode,
+                allowedLanguages: question.allowedLanguages ? JSON.parse(question.allowedLanguages) : [],
+                starterCode: question.starterCode,
+                allowStdin: question.allowStdin,
+                snippetCode: question.snippetCode,
+                snippetLanguage: question.snippetLanguage,
+                imageUrl: (await this.blobStorage.signIfOurs(question.imageUrl)) as string | null,
+                options: await Promise.all(
+                  orderedOptions.map(async (option) => ({
+                    id: option.id,
+                    text: option.text,
+                    imageUrl: (await this.blobStorage.signIfOurs(option.imageUrl)) as string | null,
+                  })),
+                ),
+              };
+            }),
+        ),
+      })),
+    );
   }
 
   private async buildFeedback(

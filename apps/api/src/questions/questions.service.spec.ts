@@ -22,7 +22,7 @@ describe('QuestionsService', () => {
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: JobsService, useValue: jobsService },
         { provide: ExamRuntimeInternalClient, useValue: examRuntime },
-        { provide: BlobStorageService, useValue: { upload: jest.fn(), uploadDataUri: jest.fn() } },
+        { provide: BlobStorageService, useValue: { upload: jest.fn(), uploadDataUri: jest.fn(), signIfOurs: jest.fn((v) => Promise.resolve(v)) } },
       ],
     }).compile();
     service = moduleRef.get(QuestionsService);
@@ -47,7 +47,14 @@ describe('QuestionsService', () => {
 
     const result = await service.create(context, 'user-1', validDto);
 
-    expect(result).toEqual(created);
+    // toResponse now normalizes image URLs (null when absent) after SAS-signing them on read,
+    // and parses allowedLanguages (JSON string in the DB) into the string[] the client expects.
+    expect(result).toEqual({
+      ...created,
+      imageUrl: null,
+      allowedLanguages: [],
+      options: created.options.map((option) => ({ ...option, imageUrl: null })),
+    });
     expect(tenantPrisma.forTenant).toHaveBeenCalledWith(context, expect.any(Function));
   });
 
@@ -77,6 +84,9 @@ describe('QuestionsService', () => {
 
     expect(result.type).toBe('code');
     expect(result.options).toEqual([]);
+    // The DB stores allowedLanguages as a JSON string; the response must hand back a string[] so the
+    // client's `allowedLanguages.join(', ')` doesn't throw and crash the question-bank list.
+    expect(result.allowedLanguages).toEqual(['javascript']);
     expect(examRuntime.listAvailableLanguages).toHaveBeenCalled();
     expect(questionCreate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -527,7 +537,7 @@ describe('QuestionsService.uploadImage', () => {
   let tenantPrisma: { forTenant: jest.Mock };
   let jobsService: { enqueue: jest.Mock };
   let examRuntime: { listAvailableLanguages: jest.Mock };
-  let blobStorage: { upload: jest.Mock; uploadDataUri: jest.Mock };
+  let blobStorage: { upload: jest.Mock; uploadDataUri: jest.Mock; signIfOurs: jest.Mock };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
@@ -536,6 +546,7 @@ describe('QuestionsService.uploadImage', () => {
     blobStorage = {
       upload: jest.fn().mockImplementation((blobPath: string) => Promise.resolve(`https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/${blobPath}`)),
       uploadDataUri: jest.fn(),
+      signIfOurs: jest.fn((v) => Promise.resolve(v)),
     };
     const moduleRef = await Test.createTestingModule({
       providers: [

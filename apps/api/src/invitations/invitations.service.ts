@@ -335,30 +335,30 @@ export class InvitationsService {
       // This is an invitation to SIT the exam. The previous wording ("Congratulations! Your
       // registration ... has been successfully completed") read as if the assessment itself
       // was already done, so candidates had no idea they still had to take it.
-      `<p>You have been invited to take the "${exam.title}" assessment. Everything you need is below &mdash; ` +
+      `<p>You have been invited to take the <strong>${exam.title}</strong> assessment. Everything you need is below - ` +
       `use the button to begin when you are ready.</p>` +
       `<h3>Test Details</h3>${scheduleHtml}<p><strong>Duration:</strong> ${exam.durationMinutes} minutes</p>` +
       `<p><a href="${link}" style="display:inline-block;padding:10px 20px;background:#2955a3;color:#ffffff;text-decoration:none;border-radius:4px;">Start Assessment</a></p>` +
       `<h3>Before You Begin</h3><ul>` +
-      `<li>Use a laptop or desktop with a working webcam &mdash; this assessment uses camera-based monitoring, so make sure your camera is enabled and unobstructed before starting.</li>` +
+      `<li>Use a laptop or desktop with a working webcam - this assessment uses camera-based monitoring, so make sure your camera is enabled and unobstructed before starting.</li>` +
       `<li>Use a stable internet connection and a supported browser (Chrome or Edge recommended).</li>` +
       `<li>Find a quiet, well-lit space free of interruptions for the full duration of the test.</li></ul>` +
       `<h3>Examination Rules &amp; Guidelines</h3><ul>` +
       `<li>Stay on the test window. Switching tabs, minimizing the window, or exiting full-screen mode is detected and counted as a violation.</li>` +
       `<li>Copy, paste, and right-click are disabled during the test and are also detected as violations.</li>` +
       `<li>Extended periods of inactivity may also be flagged.</li>` +
-      `<li>On your first and second violation, your exam will pause and you can resume it yourself from an on-screen prompt &mdash; no need to contact anyone.</li>` +
+      `<li>On your first and second violation, your exam will pause and you can resume it yourself from an on-screen prompt - no need to contact anyone.</li>` +
       `<li>On your third violation, your exam will be blocked and can only be reopened by your recruiter, so please treat the first two warnings seriously.</li>` +
-      `<li>If negative marking applies to this assessment, incorrect answers may be penalized &mdash; only answer when you are confident.</li></ul>` +
+      `<li>If negative marking applies to this assessment, incorrect answers may be penalized - only answer when you are confident.</li></ul>` +
       // Do NOT tell candidates to reply: this goes out from the org's configured
       // emailFromAddress, which in production is a no-reply mailbox, so replies are
       // silently discarded and a candidate in trouble gets no help.
       `<p>If you run into any issues, please contact your recruiter or the person who arranged this assessment.</p>` +
       `<p>Best regards,<br/>${organization?.name ?? 'The Hiring Team'}</p>` +
-      `<p style="color:#666666;font-size:12px;">This message was sent from an unmonitored address &mdash; please do not reply to it.</p>`;
+      `<p style="color:#666666;font-size:12px;">This message was sent from an unmonitored address - please do not reply to it.</p>`;
     const result = await this.emailService.send({
       to: candidate.email,
-      subject: `Your ${exam.title} assessment — invitation and instructions`,
+      subject: `Your ${exam.title} assessment - invitation and instructions`,
       html,
       organizationId: context.organizationId ?? undefined,
     });

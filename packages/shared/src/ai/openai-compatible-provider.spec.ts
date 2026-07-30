@@ -29,15 +29,20 @@ describe('OpenAiCompatibleProvider', () => {
 
     expect(result).toEqual({ value: 'hello' });
     expect(OpenAI).toHaveBeenCalledWith({ apiKey: 'azure-key', baseURL: 'https://example.openai.azure.com/openai/v1' });
-    expect(mockCreate).toHaveBeenCalledWith(
+    const sent = mockCreate.mock.calls[0][0];
+    expect(sent).toEqual(
       expect.objectContaining({
         model: 'gpt-fast',
-        max_tokens: 512,
+        // Always max_completion_tokens (the universal param), never the reasoning-model-rejected max_tokens.
+        max_completion_tokens: 512 + 4000,
         tool_choice: { type: 'function', function: { name: 'report_thing' } },
         tools: [{ type: 'function', function: { name: 'report_thing', description: 'Report a thing.', parameters: tool.schema } }],
         messages: [{ role: 'user', content: 'Say hello' }],
       }),
     );
+    expect(sent).not.toHaveProperty('max_tokens');
+    // A plain (non-reasoning) model must not receive reasoning_effort -- non-OpenAI backends 400 on it.
+    expect(sent).not.toHaveProperty('reasoning_effort');
   });
 
   it('uses the standard-tier model name when requested', async () => {
@@ -71,6 +76,32 @@ describe('OpenAiCompatibleProvider', () => {
     );
   });
 
+  it('sends max_completion_tokens and reasoning_effort (not max_tokens) for a reasoning model like gpt-5', async () => {
+    mockCreate.mockResolvedValue({
+      choices: [{ message: { tool_calls: [{ function: { name: 'report_thing', arguments: '{"value":"ok"}' } }] } }],
+    });
+    const provider = new OpenAiCompatibleProvider('azure-key', 'https://example.openai.azure.com/openai/v1', 'gpt-5', 'gpt-5');
+
+    await provider.generateStructured({ modelTier: 'fast', maxTokens: 512, prompt: 'x', tool });
+
+    const sent = mockCreate.mock.calls[0][0];
+    expect(sent).toEqual(
+      expect.objectContaining({ model: 'gpt-5', max_completion_tokens: 512 + 4000, reasoning_effort: 'low' }),
+    );
+    expect(sent).not.toHaveProperty('max_tokens');
+  });
+
+  it('adds reasoning_effort for an o-series reasoning model too', async () => {
+    mockCreate.mockResolvedValue({
+      choices: [{ message: { tool_calls: [{ function: { name: 'report_thing', arguments: '{"value":"ok"}' } }] } }],
+    });
+    const provider = new OpenAiCompatibleProvider('azure-key', 'https://example.openai.azure.com/openai/v1', 'o3-mini', 'o3-mini');
+
+    await provider.generateStructured({ modelTier: 'fast', maxTokens: 512, prompt: 'x', tool });
+
+    expect(mockCreate.mock.calls[0][0]).toEqual(expect.objectContaining({ reasoning_effort: 'low' }));
+  });
+
   it('ping sends a minimal real request and does not throw on success', async () => {
     mockCreate.mockResolvedValue({ choices: [{ message: {} }] });
     const provider = new OpenAiCompatibleProvider('azure-key', 'https://example.openai.azure.com/openai/v1', 'gpt-fast', 'gpt-standard');
@@ -78,7 +109,7 @@ describe('OpenAiCompatibleProvider', () => {
     await provider.ping();
 
     expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ model: 'gpt-fast', max_tokens: 1, messages: [{ role: 'user', content: 'Hi' }] }),
+      expect.objectContaining({ model: 'gpt-fast', max_completion_tokens: 1 + 4000, messages: [{ role: 'user', content: 'Hi' }] }),
     );
   });
 

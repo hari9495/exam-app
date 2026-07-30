@@ -88,7 +88,11 @@ export function useScreenCapture(
 
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      // 'monitor' opens the picker with Entire Screen preselected and hides the tab/window
+      // "share this tab instead" affordances where the browser honors it. It is only a hint --
+      // Chrome still shows the Chrome Tab / Window tabs, so the displaySurface check below is
+      // what actually enforces entire-screen-only when a candidate switches tabs anyway.
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: { displaySurface: 'monitor' } });
     } catch (err) {
       // A superseded call rejecting must not clobber the current call's state --
       // e.g. a stale 'denied' landing after the winner already set active/error.

@@ -151,7 +151,7 @@ export class QuestionsService {
         }),
         tx.question.count({ where }),
       ]);
-      const data = questions.map((q) => this.toResponse(q as unknown as QuestionWithRelations));
+      const data = await Promise.all(questions.map((q) => this.toResponse(q as unknown as QuestionWithRelations)));
       return buildPaginatedResponse(data, total, page, pageSize);
     });
   }
@@ -347,7 +347,7 @@ export class QuestionsService {
           },
           include: { options: true, tags: { include: { tag: true } } },
         });
-        results.push(this.toResponse(question as QuestionWithRelations));
+        results.push(await this.toResponse(question as QuestionWithRelations));
       }
       return results;
     });
@@ -370,8 +370,29 @@ export class QuestionsService {
     return [...new Set(tags.map((tag) => tag.id))];
   }
 
-  private toResponse(question: QuestionWithRelations): QuestionResponse {
+  private async toResponse(question: QuestionWithRelations): Promise<QuestionResponse> {
     const { tags, ...rest } = question;
-    return { ...rest, tags: tags.map((qt) => ({ id: qt.tag.id, name: qt.tag.name })) } as QuestionResponse;
+    // Question/option images sit in the private blob container; the raw stored URL 404s in the
+    // browser, so mint a short-lived read SAS on the way out (same pattern as logos/evidence).
+    const imageUrl = (await this.blobStorage.signIfOurs(rest.imageUrl ?? null)) as string | null;
+    const options = rest.options
+      ? await Promise.all(
+          rest.options.map(async (o) => ({ ...o, imageUrl: (await this.blobStorage.signIfOurs(o.imageUrl ?? null)) as string | null })),
+        )
+      : rest.options;
+    // allowedLanguages is persisted as a JSON string, but the client types and uses it as string[]
+    // (e.g. `allowedLanguages.join(', ')`). exam-runtime already parses it on its read path; the
+    // recruiter API must too, or a single code question throws "join is not a function" and crashes
+    // the whole question-bank list render. Malformed/empty -> [].
+    let allowedLanguages: string[] = [];
+    if (rest.allowedLanguages) {
+      try {
+        const parsed = JSON.parse(rest.allowedLanguages);
+        if (Array.isArray(parsed)) allowedLanguages = parsed;
+      } catch {
+        allowedLanguages = [];
+      }
+    }
+    return { ...rest, imageUrl, options, allowedLanguages, tags: tags.map((qt) => ({ id: qt.tag.id, name: qt.tag.name })) } as unknown as QuestionResponse;
   }
 }
