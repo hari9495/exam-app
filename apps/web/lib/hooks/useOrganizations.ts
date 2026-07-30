@@ -18,11 +18,18 @@ function buildOrganizationsQuery(params: UseOrganizationsParams): string {
   return queryString ? `?${queryString}` : '';
 }
 
+// Under ~50 organizations, fetching everything lets the browser sort and filter
+// the whole list. Sorting a paginated slice would sort only the visible page,
+// which reads as a broken sort rather than as a pagination limit. If `total` ever
+// exceeds what came back, the list view says so rather than silently truncating.
+export const ORGANIZATION_PAGE_SIZE = 200;
+
 export function useOrganizations(params: UseOrganizationsParams = {}) {
   const { accessToken } = useAuth();
+  const resolved = { pageSize: ORGANIZATION_PAGE_SIZE, ...params };
   return useQuery<PaginatedResponse<Organization>>({
-    queryKey: ['organizations', params],
-    queryFn: () => apiFetch(`/organizations${buildOrganizationsQuery(params)}`, {}, accessToken ?? undefined),
+    queryKey: ['organizations', resolved],
+    queryFn: () => apiFetch(`/organizations${buildOrganizationsQuery(resolved)}`, {}, accessToken ?? undefined),
     enabled: Boolean(accessToken),
   });
 }

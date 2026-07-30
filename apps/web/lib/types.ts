@@ -175,7 +175,18 @@ export interface Organization {
   name: string;
   slug: string;
   region: string;
+  // Deliberately not an `OrganizationStatus` alias: @exam-platform/shared exports
+  // a type by that name with a third member, 'deleted'. Deleted organizations are
+  // filtered out server-side and never reach the client, and two same-named types
+  // with different members is how a wrong guard gets written later.
+  status: 'active' | 'suspended';
   createdAt: string;
+  /** Earliest org_admin. Null when the org has none, or when they have not set
+   *  their name yet -- creation stores only the email. */
+  primaryAdminName: string | null;
+  primaryAdminEmail: string | null;
+  userCount: number;
+  examCount: number;
 }
 
 export interface WalkInExamOption {
