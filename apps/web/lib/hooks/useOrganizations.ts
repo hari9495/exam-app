@@ -63,6 +63,16 @@ export function useUpdateOrganization() {
   });
 }
 
+export function useSetOrganizationStatus() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: 'active' | 'suspended' }): Promise<Organization> =>
+      apiFetch(`/organizations/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['organizations'] }),
+  });
+}
+
 export function useCreateOrganization() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();

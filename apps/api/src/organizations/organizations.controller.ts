@@ -14,7 +14,7 @@ import { UpdateSmtpSettingsDto } from './dto/update-smtp-settings.dto';
 import { UpdateAiKeyDto } from './dto/update-ai-key.dto';
 import { UpdateWebhookUrlDto } from './dto/update-webhook-url.dto';
 import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
-import { UpdateOrganizationDto } from './dto/update-organization.dto';
+import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update-organization.dto';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 
 @Controller('organizations')
@@ -122,6 +122,12 @@ export class OrganizationsController {
   @Throttle(MODERATE_UPLOAD_THROTTLE)
   uploadLogo(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @UploadedFile() file: Express.Multer.File) {
     return this.organizationsService.uploadLogo(tenant, userId, file);
+  }
+
+  @Patch(':id/status')
+  @RequirePermissions('platform:manage_organizations')
+  setStatus(@CurrentUserId() userId: string, @Param('id') id: string, @Body() dto: UpdateOrganizationStatusDto) {
+    return this.organizationsService.setStatus(userId, id, dto.status);
   }
 
   // MUST stay last. Nest matches routes in declaration order, and a single-segment

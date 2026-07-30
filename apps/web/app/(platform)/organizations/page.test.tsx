@@ -147,6 +147,57 @@ describe('OrganizationsPage', () => {
     expect(dialog.getByText(/slug cannot be changed/i)).toBeInTheDocument();
   });
 
+  it('shows a status badge per row', async () => {
+    renderPage();
+    await screen.findByText('Acme');
+    expect(inTable().getAllByText('Active')).toHaveLength(2);
+  });
+
+  it('suspends an organization from the row menu', async () => {
+    renderPage();
+    await screen.findByText('Acme');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for Acme' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Suspend' }));
+
+    await waitFor(() => {
+      const patch = (global.fetch as jest.Mock).mock.calls.find(
+        ([u, o]) => o?.method === 'PATCH' && String(u).includes('/status'),
+      );
+      expect(patch).toBeDefined();
+      expect(String(patch[0])).toContain('/organizations/org-1/status');
+      expect(JSON.parse(patch[1].body)).toEqual({ status: 'suspended' });
+    });
+  });
+
+  it('offers Reactivate, not Suspend, for an already-suspended organization', async () => {
+    renderPage([{ ...ORGS[0], status: 'suspended' as const }]);
+    await screen.findByText('Acme');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for Acme' }));
+
+    expect(await screen.findByRole('menuitem', { name: 'Reactivate' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Suspend' })).not.toBeInTheDocument();
+  });
+
+  it('suspends the row whose menu was used, not the first row', async () => {
+    // The action closes over `org`; a stale closure here would suspend the
+    // wrong organization, which is exactly the kind of bug nobody notices.
+    renderPage();
+    await screen.findByText('Beta');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for Beta' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Suspend' }));
+
+    await waitFor(() => {
+      const patch = (global.fetch as jest.Mock).mock.calls.find(
+        ([u, o]) => o?.method === 'PATCH' && String(u).includes('/status'),
+      );
+      expect(patch).toBeDefined();
+      expect(String(patch[0])).toContain('/organizations/org-2/status');
+    });
+  });
+
   it('links View users to the all-users tab filtered by organization name', async () => {
     renderPage();
     await screen.findByText('Acme');

@@ -7,6 +7,7 @@ import { randomBytes, createHash, randomUUID } from 'crypto';
 // to SHA-256 -- see refresh-token-hash.ts for why.
 import { PrismaService, hashRefreshToken, isLegacyArgon2Hash, refreshTokenMatches } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
+import { isOrganizationActive, ORGANIZATION_INACTIVE_MESSAGE } from '@exam-platform/shared';
 import { LoginDto } from './dto/login.dto';
 import { AuditService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
@@ -39,6 +40,9 @@ export class AuthService {
       const org = await this.prisma.organization.findUnique({ where: { slug: dto.organizationSlug } });
       if (!org) {
         throw new UnauthorizedException('Invalid credentials');
+      }
+      if (!isOrganizationActive(org.status)) {
+        throw new UnauthorizedException(ORGANIZATION_INACTIVE_MESSAGE);
       }
       organizationId = org.id;
     }
@@ -214,6 +218,16 @@ export class AuthService {
 
     if (user.status !== 'active') {
       throw new UnauthorizedException('This account has been deactivated');
+    }
+
+    // A super admin has no organization to suspend. For everyone else, checking
+    // only at login would let a suspended organization's staff keep rotating
+    // tokens indefinitely, so the suspension would appear not to have applied.
+    if (user.organizationId) {
+      const org = await this.prisma.organization.findUnique({ where: { id: user.organizationId } });
+      if (!isOrganizationActive(org?.status)) {
+        throw new UnauthorizedException(ORGANIZATION_INACTIVE_MESSAGE);
+      }
     }
 
     return this.issueTokenPair(user.id, user.organizationId, user.role, payload.familyId);

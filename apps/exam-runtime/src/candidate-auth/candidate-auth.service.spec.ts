@@ -15,6 +15,7 @@ describe('CandidateAuthService', () => {
     candidateRefreshToken: { findFirst: jest.Mock; create: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
     attempt: { findUnique: jest.Mock };
     proctoringEvent: { create: jest.Mock };
+    organization: { findUnique: jest.Mock };
     $transaction: jest.Mock;
   };
   let tenantPrisma: { forTenant: jest.Mock };
@@ -28,6 +29,7 @@ describe('CandidateAuthService', () => {
       candidateRefreshToken: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
       attempt: { findUnique: jest.fn() },
       proctoringEvent: { create: jest.fn() },
+      organization: { findUnique: jest.fn().mockResolvedValue({ id: 'org-1', status: 'active' }) },
       $transaction: jest.fn(),
     };
     prisma.$transaction.mockImplementation((callback: (tx: typeof prisma) => unknown) => callback(prisma));
@@ -84,11 +86,43 @@ describe('CandidateAuthService', () => {
       await expect(service.redeem('token', '')).rejects.toThrow(BadRequestException);
     });
 
+    it('refuses redemption when the owning organization is suspended', async () => {
+      prisma.invitation.findUnique.mockResolvedValue({
+        id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1',
+      });
+      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', status: 'suspended' });
+
+      await expect(service.redeem('token', '')).rejects.toThrow(BadRequestException);
+    });
+
+    it('does not disclose organization state to the candidate', async () => {
+      // Exactly the same wording as an unpublished exam. A candidate must not be
+      // able to tell that their prospective employer's account is suspended.
+      prisma.invitation.findUnique.mockResolvedValue({
+        id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1',
+      });
+      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', status: 'suspended' });
+
+      await expect(service.redeem('token', '')).rejects.toThrow(/^This exam is not currently available$/);
+    });
+
+    it('refuses redemption when the organization is deleted', async () => {
+      prisma.invitation.findUnique.mockResolvedValue({
+        id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1',
+      });
+      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', status: 'deleted' });
+
+      await expect(service.redeem('token', '')).rejects.toThrow('This exam is not currently available');
+    });
+
     it('issues a candidate access and refresh token pair for a valid, live invitation to a published exam', async () => {
       prisma.invitation.findUnique.mockResolvedValue({
         id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1',
       });
-      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published' });
+      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
       prisma.candidateRefreshToken.create.mockResolvedValue({});
 
       const result = await service.redeem('token', '');
@@ -104,7 +138,7 @@ describe('CandidateAuthService', () => {
       prisma.invitation.findUnique.mockResolvedValue({
         id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1', activeSessionFamilyId: null,
       });
-      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published' });
+      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
       prisma.candidateRefreshToken.create.mockResolvedValue({});
       prisma.invitation.update.mockResolvedValue({});
 
@@ -122,7 +156,7 @@ describe('CandidateAuthService', () => {
       prisma.invitation.findUnique.mockResolvedValue({
         id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1', activeSessionFamilyId: 'old-family',
       });
-      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published' });
+      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
       prisma.candidateRefreshToken.updateMany.mockResolvedValue({});
       prisma.attempt.findUnique.mockResolvedValue(null);
       prisma.candidateRefreshToken.create.mockResolvedValue({});
@@ -141,7 +175,7 @@ describe('CandidateAuthService', () => {
       prisma.invitation.findUnique.mockResolvedValue({
         id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1', activeSessionFamilyId: 'old-family',
       });
-      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published' });
+      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
       prisma.candidateRefreshToken.updateMany.mockResolvedValue({});
       prisma.attempt.findUnique.mockResolvedValue({ id: 'attempt-1' });
       prisma.proctoringEvent.create.mockResolvedValue({});
@@ -160,7 +194,7 @@ describe('CandidateAuthService', () => {
         id: 'inv-1', candidateId: 'cand-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000),
         examId: 'exam-1', activeSessionFamilyId: 'old-family',
       });
-      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published' });
+      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
       prisma.candidateRefreshToken.updateMany.mockResolvedValue({});
       prisma.attempt.findUnique.mockResolvedValue({ id: 'attempt-1' });
       prisma.proctoringEvent.create.mockResolvedValue({ occurredAt: new Date('2026-07-09T00:00:00Z') });
@@ -179,7 +213,7 @@ describe('CandidateAuthService', () => {
       prisma.invitation.findUnique.mockResolvedValue({
         id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1', activeSessionFamilyId: null,
       });
-      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published' });
+      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
       prisma.candidateRefreshToken.create.mockResolvedValue({});
       prisma.invitation.update.mockResolvedValue({});
 

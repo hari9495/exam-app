@@ -17,7 +17,7 @@ import { UpdateSmtpSettingsDto } from './dto/update-smtp-settings.dto';
 import { UpdateAiKeyDto } from './dto/update-ai-key.dto';
 import { UpdateWebhookUrlDto } from './dto/update-webhook-url.dto';
 import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
-import { UpdateOrganizationDto } from './dto/update-organization.dto';
+import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update-organization.dto';
 
 export interface BrandingResponse {
   // The organisation's own display name. Consumers render this in place of the
@@ -212,6 +212,37 @@ export class OrganizationsService {
 
     // Re-enrich rather than padding the response with zeros: a caller reading
     // userCount off this response would otherwise get a fabricated number.
+    const [item] = await this.enrichForList([updated]);
+    return item;
+  }
+
+  async setStatus(actorUserId: string, id: string, status: 'active' | 'suspended'): Promise<OrganizationListItem> {
+    const existing = await this.prisma.organization.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException(`Organization ${id} not found`);
+    }
+    // Reactivating a deleted organization through the suspend endpoint would be
+    // a silent undelete that bypasses whatever restore flow we eventually build.
+    if (existing.status === 'deleted') {
+      throw new ConflictException('This organization has been deleted');
+    }
+
+    const updated = await this.prisma.organization.update({
+      where: { id },
+      data: { status },
+      select: ORGANIZATION_LIST_SELECT,
+    });
+
+    await this.audit.record(
+      { organizationId: id, isSuperAdmin: true },
+      {
+        actorUserId,
+        action: status === 'suspended' ? 'platform.organization_suspended' : 'platform.organization_reactivated',
+        entityType: 'organization',
+        entityId: id,
+      },
+    );
+
     const [item] = await this.enrichForList([updated]);
     return item;
   }

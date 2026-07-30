@@ -466,6 +466,65 @@ describe('OrganizationsService', () => {
     });
   });
 
+  describe('setStatus', () => {
+    beforeEach(() => {
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(prisma));
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.user.groupBy.mockResolvedValue([]);
+      prisma.exam.groupBy.mockResolvedValue([]);
+    });
+
+    it('suspends an organization and audits it', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', status: 'active' });
+      prisma.organization.update.mockResolvedValue({
+        id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', status: 'suspended', createdAt: new Date('2026-01-01'),
+      });
+
+      const result = await service.setStatus('actor-1', 'org-1', 'suspended');
+
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { status: 'suspended' },
+        select: expect.objectContaining({ status: true }),
+      });
+      expect(result.status).toBe('suspended');
+      expect(audit.record).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: true },
+        { actorUserId: 'actor-1', action: 'platform.organization_suspended', entityType: 'organization', entityId: 'org-1' },
+      );
+    });
+
+    it('records a distinct audit action when reactivating', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', status: 'suspended' });
+      prisma.organization.update.mockResolvedValue({
+        id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', status: 'active', createdAt: new Date('2026-01-01'),
+      });
+
+      await service.setStatus('actor-1', 'org-1', 'active');
+
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ action: 'platform.organization_reactivated' }),
+      );
+    });
+
+    it('refuses to reactivate a deleted organization', async () => {
+      // Reactivating through this endpoint would be a silent undelete that
+      // bypasses whatever restore flow we eventually build.
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', status: 'deleted' });
+
+      await expect(service.setStatus('actor-1', 'org-1', 'active')).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFound for an unknown organization', async () => {
+      prisma.organization.findUnique.mockResolvedValue(null);
+
+      await expect(service.setStatus('actor-1', 'nope', 'suspended')).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getBranding', () => {
     it('returns null logoUrl/colors for an org with nothing set', async () => {
       prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme Corp', logoPath: null, primaryColor: null, accentColor: null });

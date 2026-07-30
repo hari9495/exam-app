@@ -18,3 +18,10 @@ export class UpdateOrganizationDto {
   @IsIn(['us', 'eu'])
   region?: string;
 }
+
+export class UpdateOrganizationStatusDto {
+  // 'deleted' is deliberately not accepted here -- deletion goes through
+  // DELETE /organizations/:id, which carries a live-exam guard this does not.
+  @IsIn(['active', 'suspended'])
+  status!: 'active' | 'suspended';
+}
