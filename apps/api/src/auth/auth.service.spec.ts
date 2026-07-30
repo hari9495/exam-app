@@ -445,4 +445,21 @@ describe('AuthService', () => {
       await expect(service.impersonate({ userId: 'admin1', organizationId: 'orgA', role: 'org_admin', impersonatorUserId: 'x' }, 'target1')).rejects.toThrow(BadRequestException);
     });
   });
+
+  describe('recordImpersonationStop', () => {
+    it('records user.impersonate_stop under the target user\'s org, matching where impersonate_start was filed', async () => {
+      tenantPrisma.forTenant.mockResolvedValue({ organizationId: 'orgA' });
+
+      await service.recordImpersonationStop('admin1', 'target1');
+
+      expect(tenantPrisma.forTenant).toHaveBeenCalledWith(
+        { organizationId: null, isSuperAdmin: true },
+        expect.any(Function),
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        { organizationId: 'orgA', isSuperAdmin: true },
+        { actorUserId: 'admin1', action: 'user.impersonate_stop', entityType: 'user', entityId: 'target1' },
+      );
+    });
+  });
 });

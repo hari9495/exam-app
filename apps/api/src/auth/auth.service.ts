@@ -319,8 +319,16 @@ export class AuthService {
   }
 
   async recordImpersonationStop(impersonatorUserId: string, targetUserId: string): Promise<void> {
-    await this.audit.record(
+    // Look up the target's org so the stop event lands in the same audit scope as the
+    // start event (filed under target.organizationId in impersonate() above). Routed
+    // through forTenant's super_admin bypass since this method only receives user ids,
+    // not a tenant context to query users with.
+    const target = await this.tenantPrisma.forTenant(
       { organizationId: null, isSuperAdmin: true },
+      (tx) => tx.user.findUnique({ where: { id: targetUserId }, select: { organizationId: true } }),
+    );
+    await this.audit.record(
+      { organizationId: target?.organizationId ?? null, isSuperAdmin: true },
       { actorUserId: impersonatorUserId, action: 'user.impersonate_stop', entityType: 'user', entityId: targetUserId },
     );
   }

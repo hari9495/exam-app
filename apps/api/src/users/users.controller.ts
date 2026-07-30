@@ -88,8 +88,8 @@ export class UsersController {
 
   @Patch(':id')
   @RequirePermissions('org:manage_users')
-  update(@CurrentTenant() tenant: TenantContext, @Param('id') id: string, @Body() dto: UpdateUserDto) {
-    return this.usersService.update(tenant, id, dto);
+  update(@CurrentTenant() tenant: TenantContext, @Param('id') id: string, @Body() dto: UpdateUserDto, @CurrentUserId() userId: string) {
+    return this.usersService.update(tenant, id, dto, userId);
   }
 
   @Post(':id/deactivate')

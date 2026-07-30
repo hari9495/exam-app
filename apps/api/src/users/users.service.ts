@@ -131,7 +131,7 @@ export class UsersService {
     );
   }
 
-  async update(context: TenantContext, targetUserId: string, dto: UpdateUserDto): Promise<SafeUser> {
+  async update(context: TenantContext, targetUserId: string, dto: UpdateUserDto, actorUserId: string): Promise<SafeUser> {
     if (!context.organizationId) {
       throw new BadRequestException('A user must be updated within an organization');
     }
@@ -155,7 +155,7 @@ export class UsersService {
         select: SAFE_USER_SELECT,
       });
       await this.audit.record(context, {
-        actorUserId: null,
+        actorUserId,
         action: 'user.updated',
         entityType: 'user',
         entityId: targetUserId,

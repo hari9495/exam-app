@@ -454,22 +454,22 @@ describe('UsersService', () => {
         },
       };
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
-      const result = await service.update(ctx, 't1', { role: 'panel', name: 'Al' });
+      const result = await service.update(ctx, 't1', { role: 'panel', name: 'Al' }, 'admin1');
       expect(result.role).toBe('panel');
       expect(tx.user.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 't1' }, data: { role: 'panel', name: 'Al' } }));
-      expect(audit.record).toHaveBeenCalledWith(ctx, expect.objectContaining({ action: 'user.updated', entityId: 't1' }));
+      expect(audit.record).toHaveBeenCalledWith(ctx, expect.objectContaining({ action: 'user.updated', entityId: 't1', actorUserId: 'admin1' }));
     });
 
     it('refuses to modify a super_admin target', async () => {
       const tx = { user: { findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'super_admin', organizationId: null }) } };
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
-      await expect(service.update(ctx, 't1', { name: 'x' })).rejects.toThrow(ForbiddenException);
+      await expect(service.update(ctx, 't1', { name: 'x' }, 'admin1')).rejects.toThrow(ForbiddenException);
     });
 
     it('throws NotFound when the target is out of scope', async () => {
       const tx = { user: { findFirst: jest.fn().mockResolvedValue(null) } };
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
-      await expect(service.update(ctx, 'nope', { name: 'x' })).rejects.toThrow(NotFoundException);
+      await expect(service.update(ctx, 'nope', { name: 'x' }, 'admin1')).rejects.toThrow(NotFoundException);
     });
 
     it('updates only name without clobbering role when role is omitted', async () => {
@@ -480,7 +480,7 @@ describe('UsersService', () => {
         },
       };
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
-      await service.update(ctx, 't1', { name: 'X' });
+      await service.update(ctx, 't1', { name: 'X' }, 'admin1');
       expect(tx.user.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 't1' }, data: { name: 'X' } }));
     });
   });
