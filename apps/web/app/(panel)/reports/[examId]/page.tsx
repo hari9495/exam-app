@@ -24,36 +24,9 @@ import {
   type StatusTone,
 } from '../../../../components/ui';
 import { ExamResultRow, QuestionAccuracyRow } from '../../../../lib/types';
+import { RESULT_STATUS_LABEL, RESULT_STATUS_TONE } from '../../../../lib/candidate-status';
 
 const PASS_FAIL_TONE: Record<string, StatusTone> = { pass: 'success', fail: 'danger' };
-
-// The candidate's raw attempt/invitation status ('pending_manual_grade', 'submitted', ...) --
-// same underlying values as the Candidates and Live tabs, kept distinct here (not collapsed
-// to a 3-stage bucket) since a recruiter reading results specifically cares which kind of
-// settlement a candidate got.
-const RESULT_STATUS_LABEL: Record<string, string> = {
-  invited: 'Invited',
-  revoked: 'Revoked',
-  in_progress: 'In Progress',
-  paused: 'Paused',
-  blocked: 'Blocked',
-  pending_manual_grade: 'Pending Grade',
-  submitted: 'Submitted',
-  auto_submitted: 'Auto-submitted',
-  force_submitted: 'Force-submitted',
-};
-
-const RESULT_STATUS_TONE: Record<string, StatusTone> = {
-  invited: 'info',
-  revoked: 'danger',
-  in_progress: 'warning',
-  paused: 'neutral',
-  blocked: 'danger',
-  pending_manual_grade: 'warning',
-  submitted: 'success',
-  auto_submitted: 'success',
-  force_submitted: 'danger',
-};
 
 const INTEGRITY_FILTER_OPTIONS = [
   { value: 'all', label: 'All integrity levels' },

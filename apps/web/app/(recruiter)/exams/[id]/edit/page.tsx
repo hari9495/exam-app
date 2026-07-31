@@ -9,6 +9,7 @@ import { LiveMonitoringPanel } from '../../../../../components/LiveMonitoringPan
 import { GradingQueuePanel } from '../../../../../components/GradingQueuePanel';
 import { LeaderboardPanel } from '../../../../../components/LeaderboardPanel';
 import { CandidatesPanel } from '../../../../../components/CandidatesPanel';
+import { ExamResultsPanel } from '../../../../../components/ExamResultsPanel';
 import { useExam, useUpdateExam, usePublishExam, useUnpublishExam } from '../../../../../lib/hooks/useExams';
 import { useExamMonitoring } from '../../../../../lib/hooks/useExamMonitoring';
 import { useAttentionNotifications } from '../../../../../lib/hooks/useAttentionNotifications';
@@ -117,6 +118,7 @@ export default function EditExamPage() {
           <TabsTrigger value="sections">Sections &amp; Questions</TabsTrigger>
           <TabsTrigger value="candidates">Candidates</TabsTrigger>
           <TabsTrigger value="live">Live{flagged.size > 0 ? ` (${flagged.size})` : ''}</TabsTrigger>
+          <TabsTrigger value="results">Results</TabsTrigger>
           <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
           {/* Grading only ever does anything for code questions -- every other type
               auto-grades. Hidden rather than shown empty for an exam that can't
@@ -155,6 +157,9 @@ export default function EditExamPage() {
             notificationPermission={notifications.permission}
             onEnableNotifications={notifications.requestPermission}
           />
+        </TabsContent>
+        <TabsContent value="results">
+          <ExamResultsPanel examId={exam.id} />
         </TabsContent>
         <TabsContent value="leaderboard">
           <LeaderboardPanel leaderboard={monitoring.leaderboard} />
