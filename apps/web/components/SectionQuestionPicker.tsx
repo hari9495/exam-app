@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { Search } from 'lucide-react';
 import { useQuestions } from '../lib/hooks/useQuestions';
 import { useReplaceSectionQuestions } from '../lib/hooks/useExamSections';
-import { Modal, Checkbox, Button, Badge, Input, useToast } from '../components/ui';
+import { Modal, Checkbox, Button, Badge, Input, Select, useToast } from '../components/ui';
+import { DIFFICULTY_LABEL } from '../lib/question-display';
 import { Question, QuestionType, Difficulty } from '../lib/types';
 
 interface SectionQuestionPickerProps {
@@ -28,6 +29,16 @@ const DIFFICULTY_VARIANT: Record<Difficulty, 'success' | 'warning' | 'danger'> =
   hard: 'danger',
 };
 
+const TYPE_OPTIONS = [
+  { value: 'all', label: 'All types' },
+  ...(Object.keys(TYPE_LABELS) as QuestionType[]).map((value) => ({ value, label: TYPE_LABELS[value] })),
+];
+
+const DIFFICULTY_OPTIONS = [
+  { value: 'all', label: 'All difficulties' },
+  ...(Object.keys(DIFFICULTY_LABEL) as Difficulty[]).map((value) => ({ value, label: DIFFICULTY_LABEL[value] })),
+];
+
 // The searchable haystack for one question: its text plus the metadata a
 // recruiter would actually type to find it (topic, category, tag names).
 function matchesQuery(question: Question, query: string): boolean {
@@ -43,6 +54,12 @@ function matchesQuery(question: Question, query: string): boolean {
   return haystack.includes(query.toLowerCase());
 }
 
+function matchesFilters(question: Question, typeFilter: string, difficultyFilter: string): boolean {
+  if (typeFilter !== 'all' && question.type !== typeFilter) return false;
+  if (difficultyFilter !== 'all' && question.difficulty !== difficultyFilter) return false;
+  return true;
+}
+
 export function SectionQuestionPicker({ examId, sectionId, open, onClose, existingQuestionIds }: SectionQuestionPickerProps) {
   // ponytail: pageSize:100 is the server's max -- an org with >100 active
   // questions silently can't attach #101+ here. Upgrade path: replace with a
@@ -54,16 +71,20 @@ export function SectionQuestionPicker({ examId, sectionId, open, onClose, existi
   // and merged back in at save time, so this list never carries them.
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [query, setQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [difficultyFilter, setDifficultyFilter] = useState('all');
   const { toast } = useToast();
 
-  // Reset picks and search only when the picker opens or targets a different
-  // section -- not on every parent re-render (a background exam refetch gives
-  // existingQuestionIds a fresh identity each time and would otherwise wipe
-  // an in-progress selection mid-scroll).
+  // Reset picks, search, and filters only when the picker opens or targets a
+  // different section -- not on every parent re-render (a background exam
+  // refetch gives existingQuestionIds a fresh identity each time and would
+  // otherwise wipe an in-progress selection mid-scroll).
   useEffect(() => {
     if (open) {
       setSelectedIds([]);
       setQuery('');
+      setTypeFilter('all');
+      setDifficultyFilter('all');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, sectionId]);
@@ -75,7 +96,11 @@ export function SectionQuestionPicker({ examId, sectionId, open, onClose, existi
     () => (allQuestions ?? []).filter((q) => !existingSet.has(q.id)),
     [allQuestions, existingSet],
   );
-  const visible = useMemo(() => addable.filter((q) => matchesQuery(q, query)), [addable, query]);
+  const visible = useMemo(
+    () => addable.filter((q) => matchesQuery(q, query) && matchesFilters(q, typeFilter, difficultyFilter)),
+    [addable, query, typeFilter, difficultyFilter],
+  );
+  const filtersActive = query.trim() !== '' || typeFilter !== 'all' || difficultyFilter !== 'all';
 
   function toggle(id: string, checked: boolean) {
     setSelectedIds((current) => (checked ? [...current, id] : current.filter((existing) => existing !== id)));
@@ -121,15 +146,21 @@ export function SectionQuestionPicker({ examId, sectionId, open, onClose, existi
         <p className="text-sm text-recruiter-text-secondary">No questions yet. Add questions to your question bank first.</p>
       ) : (
         <div className="flex flex-col gap-3">
-          <Input
-            label="Search questions"
-            hideLabel
-            type="search"
-            placeholder="Search by text, topic, category, or tag…"
-            value={query}
-            onChange={setQuery}
-            icon={<Search size={16} />}
-          />
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="min-w-[16rem] flex-1">
+              <Input
+                label="Search questions"
+                hideLabel
+                type="search"
+                placeholder="Search by text, topic, category, or tag…"
+                value={query}
+                onChange={setQuery}
+                icon={<Search size={16} />}
+              />
+            </div>
+            <Select label="Type" value={typeFilter} onChange={setTypeFilter} options={TYPE_OPTIONS} />
+            <Select label="Difficulty" value={difficultyFilter} onChange={setDifficultyFilter} options={DIFFICULTY_OPTIONS} />
+          </div>
 
           {allAlreadyAdded ? (
             <p className="py-6 text-center text-sm text-recruiter-text-secondary">
@@ -137,7 +168,7 @@ export function SectionQuestionPicker({ examId, sectionId, open, onClose, existi
             </p>
           ) : visible.length === 0 ? (
             <p className="py-6 text-center text-sm text-recruiter-text-secondary">
-              No questions match “{query}”.
+              {filtersActive ? 'No questions match your search and filters.' : 'No questions to add.'}
             </p>
           ) : (
             <ul className="flex flex-col divide-y divide-recruiter-border">

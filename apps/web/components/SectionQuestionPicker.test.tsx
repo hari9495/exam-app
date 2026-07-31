@@ -131,6 +131,54 @@ describe('SectionQuestionPicker', () => {
     expect(screen.getByText('Prime numbers')).toBeInTheDocument();
   });
 
+  it('filters the list by type and by difficulty', async () => {
+    const question = (overrides: Partial<{ id: string; text: string; type: string; difficulty: string }>) => ({
+      id: 'q', type: 'single_mcq', text: 'text', topic: null, category: null, difficulty: 'easy',
+      marks: 5, negativeMarks: 0, status: 'active', aiGenerated: false, createdAt: '2026-01-01T00:00:00.000Z', options: [],
+      ...overrides,
+    });
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      if (String(url).includes('/questions')) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              question({ id: 'q-1', text: 'Reverse a string', type: 'code', difficulty: 'hard' }),
+              question({ id: 'q-2', text: 'Prime numbers', type: 'single_mcq', difficulty: 'easy' }),
+            ],
+            total: 2, page: 1, pageSize: 100, totalPages: 1,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <SectionQuestionPicker examId="exam-1" sectionId="s-1" open onClose={() => {}} existingQuestionIds={[]} />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Reverse a string')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Type' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Coding' }));
+    expect(screen.getByText('Reverse a string')).toBeInTheDocument();
+    expect(screen.queryByText('Prime numbers')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Type' }));
+    await userEvent.click(screen.getByRole('option', { name: 'All types' }));
+    await userEvent.click(screen.getByRole('combobox', { name: 'Difficulty' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Easy' }));
+    expect(screen.queryByText('Reverse a string')).not.toBeInTheDocument();
+    expect(screen.getByText('Prime numbers')).toBeInTheDocument();
+  });
+
   it('shows an empty-bank message and blocks saving when there are no questions to pick from', async () => {
     const fetchMock = jest.fn(async (url) => {
       if (String(url).endsWith('/auth/refresh')) {
