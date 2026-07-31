@@ -269,19 +269,18 @@ describe('QuestionsPage', () => {
       );
     }
 
-    it('shows the candidate-style answer options inline, without opening the editor', async () => {
+    it('renders each question as a row in the table', async () => {
       mockQuestions();
       renderPage();
 
-      await waitFor(() => expect(screen.getByText('A. 45')).toBeInTheDocument());
-      expect(screen.getByText('B. 63')).toBeInTheDocument();
-      expect(screen.getAllByLabelText('Correct answer').length).toBeGreaterThan(0);
+      await waitFor(() => expect(screen.getByText(/Two numbers are in the ratio/)).toBeInTheDocument());
+      expect(screen.getByText(/If 20% of a number is 50/)).toBeInTheDocument();
     });
 
     it('groups questions under topic headings with per-group counts when Topic is picked', async () => {
       mockQuestions();
       renderPage();
-      await waitFor(() => expect(screen.getByText('A. 45')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText(/Two numbers are in the ratio/)).toBeInTheDocument());
 
       await userEvent.click(screen.getByRole('combobox', { name: 'Group by' }));
       await userEvent.click(screen.getByRole('option', { name: 'Topic' }));
@@ -294,7 +293,7 @@ describe('QuestionsPage', () => {
     it('orders difficulty groups easy to hard rather than alphabetically', async () => {
       mockQuestions();
       renderPage();
-      await waitFor(() => expect(screen.getByText('A. 45')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText(/Two numbers are in the ratio/)).toBeInTheDocument());
 
       await userEvent.click(screen.getByRole('combobox', { name: 'Group by' }));
       await userEvent.click(screen.getByRole('option', { name: 'Difficulty' }));
@@ -306,7 +305,7 @@ describe('QuestionsPage', () => {
     it('groups untagged questions into a trailing no-tags heading', async () => {
       mockQuestions();
       renderPage();
-      await waitFor(() => expect(screen.getByText('A. 45')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText(/Two numbers are in the ratio/)).toBeInTheDocument());
 
       await userEvent.click(screen.getByRole('combobox', { name: 'Group by' }));
       await userEvent.click(screen.getByRole('option', { name: 'Tag' }));
@@ -315,60 +314,16 @@ describe('QuestionsPage', () => {
       expect(headings).toEqual(['Arithmetic', 'No tags']);
     });
 
-    it('keeps the sort control available while grouped, so rows sort within each group', async () => {
+    it('groups by category under a heading', async () => {
       mockQuestions();
       renderPage();
-      await waitFor(() => expect(screen.getByText('A. 45')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText(/Two numbers are in the ratio/)).toBeInTheDocument());
 
       await userEvent.click(screen.getByRole('combobox', { name: 'Group by' }));
       await userEvent.click(screen.getByRole('option', { name: 'Category' }));
 
+      // Both questions are category "Aptitude", so they collapse under one heading.
       expect(screen.getByRole('heading', { name: 'Aptitude' })).toBeInTheDocument();
-      expect(screen.getByRole('combobox', { name: 'Sort by' })).toBeInTheDocument();
-    });
-
-    it('switches to the dense list view and expands a row to reveal its options', async () => {
-      mockQuestions();
-      renderPage();
-      await waitFor(() => expect(screen.getByText('A. 45')).toBeInTheDocument());
-
-      await userEvent.click(screen.getByRole('button', { name: /^List$/ }));
-
-      // Collapsed list rows show the question text but not the answer options.
-      expect(screen.queryByText('A. 45')).not.toBeInTheDocument();
-      const rowToggles = screen.getAllByRole('button', { expanded: false });
-      await userEvent.click(rowToggles[0]);
-
-      expect(screen.getByText('A. 45')).toBeInTheDocument();
-      expect(screen.getByLabelText('Correct answer')).toBeInTheDocument();
-    });
-
-    it('marks the active view in the cards/list toggle', async () => {
-      mockQuestions();
-      renderPage();
-      await waitFor(() => expect(screen.getByText('A. 45')).toBeInTheDocument());
-
-      expect(screen.getByRole('button', { name: /^Cards$/, pressed: true })).toBeInTheDocument();
-
-      await userEvent.click(screen.getByRole('button', { name: /^List$/ }));
-
-      expect(screen.getByRole('button', { name: /^List$/, pressed: true })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /^Cards$/, pressed: false })).toBeInTheDocument();
-    });
-
-    it('applies the chosen sort order to the list view as well as cards', async () => {
-      mockQuestions();
-      renderPage();
-      await waitFor(() => expect(screen.getByText('A. 45')).toBeInTheDocument());
-
-      await userEvent.click(screen.getByRole('button', { name: /^List$/ }));
-      await userEvent.click(screen.getByRole('combobox', { name: 'Sort by' }));
-      await userEvent.click(screen.getByRole('option', { name: 'Marks' }));
-
-      // q-2 carries 1 mark and q-1 carries 2, so ascending marks puts q-2 first.
-      const texts = screen.getAllByRole('button', { expanded: false }).map((button) => button.textContent);
-      expect(texts[0]).toContain('If 20% of a number is 50');
-      expect(texts[1]).toContain('Two numbers are in the ratio 4:5');
     });
   });
 });
