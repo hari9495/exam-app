@@ -207,6 +207,23 @@ export class SamlStrategy implements OnModuleInit {
       // works at all.
       wantAssertionsSigned: true,
       wantAuthnResponseSigned: false,
+      // node-saml defaults to sending RequestedAuthnContext =
+      // PasswordProtectedTransport with Comparison="exact", i.e. it demands the
+      // IdP authenticate the user with a PASSWORD specifically. Entra rejects
+      // that outright for anyone who signed in with a passkey, Windows Hello or
+      // any MFA method:
+      //
+      //   AADSTS75011: Authentication method 'MultiFactor, Fido' by which the
+      //   user authenticated with the service doesn't match requested
+      //   authentication method 'Password, ProtectedTransport'.
+      //
+      // Which is backwards -- a passkey is STRONGER than a password, and we
+      // were refusing it while accepting the weaker method. How a user proves
+      // who they are is the IdP's policy domain (Conditional Access, MFA
+      // rules, phishing-resistant credentials), not this SP's. Dropping the
+      // demand lets the IdP apply whatever policy the tenant has configured,
+      // and the assertion still has to be signed and issuer-checked either way.
+      disableRequestedAuthnContext: true,
     };
   }
 

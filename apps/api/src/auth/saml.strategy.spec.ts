@@ -12,6 +12,45 @@ describe('SamlStrategy', () => {
   });
 
   describe('resolveOrgSamlConfig', () => {
+    it('does not demand a password-based authentication context, so passkeys and MFA work', async () => {
+      // node-saml otherwise sends RequestedAuthnContext =
+      // PasswordProtectedTransport with Comparison="exact", and Entra rejects
+      // anyone who signed in with a passkey / Windows Hello / MFA:
+      //   AADSTS75011: Authentication method 'MultiFactor, Fido' ... doesn't
+      //   match requested authentication method 'Password, ProtectedTransport'
+      // Password login worked, stronger credentials did not.
+      prisma.organization.findUnique.mockResolvedValue({
+        id: 'org-1',
+        samlEnabled: true,
+        samlIdpEntityId: 'https://idp.example.com/entity',
+        samlIdpSsoUrl: 'https://idp.example.com/sso',
+        samlIdpCertificate: '-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----',
+      });
+
+      const config = await strategy.resolveOrgSamlConfig('acme');
+
+      expect(config.disableRequestedAuthnContext).toBe(true);
+      // and we must not reintroduce the demand by another name
+      expect(config.authnContext).toBeUndefined();
+    });
+
+    it('still requires the assertion to be signed while relaxing the auth context', async () => {
+      // Relaxing HOW the IdP authenticates must not relax whether we trust the
+      // response. The signature and issuer checks are the security boundary.
+      prisma.organization.findUnique.mockResolvedValue({
+        id: 'org-1',
+        samlEnabled: true,
+        samlIdpEntityId: 'https://idp.example.com/entity',
+        samlIdpSsoUrl: 'https://idp.example.com/sso',
+        samlIdpCertificate: '-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----',
+      });
+
+      const config = await strategy.resolveOrgSamlConfig('acme');
+
+      expect(config.wantAssertionsSigned).toBe(true);
+      expect(config.validateInResponseTo).toBe('always');
+    });
+
     it('builds SAML options from the org row when SSO is enabled', async () => {
       prisma.organization.findUnique.mockResolvedValue({
         id: 'org-1',
