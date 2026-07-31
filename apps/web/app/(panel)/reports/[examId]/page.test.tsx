@@ -228,5 +228,33 @@ describe('PanelExamResultsPage', () => {
       expect(screen.queryByText('Alice')).not.toBeInTheDocument();
       expect(screen.getByText('Bob')).toBeInTheDocument();
     });
+
+    it('filters the question accuracy rows by question text as the recruiter types', async () => {
+      (useQuestionAccuracy as jest.Mock).mockReturnValue({ data: accuracyRows, isLoading: false });
+      renderPage();
+
+      await userEvent.click(screen.getByRole('tab', { name: /Question accuracy/ }));
+      await screen.findByText('Which collection is synchronized?');
+
+      await userEvent.type(screen.getByPlaceholderText(/search questions/i), 'synonym');
+
+      expect(screen.queryByText('Which collection is synchronized?')).not.toBeInTheDocument();
+      expect(screen.getByText('Choose the correct synonym for Enhance:')).toBeInTheDocument();
+    });
+
+    it('filters the question accuracy rows by accuracy bucket', async () => {
+      (useQuestionAccuracy as jest.Mock).mockReturnValue({ data: accuracyRows, isLoading: false });
+      renderPage();
+
+      await userEvent.click(screen.getByRole('tab', { name: /Question accuracy/ }));
+      await screen.findByText('Which collection is synchronized?');
+
+      // q1 is 0% (low), q2 is 50% (medium).
+      await userEvent.click(screen.getByRole('combobox', { name: 'Accuracy' }));
+      await userEvent.click(screen.getByRole('option', { name: /Low accuracy/ }));
+
+      expect(screen.getByText('Which collection is synchronized?')).toBeInTheDocument();
+      expect(screen.queryByText('Choose the correct synonym for Enhance:')).not.toBeInTheDocument();
+    });
   });
 });
