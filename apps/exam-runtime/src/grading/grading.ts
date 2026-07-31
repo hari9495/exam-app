@@ -57,3 +57,13 @@ export function computeRemainingSeconds(
   const now = frozenAt ? frozenAt.getTime() : Date.now();
   return Math.max(0, Math.round((deadline - now) / 1000));
 }
+
+// Elapsed ACTIVE time -- the complement of computeRemainingSeconds: pausedDurationMs
+// (grace already banked from a completed pause-resume cycle) is subtracted here
+// rather than added, since it was never actually spent working. frozenAt pins the
+// measurement to a specific moment (submittedAt, or pausedAt while paused/blocked);
+// omit it for an in-progress attempt to measure up to now.
+export function computeElapsedSeconds(startedAt: Date, pausedDurationMs = 0, frozenAt: Date | null = null): number {
+  const now = frozenAt ? frozenAt.getTime() : Date.now();
+  return Math.max(0, Math.round((now - new Date(startedAt).getTime() - pausedDurationMs) / 1000));
+}

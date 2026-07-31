@@ -156,7 +156,11 @@ describe('MonitoringGateway', () => {
       const roster = [{ candidateId: 'cand-1' }];
       monitoring.getRosterSnapshot.mockResolvedValue(roster);
       monitoring.getRecentAlerts.mockRejectedValue(new Error('db hiccup'));
-      const leaderboardSnapshot = [{ rank: 1, candidateId: 'cand-1', candidateName: 'Alice', correctCount: 2 }];
+      const leaderboardSnapshot = [{
+        rank: 1, candidateId: 'cand-1', candidateName: 'Alice', correctCount: 2,
+        totalAutoGradableQuestions: 3, status: 'submitted', timeTakenSeconds: 120, remainingSeconds: null,
+        score: 8, maxScore: 10, percentage: 80, passFail: 'pass', percentile: 90,
+      }];
       leaderboardService.computeRecruiterView.mockResolvedValue(leaderboardSnapshot);
 
       await expect(gateway.handleJoinExam(socket, { examId: 'exam-1' })).resolves.not.toThrow();
@@ -171,12 +175,15 @@ describe('MonitoringGateway', () => {
     it('emits leaderboard:update to the exam room', () => {
       (gateway as any).server = { to: jest.fn().mockReturnThis(), emit: jest.fn() };
 
-      gateway.emitLeaderboardUpdate('exam-1', [{ rank: 1, candidateId: 'cand-1', candidateName: 'Alice', correctCount: 3 }]);
+      const row = {
+        rank: 1, candidateId: 'cand-1', candidateName: 'Alice', correctCount: 3,
+        totalAutoGradableQuestions: 5, status: 'submitted', timeTakenSeconds: 300, remainingSeconds: null,
+        score: 9, maxScore: 10, percentage: 90, passFail: 'pass', percentile: 95,
+      };
+      gateway.emitLeaderboardUpdate('exam-1', [row]);
 
       expect((gateway as any).server.to).toHaveBeenCalledWith('exam:exam-1');
-      expect((gateway as any).server.emit).toHaveBeenCalledWith('leaderboard:update', [
-        { rank: 1, candidateId: 'cand-1', candidateName: 'Alice', correctCount: 3 },
-      ]);
+      expect((gateway as any).server.emit).toHaveBeenCalledWith('leaderboard:update', [row]);
     });
   });
 

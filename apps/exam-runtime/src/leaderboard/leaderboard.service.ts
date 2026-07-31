@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { TenantPrismaService, TenantContext } from '@exam-platform/shared';
+import { computeRemainingSeconds, computeElapsedSeconds, effectiveDurationMinutes } from '../grading/grading';
 
 export const AUTO_GRADABLE_QUESTION_TYPES = ['single_mcq', 'multi_mcq', 'true_false'];
+// Statuses that mean the clock has stopped for good -- everything else (in_progress,
+// paused, blocked) still has a live remaining-time figure.
+const FINISHED_ATTEMPT_STATUSES = ['submitted', 'auto_submitted', 'force_submitted', 'pending_manual_grade'];
 const TOP_N = 30;
 
 export interface LeaderboardEntry {
@@ -9,6 +13,14 @@ export interface LeaderboardEntry {
   invitationId: string;
   candidateId: string;
   correctCount: number;
+  totalAutoGradableQuestions: number;
+  status: string;
+  timeTakenSeconds: number;
+  remainingSeconds: number | null;
+  score: number | null;
+  maxScore: number | null;
+  percentage: number | null;
+  passFail: string | null;
   rank: number;
 }
 
@@ -17,6 +29,17 @@ export interface RecruiterLeaderboardRow {
   candidateId: string;
   candidateName: string;
   correctCount: number;
+  totalAutoGradableQuestions: number;
+  status: string;
+  timeTakenSeconds: number;
+  remainingSeconds: number | null;
+  score: number | null;
+  maxScore: number | null;
+  percentage: number | null;
+  passFail: string | null;
+  /** "Scored better than N% of participants", 0-100, computed from rank among ALL
+   *  entries (not just the top-30 slice this row is drawn from). */
+  percentile: number;
 }
 
 export interface CandidateLeaderboardRow {
@@ -78,8 +101,12 @@ export class LeaderboardService {
 
   private async computeUncached(context: TenantContext, examId: string): Promise<LeaderboardEntry[]> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
-      const attempts = await tx.attempt.findMany({ where: { examId }, include: { answers: true } });
-      if (attempts.length === 0) {
+      const exam = await tx.exam.findFirst({ where: { id: examId }, select: { durationMinutes: true } });
+      const attempts = await tx.attempt.findMany({
+        where: { examId },
+        include: { answers: true, result: true, invitation: { select: { extraTimePercent: true } } },
+      });
+      if (!exam || attempts.length === 0) {
         return [];
       }
 
@@ -100,10 +127,12 @@ export class LeaderboardService {
         const questionIds: string[] = JSON.parse(attempt.questionOrderJson);
         const answersByQuestionId = new Map(attempt.answers.map((answer) => [answer.questionId, answer]));
         let correctCount = 0;
+        let totalAutoGradableQuestions = 0;
         let latestCorrectAnsweredAt: Date | null = null;
         for (const questionId of questionIds) {
           const question = questionsById.get(questionId);
           if (!question) continue;
+          totalAutoGradableQuestions += 1;
           const answer = answersByQuestionId.get(questionId);
           if (!answer) continue;
           const selectedOptionIds: string[] = JSON.parse(answer.selectedOptionIdsJson);
@@ -115,11 +144,37 @@ export class LeaderboardService {
             }
           }
         }
+
+        const isPaused = attempt.status === 'paused' || attempt.status === 'blocked';
+        const isFinished = FINISHED_ATTEMPT_STATUSES.includes(attempt.status);
+        // Same freeze point the recruiter's Live tab already uses (pausedAt while
+        // paused/blocked), extended with submittedAt once finished, so "time taken"
+        // stops advancing the moment the attempt actually stopped rather than
+        // continuing to tick against a leaderboard nobody is updating anymore.
+        const frozenAt = isFinished ? attempt.submittedAt : isPaused ? attempt.pausedAt : null;
+        const timeTakenSeconds = computeElapsedSeconds(attempt.startedAt, attempt.pausedDurationMs, frozenAt);
+        const remainingSeconds = isFinished
+          ? null
+          : computeRemainingSeconds(
+              effectiveDurationMinutes(exam.durationMinutes, attempt.invitation.extraTimePercent),
+              attempt.startedAt,
+              attempt.pausedDurationMs,
+              isPaused ? attempt.pausedAt : null,
+            );
+
         return {
           attemptId: attempt.id,
           invitationId: attempt.invitationId,
           candidateId: attempt.candidateId,
           correctCount,
+          totalAutoGradableQuestions,
+          status: attempt.status,
+          timeTakenSeconds,
+          remainingSeconds,
+          score: attempt.result?.score ?? null,
+          maxScore: attempt.result?.maxScore ?? null,
+          percentage: attempt.result?.percentage ?? null,
+          passFail: attempt.result?.passFail ?? null,
           tieBreakAt: latestCorrectAnsweredAt,
         };
       });
@@ -137,10 +192,13 @@ export class LeaderboardService {
 
   async computeRecruiterView(context: TenantContext, examId: string): Promise<RecruiterLeaderboardRow[]> {
     const entries = await this.compute(context, examId);
-    const top = entries.slice(0, TOP_N);
-    if (top.length === 0) {
+    if (entries.length === 0) {
       return [];
     }
+    // Percentile is "beat N% of the field" -- the field is every attempt that has
+    // ever started, not just the top-30 slice a recruiter happens to be looking at.
+    const totalParticipants = entries.length;
+    const top = entries.slice(0, TOP_N);
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const candidates = await tx.candidate.findMany({ where: { id: { in: top.map((entry) => entry.candidateId) } } });
       const nameById = new Map(candidates.map((candidate) => [candidate.id, candidate.name]));
@@ -149,6 +207,15 @@ export class LeaderboardService {
         candidateId: entry.candidateId,
         candidateName: nameById.get(entry.candidateId) ?? 'Unknown',
         correctCount: entry.correctCount,
+        totalAutoGradableQuestions: entry.totalAutoGradableQuestions,
+        status: entry.status,
+        timeTakenSeconds: entry.timeTakenSeconds,
+        remainingSeconds: entry.remainingSeconds,
+        score: entry.score,
+        maxScore: entry.maxScore,
+        percentage: entry.percentage,
+        passFail: entry.passFail,
+        percentile: Math.round(((totalParticipants - entry.rank) / totalParticipants) * 100),
       }));
     });
   }

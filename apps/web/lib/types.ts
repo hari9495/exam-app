@@ -560,6 +560,19 @@ export interface RecruiterLeaderboardRow {
   candidateId: string;
   candidateName: string;
   correctCount: number;
+  totalAutoGradableQuestions: number;
+  status: string;
+  timeTakenSeconds: number;
+  /** Null once the attempt has finished -- there is no "time left" for it anymore. */
+  remainingSeconds: number | null;
+  /** Null until a Result exists (still in progress, or awaiting manual grading of a
+   *  code question). */
+  score: number | null;
+  maxScore: number | null;
+  percentage: number | null;
+  passFail: 'pass' | 'fail' | null;
+  /** "Scored better than N% of participants", 0-100. */
+  percentile: number;
 }
 
 export interface CandidateLeaderboardRow {
