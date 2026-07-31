@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ToastProvider } from './ui';
 import * as useAttemptModerationModule from '../lib/hooks/useAttemptModeration';
@@ -574,7 +574,9 @@ describe('LiveMonitoringPanel', () => {
         manyAlerts('a1', 200),
       );
 
-      expect(screen.getAllByText('tab_switch')).toHaveLength(50);
+      // The sidebar shows a cosmetically-formatted event label ('Tab switch'), not the
+      // raw 'tab_switch' string -- the count still confirms the render cap held.
+      expect(screen.getAllByText('Tab switch')).toHaveLength(50);
     });
 
     it("still reports a candidate's true alert count in the per-row column past the sidebar's 50-item limit", async () => {
@@ -589,7 +591,10 @@ describe('LiveMonitoringPanel', () => {
       );
 
       expect(await screen.findByText('60')).toBeInTheDocument(); // Alerts (last 5 min) tile
-      expect(await screen.findByText('70')).toBeInTheDocument(); // Integrity alerts column: the true total, not truncated to 50
+      // '70' also matches the sidebar's total-alerts count badge now, so scope to the
+      // roster table for the per-row Integrity alerts column specifically.
+      const table = await screen.findByRole('table');
+      expect(within(table).getByText('70')).toBeInTheDocument();
     });
   });
 });

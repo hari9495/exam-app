@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ShieldAlert, ShieldCheck, AlertTriangle, AlertCircle, Info } from 'lucide-react';
 import { useUnblockAttempt, useBypassProctoring, useRevokeProctoringBypass } from '../lib/hooks/useAttemptModeration';
 import { useProctoringEvents } from '../lib/hooks/useProctoringEvents';
 import { Table, Badge, Button, Card, Modal, Select, useToast, type Column } from './ui';
@@ -78,6 +79,31 @@ function formatRelativeTime(occurredAt: string): string {
   const hours = Math.floor(minutes / 60);
   return `${hours}h ago`;
 }
+
+// 'tab_switch' -> 'Tab switch'. Purely cosmetic -- the raw eventType string is
+// still what every other part of the app (exports, the proctoring log) shows.
+function formatEventType(eventType: string): string {
+  const spaced = eventType.replace(/_/g, ' ');
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+const SEVERITY_ICON: Record<string, typeof AlertTriangle> = {
+  high: AlertTriangle,
+  medium: AlertCircle,
+  low: Info,
+};
+
+const SEVERITY_BORDER: Record<string, string> = {
+  high: 'border-l-status-danger',
+  medium: 'border-l-status-warning',
+  low: 'border-l-recruiter-border',
+};
+
+const SEVERITY_ICON_COLOR: Record<string, string> = {
+  high: 'text-status-danger',
+  medium: 'text-status-warning',
+  low: 'text-recruiter-text-tertiary',
+};
 
 // metadataJson is untrusted text from a column: a malformed row must render the
 // event plainly rather than crash the recruiter's only view into what happened.
@@ -385,28 +411,51 @@ export function LiveMonitoringPanel({
               emptyMessage={statusFilter === 'all' ? 'No candidates invited yet.' : 'No candidates match this status.'}
             />
           </div>
-          <div>
-            <h3 className="mb-2 text-sm font-medium text-gray-700">Proctoring alerts</h3>
+          <Card className="flex h-fit flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <ShieldAlert size={16} className="text-recruiter-text-tertiary" />
+                <h3 className="text-sm font-semibold text-recruiter-text">Proctoring alerts</h3>
+              </div>
+              {alerts.length > 0 && (
+                <span className="rounded-full bg-recruiter-bg-subtle px-2 py-0.5 text-xs font-medium text-recruiter-text-secondary">
+                  {alerts.length}
+                </span>
+              )}
+            </div>
             {alerts.length === 0 ? (
-              <p className="text-sm text-gray-500">No proctoring alerts yet.</p>
+              <div className="flex flex-col items-center gap-2 py-8 text-center">
+                <ShieldCheck size={28} className="text-status-success" />
+                <p className="text-sm text-recruiter-text-secondary">No proctoring alerts yet.</p>
+              </div>
             ) : (
-              <ul className="flex flex-col gap-2">
+              <ul className="flex max-h-[32rem] flex-col gap-2 overflow-y-auto">
                 {alerts.slice(0, SIDEBAR_ALERT_LIMIT).map((alert, index) => {
                   const candidate = roster.find((row) => row.attemptId === alert.attemptId);
+                  const SeverityIcon = SEVERITY_ICON[alert.severity] ?? Info;
                   return (
-                    <li key={`${alert.attemptId}-${alert.occurredAt}-${index}`} className="rounded border border-gray-200 p-2 text-sm">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">{candidate?.candidateName ?? 'Unknown candidate'}</span>
+                    <li
+                      key={`${alert.attemptId}-${alert.occurredAt}-${index}`}
+                      className={`flex flex-col gap-1 rounded-md border border-recruiter-border border-l-[3px] bg-white p-2.5 text-sm ${SEVERITY_BORDER[alert.severity] ?? 'border-l-recruiter-border'}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="flex min-w-0 items-center gap-1.5 font-medium text-recruiter-text">
+                          <SeverityIcon size={13} className={`shrink-0 ${SEVERITY_ICON_COLOR[alert.severity] ?? 'text-recruiter-text-tertiary'}`} />
+                          <span className="truncate">{candidate?.candidateName ?? 'Unknown candidate'}</span>
+                        </span>
                         <Badge variant={alert.severity === 'high' ? 'danger' : alert.severity === 'medium' ? 'warning' : 'default'}>{alert.severity}</Badge>
                       </div>
-                      <p className="text-gray-600">{alert.eventType}</p>
-                      <p className="text-xs text-gray-400">{formatRelativeTime(alert.occurredAt)}</p>
+                      <p className="text-recruiter-text-secondary">{formatEventType(alert.eventType)}</p>
+                      <p className="text-xs text-recruiter-text-tertiary">{formatRelativeTime(alert.occurredAt)}</p>
                     </li>
                   );
                 })}
               </ul>
             )}
-          </div>
+            {alerts.length > SIDEBAR_ALERT_LIMIT && (
+              <p className="text-center text-xs text-recruiter-text-tertiary">Showing the latest {SIDEBAR_ALERT_LIMIT} of {alerts.length} alerts.</p>
+            )}
+          </Card>
         </div>
       )}
 
