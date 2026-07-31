@@ -20,6 +20,7 @@ import {
 } from './ui';
 import { useResultsList, useResultsExport } from '../lib/hooks/usePanelReports';
 import { RESULT_STATUS_LABEL, RESULT_STATUS_TONE } from '../lib/candidate-status';
+import { AdvanceToNextRoundModal } from './AdvanceToNextRoundModal';
 import { ExamResultRow } from '../lib/types';
 
 const PASS_FAIL_TONE: Record<string, StatusTone> = { pass: 'success', fail: 'danger' };
@@ -107,6 +108,7 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
   const [resultFilter, setResultFilter] = useState('all');
   const [integrityFilter, setIntegrityFilter] = useState('all');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [advanceModalOpen, setAdvanceModalOpen] = useState(false);
 
   // Only candidates who actually attended: an invitation with no attempt yet
   // (still 'invited') or a revoked one never took the exam, so there's no
@@ -226,6 +228,9 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
           <Button variant="secondary" onClick={() => handleExport('xlsx')} disabled={exportMutation.isPending}>
             Export Excel
           </Button>
+          <Button onClick={() => setAdvanceModalOpen(true)} disabled={selectedIds.length === 0}>
+            Advance to Next Round
+          </Button>
         </div>
       </div>
       <Table
@@ -234,6 +239,15 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
         rowKey={(row) => row.candidateId}
         emptyMessage={filtersActive ? 'No candidates match your search or filters.' : 'No candidates have attended this exam yet.'}
       />
+      {advanceModalOpen && (
+        <AdvanceToNextRoundModal
+          examId={examId}
+          candidateIds={selectedIds}
+          open
+          onClose={() => setAdvanceModalOpen(false)}
+          onAdvanced={() => setSelectedIds([])}
+        />
+      )}
     </div>
   );
 }

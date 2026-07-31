@@ -5,6 +5,11 @@ import { ToastProvider } from './ui';
 import { ExamResultsPanel } from './ExamResultsPanel';
 
 jest.mock('../lib/hooks/usePanelReports', () => ({ useResultsList: jest.fn(), useResultsExport: jest.fn() }));
+jest.mock('./AdvanceToNextRoundModal', () => ({
+  AdvanceToNextRoundModal: ({ candidateIds }: { candidateIds: string[] }) => (
+    <div data-testid="advance-modal">candidateIds:{JSON.stringify(candidateIds)}</div>
+  ),
+}));
 
 function renderPanel(examId = 'exam-1') {
   render(
@@ -220,5 +225,21 @@ describe('ExamResultsPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Export Excel' }));
 
     expect(mutateAsync).toHaveBeenCalledWith({ format: 'xlsx', candidateIds: [] });
+  });
+
+  it('disables Advance to Next Round until a candidate is checked, then opens it with the checked ids', async () => {
+    (useResultsList as jest.Mock).mockReturnValue({ data: [row()], isLoading: false });
+
+    renderPanel();
+
+    expect(screen.getByRole('button', { name: 'Advance to Next Round' })).toBeDisabled();
+    expect(screen.queryByTestId('advance-modal')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select Alice' }));
+    expect(screen.getByRole('button', { name: 'Advance to Next Round' })).toBeEnabled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Advance to Next Round' }));
+
+    expect(screen.getByTestId('advance-modal')).toHaveTextContent('candidateIds:["c1"]');
   });
 });
