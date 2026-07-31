@@ -54,7 +54,8 @@ describe('DataRightsPage', () => {
     await waitFor(() => expect(screen.getByText('Gina GDPR')).toBeInTheDocument());
 
     await userEvent.click(screen.getByRole('button', { name: 'Export data' }));
-    await waitFor(() => expect(screen.getByText('Backend Round — invited')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Backend Round')).toBeInTheDocument());
+    expect(screen.getByText('invited')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Erase candidate' }));
     await userEvent.type(screen.getByLabelText("Type the candidate's email to confirm"), 'gina@example.com');

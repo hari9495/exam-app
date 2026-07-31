@@ -3,8 +3,26 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useLookupCandidate, useExportCandidate, useEraseCandidate } from '../../../lib/hooks/useCandidateDataRights';
-import { Button, Input, Card, Modal, useToast } from '../../../components/ui';
+import { Button, Input, Card, Modal, Table, useToast, type Column } from '../../../components/ui';
 import { Candidate, CandidateDataExport } from '../../../lib/types';
+
+type ExportInvitation = CandidateDataExport['invitations'][number];
+type ExportAttempt = CandidateDataExport['attempts'][number];
+
+const INVITATION_COLUMNS: Column<ExportInvitation>[] = [
+  { key: 'examTitle', header: 'Exam', render: (invitation) => invitation.examTitle, sortValue: (invitation) => invitation.examTitle },
+  { key: 'status', header: 'Status', render: (invitation) => invitation.status, sortValue: (invitation) => invitation.status },
+];
+
+const ATTEMPT_COLUMNS: Column<ExportAttempt>[] = [
+  { key: 'examTitle', header: 'Exam', render: (attempt) => attempt.examTitle, sortValue: (attempt) => attempt.examTitle },
+  {
+    key: 'result',
+    header: 'Result',
+    render: (attempt) =>
+      attempt.result ? `${attempt.result.score}/${attempt.result.maxScore} (${attempt.result.passFail})` : attempt.status,
+  },
+];
 
 export default function DataRightsPage() {
   const [email, setEmail] = useState('');
@@ -124,25 +142,22 @@ export default function DataRightsPage() {
               </p>
             </section>
             <section className="mb-4">
-              <h3 className="font-medium text-recruiter-text">Invitations ({exportData.invitations.length})</h3>
-              <ul className="text-sm text-recruiter-text-secondary">
-                {exportData.invitations.map((invitation) => (
-                  <li key={invitation.id}>
-                    {invitation.examTitle} — {invitation.status}
-                  </li>
-                ))}
-              </ul>
+              <h3 className="mb-1.5 font-medium text-recruiter-text">Invitations ({exportData.invitations.length})</h3>
+              <Table
+                columns={INVITATION_COLUMNS}
+                rows={exportData.invitations}
+                rowKey={(invitation) => invitation.id}
+                emptyMessage="No invitations."
+              />
             </section>
             <section>
-              <h3 className="font-medium text-recruiter-text">Attempts ({exportData.attempts.length})</h3>
-              <ul className="text-sm text-recruiter-text-secondary">
-                {exportData.attempts.map((attempt) => (
-                  <li key={attempt.id}>
-                    {attempt.examTitle} —{' '}
-                    {attempt.result ? `${attempt.result.score}/${attempt.result.maxScore} (${attempt.result.passFail})` : attempt.status}
-                  </li>
-                ))}
-              </ul>
+              <h3 className="mb-1.5 font-medium text-recruiter-text">Attempts ({exportData.attempts.length})</h3>
+              <Table
+                columns={ATTEMPT_COLUMNS}
+                rows={exportData.attempts}
+                rowKey={(attempt) => attempt.id}
+                emptyMessage="No attempts."
+              />
             </section>
           </Card>
         </motion.div>
