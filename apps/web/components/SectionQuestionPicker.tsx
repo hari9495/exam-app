@@ -23,9 +23,14 @@ export function SectionQuestionPicker({ examId, sectionId, open, onClose, existi
   const [selectedIds, setSelectedIds] = useState<string[]>(existingQuestionIds);
   const { toast } = useToast();
 
+  // Reseed only when the picker opens or targets a different section. The parent
+  // computes existingQuestionIds inline (new array identity every render), so
+  // depending on it directly wiped in-progress selections whenever a background
+  // exam refetch re-rendered the parent mid-scroll.
   useEffect(() => {
-    setSelectedIds(existingQuestionIds);
-  }, [existingQuestionIds, open]);
+    if (open) setSelectedIds(existingQuestionIds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, sectionId]);
 
   function toggle(id: string, checked: boolean) {
     setSelectedIds((current) => (checked ? [...current, id] : current.filter((existing) => existing !== id)));
