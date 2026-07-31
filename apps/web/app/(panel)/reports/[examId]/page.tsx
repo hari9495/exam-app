@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Search } from 'lucide-react';
+import { Search, Users, CheckCircle2, Target, BarChart3 } from 'lucide-react';
 import { useExam, useExams } from '../../../../lib/hooks/useExams';
 import { useResultsSummary, useQuestionAccuracy, useResultsList, useResultsExport } from '../../../../lib/hooks/usePanelReports';
 import {
@@ -87,6 +87,14 @@ const ACCURACY_FILTER_OPTIONS = [
   { value: 'medium', label: 'Medium accuracy (30–69%)' },
   { value: 'high', label: 'High accuracy (≥70%)' },
 ];
+
+// Same thresholds as the accuracy buckets above -- lets Pass rate and Average
+// score read as a signal at a glance instead of a flat number.
+function scoreTone(percent: number): string {
+  if (percent < 30) return 'text-status-danger';
+  if (percent < 70) return 'text-status-warning';
+  return 'text-status-success';
+}
 
 export default function PanelExamResultsPage() {
   const { examId } = useParams<{ examId: string }>();
@@ -241,27 +249,39 @@ export default function PanelExamResultsPage() {
       ) : summary ? (
         <div className="mb-6 grid grid-cols-4 gap-4">
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0, ease: 'easeOut' }}>
-            <Card>
-              <p className="text-xs text-gray-500">Total candidates</p>
-              <p className="text-2xl font-semibold">{summary.totalCandidates}</p>
+            <Card className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-1.5 text-recruiter-text-tertiary">
+                <Users size={14} />
+                <p className="text-xs font-medium uppercase tracking-wide">Total candidates</p>
+              </div>
+              <p className="text-2xl font-semibold text-recruiter-text">{summary.totalCandidates}</p>
             </Card>
           </motion.div>
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.05, ease: 'easeOut' }}>
-            <Card>
-              <p className="text-xs text-gray-500">Settled</p>
-              <p className="text-2xl font-semibold">{summary.settledCount}</p>
+            <Card className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-1.5 text-recruiter-text-tertiary">
+                <CheckCircle2 size={14} />
+                <p className="text-xs font-medium uppercase tracking-wide">Settled</p>
+              </div>
+              <p className="text-2xl font-semibold text-recruiter-text">{summary.settledCount}</p>
             </Card>
           </motion.div>
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.1, ease: 'easeOut' }}>
-            <Card>
-              <p className="text-xs text-gray-500">Pass rate</p>
-              <p className="text-2xl font-semibold">{summary.passRate.toFixed(1)}%</p>
+            <Card className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-1.5 text-recruiter-text-tertiary">
+                <Target size={14} />
+                <p className="text-xs font-medium uppercase tracking-wide">Pass rate</p>
+              </div>
+              <p className={`text-2xl font-semibold ${scoreTone(summary.passRate)}`}>{summary.passRate.toFixed(1)}%</p>
             </Card>
           </motion.div>
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.15, ease: 'easeOut' }}>
-            <Card>
-              <p className="text-xs text-gray-500">Average score</p>
-              <p className="text-2xl font-semibold">{summary.averagePercentage.toFixed(1)}%</p>
+            <Card className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-1.5 text-recruiter-text-tertiary">
+                <BarChart3 size={14} />
+                <p className="text-xs font-medium uppercase tracking-wide">Average score</p>
+              </div>
+              <p className={`text-2xl font-semibold ${scoreTone(summary.averagePercentage)}`}>{summary.averagePercentage.toFixed(1)}%</p>
             </Card>
           </motion.div>
         </div>
