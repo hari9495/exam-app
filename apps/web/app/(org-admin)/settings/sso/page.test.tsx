@@ -37,8 +37,8 @@ describe('SsoSettingsPage', () => {
     renderWithClient(<SsoSettingsPage />);
     await screen.findByText(/not configured/i);
 
-    await userEvent.type(screen.getByLabelText(/idp entity id/i), 'https://idp.test/entity');
-    await userEvent.type(screen.getByLabelText(/idp sso url/i), 'https://idp.test/sso');
+    await userEvent.type(screen.getByLabelText(/microsoft entra identifier/i), 'https://idp.test/entity');
+    await userEvent.type(screen.getByLabelText(/sso url/i), 'https://idp.test/sso');
     await userEvent.type(screen.getByLabelText(/idp certificate/i), 'cert-data');
     await userEvent.click(screen.getByRole('button', { name: /save/i }));
 
