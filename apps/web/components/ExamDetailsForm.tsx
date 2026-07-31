@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Input, Select } from '../components/ui';
+import { Button, Card, Checkbox, Input, RadioGroup, RadioGroupItem, Select } from '../components/ui';
 import { Exam, FeedbackVisibility } from '../lib/types';
 
 export interface ExamDetailsValue {
@@ -121,156 +121,147 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex max-w-xl flex-col gap-4">
+    <form onSubmit={handleSubmit} className="flex max-w-xl flex-col gap-6">
       {locked && (
         <p className="rounded-md border border-recruiter-border bg-recruiter-bg-subtle p-3 text-sm text-recruiter-text-secondary">
           {lockedMessage ??
             'This exam is locked because a candidate has already started it. Nothing here can be changed anymore — you can still invite new candidates and manage live monitoring from their respective tabs.'}
         </p>
       )}
-      <fieldset disabled={locked} className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0">
-      <Input label="Title" value={title} onChange={setTitle} required />
-      <div className="flex flex-col gap-1">
-        <label htmlFor="exam-instructions" className="text-sm font-medium text-gray-700">
-          Instructions
-        </label>
-        <textarea
-          id="exam-instructions"
-          value={instructions}
-          onChange={(e) => setInstructions(e.target.value)}
-          className="rounded border border-gray-300 px-3 py-2 text-sm"
-          rows={3}
-        />
-      </div>
-      <Input label="Duration (Minutes)" type="number" min={1} value={durationMinutes} onChange={setDurationMinutes} />
-      <Input label="Pass Criteria (%)" type="number" min={0} max={100} value={passCriteriaPercent} onChange={setPassCriteriaPercent} />
-      <label className="flex items-center gap-2 text-sm text-gray-700">
-        <input type="checkbox" checked={randomizeOrder} onChange={(e) => setRandomizeOrder(e.target.checked)} />
-        Randomize question order for candidates
-      </label>
-      <Select
-        label="Candidate Feedback"
-        value={feedbackVisibility}
-        onChange={(value) => setFeedbackVisibility(value as FeedbackVisibility)}
-        options={[
-          { value: 'none', label: 'None — candidates just see "submitted"' },
-          { value: 'pass_fail', label: 'Pass/fail only' },
-          { value: 'score', label: 'Score percentage' },
-          { value: 'breakdown', label: 'Per-section breakdown' },
-        ]}
-      />
-      <label className="flex items-center gap-2 text-sm text-gray-700">
-        <input type="checkbox" checked={schedulingEnabled} onChange={(e) => setSchedulingEnabled(e.target.checked)} />
-        Enable scheduling
-      </label>
-      {schedulingEnabled && (
-        <div className="flex flex-col gap-2 pl-6">
-          <Input
-            label="Window Opens"
-            type="datetime-local"
-            value={availabilityWindowStart}
-            onChange={setAvailabilityWindowStart}
-          />
-          <Input
-            label="Window Closes"
-            type="datetime-local"
-            value={availabilityWindowEnd}
-            onChange={setAvailabilityWindowEnd}
-          />
-          {schedulingError && <p className="text-xs text-red-600">{schedulingError}</p>}
-        </div>
-      )}
-      <label className="flex items-center gap-2 text-sm text-gray-700">
-        <input type="checkbox" checked={walkInEnabled} onChange={(e) => setWalkInEnabled(e.target.checked)} />
-        Enable walk-in registration for this exam
-      </label>
-      <Input
-        label="Allowed IP / CIDR Range (Optional)"
-        value={allowedIpRange}
-        onChange={setAllowedIpRange}
-        placeholder="e.g. 203.0.113.4 or 203.0.113.0/24"
-      />
-      <fieldset className="flex flex-col gap-3 rounded-md border border-recruiter-border p-3">
-        <legend className="px-1 text-sm font-semibold text-recruiter-text">Proctoring &amp; integrity</legend>
-        <label className="flex items-center gap-2 text-sm text-gray-700">
-          <input
-            type="checkbox"
-            checked={webcamProctoringEnabled}
-            onChange={(e) => setWebcamProctoringEnabled(e.target.checked)}
-          />
-          Require webcam proctoring
-        </label>
-        <div className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-gray-700">If a rule is broken</span>
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input
-              type="radio"
-              name="proctoring-enforcement"
-              checked={proctoringEnforcement === 'block'}
-              onChange={() => setProctoringEnforcement('block')}
+      <fieldset disabled={locked} className="m-0 flex min-w-0 flex-col gap-6 border-0 p-0">
+        <Card className="flex flex-col gap-4">
+          <h2 className="text-lg font-semibold text-recruiter-text">Basic details</h2>
+          <Input label="Title" value={title} onChange={setTitle} required />
+          <div className="flex flex-col gap-1">
+            <label htmlFor="exam-instructions" className="text-sm font-medium text-gray-700">
+              Instructions
+            </label>
+            <textarea
+              id="exam-instructions"
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              className="rounded border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none"
+              rows={3}
             />
-            Pause the exam, then block after repeated strikes
-          </label>
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input
-              type="radio"
-              name="proctoring-enforcement"
-              checked={proctoringEnforcement === 'warn'}
-              onChange={() => setProctoringEnforcement('warn')}
+          </div>
+          <div className="flex gap-4">
+            <Input label="Duration (Minutes)" type="number" min={1} value={durationMinutes} onChange={setDurationMinutes} />
+            <Input
+              label="Pass Criteria (%)"
+              type="number"
+              min={0}
+              max={100}
+              value={passCriteriaPercent}
+              onChange={setPassCriteriaPercent}
             />
-            Record only — never pause the exam
-          </label>
-        </div>
-        {proctoringEnforcement === 'block' && (
+          </div>
+          <Checkbox label="Randomize question order for candidates" checked={randomizeOrder} onChange={setRandomizeOrder} />
           <Select
-            label="Block After"
-            value={proctoringStrikeLimit}
-            onChange={setProctoringStrikeLimit}
+            label="Candidate Feedback"
+            value={feedbackVisibility}
+            onChange={(value) => setFeedbackVisibility(value as FeedbackVisibility)}
             options={[
-              { value: '2', label: '2 strikes' },
-              { value: '3', label: '3 strikes' },
-              { value: '5', label: '5 strikes' },
+              { value: 'none', label: 'None — candidates just see "submitted"' },
+              { value: 'pass_fail', label: 'Pass/fail only' },
+              { value: 'score', label: 'Score percentage' },
+              { value: 'breakdown', label: 'Per-section breakdown' },
             ]}
           />
-        )}
-        <button
-          type="button"
-          onClick={() => setSignalsOpen((open) => !open)}
-          className="self-start text-sm font-medium text-primary hover:underline"
-        >
-          {signalsOpen ? 'Hide' : 'Choose'} which activity to watch ({PROCTORING_SIGNAL_LABELS.length - disabledSignals.length}/
-          {PROCTORING_SIGNAL_LABELS.length})
-        </button>
-        {signalsOpen && (
-          <div className="flex flex-col gap-1.5 pl-1">
-            {PROCTORING_SIGNAL_LABELS.map((signal) => (
-              <label key={signal.value} className="flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
+        </Card>
+
+        <Card className="flex flex-col gap-4">
+          <h2 className="text-lg font-semibold text-recruiter-text">Scheduling &amp; access</h2>
+          <Checkbox label="Enable scheduling" checked={schedulingEnabled} onChange={setSchedulingEnabled} />
+          {schedulingEnabled && (
+            <div className="flex flex-col gap-2 pl-6">
+              <Input
+                label="Window Opens"
+                type="datetime-local"
+                value={availabilityWindowStart}
+                onChange={setAvailabilityWindowStart}
+              />
+              <Input
+                label="Window Closes"
+                type="datetime-local"
+                value={availabilityWindowEnd}
+                onChange={setAvailabilityWindowEnd}
+              />
+              {schedulingError && <p className="text-xs text-red-600">{schedulingError}</p>}
+            </div>
+          )}
+          <Checkbox label="Enable walk-in registration for this exam" checked={walkInEnabled} onChange={setWalkInEnabled} />
+          <Input
+            label="Allowed IP / CIDR Range (Optional)"
+            value={allowedIpRange}
+            onChange={setAllowedIpRange}
+            placeholder="e.g. 203.0.113.4 or 203.0.113.0/24"
+          />
+        </Card>
+
+        <Card className="flex flex-col gap-4">
+          <h2 className="text-lg font-semibold text-recruiter-text">Proctoring &amp; integrity</h2>
+          <Checkbox label="Require webcam proctoring" checked={webcamProctoringEnabled} onChange={setWebcamProctoringEnabled} />
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-gray-700">If a rule is broken</span>
+            <RadioGroup value={proctoringEnforcement} onChange={(value) => setProctoringEnforcement(value as 'warn' | 'block')}>
+              <RadioGroupItem value="block" label="Pause the exam, then block after repeated strikes" />
+              <RadioGroupItem value="warn" label="Record only — never pause the exam" />
+            </RadioGroup>
+          </div>
+          {proctoringEnforcement === 'block' && (
+            <Select
+              label="Block After"
+              value={proctoringStrikeLimit}
+              onChange={setProctoringStrikeLimit}
+              options={[
+                { value: '2', label: '2 strikes' },
+                { value: '3', label: '3 strikes' },
+                { value: '5', label: '5 strikes' },
+              ]}
+            />
+          )}
+          <button
+            type="button"
+            onClick={() => setSignalsOpen((open) => !open)}
+            className="self-start text-sm font-medium text-primary hover:underline"
+          >
+            {signalsOpen ? 'Hide' : 'Choose'} which activity to watch ({PROCTORING_SIGNAL_LABELS.length - disabledSignals.length}/
+            {PROCTORING_SIGNAL_LABELS.length})
+          </button>
+          {signalsOpen && (
+            <div className="flex flex-col gap-1.5 pl-1">
+              {PROCTORING_SIGNAL_LABELS.map((signal) => (
+                <Checkbox
+                  key={signal.value}
+                  label={signal.label}
                   checked={!disabledSignals.includes(signal.value)}
-                  onChange={(e) =>
+                  onChange={(checked) =>
                     setDisabledSignals((current) =>
-                      e.target.checked ? current.filter((entry) => entry !== signal.value) : [...current, signal.value],
+                      checked ? current.filter((entry) => entry !== signal.value) : [...current, signal.value],
                     )
                   }
                 />
-                {signal.label}
-              </label>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
+          <Checkbox
+            label="Record the candidate's screen as evidence"
+            checked={screenCaptureEnabled}
+            onChange={setScreenCaptureEnabled}
+          />
+          {screenCaptureEnabled ? (
+            <p className="pl-6 text-xs text-recruiter-text-secondary">
+              Candidates must share their whole screen to start, and cannot use a phone or tablet. Their screen is captured only
+              when a rule is broken.
+            </p>
+          ) : null}
+        </Card>
+
+        {!locked && (
+          <Button type="submit" className="self-start">
+            {submitLabel}
+          </Button>
         )}
-        <label className="flex items-center gap-2 text-sm text-gray-700">
-          <input type="checkbox" checked={screenCaptureEnabled} onChange={(e) => setScreenCaptureEnabled(e.target.checked)} />
-          Record the candidate&apos;s screen as evidence
-        </label>
-        {screenCaptureEnabled ? (
-          <p className="pl-6 text-xs text-recruiter-text-secondary">
-            Candidates must share their whole screen to start, and cannot use a phone or tablet. Their screen is captured only
-            when a rule is broken.
-          </p>
-        ) : null}
-      </fieldset>
-      {!locked && <Button type="submit">{submitLabel}</Button>}
       </fieldset>
     </form>
   );
