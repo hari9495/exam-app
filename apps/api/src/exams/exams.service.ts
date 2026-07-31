@@ -221,6 +221,14 @@ export class ExamsService {
       // partially editable, so there's no need to diff individual fields.
       await this.assertExamMutable(tx, id);
 
+      // Reversible via POST /exams/:id/unpublish: publishing freezes the details a
+      // candidate may already be looking at. The line above already rejects once
+      // anyone has actually started, so reaching here means unpublish is still an
+      // option -- point the caller at it instead of a dead end.
+      if (existing.status === 'published') {
+        throw new ConflictException(`Exam ${id} is published -- unpublish it before editing its details`);
+      }
+
       const schedulingEnabledInput = dto.schedulingEnabled !== undefined ? dto.schedulingEnabled : existing.schedulingEnabled;
       const availabilityWindowStartInput =
         dto.availabilityWindowStart !== undefined ? dto.availabilityWindowStart : (existing.availabilityWindowStart?.toISOString() ?? undefined);

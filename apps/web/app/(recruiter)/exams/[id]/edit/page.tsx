@@ -60,6 +60,16 @@ export default function EditExamPage() {
     return <p className="text-sm text-gray-500">Loading…</p>;
   }
 
+  // Two independent lock reasons, both enforced server-side too: a candidate having
+  // started is permanent (no Unpublish can undo it); being published with nobody
+  // started yet is reversible -- Unpublish reopens editing immediately.
+  const detailsLocked = exam.hasStartedAttempts || exam.status === 'published';
+  const detailsLockedMessage = exam.hasStartedAttempts
+    ? undefined // falls back to ExamDetailsForm's own "candidate started" text
+    : exam.status === 'published'
+      ? 'This exam is published, so its details are locked. Click Unpublish above to make changes.'
+      : undefined;
+
   return (
     <div>
       <BackLink href="/exams" label="Back To Exams" />
@@ -114,7 +124,8 @@ export default function EditExamPage() {
           <ExamDetailsForm
             initialExam={exam}
             submitLabel="Save details"
-            locked={exam.hasStartedAttempts}
+            locked={detailsLocked}
+            lockedMessage={detailsLockedMessage}
             onSubmit={(input) =>
               updateExam.mutate(input, {
                 onSuccess: () => toast('Exam updated.'),

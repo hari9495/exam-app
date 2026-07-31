@@ -343,6 +343,34 @@ describe('ExamsService', () => {
     expect(tx.exam.update).not.toHaveBeenCalled();
   });
 
+  it('rejects update() while the exam is published, even with zero attempts, pointing at unpublish', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }), update: jest.fn() },
+      attempt: { count: jest.fn().mockResolvedValue(0) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.update(context, 'exam-1', { title: 'New Title' })).rejects.toThrow(
+      /unpublish it before editing/i,
+    );
+    expect(tx.exam.update).not.toHaveBeenCalled();
+  });
+
+  it('allows update() on a draft exam with zero attempts (status check does not false-positive)', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'exam-1', status: 'draft', schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null,
+        }),
+        update: jest.fn().mockResolvedValue({ id: 'exam-1', title: 'New Title', schedulingEnabled: false }),
+      },
+      attempt: { count: jest.fn().mockResolvedValue(0) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.update(context, 'exam-1', { title: 'New Title' })).resolves.toMatchObject({ title: 'New Title' });
+  });
+
   it('persists walkInEnabled when provided', async () => {
     const tx = {
       exam: {

@@ -316,5 +316,20 @@ describe('ExamDetailsForm', () => {
       expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
       expect(screen.getByLabelText('Title')).not.toBeDisabled();
     });
+
+    it('shows a caller-supplied lockedMessage instead of the default, for the published-not-started reason', () => {
+      render(
+        <ExamDetailsForm
+          onSubmit={jest.fn()}
+          submitLabel="Save"
+          locked
+          lockedMessage="This exam is published, so its details are locked. Click Unpublish above to make changes."
+        />,
+      );
+
+      expect(screen.getByText(/published, so its details are locked/i)).toBeInTheDocument();
+      expect(screen.queryByText(/candidate has already started it/i)).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Title')).toBeDisabled();
+    });
   });
 });

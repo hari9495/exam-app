@@ -28,6 +28,9 @@ interface ExamDetailsFormProps {
   onSubmit: (input: ExamDetailsValue) => void;
   submitLabel: string;
   locked?: boolean;
+  /** Overrides the default "a candidate has started it" banner text -- callers use
+   *  this for the other lock reason (published, no attempts yet: unpublish to edit). */
+  lockedMessage?: string;
 }
 
 // Recruiters will not recognise the raw event-type names, so every toggle carries
@@ -50,7 +53,7 @@ function toDatetimeLocalValue(iso: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = false }: ExamDetailsFormProps) {
+export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = false, lockedMessage }: ExamDetailsFormProps) {
   const [title, setTitle] = useState(initialExam?.title ?? '');
   const [instructions, setInstructions] = useState(initialExam?.instructions ?? '');
   const [durationMinutes, setDurationMinutes] = useState(String(initialExam?.durationMinutes ?? 60));
@@ -121,8 +124,8 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
     <form onSubmit={handleSubmit} className="flex max-w-xl flex-col gap-4">
       {locked && (
         <p className="rounded-md border border-recruiter-border bg-recruiter-bg-subtle p-3 text-sm text-recruiter-text-secondary">
-          This exam is locked because a candidate has already started it. Nothing here can be changed anymore — you can still
-          invite new candidates and manage live monitoring from their respective tabs.
+          {lockedMessage ??
+            'This exam is locked because a candidate has already started it. Nothing here can be changed anymore — you can still invite new candidates and manage live monitoring from their respective tabs.'}
         </p>
       )}
       <fieldset disabled={locked} className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0">

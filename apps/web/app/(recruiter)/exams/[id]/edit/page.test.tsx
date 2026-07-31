@@ -10,7 +10,9 @@ jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn() }),
 }));
 jest.mock('../../../../../lib/hooks/useExams', () => ({
-  useExam: () => ({ data: mockExam }),
+  // Reads `currentExam` at call time (not factory-definition time), so tests can
+  // vary status/hasStartedAttempts by reassigning it before rendering.
+  useExam: () => ({ data: currentExam }),
   useUpdateExam: () => ({ mutate: jest.fn() }),
   usePublishExam: () => ({ mutate: jest.fn() }),
   useUnpublishExam: () => ({ mutate: jest.fn(), isPending: false }),
@@ -25,6 +27,11 @@ const mockExam: Exam = {
   disabledProctoringSignalsJson: null, screenCaptureEnabled: false, createdAt: '2026-07-25T09:00:00.000Z', sections: [],
   invitationCount: 1, hasStartedAttempts: true,
 };
+
+let currentExam: Exam = mockExam;
+beforeEach(() => {
+  currentExam = mockExam;
+});
 
 function row(attemptId: string, proctoringBypassed: boolean): RosterRow {
   return {
@@ -96,5 +103,34 @@ describe('EditExamPage attention flag', () => {
     rerender(page());
 
     expect(screen.getByRole('tab', { name: 'Live (1)' })).toBeInTheDocument();
+  });
+});
+
+describe('EditExamPage details lock', () => {
+  afterEach(() => jest.clearAllMocks());
+
+  it('locks Details and points at Unpublish when published with nobody started yet', () => {
+    currentExam = { ...mockExam, status: 'published', hasStartedAttempts: false };
+    renderPage([], []);
+
+    expect(screen.getByText(/published, so its details are locked/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('Title')).toBeDisabled();
+  });
+
+  it('locks Details with the "candidate started" reason once an attempt exists, even while published', () => {
+    currentExam = { ...mockExam, status: 'published', hasStartedAttempts: true };
+    renderPage([], []);
+
+    expect(screen.getByText(/candidate has already started it/i)).toBeInTheDocument();
+    expect(screen.queryByText(/published, so its details are locked/i)).not.toBeInTheDocument();
+  });
+
+  it('leaves Details editable once the exam is back to draft (post-unpublish)', () => {
+    currentExam = { ...mockExam, status: 'draft', hasStartedAttempts: false };
+    renderPage([], []);
+
+    expect(screen.getByLabelText('Title')).not.toBeDisabled();
+    expect(screen.queryByText(/its details are locked/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/candidate has already started it/i)).not.toBeInTheDocument();
   });
 });
