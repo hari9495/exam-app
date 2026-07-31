@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { MoreHorizontal, X } from 'lucide-react';
+import { MoreHorizontal } from 'lucide-react';
 import { useExam } from '../lib/hooks/useExams';
 import {
   useCreateSection,
@@ -15,16 +15,23 @@ import {
   Input,
   Card,
   Modal,
+  StatusBadge,
+  Table,
   useToast,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  type Column,
 } from '../components/ui';
+import { TYPE_TONE, TYPE_LABEL, DIFFICULTY_LABEL, DIFFICULTY_LEVEL } from '../lib/question-display';
 import { ExamSection } from '../lib/types';
 
-// One section's question list. Owns its own replace hook so the remove action
-// is section-scoped -- hooks can't be called inside the parent's section.map().
+type SectionQuestion = ExamSection['questions'][number];
+
+// One section's question list, rendered as the shared Salesforce-style table.
+// Owns its own replace hook so the remove action is section-scoped -- hooks can't
+// be called inside the parent's section.map().
 function SectionQuestionList({ examId, section, locked }: { examId: string; section: ExamSection; locked: boolean }) {
   const replaceQuestions = useReplaceSectionQuestions(examId, section.id);
   const { toast } = useToast();
@@ -36,27 +43,58 @@ function SectionQuestionList({ examId, section, locked }: { examId: string; sect
     });
   }
 
-  return (
-    <ul className="flex flex-col divide-y divide-recruiter-border border-t border-recruiter-border">
-      {section.questions.map((q) => (
-        <li key={q.questionId} className="flex items-center justify-between gap-2 py-2 text-sm text-recruiter-text-secondary">
-          <span className="min-w-0 flex-1 truncate">{q.question?.text ?? q.questionId}</span>
-          {q.question && <span className="shrink-0 text-xs text-recruiter-text-tertiary">{q.question.marks} marks</span>}
-          {!locked && (
-            <button
-              type="button"
-              aria-label={`Remove ${q.question?.text ?? 'question'}`}
-              onClick={() => handleRemove(q.questionId)}
-              disabled={replaceQuestions.isPending}
-              className="shrink-0 rounded p-1 text-recruiter-text-tertiary transition-colors hover:bg-status-danger-bg hover:text-status-danger disabled:opacity-50"
-            >
-              <X size={14} />
-            </button>
-          )}
-        </li>
-      ))}
-    </ul>
-  );
+  const columns: Column<SectionQuestion>[] = [
+    {
+      key: 'text',
+      header: 'Question',
+      render: (q) => (
+        <span className="block max-w-xl truncate font-medium text-recruiter-text" title={q.question?.text}>
+          {q.question?.text ?? q.questionId}
+        </span>
+      ),
+      sortValue: (q) => (q.question?.text ?? '').toLowerCase(),
+    },
+    {
+      key: 'type',
+      header: 'Type',
+      render: (q) =>
+        q.question ? <StatusBadge tone={TYPE_TONE[q.question.type] ?? 'neutral'}>{TYPE_LABEL[q.question.type] ?? q.question.type}</StatusBadge> : '—',
+      sortValue: (q) => (q.question ? TYPE_LABEL[q.question.type] ?? '' : ''),
+    },
+    {
+      key: 'difficulty',
+      header: 'Difficulty',
+      render: (q) => (q.question ? DIFFICULTY_LABEL[q.question.difficulty] ?? q.question.difficulty : '—'),
+      sortValue: (q) => (q.question ? DIFFICULTY_LEVEL[q.question.difficulty] ?? 0 : 0),
+    },
+    {
+      key: 'marks',
+      header: 'Marks',
+      render: (q) => q.question?.marks ?? '—',
+      sortValue: (q) => q.question?.marks ?? 0,
+    },
+  ];
+
+  if (!locked) {
+    columns.push({
+      key: 'actions',
+      header: '',
+      render: (q) => (
+        <div className="flex justify-end opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+          <button
+            type="button"
+            onClick={() => handleRemove(q.questionId)}
+            disabled={replaceQuestions.isPending}
+            className="text-xs font-medium text-status-danger hover:underline disabled:opacity-50"
+          >
+            Remove
+          </button>
+        </div>
+      ),
+    });
+  }
+
+  return <Table columns={columns} rows={section.questions} rowKey={(q) => q.questionId} />;
 }
 
 export function ExamSectionsPanel({ examId }: { examId: string }) {
@@ -110,6 +148,12 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
           Sections and questions are locked because a candidate has already started this exam.
         </p>
       )}
+      {!locked && (
+        <form onSubmit={handleAdd} className="flex items-end gap-2">
+          <Input label="New Section Title" value={newTitle} onChange={setNewTitle} required />
+          <Button type="submit">Add section</Button>
+        </form>
+      )}
       {(exam?.sections ?? [])
         .slice()
         .sort((a, b) => a.orderIndex - b.orderIndex)
@@ -153,12 +197,6 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
             )}
           </Card>
         ))}
-      {!locked && (
-        <form onSubmit={handleAdd} className="flex items-end gap-2">
-          <Input label="New Section Title" value={newTitle} onChange={setNewTitle} required />
-          <Button type="submit">Add section</Button>
-        </form>
-      )}
       {pickerSectionId && (
         <SectionQuestionPicker
           examId={examId}
