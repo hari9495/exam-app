@@ -26,6 +26,10 @@ export function useCandidates(params: UseCandidatesParams = {}) {
     queryKey: ['candidates', params],
     queryFn: () => apiFetch(`/candidates${buildCandidatesQuery(params)}`, {}, accessToken ?? undefined),
     enabled: Boolean(accessToken),
+    // Keep showing the previous page while a search/page/filter change refetches --
+    // without this, isLoading flips true on every keystroke and the page's loading
+    // early-return unmounts the search input, dropping focus mid-word.
+    placeholderData: (prev) => prev,
   });
 }
 

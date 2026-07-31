@@ -25,6 +25,9 @@ export function useExams(status?: string, params: UseExamsParams = {}) {
     queryKey: ['exams', status ?? 'default', params],
     queryFn: () => apiFetch(`/exams${buildExamsQuery(status, params)}`, {}, accessToken ?? undefined),
     enabled: Boolean(accessToken),
+    // Keep previous results during search/page refetches so the loading early-return
+    // doesn't unmount the search input and drop focus (see useCandidates).
+    placeholderData: (prev) => prev,
   });
 }
 
