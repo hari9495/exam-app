@@ -200,8 +200,8 @@ describe('ExamSectionsPanel', () => {
                 poolDifficulty: null,
                 targetDurationMinutes: null,
                 questions: [
-                  { questionId: 'q1', question: { text: 'What is 2+2?', marks: 5 } },
-                  { questionId: 'q2', question: { text: 'Reverse a string', marks: 10 } },
+                  { questionId: 'q1', question: { text: 'What is 2+2?', marks: 5, type: 'single_mcq', difficulty: 'easy' } },
+                  { questionId: 'q2', question: { text: 'Reverse a string', marks: 10, type: 'code', difficulty: 'hard' } },
                 ],
               },
             ],
@@ -225,8 +225,9 @@ describe('ExamSectionsPanel', () => {
 
     await waitFor(() => expect(screen.getByText('What is 2+2?')).toBeInTheDocument());
     expect(screen.getByText('Reverse a string')).toBeInTheDocument();
-    expect(screen.getByText('5 marks')).toBeInTheDocument();
-    expect(screen.getByText('10 marks')).toBeInTheDocument();
+    // Marks render in their own table column as plain numbers now.
+    expect(screen.getByText('5')).toBeInTheDocument();
+    expect(screen.getByText('10')).toBeInTheDocument();
   });
 
   it('shows a pool summary instead of a question list for a pool-mode section', async () => {

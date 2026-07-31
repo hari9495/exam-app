@@ -103,7 +103,7 @@ export interface ExamSection {
   poolSize: number | null;
   poolDifficulty: Difficulty | null;
   targetDurationMinutes: number | null;
-  questions: { questionId: string; question?: { text: string; marks: number } }[];
+  questions: { questionId: string; question?: { text: string; marks: number; type: QuestionType; difficulty: Difficulty } }[];
 }
 
 export type FeedbackVisibility = 'none' | 'pass_fail' | 'score' | 'breakdown';

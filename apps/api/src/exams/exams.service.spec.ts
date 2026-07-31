@@ -549,7 +549,8 @@ describe('ExamsService', () => {
       exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
       attempt: { count: jest.fn().mockResolvedValue(0) },
       examSection: {
-        findFirst: jest.fn().mockResolvedValue({ orderIndex: 2 }),
+        // First findFirst = duplicate-title check (none), second = last-orderIndex lookup.
+        findFirst: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce({ orderIndex: 2 }),
         create: jest.fn().mockResolvedValue({ id: 'section-1', orderIndex: 3 }),
       },
     };
@@ -561,6 +562,21 @@ describe('ExamsService', () => {
     expect(tx.examSection.create).toHaveBeenCalledWith({
       data: { examId: 'exam-1', title: 'Section B', orderIndex: 3, targetDurationMinutes: undefined },
     });
+  });
+
+  it('rejects createSection when a section with the same title already exists in the exam', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
+      attempt: { count: jest.fn().mockResolvedValue(0) },
+      examSection: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'existing', title: 'Reasoning' }),
+        create: jest.fn(),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.createSection(context, 'exam-1', { title: 'Reasoning' })).rejects.toThrow(BadRequestException);
+    expect(tx.examSection.create).not.toHaveBeenCalled();
   });
 
   it('creates a section with a target duration when provided', async () => {

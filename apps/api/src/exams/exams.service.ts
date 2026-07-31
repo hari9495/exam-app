@@ -434,6 +434,14 @@ export class ExamsService {
       }
       await this.assertExamMutable(tx, examId);
 
+      const title = dto.title.trim();
+      // Section titles must be unique within an exam (case-insensitive via the DB's
+      // default collation) so recruiters can tell two sections apart.
+      const duplicate = await tx.examSection.findFirst({ where: { examId, title } });
+      if (duplicate) {
+        throw new BadRequestException(`A section named "${title}" already exists in this exam`);
+      }
+
       const lastSection = await tx.examSection.findFirst({
         where: { examId },
         orderBy: { orderIndex: 'desc' },
@@ -441,7 +449,7 @@ export class ExamsService {
       const orderIndex = lastSection ? lastSection.orderIndex + 1 : 0;
 
       return tx.examSection.create({
-        data: { examId, title: dto.title, orderIndex, targetDurationMinutes: dto.targetDurationMinutes },
+        data: { examId, title, orderIndex, targetDurationMinutes: dto.targetDurationMinutes },
       });
     });
   }
