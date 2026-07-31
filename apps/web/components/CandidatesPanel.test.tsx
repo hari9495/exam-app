@@ -1,10 +1,14 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useExamInvitations, useUpdateAccommodation } from '../lib/hooks/useInvitations';
+import { useExamInvitations, useUpdateAccommodation, useResendInvitation } from '../lib/hooks/useInvitations';
 import { ToastProvider } from './ui';
 import { CandidatesPanel } from './CandidatesPanel';
 
-jest.mock('../lib/hooks/useInvitations', () => ({ useExamInvitations: jest.fn(), useUpdateAccommodation: jest.fn() }));
+jest.mock('../lib/hooks/useInvitations', () => ({
+  useExamInvitations: jest.fn(),
+  useUpdateAccommodation: jest.fn(),
+  useResendInvitation: jest.fn(),
+}));
 jest.mock('./InviteCandidatesModal', () => ({
   InviteCandidatesModal: ({ existingCandidateIds }: { existingCandidateIds: string[] }) => (
     <div data-testid="invite-modal">{JSON.stringify(existingCandidateIds)}</div>
@@ -20,6 +24,10 @@ function renderPanel(examId = 'exam-1') {
 }
 
 describe('CandidatesPanel', () => {
+  beforeEach(() => {
+    (useResendInvitation as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
+  });
+
   it('shows an editable extra-time control for a candidate who has not started', async () => {
     const mutate = jest.fn();
     (useExamInvitations as jest.Mock).mockReturnValue({
@@ -79,6 +87,37 @@ describe('CandidatesPanel', () => {
 
     expect(screen.getByText('50%')).toBeInTheDocument();
     expect(screen.queryByRole('spinbutton', { name: /extra time.*bob/i })).not.toBeInTheDocument();
+  });
+
+  it('lets the recruiter resend an invite for a candidate who has not started', async () => {
+    const mutate = jest.fn((_id, options) => options.onSuccess());
+    (useExamInvitations as jest.Mock).mockReturnValue({
+      data: [{ id: 'inv-1', status: 'invited', extraTimePercent: 0, attempt: null, candidate: { id: 'cand-1', name: 'Alice', email: 'alice@example.com' } }],
+      isLoading: false,
+    });
+    (useUpdateAccommodation as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
+    (useResendInvitation as jest.Mock).mockReturnValue({ mutate, isPending: false });
+
+    renderPanel();
+    await userEvent.click(screen.getByRole('button', { name: 'Resend invite' }));
+
+    expect(mutate).toHaveBeenCalledWith('inv-1', expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }));
+    expect(await screen.findByText('Invite resent.')).toBeInTheDocument();
+  });
+
+  it('does not offer Resend invite once the candidate has started or if the invite was revoked', () => {
+    (useExamInvitations as jest.Mock).mockReturnValue({
+      data: [
+        { id: 'inv-1', status: 'invited', extraTimePercent: 0, attempt: { id: 'att-1', status: 'in_progress' }, candidate: { id: 'cand-1', name: 'Alice', email: 'a@example.com' } },
+        { id: 'inv-2', status: 'revoked', extraTimePercent: 0, attempt: null, candidate: { id: 'cand-2', name: 'Bob', email: 'b@example.com' } },
+      ],
+      isLoading: false,
+    });
+    (useUpdateAccommodation as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
+
+    renderPanel();
+
+    expect(screen.queryByRole('button', { name: 'Resend invite' })).not.toBeInTheDocument();
   });
 
   it("shows the candidate's progress as Invited, In Progress, or Ended based on invitation/attempt status", () => {

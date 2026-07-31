@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { Table, Button, Input, Select, StatusBadge, useToast, type Column, type StatusTone } from './ui';
-import { useExamInvitations, useUpdateAccommodation } from '../lib/hooks/useInvitations';
+import { useExamInvitations, useUpdateAccommodation, useResendInvitation } from '../lib/hooks/useInvitations';
 import { InviteCandidatesModal } from './InviteCandidatesModal';
 import { Invitation } from '../lib/types';
 
@@ -87,6 +87,7 @@ function AccommodationCell({ invitation, onSave, isPending }: { invitation: Invi
 export function CandidatesPanel({ examId }: { examId: string }) {
   const { data: invitations, isLoading } = useExamInvitations(examId);
   const updateAccommodation = useUpdateAccommodation(examId);
+  const resendInvitation = useResendInvitation(examId);
   const { toast } = useToast();
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -130,6 +131,29 @@ export function CandidatesPanel({ examId }: { examId: string }) {
           }
         />
       ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      // Only offered before the candidate has actually started -- once an attempt
+      // exists, resending a fresh link/token can't change anything they've already
+      // done, and the backend itself only permits resend while status is 'invited'.
+      render: (row) =>
+        !row.attempt && row.status === 'invited' ? (
+          <button
+            type="button"
+            disabled={resendInvitation.isPending}
+            onClick={() =>
+              resendInvitation.mutate(row.id, {
+                onSuccess: () => toast('Invite resent.'),
+                onError: (error) => toast(error instanceof Error ? error.message : 'Failed to resend invite.', 'error'),
+              })
+            }
+            className="text-xs font-medium text-primary hover:underline disabled:opacity-50"
+          >
+            Resend invite
+          </button>
+        ) : null,
     },
   ];
 

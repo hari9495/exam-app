@@ -57,6 +57,16 @@ export function useExamInvitations(examId: string) {
   });
 }
 
+export function useResendInvitation(examId: string) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (invitationId: string): Promise<Invitation> =>
+      apiFetch(`/invitations/${invitationId}/resend`, { method: 'POST' }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invitations', examId] }),
+  });
+}
+
 export function useUpdateAccommodation(examId: string) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
