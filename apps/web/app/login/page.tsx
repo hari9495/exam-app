@@ -19,17 +19,6 @@ const HIGHLIGHTS = [
   'Panel-ready reports the moment a candidate submits',
 ];
 
-/** The "or" rule between a primary action and its alternative. */
-function OrDivider() {
-  return (
-    <div className="flex items-center gap-3" aria-hidden="true">
-      <span className="h-px flex-1 bg-recruiter-border" />
-      <span className="text-xs text-recruiter-text-tertiary">or</span>
-      <span className="h-px flex-1 bg-recruiter-border" />
-    </div>
-  );
-}
-
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
@@ -40,7 +29,6 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [ssoEnabled, setSsoEnabled] = useState(false);
-  const [usePasswordInstead, setUsePasswordInstead] = useState(false);
   // Debounce the slug so branding + SSO detection fire while the user types,
   // without hitting the API on every keystroke -- no blur/Tab needed.
   const [debouncedSlug, setDebouncedSlug] = useState('');
@@ -55,7 +43,6 @@ export default function LoginPage() {
   // Auto-detect SSO for the typed org. Guarded against out-of-order responses so
   // a slow earlier request can't overwrite the answer for the current slug.
   useEffect(() => {
-    setUsePasswordInstead(false);
     if (!debouncedSlug) {
       setSsoEnabled(false);
       return;
@@ -129,27 +116,18 @@ export default function LoginPage() {
             value={organizationSlug}
             onChange={setOrganizationSlug}
           />
-          {ssoEnabled && !usePasswordInstead ? (
-            <>
-              <motion.a
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, ease: 'easeOut' }}
-                href={`${process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001/api/v1'}/auth/saml/${organizationSlug}/login`}
-                onClick={() => window.sessionStorage.setItem(SSO_PENDING_SLUG_KEY, organizationSlug)}
-                className="flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
-              >
-                Log in with SSO
-              </motion.a>
-              <OrDivider />
-              <button
-                type="button"
-                onClick={() => setUsePasswordInstead(true)}
-                className="text-center text-sm font-medium text-primary hover:underline"
-              >
-                Log in with password instead
-              </button>
-            </>
+          {ssoEnabled ? (
+            // SSO-enabled orgs are SSO-only: no password fallback is offered.
+            <motion.a
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, ease: 'easeOut' }}
+              href={`${process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001/api/v1'}/auth/saml/${organizationSlug}/login`}
+              onClick={() => window.sessionStorage.setItem(SSO_PENDING_SLUG_KEY, organizationSlug)}
+              className="flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+            >
+              Log in with SSO
+            </motion.a>
           ) : (
             <>
               <Input label="Email" type="email" value={email} onChange={setEmail} required />
@@ -176,18 +154,6 @@ export default function LoginPage() {
               <Link href="/forgot-password" className="text-sm font-medium text-primary hover:underline">
                 Forgot password?
               </Link>
-              {ssoEnabled && (
-                <>
-                  <OrDivider />
-                  <button
-                    type="button"
-                    onClick={() => setUsePasswordInstead(false)}
-                    className="text-center text-sm font-medium text-primary hover:underline"
-                  >
-                    Back to SSO login
-                  </button>
-                </>
-              )}
             </>
           )}
         </form>

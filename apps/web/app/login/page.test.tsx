@@ -250,7 +250,7 @@ describe('LoginPage', () => {
     expect(window.sessionStorage.getItem('ssoPendingOrganizationSlug')).toBe('acme');
   });
 
-  it('shows a "Log in with password instead" link that reveals the password form, even when SSO is enabled', async () => {
+  it('offers no password fallback when the org is SSO-enabled', async () => {
     global.fetch = jest.fn(async (url) => {
       if (String(url).endsWith('/auth/refresh')) {
         return new Response(JSON.stringify({ message: 'no session' }), { status: 401 });
@@ -273,12 +273,9 @@ describe('LoginPage', () => {
     await userEvent.tab();
 
     await screen.findByRole('link', { name: /log in with sso/i });
-    await userEvent.click(screen.getByRole('button', { name: /log in with password instead/i }));
-
-    expect(screen.getByLabelText(/^email$/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Log in' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /log in with sso/i })).not.toBeInTheDocument();
+    // SSO orgs are SSO-only: no password escape hatch, no password fields.
+    expect(screen.queryByRole('button', { name: /log in with password instead/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^password$/i)).not.toBeInTheDocument();
   });
 
   it('does not show the SSO button when the org has no SSO configured', async () => {
