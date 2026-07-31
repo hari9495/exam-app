@@ -11,8 +11,26 @@ import {
   useGenerateWebhookSecret,
   useWebhookDeliveries,
 } from '../../../../lib/hooks/useIntegrations';
-import { Input, Button, Card, CardGrid, Select, type SelectOption, useToast } from '../../../../components/ui';
+import { Input, Button, Card, Table, StatusBadge, Select, type SelectOption, type Column, type StatusTone, useToast } from '../../../../components/ui';
 import { WebhookDeliveryRow } from '../../../../lib/types';
+
+function deliveryTone(status: string): StatusTone {
+  if (status === 'delivered' || status === 'success') return 'success';
+  if (status.includes('fail') || status === 'error') return 'danger';
+  return 'neutral';
+}
+
+const DELIVERY_COLUMNS: Column<WebhookDeliveryRow>[] = [
+  { key: 'eventType', header: 'Event', render: (row) => row.eventType, sortValue: (row) => row.eventType },
+  {
+    key: 'status',
+    header: 'Status',
+    render: (row) => <StatusBadge tone={deliveryTone(row.status)}>{row.status}</StatusBadge>,
+    sortValue: (row) => row.status,
+  },
+  { key: 'http', header: 'HTTP', render: (row) => row.httpStatusCode ?? '—', sortValue: (row) => row.httpStatusCode ?? 0 },
+  { key: 'createdAt', header: 'Time', render: (row) => new Date(row.createdAt).toLocaleString(), sortValue: (row) => row.createdAt },
+];
 import { motion } from 'framer-motion';
 
 const AI_PROVIDER_OPTIONS: SelectOption[] = [
@@ -130,21 +148,6 @@ export default function IntegrationsSettingsPage() {
       onSuccess: (result: { webhookSecret: string }) => setRevealedWebhookSecret(result.webhookSecret),
       onError: (err) => setWebhookError(err instanceof Error ? err.message : 'Failed to generate webhook secret'),
     });
-  }
-
-  function renderDeliveryCard(row: WebhookDeliveryRow) {
-    return (
-      <div>
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <span className="font-semibold text-recruiter-text">{row.eventType}</span>
-          <span className="text-xs text-recruiter-text-tertiary">{row.status}</span>
-        </div>
-        <div className="flex items-center justify-between border-t border-recruiter-border pt-2 text-xs text-recruiter-text-tertiary">
-          <span>HTTP <span>{row.httpStatusCode ?? '—'}</span></span>
-          <span>{new Date(row.createdAt).toLocaleString()}</span>
-        </div>
-      </div>
-    );
   }
 
   return (
@@ -275,7 +278,7 @@ export default function IntegrationsSettingsPage() {
           )}
 
           <h3 className="mb-2 mt-5 text-sm font-semibold text-recruiter-text">Recent deliveries</h3>
-          <CardGrid items={deliveries ?? []} cardKey={(row) => row.id} renderCard={renderDeliveryCard} emptyMessage="No deliveries yet." />
+          <Table columns={DELIVERY_COLUMNS} rows={deliveries ?? []} rowKey={(row) => row.id} emptyMessage="No deliveries yet." />
         </Card>
       </motion.div>
     </div>
