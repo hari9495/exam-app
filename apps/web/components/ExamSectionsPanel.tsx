@@ -1,9 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { MoreHorizontal } from 'lucide-react';
+import { MoreHorizontal, X } from 'lucide-react';
 import { useExam } from '../lib/hooks/useExams';
-import { useCreateSection, useDeleteSection, useDuplicateSection } from '../lib/hooks/useExamSections';
+import {
+  useCreateSection,
+  useDeleteSection,
+  useDuplicateSection,
+  useReplaceSectionQuestions,
+} from '../lib/hooks/useExamSections';
 import { SectionQuestionPicker } from './SectionQuestionPicker';
 import {
   Button,
@@ -17,6 +22,42 @@ import {
   DropdownMenuItem,
 } from '../components/ui';
 import { ExamSection } from '../lib/types';
+
+// One section's question list. Owns its own replace hook so the remove action
+// is section-scoped -- hooks can't be called inside the parent's section.map().
+function SectionQuestionList({ examId, section, locked }: { examId: string; section: ExamSection; locked: boolean }) {
+  const replaceQuestions = useReplaceSectionQuestions(examId, section.id);
+  const { toast } = useToast();
+
+  function handleRemove(questionId: string) {
+    const remaining = section.questions.map((q) => q.questionId).filter((id) => id !== questionId);
+    replaceQuestions.mutate(remaining, {
+      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to remove question.', 'error'),
+    });
+  }
+
+  return (
+    <ul className="flex flex-col divide-y divide-recruiter-border border-t border-recruiter-border">
+      {section.questions.map((q) => (
+        <li key={q.questionId} className="flex items-center justify-between gap-2 py-2 text-sm text-recruiter-text-secondary">
+          <span className="min-w-0 flex-1 truncate">{q.question?.text ?? q.questionId}</span>
+          {q.question && <span className="shrink-0 text-xs text-recruiter-text-tertiary">{q.question.marks} marks</span>}
+          {!locked && (
+            <button
+              type="button"
+              aria-label={`Remove ${q.question?.text ?? 'question'}`}
+              onClick={() => handleRemove(q.questionId)}
+              disabled={replaceQuestions.isPending}
+              className="shrink-0 rounded p-1 text-recruiter-text-tertiary transition-colors hover:bg-status-danger-bg hover:text-status-danger disabled:opacity-50"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export function ExamSectionsPanel({ examId }: { examId: string }) {
   const { data: exam } = useExam(examId);
@@ -108,14 +149,7 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
             ) : section.questions.length === 0 ? (
               <p className="text-sm text-recruiter-text-tertiary">No questions added yet.</p>
             ) : (
-              <ul className="flex flex-col gap-1 border-t border-recruiter-border pt-2 text-sm text-recruiter-text-secondary">
-                {section.questions.map((q) => (
-                  <li key={q.questionId} className="flex items-center justify-between gap-2">
-                    <span>{q.question?.text ?? q.questionId}</span>
-                    {q.question && <span className="text-xs text-recruiter-text-tertiary">{q.question.marks} marks</span>}
-                  </li>
-                ))}
-              </ul>
+              <SectionQuestionList examId={examId} section={section} locked={locked} />
             )}
           </Card>
         ))}

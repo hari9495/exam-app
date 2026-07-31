@@ -1,28 +1,55 @@
 'use client';
 
 import * as Dialog from '@radix-ui/react-dialog';
+import { X } from 'lucide-react';
 import { ReactNode } from 'react';
+import clsx from 'clsx';
+
+type ModalSize = 'md' | 'lg';
 
 interface ModalProps {
   open: boolean;
   title: string;
   onClose: () => void;
   children: ReactNode;
+  /** Optional Salesforce-style footer bar: a light, top-bordered strip with
+   *  right-aligned actions. Consumers that render their own buttons inside
+   *  `children` can ignore this and nothing changes for them. */
+  footer?: ReactNode;
+  size?: ModalSize;
 }
 
-export function Modal({ open, title, onClose, children }: ModalProps) {
+const SIZE_CLASSES: Record<ModalSize, string> = {
+  md: 'max-w-lg',
+  lg: 'max-w-2xl',
+};
+
+export function Modal({ open, title, onClose, children, footer, size = 'md' }: ModalProps) {
   return (
     <Dialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/40" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-lg">
-          <div className="mb-4 flex items-center justify-between">
-            <Dialog.Title className="text-lg font-semibold">{title}</Dialog.Title>
-            <Dialog.Close aria-label="Close" className="text-gray-500 hover:text-gray-800">
-              ✕
+        <Dialog.Content
+          className={clsx(
+            'fixed left-1/2 top-1/2 flex max-h-[85vh] w-full -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg bg-white shadow-xl',
+            SIZE_CLASSES[size],
+          )}
+        >
+          <div className="flex items-center justify-between gap-4 border-b border-recruiter-border px-6 py-4">
+            <Dialog.Title className="text-lg font-bold text-recruiter-text">{title}</Dialog.Title>
+            <Dialog.Close
+              aria-label="Close"
+              className="rounded p-1 text-recruiter-text-tertiary transition-colors hover:bg-recruiter-bg-subtle hover:text-recruiter-text"
+            >
+              <X size={18} />
             </Dialog.Close>
           </div>
-          {children}
+          <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
+          {footer && (
+            <div className="flex justify-end gap-2 border-t border-recruiter-border bg-recruiter-bg-subtle px-6 py-3">
+              {footer}
+            </div>
+          )}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

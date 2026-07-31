@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { Search } from 'lucide-react';
 import { useQuestions } from '../lib/hooks/useQuestions';
 import { useReplaceSectionQuestions } from '../lib/hooks/useExamSections';
-import { Modal, Checkbox, Button, useToast } from '../components/ui';
+import { Modal, Checkbox, Button, Badge, Input, useToast } from '../components/ui';
+import { Question, QuestionType, Difficulty } from '../lib/types';
 
 interface SectionQuestionPickerProps {
   examId: string;
@@ -13,60 +15,161 @@ interface SectionQuestionPickerProps {
   existingQuestionIds: string[];
 }
 
+const TYPE_LABELS: Record<QuestionType, string> = {
+  single_mcq: 'Single choice',
+  multi_mcq: 'Multiple choice',
+  true_false: 'True / false',
+  code: 'Coding',
+};
+
+const DIFFICULTY_VARIANT: Record<Difficulty, 'success' | 'warning' | 'danger'> = {
+  easy: 'success',
+  medium: 'warning',
+  hard: 'danger',
+};
+
+// The searchable haystack for one question: its text plus the metadata a
+// recruiter would actually type to find it (topic, category, tag names).
+function matchesQuery(question: Question, query: string): boolean {
+  if (!query) return true;
+  const haystack = [
+    question.text,
+    question.topic ?? '',
+    question.category ?? '',
+    ...(question.tags?.map((t) => t.name) ?? []),
+  ]
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes(query.toLowerCase());
+}
+
 export function SectionQuestionPicker({ examId, sectionId, open, onClose, existingQuestionIds }: SectionQuestionPickerProps) {
   // ponytail: pageSize:100 is the server's max -- an org with >100 active
   // questions silently can't attach #101+ here. Upgrade path: replace with a
   // real paginated/typeahead picker if this becomes a real constraint.
   const { data: questionsResponse } = useQuestions({ pageSize: 100 });
-  const questions = questionsResponse?.data;
+  const allQuestions = questionsResponse?.data;
   const replaceQuestions = useReplaceSectionQuestions(examId, sectionId);
-  const [selectedIds, setSelectedIds] = useState<string[]>(existingQuestionIds);
+  // Holds only the NEW picks. Questions already in the section are hidden below,
+  // and merged back in at save time, so this list never carries them.
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [query, setQuery] = useState('');
   const { toast } = useToast();
 
-  // Reseed only when the picker opens or targets a different section. The parent
-  // computes existingQuestionIds inline (new array identity every render), so
-  // depending on it directly wiped in-progress selections whenever a background
-  // exam refetch re-rendered the parent mid-scroll.
+  // Reset picks and search only when the picker opens or targets a different
+  // section -- not on every parent re-render (a background exam refetch gives
+  // existingQuestionIds a fresh identity each time and would otherwise wipe
+  // an in-progress selection mid-scroll).
   useEffect(() => {
-    if (open) setSelectedIds(existingQuestionIds);
+    if (open) {
+      setSelectedIds([]);
+      setQuery('');
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, sectionId]);
+
+  const existingSet = useMemo(() => new Set(existingQuestionIds), [existingQuestionIds]);
+
+  // Add-only: a question already in the section is not offered again.
+  const addable = useMemo(
+    () => (allQuestions ?? []).filter((q) => !existingSet.has(q.id)),
+    [allQuestions, existingSet],
+  );
+  const visible = useMemo(() => addable.filter((q) => matchesQuery(q, query)), [addable, query]);
 
   function toggle(id: string, checked: boolean) {
     setSelectedIds((current) => (checked ? [...current, id] : current.filter((existing) => existing !== id)));
   }
 
   function handleSave() {
-    if ((questions ?? []).length === 0) {
+    if ((allQuestions ?? []).length === 0) {
       toast('Your question bank is empty. Add questions to it before adding them to a section.', 'error');
       return;
     }
-    replaceQuestions.mutate(selectedIds, {
+    // Merge with what's already in the section so this add-only picker never
+    // drops existing questions. Removal happens from the section list itself.
+    const merged = Array.from(new Set([...existingQuestionIds, ...selectedIds]));
+    replaceQuestions.mutate(merged, {
       onSuccess: onClose,
       onError: (error) => toast(error instanceof Error ? error.message : 'Failed to save questions.', 'error'),
     });
   }
 
+  const bankEmpty = (allQuestions ?? []).length === 0;
+  const allAlreadyAdded = !bankEmpty && addable.length === 0;
+
   return (
-    <Modal open={open} title="Add questions to section" onClose={onClose}>
-      <div className="flex max-h-80 flex-col gap-2 overflow-y-auto">
-        {(questions ?? []).length === 0 && (
-          <p className="text-sm text-gray-500">No questions yet. Add questions to your question bank first.</p>
-        )}
-        {(questions ?? []).map((question) => (
-          <div key={question.id} className="flex items-center justify-between gap-2">
-            <Checkbox
-              label={question.text}
-              checked={selectedIds.includes(question.id)}
-              onChange={(checked) => toggle(question.id, checked)}
-            />
-            <span className="text-xs text-gray-500">{question.marks} marks</span>
-          </div>
-        ))}
-      </div>
-      <div className="mt-4 flex justify-end">
-        <Button onClick={handleSave}>Save questions</Button>
-      </div>
+    <Modal
+      open={open}
+      title="Add questions to section"
+      onClose={onClose}
+      size="lg"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          {/* Label stays "Save questions" (the picker's stable action name); the
+              live count rides alongside so it doesn't change what the button is. */}
+          <Button onClick={handleSave} loading={replaceQuestions.isPending} disabled={selectedIds.length === 0 && !bankEmpty}>
+            Save questions{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
+          </Button>
+        </>
+      }
+    >
+      {bankEmpty ? (
+        <p className="text-sm text-recruiter-text-secondary">No questions yet. Add questions to your question bank first.</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <Input
+            label="Search questions"
+            hideLabel
+            type="search"
+            placeholder="Search by text, topic, category, or tag…"
+            value={query}
+            onChange={setQuery}
+            icon={<Search size={16} />}
+          />
+
+          {allAlreadyAdded ? (
+            <p className="py-6 text-center text-sm text-recruiter-text-secondary">
+              Every question in your bank is already in this section.
+            </p>
+          ) : visible.length === 0 ? (
+            <p className="py-6 text-center text-sm text-recruiter-text-secondary">
+              No questions match “{query}”.
+            </p>
+          ) : (
+            <ul className="flex flex-col divide-y divide-recruiter-border">
+              {visible.map((question) => (
+                <li key={question.id} className="flex items-start justify-between gap-3 py-3">
+                  <div className="min-w-0 flex-1">
+                    <Checkbox
+                      label={question.text}
+                      checked={selectedIds.includes(question.id)}
+                      onChange={(checked) => toggle(question.id, checked)}
+                    />
+                    <div className="ml-6 mt-1 flex flex-wrap items-center gap-1.5">
+                      <Badge>{TYPE_LABELS[question.type]}</Badge>
+                      <Badge variant={DIFFICULTY_VARIANT[question.difficulty]}>{question.difficulty}</Badge>
+                      {question.category && <Badge>{question.category}</Badge>}
+                      {question.topic && <span className="text-xs text-recruiter-text-tertiary">{question.topic}</span>}
+                      {(question.tags ?? []).map((tag) => (
+                        <span key={tag.id} className="text-xs text-recruiter-text-tertiary">
+                          #{tag.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <span className="shrink-0 whitespace-nowrap pt-0.5 text-xs font-medium text-recruiter-text-secondary">
+                    {question.marks} {question.marks === 1 ? 'mark' : 'marks'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </Modal>
   );
 }
