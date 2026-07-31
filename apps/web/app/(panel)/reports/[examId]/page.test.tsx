@@ -1,13 +1,13 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useParams, useRouter } from 'next/navigation';
-import { useExam } from '../../../../lib/hooks/useExams';
+import { useExam, useExams } from '../../../../lib/hooks/useExams';
 import { useResultsSummary, useQuestionAccuracy, useResultsList, useResultsExport } from '../../../../lib/hooks/usePanelReports';
 import { ToastProvider } from '../../../../components/ui';
 import PanelExamResultsPage from './page';
 
 jest.mock('next/navigation', () => ({ useParams: jest.fn(), useRouter: jest.fn() }));
-jest.mock('../../../../lib/hooks/useExams', () => ({ useExam: jest.fn() }));
+jest.mock('../../../../lib/hooks/useExams', () => ({ useExam: jest.fn(), useExams: jest.fn() }));
 jest.mock('../../../../lib/hooks/usePanelReports', () => ({
   useResultsSummary: jest.fn(),
   useQuestionAccuracy: jest.fn(),
@@ -38,6 +38,14 @@ describe('PanelExamResultsPage', () => {
     (useParams as jest.Mock).mockReturnValue({ examId: 'exam-1' });
     (useRouter as jest.Mock).mockReturnValue({ push });
     (useExam as jest.Mock).mockReturnValue({ data: { id: 'exam-1', title: 'Backend Screening' } });
+    (useExams as jest.Mock).mockReturnValue({
+      data: {
+        data: [
+          { id: 'exam-1', title: 'Backend Screening' },
+          { id: 'exam-2', title: 'Frontend Screening' },
+        ],
+      },
+    });
     (useResultsSummary as jest.Mock).mockReturnValue({
       data: { totalCandidates: 2, settledCount: 2, inProgressCount: 0, notStartedCount: 0, passRate: 50, averagePercentage: 60, scoreDistribution: [], attemptDuration: null },
       isLoading: false,
@@ -50,7 +58,7 @@ describe('PanelExamResultsPage', () => {
   it('renders the exam title, summary stats, and candidate rows with links', () => {
     renderPage();
 
-    expect(screen.getByText('Backend Screening')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Backend Screening' })).toBeInTheDocument();
     expect(screen.getByText('50.0%')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Alice' })).toHaveAttribute('href', '/reports/exam-1/candidates/c1?attemptId=a1');
     expect(screen.getByRole('link', { name: 'Bob' })).toHaveAttribute('href', '/reports/exam-1/candidates/c2?attemptId=a2');
@@ -91,6 +99,33 @@ describe('PanelExamResultsPage', () => {
 
     expect(screen.getAllByText('Submitted')).toHaveLength(2);
     expect(screen.getByText('Pending Grade')).toBeInTheDocument();
+  });
+
+  it('navigates to another exam\'s results when a different exam is chosen from the Exam picklist', async () => {
+    renderPage();
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Exam' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Frontend Screening' }));
+
+    expect(push).toHaveBeenCalledWith('/reports/exam-2');
+  });
+
+  it('does not navigate when the currently-viewed exam is re-selected', async () => {
+    renderPage();
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Exam' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Backend Screening' }));
+
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('still offers the current exam in the picklist even before the exam list has loaded', async () => {
+    (useExams as jest.Mock).mockReturnValue({ data: undefined });
+    renderPage();
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Exam' }));
+
+    expect(screen.getByRole('option', { name: 'Backend Screening' })).toBeInTheDocument();
   });
 
   it('filters the candidate rows by the selected integrity level', async () => {

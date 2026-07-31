@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Search } from 'lucide-react';
-import { useExam } from '../../../../lib/hooks/useExams';
+import { useExam, useExams } from '../../../../lib/hooks/useExams';
 import { useResultsSummary, useQuestionAccuracy, useResultsList, useResultsExport } from '../../../../lib/hooks/usePanelReports';
 import {
   Table,
@@ -69,10 +69,39 @@ const STATUS_FILTER_OPTIONS = [
   ...Object.entries(RESULT_STATUS_LABEL).map(([value, label]) => ({ value, label })),
 ];
 
+// Accuracy buckets, not a raw percent range picker: the point is spotting
+// questions worth a second look during validation -- e.g. everyone missing a
+// question (low) can mean it's mis-keyed, everyone acing it (high) can mean
+// it's too easy or leaking the answer.
+type AccuracyBucket = 'low' | 'medium' | 'high';
+
+function accuracyBucket(percentage: number): AccuracyBucket {
+  if (percentage < 30) return 'low';
+  if (percentage < 70) return 'medium';
+  return 'high';
+}
+
+const ACCURACY_FILTER_OPTIONS = [
+  { value: 'all', label: 'All accuracy' },
+  { value: 'low', label: 'Low accuracy (<30%)' },
+  { value: 'medium', label: 'Medium accuracy (30–69%)' },
+  { value: 'high', label: 'High accuracy (≥70%)' },
+];
+
 export default function PanelExamResultsPage() {
   const { examId } = useParams<{ examId: string }>();
   const router = useRouter();
   const { data: exam } = useExam(examId);
+  // ponytail: pageSize:100 is the server's max -- an org with >100 exams won't see #101+
+  // in this switcher. Same cap the /reports list itself already lives with.
+  const { data: examsResponse } = useExams(undefined, { pageSize: 100 });
+  const examOptions = (examsResponse?.data ?? []).map((item) => ({ value: item.id, label: item.title }));
+  // The list query and the single-exam query can settle at different times -- without
+  // this, switching into an exam whose own list page hasn't loaded yet briefly shows
+  // an empty picklist instead of the exam the recruiter is already looking at.
+  if (exam && !examOptions.some((option) => option.value === exam.id)) {
+    examOptions.unshift({ value: exam.id, label: exam.title });
+  }
   const { data: summary, isLoading: summaryLoading } = useResultsSummary(examId);
   const { data: accuracyRows, isLoading: accuracyLoading } = useQuestionAccuracy(examId);
   const { data: results, isLoading: resultsLoading } = useResultsList(examId);
@@ -81,6 +110,8 @@ export default function PanelExamResultsPage() {
   const [integrityFilter, setIntegrityFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [accuracySearch, setAccuracySearch] = useState('');
+  const [accuracyFilter, setAccuracyFilter] = useState('all');
   const { toast } = useToast();
 
   // Derived once: the tab count and the grid must show the same set, and every
@@ -93,6 +124,14 @@ export default function PanelExamResultsPage() {
       (!query || row.candidateName.toLowerCase().includes(query)),
   );
   const filtersActive = integrityFilter !== 'all' || statusFilter !== 'all' || query !== '';
+
+  const accuracyQuery = accuracySearch.trim().toLowerCase();
+  const visibleAccuracyRows = (accuracyRows ?? []).filter(
+    (row) =>
+      (accuracyFilter === 'all' || accuracyBucket(row.accuracyPercentage) === accuracyFilter) &&
+      (!accuracyQuery || row.questionText.toLowerCase().includes(accuracyQuery)),
+  );
+  const accuracyFiltersActive = accuracyFilter !== 'all' || accuracyQuery !== '';
 
   function toggleSelected(candidateId: string) {
     setSelectedIds((current) =>
@@ -237,19 +276,33 @@ export default function PanelExamResultsPage() {
             Candidates{visibleResults.length > 0 ? ` (${visibleResults.length})` : ''}
           </TabsTrigger>
           <TabsTrigger value="accuracy">
-            Question accuracy{accuracyRows?.length ? ` (${accuracyRows.length})` : ''}
+            Question accuracy{visibleAccuracyRows.length > 0 ? ` (${visibleAccuracyRows.length})` : ''}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="accuracy">
+          <div className="mb-2 flex flex-wrap items-end gap-2">
+            <div className="relative max-w-xs flex-1">
+              <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-recruiter-text-tertiary" />
+              <input
+                type="search"
+                value={accuracySearch}
+                onChange={(event) => setAccuracySearch(event.target.value)}
+                placeholder="Search questions…"
+                aria-label="Search questions"
+                className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
+              />
+            </div>
+            <Select label="Accuracy" value={accuracyFilter} onChange={setAccuracyFilter} options={ACCURACY_FILTER_OPTIONS} />
+          </div>
           {accuracyLoading ? (
             <p className="text-sm text-gray-500">Loading…</p>
           ) : (
             <Table
               columns={accuracyColumns}
-              rows={accuracyRows ?? []}
+              rows={visibleAccuracyRows}
               rowKey={(row) => row.questionId}
-              emptyMessage="No settled attempts yet."
+              emptyMessage={accuracyFiltersActive ? 'No questions match your search or filter.' : 'No settled attempts yet.'}
             />
           )}
         </TabsContent>
@@ -268,6 +321,12 @@ export default function PanelExamResultsPage() {
                 className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
               />
             </div>
+            <Select
+              label="Exam"
+              value={examId}
+              onChange={(nextExamId) => nextExamId !== examId && router.push(`/reports/${nextExamId}`)}
+              options={examOptions}
+            />
             <Select label="Status" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTER_OPTIONS} />
             <Select label="Integrity" value={integrityFilter} onChange={setIntegrityFilter} options={INTEGRITY_FILTER_OPTIONS} />
           </div>
