@@ -993,9 +993,17 @@ describe('OrganizationsService', () => {
 
       const result = await service.updateAiKey({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', dto);
 
+      // This asserts only what updateAiKey is responsible for: that it pinged
+      // through the openai-compatible provider using the FAST model before
+      // persisting. The exact token parameter is provider implementation detail
+      // and is owned by openai-compatible-provider.spec.ts -- duplicating it here
+      // is what let this assertion rot when the provider moved from `max_tokens`
+      // to `max_completion_tokens` (commit f777923), and the stale copy only
+      // surfaced once packages/shared/dist was rebuilt.
       expect(mockOpenAiCreate).toHaveBeenCalledWith(
-        expect.objectContaining({ model: 'gpt-fast', max_tokens: 1, messages: [{ role: 'user', content: 'Hi' }] }),
+        expect.objectContaining({ model: 'gpt-fast', messages: [{ role: 'user', content: 'Hi' }] }),
       );
+      expect(mockOpenAiCreate.mock.calls[0][0]).not.toHaveProperty('max_tokens');
       expect(prisma.organization.update).toHaveBeenCalledWith({
         where: { id: 'org-1' },
         data: {
