@@ -79,6 +79,20 @@ describe('PanelExamResultsPage', () => {
     expect(screen.getByText('Integrity: High concern')).toBeInTheDocument();
   });
 
+  it('shows friendly status labels instead of raw backend status strings', () => {
+    (useResultsList as jest.Mock).mockReturnValue({
+      data: [
+        ...resultRows,
+        { candidateId: 'c3', candidateName: 'Cara', invitationId: 'i3', attemptId: 'a3', status: 'pending_manual_grade', score: null, maxScore: 10, percentage: null, passFail: null, submittedAt: null, proctoringAnalysis: null, integrityLevel: null, integrityFlagCount: 0 },
+      ],
+      isLoading: false,
+    });
+    renderPage();
+
+    expect(screen.getAllByText('Submitted')).toHaveLength(2);
+    expect(screen.getByText('Pending Grade')).toBeInTheDocument();
+  });
+
   it('filters the candidate rows by the selected integrity level', async () => {
     renderPage();
 

@@ -6,10 +6,53 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { useExam } from '../../../../lib/hooks/useExams';
 import { useResultsSummary, useQuestionAccuracy, useResultsList, useResultsExport } from '../../../../lib/hooks/usePanelReports';
-import { CardGrid, Badge, Button, Checkbox, Card, Select, IntegrityBadge, useToast, Tabs, TabsList, TabsTrigger, TabsContent } from '../../../../components/ui';
+import {
+  Table,
+  Checkbox,
+  Button,
+  Card,
+  Select,
+  StatusBadge,
+  IntegrityBadge,
+  useToast,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+  type Column,
+  type StatusTone,
+} from '../../../../components/ui';
 import { ExamResultRow, QuestionAccuracyRow } from '../../../../lib/types';
 
-const PASS_FAIL_VARIANT: Record<string, 'success' | 'danger'> = { pass: 'success', fail: 'danger' };
+const PASS_FAIL_TONE: Record<string, StatusTone> = { pass: 'success', fail: 'danger' };
+
+// The candidate's raw attempt/invitation status ('pending_manual_grade', 'submitted', ...) --
+// same underlying values as the Candidates and Live tabs, kept distinct here (not collapsed
+// to a 3-stage bucket) since a recruiter reading results specifically cares which kind of
+// settlement a candidate got.
+const RESULT_STATUS_LABEL: Record<string, string> = {
+  invited: 'Invited',
+  revoked: 'Revoked',
+  in_progress: 'In Progress',
+  paused: 'Paused',
+  blocked: 'Blocked',
+  pending_manual_grade: 'Pending Grade',
+  submitted: 'Submitted',
+  auto_submitted: 'Auto-submitted',
+  force_submitted: 'Force-submitted',
+};
+
+const RESULT_STATUS_TONE: Record<string, StatusTone> = {
+  invited: 'info',
+  revoked: 'danger',
+  in_progress: 'warning',
+  paused: 'neutral',
+  blocked: 'danger',
+  pending_manual_grade: 'warning',
+  submitted: 'success',
+  auto_submitted: 'success',
+  force_submitted: 'danger',
+};
 
 const INTEGRITY_FILTER_OPTIONS = [
   { value: 'all', label: 'All integrity levels' },
@@ -58,46 +101,82 @@ export default function PanelExamResultsPage() {
     }
   }
 
-  function renderCandidateCard(row: ExamResultRow) {
-    return (
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-2">
-          <Checkbox
-            checked={selectedIds.includes(row.candidateId)}
-            onChange={() => toggleSelected(row.candidateId)}
-            label={`Select ${row.candidateName}`}
-            hideLabel
-          />
-          <Link
-            href={`/reports/${examId}/candidates/${row.candidateId}?attemptId=${row.attemptId ?? ''}`}
-            className="flex-1 truncate text-sm font-semibold text-gray-900 hover:underline"
-          >
-            {row.candidateName}
-          </Link>
-          {row.passFail && <Badge variant={PASS_FAIL_VARIANT[row.passFail] ?? 'default'}>{row.passFail}</Badge>}
-        </div>
-        <div className="flex items-center justify-between text-xs text-gray-500">
-          <span>{row.status}</span>
-          <span>{row.percentage !== null ? `${row.percentage.toFixed(1)}%` : '—'}</span>
-          <IntegrityBadge level={row.integrityLevel} />
-        </div>
-      </div>
-    );
-  }
+  const candidateColumns: Column<ExamResultRow>[] = [
+    {
+      key: 'select',
+      header: '',
+      render: (row) => (
+        <Checkbox
+          checked={selectedIds.includes(row.candidateId)}
+          onChange={() => toggleSelected(row.candidateId)}
+          label={`Select ${row.candidateName}`}
+          hideLabel
+        />
+      ),
+    },
+    {
+      key: 'name',
+      header: 'Candidate',
+      render: (row) => (
+        <Link
+          href={`/reports/${examId}/candidates/${row.candidateId}?attemptId=${row.attemptId ?? ''}`}
+          className="font-medium text-primary hover:underline"
+        >
+          {row.candidateName}
+        </Link>
+      ),
+      sortValue: (row) => row.candidateName.toLowerCase(),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (row) => <StatusBadge tone={RESULT_STATUS_TONE[row.status] ?? 'neutral'}>{RESULT_STATUS_LABEL[row.status] ?? row.status}</StatusBadge>,
+      sortValue: (row) => RESULT_STATUS_LABEL[row.status] ?? row.status,
+    },
+    {
+      key: 'score',
+      header: 'Score',
+      render: (row) => (row.percentage !== null ? `${row.percentage.toFixed(1)}%` : '—'),
+      sortValue: (row) => row.percentage ?? -1,
+    },
+    {
+      key: 'result',
+      header: 'Result',
+      render: (row) => (row.passFail ? <StatusBadge tone={PASS_FAIL_TONE[row.passFail] ?? 'neutral'}>{row.passFail}</StatusBadge> : '—'),
+      sortValue: (row) => row.passFail ?? '',
+    },
+    {
+      key: 'integrity',
+      header: 'Integrity',
+      render: (row) => <IntegrityBadge level={row.integrityLevel} />,
+      sortValue: (row) => row.integrityLevel ?? '',
+    },
+  ];
 
-  function renderAccuracyCard(row: QuestionAccuracyRow) {
-    return (
-      <div className="flex flex-col gap-1">
-        <p className="text-sm text-gray-800">{row.questionText}</p>
-        <div className="flex items-center justify-between text-xs text-gray-500">
-          <span>{row.accuracyPercentage.toFixed(1)}% accuracy</span>
-          <span>
-            {row.timesAttempted} / {row.timesIncluded}
-          </span>
-        </div>
-      </div>
-    );
-  }
+  const accuracyColumns: Column<QuestionAccuracyRow>[] = [
+    {
+      key: 'question',
+      header: 'Question',
+      render: (row) => (
+        <span className="block max-w-xl truncate" title={row.questionText}>
+          {row.questionText}
+        </span>
+      ),
+      sortValue: (row) => row.questionText.toLowerCase(),
+    },
+    {
+      key: 'accuracy',
+      header: 'Accuracy',
+      render: (row) => `${row.accuracyPercentage.toFixed(1)}%`,
+      sortValue: (row) => row.accuracyPercentage,
+    },
+    {
+      key: 'attempted',
+      header: 'Attempted',
+      render: (row) => `${row.timesAttempted} / ${row.timesIncluded}`,
+      sortValue: (row) => row.timesAttempted,
+    },
+  ];
 
   return (
     <div>
@@ -151,10 +230,10 @@ export default function PanelExamResultsPage() {
           {accuracyLoading ? (
             <p className="text-sm text-gray-500">Loading…</p>
           ) : (
-            <CardGrid
-              items={accuracyRows ?? []}
-              cardKey={(row) => row.questionId}
-              renderCard={renderAccuracyCard}
+            <Table
+              columns={accuracyColumns}
+              rows={accuracyRows ?? []}
+              rowKey={(row) => row.questionId}
               emptyMessage="No settled attempts yet."
             />
           )}
@@ -184,11 +263,11 @@ export default function PanelExamResultsPage() {
         {resultsLoading ? (
           <p className="text-sm text-gray-500">Loading…</p>
         ) : (
-          <CardGrid
-            items={visibleResults}
-            cardKey={(row) => row.candidateId}
-            renderCard={renderCandidateCard}
-            emptyMessage="No candidates invited yet."
+          <Table
+            columns={candidateColumns}
+            rows={visibleResults}
+            rowKey={(row) => row.candidateId}
+            emptyMessage={integrityFilter === 'all' ? 'No candidates invited yet.' : 'No candidates match this integrity level.'}
           />
         )}
         </TabsContent>
