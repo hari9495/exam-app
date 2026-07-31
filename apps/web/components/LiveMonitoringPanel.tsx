@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ShieldAlert, ShieldCheck, AlertTriangle, AlertCircle, Info } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, AlertTriangle, AlertCircle, Info, Search } from 'lucide-react';
 import { useUnblockAttempt, useBypassProctoring, useRevokeProctoringBypass } from '../lib/hooks/useAttemptModeration';
 import { useProctoringEvents } from '../lib/hooks/useProctoringEvents';
 import { Table, Badge, Button, Card, Modal, Select, useToast, type Column } from './ui';
@@ -234,16 +234,22 @@ export function LiveMonitoringPanel({
   const [bypassAttemptId, setBypassAttemptId] = useState<string | null>(null);
   const [bypassReason, setBypassReason] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [search, setSearch] = useState('');
   const previousStatusRef = useRef<ConnectionStatus>(connectionStatus);
 
-  // Filtered, then sorted by urgency (see STATUS_PRIORITY) so the roster always
-  // opens with whoever needs the recruiter's attention first, not insertion order.
+  // Searched, filtered, then sorted by urgency (see STATUS_PRIORITY) so the roster
+  // always opens with whoever needs the recruiter's attention first, not insertion order.
   const visibleRoster = useMemo(() => {
-    const filtered = statusFilter === 'all' ? roster : roster.filter((row) => row.status === statusFilter);
+    const query = search.trim().toLowerCase();
+    const filtered = roster.filter(
+      (row) =>
+        (statusFilter === 'all' || row.status === statusFilter) &&
+        (!query || row.candidateName.toLowerCase().includes(query)),
+    );
     return [...filtered].sort(
       (a, b) => (STATUS_PRIORITY[a.status] ?? DEFAULT_STATUS_PRIORITY) - (STATUS_PRIORITY[b.status] ?? DEFAULT_STATUS_PRIORITY),
     );
-  }, [roster, statusFilter]);
+  }, [roster, statusFilter, search]);
 
   function handleConfirmBypass() {
     if (!bypassAttemptId || !bypassReason.trim()) return;
@@ -401,14 +407,27 @@ export function LiveMonitoringPanel({
       ) : (
         <div className="grid grid-cols-3 gap-4">
           <div className="col-span-2">
-            <div className="mb-2 flex justify-end">
+            <div className="mb-2 flex items-end justify-between gap-2">
+              <div className="relative max-w-xs flex-1">
+                <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-recruiter-text-tertiary" />
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search candidates…"
+                  aria-label="Search candidates"
+                  className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
+                />
+              </div>
               <Select label="Status" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTER_OPTIONS} />
             </div>
             <Table
               columns={rosterColumns}
               rows={visibleRoster}
               rowKey={(row) => row.candidateId}
-              emptyMessage={statusFilter === 'all' ? 'No candidates invited yet.' : 'No candidates match this status.'}
+              emptyMessage={
+                statusFilter === 'all' && !search.trim() ? 'No candidates invited yet.' : 'No candidates match your search or filter.'
+              }
             />
           </div>
           <Card className="flex h-fit flex-col gap-3">

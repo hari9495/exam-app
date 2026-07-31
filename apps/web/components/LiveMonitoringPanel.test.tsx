@@ -137,6 +137,24 @@ describe('LiveMonitoringPanel', () => {
     expect(screen.getByText('Bob')).toBeInTheDocument();
   });
 
+  it('filters the roster by candidate name as the recruiter types', async () => {
+    const user = userEvent.setup({ delay: null });
+    renderPanel({
+      roster: [
+        { candidateId: 'c1', candidateName: 'Alice Smith', invitationId: 'i1', attemptId: 'a1', status: 'in_progress', online: true, remainingSeconds: 60, answeredCount: 1, totalQuestions: 5, proctoringBypassed: false },
+        { candidateId: 'c2', candidateName: 'Bob Jones', invitationId: 'i2', attemptId: 'a2', status: 'blocked', online: true, remainingSeconds: 60, answeredCount: 1, totalQuestions: 5, proctoringBypassed: false },
+      ],
+    });
+
+    expect(screen.getByText('Alice Smith')).toBeInTheDocument();
+    expect(screen.getByText('Bob Jones')).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText('Search candidates…'), 'bob');
+
+    expect(screen.queryByText('Alice Smith')).not.toBeInTheDocument();
+    expect(screen.getByText('Bob Jones')).toBeInTheDocument();
+  });
+
   it('shows an empty state when no proctoring alerts have arrived', () => {
     renderPanel();
 
