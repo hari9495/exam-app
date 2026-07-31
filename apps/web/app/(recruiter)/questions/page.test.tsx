@@ -53,9 +53,11 @@ describe('QuestionsPage', () => {
 
     render(
       <QueryProvider>
-        <AuthProvider>
-          <QuestionsPage />
-        </AuthProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <QuestionsPage />
+          </AuthProvider>
+        </ToastProvider>
       </QueryProvider>,
     );
 
@@ -81,9 +83,11 @@ describe('QuestionsPage', () => {
 
     render(
       <QueryProvider>
-        <AuthProvider>
-          <QuestionsPage />
-        </AuthProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <QuestionsPage />
+          </AuthProvider>
+        </ToastProvider>
       </QueryProvider>,
     );
 
@@ -106,9 +110,11 @@ describe('QuestionsPage', () => {
 
     render(
       <QueryProvider>
-        <AuthProvider>
-          <QuestionsPage />
-        </AuthProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <QuestionsPage />
+          </AuthProvider>
+        </ToastProvider>
       </QueryProvider>,
     );
 
@@ -324,6 +330,16 @@ describe('QuestionsPage', () => {
 
       // Both questions are category "Aptitude", so they collapse under one heading.
       expect(screen.getByRole('heading', { name: 'Aptitude' })).toBeInTheDocument();
+    });
+
+    it('opens a delete confirmation from a question row action', async () => {
+      mockQuestions();
+      renderPage();
+      await waitFor(() => expect(screen.getByText(/Two numbers are in the ratio/)).toBeInTheDocument());
+
+      // Each row exposes a Delete action; clicking it opens the confirmation dialog.
+      await userEvent.click(screen.getAllByRole('button', { name: 'Delete' })[0]);
+      expect(screen.getByText('Delete question')).toBeInTheDocument();
     });
   });
 });

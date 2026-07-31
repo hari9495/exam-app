@@ -91,6 +91,18 @@ export function useUpdateQuestion(id: string) {
   });
 }
 
+export function useArchiveQuestion() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    // Archive is the soft-delete: it flips the question to status 'archived', which the default
+    // (status: 'active') list query then excludes -- so it disappears from the Question Bank.
+    mutationFn: (id: string) =>
+      apiFetch(`/questions/${id}/archive`, { method: 'POST', body: JSON.stringify({}) }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['questions'] }),
+  });
+}
+
 export interface BulkUploadRowError {
   row: number;
   message: string;

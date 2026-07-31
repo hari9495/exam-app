@@ -3,8 +3,8 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { Plus, Search } from 'lucide-react';
-import { useQuestions } from '../../../lib/hooks/useQuestions';
-import { Select, Button, Pagination, StatusBadge, Table, type Column } from '../../../components/ui';
+import { useQuestions, useArchiveQuestion } from '../../../lib/hooks/useQuestions';
+import { Select, Button, Modal, Pagination, StatusBadge, Table, useToast, type Column } from '../../../components/ui';
 import { groupQuestions, type GroupBy } from '../../../lib/question-grouping';
 import { TYPE_TONE, TYPE_LABEL, DIFFICULTY_LABEL, DIFFICULTY_LEVEL } from '../../../lib/question-display';
 import { Question } from '../../../lib/types';
@@ -17,7 +17,7 @@ const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
   { value: 'tag', label: 'Tag' },
 ];
 
-const columns: Column<Question>[] = [
+const DISPLAY_COLUMNS: Column<Question>[] = [
   {
     key: 'text',
     header: 'Question',
@@ -71,6 +71,23 @@ export default function QuestionsPage() {
   const [search, setSearch] = useState('');
   const [groupBy, setGroupBy] = useState<GroupBy>('none');
   const { data: questions, isLoading, isError } = useQuestions({ page, pageSize: 20, search: search || undefined });
+  const [questionPendingDelete, setQuestionPendingDelete] = useState<Question | null>(null);
+  const archiveQuestion = useArchiveQuestion();
+  const { toast } = useToast();
+
+  function handleConfirmDelete() {
+    if (!questionPendingDelete) return;
+    archiveQuestion.mutate(questionPendingDelete.id, {
+      onSuccess: () => {
+        toast('Question deleted.');
+        setQuestionPendingDelete(null);
+      },
+      onError: (error) => {
+        toast(error instanceof Error ? error.message : 'Failed to delete question.', 'error');
+        setQuestionPendingDelete(null);
+      },
+    });
+  }
 
   if (isLoading) {
     return (
@@ -95,6 +112,25 @@ export default function QuestionsPage() {
   const rows = questions?.data ?? [];
   // Each group renders its own Table, so column-header sorting applies within a group.
   const groups = groupBy === 'none' ? [{ label: '', questions: rows }] : groupQuestions(rows, groupBy);
+
+  const columns: Column<Question>[] = [
+    ...DISPLAY_COLUMNS,
+    {
+      key: 'actions',
+      header: '',
+      render: (question) => (
+        <div className="flex items-center justify-end opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+          <button
+            type="button"
+            onClick={() => setQuestionPendingDelete(question)}
+            className="text-xs font-medium text-status-danger hover:underline"
+          >
+            Delete
+          </button>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div>
@@ -157,6 +193,25 @@ export default function QuestionsPage() {
       )}
 
       <Pagination page={questions?.page ?? 1} totalPages={questions?.totalPages ?? 1} onPageChange={setPage} />
+
+      {questionPendingDelete && (
+        <Modal open title="Delete question" onClose={() => setQuestionPendingDelete(null)}>
+          <p className="mb-4 text-sm text-recruiter-text-secondary">
+            Delete this question? It will be removed from the question bank. Exams that already use it keep their copy.
+          </p>
+          <p className="mb-4 truncate text-sm font-medium text-recruiter-text" title={questionPendingDelete.text}>
+            {questionPendingDelete.text}
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setQuestionPendingDelete(null)}>
+              Cancel
+            </Button>
+            <Button variant="danger" loading={archiveQuestion.isPending} onClick={handleConfirmDelete}>
+              Delete
+            </Button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
