@@ -122,7 +122,9 @@ export default function PanelExamResultsPage() {
 
   async function handleExport(format: 'csv' | 'xlsx' | 'pdf') {
     try {
-      const { blob, filename } = await exportMutation.mutateAsync(format);
+      // Exports the checked rows; falls back to everything when nothing is checked,
+      // same "no selection = no scoping" default the backend itself applies.
+      const { blob, filename } = await exportMutation.mutateAsync({ format, candidateIds: selectedIds });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;

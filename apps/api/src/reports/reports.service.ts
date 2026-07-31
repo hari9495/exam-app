@@ -267,8 +267,13 @@ export class ReportsService {
     });
   }
 
-  async getExportRows(context: TenantContext, examId: string): Promise<ExportResultRow[]> {
-    const rows = await this.examsService.getResults(context, examId);
+  async getExportRows(context: TenantContext, examId: string, candidateIds?: string[]): Promise<ExportResultRow[]> {
+    const allRows = await this.examsService.getResults(context, examId);
+    // Scoped export (a recruiter selected specific rows before exporting): an empty
+    // or omitted list means "export everything", matching every other list/filter
+    // in the product where no selection defaults to the full set, not an empty file.
+    const candidateIdSet = candidateIds && candidateIds.length > 0 ? new Set(candidateIds) : null;
+    const rows = candidateIdSet ? allRows.filter((row) => candidateIdSet.has(row.candidateId)) : allRows;
     const attemptIds = rows.map((row) => row.attemptId).filter((id): id is string => id !== null);
     const startedAtById = await this.fetchStartedAtByAttemptId(context, attemptIds);
 

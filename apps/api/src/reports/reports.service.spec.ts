@@ -226,6 +226,32 @@ describe('ReportsService', () => {
       expect(exportRows[1].durationMinutes).toBeNull();
       expect(exportRows[2].durationMinutes).toBeNull();
     });
+
+    it('scopes the export to the given candidateIds when provided', async () => {
+      examsService.getResults.mockResolvedValue([
+        row({ candidateId: 'cand-1', status: 'submitted', attemptId: 'a1', submittedAt: new Date('2026-01-01T00:20:00Z') }),
+        row({ candidateId: 'cand-2', status: 'submitted', attemptId: 'a2', submittedAt: new Date('2026-01-01T00:20:00Z') }),
+      ]);
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ attempt: { findMany: jest.fn().mockResolvedValue([]) } }));
+
+      const exportRows = await service.getExportRows(context, 'exam-1', ['cand-2']);
+
+      expect(exportRows.map((r) => r.candidateId)).toEqual(['cand-2']);
+    });
+
+    it('exports every candidate when candidateIds is empty or omitted', async () => {
+      examsService.getResults.mockResolvedValue([
+        row({ candidateId: 'cand-1', status: 'submitted', attemptId: 'a1', submittedAt: new Date('2026-01-01T00:20:00Z') }),
+        row({ candidateId: 'cand-2', status: 'submitted', attemptId: 'a2', submittedAt: new Date('2026-01-01T00:20:00Z') }),
+      ]);
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ attempt: { findMany: jest.fn().mockResolvedValue([]) } }));
+
+      const withEmptyArray = await service.getExportRows(context, 'exam-1', []);
+      const withNoArg = await service.getExportRows(context, 'exam-1');
+
+      expect(withEmptyArray).toHaveLength(2);
+      expect(withNoArg).toHaveLength(2);
+    });
   });
 
   describe('getCandidateDetail', () => {

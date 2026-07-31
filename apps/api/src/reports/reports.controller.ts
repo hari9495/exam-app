@@ -60,9 +60,11 @@ export class ReportsController {
     @CurrentTenant() tenant: TenantContext,
     @Param('id') id: string,
     @Query() query: ExportFormatQueryDto,
+    @Query('candidateIds') candidateIds: string | undefined,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
-    const rows = await this.reportsService.getExportRows(tenant, id);
+    const candidateIdList = candidateIds ? candidateIds.split(',').filter(Boolean) : undefined;
+    const rows = await this.reportsService.getExportRows(tenant, id, candidateIdList);
     const buffer = await this.buildExportBuffer(query.format, rows);
 
     res.set({

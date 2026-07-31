@@ -122,7 +122,28 @@ describe('usePanelReports', () => {
       return null;
     }
     render(<Probe />, { wrapper });
-    const result = await hook!.mutateAsync('csv');
+    const result = await hook!.mutateAsync({ format: 'csv' });
+    expect(result.filename).toBe('exam-exam-1-results.csv');
+  });
+
+  it('useResultsExport includes candidateIds in the query string when scoping the export', async () => {
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'test-token' }), { status: 200 });
+      }
+      if (String(url).includes('/exams/exam-1/results/export') && String(url).includes('candidateIds=c1%2Cc2')) {
+        return new Response(new Blob(['a,b']), { status: 200, headers: { 'Content-Disposition': 'attachment; filename="exam-exam-1-results.csv"' } });
+      }
+      throw new Error(`Unexpected fetch to ${url}`);
+    }) as unknown as typeof fetch;
+
+    let hook: ReturnType<typeof useResultsExport> | undefined;
+    function Probe() {
+      hook = useResultsExport('exam-1');
+      return null;
+    }
+    render(<Probe />, { wrapper });
+    const result = await hook!.mutateAsync({ format: 'csv', candidateIds: ['c1', 'c2'] });
     expect(result.filename).toBe('exam-exam-1-results.csv');
   });
 });

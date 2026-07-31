@@ -6,7 +6,13 @@ import { ArrowUp, ArrowDown } from 'lucide-react';
 
 export interface Column<T> {
   key: string;
-  header: string;
+  /** Usually plain text, but can be any header content (e.g. a filter dropdown
+   *  trigger) -- see sortLabel below for how that interacts with onSortChange. */
+  header: ReactNode;
+  /** Text label for the "Sorted by X" announcement when header isn't plain text.
+   *  Defaults to header if it's a string, else falls back to key so a non-text
+   *  header (a filter dropdown, say) never renders as "[object Object]". */
+  sortLabel?: string;
   render: (row: T) => ReactNode;
   sortValue?: (row: T) => string | number;
 }
@@ -40,7 +46,8 @@ export function Table<T>({ columns, rows, rowKey, emptyMessage = 'No results.', 
     const nextDir = sortKey === column.key && sortDir === 'asc' ? 'desc' : 'asc';
     setSortKey(column.key);
     setSortDir(nextDir);
-    onSortChange?.({ key: column.key, header: column.header, direction: nextDir });
+    const header = column.sortLabel ?? (typeof column.header === 'string' ? column.header : column.key);
+    onSortChange?.({ key: column.key, header, direction: nextDir });
   }
 
   if (rows.length === 0) {

@@ -179,8 +179,19 @@ describe('PanelExamResultsPage', () => {
     renderPage();
     await userEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
 
-    expect(mutateAsync).toHaveBeenCalledWith('csv');
+    expect(mutateAsync).toHaveBeenCalledWith({ format: 'csv', candidateIds: [] });
     expect(createObjectURL).toHaveBeenCalled();
+  });
+
+  it('scopes the export to the checked candidates', async () => {
+    global.URL.createObjectURL = jest.fn().mockReturnValue('blob:mock');
+    global.URL.revokeObjectURL = jest.fn();
+
+    renderPage();
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select Alice' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
+
+    expect(mutateAsync).toHaveBeenCalledWith({ format: 'csv', candidateIds: ['c1'] });
   });
 
   describe('tabbed layout', () => {

@@ -91,7 +91,12 @@ export function useRegenerateAttemptInsight() {
 export function useResultsExport(examId: string) {
   const { accessToken } = useAuth();
   return useMutation({
-    mutationFn: (format: 'csv' | 'xlsx' | 'pdf') =>
-      apiFetchBlob(`/exams/${examId}/results/export?format=${format}`, {}, accessToken ?? undefined),
+    mutationFn: ({ format, candidateIds }: { format: 'csv' | 'xlsx' | 'pdf'; candidateIds?: string[] }) => {
+      const query = new URLSearchParams({ format });
+      // Omitted (not just empty) when nothing is selected, so the backend's own
+      // "no ids -> export everything" default is what actually runs.
+      if (candidateIds && candidateIds.length > 0) query.set('candidateIds', candidateIds.join(','));
+      return apiFetchBlob(`/exams/${examId}/results/export?${query.toString()}`, {}, accessToken ?? undefined);
+    },
   });
 }

@@ -140,13 +140,17 @@ export function ListView<T>({
                 .filter((column) => column.header !== '')
                 .map((column) => {
                   const visible = !hidden.includes(column.key);
+                  // A non-text header (e.g. a filter dropdown trigger) has no string to
+                  // read as the checkbox's accessible name -- fall back the same way
+                  // Table's own sort announcement does.
+                  const label = column.sortLabel ?? (typeof column.header === 'string' ? column.header : column.key);
                   return (
                     <button
                       key={column.key}
                       type="button"
                       role="menuitemcheckbox"
                       aria-checked={visible}
-                      aria-label={column.header}
+                      aria-label={label}
                       onClick={() => toggleColumn(column.key)}
                       className="flex w-full cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-recruiter-bg-subtle"
                     >
