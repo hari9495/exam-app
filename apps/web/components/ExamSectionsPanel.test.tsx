@@ -230,6 +230,71 @@ describe('ExamSectionsPanel', () => {
     expect(screen.getByText('10')).toBeInTheDocument();
   });
 
+  it("filters a section's questions by search text and by type", async () => {
+    const fetchMock = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/exams/exam-1')) {
+        return new Response(
+          JSON.stringify({
+            id: 'exam-1',
+            title: 'Backend Round',
+            instructions: null,
+            status: 'draft',
+            durationMinutes: 60,
+            passCriteriaPercent: 40,
+            randomizeOrder: false,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            sections: [
+              {
+                id: 's-1',
+                examId: 'exam-1',
+                title: 'Section One',
+                orderIndex: 0,
+                selectionMode: 'fixed',
+                poolSize: null,
+                poolDifficulty: null,
+                targetDurationMinutes: null,
+                questions: [
+                  { questionId: 'q1', question: { text: 'What is 2+2?', marks: 5, type: 'single_mcq', difficulty: 'easy' } },
+                  { questionId: 'q2', question: { text: 'Reverse a string', marks: 10, type: 'code', difficulty: 'hard' } },
+                ],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ExamSectionsPanel examId="exam-1" />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('What is 2+2?')).toBeInTheDocument());
+
+    await userEvent.type(screen.getByLabelText("Search this section's questions"), 'reverse');
+    expect(screen.queryByText('What is 2+2?')).not.toBeInTheDocument();
+    expect(screen.getByText('Reverse a string')).toBeInTheDocument();
+
+    await userEvent.clear(screen.getByLabelText("Search this section's questions"));
+    expect(screen.getByText('What is 2+2?')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByLabelText('Type'));
+    await userEvent.click(screen.getByRole('option', { name: 'Code' }));
+    expect(screen.queryByText('What is 2+2?')).not.toBeInTheDocument();
+    expect(screen.getByText('Reverse a string')).toBeInTheDocument();
+  });
+
   it('shows a pool summary instead of a question list for a pool-mode section', async () => {
     const fetchMock = jest.fn(async (url) => {
       if (String(url).endsWith('/auth/refresh')) {

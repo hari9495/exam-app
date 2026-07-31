@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { MoreHorizontal } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { MoreHorizontal, Search } from 'lucide-react';
 import { useExam } from '../lib/hooks/useExams';
 import {
   useCreateSection,
@@ -15,6 +15,7 @@ import {
   Input,
   Card,
   Modal,
+  Select,
   StatusBadge,
   Table,
   useToast,
@@ -25,9 +26,19 @@ import {
   type Column,
 } from '../components/ui';
 import { TYPE_TONE, TYPE_LABEL, DIFFICULTY_LABEL, DIFFICULTY_LEVEL } from '../lib/question-display';
-import { ExamSection } from '../lib/types';
+import { ExamSection, QuestionType, Difficulty } from '../lib/types';
 
 type SectionQuestion = ExamSection['questions'][number];
+
+const TYPE_OPTIONS = [
+  { value: 'all', label: 'All types' },
+  ...(Object.keys(TYPE_LABEL) as QuestionType[]).map((value) => ({ value, label: TYPE_LABEL[value] })),
+];
+
+const DIFFICULTY_OPTIONS = [
+  { value: 'all', label: 'All difficulties' },
+  ...(Object.keys(DIFFICULTY_LABEL) as Difficulty[]).map((value) => ({ value, label: DIFFICULTY_LABEL[value] })),
+];
 
 // One section's question list, rendered as the shared Salesforce-style table.
 // Owns its own replace hook so the remove action is section-scoped -- hooks can't
@@ -35,6 +46,19 @@ type SectionQuestion = ExamSection['questions'][number];
 function SectionQuestionList({ examId, section, locked }: { examId: string; section: ExamSection; locked: boolean }) {
   const replaceQuestions = useReplaceSectionQuestions(examId, section.id);
   const { toast } = useToast();
+  const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [difficultyFilter, setDifficultyFilter] = useState('all');
+
+  const visible = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return section.questions.filter((q) => {
+      if (query && !(q.question?.text ?? q.questionId).toLowerCase().includes(query)) return false;
+      if (typeFilter !== 'all' && q.question?.type !== typeFilter) return false;
+      if (difficultyFilter !== 'all' && q.question?.difficulty !== difficultyFilter) return false;
+      return true;
+    });
+  }, [section.questions, search, typeFilter, difficultyFilter]);
 
   function handleRemove(questionId: string) {
     const remaining = section.questions.map((q) => q.questionId).filter((id) => id !== questionId);
@@ -94,7 +118,30 @@ function SectionQuestionList({ examId, section, locked }: { examId: string; sect
     });
   }
 
-  return <Table columns={columns} rows={section.questions} rowKey={(q) => q.questionId} />;
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="relative max-w-xs flex-1">
+          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-recruiter-text-tertiary" />
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search this section's questions…"
+            aria-label="Search this section's questions"
+            className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
+          />
+        </div>
+        <Select label="Type" value={typeFilter} onChange={setTypeFilter} options={TYPE_OPTIONS} />
+        <Select label="Difficulty" value={difficultyFilter} onChange={setDifficultyFilter} options={DIFFICULTY_OPTIONS} />
+      </div>
+      {visible.length === 0 ? (
+        <p className="py-4 text-center text-sm text-recruiter-text-tertiary">No questions match your search.</p>
+      ) : (
+        <Table columns={columns} rows={visible} rowKey={(q) => q.questionId} />
+      )}
+    </div>
+  );
 }
 
 export function ExamSectionsPanel({ examId }: { examId: string }) {
