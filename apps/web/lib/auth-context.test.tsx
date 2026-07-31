@@ -20,6 +20,7 @@ describe('AuthProvider', () => {
 
   afterEach(() => {
     global.fetch = originalFetch;
+    window.sessionStorage.clear();
   });
 
   it('silently refreshes on mount and exposes the resulting access token', async () => {
@@ -267,5 +268,46 @@ describe('AuthProvider', () => {
 
     expect(auth?.impersonating).toBe(false);
     expect(auth?.accessToken).toBe(restoredToken);
+  });
+
+  it('re-enters the acting org on refresh so an acting super_admin session survives a reload', async () => {
+    // A stored acting org id (set by switchIntoOrg) means the session was acting into org2. The
+    // refresh returns the BASE super_admin token; the provider must re-enter org2 to restore acting.
+    window.sessionStorage.setItem('actingOrgId', 'org2');
+    const baseToken = fakeJwt({ sub: 'userA', organizationId: 'org1', role: 'super_admin' });
+    const actingToken = fakeJwt({
+      sub: 'userA',
+      organizationId: 'org2',
+      role: 'super_admin',
+      actingSuperAdmin: true,
+      actingOrgName: 'Acme Inc',
+    });
+
+    global.fetch = jest.fn(async (url) => {
+      const u = String(url);
+      if (u.endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: baseToken }), { status: 200 });
+      }
+      if (u.endsWith('/auth/super-admin/switch-into/org2')) {
+        return new Response(JSON.stringify({ accessToken: actingToken }), { status: 200 });
+      }
+      throw new Error(`Unexpected fetch to ${u}`);
+    }) as unknown as typeof fetch;
+
+    let auth: ReturnType<typeof useAuth> | undefined;
+    function Consumer() {
+      auth = useAuth();
+      return null;
+    }
+
+    renderWithQueryClient(
+      <AuthProvider>
+        <Consumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(auth?.actingSuperAdmin).toBe(true));
+    expect(auth?.accessToken).toBe(actingToken);
+    expect(auth?.actingOrgName).toBe('Acme Inc');
   });
 });

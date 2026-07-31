@@ -34,6 +34,12 @@ const SLUG_STORAGE_KEY = 'organizationSlug';
 // real session existed.
 export const SSO_PENDING_SLUG_KEY = 'ssoPendingOrganizationSlug';
 
+// A super_admin "switch into org" mints an access-only acting token; a token refresh (on mount,
+// on any 401, or a page reload) reissues the BASE super_admin token and would silently drop the
+// acting state, bouncing the user out of the org console. Persisting the acting org id lets
+// silentRefresh re-enter the org so the acting session survives refreshes.
+const ACTING_ORG_STORAGE_KEY = 'actingOrgId';
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
@@ -45,6 +51,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const accessTokenRef = useRef<string | null>(null);
   accessTokenRef.current = accessToken;
+  // Guards against silentRefresh re-entering the acting org more than once (the switch-into call
+  // itself goes through apiFetch, whose 401 handler is silentRefresh).
+  const restoringActingRef = useRef(false);
   const queryClient = useQueryClient();
 
   function applyToken(token: string | null) {
@@ -60,6 +69,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function silentRefresh(): Promise<string | null> {
     try {
       const result = await apiFetch('/auth/refresh', { method: 'POST', body: JSON.stringify({}) });
+      // Refresh returns the BASE session token. If the user was acting into an org, re-enter it so
+      // the acting session (and the org sidebar / results it grants) survives the refresh.
+      const actingOrgId = typeof window !== 'undefined' ? window.sessionStorage.getItem(ACTING_ORG_STORAGE_KEY) : null;
+      const payload = decodeJwtPayload(result.accessToken);
+      if (actingOrgId && !restoringActingRef.current && payload?.role === 'super_admin' && !payload?.actingSuperAdmin) {
+        restoringActingRef.current = true;
+        try {
+          const switched = await apiFetch(
+            `/auth/super-admin/switch-into/${actingOrgId}`,
+            { method: 'POST', body: JSON.stringify({}) },
+            result.accessToken,
+          );
+          applyToken(switched.accessToken);
+          return switched.accessToken;
+        } catch {
+          // The org is gone or access was revoked -- fall back to the base super_admin session.
+          if (typeof window !== 'undefined') window.sessionStorage.removeItem(ACTING_ORG_STORAGE_KEY);
+        } finally {
+          restoringActingRef.current = false;
+        }
+      }
       applyToken(result.accessToken);
       return result.accessToken;
     } catch {
@@ -93,6 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setOrganizationSlug(null);
     if (typeof window !== 'undefined') {
       window.sessionStorage.removeItem(SLUG_STORAGE_KEY);
+      window.sessionStorage.removeItem(ACTING_ORG_STORAGE_KEY);
     }
     queryClient.removeQueries({ queryKey: ['currentUser'] });
   }
@@ -104,9 +135,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       accessTokenRef.current ?? undefined,
     );
     applyToken(result.accessToken);
+    if (typeof window !== 'undefined') window.sessionStorage.setItem(ACTING_ORG_STORAGE_KEY, orgId);
   }
 
   async function switchOutOfOrg(): Promise<void> {
+    // Clear the persisted org first so the silentRefresh below returns to the base session
+    // instead of re-entering the org we're trying to leave.
+    if (typeof window !== 'undefined') window.sessionStorage.removeItem(ACTING_ORG_STORAGE_KEY);
     await apiFetch(
       '/auth/super-admin/switch-out',
       { method: 'POST', body: JSON.stringify({}) },
