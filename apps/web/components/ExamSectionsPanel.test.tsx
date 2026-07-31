@@ -501,4 +501,60 @@ describe('ExamSectionsPanel', () => {
     expect(screen.queryByRole('button', { name: 'More Actions' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('New Section Title')).not.toBeInTheDocument();
   });
+
+  it('locks section/question editing while published, even with no candidate started yet', async () => {
+    const fetchMock = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/exams/exam-1')) {
+        return new Response(
+          JSON.stringify({
+            id: 'exam-1',
+            title: 'Backend Round',
+            instructions: null,
+            status: 'published',
+            durationMinutes: 60,
+            passCriteriaPercent: 40,
+            randomizeOrder: false,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            invitationCount: 0,
+            hasStartedAttempts: false,
+            sections: [
+              {
+                id: 's-1',
+                examId: 'exam-1',
+                title: 'Section One',
+                orderIndex: 0,
+                selectionMode: 'fixed',
+                poolSize: null,
+                poolDifficulty: null,
+                targetDurationMinutes: null,
+                questions: [{ questionId: 'q1' }],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ExamSectionsPanel examId="exam-1" />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Section One')).toBeInTheDocument());
+    expect(screen.getByText(/published, so its sections and questions are locked/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Manage questions' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'More Actions' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('New Section Title')).not.toBeInTheDocument();
+  });
 });

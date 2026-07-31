@@ -168,7 +168,12 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
   const [pickerSectionId, setPickerSectionId] = useState<string | null>(null);
   const [sectionPendingDelete, setSectionPendingDelete] = useState<ExamSection | null>(null);
   const { toast } = useToast();
-  const locked = exam?.hasStartedAttempts ?? false;
+  // Same two lock reasons as the Details tab: a started candidate is permanent, while
+  // being published with nobody started yet is reversible via Unpublish.
+  const locked = (exam?.hasStartedAttempts || exam?.status === 'published') ?? false;
+  const lockedMessage = exam?.hasStartedAttempts
+    ? 'Sections and questions are locked because a candidate has already started this exam.'
+    : 'This exam is published, so its sections and questions are locked. Click Unpublish above to make changes.';
 
   function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -205,11 +210,7 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
 
   return (
     <div className="flex flex-col gap-3">
-      {locked && (
-        <p className="text-sm text-recruiter-text-secondary">
-          Sections and questions are locked because a candidate has already started this exam.
-        </p>
-      )}
+      {locked && <p className="text-sm text-recruiter-text-secondary">{lockedMessage}</p>}
       {!locked && (
         <form onSubmit={handleAdd} className="flex items-end gap-2">
           <Input label="New Section Title" value={newTitle} onChange={setNewTitle} required />

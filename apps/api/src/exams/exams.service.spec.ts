@@ -747,7 +747,7 @@ describe('ExamsService', () => {
 
   it('allows createSection when no candidate has started an attempt yet', async () => {
     const tx = {
-      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }) },
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'draft' }) },
       attempt: { count: jest.fn().mockResolvedValue(0) },
       examSection: {
         findFirst: jest.fn().mockResolvedValue(null),
@@ -759,9 +759,19 @@ describe('ExamsService', () => {
     await expect(service.createSection(context, 'exam-1', { title: 'x' })).resolves.toBeDefined();
   });
 
-  it('allows createSection when candidates are invited but none has started an attempt yet', async () => {
+  it('rejects createSection while the exam is published, even with no candidate started yet', async () => {
     const tx = {
       exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }) },
+      attempt: { count: jest.fn().mockResolvedValue(0) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.createSection(context, 'exam-1', { title: 'x' })).rejects.toThrow(ConflictException);
+  });
+
+  it('allows createSection when candidates are invited but none has started an attempt yet', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'draft' }) },
       invitation: { count: jest.fn().mockResolvedValue(5) },
       attempt: { count: jest.fn().mockResolvedValue(0) },
       examSection: {
@@ -795,9 +805,19 @@ describe('ExamsService', () => {
     await expect(service.updateSection(context, 'exam-1', 'section-1', { title: 'x' })).rejects.toThrow(ConflictException);
   });
 
-  it('allows updateSection when candidates are invited but none has started an attempt yet', async () => {
+  it('rejects updateSection while the exam is published, even with no candidate started yet', async () => {
     const tx = {
       exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }) },
+      attempt: { count: jest.fn().mockResolvedValue(0) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.updateSection(context, 'exam-1', 'section-1', { title: 'x' })).rejects.toThrow(ConflictException);
+  });
+
+  it('allows updateSection when candidates are invited but none has started an attempt yet', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'draft' }) },
       invitation: { count: jest.fn().mockResolvedValue(4) },
       attempt: { count: jest.fn().mockResolvedValue(0) },
       examSection: {
@@ -1063,6 +1083,16 @@ describe('ExamsService', () => {
     await expect(service.deleteSection(context, 'exam-1', 'section-1')).rejects.toThrow(ConflictException);
   });
 
+  it('rejects deleteSection while the exam is published, even with no candidate started yet', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }) },
+      attempt: { count: jest.fn().mockResolvedValue(0) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.deleteSection(context, 'exam-1', 'section-1')).rejects.toThrow(ConflictException);
+  });
+
   describe('duplicateSection', () => {
     it("clones a fixed-mode section's title and settings WITHOUT copying its questions", async () => {
       const tx = {
@@ -1166,6 +1196,16 @@ describe('ExamsService', () => {
 
       await expect(service.duplicateSection(context, 'exam-1', 'section-1')).rejects.toThrow(ConflictException);
     });
+
+    it('rejects duplicateSection while the exam is published, even with no candidate started yet', async () => {
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }) },
+        attempt: { count: jest.fn().mockResolvedValue(0) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.duplicateSection(context, 'exam-1', 'section-1')).rejects.toThrow(ConflictException);
+    });
   });
 
   it('throws NotFoundException from replaceSectionQuestions when a questionId does not resolve in this organization', async () => {
@@ -1191,9 +1231,19 @@ describe('ExamsService', () => {
     await expect(service.replaceSectionQuestions(context, 'exam-1', 'section-1', ['q1'])).rejects.toThrow(ConflictException);
   });
 
-  it('allows replaceSectionQuestions when candidates are invited but none has started an attempt yet', async () => {
+  it('rejects replaceSectionQuestions while the exam is published, even with no candidate started yet', async () => {
     const tx = {
       exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }) },
+      attempt: { count: jest.fn().mockResolvedValue(0) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.replaceSectionQuestions(context, 'exam-1', 'section-1', ['q1'])).rejects.toThrow(ConflictException);
+  });
+
+  it('allows replaceSectionQuestions when candidates are invited but none has started an attempt yet', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'draft' }) },
       invitation: { count: jest.fn().mockResolvedValue(3) },
       attempt: { count: jest.fn().mockResolvedValue(0) },
       examSection: {

@@ -253,11 +253,20 @@ export class ExamsService {
   // proctoring rules, sections and questions all become read-only from that point on, so
   // that a hiring decision is never made against rules that changed mid-exam. Inviting more
   // candidates and the live-monitoring block/unblock actions are unaffected -- they don't go
-  // through this method.
-  private async assertExamMutable(tx: Prisma.TransactionClient, examId: string): Promise<void> {
+  // through this method. Publishing (with nobody started yet) locks the same surface but is
+  // reversible via unpublish, so it gets its own message pointing the caller there.
+  private async assertExamMutable(
+    tx: Prisma.TransactionClient,
+    examId: string,
+    status: string,
+    resource: string = 'sections or questions',
+  ): Promise<void> {
     const startedAttemptCount = await tx.attempt.count({ where: { examId } });
     if (startedAttemptCount > 0) {
       throw new ConflictException('Cannot modify this exam once a candidate has started it');
+    }
+    if (status === 'published') {
+      throw new ConflictException(`Exam ${examId} is published -- unpublish it before editing its ${resource}`);
     }
   }
 
@@ -269,16 +278,9 @@ export class ExamsService {
       }
 
       // The whole exam locks once a candidate has started it -- nothing here is
-      // partially editable, so there's no need to diff individual fields.
-      await this.assertExamMutable(tx, id);
-
-      // Reversible via POST /exams/:id/unpublish: publishing freezes the details a
-      // candidate may already be looking at. The line above already rejects once
-      // anyone has actually started, so reaching here means unpublish is still an
-      // option -- point the caller at it instead of a dead end.
-      if (existing.status === 'published') {
-        throw new ConflictException(`Exam ${id} is published -- unpublish it before editing its details`);
-      }
+      // partially editable, so there's no need to diff individual fields. Publishing
+      // (reversible via POST /exams/:id/unpublish) locks it the same way until then.
+      await this.assertExamMutable(tx, id, existing.status, 'details');
 
       const schedulingEnabledInput = dto.schedulingEnabled !== undefined ? dto.schedulingEnabled : existing.schedulingEnabled;
       const availabilityWindowStartInput =
@@ -491,7 +493,7 @@ export class ExamsService {
       if (!exam) {
         throw new NotFoundException(`Exam ${examId} not found`);
       }
-      await this.assertExamMutable(tx, examId);
+      await this.assertExamMutable(tx, examId, exam.status);
 
       const title = dto.title.trim();
       // Section titles must be unique within an exam (case-insensitive via the DB's
@@ -524,7 +526,7 @@ export class ExamsService {
       if (!exam) {
         throw new NotFoundException(`Exam ${examId} not found`);
       }
-      await this.assertExamMutable(tx, examId);
+      await this.assertExamMutable(tx, examId, exam.status);
       const section = await tx.examSection.findFirst({ where: { id: sectionId, examId }, include: { poolTags: true } });
       if (!section) {
         throw new NotFoundException(`Section ${sectionId} not found`);
@@ -580,7 +582,7 @@ export class ExamsService {
       if (!exam) {
         throw new NotFoundException(`Exam ${examId} not found`);
       }
-      await this.assertExamMutable(tx, examId);
+      await this.assertExamMutable(tx, examId, exam.status);
       const section = await tx.examSection.findFirst({ where: { id: sectionId, examId } });
       if (!section) {
         throw new NotFoundException(`Section ${sectionId} not found`);
@@ -595,7 +597,7 @@ export class ExamsService {
       if (!exam) {
         throw new NotFoundException(`Exam ${examId} not found`);
       }
-      await this.assertExamMutable(tx, examId);
+      await this.assertExamMutable(tx, examId, exam.status);
       const section = await tx.examSection.findFirst({
         where: { id: sectionId, examId },
         include: { questions: { orderBy: { orderIndex: 'asc' } }, poolTags: true },
@@ -644,7 +646,7 @@ export class ExamsService {
       if (!exam) {
         throw new NotFoundException(`Exam ${examId} not found`);
       }
-      await this.assertExamMutable(tx, examId);
+      await this.assertExamMutable(tx, examId, exam.status);
       const section = await tx.examSection.findFirst({ where: { id: sectionId, examId } });
       if (!section) {
         throw new NotFoundException(`Section ${sectionId} not found`);
