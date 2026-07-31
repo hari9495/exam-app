@@ -102,6 +102,39 @@ describe('LiveMonitoringPanel', () => {
     expect(screen.getByText('01:05')).toBeInTheDocument();
   });
 
+  it('orders the roster by urgency by default -- blocked first, a normal submission last', () => {
+    renderPanel({
+      roster: [
+        { candidateId: 'c1', candidateName: 'Sam Submitted', invitationId: 'i1', attemptId: 'a1', status: 'submitted', online: false, remainingSeconds: null, answeredCount: 5, totalQuestions: 5, proctoringBypassed: false },
+        { candidateId: 'c2', candidateName: 'Ivy Invited', invitationId: 'i2', attemptId: null, status: 'invited', online: false, remainingSeconds: null, answeredCount: null, totalQuestions: null, proctoringBypassed: false },
+        { candidateId: 'c3', candidateName: 'Bex Blocked', invitationId: 'i3', attemptId: 'a3', status: 'blocked', online: true, remainingSeconds: 60, answeredCount: 1, totalQuestions: 5, proctoringBypassed: false },
+        { candidateId: 'c4', candidateName: 'Pat Paused', invitationId: 'i4', attemptId: 'a4', status: 'paused', online: false, remainingSeconds: 90, answeredCount: 2, totalQuestions: 5, proctoringBypassed: false },
+      ],
+    });
+
+    const names = screen.getAllByRole('cell', { name: /^(Sam Submitted|Ivy Invited|Bex Blocked|Pat Paused)$/ }).map((cell) => cell.textContent);
+    expect(names).toEqual(['Bex Blocked', 'Pat Paused', 'Ivy Invited', 'Sam Submitted']);
+  });
+
+  it('filters the roster by status', async () => {
+    const user = userEvent.setup({ delay: null });
+    renderPanel({
+      roster: [
+        { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'in_progress', online: true, remainingSeconds: 60, answeredCount: 1, totalQuestions: 5, proctoringBypassed: false },
+        { candidateId: 'c2', candidateName: 'Bob', invitationId: 'i2', attemptId: 'a2', status: 'blocked', online: true, remainingSeconds: 60, answeredCount: 1, totalQuestions: 5, proctoringBypassed: false },
+      ],
+    });
+
+    expect(screen.getByText('Alice')).toBeInTheDocument();
+    expect(screen.getByText('Bob')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: 'Status' }));
+    await user.click(screen.getByRole('option', { name: 'Blocked' }));
+
+    expect(screen.queryByText('Alice')).not.toBeInTheDocument();
+    expect(screen.getByText('Bob')).toBeInTheDocument();
+  });
+
   it('shows an empty state when no proctoring alerts have arrived', () => {
     renderPanel();
 

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useUnblockAttempt, useBypassProctoring, useRevokeProctoringBypass } from '../lib/hooks/useAttemptModeration';
 import { useProctoringEvents } from '../lib/hooks/useProctoringEvents';
-import { Table, Badge, Button, Card, Modal, useToast, type Column } from './ui';
+import { Table, Badge, Button, Card, Modal, Select, useToast, type Column } from './ui';
 import { RosterRow, ProctoringFlag, ConnectionStatus } from '../lib/types';
 
 const STATUS_VARIANT: Record<string, 'default' | 'success' | 'warning' | 'danger'> = {
@@ -14,6 +14,40 @@ const STATUS_VARIANT: Record<string, 'default' | 'success' | 'warning' | 'danger
   force_submitted: 'danger',
   blocked: 'danger',
 };
+
+// Highest urgency first: a blocked candidate needs the recruiter's attention right
+// now, an active one is worth watching, and a normal successful submission needs
+// nothing further -- so it sinks to the bottom, same idea as the STATUS_VARIANT
+// tones above (danger -> warning -> neutral -> success), just as a sort order.
+const STATUS_PRIORITY: Record<string, number> = {
+  blocked: 0,
+  paused: 1,
+  in_progress: 2,
+  pending_manual_grade: 3,
+  invited: 4,
+  force_submitted: 5,
+  revoked: 6,
+  auto_submitted: 7,
+  submitted: 8,
+};
+const DEFAULT_STATUS_PRIORITY = 4;
+
+const STATUS_FILTER_LABEL: Record<string, string> = {
+  blocked: 'Blocked',
+  paused: 'Paused',
+  in_progress: 'In Progress',
+  pending_manual_grade: 'Pending Grade',
+  invited: 'Invited',
+  force_submitted: 'Force-submitted',
+  revoked: 'Revoked',
+  auto_submitted: 'Auto-submitted',
+  submitted: 'Submitted',
+};
+
+const STATUS_FILTER_OPTIONS = [
+  { value: 'all', label: 'All statuses' },
+  ...Object.keys(STATUS_PRIORITY).map((status) => ({ value: status, label: STATUS_FILTER_LABEL[status] })),
+];
 
 const RECENT_ALERT_WINDOW_MS = 5 * 60 * 1000;
 
@@ -173,7 +207,17 @@ export function LiveMonitoringPanel({
   const [logAttemptId, setLogAttemptId] = useState<string | null>(null);
   const [bypassAttemptId, setBypassAttemptId] = useState<string | null>(null);
   const [bypassReason, setBypassReason] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const previousStatusRef = useRef<ConnectionStatus>(connectionStatus);
+
+  // Filtered, then sorted by urgency (see STATUS_PRIORITY) so the roster always
+  // opens with whoever needs the recruiter's attention first, not insertion order.
+  const visibleRoster = useMemo(() => {
+    const filtered = statusFilter === 'all' ? roster : roster.filter((row) => row.status === statusFilter);
+    return [...filtered].sort(
+      (a, b) => (STATUS_PRIORITY[a.status] ?? DEFAULT_STATUS_PRIORITY) - (STATUS_PRIORITY[b.status] ?? DEFAULT_STATUS_PRIORITY),
+    );
+  }, [roster, statusFilter]);
 
   function handleConfirmBypass() {
     if (!bypassAttemptId || !bypassReason.trim()) return;
@@ -225,6 +269,7 @@ export function LiveMonitoringPanel({
           {row.attemptId && flagged.has(row.attemptId) ? <Badge variant="danger">Needs attention</Badge> : null}
         </>
       ),
+      sortValue: (row) => STATUS_PRIORITY[row.status] ?? DEFAULT_STATUS_PRIORITY,
     },
     { key: 'online', header: 'Online', render: (row) => <Badge variant={row.online ? 'success' : 'default'}>{row.online ? 'Online' : 'Offline'}</Badge> },
     { key: 'remaining', header: 'Time remaining', render: (row) => formatRemaining(row.remainingSeconds) },
@@ -330,7 +375,15 @@ export function LiveMonitoringPanel({
       ) : (
         <div className="grid grid-cols-3 gap-4">
           <div className="col-span-2">
-            <Table columns={rosterColumns} rows={roster} rowKey={(row) => row.candidateId} emptyMessage="No candidates invited yet." />
+            <div className="mb-2 flex justify-end">
+              <Select label="Status" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTER_OPTIONS} />
+            </div>
+            <Table
+              columns={rosterColumns}
+              rows={visibleRoster}
+              rowKey={(row) => row.candidateId}
+              emptyMessage={statusFilter === 'all' ? 'No candidates invited yet.' : 'No candidates match this status.'}
+            />
           </div>
           <div>
             <h3 className="mb-2 text-sm font-medium text-gray-700">Proctoring alerts</h3>
