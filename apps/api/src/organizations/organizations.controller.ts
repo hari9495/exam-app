@@ -38,8 +38,12 @@ export class OrganizationsController {
     return this.organizationsService.list({ page, pageSize, search });
   }
 
+  // Deliberately no @RequirePermissions: every staff console (recruiter, panel,
+  // org-admin) themes its sidebar from this, and the identical payload is served
+  // UNAUTHENTICATED at /organizations/by-slug/:slug/branding for the login page.
+  // JwtAuthGuard still applies, and the tenant context scopes it to the caller's
+  // own org. Mutations below keep org:manage_settings.
   @Get('branding')
-  @RequirePermissions('org:manage_settings')
   getBranding(@CurrentTenant() tenant: TenantContext) {
     return this.organizationsService.getBranding(tenant);
   }

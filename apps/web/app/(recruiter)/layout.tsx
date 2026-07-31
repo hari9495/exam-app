@@ -9,7 +9,7 @@ import { LayoutDashboard, FileText, BookOpen, Users, History, ShieldCheck, Setti
 import { useAuth } from '../../lib/auth-context';
 import { staffLandingPath } from '../../lib/staff-landing';
 import { SUPER_ADMIN_FULL_NAV } from '../../lib/super-admin-nav';
-import { useBranding } from '../../lib/hooks/useBranding';
+import { useOrgBranding } from '../../lib/hooks/useBranding';
 import { useDocumentBranding } from '../../lib/hooks/useDocumentBranding';
 import { useCurrentUser } from '../../lib/hooks/useCurrentUser';
 
@@ -31,7 +31,11 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const pathname = usePathname();
   const { accessToken, organizationSlug, role, actingSuperAdmin, isLoading, logout } = useAuth();
-  const { data: branding } = useBranding(organizationSlug);
+  // Token-scoped: every session that mounts this layout is org-scoped
+  // (recruiter/panel/org_admin/acting super_admin). The slug-gated hook
+  // never resolved for email-only logins and switch-into -- the sidebar
+  // showed a literal "O", no org name, and no theme colors.
+  const { data: branding } = useOrgBranding();
   useDocumentBranding(branding?.name, branding?.logoUrl);
   const { data: currentUser } = useCurrentUser();
 
@@ -72,8 +76,9 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
     .slice(0, 2)
     .join('')
     .toUpperCase();
-  // ponytail: BrandingResponse has no organizationName field; fall back to the org slug.
-  const orgInitial = (organizationSlug ?? 'O')[0]?.toUpperCase();
+  // BrandingResponse.name is the real org name; slug only as a fallback while loading.
+  const orgName = branding?.name || organizationSlug || 'Organization';
+  const orgInitial = orgName[0]?.toUpperCase();
 
   return (
     <MotionConfig reducedMotion="user">
@@ -87,7 +92,7 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
               {orgInitial}
             </div>
           )}
-          <span className="truncate text-sm font-bold text-recruiter-text">{organizationSlug}</span>
+          <span className="truncate text-sm font-bold text-recruiter-text">{orgName}</span>
         </div>
         <ul className="flex flex-1 flex-col gap-0.5 p-2.5">
           {navItems.map((item) => {
