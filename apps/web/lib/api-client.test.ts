@@ -24,10 +24,39 @@ describe('apiFetch', () => {
     expect(result).toEqual({ ok: true });
   });
 
-  it('throws with the server-provided message when a request fails and is not a retryable 401', async () => {
-    global.fetch = jest.fn(async () => new Response(JSON.stringify({ message: 'Not found' }), { status: 404 })) as unknown as typeof fetch;
+  it('throws with a hand-written server message untouched when a request fails', async () => {
+    global.fetch = jest.fn(
+      async () => new Response(JSON.stringify({ message: 'This exam was deleted by a recruiter' }), { status: 404 }),
+    ) as unknown as typeof fetch;
 
-    await expect(apiFetch('/exams/missing')).rejects.toThrow('Not found');
+    await expect(apiFetch('/exams/missing')).rejects.toThrow('This exam was deleted by a recruiter');
+  });
+
+  it('replaces framework-default messages with a sentence for people', async () => {
+    // "Not Found" is NestJS's default -- normal people should never see it.
+    global.fetch = jest.fn(async () => new Response(JSON.stringify({ message: 'Not Found' }), { status: 404 })) as unknown as typeof fetch;
+
+    await expect(apiFetch('/exams/missing')).rejects.toThrow(/couldn't find that/);
+  });
+
+  it('handles a non-JSON error body (nginx gateway page) without leaking a status code sentence', async () => {
+    global.fetch = jest.fn(async () => new Response('<html>502 Bad Gateway</html>', { status: 502 })) as unknown as typeof fetch;
+
+    await expect(apiFetch('/exams')).rejects.toThrow(/on our side/);
+  });
+
+  it('turns a fetch rejection into a readable message while staying a TypeError for the retry policy', async () => {
+    global.fetch = jest.fn(async () => {
+      throw new TypeError('Failed to fetch');
+    }) as unknown as typeof fetch;
+
+    try {
+      await apiFetch('/exams');
+      throw new Error('expected apiFetch to throw');
+    } catch (error) {
+      expect((error as Error).message).toMatch(/internet connection/);
+      expect(error instanceof TypeError).toBe(true);
+    }
   });
 
   it('attaches the HTTP status code to the thrown error', async () => {
@@ -62,9 +91,9 @@ describe('apiFetchBlob', () => {
     expect(result.blob).toBeInstanceOf(Blob);
   });
 
-  it('throws with the server message and attaches status on a non-ok response', async () => {
+  it('humanizes the default Forbidden and attaches status on a non-ok response', async () => {
     global.fetch = jest.fn(async () => new Response(JSON.stringify({ message: 'Forbidden' }), { status: 403 })) as unknown as typeof fetch;
 
-    await expect(apiFetchBlob('/exams/123/results/export?format=csv')).rejects.toThrow('Forbidden');
+    await expect(apiFetchBlob('/exams/123/results/export?format=csv')).rejects.toThrow(/don't have permission/);
   });
 });

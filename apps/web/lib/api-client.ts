@@ -1,3 +1,5 @@
+import { humanizeHttpError, NetworkError } from './http-error-message';
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001/api/v1';
 
 let unauthorizedHandler: (() => Promise<string | null>) | null = null;
@@ -15,12 +17,20 @@ async function doFetch(path: string, options: RequestInit, accessToken?: string)
   if (accessToken) {
     headers.Authorization = `Bearer ${accessToken}`;
   }
-  return fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include' });
+  try {
+    return await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include' });
+  } catch {
+    // fetch() only rejects when no response arrived at all (offline, DNS,
+    // connection reset). NetworkError extends TypeError so retry.ts still
+    // recognises it as retryable, but the user sees a sentence instead of
+    // the browser's "Failed to fetch".
+    throw new NetworkError();
+  }
 }
 
 async function throwForResponse(response: Response): Promise<never> {
   const body = await response.json().catch(() => ({}));
-  const error = new Error(body.message ?? `Request failed with status ${response.status}`) as Error & { status?: number };
+  const error = new Error(humanizeHttpError(response.status, body.message)) as Error & { status?: number };
   error.status = response.status;
   throw error;
 }

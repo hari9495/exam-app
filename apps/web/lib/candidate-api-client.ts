@@ -1,3 +1,5 @@
+import { humanizeHttpError, NetworkError } from './http-error-message';
+
 const EXAM_RUNTIME_API_BASE = process.env.NEXT_PUBLIC_EXAM_RUNTIME_API_BASE ?? 'http://localhost:3002/api/v1';
 
 // Carries the bits of a failed response that a retry policy needs to decide
@@ -42,7 +44,13 @@ async function doFetch(path: string, options: RequestInit, accessToken?: string)
   if (accessToken) {
     headers.Authorization = `Bearer ${accessToken}`;
   }
-  return fetch(`${EXAM_RUNTIME_API_BASE}${path}`, { ...options, headers, credentials: 'include' });
+  try {
+    return await fetch(`${EXAM_RUNTIME_API_BASE}${path}`, { ...options, headers, credentials: 'include' });
+  } catch {
+    // Same contract as api-client: keeps `instanceof TypeError` true for the
+    // retry policy while replacing "Failed to fetch" with a human sentence.
+    throw new NetworkError();
+  }
 }
 
 export async function candidateApiFetch(path: string, options: RequestInit = {}, accessToken?: string) {
@@ -58,7 +66,7 @@ export async function candidateApiFetch(path: string, options: RequestInit = {},
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new CandidateApiError(
-      body.message ?? `Request failed with status ${response.status}`,
+      humanizeHttpError(response.status, body.message),
       response.status,
       parseRetryAfter(response.headers.get('Retry-After')),
     );
