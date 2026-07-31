@@ -108,6 +108,85 @@ describe('MonitoringService', () => {
       expect(row.remainingSeconds).toBeLessThanOrEqual(1800);
     });
 
+    it('freezes remainingSeconds at pausedAt for a paused attempt instead of returning null', async () => {
+      const startedAt = new Date(Date.now() - 40 * 60_000);
+      const pausedAt = new Date(Date.now() - 10 * 60_000);
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue(exam) },
+        invitation: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' }, extraTimePercent: 0,
+              attempt: {
+                id: 'attempt-1', status: 'paused', startedAt, pausedAt, pausedDurationMs: 0,
+                lastSeenAt: new Date(), questionOrderJson: '["q1"]',
+              },
+            },
+          ]),
+        },
+        answer: { groupBy: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const [row] = await service.getRosterSnapshot(context, 'exam-1');
+
+      // 60-minute exam, 30 minutes elapsed by the time it was paused 10 minutes ago ->
+      // 30 minutes (1800s) frozen, not the null the recruiter used to see.
+      expect(row.remainingSeconds).toBe(1800);
+    });
+
+    it('freezes remainingSeconds at pausedAt for a blocked attempt, same as paused', async () => {
+      const startedAt = new Date(Date.now() - 40 * 60_000);
+      const pausedAt = new Date(Date.now() - 10 * 60_000);
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue(exam) },
+        invitation: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' }, extraTimePercent: 0,
+              attempt: {
+                id: 'attempt-1', status: 'blocked', startedAt, pausedAt, pausedDurationMs: 0,
+                lastSeenAt: new Date(), questionOrderJson: '["q1"]',
+              },
+            },
+          ]),
+        },
+        answer: { groupBy: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const [row] = await service.getRosterSnapshot(context, 'exam-1');
+
+      expect(row.remainingSeconds).toBe(1800);
+    });
+
+    it('includes grace already banked from an earlier pause-resume cycle for a resumed in-progress attempt', async () => {
+      const startedAt = new Date(Date.now() - 50 * 60_000);
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue(exam) },
+        invitation: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' }, extraTimePercent: 0,
+              attempt: {
+                id: 'attempt-1', status: 'in_progress', startedAt, pausedAt: null, pausedDurationMs: 10 * 60_000,
+                lastSeenAt: new Date(), questionOrderJson: '["q1"]',
+              },
+            },
+          ]),
+        },
+        answer: { groupBy: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const [row] = await service.getRosterSnapshot(context, 'exam-1');
+
+      // 60-minute exam + 10 minutes banked from the earlier pause, 50 minutes elapsed ->
+      // ~20 minutes (1200s) left. Without pausedDurationMs this under-reported by 10 min.
+      expect(row.remainingSeconds).toBeGreaterThan(1150);
+      expect(row.remainingSeconds).toBeLessThanOrEqual(1200);
+    });
+
     it('reports offline and no remainingSeconds for a submitted attempt', async () => {
       const attempt = {
         id: 'attempt-1', status: 'submitted', startedAt: new Date(Date.now() - 65 * 60_000),

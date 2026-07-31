@@ -85,10 +85,19 @@ export class MonitoringService {
           totalQuestions = (JSON.parse(attempt.questionOrderJson) as string[]).length;
           // Absent from the grouped result means zero answers -- groupBy returns no row.
           answeredCount = answeredCounts.get(attempt.id) ?? 0;
-          if (attempt.status === 'in_progress') {
+          // Paused and blocked are not "over" -- the clock is frozen at pausedAt, same
+          // as the settlement service's own remainingSeconds() computes it, so the
+          // recruiter sees how much time is waiting for the candidate on resume rather
+          // than a blank dash. pausedDurationMs (grace already banked from an earlier
+          // pause-resume cycle) is included for all three live statuses; omitting it
+          // previously under-reported time for anyone paused earlier in the same attempt.
+          if (attempt.status === 'in_progress' || attempt.status === 'paused' || attempt.status === 'blocked') {
+            const frozenAt = attempt.status === 'in_progress' ? null : attempt.pausedAt;
             remainingSeconds = computeRemainingSeconds(
               effectiveDurationMinutes(exam.durationMinutes, invitation.extraTimePercent),
               attempt.startedAt,
+              attempt.pausedDurationMs,
+              frozenAt,
             );
           }
         }
