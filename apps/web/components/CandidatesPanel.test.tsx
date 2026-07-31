@@ -105,7 +105,8 @@ describe('CandidatesPanel', () => {
     expect(await screen.findByText('Invite resent.')).toBeInTheDocument();
   });
 
-  it('does not offer Resend invite once the candidate has started or if the invite was revoked', () => {
+  it('disables Resend invite (rather than hiding it) once the candidate has started or if the invite was revoked', async () => {
+    const mutate = jest.fn();
     (useExamInvitations as jest.Mock).mockReturnValue({
       data: [
         { id: 'inv-1', status: 'invited', extraTimePercent: 0, attempt: { id: 'att-1', status: 'in_progress' }, candidate: { id: 'cand-1', name: 'Alice', email: 'a@example.com' } },
@@ -114,10 +115,17 @@ describe('CandidatesPanel', () => {
       isLoading: false,
     });
     (useUpdateAccommodation as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
+    (useResendInvitation as jest.Mock).mockReturnValue({ mutate, isPending: false });
 
     renderPanel();
 
-    expect(screen.queryByRole('button', { name: 'Resend invite' })).not.toBeInTheDocument();
+    const buttons = screen.getAllByRole('button', { name: 'Resend invite' });
+    expect(buttons).toHaveLength(2);
+    for (const button of buttons) {
+      expect(button).toBeDisabled();
+      await userEvent.click(button);
+    }
+    expect(mutate).not.toHaveBeenCalled();
   });
 
   it("shows the candidate's progress as Invited, In Progress, or Ended based on invitation/attempt status", () => {

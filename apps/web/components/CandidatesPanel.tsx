@@ -135,25 +135,32 @@ export function CandidatesPanel({ examId }: { examId: string }) {
     {
       key: 'actions',
       header: '',
-      // Only offered before the candidate has actually started -- once an attempt
-      // exists, resending a fresh link/token can't change anything they've already
-      // done, and the backend itself only permits resend while status is 'invited'.
-      render: (row) =>
-        !row.attempt && row.status === 'invited' ? (
+      render: (row) => {
+        // Once an attempt exists, resending a fresh link/token can't change anything
+        // the candidate has already done, and the backend itself only permits resend
+        // while status is 'invited' -- shown disabled (not hidden) so it's clear why.
+        const blockedReason = row.attempt
+          ? 'This candidate has already started the exam.'
+          : row.status !== 'invited'
+            ? 'This invitation has been revoked.'
+            : null;
+        return (
           <button
             type="button"
-            disabled={resendInvitation.isPending}
+            disabled={Boolean(blockedReason) || resendInvitation.isPending}
+            title={blockedReason ?? undefined}
             onClick={() =>
               resendInvitation.mutate(row.id, {
                 onSuccess: () => toast('Invite resent.'),
                 onError: (error) => toast(error instanceof Error ? error.message : 'Failed to resend invite.', 'error'),
               })
             }
-            className="text-xs font-medium text-primary hover:underline disabled:opacity-50"
+            className="text-xs font-medium text-primary hover:underline disabled:cursor-not-allowed disabled:text-recruiter-text-tertiary disabled:no-underline disabled:opacity-70"
           >
             Resend invite
           </button>
-        ) : null,
+        );
+      },
     },
   ];
 
