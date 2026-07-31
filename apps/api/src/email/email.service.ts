@@ -85,7 +85,11 @@ export class EmailService {
             ),
           ),
         );
-        return { transporter, fromAddress: org.emailFromAddress ?? platformFromAddress() };
+        // Fall back to the ORG's own mailbox, not the platform's. An org that
+        // authenticates as X must send as X or Office365 rejects it with
+        // 550 5.7.60 SendAsDenied -- and "From address" is optional in the UI,
+        // so most orgs will not have set one.
+        return { transporter, fromAddress: org.emailFromAddress ?? org.smtpUser ?? platformFromAddress() };
       }
     }
     const transporter = await this.getOrBuildTransporter(PLATFORM_CACHE_KEY, () => this.createPlatformTransporter());

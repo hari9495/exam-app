@@ -157,4 +157,23 @@ describe('EmailService', () => {
       );
     });
   });
+
+    it('falls back to the org mailbox, not the platform address, when the org set no From', async () => {
+      // "From address" is optional in the settings UI, so this is the common
+      // case. Sending as the platform address while authenticated as the org's
+      // mailbox is rejected with 550 5.7.60 SendAsDenied.
+      prisma.organization.findUnique.mockResolvedValue({
+        smtpHost: 'smtp.office365.com',
+        smtpPort: 587,
+        smtpUser: 'org-mailbox@customer.test',
+        smtpPasswordEncrypted: 'encrypted-blob',
+        emailFromAddress: null,
+      });
+
+      await service.send({ to: 'a@b.com', subject: 's', html: '<p>h</p>', organizationId: 'org-1' });
+
+      expect(mockSendMail).toHaveBeenCalledWith(
+        expect.objectContaining({ from: 'org-mailbox@customer.test' }),
+      );
+    });
 });
