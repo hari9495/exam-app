@@ -23,7 +23,7 @@ export function Checkbox({ label, checked, onChange, hideLabel }: CheckboxProps)
         checked={checked}
         onCheckedChange={(state) => onChange(state === true)}
         aria-label={label}
-        className="h-4 w-4 rounded border border-gray-400 data-[state=checked]:bg-primary"
+        className="h-4 w-4 shrink-0 rounded border border-gray-400 data-[state=checked]:bg-primary"
       >
         <RadixCheckbox.Indicator className="flex items-center justify-center text-white text-xs">✓</RadixCheckbox.Indicator>
       </RadixCheckbox.Root>
