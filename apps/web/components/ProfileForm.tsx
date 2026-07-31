@@ -7,6 +7,22 @@ import { useCurrentUser, useUpdateProfile, useChangePassword } from '../lib/hook
 import { useAuth } from '../lib/auth-context';
 import { Button, Input, Card, useToast } from './ui';
 
+// One shared showPassword state drives all three password fields, so every field
+// gets its own toggle button rather than just the one a user happens to click --
+// otherwise "Current Password" silently reveals with no visible affordance there.
+function PasswordVisibilityToggle({ visible, onToggle }: { visible: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label={visible ? 'Hide characters' : 'Show characters'}
+      className="absolute bottom-2 right-3 text-recruiter-text-tertiary hover:text-recruiter-text"
+    >
+      {visible ? <EyeOff size={16} /> : <Eye size={16} />}
+    </button>
+  );
+}
+
 export function ProfileForm() {
   const { organizationSlug } = useAuth();
   const { data: user } = useCurrentUser();
@@ -69,7 +85,7 @@ export function ProfileForm() {
           <h1 className="mb-4 text-xl font-semibold text-recruiter-text">My Profile</h1>
           {!user && <p className="mb-4 text-sm text-recruiter-text-secondary">Loading…</p>}
           <form onSubmit={handleNameSubmit} className="mb-4 flex flex-col gap-3">
-            <Input label="Display Name" value={name} onChange={setName} disabled={!user} />
+            <Input label="Display Name" value={name} onChange={setName} disabled={!user} placeholder="e.g. Jane Doe" />
             <Input label="Email" value={user?.email ?? ''} onChange={() => {}} disabled readOnly />
             <Input label="Role" value={user?.role ?? ''} onChange={() => {}} disabled readOnly />
             <Input label="Organization" value={organizationSlug ?? ''} onChange={() => {}} disabled readOnly />
@@ -93,14 +109,17 @@ export function ProfileForm() {
         <Card className="max-w-md">
           <h2 className="mb-4 text-lg font-semibold text-recruiter-text">Change password</h2>
           <form onSubmit={handlePasswordSubmit} className="flex flex-col gap-3">
-            <Input
-              label="Current Password"
-              type={showPassword ? 'text' : 'password'}
-              autoComplete="current-password"
-              value={currentPassword}
-              onChange={setCurrentPassword}
-              required
-            />
+            <div className="relative">
+              <Input
+                label="Current Password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                value={currentPassword}
+                onChange={setCurrentPassword}
+                required
+              />
+              <PasswordVisibilityToggle visible={showPassword} onToggle={() => setShowPassword((prev) => !prev)} />
+            </div>
             <div className="relative">
               <Input
                 label="New Password"
@@ -110,23 +129,19 @@ export function ProfileForm() {
                 onChange={setNewPassword}
                 required
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword((prev) => !prev)}
-                aria-label={showPassword ? 'Hide characters' : 'Show characters'}
-                className="absolute bottom-2 right-3 text-recruiter-text-tertiary hover:text-recruiter-text"
-              >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
+              <PasswordVisibilityToggle visible={showPassword} onToggle={() => setShowPassword((prev) => !prev)} />
             </div>
-            <Input
-              label="Confirm New Password"
-              type={showPassword ? 'text' : 'password'}
-              autoComplete="new-password"
-              value={confirmPassword}
-              onChange={setConfirmPassword}
-              required
-            />
+            <div className="relative">
+              <Input
+                label="Confirm New Password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={setConfirmPassword}
+                required
+              />
+              <PasswordVisibilityToggle visible={showPassword} onToggle={() => setShowPassword((prev) => !prev)} />
+            </div>
             <Button type="submit" disabled={!passwordsMatch || currentPassword.length === 0}>
               Change password
             </Button>
