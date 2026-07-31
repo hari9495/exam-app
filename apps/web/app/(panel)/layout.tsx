@@ -27,7 +27,8 @@ const RECRUITER_NAV_ITEMS = [
   { href: '/candidates', label: 'Candidates', icon: Users },
 ];
 
-const ALLOWED_ROLES = ['panel', 'recruiter'];
+// org_admin is a full org-scoped superuser and so is admitted to the panel/reports console too.
+const ALLOWED_ROLES = ['panel', 'recruiter', 'org_admin'];
 
 export default function PanelLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -78,7 +79,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
         <div className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4 print:hidden">
           <div className="flex items-center gap-4">
             {branding?.logoUrl && <img src={branding.logoUrl} alt="Organization logo" className="max-h-8" />}
-            {!actingSuperAdmin && (
+            {!actingSuperAdmin && role !== 'org_admin' && (
               <Link
                 href="/reports"
                 className={clsx(
@@ -105,7 +106,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
                   {item.label}
                 </Link>
               ))}
-            {actingSuperAdmin &&
+            {(actingSuperAdmin || role === 'org_admin') &&
               SUPER_ADMIN_FULL_NAV.map((item) => (
                 <Link
                   key={item.href}

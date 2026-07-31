@@ -19,7 +19,20 @@ const PERMISSIONS = [
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
   super_admin: ['platform:manage_organizations', 'org:manage_users', 'org:manage_settings', 'org:view', 'audit:view'],
-  org_admin: ['org:manage_users', 'org:manage_settings', 'org:view', 'audit:view', 'candidate:data_rights'],
+  // org_admin is a full org-scoped superuser: their own admin features PLUS the complete
+  // recruiter/panel capability set (exams, question bank, candidates, results).
+  org_admin: [
+    'org:manage_users',
+    'org:manage_settings',
+    'org:view',
+    'audit:view',
+    'candidate:data_rights',
+    'question_bank:manage',
+    'exam:manage',
+    'candidate:manage',
+    'results:view',
+    'ai_jobs:view',
+  ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view'],
   panel: ['org:view', 'results:view'],
 };
@@ -108,8 +121,8 @@ async function main() {
         },
       });
 
-      // recruiter role: org_admin lacks exam:manage/question_bank:manage/candidate:manage
-      // (see ROLE_PERMISSIONS above), so the golden-path e2e flow needs a seeded recruiter.
+      // A dedicated recruiter account for the golden-path e2e flow (kept even though org_admin
+      // now also holds the recruiter permissions, so tests can exercise the plain recruiter role).
       const recruiterHash = await argon2.hash('Passw0rd!2026');
       await tx.user.upsert({
         where: { organizationId_email: { organizationId: demoOrg.id, email: 'recruiter@demo-org.test' } },

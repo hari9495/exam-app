@@ -57,7 +57,9 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
     return <p className="p-8 text-sm text-recruiter-text-tertiary">Loading…</p>;
   }
 
-  const navItems = actingSuperAdmin ? SUPER_ADMIN_FULL_NAV : BASE_NAV_ITEMS;
+  // org_admin is a full org-scoped superuser: it sees the complete feature nav (recruiter/panel
+  // features included), the same union an acting super_admin sees.
+  const navItems = actingSuperAdmin || role === 'org_admin' ? SUPER_ADMIN_FULL_NAV : BASE_NAV_ITEMS;
 
   // Real name from useCurrentUser() once loaded; falls back to a per-role
   // placeholder only while loading or if the user has never set one.

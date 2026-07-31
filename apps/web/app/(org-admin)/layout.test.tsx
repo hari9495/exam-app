@@ -99,7 +99,7 @@ describe('Org admin layout', () => {
     expect(screen.getByRole('link', { name: 'Results' })).toBeInTheDocument();
   });
 
-  it('does not show cross-shell nav links for a normal (non-acting) org_admin', async () => {
+  it('shows the full feature nav (recruiter/panel features included) for a normal org_admin', async () => {
     const orgAdminToken = fakeJwt({ sub: 'u1', organizationId: 'org1', role: 'org_admin' });
     global.fetch = jest.fn(async (url) => {
       if (String(url).endsWith('/auth/refresh')) {
@@ -118,9 +118,11 @@ describe('Org admin layout', () => {
       </QueryProvider>,
     );
 
+    // org_admin is a full org superuser: it now sees the recruiter/panel features too.
     await screen.findByRole('link', { name: 'Staff Users' });
-    expect(screen.queryByRole('link', { name: /Dashboard/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Reports' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Dashboard/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Exams/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Results' })).toBeInTheDocument();
   });
 
   it('renders each nav item with an icon and marks the active route via text-primary', async () => {

@@ -38,7 +38,7 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     if (!isLoading && !accessToken) {
       router.push('/login');
-    } else if (!isLoading && accessToken && role && role !== 'recruiter' && !actingSuperAdmin) {
+    } else if (!isLoading && accessToken && role && role !== 'recruiter' && role !== 'org_admin' && !actingSuperAdmin) {
       // Authenticated but wrong console (e.g. returning from impersonation while still mounted
       // here): route to the role's own console instead of bouncing to /login.
       router.push(staffLandingPath(role));
@@ -55,11 +55,13 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
     router.push('/login');
   }
 
-  if (isLoading || !accessToken || (role !== null && role !== 'recruiter' && !actingSuperAdmin)) {
+  if (isLoading || !accessToken || (role !== null && role !== 'recruiter' && role !== 'org_admin' && !actingSuperAdmin)) {
     return <p className="p-8 text-sm text-recruiter-text-tertiary">Loading…</p>;
   }
 
-  const navItems = actingSuperAdmin ? SUPER_ADMIN_FULL_NAV : BASE_NAV_ITEMS;
+  // org_admin is a full org-scoped superuser, so it sees the complete feature nav everywhere,
+  // just like an acting super_admin.
+  const navItems = actingSuperAdmin || role === 'org_admin' ? SUPER_ADMIN_FULL_NAV : BASE_NAV_ITEMS;
 
   // Real name from useCurrentUser() once loaded; falls back to a per-role
   // placeholder only while loading or if the user has never set one.

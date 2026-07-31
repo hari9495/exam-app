@@ -55,11 +55,12 @@ describe('Panel layout', () => {
     expect(screen.getByRole('link', { name: 'Candidates' })).toBeInTheDocument();
   });
 
-  it('sends an unrelated authenticated role (org_admin) to their own console, not to /login', async () => {
+  it('admits an org_admin (full org superuser) into the panel/reports console with the full feature nav', async () => {
     renderLayout('org_admin');
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/users'));
+    // Admitted (not bounced), and sees the complete feature union including Staff Users.
+    expect(await screen.findByRole('link', { name: 'Staff Users' })).toBeInTheDocument();
     expect(mockPush).not.toHaveBeenCalledWith('/login');
-    expect(screen.queryByRole('link', { name: 'Exams' })).not.toBeInTheDocument();
+    expect(mockPush).not.toHaveBeenCalledWith('/users');
   });
 
   it('admits an acting super_admin (role=super_admin, actingSuperAdmin=true) without redirecting, and shows cross-shell nav links', async () => {

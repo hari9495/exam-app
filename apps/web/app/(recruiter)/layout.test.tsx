@@ -59,7 +59,7 @@ describe('Recruiter layout', () => {
     expect(screen.getByRole('link', { name: /Candidates/i })).toBeInTheDocument();
   });
 
-  it('redirects an org_admin (wrong role) to /login instead of rendering the recruiter shell', async () => {
+  it('admits an org_admin (full org superuser) into the recruiter console with the full feature nav', async () => {
     const orgAdminToken = fakeJwt({ sub: 'u1', organizationId: 'org1', role: 'org_admin' });
     global.fetch = jest.fn(async (url) => {
       if (String(url).endsWith('/auth/refresh')) {
@@ -78,9 +78,12 @@ describe('Recruiter layout', () => {
       </QueryProvider>,
     );
 
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/users'));
+    // org_admin is a full org superuser: admitted here (not bounced), seeing the complete union
+    // including admin-only links like Staff Users.
+    expect(await screen.findByRole('link', { name: 'Staff Users' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
     expect(mockPush).not.toHaveBeenCalledWith('/login');
-    expect(screen.queryByRole('link', { name: 'Dashboard' })).not.toBeInTheDocument();
+    expect(mockPush).not.toHaveBeenCalledWith('/users');
   });
 
   it('admits an acting super_admin (role=super_admin, actingSuperAdmin=true) without redirecting, and shows cross-shell nav links', async () => {
