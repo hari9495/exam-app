@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { Table, Button, StatusBadge, useToast, type Column, type StatusTone } from './ui';
+import { useMemo, useState } from 'react';
+import { Search } from 'lucide-react';
+import { Table, Button, Input, Select, StatusBadge, useToast, type Column, type StatusTone } from './ui';
 import { useExamInvitations, useUpdateAccommodation } from '../lib/hooks/useInvitations';
 import { InviteCandidatesModal } from './InviteCandidatesModal';
 import { Invitation } from '../lib/types';
@@ -14,8 +15,8 @@ const CANDIDATE_STATUS_LABEL: Record<string, string> = {
   invited: 'Invited',
   revoked: 'Revoked',
   in_progress: 'In Progress',
-  paused: 'In Progress',
-  blocked: 'In Progress',
+  paused: 'Paused',
+  blocked: 'Blocked',
   submitted: 'Ended',
   auto_submitted: 'Ended',
   force_submitted: 'Ended',
@@ -26,8 +27,8 @@ const CANDIDATE_STATUS_TONE: Record<string, StatusTone> = {
   invited: 'info',
   revoked: 'danger',
   in_progress: 'warning',
-  paused: 'warning',
-  blocked: 'warning',
+  paused: 'neutral',
+  blocked: 'danger',
   submitted: 'success',
   auto_submitted: 'success',
   force_submitted: 'success',
@@ -36,6 +37,20 @@ const CANDIDATE_STATUS_TONE: Record<string, StatusTone> = {
 
 function candidateStatus(row: Invitation): string {
   return row.attempt?.status ?? row.status;
+}
+
+// Built from CANDIDATE_STATUS_LABEL rather than duplicating its groupings: the
+// filter options always match whatever the Status column actually displays
+// (e.g. "Paused" and "Blocked" collapsing into or splitting out of "In
+// Progress"), with no separate list to keep in sync by hand.
+const STATUS_FILTER_OPTIONS = [
+  { value: 'all', label: 'All statuses' },
+  ...Array.from(new Set(Object.values(CANDIDATE_STATUS_LABEL))).map((label) => ({ value: label, label })),
+];
+
+function matchesSearch(row: Invitation, query: string): boolean {
+  if (!query) return true;
+  return row.candidate.name.toLowerCase().includes(query) || row.candidate.email.toLowerCase().includes(query);
 }
 
 function AccommodationCell({ invitation, onSave, isPending }: { invitation: Invitation; onSave: (value: number) => void; isPending: boolean }) {
@@ -74,6 +89,17 @@ export function CandidatesPanel({ examId }: { examId: string }) {
   const updateAccommodation = useUpdateAccommodation(examId);
   const { toast } = useToast();
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+
+  const filtersActive = search.trim() !== '' || statusFilter !== 'all';
+  const visibleInvitations = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return (invitations ?? []).filter((row) => {
+      const label = CANDIDATE_STATUS_LABEL[candidateStatus(row)] ?? candidateStatus(row);
+      return matchesSearch(row, query) && (statusFilter === 'all' || label === statusFilter);
+    });
+  }, [invitations, search, statusFilter]);
 
   const columns: Column<Invitation>[] = [
     { key: 'name', header: 'Candidate', render: (row) => row.candidate.name },
@@ -113,10 +139,29 @@ export function CandidatesPanel({ examId }: { examId: string }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="min-w-[14rem]">
+            <Input
+              label="Search candidates"
+              hideLabel
+              type="search"
+              placeholder="Search by name or email…"
+              value={search}
+              onChange={setSearch}
+              icon={<Search size={16} />}
+            />
+          </div>
+          <Select label="Status" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTER_OPTIONS} />
+        </div>
         <Button onClick={() => setInviteModalOpen(true)}>Invite candidates</Button>
       </div>
-      <Table columns={columns} rows={invitations ?? []} rowKey={(row) => row.id} emptyMessage="No candidates invited yet." />
+      <Table
+        columns={columns}
+        rows={visibleInvitations}
+        rowKey={(row) => row.id}
+        emptyMessage={filtersActive ? 'No candidates match your search or filter.' : 'No candidates invited yet.'}
+      />
       {inviteModalOpen && (
         <InviteCandidatesModal
           examId={examId}

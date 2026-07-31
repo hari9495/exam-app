@@ -99,6 +99,78 @@ describe('CandidatesPanel', () => {
     expect(screen.getByText('Ended')).toBeInTheDocument();
   });
 
+  it('shows Paused and Blocked as their own statuses, distinct from In Progress', () => {
+    (useExamInvitations as jest.Mock).mockReturnValue({
+      data: [
+        { id: 'inv-1', status: 'invited', extraTimePercent: 0, attempt: { id: 'att-1', status: 'in_progress' }, candidate: { id: 'cand-1', name: 'Alice', email: 'a@example.com' } },
+        { id: 'inv-2', status: 'invited', extraTimePercent: 0, attempt: { id: 'att-2', status: 'paused' }, candidate: { id: 'cand-2', name: 'Bob', email: 'b@example.com' } },
+        { id: 'inv-3', status: 'invited', extraTimePercent: 0, attempt: { id: 'att-3', status: 'blocked' }, candidate: { id: 'cand-3', name: 'Cara', email: 'c@example.com' } },
+      ],
+      isLoading: false,
+    });
+    (useUpdateAccommodation as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
+
+    renderPanel();
+
+    expect(screen.getByText('In Progress')).toBeInTheDocument();
+    expect(screen.getByText('Paused')).toBeInTheDocument();
+    expect(screen.getByText('Blocked')).toBeInTheDocument();
+    expect(screen.queryAllByText('In Progress')).toHaveLength(1);
+  });
+
+  it('filters candidates by name or email as the recruiter types', async () => {
+    (useExamInvitations as jest.Mock).mockReturnValue({
+      data: [
+        { id: 'inv-1', status: 'invited', extraTimePercent: 0, attempt: null, candidate: { id: 'c1', name: 'Alice Smith', email: 'alice@example.com' } },
+        { id: 'inv-2', status: 'invited', extraTimePercent: 0, attempt: null, candidate: { id: 'c2', name: 'Bob Jones', email: 'bob@example.com' } },
+      ],
+      isLoading: false,
+    });
+    (useUpdateAccommodation as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
+
+    renderPanel();
+
+    expect(screen.getByText('Alice Smith')).toBeInTheDocument();
+    expect(screen.getByText('Bob Jones')).toBeInTheDocument();
+
+    await userEvent.type(screen.getByPlaceholderText(/search by name or email/i), 'bob');
+
+    expect(screen.queryByText('Alice Smith')).not.toBeInTheDocument();
+    expect(screen.getByText('Bob Jones')).toBeInTheDocument();
+  });
+
+  it('filters candidates by status, using the same labels the Status column shows', async () => {
+    (useExamInvitations as jest.Mock).mockReturnValue({
+      data: [
+        { id: 'inv-1', status: 'invited', extraTimePercent: 0, attempt: null, candidate: { id: 'c1', name: 'Alice', email: 'a@example.com' } },
+        { id: 'inv-2', status: 'invited', extraTimePercent: 0, attempt: { id: 'att-2', status: 'submitted' }, candidate: { id: 'c2', name: 'Bob', email: 'b@example.com' } },
+      ],
+      isLoading: false,
+    });
+    (useUpdateAccommodation as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
+
+    renderPanel();
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Status' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Ended' }));
+
+    expect(screen.queryByText('Alice')).not.toBeInTheDocument();
+    expect(screen.getByText('Bob')).toBeInTheDocument();
+  });
+
+  it('shows a filtered-empty message distinct from the no-candidates-yet message', async () => {
+    (useExamInvitations as jest.Mock).mockReturnValue({
+      data: [{ id: 'inv-1', status: 'invited', extraTimePercent: 0, attempt: null, candidate: { id: 'c1', name: 'Alice', email: 'a@example.com' } }],
+      isLoading: false,
+    });
+    (useUpdateAccommodation as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
+
+    renderPanel();
+    await userEvent.type(screen.getByPlaceholderText(/search by name or email/i), 'nobody');
+
+    expect(screen.getByText('No candidates match your search or filter.')).toBeInTheDocument();
+  });
+
   it('opens the invite-candidates modal, passing the already-invited candidate ids to exclude', async () => {
     (useExamInvitations as jest.Mock).mockReturnValue({
       data: [{ id: 'inv-1', extraTimePercent: 0, attempt: null, candidateId: 'cand-1', candidate: { id: 'cand-1', name: 'Alice', email: 'alice@example.com' } }],
