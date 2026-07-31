@@ -59,8 +59,8 @@ export default function SsoSettingsPage() {
           </div>
 
           <form onSubmit={handleSave} className="flex flex-col gap-3">
-            <Input label="IdP Entity ID" value={entityId} onChange={setEntityId} required />
-            <Input label="IdP SSO URL" value={ssoUrl} onChange={setSsoUrl} required />
+            <Input label="Microsoft Entra Identifier" value={entityId} onChange={setEntityId} required />
+            <Input label="SSO Url" value={ssoUrl} onChange={setSsoUrl} required />
             <label className="flex flex-col gap-1 text-sm font-medium text-recruiter-text">
               IdP Certificate
               <textarea
