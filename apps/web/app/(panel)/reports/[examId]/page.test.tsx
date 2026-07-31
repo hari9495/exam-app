@@ -104,4 +104,51 @@ describe('PanelExamResultsPage', () => {
     expect(mutateAsync).toHaveBeenCalledWith('csv');
     expect(createObjectURL).toHaveBeenCalled();
   });
+
+  describe('tabbed layout', () => {
+    const accuracyRows = [
+      { questionId: 'q1', questionText: 'Which collection is synchronized?', accuracyPercentage: 0, timesAttempted: 2, timesIncluded: 2 },
+      { questionId: 'q2', questionText: 'Choose the correct synonym for Enhance:', accuracyPercentage: 50, timesAttempted: 1, timesIncluded: 2 },
+    ];
+
+    it('opens on Candidates, so a long question list cannot bury them below the fold', () => {
+      // This is the whole point of the change: an exam with many questions used
+      // to push the candidate list off-screen.
+      (useQuestionAccuracy as jest.Mock).mockReturnValue({ data: accuracyRows, isLoading: false });
+      renderPage();
+
+      expect(screen.getByText('Alice')).toBeInTheDocument();
+      expect(screen.queryByText('Which collection is synchronized?')).not.toBeInTheDocument();
+    });
+
+    it('shows the question accuracy list once its tab is selected', async () => {
+      (useQuestionAccuracy as jest.Mock).mockReturnValue({ data: accuracyRows, isLoading: false });
+      renderPage();
+
+      await userEvent.click(screen.getByRole('tab', { name: /Question accuracy/ }));
+
+      expect(await screen.findByText('Which collection is synchronized?')).toBeInTheDocument();
+    });
+
+    it('counts each tab so the split is visible without opening them', () => {
+      (useQuestionAccuracy as jest.Mock).mockReturnValue({ data: accuracyRows, isLoading: false });
+      renderPage();
+
+      expect(screen.getByRole('tab', { name: 'Candidates (2)' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Question accuracy (2)' })).toBeInTheDocument();
+    });
+
+    it('keeps the candidate tab count in step with the integrity filter', async () => {
+      // The count and the grid are derived from one list, so they cannot drift.
+      (useQuestionAccuracy as jest.Mock).mockReturnValue({ data: accuracyRows, isLoading: false });
+      renderPage();
+
+      await userEvent.click(screen.getByRole('combobox', { name: /Integrity/ }));
+      await userEvent.click(await screen.findByRole('option', { name: 'High concern' }));
+
+      expect(await screen.findByRole('tab', { name: 'Candidates (1)' })).toBeInTheDocument();
+      expect(screen.queryByText('Alice')).not.toBeInTheDocument();
+      expect(screen.getByText('Bob')).toBeInTheDocument();
+    });
+  });
 });

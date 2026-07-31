@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { useExam } from '../../../../lib/hooks/useExams';
 import { useResultsSummary, useQuestionAccuracy, useResultsList, useResultsExport } from '../../../../lib/hooks/usePanelReports';
-import { CardGrid, Badge, Button, Checkbox, Card, Select, IntegrityBadge, useToast } from '../../../../components/ui';
+import { CardGrid, Badge, Button, Checkbox, Card, Select, IntegrityBadge, useToast, Tabs, TabsList, TabsTrigger, TabsContent } from '../../../../components/ui';
 import { ExamResultRow, QuestionAccuracyRow } from '../../../../lib/types';
 
 const PASS_FAIL_VARIANT: Record<string, 'success' | 'danger'> = { pass: 'success', fail: 'danger' };
@@ -29,6 +29,12 @@ export default function PanelExamResultsPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [integrityFilter, setIntegrityFilter] = useState('all');
   const { toast } = useToast();
+
+  // Derived once: the tab count and the grid must show the same set, and the
+  // integrity filter applies to both.
+  const visibleResults = (results ?? []).filter(
+    (row) => integrityFilter === 'all' || row.integrityLevel === integrityFilter,
+  );
 
   function toggleSelected(candidateId: string) {
     setSelectedIds((current) =>
@@ -128,23 +134,34 @@ export default function PanelExamResultsPage() {
         </div>
       ) : null}
 
-      <div className="mb-6">
-        <h2 className="mb-2 text-lg font-medium">Question accuracy</h2>
-        {accuracyLoading ? (
-          <p className="text-sm text-gray-500">Loading…</p>
-        ) : (
-          <CardGrid
-            items={accuracyRows ?? []}
-            cardKey={(row) => row.questionId}
-            renderCard={renderAccuracyCard}
-            emptyMessage="No settled attempts yet."
-          />
-        )}
-      </div>
+      {/* Candidates first and default: an exam with many questions pushed the
+          candidate list far below the fold, which is the thing a recruiter
+          actually opens this page to read. */}
+      <Tabs defaultValue="candidates">
+        <TabsList>
+          <TabsTrigger value="candidates">
+            Candidates{visibleResults.length > 0 ? ` (${visibleResults.length})` : ''}
+          </TabsTrigger>
+          <TabsTrigger value="accuracy">
+            Question accuracy{accuracyRows?.length ? ` (${accuracyRows.length})` : ''}
+          </TabsTrigger>
+        </TabsList>
 
-      <div>
-        <div className="mb-2 flex items-end justify-between">
-          <h2 className="text-lg font-medium">Candidates</h2>
+        <TabsContent value="accuracy">
+          {accuracyLoading ? (
+            <p className="text-sm text-gray-500">Loading…</p>
+          ) : (
+            <CardGrid
+              items={accuracyRows ?? []}
+              cardKey={(row) => row.questionId}
+              renderCard={renderAccuracyCard}
+              emptyMessage="No settled attempts yet."
+            />
+          )}
+        </TabsContent>
+
+        <TabsContent value="candidates">
+        <div className="mb-2 flex items-end justify-end">
           <div className="flex items-end gap-2">
             <Select label="Integrity" value={integrityFilter} onChange={setIntegrityFilter} options={INTEGRITY_FILTER_OPTIONS} />
             <Button variant="secondary" onClick={() => handleExport('csv')} disabled={exportMutation.isPending}>
@@ -168,13 +185,14 @@ export default function PanelExamResultsPage() {
           <p className="text-sm text-gray-500">Loading…</p>
         ) : (
           <CardGrid
-            items={(results ?? []).filter((row) => integrityFilter === 'all' || row.integrityLevel === integrityFilter)}
+            items={visibleResults}
             cardKey={(row) => row.candidateId}
             renderCard={renderCandidateCard}
             emptyMessage="No candidates invited yet."
           />
         )}
-      </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
