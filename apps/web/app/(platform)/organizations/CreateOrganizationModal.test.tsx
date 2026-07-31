@@ -40,6 +40,7 @@ function renderModal({ open = true, onClose = jest.fn(), createResponse }: {
 async function fillAndSubmit() {
   await userEvent.type(screen.getByLabelText('Name'), 'Beta');
   await userEvent.type(screen.getByLabelText('Slug'), 'beta');
+  await userEvent.type(screen.getByLabelText('Admin name'), 'Ada Lovelace');
   await userEvent.type(screen.getByLabelText('Admin email'), 'admin@beta.test');
   await userEvent.click(screen.getByRole('button', { name: 'Create organization' }));
 }
@@ -53,6 +54,13 @@ describe('CreateOrganizationModal', () => {
   it('renders nothing when closed', () => {
     renderModal({ open: false });
     expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
+  });
+
+  it('asks for the admin name, so the Primary admin column is filled from creation', async () => {
+    renderModal();
+    const field = screen.getByLabelText('Admin name');
+    expect(field).toBeInTheDocument();
+    expect(field).toBeRequired();
   });
 
   it('posts the entered fields and closes on success', async () => {
@@ -69,6 +77,7 @@ describe('CreateOrganizationModal', () => {
       slug: 'beta',
       region: 'us',
       adminEmail: 'admin@beta.test',
+      adminName: 'Ada Lovelace',
     });
   });
 

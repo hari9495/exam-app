@@ -132,9 +132,14 @@ export class OrganizationsService {
     // forTenant's super-admin bypass -- same idiom the password-reset flow already
     // established for "identity proven by other means, not an org-scoped session".
     const passwordHash = await argon2.hash(randomBytes(32).toString('hex'));
+    // Trim, and collapse a blank entry to null rather than storing ''. The
+    // Primary admin column renders null as an em dash; an empty string would
+    // render as a blank cell, which reads as a rendering bug rather than as
+    // "no name recorded".
+    const adminName = dto.adminName?.trim() || null;
     const admin = await this.tenantPrisma.forTenant({ organizationId: org.id, isSuperAdmin: true }, (tx) =>
       tx.user.create({
-        data: { organizationId: org.id, email: dto.adminEmail, passwordHash, role: 'org_admin' },
+        data: { organizationId: org.id, email: dto.adminEmail, name: adminName, passwordHash, role: 'org_admin' },
       }),
     );
 
