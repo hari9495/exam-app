@@ -8,6 +8,8 @@ interface AuthPageLayoutProps {
   children: ReactNode;
   /** Org logo, when the page knows which org it is for. Falls back to the platform mark. */
   logoUrl?: string | null;
+  /** Org name, shown next to the org logo once branding is detected. */
+  logoLabel?: string | null;
   panelHeading: string;
   panelCopy: string;
   panelHighlights: string[];
@@ -25,6 +27,7 @@ export function AuthPageLayout({
   title,
   children,
   logoUrl,
+  logoLabel,
   panelHeading,
   panelCopy,
   panelHighlights,
@@ -35,7 +38,12 @@ export function AuthPageLayout({
         <div className="w-full max-w-sm">
           <div className="mb-8 flex justify-center">
             {logoUrl ? (
-              <img src={logoUrl} alt="Organization logo" className="max-h-14" />
+              <div className="flex items-center gap-3">
+                <img src={logoUrl} alt="Organization logo" className="max-h-20 object-contain" />
+                {logoLabel && (
+                  <p className="text-2xl font-bold tracking-tight text-recruiter-text">{logoLabel}</p>
+                )}
+              </div>
             ) : (
               <div className="flex items-center gap-3">
                 <img src="/logo.png" alt="Prudent Hire" className="h-11 w-11 object-contain" />

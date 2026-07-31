@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, MotionConfig } from 'framer-motion';
@@ -41,22 +41,37 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [ssoEnabled, setSsoEnabled] = useState(false);
   const [usePasswordInstead, setUsePasswordInstead] = useState(false);
-  const { data: branding } = useBranding(organizationSlug || null);
+  // Debounce the slug so branding + SSO detection fire while the user types,
+  // without hitting the API on every keystroke -- no blur/Tab needed.
+  const [debouncedSlug, setDebouncedSlug] = useState('');
+  const { data: branding } = useBranding(debouncedSlug || null);
   useDocumentBranding(branding?.name, branding?.logoUrl);
 
-  async function handleSlugBlur() {
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSlug(organizationSlug.trim()), 350);
+    return () => clearTimeout(handle);
+  }, [organizationSlug]);
+
+  // Auto-detect SSO for the typed org. Guarded against out-of-order responses so
+  // a slow earlier request can't overwrite the answer for the current slug.
+  useEffect(() => {
     setUsePasswordInstead(false);
-    if (!organizationSlug) {
+    if (!debouncedSlug) {
       setSsoEnabled(false);
       return;
     }
-    try {
-      const result = await apiFetch(`/auth/saml/${organizationSlug}/status`);
-      setSsoEnabled(result.enabled);
-    } catch {
-      setSsoEnabled(false);
-    }
-  }
+    let active = true;
+    apiFetch(`/auth/saml/${debouncedSlug}/status`)
+      .then((result) => {
+        if (active) setSsoEnabled(Boolean(result.enabled));
+      })
+      .catch(() => {
+        if (active) setSsoEnabled(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [debouncedSlug]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -93,6 +108,7 @@ export default function LoginPage() {
       <AuthPageLayout
         title="Staff Login"
         logoUrl={branding?.logoUrl}
+        logoLabel={branding?.name}
         panelHeading="Automate early screens."
         panelCopy="Focus human judgment on what matters. Prudent Hire runs the first round end to end, so your panel only meets the candidates worth meeting."
         panelHighlights={HIGHLIGHTS}
@@ -112,7 +128,6 @@ export default function LoginPage() {
             label="Organization slug"
             value={organizationSlug}
             onChange={setOrganizationSlug}
-            onBlur={handleSlugBlur}
           />
           {ssoEnabled && !usePasswordInstead ? (
             <>
