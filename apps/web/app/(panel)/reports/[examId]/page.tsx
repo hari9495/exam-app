@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
+import { Search } from 'lucide-react';
 import { useExam } from '../../../../lib/hooks/useExams';
 import { useResultsSummary, useQuestionAccuracy, useResultsList, useResultsExport } from '../../../../lib/hooks/usePanelReports';
 import {
@@ -61,6 +62,13 @@ const INTEGRITY_FILTER_OPTIONS = [
   { value: 'high_concern', label: 'High concern' },
 ];
 
+// Built from RESULT_STATUS_LABEL rather than a separate hand-kept list, so the
+// filter options always match whatever the Status column actually displays.
+const STATUS_FILTER_OPTIONS = [
+  { value: 'all', label: 'All statuses' },
+  ...Object.entries(RESULT_STATUS_LABEL).map(([value, label]) => ({ value, label })),
+];
+
 export default function PanelExamResultsPage() {
   const { examId } = useParams<{ examId: string }>();
   const router = useRouter();
@@ -71,13 +79,20 @@ export default function PanelExamResultsPage() {
   const exportMutation = useResultsExport(examId);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [integrityFilter, setIntegrityFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [search, setSearch] = useState('');
   const { toast } = useToast();
 
-  // Derived once: the tab count and the grid must show the same set, and the
-  // integrity filter applies to both.
+  // Derived once: the tab count and the grid must show the same set, and every
+  // filter below applies to both.
+  const query = search.trim().toLowerCase();
   const visibleResults = (results ?? []).filter(
-    (row) => integrityFilter === 'all' || row.integrityLevel === integrityFilter,
+    (row) =>
+      (integrityFilter === 'all' || row.integrityLevel === integrityFilter) &&
+      (statusFilter === 'all' || row.status === statusFilter) &&
+      (!query || row.candidateName.toLowerCase().includes(query)),
   );
+  const filtersActive = integrityFilter !== 'all' || statusFilter !== 'all' || query !== '';
 
   function toggleSelected(candidateId: string) {
     setSelectedIds((current) =>
@@ -240,9 +255,23 @@ export default function PanelExamResultsPage() {
         </TabsContent>
 
         <TabsContent value="candidates">
-        <div className="mb-2 flex items-end justify-end">
-          <div className="flex items-end gap-2">
+        <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="relative max-w-xs flex-1">
+              <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-recruiter-text-tertiary" />
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search candidates…"
+                aria-label="Search candidates"
+                className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
+              />
+            </div>
+            <Select label="Status" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTER_OPTIONS} />
             <Select label="Integrity" value={integrityFilter} onChange={setIntegrityFilter} options={INTEGRITY_FILTER_OPTIONS} />
+          </div>
+          <div className="flex items-end gap-2">
             <Button variant="secondary" onClick={() => handleExport('csv')} disabled={exportMutation.isPending}>
               Export CSV
             </Button>
@@ -267,7 +296,7 @@ export default function PanelExamResultsPage() {
             columns={candidateColumns}
             rows={visibleResults}
             rowKey={(row) => row.candidateId}
-            emptyMessage={integrityFilter === 'all' ? 'No candidates invited yet.' : 'No candidates match this integrity level.'}
+            emptyMessage={filtersActive ? 'No candidates match your search or filters.' : 'No candidates invited yet.'}
           />
         )}
         </TabsContent>

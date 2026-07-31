@@ -106,6 +106,35 @@ describe('PanelExamResultsPage', () => {
     expect(screen.getByRole('link', { name: 'Bob' })).toBeInTheDocument();
   });
 
+  it('filters the candidate rows by candidate name as the recruiter types', async () => {
+    renderPage();
+
+    expect(screen.getByRole('link', { name: 'Alice' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Bob' })).toBeInTheDocument();
+
+    await userEvent.type(screen.getByPlaceholderText(/search candidates/i), 'bob');
+
+    expect(screen.queryByRole('link', { name: 'Alice' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Bob' })).toBeInTheDocument();
+  });
+
+  it('filters the candidate rows by status, using the same labels the Status column shows', async () => {
+    (useResultsList as jest.Mock).mockReturnValue({
+      data: [
+        ...resultRows,
+        { candidateId: 'c3', candidateName: 'Cara', invitationId: 'i3', attemptId: null, status: 'invited', score: null, maxScore: 10, percentage: null, passFail: null, submittedAt: null, proctoringAnalysis: null, integrityLevel: null, integrityFlagCount: 0 },
+      ],
+      isLoading: false,
+    });
+    renderPage();
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Status' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Invited' }));
+
+    expect(screen.queryByRole('link', { name: 'Alice' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Cara' })).toBeInTheDocument();
+  });
+
   it('triggers an export download when an export format button is clicked', async () => {
     const createObjectURL = jest.fn().mockReturnValue('blob:mock');
     const revokeObjectURL = jest.fn();
