@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ExamDetailsForm } from '../../../../../components/ExamDetailsForm';
 import { ExamSectionsPanel } from '../../../../../components/ExamSectionsPanel';
@@ -18,7 +18,6 @@ import { BackLink } from '../../../../../components/BackLink';
 
 export default function EditExamPage() {
   const params = useParams<{ id: string }>();
-  const router = useRouter();
   const { toast } = useToast();
   const { data: exam } = useExam(params.id);
   const updateExam = useUpdateExam(params.id);
@@ -74,10 +73,7 @@ export default function EditExamPage() {
             <Button
               onClick={() =>
                 publishExam.mutate(undefined, {
-                  onSuccess: () => {
-                    toast('Exam published.');
-                    router.push('/exams');
-                  },
+                  onSuccess: () => toast('Exam published.'),
                   onError: (error) => {
                     toast(error instanceof Error ? error.message : 'Failed to publish exam.', 'error');
                   },
