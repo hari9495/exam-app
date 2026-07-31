@@ -23,7 +23,8 @@ describe('OrganizationsService', () => {
     plan: { findFirst: jest.Mock };
     webhookDelivery: { findMany: jest.Mock };
     user: { findMany: jest.Mock; groupBy: jest.Mock };
-    exam: { groupBy: jest.Mock };
+    exam: { groupBy: jest.Mock; findMany: jest.Mock };
+    attempt: { count: jest.Mock };
   };
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
@@ -40,7 +41,8 @@ describe('OrganizationsService', () => {
       plan: { findFirst: jest.fn() },
       webhookDelivery: { findMany: jest.fn() },
       user: { findMany: jest.fn(), groupBy: jest.fn() },
-      exam: { groupBy: jest.fn() },
+      exam: { groupBy: jest.fn(), findMany: jest.fn() },
+      attempt: { count: jest.fn() },
     };
     tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
@@ -226,7 +228,7 @@ describe('OrganizationsService', () => {
         totalPages: 1,
       });
       expect(prisma.organization.findMany).toHaveBeenCalledWith({
-        where: {},
+        where: { status: { not: 'deleted' } },
         select: LIST_SELECT,
         orderBy: { createdAt: 'desc' },
         skip: 0,
@@ -241,7 +243,7 @@ describe('OrganizationsService', () => {
       await service.list({ search: 'acm' });
 
       expect(prisma.organization.findMany).toHaveBeenCalledWith({
-        where: { OR: [{ name: { contains: 'acm' } }, { slug: { contains: 'acm' } }] },
+        where: { status: { not: 'deleted' }, OR: [{ name: { contains: 'acm' } }, { slug: { contains: 'acm' } }] },
         select: LIST_SELECT,
         orderBy: { createdAt: 'desc' },
         skip: 0,
@@ -388,6 +390,237 @@ describe('OrganizationsService', () => {
         expect(result.data).toEqual([]);
         expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('updatePlatform', () => {
+    beforeEach(() => {
+      // updatePlatform re-enriches the updated row, which reads RLS-protected
+      // tables through forTenant.
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(prisma));
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.user.groupBy.mockResolvedValue([]);
+      prisma.exam.groupBy.mockResolvedValue([]);
+    });
+
+    function seedExisting() {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', status: 'active' });
+      prisma.organization.update.mockResolvedValue({
+        id: 'org-1', name: 'Acme Inc', slug: 'acme', region: 'eu', status: 'active', createdAt: new Date('2026-01-01'),
+      });
+    }
+
+    it('updates name and region and audits the change', async () => {
+      seedExisting();
+
+      const result = await service.updatePlatform('actor-1', 'org-1', { name: 'Acme Inc', region: 'eu' });
+
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { name: 'Acme Inc', region: 'eu' },
+        select: expect.objectContaining({ id: true, name: true, slug: true, status: true }),
+      });
+      expect(result).toMatchObject({ id: 'org-1', name: 'Acme Inc', region: 'eu' });
+      expect(audit.record).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: true },
+        { actorUserId: 'actor-1', action: 'platform.organization_updated', entityType: 'organization', entityId: 'org-1' },
+      );
+    });
+
+    it('omits fields the caller did not send', async () => {
+      seedExisting();
+
+      await service.updatePlatform('actor-1', 'org-1', { name: 'Acme Inc' });
+
+      expect(prisma.organization.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { name: 'Acme Inc' } }),
+      );
+    });
+
+    it('never writes the slug, even if one is smuggled into the payload', async () => {
+      // The slug appears in invitation URLs and SAML entity IDs; changing it
+      // would break live links. The DTO has no slug field, but a stray property
+      // must not reach Prisma either.
+      seedExisting();
+
+      await service.updatePlatform('actor-1', 'org-1', { name: 'Acme Inc', slug: 'hijacked' } as never);
+
+      const data = prisma.organization.update.mock.calls[0][0].data;
+      expect(data).not.toHaveProperty('slug');
+    });
+
+    it('returns the row re-enriched, not fabricated zeros', async () => {
+      seedExisting();
+      prisma.user.groupBy.mockResolvedValue([{ organizationId: 'org-1', _count: { _all: 7 } }]);
+      prisma.exam.groupBy.mockResolvedValue([{ organizationId: 'org-1', _count: { _all: 2 } }]);
+
+      const result = await service.updatePlatform('actor-1', 'org-1', { name: 'Acme Inc' });
+
+      expect(result).toMatchObject({ userCount: 7, examCount: 2 });
+    });
+
+    it('throws NotFound for an unknown organization and writes nothing', async () => {
+      prisma.organization.findUnique.mockResolvedValue(null);
+
+      await expect(service.updatePlatform('actor-1', 'nope', { name: 'X' })).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('setStatus', () => {
+    beforeEach(() => {
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(prisma));
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.user.groupBy.mockResolvedValue([]);
+      prisma.exam.groupBy.mockResolvedValue([]);
+    });
+
+    it('suspends an organization and audits it', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', status: 'active' });
+      prisma.organization.update.mockResolvedValue({
+        id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', status: 'suspended', createdAt: new Date('2026-01-01'),
+      });
+
+      const result = await service.setStatus('actor-1', 'org-1', 'suspended');
+
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { status: 'suspended' },
+        select: expect.objectContaining({ status: true }),
+      });
+      expect(result.status).toBe('suspended');
+      expect(audit.record).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: true },
+        { actorUserId: 'actor-1', action: 'platform.organization_suspended', entityType: 'organization', entityId: 'org-1' },
+      );
+    });
+
+    it('records a distinct audit action when reactivating', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', status: 'suspended' });
+      prisma.organization.update.mockResolvedValue({
+        id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', status: 'active', createdAt: new Date('2026-01-01'),
+      });
+
+      await service.setStatus('actor-1', 'org-1', 'active');
+
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ action: 'platform.organization_reactivated' }),
+      );
+    });
+
+    it('refuses to reactivate a deleted organization', async () => {
+      // Reactivating through this endpoint would be a silent undelete that
+      // bypasses whatever restore flow we eventually build.
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', status: 'deleted' });
+
+      await expect(service.setStatus('actor-1', 'org-1', 'active')).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFound for an unknown organization', async () => {
+      prisma.organization.findUnique.mockResolvedValue(null);
+
+      await expect(service.setStatus('actor-1', 'nope', 'suspended')).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('softDelete', () => {
+    beforeEach(() => {
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(prisma));
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.user.groupBy.mockResolvedValue([]);
+      prisma.exam.groupBy.mockResolvedValue([]);
+      prisma.exam.findMany.mockResolvedValue([{ id: 'exam-1' }]);
+      prisma.attempt.count.mockResolvedValue(0);
+    });
+
+    function seedActive() {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', status: 'active' });
+      prisma.organization.update.mockResolvedValue({ id: 'org-1', status: 'deleted' });
+    }
+
+    it('marks the organization deleted and audits it', async () => {
+      seedActive();
+
+      const result = await service.softDelete('actor-1', 'org-1');
+
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { status: 'deleted' },
+        select: { id: true, status: true },
+      });
+      expect(result).toEqual({ id: 'org-1', status: 'deleted' });
+      expect(audit.record).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: true },
+        { actorUserId: 'actor-1', action: 'platform.organization_deleted', entityType: 'organization', entityId: 'org-1' },
+      );
+    });
+
+    it('refuses while an exam is in progress and leaves the status unchanged', async () => {
+      seedActive();
+      prisma.attempt.count.mockResolvedValue(2);
+
+      await expect(service.softDelete('actor-1', 'org-1')).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('scopes the live-attempt count to the org via its exam ids', async () => {
+      // Attempt has no `exam` relation -- only a scalar examId -- so the org
+      // filter has to go through exam ids. `exams` IS RLS-protected, hence the
+      // super-admin bypass; without it the exam list comes back empty and the
+      // guard would pass while an exam was live.
+      seedActive();
+
+      await service.softDelete('actor-1', 'org-1');
+
+      expect(tenantPrisma.forTenant).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: true },
+        expect.any(Function),
+      );
+      expect(prisma.exam.findMany).toHaveBeenCalledWith({ where: { organizationId: 'org-1' }, select: { id: true } });
+      expect(prisma.attempt.count).toHaveBeenCalledWith({
+        where: { status: 'in_progress', examId: { in: ['exam-1'] } },
+      });
+    });
+
+    it('skips the attempt count entirely for an organization with no exams', async () => {
+      seedActive();
+      prisma.exam.findMany.mockResolvedValue([]);
+
+      await service.softDelete('actor-1', 'org-1');
+
+      expect(prisma.attempt.count).not.toHaveBeenCalled();
+      expect(prisma.organization.update).toHaveBeenCalled();
+    });
+
+    it('is idempotent for an already-deleted organization', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', status: 'deleted' });
+
+      const result = await service.softDelete('actor-1', 'org-1');
+
+      expect(result).toEqual({ id: 'org-1', status: 'deleted' });
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFound for an unknown organization', async () => {
+      prisma.organization.findUnique.mockResolvedValue(null);
+
+      await expect(service.softDelete('actor-1', 'nope')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('excludes deleted organizations from the list', async () => {
+      prisma.organization.findMany.mockResolvedValue([]);
+      prisma.organization.count.mockResolvedValue(0);
+
+      await service.list();
+
+      expect(prisma.organization.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ status: { not: 'deleted' } }) }),
+      );
     });
   });
 

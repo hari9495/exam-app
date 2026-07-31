@@ -2,7 +2,7 @@ import { Body, Controller, HttpCode, Param, Post, Req, Res, UnauthorizedExceptio
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { createHash } from 'crypto';
-import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
+import { PrismaService, TenantPrismaService, isOrganizationActive, ORGANIZATION_INACTIVE_MESSAGE } from '@exam-platform/shared';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
@@ -97,6 +97,13 @@ export class AuthController {
 
     if (user.status !== 'active') {
       throw new UnauthorizedException('This account has been deactivated');
+    }
+
+    if (user.organizationId) {
+      const org = await this.prisma.organization.findUnique({ where: { id: user.organizationId } });
+      if (!isOrganizationActive(org?.status)) {
+        throw new UnauthorizedException(ORGANIZATION_INACTIVE_MESSAGE);
+      }
     }
 
     const tokens = await this.authService.issueTokensForSso(user.id, user.organizationId, user.role);

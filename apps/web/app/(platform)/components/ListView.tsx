@@ -25,6 +25,8 @@ interface ListViewProps<T> {
   /** Caller-supplied filter controls, rendered beside the search box. The caller
    *  filters `rows` itself -- ListView holds no filter state. */
   filters?: ReactNode;
+  /** Seeds the search box on mount -- e.g. from a ?org= link. */
+  initialSearch?: string;
   defaultHiddenColumns?: string[];
   searchPlaceholder?: string;
   emptyMessage?: string;
@@ -57,6 +59,7 @@ export function ListView<T>({
   storageKey,
   actions,
   filters,
+  initialSearch = '',
   defaultHiddenColumns = [],
   searchPlaceholder = 'Search…',
   emptyMessage = 'Nothing here yet.',
@@ -64,7 +67,7 @@ export function ListView<T>({
   isError = false,
   totalCount,
 }: ListViewProps<T>) {
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialSearch);
   const [hidden, setHidden] = useState<string[]>(defaultHiddenColumns);
   const [sort, setSort] = useState<{ key: string; header: string; direction: 'asc' | 'desc' } | null>(null);
 

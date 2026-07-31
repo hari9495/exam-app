@@ -46,6 +46,8 @@ describe('PlatformAdminsPage', () => {
 
   it('confirms before inviting a new super admin', async () => {
     renderPage();
+    // The create forms are now behind action-bar buttons rather than always visible.
+    fireEvent.click(await screen.findByRole('button', { name: 'Invite admin' }));
     fireEvent.change(await screen.findByLabelText('Invite by email'), { target: { value: 'new@platform.test' } });
     fireEvent.click(screen.getByRole('button', { name: 'Invite' }));
 
@@ -65,6 +67,7 @@ describe('PlatformAdminsPage', () => {
 
   it('confirms before promoting an existing user', async () => {
     renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Promote user' }));
     fireEvent.change(await screen.findByLabelText('Promote by email'), { target: { value: 'existing@org.test' } });
     fireEvent.click(screen.getByRole('button', { name: 'Promote' }));
 

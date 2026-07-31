@@ -45,6 +45,44 @@ interface CreateOrganizationInput {
   adminEmail: string;
 }
 
+interface UpdateOrganizationInput {
+  id: string;
+  name?: string;
+  region?: string;
+}
+
+export function useUpdateOrganization() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    // No slug: it is baked into invitation URLs and SAML entity IDs, and the API
+    // will not write it either.
+    mutationFn: ({ id, ...body }: UpdateOrganizationInput): Promise<Organization> =>
+      apiFetch(`/organizations/${id}`, { method: 'PATCH', body: JSON.stringify(body) }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['organizations'] }),
+  });
+}
+
+export function useSetOrganizationStatus() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: 'active' | 'suspended' }): Promise<Organization> =>
+      apiFetch(`/organizations/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['organizations'] }),
+  });
+}
+
+export function useDeleteOrganization() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string): Promise<{ id: string; status: string }> =>
+      apiFetch(`/organizations/${id}`, { method: 'DELETE' }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['organizations'] }),
+  });
+}
+
 export function useCreateOrganization() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();

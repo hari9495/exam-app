@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService, hashRefreshToken, isLegacyArgon2Hash, refreshTokenMatches } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
-import { AuditService, isIpAllowed } from '@exam-platform/shared';
+import { AuditService, isIpAllowed, isOrganizationActive } from '@exam-platform/shared';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 
 type PrismaClientOrTransaction = PrismaService | Prisma.TransactionClient;
@@ -40,6 +40,15 @@ export class CandidateAuthService {
       tx.exam.findUniqueOrThrow({ where: { id: invitation.examId } }),
     );
     if (exam.status !== 'published') {
+      throw new BadRequestException('This exam is not currently available');
+    }
+
+    // Deliberately the SAME message as an unpublished exam. A candidate must not
+    // learn that their prospective employer's account is suspended or deleted --
+    // that is the org's business, not theirs. `organizations` carries no RLS
+    // policy, so the raw client is correct here (unlike `users` and `exams`).
+    const organization = await this.prisma.organization.findUnique({ where: { id: exam.organizationId } });
+    if (!isOrganizationActive(organization?.status)) {
       throw new BadRequestException('This exam is not currently available');
     }
     await this.enforceIpRestriction(exam, invitation.id, clientIp, 'redeem');

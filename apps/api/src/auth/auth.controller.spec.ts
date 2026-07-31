@@ -7,12 +7,14 @@ import { createHash } from 'crypto';
 describe('AuthController.ssoExchange', () => {
   let controller: AuthController;
   let authService: { issueTokensForSso: jest.Mock };
-  let prisma: { ssoLoginCode: { findUnique: jest.Mock; delete: jest.Mock } };
+  let prisma: {
+    organization: { findUnique: jest.Mock }; ssoLoginCode: { findUnique: jest.Mock; delete: jest.Mock } };
   let tenantPrisma: { forTenant: jest.Mock };
 
   beforeEach(async () => {
     authService = { issueTokensForSso: jest.fn() };
-    prisma = { ssoLoginCode: { findUnique: jest.fn(), delete: jest.fn() } };
+    prisma = {
+      organization: { findUnique: jest.fn().mockResolvedValue({ id: 'org-1', status: 'active' }) }, ssoLoginCode: { findUnique: jest.fn(), delete: jest.fn() } };
     tenantPrisma = { forTenant: jest.fn() };
     const moduleRef = await Test.createTestingModule({
       controllers: [AuthController],

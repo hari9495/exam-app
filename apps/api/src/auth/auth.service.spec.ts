@@ -68,7 +68,7 @@ describe('AuthService', () => {
 
   it('rejects login on a wrong password', async () => {
     const passwordHash = await argon2.hash('correct-password');
-    prisma.organization.findUnique.mockResolvedValue({ id: 'org-1' });
+    prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', status: 'active' });
     tenantPrisma.forTenant.mockResolvedValue({
       id: 'user-1', organizationId: 'org-1', role: 'org_admin', passwordHash,
     });
@@ -80,7 +80,7 @@ describe('AuthService', () => {
 
   it('issues an access and refresh token on correct credentials', async () => {
     const passwordHash = await argon2.hash('correct-password');
-    prisma.organization.findUnique.mockResolvedValue({ id: 'org-1' });
+    prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', status: 'active' });
     tenantPrisma.forTenant.mockResolvedValueOnce({
       id: 'user-1', organizationId: 'org-1', role: 'org_admin', status: 'active', passwordHash,
     });
@@ -100,7 +100,7 @@ describe('AuthService', () => {
 
   it('rejects login for a deactivated user even with the correct password', async () => {
     const passwordHash = await argon2.hash('password1');
-    prisma.organization.findUnique.mockResolvedValue({ id: 'org1' });
+    prisma.organization.findUnique.mockResolvedValue({ id: 'org1', status: 'active' });
     tenantPrisma.forTenant.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
       fn({
         user: {
@@ -202,7 +202,7 @@ describe('AuthService', () => {
 
   describe('forgotPassword', () => {
     it('creates a hashed reset token and emails a link when the org and user match', async () => {
-      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org', status: 'active' });
       tenantPrisma.forTenant.mockResolvedValue({ id: 'user-1', email: 'admin@demo-org.test', organizationId: 'org-1' });
       prisma.passwordResetToken.create.mockResolvedValue({});
 
@@ -232,7 +232,7 @@ describe('AuthService', () => {
     });
 
     it("passes the organization's id through to EmailService.send so org-specific SMTP can be used", async () => {
-      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org', status: 'active' });
       tenantPrisma.forTenant.mockResolvedValue({ id: 'user-1', email: 'admin@demo-org.test', organizationId: 'org-1' });
       prisma.passwordResetToken.create.mockResolvedValue({});
 
@@ -254,7 +254,7 @@ describe('AuthService', () => {
     });
 
     it('does not create a token or send an email when the email does not match a user in that org, and does not throw', async () => {
-      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org', status: 'active' });
       tenantPrisma.forTenant.mockResolvedValue(null);
 
       await expect(
@@ -363,7 +363,7 @@ describe('AuthService', () => {
     });
 
     it('audit-logs the switch-in against the target org and returns an acting access token', async () => {
-      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme Inc' });
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme Inc', status: 'active' });
 
       const token = await service.switchIntoOrg('super-admin-1', 'org-1');
 
@@ -460,6 +460,85 @@ describe('AuthService', () => {
         { organizationId: 'orgA', isSuperAdmin: true },
         { actorUserId: 'admin1', action: 'user.impersonate_stop', entityType: 'user', entityId: 'target1' },
       );
+    });
+  });
+
+  describe('organization suspension', () => {
+    it('rejects password login when the organization is suspended', async () => {
+      const passwordHash = await argon2.hash('password1');
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org1', status: 'suspended' });
+      tenantPrisma.forTenant.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+        fn({
+          user: {
+            findFirst: jest.fn().mockResolvedValue({
+              id: 'u1', organizationId: 'org1', role: 'recruiter', status: 'active', passwordHash,
+            }),
+          },
+        }),
+      );
+
+      await expect(
+        service.login({ organizationSlug: 'acme', email: 'a@b.com', password: 'password1' }),
+      ).rejects.toThrow('This organization is not currently active');
+    });
+
+    it('rejects password login when the organization is deleted', async () => {
+      const passwordHash = await argon2.hash('password1');
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org1', status: 'deleted' });
+      tenantPrisma.forTenant.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+        fn({
+          user: {
+            findFirst: jest.fn().mockResolvedValue({
+              id: 'u1', organizationId: 'org1', role: 'recruiter', status: 'active', passwordHash,
+            }),
+          },
+        }),
+      );
+
+      await expect(
+        service.login({ organizationSlug: 'acme', email: 'a@b.com', password: 'password1' }),
+      ).rejects.toThrow('This organization is not currently active');
+    });
+
+    it('rejects refresh rotation when the organization is suspended', async () => {
+      // Checking only at login would let suspended staff keep rotating tokens
+      // until natural expiry, so the suspension would appear not to have applied.
+      const refreshToken = jwt.sign({ sub: 'user-1', familyId: 'family-1' }, { secret: process.env.JWT_REFRESH_SECRET });
+      prisma.refreshToken.findFirst.mockResolvedValue({
+        id: 'rt-1', userId: 'user-1', familyId: 'family-1', tokenHash: createHash('sha256').update(refreshToken).digest('hex'), revokedAt: null,
+      });
+      prisma.refreshToken.update.mockResolvedValue({});
+      tenantPrisma.forTenant.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+        fn({
+          user: {
+            findUniqueOrThrow: jest.fn().mockResolvedValue({
+              id: 'user-1', organizationId: 'org-1', role: 'recruiter', status: 'active',
+            }),
+          },
+        }),
+      );
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', status: 'suspended' });
+
+      await expect(service.refresh(refreshToken)).rejects.toThrow('This organization is not currently active');
+    });
+
+    it('does not block a super admin, who belongs to no organization', async () => {
+      const passwordHash = await argon2.hash('password1');
+      tenantPrisma.forTenant.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+        fn({
+          user: {
+            findFirst: jest.fn().mockResolvedValue({
+              id: 'u1', organizationId: null, role: 'super_admin', status: 'active', passwordHash,
+            }),
+          },
+        }),
+      );
+
+      await expect(service.login({ email: 'root@platform.test', password: 'password1' })).resolves.toHaveProperty(
+        'accessToken',
+      );
+      // No slug means no org lookup at all -- nothing to suspend.
+      expect(prisma.organization.findUnique).not.toHaveBeenCalled();
     });
   });
 });

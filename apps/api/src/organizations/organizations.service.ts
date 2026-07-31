@@ -17,6 +17,7 @@ import { UpdateSmtpSettingsDto } from './dto/update-smtp-settings.dto';
 import { UpdateAiKeyDto } from './dto/update-ai-key.dto';
 import { UpdateWebhookUrlDto } from './dto/update-webhook-url.dto';
 import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
+import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update-organization.dto';
 
 export interface BrandingResponse {
   // The organisation's own display name. Consumers render this in place of the
@@ -173,9 +174,12 @@ export class OrganizationsService {
 
   async list(filters: { page?: string; pageSize?: string; search?: string } = {}): Promise<PaginatedResponse<OrganizationListItem>> {
     const { page, pageSize, skip, take } = resolvePaginationParams(filters.page, filters.pageSize);
-    const where = filters.search
-      ? { OR: [{ name: { contains: filters.search } }, { slug: { contains: filters.search } }] }
-      : {};
+    const where = {
+      status: { not: 'deleted' },
+      ...(filters.search
+        ? { OR: [{ name: { contains: filters.search } }, { slug: { contains: filters.search } }] }
+        : {}),
+    };
     const [organizations, total] = await Promise.all([
       this.prisma.organization.findMany({ where, select: ORGANIZATION_LIST_SELECT, orderBy: { createdAt: 'desc' }, skip, take }),
       this.prisma.organization.count({ where }),
@@ -183,6 +187,112 @@ export class OrganizationsService {
 
     const items = await this.enrichForList(organizations);
     return buildPaginatedResponse(items, total, page, pageSize);
+  }
+
+  async updatePlatform(actorUserId: string, id: string, dto: UpdateOrganizationDto): Promise<OrganizationListItem> {
+    const existing = await this.prisma.organization.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException(`Organization ${id} not found`);
+    }
+
+    const updated = await this.prisma.organization.update({
+      where: { id },
+      // Fields are copied across one at a time rather than spreading the DTO:
+      // the slug must never be writable here (it is baked into invitation URLs
+      // and SAML entity IDs), and a spread would carry through any stray
+      // property that slipped past validation.
+      data: {
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.region !== undefined && { region: dto.region }),
+      },
+      select: ORGANIZATION_LIST_SELECT,
+    });
+
+    await this.audit.record(
+      { organizationId: id, isSuperAdmin: true },
+      { actorUserId, action: 'platform.organization_updated', entityType: 'organization', entityId: id },
+    );
+
+    // Re-enrich rather than padding the response with zeros: a caller reading
+    // userCount off this response would otherwise get a fabricated number.
+    const [item] = await this.enrichForList([updated]);
+    return item;
+  }
+
+  async setStatus(actorUserId: string, id: string, status: 'active' | 'suspended'): Promise<OrganizationListItem> {
+    const existing = await this.prisma.organization.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException(`Organization ${id} not found`);
+    }
+    // Reactivating a deleted organization through the suspend endpoint would be
+    // a silent undelete that bypasses whatever restore flow we eventually build.
+    if (existing.status === 'deleted') {
+      throw new ConflictException('This organization has been deleted');
+    }
+
+    const updated = await this.prisma.organization.update({
+      where: { id },
+      data: { status },
+      select: ORGANIZATION_LIST_SELECT,
+    });
+
+    await this.audit.record(
+      { organizationId: id, isSuperAdmin: true },
+      {
+        actorUserId,
+        action: status === 'suspended' ? 'platform.organization_suspended' : 'platform.organization_reactivated',
+        entityType: 'organization',
+        entityId: id,
+      },
+    );
+
+    const [item] = await this.enrichForList([updated]);
+    return item;
+  }
+
+  async softDelete(actorUserId: string, id: string): Promise<{ id: string; status: string }> {
+    const existing = await this.prisma.organization.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException(`Organization ${id} not found`);
+    }
+    if (existing.status === 'deleted') {
+      return { id: existing.id, status: existing.status };
+    }
+
+    // `attempts` carries no RLS policy, but `exams` does -- and Attempt has no
+    // `exam` relation, only a scalar examId, so the org filter has to go through
+    // exam ids explicitly. Reading those ids on the raw client would return an
+    // empty list and the guard would pass while an exam was live, so this runs
+    // under the super-admin bypass.
+    const liveAttempts = await this.tenantPrisma.forTenant({ organizationId: id, isSuperAdmin: true }, async (tx) => {
+      const exams = await tx.exam.findMany({ where: { organizationId: id }, select: { id: true } });
+      if (exams.length === 0) {
+        return 0;
+      }
+      return tx.attempt.count({ where: { status: 'in_progress', examId: { in: exams.map((exam) => exam.id) } } });
+    });
+    if (liveAttempts > 0) {
+      throw new ConflictException(
+        `Cannot delete this organization while ${liveAttempts} exam${liveAttempts === 1 ? ' is' : 's are'} in progress`,
+      );
+    }
+
+    // Soft delete. The organization owns exams, attempts, results and audit logs;
+    // a cascade would destroy the audit trail recording this very deletion, and a
+    // partial failure would strand rows behind an RLS boundary where they are hard
+    // to find. Physical erasure belongs with the GDPR erase flow.
+    const updated = await this.prisma.organization.update({
+      where: { id },
+      data: { status: 'deleted' },
+      select: { id: true, status: true },
+    });
+
+    await this.audit.record(
+      { organizationId: id, isSuperAdmin: true },
+      { actorUserId, action: 'platform.organization_deleted', entityType: 'organization', entityId: id },
+    );
+
+    return updated;
   }
 
   /**

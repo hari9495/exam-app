@@ -1,83 +1,78 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useMemo } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Users } from 'lucide-react';
 import { useUserDirectory } from '../../../lib/hooks/useUserDirectory';
 import { useAuth } from '../../../lib/auth-context';
-import { Input, Pagination, Button } from '../../../components/ui';
+import { type Column } from '../../../components/ui';
 import { DirectoryUser } from '../../../lib/types';
+import { ListView } from '../components/ListView';
+import { RowActions } from '../components/RowActions';
+
+// Matches the server's MAX_PAGE_SIZE in apps/api/src/common/paginated-response.ts.
+// Asking for more is silently clamped; ListView reports the shortfall instead of
+// quietly truncating.
+const DIRECTORY_PAGE_SIZE = 100;
 
 export default function UsersDirectoryPage() {
   const router = useRouter();
   const { switchIntoOrg } = useAuth();
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const { data, isLoading, isError } = useUserDirectory({ page, pageSize: 20, search: search || undefined });
+  const searchParams = useSearchParams();
+  const { data, isLoading, isError } = useUserDirectory({ pageSize: DIRECTORY_PAGE_SIZE });
 
-  async function handleManage(user: DirectoryUser) {
-    if (!user.organizationId) {
-      return;
+  const users = useMemo(() => data?.data ?? [], [data]);
+
+  const columns: Column<DirectoryUser>[] = useMemo(() => {
+    async function handleManage(user: DirectoryUser) {
+      if (!user.organizationId) return;
+      await switchIntoOrg(user.organizationId);
+      router.push('/users');
     }
-    await switchIntoOrg(user.organizationId);
-    router.push('/users');
-  }
+
+    return [
+      { key: 'email', header: 'Email', render: (u) => <span className="font-medium text-gray-900">{u.email}</span>, sortValue: (u) => u.email },
+      { key: 'name', header: 'Name', render: (u) => u.name ?? '—', sortValue: (u) => u.name ?? '' },
+      { key: 'role', header: 'Role', render: (u) => u.role, sortValue: (u) => u.role },
+      { key: 'organization', header: 'Organization', render: (u) => u.organizationName ?? '—', sortValue: (u) => u.organizationName ?? '' },
+      { key: 'status', header: 'Status', render: (u) => u.status, sortValue: (u) => u.status },
+      {
+        key: 'actions',
+        header: '',
+        render: (u) => (
+          <RowActions
+            label={`Actions for ${u.email}`}
+            // A user with no organization has nothing to manage. RowActions
+            // renders nothing for an empty list, which reproduces the old
+            // conditional button without a special case here.
+            actions={u.organizationId ? [{ label: 'Manage', onSelect: () => void handleManage(u) }] : []}
+          />
+        ),
+      },
+    ];
+  }, [router, switchIntoOrg]);
 
   return (
-    <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold text-gray-900">All Users</h1>
-      <Input
-        label="Search users"
-        placeholder="Email…"
-        value={search}
-        onChange={(value) => {
-          setSearch(value);
-          setPage(1);
-        }}
-      />
-      {isLoading && <p className="text-sm text-gray-500">Loading users…</p>}
-      {isError && (
-        <p role="alert" className="text-sm text-status-danger">
-          Failed to load users.
-        </p>
-      )}
-      {!isLoading && !isError && (data?.data ?? []).length === 0 && (
-        <p className="text-sm text-gray-500">No users found.</p>
-      )}
-      {!isLoading && !isError && (data?.data ?? []).length > 0 && (
-        <>
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-gray-200 text-xs font-medium uppercase text-gray-500">
-                <th className="py-2">Email</th>
-                <th className="py-2">Name</th>
-                <th className="py-2">Role</th>
-                <th className="py-2">Organization</th>
-                <th className="py-2">Status</th>
-                <th className="py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {(data?.data ?? []).map((user) => (
-                <tr key={user.id} className="border-b border-gray-100">
-                  <td className="py-2">{user.email}</td>
-                  <td className="py-2">{user.name ?? '—'}</td>
-                  <td className="py-2">{user.role}</td>
-                  <td className="py-2">{user.organizationName ?? '—'}</td>
-                  <td className="py-2">{user.status}</td>
-                  <td className="py-2">
-                    {user.organizationId && (
-                      <Button variant="secondary" onClick={() => handleManage(user)}>
-                        Manage
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <Pagination page={data?.page ?? 1} totalPages={data?.totalPages ?? 1} onPageChange={setPage} />
-        </>
-      )}
-    </div>
+    <ListView<DirectoryUser>
+      title="All Users"
+      icon={<Users size={22} />}
+      columns={columns}
+      rows={users}
+      rowKey={(u) => u.id}
+      // The organization name is included so the Organizations tab's "View users"
+      // link (/all-users?org=<name>) actually filters to something.
+      searchMatch={(u, query) =>
+        u.email.toLowerCase().includes(query) ||
+        (u.name ?? '').toLowerCase().includes(query) ||
+        (u.organizationName ?? '').toLowerCase().includes(query)
+      }
+      storageKey="all-users"
+      searchPlaceholder="Search users…"
+      emptyMessage="No users found."
+      isLoading={isLoading}
+      isError={isError}
+      totalCount={data?.total}
+      initialSearch={searchParams.get('org') ?? ''}
+    />
   );
 }
