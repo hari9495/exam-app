@@ -158,7 +158,7 @@ export interface Invitation {
   candidateId: string;
   status: InvitationStatus;
   extraTimePercent: number;
-  attempt: { id: string } | null;
+  attempt: { id: string; status: string } | null;
   invitedAt: string;
   expiresAt: string;
   revokedAt: string | null;

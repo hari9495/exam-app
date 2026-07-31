@@ -70,7 +70,7 @@ describe('CandidatesPanel', () => {
 
   it('shows the extra time as read-only once an attempt exists', () => {
     (useExamInvitations as jest.Mock).mockReturnValue({
-      data: [{ id: 'inv-1', extraTimePercent: 50, attempt: { id: 'attempt-1' }, candidate: { id: 'cand-1', name: 'Bob', email: 'bob@example.com' } }],
+      data: [{ id: 'inv-1', extraTimePercent: 50, attempt: { id: 'attempt-1', status: 'in_progress' }, candidate: { id: 'cand-1', name: 'Bob', email: 'bob@example.com' } }],
       isLoading: false,
     });
     (useUpdateAccommodation as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
@@ -79,6 +79,24 @@ describe('CandidatesPanel', () => {
 
     expect(screen.getByText('50%')).toBeInTheDocument();
     expect(screen.queryByRole('spinbutton', { name: /extra time.*bob/i })).not.toBeInTheDocument();
+  });
+
+  it("shows the candidate's progress as Invited, In Progress, or Ended based on invitation/attempt status", () => {
+    (useExamInvitations as jest.Mock).mockReturnValue({
+      data: [
+        { id: 'inv-1', status: 'invited', extraTimePercent: 0, attempt: null, candidate: { id: 'cand-1', name: 'Alice', email: 'a@example.com' } },
+        { id: 'inv-2', status: 'invited', extraTimePercent: 0, attempt: { id: 'att-2', status: 'in_progress' }, candidate: { id: 'cand-2', name: 'Bob', email: 'b@example.com' } },
+        { id: 'inv-3', status: 'invited', extraTimePercent: 0, attempt: { id: 'att-3', status: 'submitted' }, candidate: { id: 'cand-3', name: 'Cara', email: 'c@example.com' } },
+      ],
+      isLoading: false,
+    });
+    (useUpdateAccommodation as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
+
+    renderPanel();
+
+    expect(screen.getByText('Invited')).toBeInTheDocument();
+    expect(screen.getByText('In Progress')).toBeInTheDocument();
+    expect(screen.getByText('Ended')).toBeInTheDocument();
   });
 
   it('opens the invite-candidates modal, passing the already-invited candidate ids to exclude', async () => {

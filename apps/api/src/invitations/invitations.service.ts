@@ -221,7 +221,10 @@ export class InvitationsService {
     };
   }
 
-  async list(context: TenantContext, examId: string): Promise<(Omit<Invitation, 'token'> & { candidate: Candidate; attempt: { id: string } | null })[]> {
+  async list(
+    context: TenantContext,
+    examId: string,
+  ): Promise<(Omit<Invitation, 'token'> & { candidate: Candidate; attempt: { id: string; status: string } | null })[]> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({ where: { id: examId, organizationId: context.organizationId as string } });
       if (!exam) {
@@ -241,7 +244,7 @@ export class InvitationsService {
           revokedAt: true,
           activeSessionFamilyId: true,
           candidate: true,
-          attempt: { select: { id: true } },
+          attempt: { select: { id: true, status: true } },
         },
         orderBy: [{ invitedAt: 'desc' }, { id: 'desc' }],
       });

@@ -337,7 +337,7 @@ describe('InvitationsService', () => {
       exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
       invitation: {
         findMany: jest.fn().mockResolvedValue([
-          { id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', extraTimePercent: 50, attempt: { id: 'attempt-1' }, candidate: { id: 'cand-1' } },
+          { id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', extraTimePercent: 50, attempt: { id: 'attempt-1', status: 'in_progress' }, candidate: { id: 'cand-1' } },
           { id: 'inv-2', examId: 'exam-1', candidateId: 'cand-2', status: 'invited', extraTimePercent: 0, attempt: null, candidate: { id: 'cand-2' } },
         ]),
       },
@@ -349,12 +349,12 @@ describe('InvitationsService', () => {
     expect(result).toHaveLength(2);
     expect(tx.invitation.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        select: expect.objectContaining({ candidate: true, extraTimePercent: true, attempt: { select: { id: true } } }),
+        select: expect.objectContaining({ candidate: true, extraTimePercent: true, attempt: { select: { id: true, status: true } } }),
       }),
     );
     const selectArg = tx.invitation.findMany.mock.calls[0][0].select;
     expect(selectArg).not.toHaveProperty('token');
-    expect(result[0]).toMatchObject({ extraTimePercent: 50, attempt: { id: 'attempt-1' } });
+    expect(result[0]).toMatchObject({ extraTimePercent: 50, attempt: { id: 'attempt-1', status: 'in_progress' } });
     expect(result[1]).toMatchObject({ extraTimePercent: 0, attempt: null });
   });
 
