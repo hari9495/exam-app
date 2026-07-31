@@ -69,7 +69,9 @@ describe('LiveMonitoringPanel', () => {
     // per-row integrity alert chip for a1 (one medium alert) all compute to 1.
     expect(screen.getAllByText('1', { exact: true })).toHaveLength(5);
     expect(screen.getByText('In progress')).toBeInTheDocument();
-    expect(screen.getByText('Submitted')).toBeInTheDocument();
+    // "Submitted" now appears twice: the stat tile label, and Bob's status badge
+    // (the badge used to read the raw lowercase 'submitted', which didn't collide).
+    expect(screen.getAllByText('Submitted')).toHaveLength(2);
     expect(screen.getByText('Alerts (last 5 min)')).toBeInTheDocument();
   });
 
@@ -97,7 +99,7 @@ describe('LiveMonitoringPanel', () => {
     });
 
     expect(screen.getByText('Alice')).toBeInTheDocument();
-    expect(screen.getByText('in_progress')).toBeInTheDocument();
+    expect(screen.getByText('In Progress')).toBeInTheDocument();
     expect(screen.getByText('2 / 5')).toBeInTheDocument();
     expect(screen.getByText('01:05')).toBeInTheDocument();
   });

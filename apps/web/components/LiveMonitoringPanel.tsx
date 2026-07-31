@@ -32,7 +32,7 @@ const STATUS_PRIORITY: Record<string, number> = {
 };
 const DEFAULT_STATUS_PRIORITY = 4;
 
-const STATUS_FILTER_LABEL: Record<string, string> = {
+const STATUS_LABEL: Record<string, string> = {
   blocked: 'Blocked',
   paused: 'Paused',
   in_progress: 'In Progress',
@@ -46,7 +46,7 @@ const STATUS_FILTER_LABEL: Record<string, string> = {
 
 const STATUS_FILTER_OPTIONS = [
   { value: 'all', label: 'All statuses' },
-  ...Object.keys(STATUS_PRIORITY).map((status) => ({ value: status, label: STATUS_FILTER_LABEL[status] })),
+  ...Object.keys(STATUS_PRIORITY).map((status) => ({ value: status, label: STATUS_LABEL[status] })),
 ];
 
 const RECENT_ALERT_WINDOW_MS = 5 * 60 * 1000;
@@ -264,7 +264,7 @@ export function LiveMonitoringPanel({
       header: 'Status',
       render: (row) => (
         <>
-          <Badge variant={STATUS_VARIANT[row.status] ?? 'default'}>{row.status}</Badge>
+          <Badge variant={STATUS_VARIANT[row.status] ?? 'default'}>{STATUS_LABEL[row.status] ?? row.status}</Badge>
           {row.proctoringBypassed ? <Badge variant="warning">Proctoring relaxed</Badge> : null}
           {row.attemptId && flagged.has(row.attemptId) ? <Badge variant="danger">Needs attention</Badge> : null}
         </>
