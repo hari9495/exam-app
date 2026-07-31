@@ -49,11 +49,23 @@ describe('EmailService', () => {
       select: { smtpHost: true, smtpPort: true, smtpUser: true, smtpPasswordEncrypted: true, emailFromAddress: true },
     });
     expect(cryptoService.decrypt).toHaveBeenCalledWith('encrypted-blob');
-    expect(mockCreateTransport).toHaveBeenCalledWith({
-      host: 'smtp.customer.test',
-      port: 465,
-      auth: { user: 'customer-user', pass: 'customer-smtp-password' },
-    });
+    // This fixture is port 465 -- implicit TLS -- and the assertion used to omit
+    // `secure`, i.e. it pinned the very bug that made 465 hang: a plaintext
+    // socket to a TLS-only port, no greeting, no error, just a stall until the
+    // gateway timed out. `secure: true` here is the fix, not cosmetics.
+    expect(mockCreateTransport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        host: 'smtp.customer.test',
+        port: 465,
+        secure: true,
+        auth: { user: 'customer-user', pass: 'customer-smtp-password' },
+      }),
+    );
+    // And the wait is bounded, so an unreachable host reports an error instead
+    // of hanging until nginx returns a bare 504.
+    const opts = mockCreateTransport.mock.calls[0][0] as { connectionTimeout: number; greetingTimeout: number };
+    expect(opts.connectionTimeout).toBeGreaterThan(0);
+    expect(opts.connectionTimeout + opts.greetingTimeout).toBeLessThan(60_000);
     expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({ from: 'no-reply@customer.test', to: 'a@b.com' }));
   });
 

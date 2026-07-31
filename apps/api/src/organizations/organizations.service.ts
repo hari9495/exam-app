@@ -10,6 +10,7 @@ import { OrgSecretsCryptoService } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
 import { AiProvider, AnthropicProvider, OpenAiCompatibleProvider } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
+import { buildSmtpTransportOptions } from '../email/smtp-transport';
 import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateBrandingColorsDto } from './dto/update-branding-colors.dto';
@@ -512,11 +513,9 @@ export class OrganizationsService {
   async updateSmtpSettings(context: TenantContext, actorUserId: string, dto: UpdateSmtpSettingsDto): Promise<{ smtpConfigured: boolean }> {
     const organizationId = this.requireOrganizationId(context);
 
-    const transporter = nodemailer.createTransport({
-      host: dto.host,
-      port: dto.port,
-      auth: { user: dto.user, pass: dto.password },
-    });
+    const transporter = nodemailer.createTransport(
+      buildSmtpTransportOptions({ host: dto.host, port: dto.port, user: dto.user, password: dto.password }),
+    );
     try {
       await transporter.verify();
     } catch (error) {

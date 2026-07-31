@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
+import { buildSmtpTransportOptions } from './smtp-transport';
 import type { Transporter } from 'nodemailer';
 import { PrismaService, OrgSecretsCryptoService } from '@exam-platform/shared';
 
@@ -57,11 +58,14 @@ export class EmailService {
       if (org?.smtpHost && org.smtpUser && org.smtpPasswordEncrypted) {
         const transporter = await this.getOrBuildTransporter(organizationId, () =>
           Promise.resolve(
-            nodemailer.createTransport({
-              host: org.smtpHost as string,
-              port: org.smtpPort ?? 587,
-              auth: { user: org.smtpUser as string, pass: this.cryptoService.decrypt(org.smtpPasswordEncrypted as string) },
-            }),
+            nodemailer.createTransport(
+              buildSmtpTransportOptions({
+                host: org.smtpHost as string,
+                port: org.smtpPort ?? 587,
+                user: org.smtpUser as string,
+                password: this.cryptoService.decrypt(org.smtpPasswordEncrypted as string),
+              }),
+            ),
           ),
         );
         return { transporter, fromAddress: org.emailFromAddress ?? PLATFORM_FROM_ADDRESS };
@@ -85,11 +89,14 @@ export class EmailService {
 
   private async createPlatformTransporter(): Promise<Transporter> {
     if (process.env.SMTP_HOST) {
-      return nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587,
-        auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
-      });
+      return nodemailer.createTransport(
+        buildSmtpTransportOptions({
+          host: process.env.SMTP_HOST,
+          port: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587,
+          user: process.env.SMTP_USER,
+          password: process.env.SMTP_PASS,
+        }),
+      );
     }
     const testAccount = await nodemailer.createTestAccount();
     this.logger.log(`No SMTP_HOST configured - using Ethereal test account: ${testAccount.user}`);
