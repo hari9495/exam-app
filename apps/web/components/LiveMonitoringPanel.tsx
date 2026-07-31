@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ShieldAlert, ShieldCheck, AlertTriangle, AlertCircle, Info, Search } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, AlertTriangle, AlertCircle, Info, Search, Users, Activity, CheckCircle2, BellRing } from 'lucide-react';
 import { useUnblockAttempt, useBypassProctoring, useRevokeProctoringBypass } from '../lib/hooks/useAttemptModeration';
 import { useProctoringEvents } from '../lib/hooks/useProctoringEvents';
 import { Table, Badge, Button, Card, Modal, Select, useToast, type Column } from './ui';
@@ -369,34 +369,65 @@ export function LiveMonitoringPanel({
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
-        <div className="grid grid-cols-4 gap-4 flex-1">
-          <Card>
-            <p className="text-xs text-gray-500">Online now</p>
-            <p className="text-2xl font-semibold">{onlineCount}</p>
+      <div className="mb-4 flex items-center justify-between gap-4">
+        <div className="grid flex-1 grid-cols-4 gap-4">
+          <Card className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-1.5 text-recruiter-text-tertiary">
+              <Users size={14} />
+              <p className="text-xs font-medium uppercase tracking-wide">Online now</p>
+            </div>
+            <p className="text-2xl font-semibold text-recruiter-text">{onlineCount}</p>
           </Card>
-          <Card>
-            <p className="text-xs text-gray-500">In progress</p>
-            <p className="text-2xl font-semibold">{inProgressCount}</p>
+          <Card className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-1.5 text-recruiter-text-tertiary">
+              <Activity size={14} />
+              <p className="text-xs font-medium uppercase tracking-wide">In progress</p>
+            </div>
+            <p className="text-2xl font-semibold text-recruiter-text">{inProgressCount}</p>
           </Card>
-          <Card>
-            <p className="text-xs text-gray-500">Submitted</p>
-            <p className="text-2xl font-semibold">{submittedCount}</p>
+          <Card className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-1.5 text-recruiter-text-tertiary">
+              <CheckCircle2 size={14} />
+              <p className="text-xs font-medium uppercase tracking-wide">Submitted</p>
+            </div>
+            <p className="text-2xl font-semibold text-recruiter-text">{submittedCount}</p>
           </Card>
-          <Card>
-            <p className="text-xs text-gray-500">Alerts (last 5 min)</p>
-            <p className="text-2xl font-semibold">{recentAlertsCount}</p>
+          <Card className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-1.5 text-recruiter-text-tertiary">
+              <BellRing size={14} />
+              <p className="text-xs font-medium uppercase tracking-wide">Alerts (last 5 min)</p>
+            </div>
+            <p className={`text-2xl font-semibold ${recentAlertsCount > 0 ? 'text-status-danger' : 'text-recruiter-text'}`}>
+              {recentAlertsCount}
+            </p>
           </Card>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {notificationPermission === 'default' ? (
             <Button size="sm" variant="secondary" onClick={onEnableNotifications}>
               Enable alerts
             </Button>
           ) : null}
-          <Badge variant={connectionStatus === 'connected' ? 'success' : connectionStatus === 'connecting' ? 'default' : 'danger'}>
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+              connectionStatus === 'connected'
+                ? 'bg-status-success-bg text-status-success'
+                : connectionStatus === 'connecting'
+                  ? 'bg-status-neutral-bg text-status-neutral'
+                  : 'bg-status-danger-bg text-status-danger'
+            }`}
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                connectionStatus === 'connected'
+                  ? 'animate-pulse bg-status-success'
+                  : connectionStatus === 'connecting'
+                    ? 'bg-status-neutral'
+                    : 'bg-status-danger'
+              }`}
+            />
             {connectionStatus === 'connected' ? 'Connected' : connectionStatus === 'connecting' ? 'Connecting…' : 'Disconnected'}
-          </Badge>
+          </span>
         </div>
       </div>
 
