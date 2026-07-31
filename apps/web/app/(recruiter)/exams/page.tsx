@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { Plus, Search, MoreHorizontal } from 'lucide-react';
 import { useExams, useDuplicateExam, useArchiveExam } from '../../../lib/hooks/useExams';
 import {
-  CardGrid,
+  Table,
   StatusBadge,
   Button,
   Modal,
@@ -17,7 +17,7 @@ import {
   DropdownMenuItem,
   Pagination,
   type StatusTone,
-  type SortOption,
+  type Column,
 } from '../../../components/ui';
 import { ExamListItem, ExamStatus } from '../../../lib/types';
 
@@ -32,11 +32,6 @@ const STATUS_LABEL: Record<ExamStatus, string> = {
   published: 'Published',
   archived: 'Archived',
 };
-
-const EXAM_SORT_OPTIONS: SortOption<ExamListItem>[] = [
-  { key: 'title', label: 'Title', sortValue: (exam) => exam.title },
-  { key: 'created', label: 'Created', sortValue: (exam) => exam.createdAt },
-];
 
 export default function ExamsPage() {
   const [page, setPage] = useState(1);
@@ -72,62 +67,80 @@ export default function ExamsPage() {
     });
   }
 
-  function renderCard(exam: ExamListItem) {
-    return (
-      <div>
-        <div className="mb-2 flex items-start justify-between gap-2">
-          <div>
-            <Link href={`/exams/${exam.id}/edit`} className="font-semibold text-recruiter-text hover:underline">
-              {exam.title}
-            </Link>
-            <div className="text-xs text-recruiter-text-tertiary">{exam.durationMinutes} min</div>
-          </div>
-          <div className="flex items-center gap-1.5">
-            {exam.walkInEnabled && <StatusBadge tone="info">Walk-in</StatusBadge>}
-            <StatusBadge tone={STATUS_TONE[exam.status]}>{STATUS_LABEL[exam.status]}</StatusBadge>
-          </div>
+  const columns: Column<ExamListItem>[] = [
+    {
+      key: 'title',
+      header: 'Exam',
+      render: (exam) => (
+        <Link href={`/exams/${exam.id}/edit`} className="font-medium text-primary hover:underline">
+          {exam.title}
+        </Link>
+      ),
+      sortValue: (exam) => exam.title.toLowerCase(),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (exam) => (
+        <span className="flex items-center gap-1.5">
+          {exam.walkInEnabled && <StatusBadge tone="info">Walk-in</StatusBadge>}
+          <StatusBadge tone={STATUS_TONE[exam.status]}>{STATUS_LABEL[exam.status]}</StatusBadge>
+        </span>
+      ),
+      sortValue: (exam) => exam.status,
+    },
+    {
+      key: 'duration',
+      header: 'Duration',
+      render: (exam) => `${exam.durationMinutes} min`,
+      sortValue: (exam) => exam.durationMinutes,
+    },
+    {
+      key: 'candidates',
+      header: 'Candidates',
+      render: (exam) => exam.invitationCount,
+      sortValue: (exam) => exam.invitationCount,
+    },
+    {
+      key: 'attempts',
+      header: 'Attempts',
+      // settled / total finalised results; a dash when nobody has attempted yet.
+      render: (exam) => (exam.attemptTotalCount > 0 ? `${exam.attemptSettledCount}/${exam.attemptTotalCount}` : '—'),
+      sortValue: (exam) => exam.attemptTotalCount,
+    },
+    {
+      key: 'created',
+      header: 'Created',
+      render: (exam) => new Date(exam.createdAt).toLocaleDateString(),
+      sortValue: (exam) => exam.createdAt,
+    },
+    {
+      key: 'actions',
+      header: '',
+      render: (exam) => (
+        <div className="flex items-center justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+          <Link href={`/exams/${exam.id}/edit`} className="font-medium text-primary">
+            Edit
+          </Link>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              disabled={duplicateExam.isPending}
+              aria-label="More actions"
+              className="rounded p-1 text-recruiter-text-tertiary hover:bg-recruiter-bg-subtle"
+            >
+              <MoreHorizontal size={16} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem onSelect={() => handleDuplicate(exam.id)}>Duplicate</DropdownMenuItem>
+              <DropdownMenuItem className="text-status-danger" onSelect={() => setExamPendingDelete(exam)}>
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-        {exam.attemptTotalCount > 0 && (
-          <div className="mb-2 flex items-center gap-2">
-            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-recruiter-bg-subtle">
-              <div
-                className="h-full rounded-full bg-primary"
-                style={{ width: `${Math.round((exam.attemptSettledCount / exam.attemptTotalCount) * 100)}%` }}
-              />
-            </div>
-            <span className="text-xs text-recruiter-text-tertiary">
-              {exam.attemptSettledCount}/{exam.attemptTotalCount}
-            </span>
-          </div>
-        )}
-        <div className="flex items-center justify-between border-t border-recruiter-border pt-2.5 text-xs text-recruiter-text-tertiary">
-          <div>
-            <span>{exam.invitationCount}</span> candidates · {new Date(exam.createdAt).toLocaleDateString()}
-          </div>
-          <div className="flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-            <Link href={`/exams/${exam.id}/edit`} className="font-medium text-primary">
-              Edit
-            </Link>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                disabled={duplicateExam.isPending}
-                aria-label="More actions"
-                className="rounded p-1 text-recruiter-text-tertiary hover:bg-recruiter-bg-subtle"
-              >
-                <MoreHorizontal size={16} />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem onSelect={() => handleDuplicate(exam.id)}>Duplicate</DropdownMenuItem>
-                <DropdownMenuItem className="text-status-danger" onSelect={() => setExamPendingDelete(exam)}>
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-      </div>
-    );
-  }
+      ),
+    },
+  ];
 
   if (isLoading) {
     return (
@@ -176,12 +189,11 @@ export default function ExamsPage() {
           />
         </div>
       </div>
-      <CardGrid
-        items={examsResponse?.data ?? []}
-        cardKey={(exam) => exam.id}
-        renderCard={renderCard}
+      <Table
+        columns={columns}
+        rows={examsResponse?.data ?? []}
+        rowKey={(exam) => exam.id}
         emptyMessage="No exams yet."
-        sortOptions={EXAM_SORT_OPTIONS}
       />
       <Pagination page={examsResponse?.page ?? 1} totalPages={examsResponse?.totalPages ?? 1} onPageChange={setPage} />
 
