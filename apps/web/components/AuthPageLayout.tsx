@@ -41,7 +41,7 @@ export function AuthPageLayout({
               <div className="flex items-center gap-3">
                 <img src={logoUrl} alt="Organization logo" className="max-h-20 object-contain" />
                 {logoLabel && (
-                  <p className="text-2xl font-bold tracking-tight text-recruiter-text">{logoLabel}</p>
+                  <p className="text-center text-2xl font-bold tracking-tight text-recruiter-text">{logoLabel}</p>
                 )}
               </div>
             ) : (
