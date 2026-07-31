@@ -9,11 +9,13 @@ interface QuestionFilters {
   page?: number;
   pageSize?: number;
   search?: string;
+  status?: string;
 }
 
 function buildQuery(filters: QuestionFilters): string {
   const params = new URLSearchParams();
   if (filters.difficulty) params.set('difficulty', filters.difficulty);
+  if (filters.status) params.set('status', filters.status);
   if (filters.tagId) params.set('tagId', filters.tagId);
   if (filters.page) params.set('page', String(filters.page));
   if (filters.pageSize) params.set('pageSize', String(filters.pageSize));
@@ -99,6 +101,18 @@ export function useArchiveQuestion() {
     // (status: 'active') list query then excludes -- so it disappears from the Question Bank.
     mutationFn: (id: string) =>
       apiFetch(`/questions/${id}/archive`, { method: 'POST', body: JSON.stringify({}) }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['questions'] }),
+  });
+}
+
+export function useRestoreQuestion() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    // Restore re-publishes an archived question: flips status back to 'active' so it returns to
+    // the active bank. Reuses the existing publish endpoint (archived -> active).
+    mutationFn: (id: string) =>
+      apiFetch(`/questions/${id}/publish`, { method: 'POST', body: JSON.stringify({}) }, accessToken ?? undefined),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['questions'] }),
   });
 }

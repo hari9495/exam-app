@@ -341,5 +341,31 @@ describe('QuestionsPage', () => {
       await userEvent.click(screen.getAllByRole('button', { name: 'Delete' })[0]);
       expect(screen.getByText('Delete question')).toBeInTheDocument();
     });
+
+    it('shows a Restore action for archived questions and re-publishes on click', async () => {
+      const archived = [{ ...QUESTIONS[0], status: 'archived' }];
+      const fetchMock = jest.fn(async (url, options: RequestInit | undefined) => {
+        const u = String(url);
+        if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        if (u.includes('/questions/q-1/publish') && options?.method === 'POST') {
+          return new Response(JSON.stringify({ id: 'q-1' }), { status: 200 });
+        }
+        if (u.includes('/questions')) {
+          return new Response(JSON.stringify({ data: archived, total: 1, page: 1, pageSize: 20, totalPages: 1 }), { status: 200 });
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      renderPage();
+      await waitFor(() => expect(screen.getByText(/Two numbers are in the ratio/)).toBeInTheDocument());
+
+      // An archived question shows Restore (not Delete); clicking it hits the publish endpoint.
+      expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Restore' }));
+      await waitFor(() =>
+        expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/questions/q-1/publish'))).toBe(true),
+      );
+    });
   });
 });

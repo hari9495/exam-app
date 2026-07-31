@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { Plus, Search } from 'lucide-react';
-import { useQuestions, useArchiveQuestion } from '../../../lib/hooks/useQuestions';
+import { useQuestions, useArchiveQuestion, useRestoreQuestion } from '../../../lib/hooks/useQuestions';
 import { Select, Button, Modal, Pagination, StatusBadge, Table, useToast, type Column } from '../../../components/ui';
 import { groupQuestions, type GroupBy } from '../../../lib/question-grouping';
 import { TYPE_TONE, TYPE_LABEL, DIFFICULTY_LABEL, DIFFICULTY_LEVEL } from '../../../lib/question-display';
@@ -15,6 +15,11 @@ const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
   { value: 'category', label: 'Category' },
   { value: 'difficulty', label: 'Difficulty' },
   { value: 'tag', label: 'Tag' },
+];
+
+const STATUS_OPTIONS = [
+  { value: 'active', label: 'Active' },
+  { value: 'archived', label: 'Archived' },
 ];
 
 const DISPLAY_COLUMNS: Column<Question>[] = [
@@ -70,9 +75,11 @@ export default function QuestionsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [groupBy, setGroupBy] = useState<GroupBy>('none');
-  const { data: questions, isLoading, isError } = useQuestions({ page, pageSize: 20, search: search || undefined });
+  const [status, setStatus] = useState('active');
+  const { data: questions, isLoading, isError } = useQuestions({ page, pageSize: 20, search: search || undefined, status });
   const [questionPendingDelete, setQuestionPendingDelete] = useState<Question | null>(null);
   const archiveQuestion = useArchiveQuestion();
+  const restoreQuestion = useRestoreQuestion();
   const { toast } = useToast();
 
   function handleConfirmDelete() {
@@ -86,6 +93,13 @@ export default function QuestionsPage() {
         toast(error instanceof Error ? error.message : 'Failed to delete question.', 'error');
         setQuestionPendingDelete(null);
       },
+    });
+  }
+
+  function handleRestore(question: Question) {
+    restoreQuestion.mutate(question.id, {
+      onSuccess: () => toast('Question restored.'),
+      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to restore question.', 'error'),
     });
   }
 
@@ -120,13 +134,24 @@ export default function QuestionsPage() {
       header: '',
       render: (question) => (
         <div className="flex items-center justify-end opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-          <button
-            type="button"
-            onClick={() => setQuestionPendingDelete(question)}
-            className="text-xs font-medium text-status-danger hover:underline"
-          >
-            Delete
-          </button>
+          {question.status === 'archived' ? (
+            <button
+              type="button"
+              onClick={() => handleRestore(question)}
+              disabled={restoreQuestion.isPending}
+              className="text-xs font-medium text-primary hover:underline disabled:opacity-50"
+            >
+              Restore
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setQuestionPendingDelete(question)}
+              className="text-xs font-medium text-status-danger hover:underline"
+            >
+              Delete
+            </button>
+          )}
         </div>
       ),
     },
@@ -166,10 +191,22 @@ export default function QuestionsPage() {
         </div>
 
         <Select label="Group by" value={groupBy} onChange={(value) => setGroupBy(value as GroupBy)} options={GROUP_BY_OPTIONS} />
+
+        <Select
+          label="Status"
+          value={status}
+          onChange={(value) => {
+            setStatus(value);
+            setPage(1);
+          }}
+          options={STATUS_OPTIONS}
+        />
       </div>
 
       {rows.length === 0 ? (
-        <p className="py-8 text-center text-sm text-recruiter-text-tertiary">No questions yet.</p>
+        <p className="py-8 text-center text-sm text-recruiter-text-tertiary">
+          {status === 'archived' ? 'No archived questions.' : 'No questions yet.'}
+        </p>
       ) : (
         <div className="flex flex-col gap-6">
           {groups.map((group) => {
