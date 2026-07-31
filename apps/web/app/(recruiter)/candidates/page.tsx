@@ -3,14 +3,13 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Plus, Search } from 'lucide-react';
-import clsx from 'clsx';
 import { useCandidates, useCreateCandidate, useUpdateCandidate, useDeleteCandidate } from '../../../lib/hooks/useCandidates';
 import { useExams } from '../../../lib/hooks/useExams';
 import { useBulkInvite } from '../../../lib/hooks/useInvitations';
 import { CandidateInviteForm } from '../../../components/CandidateInviteForm';
 import { CandidateEditModal } from '../../../components/CandidateEditModal';
 import {
-  CardGrid,
+  Table,
   Checkbox,
   Select,
   Button,
@@ -18,14 +17,9 @@ import {
   StatusBadge,
   useToast,
   Pagination,
-  type SortOption,
+  type Column,
 } from '../../../components/ui';
 import { Candidate } from '../../../lib/types';
-
-const CANDIDATE_SORT_OPTIONS: SortOption<Candidate>[] = [
-  { key: 'name', label: 'Name', sortValue: (candidate) => candidate.name },
-  { key: 'added', label: 'Added', sortValue: (candidate) => candidate.createdAt },
-];
 
 const STATUS_FILTER_OPTIONS = [
   { value: 'active', label: 'Active' },
@@ -113,28 +107,60 @@ export default function CandidatesPage() {
     });
   }
 
-  function renderCard(candidate: Candidate) {
-    const isInactive = candidate.status === 'inactive';
-    const neverInvited = (candidate.invitationCount ?? 0) === 0;
-    return (
-      <div className={clsx('flex items-start gap-2.5', isInactive && 'opacity-60')}>
+  const columns: Column<Candidate>[] = [
+    {
+      key: 'select',
+      header: '',
+      render: (candidate) => (
         <Checkbox
           label={candidate.name}
           hideLabel
           checked={selectedIds.includes(candidate.id)}
           onChange={(checked) => toggle(candidate.id, checked)}
         />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className="truncate font-semibold text-recruiter-text">{candidate.name}</span>
-            {isInactive && <StatusBadge tone="neutral">Inactive</StatusBadge>}
-          </div>
-          <div className="truncate text-xs text-recruiter-text-tertiary">{candidate.email}</div>
-          <div className="mt-2 flex items-center justify-between border-t border-recruiter-border pt-2 text-xs text-recruiter-text-tertiary">
-            <span>{candidate.phone ?? '—'}</span>
-            <span>Added {new Date(candidate.createdAt).toLocaleDateString()}</span>
-          </div>
-          <div className="mt-2 flex items-center gap-2 text-xs opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+      ),
+    },
+    {
+      key: 'name',
+      header: 'Name',
+      render: (candidate) => <span className="font-medium text-recruiter-text">{candidate.name}</span>,
+      sortValue: (candidate) => candidate.name.toLowerCase(),
+    },
+    {
+      key: 'email',
+      header: 'Email',
+      render: (candidate) => <span className="text-recruiter-text-secondary">{candidate.email}</span>,
+      sortValue: (candidate) => candidate.email,
+    },
+    {
+      key: 'phone',
+      header: 'Phone',
+      render: (candidate) => candidate.phone ?? '—',
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (candidate) => (
+        <StatusBadge tone={candidate.status === 'inactive' ? 'neutral' : 'success'}>
+          {candidate.status === 'inactive' ? 'Inactive' : 'Active'}
+        </StatusBadge>
+      ),
+      sortValue: (candidate) => candidate.status,
+    },
+    {
+      key: 'added',
+      header: 'Added',
+      render: (candidate) => new Date(candidate.createdAt).toLocaleDateString(),
+      sortValue: (candidate) => candidate.createdAt,
+    },
+    {
+      key: 'actions',
+      header: '',
+      render: (candidate) => {
+        const isInactive = candidate.status === 'inactive';
+        const neverInvited = (candidate.invitationCount ?? 0) === 0;
+        return (
+          <div className="flex items-center gap-2 text-xs opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
             <button type="button" onClick={() => setCandidateBeingEdited(candidate)} className="font-medium text-primary">
               Edit
             </button>
@@ -156,10 +182,10 @@ export default function CandidatesPage() {
               </button>
             )}
           </div>
-        </div>
-      </div>
-    );
-  }
+        );
+      },
+    },
+  ];
 
   if (isLoading) {
     return (
@@ -226,12 +252,11 @@ export default function CandidatesPage() {
           Send invitations
         </Button>
       </div>
-      <CardGrid
-        items={candidatesResponse?.data ?? []}
-        cardKey={(candidate) => candidate.id}
-        renderCard={renderCard}
+      <Table
+        columns={columns}
+        rows={candidatesResponse?.data ?? []}
+        rowKey={(candidate) => candidate.id}
         emptyMessage="No candidates yet."
-        sortOptions={CANDIDATE_SORT_OPTIONS}
       />
       <Pagination page={candidatesResponse?.page ?? 1} totalPages={candidatesResponse?.totalPages ?? 1} onPageChange={setPage} />
 
