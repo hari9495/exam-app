@@ -118,4 +118,43 @@ describe('EmailService', () => {
     expect(mockCreateTransport).toHaveBeenCalledTimes(1);
     expect(prisma.organization.findUnique).toHaveBeenCalledTimes(2);
   });
+
+  describe('platform From address', () => {
+    const saved = { user: process.env.SMTP_USER, from: process.env.SMTP_FROM_ADDRESS };
+    afterEach(() => {
+      process.env.SMTP_USER = saved.user;
+      process.env.SMTP_FROM_ADDRESS = saved.from;
+      if (saved.user === undefined) delete process.env.SMTP_USER;
+      if (saved.from === undefined) delete process.env.SMTP_FROM_ADDRESS;
+    });
+
+    it('sends as the authenticated mailbox rather than the unroutable .test fallback', async () => {
+      // Office365 rejects a From that is not the authenticated mailbox with
+      // 550 5.7.60 SendAsDenied, so the hardcoded no-reply@exam-platform.test
+      // would have failed every send once real SMTP credentials were set.
+      process.env.SMTP_HOST = 'smtp.office365.com';
+      process.env.SMTP_USER = 'prudenthire-noreply@prudentconsulting.com';
+      delete process.env.SMTP_FROM_ADDRESS;
+      prisma.organization.findUnique.mockResolvedValue(null);
+
+      await service.send({ to: 'a@b.com', subject: 's', html: '<p>h</p>' });
+
+      expect(mockSendMail).toHaveBeenCalledWith(
+        expect.objectContaining({ from: 'prudenthire-noreply@prudentconsulting.com' }),
+      );
+    });
+
+    it('prefers an explicit SMTP_FROM_ADDRESS when one is set', async () => {
+      process.env.SMTP_HOST = 'smtp.office365.com';
+      process.env.SMTP_USER = 'prudenthire-noreply@prudentconsulting.com';
+      process.env.SMTP_FROM_ADDRESS = 'careers@prudentconsulting.com';
+      prisma.organization.findUnique.mockResolvedValue(null);
+
+      await service.send({ to: 'a@b.com', subject: 's', html: '<p>h</p>' });
+
+      expect(mockSendMail).toHaveBeenCalledWith(
+        expect.objectContaining({ from: 'careers@prudentconsulting.com' }),
+      );
+    });
+  });
 });

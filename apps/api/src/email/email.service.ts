@@ -16,7 +16,24 @@ export interface SendEmailResult {
   previewUrl?: string;
 }
 
-const PLATFORM_FROM_ADDRESS = 'no-reply@exam-platform.test';
+// Last-resort fallback only. `.test` is a reserved TLD, so this address can
+// never actually deliver -- it exists so local/dev runs against the Ethereal
+// test account have something to put in the From header.
+const PLATFORM_FROM_FALLBACK = 'no-reply@exam-platform.test';
+
+/**
+ * Office365 (and most providers) reject a From address that is not the
+ * authenticated mailbox or one of its allowed aliases -- `550 5.7.60
+ * SendAsDenied`. Sending as the hardcoded `.test` address while authenticated
+ * as a real mailbox therefore fails every time, so default From to the
+ * authenticated user unless an explicit address is configured.
+ *
+ * Read at call time, not at module load: ConfigModule populates process.env
+ * during bootstrap, after this module is first imported.
+ */
+function platformFromAddress(): string {
+  return process.env.SMTP_FROM_ADDRESS || process.env.SMTP_USER || PLATFORM_FROM_FALLBACK;
+}
 const PLATFORM_CACHE_KEY = '__platform__';
 
 @Injectable()
@@ -68,11 +85,11 @@ export class EmailService {
             ),
           ),
         );
-        return { transporter, fromAddress: org.emailFromAddress ?? PLATFORM_FROM_ADDRESS };
+        return { transporter, fromAddress: org.emailFromAddress ?? platformFromAddress() };
       }
     }
     const transporter = await this.getOrBuildTransporter(PLATFORM_CACHE_KEY, () => this.createPlatformTransporter());
-    return { transporter, fromAddress: PLATFORM_FROM_ADDRESS };
+    return { transporter, fromAddress: platformFromAddress() };
   }
 
   private async getOrBuildTransporter(cacheKey: string, build: () => Promise<Transporter>): Promise<Transporter> {
