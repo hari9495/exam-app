@@ -228,6 +228,9 @@ describe('ExamSectionsPanel', () => {
     // Marks render in their own table column as plain numbers now.
     expect(screen.getByText('5')).toBeInTheDocument();
     expect(screen.getByText('10')).toBeInTheDocument();
+    // Each row shows its fixed position in the section as a "#" column.
+    expect(screen.getByText('What is 2+2?').closest('tr')).toHaveTextContent(/^1/);
+    expect(screen.getByText('Reverse a string').closest('tr')).toHaveTextContent(/^2/);
   });
 
   it("filters a section's questions by search text and by type", async () => {

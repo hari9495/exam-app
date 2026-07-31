@@ -29,6 +29,7 @@ import { TYPE_TONE, TYPE_LABEL, DIFFICULTY_LABEL, DIFFICULTY_LEVEL } from '../li
 import { ExamSection, QuestionType, Difficulty } from '../lib/types';
 
 type SectionQuestion = ExamSection['questions'][number];
+type NumberedSectionQuestion = SectionQuestion & { number: number };
 
 const TYPE_OPTIONS = [
   { value: 'all', label: 'All types' },
@@ -50,15 +51,23 @@ function SectionQuestionList({ examId, section, locked }: { examId: string; sect
   const [typeFilter, setTypeFilter] = useState('all');
   const [difficultyFilter, setDifficultyFilter] = useState('all');
 
+  // Number by the section's fixed order (API returns questions sorted by
+  // orderIndex) before filtering, so a question's number reflects its actual
+  // position in the section regardless of search/type/difficulty filtering.
+  const numbered: NumberedSectionQuestion[] = useMemo(
+    () => section.questions.map((q, index) => ({ ...q, number: index + 1 })),
+    [section.questions],
+  );
+
   const visible = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return section.questions.filter((q) => {
+    return numbered.filter((q) => {
       if (query && !(q.question?.text ?? q.questionId).toLowerCase().includes(query)) return false;
       if (typeFilter !== 'all' && q.question?.type !== typeFilter) return false;
       if (difficultyFilter !== 'all' && q.question?.difficulty !== difficultyFilter) return false;
       return true;
     });
-  }, [section.questions, search, typeFilter, difficultyFilter]);
+  }, [numbered, search, typeFilter, difficultyFilter]);
 
   function handleRemove(questionId: string) {
     const remaining = section.questions.map((q) => q.questionId).filter((id) => id !== questionId);
@@ -67,7 +76,13 @@ function SectionQuestionList({ examId, section, locked }: { examId: string; sect
     });
   }
 
-  const columns: Column<SectionQuestion>[] = [
+  const columns: Column<NumberedSectionQuestion>[] = [
+    {
+      key: 'number',
+      header: '#',
+      render: (q) => <span className="text-recruiter-text-tertiary">{q.number}</span>,
+      sortValue: (q) => q.number,
+    },
     {
       key: 'text',
       header: 'Question',
