@@ -9,7 +9,7 @@ import { Users, History, ShieldCheck, Settings, Plug, KeyRound, LogOut, LayoutDa
 import { useAuth } from '../../lib/auth-context';
 import { staffLandingPath } from '../../lib/staff-landing';
 import { SUPER_ADMIN_FULL_NAV } from '../../lib/super-admin-nav';
-import { useBranding } from '../../lib/hooks/useBranding';
+import { useOrgBranding } from '../../lib/hooks/useBranding';
 import { useDocumentBranding } from '../../lib/hooks/useDocumentBranding';
 import { useCurrentUser } from '../../lib/hooks/useCurrentUser';
 
@@ -29,7 +29,12 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
   const router = useRouter();
   const pathname = usePathname();
   const { accessToken, organizationSlug, role, actingSuperAdmin, isLoading, logout } = useAuth();
-  const { data: branding } = useBranding(organizationSlug);
+  // Token-scoped: this layout is only ever mounted for org_admin / acting
+  // super_admin, both of which hold org:manage_settings. The slug-based
+  // useBranding() never resolved for sessions without a slug (email-only
+  // login, switch-into), which left the sidebar showing a literal "O" and
+  // no org name, and skipped theming entirely.
+  const { data: branding } = useOrgBranding();
   useDocumentBranding(branding?.name, branding?.logoUrl);
   const { data: currentUser } = useCurrentUser();
 
@@ -70,8 +75,9 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
     .slice(0, 2)
     .join('')
     .toUpperCase();
-  // ponytail: BrandingResponse has no organizationName field; fall back to the org slug.
-  const orgInitial = (organizationSlug ?? 'O')[0]?.toUpperCase();
+  // BrandingResponse.name is the real org name; slug only as a fallback while loading.
+  const orgName = branding?.name || organizationSlug || 'Organization';
+  const orgInitial = orgName[0]?.toUpperCase();
 
   return (
     <MotionConfig reducedMotion="user">
@@ -85,7 +91,7 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
               {orgInitial}
             </div>
           )}
-          <span className="truncate text-sm font-bold text-recruiter-text">{organizationSlug}</span>
+          <span className="truncate text-sm font-bold text-recruiter-text">{orgName}</span>
         </div>
         <ul className="flex flex-1 flex-col gap-0.5 p-2.5">
           {navItems.map((item) => {
