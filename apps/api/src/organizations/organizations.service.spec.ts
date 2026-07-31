@@ -96,6 +96,65 @@ describe('OrganizationsService', () => {
       );
     });
 
+    it('stores the admin name so the Primary admin column is populated from creation', async () => {
+      // Without this the name only arrives if the admin later fills in their
+      // profile, so a freshly created org shows an em dash indefinitely.
+      const userCreate = jest.fn().mockResolvedValue({ id: 'admin-1', email: 'admin@acme.test', role: 'org_admin' });
+      prisma.organization.findUnique.mockResolvedValue(null);
+      prisma.plan.findFirst.mockResolvedValue({ id: 'trial-plan-1', name: 'trial' });
+      prisma.organization.create.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', planId: 'trial-plan-1' });
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (tx: unknown) => unknown) =>
+        fn({ user: { create: userCreate }, passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 't1' }) } }),
+      );
+
+      await service.create({ organizationId: null, isSuperAdmin: true }, 'super-1', {
+        name: 'Acme', slug: 'acme', region: 'us', adminEmail: 'admin@acme.test', adminName: 'Ada Lovelace',
+      });
+
+      expect(userCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ name: 'Ada Lovelace', email: 'admin@acme.test' }) }),
+      );
+    });
+
+    it('stores a null admin name when none is supplied, rather than an empty string', async () => {
+      // adminName is optional at the API boundary so existing callers (the e2e
+      // specs, any script) keep working. Null is what the Primary admin column
+      // renders as an em dash; '' would render as a blank cell instead.
+      const userCreate = jest.fn().mockResolvedValue({ id: 'admin-1', email: 'admin@acme.test', role: 'org_admin' });
+      prisma.organization.findUnique.mockResolvedValue(null);
+      prisma.plan.findFirst.mockResolvedValue({ id: 'trial-plan-1', name: 'trial' });
+      prisma.organization.create.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', planId: 'trial-plan-1' });
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (tx: unknown) => unknown) =>
+        fn({ user: { create: userCreate }, passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 't1' }) } }),
+      );
+
+      await service.create({ organizationId: null, isSuperAdmin: true }, 'super-1', {
+        name: 'Acme', slug: 'acme', region: 'us', adminEmail: 'admin@acme.test',
+      });
+
+      expect(userCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ name: null }) }),
+      );
+    });
+
+    it('trims a padded admin name and treats whitespace-only as absent', async () => {
+      const userCreate = jest.fn().mockResolvedValue({ id: 'admin-1', email: 'a@b.test', role: 'org_admin' });
+      prisma.organization.findUnique.mockResolvedValue(null);
+      prisma.plan.findFirst.mockResolvedValue({ id: 'trial-plan-1', name: 'trial' });
+      prisma.organization.create.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', planId: 'trial-plan-1' });
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (tx: unknown) => unknown) =>
+        fn({ user: { create: userCreate }, passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 't1' }) } }),
+      );
+
+      await service.create({ organizationId: null, isSuperAdmin: true }, 'super-1', {
+        name: 'Acme', slug: 'acme', region: 'us', adminEmail: 'a@b.test', adminName: '   ',
+      });
+
+      expect(userCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ name: null }) }),
+      );
+    });
+
     it('creates the first admin with role org_admin and a genuinely hashed random password', async () => {
       prisma.organization.findUnique.mockResolvedValue(null);
       prisma.plan.findFirst.mockResolvedValue({ id: 'trial-plan-1', name: 'trial' });

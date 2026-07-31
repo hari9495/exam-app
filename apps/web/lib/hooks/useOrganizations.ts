@@ -43,6 +43,7 @@ interface CreateOrganizationInput {
   slug: string;
   region: string;
   adminEmail: string;
+  adminName: string;
 }
 
 interface UpdateOrganizationInput {
