@@ -1219,6 +1219,51 @@ describe('ExamsService', () => {
     await expect(service.publish(context, 'user-1', 'exam-1')).rejects.toThrow(BadRequestException);
   });
 
+  it('unpublishes a published exam that no candidate has started, reverting it to draft', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }),
+        update: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'draft' }),
+      },
+      attempt: { count: jest.fn().mockResolvedValue(0) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    const result = await service.unpublish(context, 'user-1', 'exam-1');
+
+    expect(result.status).toBe('draft');
+    expect(tx.exam.update).toHaveBeenCalledWith({ where: { id: 'exam-1' }, data: { status: 'draft' } });
+    expect(audit.record).toHaveBeenCalledWith(context, {
+      actorUserId: 'user-1', action: 'exam.unpublished', entityType: 'exam', entityId: 'exam-1',
+    });
+  });
+
+  it('throws NotFoundException when unpublishing an exam that does not exist', async () => {
+    const tx = { exam: { findFirst: jest.fn().mockResolvedValue(null) } };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.unpublish(context, 'user-1', 'missing-id')).rejects.toThrow(NotFoundException);
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it('throws BadRequestException when unpublishing an exam that is not published', async () => {
+    const tx = { exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'draft' }) } };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.unpublish(context, 'user-1', 'exam-1')).rejects.toThrow(BadRequestException);
+  });
+
+  it('throws BadRequestException when unpublishing after a candidate has started', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }) },
+      attempt: { count: jest.fn().mockResolvedValue(1) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.unpublish(context, 'user-1', 'exam-1')).rejects.toThrow(BadRequestException);
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it('publishes a draft exam whose pool section has enough matching questions', async () => {
     const tx = {
       exam: {

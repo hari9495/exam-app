@@ -323,6 +323,29 @@ export class ExamsService {
     return published;
   }
 
+  async unpublish(context: TenantContext, actorUserId: string, id: string): Promise<Exam> {
+    const updated = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const exam = await tx.exam.findFirst({
+        where: { id, organizationId: context.organizationId as string },
+      });
+      if (!exam) {
+        throw new NotFoundException(`Exam ${id} not found`);
+      }
+      if (exam.status !== 'published') {
+        throw new BadRequestException(`Exam ${id} cannot be unpublished from status "${exam.status}"`);
+      }
+      // Only reversible before anyone starts: once an attempt exists, editing would
+      // change the exam out from under candidates who already saw the published version.
+      const startedAttemptCount = await tx.attempt.count({ where: { examId: id } });
+      if (startedAttemptCount > 0) {
+        throw new BadRequestException('Exam cannot be unpublished after candidates have started it');
+      }
+      return tx.exam.update({ where: { id }, data: { status: 'draft' } });
+    });
+    await this.audit.record(context, { actorUserId, action: 'exam.unpublished', entityType: 'exam', entityId: id });
+    return updated;
+  }
+
   async duplicate(context: TenantContext, userId: string, id: string): Promise<Exam> {
     const created = await this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({

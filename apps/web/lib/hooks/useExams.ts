@@ -87,6 +87,18 @@ export function usePublishExam(id: string) {
   });
 }
 
+export function useUnpublishExam(id: string) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch(`/exams/${id}/unpublish`, { method: 'POST' }, accessToken ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['exams'] });
+      queryClient.invalidateQueries({ queryKey: ['exams', id] });
+    },
+  });
+}
+
 export function useDuplicateExam() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();

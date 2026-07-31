@@ -13,6 +13,7 @@ jest.mock('../../../../../lib/hooks/useExams', () => ({
   useExam: () => ({ data: mockExam }),
   useUpdateExam: () => ({ mutate: jest.fn() }),
   usePublishExam: () => ({ mutate: jest.fn() }),
+  useUnpublishExam: () => ({ mutate: jest.fn(), isPending: false }),
 }));
 jest.mock('../../../../../lib/hooks/useExamMonitoring', () => ({ useExamMonitoring: jest.fn() }));
 

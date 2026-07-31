@@ -9,7 +9,7 @@ import { LiveMonitoringPanel } from '../../../../../components/LiveMonitoringPan
 import { GradingQueuePanel } from '../../../../../components/GradingQueuePanel';
 import { LeaderboardPanel } from '../../../../../components/LeaderboardPanel';
 import { CandidatesPanel } from '../../../../../components/CandidatesPanel';
-import { useExam, useUpdateExam, usePublishExam } from '../../../../../lib/hooks/useExams';
+import { useExam, useUpdateExam, usePublishExam, useUnpublishExam } from '../../../../../lib/hooks/useExams';
 import { useExamMonitoring } from '../../../../../lib/hooks/useExamMonitoring';
 import { useAttentionNotifications } from '../../../../../lib/hooks/useAttentionNotifications';
 import { flaggedAttemptIds } from '../../../../../lib/attention-alert';
@@ -23,6 +23,7 @@ export default function EditExamPage() {
   const { data: exam } = useExam(params.id);
   const updateExam = useUpdateExam(params.id);
   const publishExam = usePublishExam(params.id);
+  const unpublishExam = useUnpublishExam(params.id);
   const monitoring = useExamMonitoring(params.id);
 
   // The flag is derived from Date.now(), and a burst that stops produces no further
@@ -84,6 +85,22 @@ export default function EditExamPage() {
               }
             >
               Publish
+            </Button>
+          )}
+          {exam.status === 'published' && !exam.hasStartedAttempts && (
+            <Button
+              variant="secondary"
+              loading={unpublishExam.isPending}
+              onClick={() =>
+                unpublishExam.mutate(undefined, {
+                  onSuccess: () => toast('Exam unpublished — you can edit it now.'),
+                  onError: (error) => {
+                    toast(error instanceof Error ? error.message : 'Failed to unpublish exam.', 'error');
+                  },
+                })
+              }
+            >
+              Unpublish
             </Button>
           )}
         </div>

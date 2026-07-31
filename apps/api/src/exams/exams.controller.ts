@@ -59,6 +59,12 @@ export class ExamsController {
     return this.examsService.publish(tenant, userId, id);
   }
 
+  @Post(':id/unpublish')
+  @RequirePermissions('exam:manage')
+  unpublish(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.examsService.unpublish(tenant, userId, id);
+  }
+
   @Post(':id/duplicate')
   @RequirePermissions('exam:manage')
   duplicate(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
