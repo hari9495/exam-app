@@ -4,13 +4,30 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, MotionConfig } from 'framer-motion';
-import { Building2, Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { Check, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth, SSO_PENDING_SLUG_KEY } from '../../lib/auth-context';
 import { decodeJwtPayload } from '../../lib/jwt';
 import { Button, Input } from '../../components/ui';
 import { useBranding } from '../../lib/hooks/useBranding';
 import { useDocumentBranding } from '../../lib/hooks/useDocumentBranding';
+
+const HIGHLIGHTS = [
+  'AI-drafted question banks your team reviews before they go out',
+  'Proctored, timed exams with integrity signals on every attempt',
+  'Panel-ready reports the moment a candidate submits',
+];
+
+/** The "or" rule between a primary action and its alternative. */
+function OrDivider() {
+  return (
+    <div className="flex items-center gap-3" aria-hidden="true">
+      <span className="h-px flex-1 bg-recruiter-border" />
+      <span className="text-xs text-recruiter-text-tertiary">or</span>
+      <span className="h-px flex-1 bg-recruiter-border" />
+    </div>
+  );
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -68,116 +85,132 @@ export default function LoginPage() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <main className="grid md:min-h-screen md:grid-cols-2">
-        <div className="relative hidden flex-col items-center justify-center gap-6 border-r border-recruiter-border bg-white px-16 py-12 md:flex">
-          {branding?.logoUrl ? (
-            <img src={branding.logoUrl} alt="Organization logo" className="max-h-16" />
-          ) : (
-            <div className="flex items-center gap-4">
-              <img src="/logo.png" alt="Prudent Hire" className="h-16 w-16 object-contain" />
-              <p className="text-4xl font-bold tracking-tight text-recruiter-text">Prudent Hire</p>
-            </div>
-          )}
-          <blockquote className="max-w-md border-l-2 border-primary pl-5">
-            <p className="text-xl font-medium leading-relaxed text-recruiter-text">Automate early screens.</p>
-            <p className="mt-1 text-base text-recruiter-text-secondary">Focus human judgment on what matters.</p>
-          </blockquote>
-        </div>
-
-        <div className="flex flex-col items-center justify-center gap-3 bg-white px-6 py-12 md:hidden">
-          {branding?.logoUrl ? (
-            <img src={branding.logoUrl} alt="Organization logo" className="max-h-12" />
-          ) : (
-            <div className="flex items-center gap-3">
-              <img src="/logo.png" alt="Prudent Hire" className="h-10 w-10 object-contain" />
-              <p className="text-2xl font-bold tracking-tight text-recruiter-text">Prudent Hire</p>
-            </div>
-          )}
-        </div>
-
-        <div className="flex flex-1 items-center justify-center bg-white px-6 py-12">
+      <main className="grid min-h-screen md:grid-cols-2">
+        <div className="flex flex-col items-center justify-center bg-white px-6 py-12">
           <motion.div
             className="w-full max-w-sm"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, ease: 'easeOut' }}
           >
-            <h1 className="mb-6 text-xl font-semibold text-recruiter-text">Staff Login</h1>
-            <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-              <Input
-                label="Organization slug"
-                value={organizationSlug}
-                onChange={setOrganizationSlug}
-                onBlur={handleSlugBlur}
-                icon={<Building2 size={16} />}
-              />
-              {ssoEnabled && !usePasswordInstead ? (
-                <>
-                  <motion.a
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, ease: 'easeOut' }}
-                    href={`${process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001/api/v1'}/auth/saml/${organizationSlug}/login`}
-                    onClick={() => window.sessionStorage.setItem(SSO_PENDING_SLUG_KEY, organizationSlug)}
-                    className="flex items-center justify-center rounded-md border border-recruiter-border py-2 text-sm font-medium text-recruiter-text hover:bg-recruiter-bg-subtle"
-                  >
-                    Log in with SSO
-                  </motion.a>
-                  <button
-                    type="button"
-                    onClick={() => setUsePasswordInstead(true)}
-                    className="text-center text-sm font-medium text-primary hover:underline"
-                  >
-                    Log in with password instead
-                  </button>
-                </>
+            <div className="mb-8 flex justify-center">
+              {branding?.logoUrl ? (
+                <img src={branding.logoUrl} alt="Organization logo" className="max-h-14" />
               ) : (
-                <>
-                  <Input label="Email" type="email" value={email} onChange={setEmail} required icon={<Mail size={16} />} />
-                  <div className="relative">
-                    <Input
-                      label="Password"
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={setPassword}
-                      required
-                      icon={<Lock size={16} />}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((prev) => !prev)}
-                      aria-label={showPassword ? 'Hide characters' : 'Show characters'}
-                      className="absolute bottom-2 right-3 text-recruiter-text-tertiary hover:text-recruiter-text"
-                    >
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                  <Link href="/forgot-password" className="text-right text-sm font-medium text-primary hover:underline">
-                    Forgot password?
-                  </Link>
-                  <Button type="submit" loading={submitting}>
-                    Log in
-                  </Button>
-                  {ssoEnabled && (
-                    <button
-                      type="button"
-                      onClick={() => setUsePasswordInstead(false)}
-                      className="text-center text-sm font-medium text-recruiter-text-secondary hover:underline"
-                    >
-                      Back to SSO login
-                    </button>
-                  )}
-                </>
+                <div className="flex items-center gap-3">
+                  <img src="/logo.png" alt="Prudent Hire" className="h-11 w-11 object-contain" />
+                  <p className="text-2xl font-bold tracking-tight text-recruiter-text">Prudent Hire</p>
+                </div>
               )}
+            </div>
+
+            <div className="rounded-md border border-recruiter-border bg-white p-6 shadow-sm">
+              <h1 className="mb-6 text-center text-base font-bold text-recruiter-text">Staff login</h1>
+
               {error && (
-                <p role="alert" className="flex items-center gap-2 rounded-md bg-status-danger-bg px-3 py-2 text-sm text-status-danger">
-                  <AlertCircle size={16} />
+                <p
+                  role="alert"
+                  className="mb-4 flex items-center gap-2 rounded-md bg-status-danger-bg px-3 py-2 text-sm text-status-danger"
+                >
+                  <AlertCircle size={16} className="shrink-0" />
                   {error}
                 </p>
               )}
-            </form>
+
+              <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                <Input
+                  label="Organization slug"
+                  value={organizationSlug}
+                  onChange={setOrganizationSlug}
+                  onBlur={handleSlugBlur}
+                />
+                {ssoEnabled && !usePasswordInstead ? (
+                  <>
+                    <motion.a
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, ease: 'easeOut' }}
+                      href={`${process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001/api/v1'}/auth/saml/${organizationSlug}/login`}
+                      onClick={() => window.sessionStorage.setItem(SSO_PENDING_SLUG_KEY, organizationSlug)}
+                      className="flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+                    >
+                      Log in with SSO
+                    </motion.a>
+                    <OrDivider />
+                    <button
+                      type="button"
+                      onClick={() => setUsePasswordInstead(true)}
+                      className="text-center text-sm font-medium text-primary hover:underline"
+                    >
+                      Log in with password instead
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <Input label="Email" type="email" value={email} onChange={setEmail} required />
+                    <div className="relative">
+                      <Input
+                        label="Password"
+                        type={showPassword ? 'text' : 'password'}
+                        value={password}
+                        onChange={setPassword}
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        aria-label={showPassword ? 'Hide characters' : 'Show characters'}
+                        className="absolute bottom-2 right-3 text-recruiter-text-tertiary hover:text-recruiter-text"
+                      >
+                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                    <Button type="submit" loading={submitting} className="w-full">
+                      Log in
+                    </Button>
+                    <Link href="/forgot-password" className="text-sm font-medium text-primary hover:underline">
+                      Forgot password?
+                    </Link>
+                    {ssoEnabled && (
+                      <>
+                        <OrDivider />
+                        <button
+                          type="button"
+                          onClick={() => setUsePasswordInstead(false)}
+                          className="text-center text-sm font-medium text-primary hover:underline"
+                        >
+                          Back to SSO login
+                        </button>
+                      </>
+                    )}
+                  </>
+                )}
+              </form>
+            </div>
+
+            <p className="mt-8 text-center text-xs text-recruiter-text-tertiary">
+              © {new Date().getFullYear()} Prudent Consulting. All rights reserved.
+            </p>
           </motion.div>
         </div>
+
+        <aside className="hidden flex-col justify-center gap-6 bg-recruiter-bg-subtle px-16 py-12 md:flex">
+          <h2 className="text-4xl font-bold leading-tight tracking-tight text-recruiter-text">
+            Automate early screens.
+          </h2>
+          <p className="max-w-md text-lg leading-relaxed text-recruiter-text-secondary">
+            Focus human judgment on what matters. Prudent Hire runs the first round end to end, so your panel only
+            meets the candidates worth meeting.
+          </p>
+          <ul className="flex max-w-md flex-col gap-3">
+            {HIGHLIGHTS.map((item) => (
+              <li key={item} className="flex items-start gap-3 text-base text-recruiter-text-secondary">
+                <Check size={18} className="mt-1 shrink-0 text-primary" />
+                {item}
+              </li>
+            ))}
+          </ul>
+        </aside>
       </main>
     </MotionConfig>
   );
