@@ -35,9 +35,9 @@ describe('Panel layout', () => {
     );
   }
 
-  it('renders the top bar nav link for a panel user', async () => {
+  it('renders the sidebar Results link for a panel user', async () => {
     renderLayout();
-    expect(await screen.findByRole('link', { name: 'Exams' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Results' })).toHaveAttribute('href', '/reports');
   });
 
   // The /reports routes live in this route group and a URL can only be served by one
@@ -102,9 +102,11 @@ describe('Panel layout', () => {
 
   it('does not show cross-shell nav links for a normal (non-acting) panel user', async () => {
     renderLayout();
-    await screen.findByRole('link', { name: 'Exams' });
+    // A panel member's sidebar is just Results -- no admin/recruiter cross-shell links.
+    await screen.findByRole('link', { name: 'Results' });
     expect(screen.queryByRole('link', { name: 'Staff Users' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Dashboard/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Exams' })).not.toBeInTheDocument();
   });
 
   it('logs out and redirects to /login when the logout button is clicked', async () => {
