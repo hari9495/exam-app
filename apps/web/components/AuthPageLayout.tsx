@@ -38,10 +38,10 @@ export function AuthPageLayout({
         <div className="w-full max-w-sm">
           <div className="mb-8 flex justify-center">
             {logoUrl ? (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-0">
                 <img src={logoUrl} alt="Organization logo" className="max-h-20 object-contain" />
                 {logoLabel && (
-                  <p className="text-center text-2xl font-bold tracking-tight text-recruiter-text">{logoLabel}</p>
+                  <p className="-ml-6 text-center text-2xl font-bold tracking-tight text-recruiter-text">{logoLabel}</p>
                 )}
               </div>
             ) : (
@@ -58,7 +58,7 @@ export function AuthPageLayout({
           </div>
 
           <p className="mt-8 text-center text-xs text-recruiter-text-tertiary">
-            © {new Date().getFullYear()} Prudent Consulting. All rights reserved.
+            © {new Date().getFullYear()} Prudent Technologies & Consulting. All rights reserved.
           </p>
         </div>
       </div>
