@@ -41,6 +41,6 @@ describe('PanelReportsPage', () => {
   it('shows an error message when the exam list fails to load', () => {
     (useExams as jest.Mock).mockReturnValue({ data: undefined, isLoading: false, isError: true });
     render(<PanelReportsPage />);
-    expect(screen.getByText('Failed to load exams.')).toBeInTheDocument();
+    expect(screen.getByText('Failed to load Results.')).toBeInTheDocument();
   });
 });
