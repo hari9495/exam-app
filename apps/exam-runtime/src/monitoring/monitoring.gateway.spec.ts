@@ -76,6 +76,23 @@ describe('MonitoringGateway', () => {
       expect(socket.disconnect).not.toHaveBeenCalled();
       expect(socket.data.user).toEqual({ userId: 'user-1', organizationId: 'org-1', role: 'recruiter' });
     });
+
+    it('carries the actingSuperAdmin claim onto the socket for a super-admin acting in an org', () => {
+      const token = jwt.sign(
+        { sub: 'user-1', organizationId: 'org-1', role: 'super_admin', actingSuperAdmin: true },
+        { secret: process.env.JWT_ACCESS_SECRET },
+      );
+      const socket = makeSocket({ handshake: { auth: { token } } });
+
+      gateway.handleConnection(socket);
+
+      expect(socket.data.user).toEqual({
+        userId: 'user-1',
+        organizationId: 'org-1',
+        role: 'super_admin',
+        actingSuperAdmin: true,
+      });
+    });
   });
 
   describe('handleJoinExam', () => {
@@ -95,6 +112,24 @@ describe('MonitoringGateway', () => {
 
       expect(socket.emit).toHaveBeenCalledWith('error', { message: 'Missing required permission: exam:manage' });
       expect(socket.join).not.toHaveBeenCalled();
+    });
+
+    it('bypasses the exam:manage lookup entirely for a super-admin acting in an org', async () => {
+      const socket = makeSocket({
+        data: { user: { userId: 'user-1', organizationId: 'org-1', role: 'super_admin', actingSuperAdmin: true } },
+      });
+      const roster = [{ candidateId: 'cand-1' }];
+      monitoring.getRosterSnapshot.mockResolvedValue(roster);
+      leaderboardService.computeRecruiterView.mockResolvedValue([]);
+
+      await gateway.handleJoinExam(socket, { examId: 'exam-1' });
+
+      // A plain super_admin role has no seeded RolePermission row (it bypasses via the
+      // actingSuperAdmin claim, same as apps/api's PermissionsGuard) -- the lookup must
+      // never run, or this would fail exactly like it did in production.
+      expect(prisma.rolePermission.findFirst).not.toHaveBeenCalled();
+      expect(socket.join).toHaveBeenCalledWith('exam:exam-1');
+      expect(socket.emit).toHaveBeenCalledWith('roster:snapshot', roster);
     });
 
     it('emits an error when the roster lookup throws (exam not found / not owned)', async () => {

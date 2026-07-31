@@ -19,6 +19,7 @@ interface StaffSocketUser {
   userId: string;
   organizationId: string | null;
   role: string;
+  actingSuperAdmin?: boolean;
 }
 
 export const PRESENCE_TICK_MS = 15_000;
@@ -64,11 +65,13 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
         sub: string;
         organizationId: string | null;
         role: string;
+        actingSuperAdmin?: boolean;
       };
       (client.data as { user?: StaffSocketUser }).user = {
         userId: payload.sub,
         organizationId: payload.organizationId,
         role: payload.role,
+        actingSuperAdmin: payload.actingSuperAdmin,
       };
     } catch {
       client.disconnect(true);
@@ -83,7 +86,7 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
       return;
     }
 
-    const hasPermission = await this.hasExamManagePermission(user.role);
+    const hasPermission = user.actingSuperAdmin || (await this.hasExamManagePermission(user.role));
     if (!hasPermission) {
       client.emit('error', { message: 'Missing required permission: exam:manage' });
       return;
