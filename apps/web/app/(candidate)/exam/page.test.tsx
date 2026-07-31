@@ -432,13 +432,13 @@ describe('CandidateExamPage', () => {
   it('shows the stdin box only when the question allows it', () => {
     (useAttemptQuery as jest.Mock).mockReturnValue({ data: codeAttemptState, isError: false });
     render(<CandidateExamPage />);
-    expect(screen.queryByLabelText('Standard input (optional)')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Standard Input (Optional)')).not.toBeInTheDocument();
   });
 
   it('shows the stdin box when the question allows it', () => {
     (useAttemptQuery as jest.Mock).mockReturnValue({ data: codeAttemptStateWithStdin, isError: false });
     render(<CandidateExamPage />);
-    expect(screen.getByLabelText('Standard input (optional)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Standard Input (Optional)')).toBeInTheDocument();
   });
 
   it('shows the server-provided message when the sandbox is unavailable', async () => {
@@ -777,7 +777,7 @@ describe('CandidateExamPage', () => {
     renderExamPage();
 
     expect(screen.getByText('python')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Choose a language before you start')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Choose A Language Before You Start')).not.toBeInTheDocument();
   });
 
   it('requires a language pick before showing the editor for a fixed multi-language question', () => {
@@ -793,8 +793,8 @@ describe('CandidateExamPage', () => {
 
     renderExamPage();
 
-    expect(screen.getByLabelText('Choose a language before you start')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Choose a language before you start'), { target: { value: 'java' } });
+    expect(screen.getByLabelText('Choose A Language Before You Start')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Choose A Language Before You Start'), { target: { value: 'java' } });
     expect(screen.getByText('java')).toBeInTheDocument();
   });
 

@@ -71,7 +71,7 @@ describe('ExamSectionsPanel', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Section One')).toBeInTheDocument());
-    await userEvent.type(screen.getByLabelText('New section title'), 'Section Two');
+    await userEvent.type(screen.getByLabelText('New Section Title'), 'Section Two');
     await userEvent.click(screen.getByRole('button', { name: 'Add section' }));
 
     await waitFor(() =>
@@ -114,7 +114,7 @@ describe('ExamSectionsPanel', () => {
       </QueryProvider>,
     );
 
-    await waitFor(() => expect(screen.getByLabelText('New section title')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText('New Section Title')).toBeInTheDocument());
     await userEvent.click(screen.getByRole('button', { name: 'Add section' }));
 
     expect(fetchMock.mock.calls.some((call) => String(call[0]).endsWith('/exams/exam-1/sections') && call[1]?.method === 'POST')).toBe(false);
@@ -320,7 +320,7 @@ describe('ExamSectionsPanel', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Section One')).toBeInTheDocument());
-    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await userEvent.click(screen.getByRole('button', { name: 'More Actions' }));
     await userEvent.click(await screen.findByText('Duplicate'));
 
     await waitFor(() => expect(screen.getByText('Section duplicated.')).toBeInTheDocument());
@@ -367,7 +367,7 @@ describe('ExamSectionsPanel', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Section One')).toBeInTheDocument());
-    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await userEvent.click(screen.getByRole('button', { name: 'More Actions' }));
     await userEvent.click(await screen.findByText('Delete'));
 
     expect(screen.getByText('Delete section')).toBeInTheDocument();
@@ -429,7 +429,7 @@ describe('ExamSectionsPanel', () => {
     await waitFor(() => expect(screen.getByText('Section One')).toBeInTheDocument());
     expect(screen.getByText(/locked because a candidate has already started this exam/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Manage questions' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('New section title')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'More Actions' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('New Section Title')).not.toBeInTheDocument();
   });
 });

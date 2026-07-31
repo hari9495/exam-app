@@ -136,7 +136,7 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
           </Link>
           <button
             type="button"
-            aria-label="Log out"
+            aria-label="Log Out"
             onClick={handleLogout}
             className="shrink-0 rounded-md p-1.5 text-recruiter-text-tertiary transition-colors duration-150 hover:bg-recruiter-bg-subtle hover:text-recruiter-text"
           >

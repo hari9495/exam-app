@@ -13,7 +13,7 @@ export default function NewExamPage() {
 
   return (
     <div>
-      <BackLink href="/exams" label="Back to exams" />
+      <BackLink href="/exams" label="Back To Exams" />
       <h1 className="mb-6 text-2xl font-semibold">New exam</h1>
       <ExamDetailsForm
         submitLabel="Create exam"

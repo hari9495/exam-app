@@ -69,7 +69,7 @@ export function ProfileForm() {
           <h1 className="mb-4 text-xl font-semibold text-recruiter-text">My Profile</h1>
           {!user && <p className="mb-4 text-sm text-recruiter-text-secondary">Loading…</p>}
           <form onSubmit={handleNameSubmit} className="mb-4 flex flex-col gap-3">
-            <Input label="Display name" value={name} onChange={setName} disabled={!user} />
+            <Input label="Display Name" value={name} onChange={setName} disabled={!user} />
             <Input label="Email" value={user?.email ?? ''} onChange={() => {}} disabled readOnly />
             <Input label="Role" value={user?.role ?? ''} onChange={() => {}} disabled readOnly />
             <Input label="Organization" value={organizationSlug ?? ''} onChange={() => {}} disabled readOnly />
@@ -94,7 +94,7 @@ export function ProfileForm() {
           <h2 className="mb-4 text-lg font-semibold text-recruiter-text">Change password</h2>
           <form onSubmit={handlePasswordSubmit} className="flex flex-col gap-3">
             <Input
-              label="Current password"
+              label="Current Password"
               type={showPassword ? 'text' : 'password'}
               autoComplete="current-password"
               value={currentPassword}
@@ -103,7 +103,7 @@ export function ProfileForm() {
             />
             <div className="relative">
               <Input
-                label="New password"
+                label="New Password"
                 type={showPassword ? 'text' : 'password'}
                 autoComplete="new-password"
                 value={newPassword}
@@ -120,7 +120,7 @@ export function ProfileForm() {
               </button>
             </div>
             <Input
-              label="Confirm new password"
+              label="Confirm New Password"
               type={showPassword ? 'text' : 'password'}
               autoComplete="new-password"
               value={confirmPassword}

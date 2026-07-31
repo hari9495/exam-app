@@ -97,7 +97,7 @@ describe('OrganizationsPage', () => {
 
     expect(inTable().queryByText('Exams')).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Choose columns' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Choose Columns' }));
     await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Exams' }));
     await userEvent.keyboard('{Escape}');
 

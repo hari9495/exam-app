@@ -63,7 +63,7 @@ describe('CardGrid', () => {
         />,
       );
 
-      await userEvent.click(screen.getByRole('combobox', { name: 'Sort by' }));
+      await userEvent.click(screen.getByRole('combobox', { name: 'Sort By' }));
       await userEvent.click(screen.getByRole('option', { name: 'Name' }));
 
       expect(renderNames()).toEqual(['Alpha', 'Bravo', 'Charlie']);
@@ -79,7 +79,7 @@ describe('CardGrid', () => {
         />,
       );
 
-      await userEvent.click(screen.getByRole('combobox', { name: 'Sort by' }));
+      await userEvent.click(screen.getByRole('combobox', { name: 'Sort By' }));
       await userEvent.click(screen.getByRole('option', { name: 'Name' }));
       await userEvent.click(screen.getByRole('button', { name: 'Sort ascending' }));
 
@@ -89,7 +89,7 @@ describe('CardGrid', () => {
     it('does not render a sort toolbar when sortOptions is omitted', () => {
       render(<CardGrid items={items} cardKey={(item) => item.id} renderCard={(item) => <span>{item.name}</span>} />);
 
-      expect(screen.queryByRole('combobox', { name: 'Sort by' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('combobox', { name: 'Sort By' })).not.toBeInTheDocument();
     });
   });
 });

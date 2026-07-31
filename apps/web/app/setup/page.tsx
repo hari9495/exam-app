@@ -59,7 +59,7 @@ export default function SetupPage() {
           <p className="text-sm text-gray-600">Setup complete. Redirecting to login&hellip;</p>
         ) : (
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-            <Input label="Setup token" value={token} onChange={setToken} required icon={<KeyRound size={16} />} />
+            <Input label="Setup Token" value={token} onChange={setToken} required icon={<KeyRound size={16} />} />
             <Input label="Email" type="email" value={email} onChange={setEmail} required icon={<Mail size={16} />} />
             <Input
               label="Password"

@@ -163,11 +163,11 @@ export default function IntegrationsSettingsPage() {
               : 'Not configured — invites and password resets currently use the platform default.'}
           </p>
           <form onSubmit={handleSmtpSubmit} className="flex flex-col gap-3">
-            <Input label="SMTP host" value={smtpHost} onChange={setSmtpHost} required />
-            <Input label="SMTP port" type="number" value={smtpPort} onChange={setSmtpPort} required />
-            <Input label="SMTP username" value={smtpUser} onChange={setSmtpUser} required />
-            <Input label="SMTP password" type="password" value={smtpPassword} onChange={setSmtpPassword} required />
-            <Input label="From address (optional)" type="email" value={fromAddress} onChange={setFromAddress} />
+            <Input label="SMTP Host" value={smtpHost} onChange={setSmtpHost} required />
+            <Input label="SMTP Port" type="number" value={smtpPort} onChange={setSmtpPort} required />
+            <Input label="SMTP Username" value={smtpUser} onChange={setSmtpUser} required />
+            <Input label="SMTP Password" type="password" value={smtpPassword} onChange={setSmtpPassword} required />
+            <Input label="From Address (Optional)" type="email" value={fromAddress} onChange={setFromAddress} />
             <Button type="submit" loading={updateSmtp.isPending}>
               {integrations?.smtpConfigured ? 'Replace SMTP settings' : 'Save SMTP settings'}
             </Button>
@@ -189,13 +189,13 @@ export default function IntegrationsSettingsPage() {
               : 'Not configured — AI features currently use the platform default key.'}
           </p>
           <form onSubmit={handleAiKeySubmit} className="flex flex-col gap-3">
-            <Select label="AI provider" value={aiProvider} onChange={(value) => setAiProvider(value as 'anthropic' | 'openai-compatible')} options={AI_PROVIDER_OPTIONS} />
-            <Input label="AI API key" type="password" value={aiApiKey} onChange={setAiApiKey} required />
+            <Select label="AI Provider" value={aiProvider} onChange={(value) => setAiProvider(value as 'anthropic' | 'openai-compatible')} options={AI_PROVIDER_OPTIONS} />
+            <Input label="AI API Key" type="password" value={aiApiKey} onChange={setAiApiKey} required />
             {aiProvider === 'openai-compatible' && (
               <>
                 <Input label="Base URL" value={aiBaseUrl} onChange={setAiBaseUrl} required placeholder="https://your-resource.openai.azure.com/openai/v1" />
-                <Input label="Fast-tier model/deployment name" value={aiModelFast} onChange={setAiModelFast} required />
-                <Input label="Standard-tier model/deployment name" value={aiModelStandard} onChange={setAiModelStandard} required />
+                <Input label="Fast-tier Model/deployment Name" value={aiModelFast} onChange={setAiModelFast} required />
+                <Input label="Standard-tier Model/deployment Name" value={aiModelStandard} onChange={setAiModelStandard} required />
               </>
             )}
             <Button type="submit" loading={updateAiKey.isPending}>

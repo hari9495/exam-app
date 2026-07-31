@@ -54,7 +54,7 @@ export function GroupedBarChart({ groups, legend }: GroupedBarChartProps) {
   if (groups.length === 0) {
     return (
       <div ref={containerRef} className="h-full w-full">
-        <svg viewBox={`0 0 ${width} ${HEIGHT}`} className="block h-full w-full" role="img" aria-label="No exam performance data" />
+        <svg viewBox={`0 0 ${width} ${HEIGHT}`} className="block h-full w-full" role="img" aria-label="No Exam Performance Data" />
       </div>
     );
   }
@@ -77,7 +77,7 @@ export function GroupedBarChart({ groups, legend }: GroupedBarChartProps) {
 
   return (
     <div ref={containerRef} className="h-full w-full">
-      <svg viewBox={`0 0 ${width} ${HEIGHT}`} className="block h-full w-full" role="img" aria-label="Exam performance chart">
+      <svg viewBox={`0 0 ${width} ${HEIGHT}`} className="block h-full w-full" role="img" aria-label="Exam Performance Chart">
         <g transform={`translate(${MARGIN.left}, ${MARGIN.top})`}>
           {legend && legend.length > 0 && (
             <g aria-label="Legend">

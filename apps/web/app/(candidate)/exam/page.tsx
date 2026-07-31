@@ -530,7 +530,7 @@ export default function CandidateExamPage() {
                   </label>
                   <select
                     id="code-language-select"
-                    aria-label="Choose a language before you start"
+                    aria-label="Choose A Language Before You Start"
                     className="rounded border border-candidate-border px-2 py-1 text-sm"
                     value=""
                     onChange={(e) => {
@@ -580,7 +580,7 @@ export default function CandidateExamPage() {
                       </label>
                       <textarea
                         id="stdin-input"
-                        aria-label="Standard input (optional)"
+                        aria-label="Standard Input (Optional)"
                         value={stdinValue}
                         onChange={(e) => setStdinValues((prev) => ({ ...prev, [question.id]: e.target.value }))}
                         className="rounded-md border border-candidate-border px-2.5 py-1.5 font-mono text-xs"

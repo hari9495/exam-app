@@ -56,8 +56,8 @@ export default function BrandingSettingsPage() {
         {branding?.logoUrl && <img src={branding.logoUrl} alt="Organization logo" className="mb-4 max-h-20" />}
         <form onSubmit={handleColorsSubmit} className="mb-4 flex flex-col gap-3">
           {/* h-11: a bare type=color collapses to a sliver under the shared input padding. */}
-          <Input label="Primary color" type="color" value={primaryColor} onChange={setPrimaryColor} className="h-11" />
-          <Input label="Accent color" type="color" value={accentColor} onChange={setAccentColor} className="h-11" />
+          <Input label="Primary Color" type="color" value={primaryColor} onChange={setPrimaryColor} className="h-11" />
+          <Input label="Accent Color" type="color" value={accentColor} onChange={setAccentColor} className="h-11" />
           {/* Colours stay gated until the current values load, so a save can't overwrite
               the org's real colours with this component's #0057f0/#fbbc04 defaults. */}
           <Button type="submit" disabled={!branding} loading={updateBranding.isPending}>

@@ -20,7 +20,7 @@ export default function EditQuestionPage() {
 
   return (
     <div>
-      <BackLink href="/questions" label="Back to question bank" />
+      <BackLink href="/questions" label="Back To Question Bank" />
       <h1 className="mb-6 text-2xl font-semibold">Edit question</h1>
       <QuestionForm
         initialQuestion={question}

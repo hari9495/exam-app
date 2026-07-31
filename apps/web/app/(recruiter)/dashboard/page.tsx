@@ -131,12 +131,12 @@ export default function DashboardPage() {
       <DashboardFilterBar value={filters} onChange={setFilters} exams={exams} candidates={candidates} />
 
       <div className="mb-5 grid grid-cols-4 gap-3">
-        <StatCard icon={Users} value={summary.stats.totalCandidates} label="Total candidates" metric="candidates" color="#0d9488" delay={0} range={summaryWindow} />
-        <StatCard icon={Mail} value={summary.stats.invitationsSent} label="Invitations sent" metric="invitations" color="#334155" delay={0.04} range={summaryWindow} />
+        <StatCard icon={Users} value={summary.stats.totalCandidates} label="Total Candidates" metric="candidates" color="#0d9488" delay={0} range={summaryWindow} />
+        <StatCard icon={Mail} value={summary.stats.invitationsSent} label="Invitations Sent" metric="invitations" color="#334155" delay={0.04} range={summaryWindow} />
         <StatCard
           icon={Play}
           value={summary.stats.attemptsInProgress}
-          label="Attempts in progress"
+          label="Attempts In Progress"
           metric="attempts"
           color="#d4a017"
           delay={0.08}
@@ -145,7 +145,7 @@ export default function DashboardPage() {
         <StatCard
           icon={FileEdit}
           value={summary.stats.pendingGradingCount}
-          label="Pending grading"
+          label="Pending Grading"
           metric="pendingGrading"
           color="#f2765f"
           delay={0.12}

@@ -44,7 +44,7 @@ export function CardGrid<T>({ items, cardKey, renderCard, emptyMessage = 'No res
       {sortOptions && sortOptions.length > 0 && (
         <div className="mb-3 flex items-end gap-2">
           <Select
-            label="Sort by"
+            label="Sort By"
             value={sortKey}
             onChange={setSortKey}
             options={[

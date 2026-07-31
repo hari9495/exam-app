@@ -53,8 +53,8 @@ describe('QuestionForm', () => {
     render(<QuestionForm tags={[]} onSubmit={onSubmit} submitLabel="Create question" />);
 
     await userEvent.type(screen.getByLabelText('Question text'), 'Q?');
-    await userEvent.type(screen.getByLabelText('Topic (optional)'), 'Arrays');
-    await userEvent.type(screen.getByLabelText('Category (optional)'), 'DSA');
+    await userEvent.type(screen.getByLabelText('Topic (Optional)'), 'Arrays');
+    await userEvent.type(screen.getByLabelText('Category (Optional)'), 'DSA');
     const optionInputs = screen.getAllByLabelText(/Option \d text/);
     await userEvent.type(optionInputs[0], 'a');
     await userEvent.type(optionInputs[1], 'b');
@@ -104,7 +104,7 @@ describe('QuestionForm', () => {
     const onSubmit = jest.fn();
     render(<QuestionForm tags={[]} onSubmit={onSubmit} submitLabel="Create" />);
 
-    await userEvent.click(screen.getByRole('combobox', { name: 'Question type' }));
+    await userEvent.click(screen.getByRole('combobox', { name: 'Question Type' }));
     await userEvent.click(screen.getByRole('option', { name: 'Code' }));
     await userEvent.type(screen.getByLabelText('Question text'), 'Reverse a string');
     await userEvent.click(await screen.findByLabelText('python'));
@@ -118,7 +118,7 @@ describe('QuestionForm', () => {
   it('does not show the options editor when type is code', async () => {
     render(<QuestionForm tags={[]} onSubmit={jest.fn()} submitLabel="Create" />);
 
-    await userEvent.click(screen.getByRole('combobox', { name: 'Question type' }));
+    await userEvent.click(screen.getByRole('combobox', { name: 'Question Type' }));
     await userEvent.click(screen.getByRole('option', { name: 'Code' }));
 
     expect(screen.queryByText('Options')).not.toBeInTheDocument();
@@ -128,9 +128,9 @@ describe('QuestionForm', () => {
     const onSubmit = jest.fn();
     render(<QuestionForm tags={[]} submitLabel="Create question" onSubmit={onSubmit} />);
 
-    await userEvent.click(screen.getByRole('combobox', { name: 'Question type' }));
+    await userEvent.click(screen.getByRole('combobox', { name: 'Question Type' }));
     await userEvent.click(screen.getByRole('option', { name: 'Code' }));
-    await userEvent.click(screen.getByLabelText('Allow candidates to provide input (stdin)'));
+    await userEvent.click(screen.getByLabelText('Allow Candidates To Provide Input (Stdin)'));
     await userEvent.type(screen.getByLabelText('Question text'), 'Read a line and print it.');
     await userEvent.click(screen.getByRole('button', { name: 'Create question' }));
 
@@ -142,7 +142,7 @@ describe('QuestionForm', () => {
     render(<QuestionForm tags={[]} onSubmit={onSubmit} submitLabel="Create" />);
 
     await userEvent.type(screen.getByLabelText('Question text'), 'What does this print?');
-    await userEvent.type(screen.getByLabelText('Code snippet'), 'print(1+1)');
+    await userEvent.type(screen.getByLabelText('Code Snippet'), 'print(1+1)');
     const optionInputs = screen.getAllByLabelText(/Option \d text/);
     await userEvent.type(optionInputs[0], 'A');
     await userEvent.type(optionInputs[1], 'B');
@@ -158,7 +158,7 @@ describe('QuestionForm', () => {
     const onSubmit = jest.fn();
     render(<QuestionForm tags={[]} onSubmit={onSubmit} submitLabel="Create" />);
 
-    await userEvent.click(screen.getByRole('combobox', { name: 'Question type' }));
+    await userEvent.click(screen.getByRole('combobox', { name: 'Question Type' }));
     await userEvent.click(screen.getByRole('option', { name: 'Code' }));
     await userEvent.type(screen.getByLabelText('Question text'), 'Reverse a string');
     await userEvent.click(screen.getByRole('button', { name: 'Create' }));
@@ -172,7 +172,7 @@ describe('QuestionForm', () => {
     const onSubmit = jest.fn();
     render(<QuestionForm tags={[]} onSubmit={onSubmit} submitLabel="Create" />);
 
-    await userEvent.click(screen.getByRole('combobox', { name: 'Question type' }));
+    await userEvent.click(screen.getByRole('combobox', { name: 'Question Type' }));
     await userEvent.click(screen.getByRole('option', { name: 'Code' }));
     fireEvent.change(screen.getByLabelText('Question text'), { target: { value: 'Reverse a string' } });
     fireEvent.click(await screen.findByLabelText('python'));
@@ -185,26 +185,26 @@ describe('QuestionForm', () => {
 
   it('shows the starter code field only when exactly one fixed language is selected', async () => {
     render(<QuestionForm tags={[]} onSubmit={jest.fn()} submitLabel="Create" />);
-    await userEvent.click(screen.getByRole('combobox', { name: 'Question type' }));
+    await userEvent.click(screen.getByRole('combobox', { name: 'Question Type' }));
     await userEvent.click(screen.getByRole('option', { name: 'Code' }));
 
-    expect(screen.queryByLabelText('Starter code')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Starter Code')).not.toBeInTheDocument();
 
     fireEvent.click(await screen.findByLabelText('python'));
-    expect(screen.getByLabelText('Starter code')).toBeInTheDocument();
+    expect(screen.getByLabelText('Starter Code')).toBeInTheDocument();
 
     fireEvent.click(await screen.findByLabelText('java'));
-    expect(screen.queryByLabelText('Starter code')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Starter Code')).not.toBeInTheDocument();
   });
 
   it('lets the recruiter pick Any mode with no language selection required', async () => {
     const onSubmit = jest.fn();
     render(<QuestionForm tags={[]} onSubmit={onSubmit} submitLabel="Create" />);
 
-    await userEvent.click(screen.getByRole('combobox', { name: 'Question type' }));
+    await userEvent.click(screen.getByRole('combobox', { name: 'Question Type' }));
     await userEvent.click(screen.getByRole('option', { name: 'Code' }));
     fireEvent.change(screen.getByLabelText('Question text'), { target: { value: 'Solve in any language' } });
-    await userEvent.click(screen.getByRole('combobox', { name: 'Language mode' }));
+    await userEvent.click(screen.getByRole('combobox', { name: 'Language Mode' }));
     await userEvent.click(screen.getByRole('option', { name: 'Any — every language the sandbox supports' }));
     fireEvent.click(screen.getByText('Create'));
 

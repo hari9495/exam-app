@@ -5,8 +5,8 @@ import { Checkbox } from './Checkbox';
 describe('Checkbox', () => {
   it('toggles checked state via onChange', async () => {
     const onChange = jest.fn();
-    render(<Checkbox label="Correct answer" checked={false} onChange={onChange} />);
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Correct answer' }));
+    render(<Checkbox label="Correct Answer" checked={false} onChange={onChange} />);
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Correct Answer' }));
     expect(onChange).toHaveBeenCalledWith(true);
   });
 });

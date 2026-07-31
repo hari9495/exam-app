@@ -185,12 +185,12 @@ export default function QuestionsPage() {
               setPage(1);
             }}
             placeholder="Search questions…"
-            aria-label="Search questions"
+            aria-label="Search Questions"
             className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
           />
         </div>
 
-        <Select label="Group by" value={groupBy} onChange={(value) => setGroupBy(value as GroupBy)} options={GROUP_BY_OPTIONS} />
+        <Select label="Group By" value={groupBy} onChange={(value) => setGroupBy(value as GroupBy)} options={GROUP_BY_OPTIONS} />
 
         <Select
           label="Status"

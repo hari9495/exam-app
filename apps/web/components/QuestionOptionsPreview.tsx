@@ -39,7 +39,7 @@ export function QuestionOptionsPreview({ question }: { question: Question }) {
           <span>
             {OPTION_LETTERS[index] ?? '•'}. {option.text}
           </span>
-          {option.isCorrect && <Check size={13} aria-label="Correct answer" className="shrink-0" />}
+          {option.isCorrect && <Check size={13} aria-label="Correct Answer" className="shrink-0" />}
         </li>
       ))}
     </ul>

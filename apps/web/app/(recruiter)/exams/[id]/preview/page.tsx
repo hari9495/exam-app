@@ -38,7 +38,7 @@ export default function PreviewPage() {
     // Widened, but still capped and centred: this is a read-through of question text, and
     // full-bleed prose across a 2560px screen is harder to review, not easier.
     <div className="mx-auto max-w-4xl xl:max-w-5xl 2xl:max-w-6xl">
-      <BackLink href={`/exams/${exam.id}/edit`} label="Back to exam" />
+      <BackLink href={`/exams/${exam.id}/edit`} label="Back To Exam" />
       <h1 className="mb-2 text-2xl font-semibold text-recruiter-text">{exam.title}</h1>
       {exam.instructions && <p className="mb-6 text-sm text-recruiter-text-secondary">{exam.instructions}</p>}
       <div className="flex flex-col gap-6">

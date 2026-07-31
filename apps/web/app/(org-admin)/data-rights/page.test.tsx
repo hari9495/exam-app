@@ -49,7 +49,7 @@ describe('DataRightsPage', () => {
       </QueryProvider>,
     );
 
-    await userEvent.type(screen.getByLabelText('Candidate email'), 'gina@example.com');
+    await userEvent.type(screen.getByLabelText('Candidate Email'), 'gina@example.com');
     await userEvent.click(screen.getByRole('button', { name: 'Look up' }));
     await waitFor(() => expect(screen.getByText('Gina GDPR')).toBeInTheDocument());
 
@@ -58,7 +58,7 @@ describe('DataRightsPage', () => {
     expect(screen.getByText('invited')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Erase candidate' }));
-    await userEvent.type(screen.getByLabelText("Type the candidate's email to confirm"), 'gina@example.com');
+    await userEvent.type(screen.getByLabelText("Type The Candidate's Email To Confirm"), 'gina@example.com');
     await userEvent.click(screen.getByRole('button', { name: 'Confirm erase' }));
 
     await waitFor(() => expect(screen.getByText(/Erased at/)).toBeInTheDocument());
@@ -87,7 +87,7 @@ describe('DataRightsPage', () => {
       </QueryProvider>,
     );
 
-    await userEvent.type(screen.getByLabelText('Candidate email'), 'gina@example.com');
+    await userEvent.type(screen.getByLabelText('Candidate Email'), 'gina@example.com');
     await userEvent.click(screen.getByRole('button', { name: 'Look up' }));
     await waitFor(() => expect(screen.getByText('Gina GDPR')).toBeInTheDocument());
 
@@ -95,11 +95,11 @@ describe('DataRightsPage', () => {
     const confirmButton = screen.getByRole('button', { name: 'Confirm erase' });
     expect(confirmButton).toBeDisabled();
 
-    await userEvent.type(screen.getByLabelText("Type the candidate's email to confirm"), 'wrong@example.com');
+    await userEvent.type(screen.getByLabelText("Type The Candidate's Email To Confirm"), 'wrong@example.com');
     expect(confirmButton).toBeDisabled();
 
-    await userEvent.clear(screen.getByLabelText("Type the candidate's email to confirm"));
-    await userEvent.type(screen.getByLabelText("Type the candidate's email to confirm"), 'gina@example.com');
+    await userEvent.clear(screen.getByLabelText("Type The Candidate's Email To Confirm"));
+    await userEvent.type(screen.getByLabelText("Type The Candidate's Email To Confirm"), 'gina@example.com');
     expect(confirmButton).toBeEnabled();
   });
 
@@ -124,7 +124,7 @@ describe('DataRightsPage', () => {
       </QueryProvider>,
     );
 
-    await userEvent.type(screen.getByLabelText('Candidate email'), 'nobody@nowhere.test');
+    await userEvent.type(screen.getByLabelText('Candidate Email'), 'nobody@nowhere.test');
     await userEvent.click(screen.getByRole('button', { name: 'Look up' }));
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
@@ -156,12 +156,12 @@ describe('DataRightsPage', () => {
       </QueryProvider>,
     );
 
-    await userEvent.type(screen.getByLabelText('Candidate email'), 'gina@example.com');
+    await userEvent.type(screen.getByLabelText('Candidate Email'), 'gina@example.com');
     await userEvent.click(screen.getByRole('button', { name: 'Look up' }));
     await waitFor(() => expect(screen.getByText('Gina GDPR')).toBeInTheDocument());
 
     await userEvent.click(screen.getByRole('button', { name: 'Erase candidate' }));
-    await userEvent.type(screen.getByLabelText("Type the candidate's email to confirm"), 'gina@example.com');
+    await userEvent.type(screen.getByLabelText("Type The Candidate's Email To Confirm"), 'gina@example.com');
     await userEvent.click(screen.getByRole('button', { name: 'Confirm erase' }));
 
     // Wait for the error message to appear; it renders in both the modal and top-of-page
@@ -204,13 +204,13 @@ describe('DataRightsPage', () => {
     );
 
     // Look up the candidate
-    await userEvent.type(screen.getByLabelText('Candidate email'), 'gina@example.com');
+    await userEvent.type(screen.getByLabelText('Candidate Email'), 'gina@example.com');
     await userEvent.click(screen.getByRole('button', { name: 'Look up' }));
     await waitFor(() => expect(screen.getByText('Gina GDPR')).toBeInTheDocument());
 
     // Open erase modal and click confirm (first time - fails)
     await userEvent.click(screen.getByRole('button', { name: 'Erase candidate' }));
-    await userEvent.type(screen.getByLabelText("Type the candidate's email to confirm"), 'gina@example.com');
+    await userEvent.type(screen.getByLabelText("Type The Candidate's Email To Confirm"), 'gina@example.com');
     await userEvent.click(screen.getByRole('button', { name: 'Confirm erase' }));
 
     // Wait for error banner to appear with the first failure message; it renders in both the modal and top-of-page

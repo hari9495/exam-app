@@ -99,7 +99,7 @@ export default function DataRightsPage() {
     <div>
       <h1 className="mb-6 text-2xl font-semibold text-recruiter-text">Candidate Data Rights</h1>
       <form onSubmit={handleLookup} className="mb-6 flex items-end gap-2">
-        <Input label="Candidate email" type="email" value={email} onChange={setEmail} required />
+        <Input label="Candidate Email" type="email" value={email} onChange={setEmail} required />
         <Button type="submit">Look up</Button>
       </form>
       {error && (
@@ -168,7 +168,7 @@ export default function DataRightsPage() {
         </p>
         <div className="mb-4">
           <Input
-            label="Type the candidate's email to confirm"
+            label="Type The Candidate's Email To Confirm"
             value={confirmEmail}
             onChange={setConfirmEmail}
             placeholder={candidate?.email}

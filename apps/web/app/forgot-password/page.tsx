@@ -91,7 +91,7 @@ export default function ForgotPasswordPage() {
                 </p>
                 <form onSubmit={handleSubmit} className="flex flex-col gap-3">
                   <Input
-                    label="Organization slug"
+                    label="Organization Slug"
                     value={organizationSlug}
                     onChange={setOrganizationSlug}
                     required

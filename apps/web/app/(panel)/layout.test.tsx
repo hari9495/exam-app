@@ -111,7 +111,7 @@ describe('Panel layout', () => {
 
   it('logs out and redirects to /login when the logout button is clicked', async () => {
     renderLayout();
-    const logoutButton = await screen.findByRole('button', { name: 'Log out' });
+    const logoutButton = await screen.findByRole('button', { name: 'Log Out' });
 
     await userEvent.click(logoutButton);
 

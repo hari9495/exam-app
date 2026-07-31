@@ -59,11 +59,11 @@ export default function BulkUploadInviteCandidatesPage() {
 
   return (
     <div className="max-w-2xl">
-      <BackLink href="/candidates" label="Back to candidates" />
+      <BackLink href="/candidates" label="Back To Candidates" />
       <h1 className="mb-6 text-2xl font-semibold">Bulk Upload &amp; Invite Candidates</h1>
       <div className="mb-4">
         <Select
-          label="Exam to invite to"
+          label="Exam To Invite To"
           value={examId}
           onChange={setExamId}
           options={(publishedExams ?? []).map((exam) => ({ value: exam.id, label: exam.title }))}

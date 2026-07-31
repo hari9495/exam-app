@@ -51,7 +51,7 @@ describe('Sparkline', () => {
         color="#0d9488"
       />,
     );
-    const svg = screen.getByLabelText('Trend sparkline');
+    const svg = screen.getByLabelText('Trend Sparkline');
     const expectedLabel = new Date('2026-07-02T00:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
 
     // The mocked scalePoint (apps/web/__mocks__/d3-scale.ts) places '2026-07-02' at x=40, not evenly spread like the real d3-scale.

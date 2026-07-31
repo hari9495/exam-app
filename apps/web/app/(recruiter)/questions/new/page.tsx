@@ -14,7 +14,7 @@ export default function NewQuestionPage() {
 
   return (
     <div>
-      <BackLink href="/questions" label="Back to question bank" />
+      <BackLink href="/questions" label="Back To Question Bank" />
       <h1 className="mb-6 text-2xl font-semibold">New question</h1>
       <QuestionForm
         tags={tags ?? []}

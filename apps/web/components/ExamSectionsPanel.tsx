@@ -85,7 +85,7 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
                 {!locked && (
                   <DropdownMenu>
                     <DropdownMenuTrigger
-                      aria-label="More actions"
+                      aria-label="More Actions"
                       className="rounded p-1.5 text-recruiter-text-tertiary hover:bg-recruiter-bg-subtle"
                     >
                       <MoreHorizontal size={16} />
@@ -121,7 +121,7 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
         ))}
       {!locked && (
         <form onSubmit={handleAdd} className="flex items-end gap-2">
-          <Input label="New section title" value={newTitle} onChange={setNewTitle} required />
+          <Input label="New Section Title" value={newTitle} onChange={setNewTitle} required />
           <Button type="submit">Add section</Button>
         </form>
       )}

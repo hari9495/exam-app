@@ -122,7 +122,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
 
   return (
     <form onSubmit={handleSubmit} className="flex max-w-xl flex-col gap-4">
-      <Select label="Question type" value={type} onChange={handleTypeChange} options={TYPE_OPTIONS} />
+      <Select label="Question Type" value={type} onChange={handleTypeChange} options={TYPE_OPTIONS} />
       <div className="flex flex-col gap-1">
         <label htmlFor="question-text" className="text-sm font-medium text-gray-700">
           Question text
@@ -139,19 +139,19 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
       <Select label="Difficulty" value={difficulty} onChange={(value) => setDifficulty(value as Difficulty)} options={DIFFICULTY_OPTIONS} />
       <div className="flex gap-4">
         <Input label="Marks" type="number" min={1} value={marks} onChange={setMarks} />
-        <Input label="Negative marks" type="number" min={0} value={negativeMarks} onChange={setNegativeMarks} />
+        <Input label="Negative Marks" type="number" min={0} value={negativeMarks} onChange={setNegativeMarks} />
       </div>
       {/* Topic and Category are what the question-bank "Group by" filter groups on, so the form
           has to let a recruiter set them -- otherwise those grouping options are always empty. */}
       <div className="flex gap-4">
-        <Input label="Topic (optional)" value={topic} onChange={setTopic} />
-        <Input label="Category (optional)" value={category} onChange={setCategory} />
+        <Input label="Topic (Optional)" value={topic} onChange={setTopic} />
+        <Input label="Category (Optional)" value={category} onChange={setCategory} />
       </div>
 
       {type === 'code' ? (
         <div className="flex flex-col gap-2">
           <Select
-            label="Language mode"
+            label="Language Mode"
             value={languageMode}
             onChange={(value) => setLanguageMode(value as 'fixed' | 'any')}
             options={[
@@ -184,7 +184,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
             <div className="flex flex-col gap-1">
               <span className="text-sm font-medium text-gray-700">Starter code</span>
               <textarea
-                aria-label="Starter code"
+                aria-label="Starter Code"
                 value={starterCode}
                 onChange={(e) => setStarterCode(e.target.value)}
                 className="rounded border border-gray-300 px-3 py-2 font-mono text-sm"
@@ -197,7 +197,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
               type="checkbox"
               checked={allowStdin}
               onChange={(e) => setAllowStdin(e.target.checked)}
-              aria-label="Allow candidates to provide input (stdin)"
+              aria-label="Allow Candidates To Provide Input (Stdin)"
             />
             Allow candidates to provide input (stdin)
           </label>
@@ -207,7 +207,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
           <div className="flex flex-col gap-2">
             <div className="flex gap-2">
               <Select
-                label="Snippet language"
+                label="Snippet Language"
                 value={snippetLanguage}
                 onChange={(value) => setSnippetLanguage(value as CodeLanguage)}
                 options={LANGUAGE_OPTIONS}
@@ -216,14 +216,14 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
             <div className="flex flex-col gap-1">
               <span className="text-sm font-medium text-gray-700">Code snippet (optional)</span>
               <textarea
-                aria-label="Code snippet"
+                aria-label="Code Snippet"
                 value={snippetCode}
                 onChange={(e) => setSnippetCode(e.target.value)}
                 className="rounded border border-gray-300 px-3 py-2 font-mono text-sm"
                 rows={4}
               />
             </div>
-            <QuestionImageUpload label="Question image (optional)" value={imageUrl} onChange={setImageUrl} />
+            <QuestionImageUpload label="Question Image (Optional)" value={imageUrl} onChange={setImageUrl} />
           </div>
           <span className="text-sm font-medium text-gray-700">Options</span>
           {type === 'single_mcq' || type === 'true_false' ? (

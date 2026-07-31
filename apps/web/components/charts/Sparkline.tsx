@@ -27,7 +27,7 @@ export function Sparkline({ data, color, unit }: SparklineProps) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   if (data.length === 0) {
-    return <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="h-full w-full" role="img" aria-label="No trend data" />;
+    return <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="h-full w-full" role="img" aria-label="No Trend Data" />;
   }
 
   const x = scalePoint<string>()
@@ -77,7 +77,7 @@ export function Sparkline({ data, color, unit }: SparklineProps) {
         className="block h-full w-full"
         preserveAspectRatio="none"
         role="img"
-        aria-label="Trend sparkline"
+        aria-label="Trend Sparkline"
         onMouseMove={handleMove}
         onMouseLeave={() => setHoveredIndex(null)}
       >

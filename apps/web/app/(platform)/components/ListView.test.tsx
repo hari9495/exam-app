@@ -91,7 +91,7 @@ describe('ListView', () => {
 
     expect(inTable().queryByText('Region')).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Choose columns' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Choose Columns' }));
     await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Region' }));
     await closeChooser();
 
@@ -101,7 +101,7 @@ describe('ListView', () => {
   it('persists column visibility across remounts', async () => {
     const { unmount } = renderListView();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Choose columns' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Choose Columns' }));
     await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Region' }));
     await closeChooser();
     expect(inTable().queryByText('Region')).not.toBeInTheDocument();
@@ -115,7 +115,7 @@ describe('ListView', () => {
   it('keeps the chooser open so several columns can be toggled in one go', async () => {
     renderListView();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Choose columns' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Choose Columns' }));
     await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Region' }));
     // The second click only succeeds if the menu survived the first -- that IS the assertion.
     await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Name' }));

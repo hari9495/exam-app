@@ -81,7 +81,7 @@ function ScorePanel({ scores }: { scores: DashboardAnalytics['scores'] }) {
             <Stat value={`${scores.avg}%`} label="Average" />
             <Stat value={`${scores.median}%`} label="Median" />
             <Stat value={`${scores.p25}–${scores.p75}`} label="Middle 50%" />
-            <Stat value={`${scores.passRate}%`} label="Pass rate" tone={scores.passRate !== null && scores.passRate >= 50 ? 'good' : 'warn'} />
+            <Stat value={`${scores.passRate}%`} label="Pass Rate" tone={scores.passRate !== null && scores.passRate >= 50 ? 'good' : 'warn'} />
           </div>
           <div className="h-52 w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -183,7 +183,7 @@ function ThroughputPanel({ funnel, timing }: { funnel: DashboardAnalytics['funne
       <div className="grid grid-cols-3 gap-2">
         <Stat value={`${funnel.completionRate}%`} label="Completion" tone={funnel.completionRate >= 70 ? 'good' : 'warn'} />
         <Stat value={String(funnel.abandoned)} label="Abandoned" tone={funnel.abandoned > 0 ? 'warn' : undefined} />
-        <Stat value={timing.medianMinutes !== null ? `${timing.medianMinutes}m` : '—'} label="Median time" />
+        <Stat value={timing.medianMinutes !== null ? `${timing.medianMinutes}m` : '—'} label="Median Time" />
       </div>
       <div className="mt-4 flex flex-col gap-1.5">
         {stages.map((stage, i) => {

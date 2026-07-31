@@ -78,7 +78,7 @@ export default function AuditLogPage() {
       <h1 className="mb-6 text-2xl font-semibold text-recruiter-text">Audit Log</h1>
       <form onSubmit={handleApplyFilters} className="mb-6 flex flex-wrap items-end gap-2">
         <Input
-          label="Actor user ID"
+          label="Actor User ID"
           value={formFilters.actorUserId ?? ''}
           onChange={(value) => setFormFilters((f) => ({ ...f, actorUserId: value || undefined }))}
         />
@@ -88,7 +88,7 @@ export default function AuditLogPage() {
           onChange={(value) => setFormFilters((f) => ({ ...f, action: value || undefined }))}
         />
         <Input
-          label="Entity type"
+          label="Entity Type"
           value={formFilters.entityType ?? ''}
           onChange={(value) => setFormFilters((f) => ({ ...f, entityType: value || undefined }))}
         />

@@ -51,8 +51,8 @@ describe('BulkUploadInviteCandidatesPage', () => {
 
     renderPage();
 
-    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Exam to invite to' })).toBeInTheDocument());
-    await userEvent.click(screen.getByRole('combobox', { name: 'Exam to invite to' }));
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Exam To Invite To' })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('combobox', { name: 'Exam To Invite To' }));
     await userEvent.click(screen.getByRole('option', { name: 'Backend Round' }));
 
     const file = new File(['Email,Name\nfrank@test.com,Frank'], 'candidates.csv', { type: 'text/csv' });
@@ -84,8 +84,8 @@ describe('BulkUploadInviteCandidatesPage', () => {
 
     renderPage();
 
-    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Exam to invite to' })).toBeInTheDocument());
-    await userEvent.click(screen.getByRole('combobox', { name: 'Exam to invite to' }));
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Exam To Invite To' })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('combobox', { name: 'Exam To Invite To' }));
     await userEvent.click(screen.getByRole('option', { name: 'Backend Round' }));
 
     const file = new File(['Email,Name'], 'candidates.csv', { type: 'text/csv' });

@@ -204,7 +204,7 @@ describe('QuestionsPage', () => {
 
     await waitFor(() => expect(screen.getByText('What is 2+2?')).toBeInTheDocument());
 
-    fireEvent.change(screen.getByLabelText('Search questions'), { target: { value: 'onboarding' } });
+    fireEvent.change(screen.getByLabelText('Search Questions'), { target: { value: 'onboarding' } });
 
     // If page.tsx reverted to filtering an already-fetched array client-side,
     // no request carrying the typed text would ever be made -- this fails in
@@ -288,7 +288,7 @@ describe('QuestionsPage', () => {
       renderPage();
       await waitFor(() => expect(screen.getByText(/Two numbers are in the ratio/)).toBeInTheDocument());
 
-      await userEvent.click(screen.getByRole('combobox', { name: 'Group by' }));
+      await userEvent.click(screen.getByRole('combobox', { name: 'Group By' }));
       await userEvent.click(screen.getByRole('option', { name: 'Topic' }));
 
       expect(screen.getByRole('heading', { name: 'Percentages' })).toBeInTheDocument();
@@ -301,7 +301,7 @@ describe('QuestionsPage', () => {
       renderPage();
       await waitFor(() => expect(screen.getByText(/Two numbers are in the ratio/)).toBeInTheDocument());
 
-      await userEvent.click(screen.getByRole('combobox', { name: 'Group by' }));
+      await userEvent.click(screen.getByRole('combobox', { name: 'Group By' }));
       await userEvent.click(screen.getByRole('option', { name: 'Difficulty' }));
 
       const headings = screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent);
@@ -313,7 +313,7 @@ describe('QuestionsPage', () => {
       renderPage();
       await waitFor(() => expect(screen.getByText(/Two numbers are in the ratio/)).toBeInTheDocument());
 
-      await userEvent.click(screen.getByRole('combobox', { name: 'Group by' }));
+      await userEvent.click(screen.getByRole('combobox', { name: 'Group By' }));
       await userEvent.click(screen.getByRole('option', { name: 'Tag' }));
 
       const headings = screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent);
@@ -325,7 +325,7 @@ describe('QuestionsPage', () => {
       renderPage();
       await waitFor(() => expect(screen.getByText(/Two numbers are in the ratio/)).toBeInTheDocument());
 
-      await userEvent.click(screen.getByRole('combobox', { name: 'Group by' }));
+      await userEvent.click(screen.getByRole('combobox', { name: 'Group By' }));
       await userEvent.click(screen.getByRole('option', { name: 'Category' }));
 
       // Both questions are category "Aptitude", so they collapse under one heading.

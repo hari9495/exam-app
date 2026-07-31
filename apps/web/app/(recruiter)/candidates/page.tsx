@@ -236,13 +236,13 @@ export default function CandidatesPage() {
               setPage(1);
             }}
             placeholder="Search candidates…"
-            aria-label="Search candidates"
+            aria-label="Search Candidates"
             className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
           />
         </div>
         <Select label="Status" value={statusFilter} onChange={(value) => { setStatusFilter(value); setPage(1); }} options={STATUS_FILTER_OPTIONS} />
         <Select
-          label="Exam to invite to"
+          label="Exam To Invite To"
           value={examId}
           onChange={setExamId}
           options={(publishedExams ?? []).map((exam) => ({ value: exam.id, label: exam.title }))}

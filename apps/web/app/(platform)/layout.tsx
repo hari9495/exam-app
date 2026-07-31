@@ -61,7 +61,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
           </div>
           <button
             type="button"
-            aria-label="Log out"
+            aria-label="Log Out"
             onClick={handleLogout}
             className="rounded-md p-1.5 text-gray-500 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-900"
           >

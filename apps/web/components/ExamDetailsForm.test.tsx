@@ -8,8 +8,8 @@ describe('ExamDetailsForm', () => {
     render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Create exam" />);
 
     await userEvent.type(screen.getByLabelText('Title'), 'Backend Round');
-    await userEvent.clear(screen.getByLabelText('Duration (minutes)'));
-    await userEvent.type(screen.getByLabelText('Duration (minutes)'), '45');
+    await userEvent.clear(screen.getByLabelText('Duration (Minutes)'));
+    await userEvent.type(screen.getByLabelText('Duration (Minutes)'), '45');
     await userEvent.click(screen.getByRole('button', { name: 'Create exam' }));
 
     expect(onSubmit).toHaveBeenCalledWith(
@@ -23,8 +23,8 @@ describe('ExamDetailsForm', () => {
 
     await userEvent.type(screen.getByLabelText('Title'), 'Scheduled Exam');
     await userEvent.click(screen.getByLabelText('Enable scheduling'));
-    const startInput = screen.getByLabelText('Window opens') as HTMLInputElement;
-    const endInput = screen.getByLabelText('Window closes') as HTMLInputElement;
+    const startInput = screen.getByLabelText('Window Opens') as HTMLInputElement;
+    const endInput = screen.getByLabelText('Window Closes') as HTMLInputElement;
     fireEvent.change(startInput, { target: { value: '2026-07-20T09:00' } });
     fireEvent.change(endInput, { target: { value: '2026-07-27T18:00' } });
     await userEvent.click(screen.getByRole('button', { name: 'Create' }));
@@ -56,8 +56,8 @@ describe('ExamDetailsForm', () => {
 
     await userEvent.type(screen.getByLabelText('Title'), 'Backwards Window Exam');
     await userEvent.click(screen.getByLabelText('Enable scheduling'));
-    const startInput = screen.getByLabelText('Window opens') as HTMLInputElement;
-    const endInput = screen.getByLabelText('Window closes') as HTMLInputElement;
+    const startInput = screen.getByLabelText('Window Opens') as HTMLInputElement;
+    const endInput = screen.getByLabelText('Window Closes') as HTMLInputElement;
     fireEvent.change(startInput, { target: { value: '2026-07-27T18:00' } });
     fireEvent.change(endInput, { target: { value: '2026-07-20T09:00' } });
     await userEvent.click(screen.getByRole('button', { name: 'Create' }));
@@ -98,7 +98,7 @@ describe('ExamDetailsForm', () => {
     const expectedValue = `${expected.getFullYear()}-${pad(expected.getMonth() + 1)}-${pad(expected.getDate())}T${pad(expected.getHours())}:${pad(expected.getMinutes())}`;
 
     expect(screen.getByLabelText('Enable scheduling')).toBeChecked();
-    expect(screen.getByLabelText('Window opens')).toHaveValue(expectedValue);
+    expect(screen.getByLabelText('Window Opens')).toHaveValue(expectedValue);
   });
 
   it('includes feedbackVisibility in the submitted value, defaulting to pass_fail for a new exam', async () => {
@@ -216,11 +216,11 @@ describe('ExamDetailsForm', () => {
     it('hides the strike limit in record-only mode, because nothing is ever blocked', async () => {
       render(<ExamDetailsForm onSubmit={jest.fn()} submitLabel="Create" />);
 
-      expect(screen.getByLabelText('Block after')).toBeInTheDocument();
+      expect(screen.getByLabelText('Block After')).toBeInTheDocument();
 
       await userEvent.click(screen.getByLabelText(/Record only/i));
 
-      expect(screen.queryByLabelText('Block after')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Block After')).not.toBeInTheDocument();
     });
 
     it('prefills from an existing exam, reading the stored disabled-signal JSON', () => {
@@ -299,7 +299,7 @@ describe('ExamDetailsForm', () => {
       render(<ExamDetailsForm onSubmit={jest.fn()} submitLabel="Save" locked />);
 
       expect(screen.getByLabelText('Title')).toBeDisabled();
-      expect(screen.getByLabelText('Duration (minutes)')).toBeDisabled();
+      expect(screen.getByLabelText('Duration (Minutes)')).toBeDisabled();
       expect(screen.getByLabelText('Enable walk-in registration for this exam')).toBeDisabled();
       expect(screen.getByLabelText(/allowed ip \/ cidr range/i)).toBeDisabled();
     });

@@ -119,12 +119,12 @@ function ProctoringLogModal({ attemptId, onClose }: { attemptId: string; onClose
                 <p className="text-xs text-gray-400">{new Date(event.occurredAt).toLocaleString()}</p>
                 {details.length > 0 && <p className="text-xs text-gray-600">{details.join(' — ')}</p>}
                 {snapshot && (
-                  <button type="button" onClick={() => setSelectedSnapshot(snapshot)} aria-label="Enlarge webcam snapshot">
+                  <button type="button" onClick={() => setSelectedSnapshot(snapshot)} aria-label="Enlarge Webcam Snapshot">
                     <img src={snapshot} alt="" className="mt-1 h-16 w-16 rounded object-cover" />
                   </button>
                 )}
                 {screenshot && (
-                  <button type="button" onClick={() => setSelectedScreenshot(screenshot)} aria-label="Enlarge screen capture">
+                  <button type="button" onClick={() => setSelectedScreenshot(screenshot)} aria-label="Enlarge Screen Capture">
                     <img src={screenshot} alt="" className="mt-1 h-16 w-16 rounded object-cover" />
                   </button>
                 )}

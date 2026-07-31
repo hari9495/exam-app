@@ -59,12 +59,12 @@ describe('IntegrationsSettingsPage', () => {
 
   it('submits SMTP settings and shows a success toast on save', async () => {
     renderPage();
-    await screen.findByLabelText('SMTP host');
+    await screen.findByLabelText('SMTP Host');
 
-    fireEvent.change(screen.getByLabelText('SMTP host'), { target: { value: 'smtp.customer.test' } });
-    fireEvent.change(screen.getByLabelText('SMTP port'), { target: { value: '587' } });
-    fireEvent.change(screen.getByLabelText('SMTP username'), { target: { value: 'customer-user' } });
-    fireEvent.change(screen.getByLabelText('SMTP password'), { target: { value: 'customer-pass' } });
+    fireEvent.change(screen.getByLabelText('SMTP Host'), { target: { value: 'smtp.customer.test' } });
+    fireEvent.change(screen.getByLabelText('SMTP Port'), { target: { value: '587' } });
+    fireEvent.change(screen.getByLabelText('SMTP Username'), { target: { value: 'customer-user' } });
+    fireEvent.change(screen.getByLabelText('SMTP Password'), { target: { value: 'customer-pass' } });
 
     mockedApiFetch.mockResolvedValueOnce({ smtpConfigured: true });
     fireEvent.click(screen.getByRole('button', { name: 'Save SMTP settings' }));
@@ -85,13 +85,13 @@ describe('IntegrationsSettingsPage', () => {
 
   it('includes fromAddress in the request body when the admin provides one', async () => {
     renderPage();
-    await screen.findByLabelText('SMTP host');
+    await screen.findByLabelText('SMTP Host');
 
-    fireEvent.change(screen.getByLabelText('SMTP host'), { target: { value: 'smtp.customer.test' } });
-    fireEvent.change(screen.getByLabelText('SMTP port'), { target: { value: '587' } });
-    fireEvent.change(screen.getByLabelText('SMTP username'), { target: { value: 'customer-user' } });
-    fireEvent.change(screen.getByLabelText('SMTP password'), { target: { value: 'customer-pass' } });
-    fireEvent.change(screen.getByLabelText('From address (optional)'), { target: { value: 'noreply@customer.test' } });
+    fireEvent.change(screen.getByLabelText('SMTP Host'), { target: { value: 'smtp.customer.test' } });
+    fireEvent.change(screen.getByLabelText('SMTP Port'), { target: { value: '587' } });
+    fireEvent.change(screen.getByLabelText('SMTP Username'), { target: { value: 'customer-user' } });
+    fireEvent.change(screen.getByLabelText('SMTP Password'), { target: { value: 'customer-pass' } });
+    fireEvent.change(screen.getByLabelText('From Address (Optional)'), { target: { value: 'noreply@customer.test' } });
 
     mockedApiFetch.mockResolvedValueOnce({ smtpConfigured: true });
     fireEvent.click(screen.getByRole('button', { name: 'Save SMTP settings' }));
@@ -116,9 +116,9 @@ describe('IntegrationsSettingsPage', () => {
 
   it('shows an inline error when saving the AI key fails validation', async () => {
     renderPage();
-    await screen.findByLabelText('AI API key');
+    await screen.findByLabelText('AI API Key');
 
-    fireEvent.change(screen.getByLabelText('AI API key'), { target: { value: 'sk-ant-bad-key' } });
+    fireEvent.change(screen.getByLabelText('AI API Key'), { target: { value: 'sk-ant-bad-key' } });
     mockedApiFetch.mockRejectedValueOnce(new Error('That API key was rejected: authentication_error'));
     fireEvent.click(screen.getByRole('button', { name: 'Save AI API key' }));
 
@@ -127,28 +127,28 @@ describe('IntegrationsSettingsPage', () => {
 
   it('shows only the API key field for the Anthropic provider by default', async () => {
     renderPage();
-    await screen.findByLabelText('AI API key');
+    await screen.findByLabelText('AI API Key');
 
     expect(screen.queryByLabelText('Base URL')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Fast-tier model/deployment name')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Standard-tier model/deployment name')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Fast-tier Model/deployment Name')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Standard-tier Model/deployment Name')).not.toBeInTheDocument();
   });
 
   it('shows base URL and model fields when OpenAI-compatible is selected, and submits them together', async () => {
     renderPage();
-    await screen.findByLabelText('AI provider');
+    await screen.findByLabelText('AI Provider');
 
-    await userEvent.click(screen.getByLabelText('AI provider'));
+    await userEvent.click(screen.getByLabelText('AI Provider'));
     await userEvent.click(await screen.findByRole('option', { name: 'OpenAI-compatible' }));
 
     expect(await screen.findByLabelText('Base URL')).toBeInTheDocument();
-    expect(screen.getByLabelText('Fast-tier model/deployment name')).toBeInTheDocument();
-    expect(screen.getByLabelText('Standard-tier model/deployment name')).toBeInTheDocument();
+    expect(screen.getByLabelText('Fast-tier Model/deployment Name')).toBeInTheDocument();
+    expect(screen.getByLabelText('Standard-tier Model/deployment Name')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('AI API key'), { target: { value: 'azure-key' } });
+    fireEvent.change(screen.getByLabelText('AI API Key'), { target: { value: 'azure-key' } });
     fireEvent.change(screen.getByLabelText('Base URL'), { target: { value: 'https://example.openai.azure.com/openai/v1' } });
-    fireEvent.change(screen.getByLabelText('Fast-tier model/deployment name'), { target: { value: 'gpt-fast' } });
-    fireEvent.change(screen.getByLabelText('Standard-tier model/deployment name'), { target: { value: 'gpt-standard' } });
+    fireEvent.change(screen.getByLabelText('Fast-tier Model/deployment Name'), { target: { value: 'gpt-fast' } });
+    fireEvent.change(screen.getByLabelText('Standard-tier Model/deployment Name'), { target: { value: 'gpt-standard' } });
     mockedApiFetch.mockResolvedValueOnce({ aiKeyConfigured: true });
     fireEvent.click(screen.getByRole('button', { name: 'Save AI API key' }));
 
@@ -199,9 +199,9 @@ describe('IntegrationsSettingsPage', () => {
     renderPage();
 
     expect(await screen.findByLabelText('Base URL')).toBeInTheDocument();
-    expect(screen.getByLabelText('Fast-tier model/deployment name')).toBeInTheDocument();
-    expect(screen.getByLabelText('Standard-tier model/deployment name')).toBeInTheDocument();
-    expect(screen.getByLabelText('AI provider')).toHaveTextContent('OpenAI-compatible');
+    expect(screen.getByLabelText('Fast-tier Model/deployment Name')).toBeInTheDocument();
+    expect(screen.getByLabelText('Standard-tier Model/deployment Name')).toBeInTheDocument();
+    expect(screen.getByLabelText('AI Provider')).toHaveTextContent('OpenAI-compatible');
   });
 
   it('shows an inline error when generating the API key fails', async () => {

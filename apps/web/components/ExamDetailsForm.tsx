@@ -139,14 +139,14 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
           rows={3}
         />
       </div>
-      <Input label="Duration (minutes)" type="number" min={1} value={durationMinutes} onChange={setDurationMinutes} />
-      <Input label="Pass criteria (%)" type="number" min={0} max={100} value={passCriteriaPercent} onChange={setPassCriteriaPercent} />
+      <Input label="Duration (Minutes)" type="number" min={1} value={durationMinutes} onChange={setDurationMinutes} />
+      <Input label="Pass Criteria (%)" type="number" min={0} max={100} value={passCriteriaPercent} onChange={setPassCriteriaPercent} />
       <label className="flex items-center gap-2 text-sm text-gray-700">
         <input type="checkbox" checked={randomizeOrder} onChange={(e) => setRandomizeOrder(e.target.checked)} />
         Randomize question order for candidates
       </label>
       <Select
-        label="Candidate feedback"
+        label="Candidate Feedback"
         value={feedbackVisibility}
         onChange={(value) => setFeedbackVisibility(value as FeedbackVisibility)}
         options={[
@@ -163,13 +163,13 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
       {schedulingEnabled && (
         <div className="flex flex-col gap-2 pl-6">
           <Input
-            label="Window opens"
+            label="Window Opens"
             type="datetime-local"
             value={availabilityWindowStart}
             onChange={setAvailabilityWindowStart}
           />
           <Input
-            label="Window closes"
+            label="Window Closes"
             type="datetime-local"
             value={availabilityWindowEnd}
             onChange={setAvailabilityWindowEnd}
@@ -182,7 +182,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
         Enable walk-in registration for this exam
       </label>
       <Input
-        label="Allowed IP / CIDR range (optional)"
+        label="Allowed IP / CIDR Range (Optional)"
         value={allowedIpRange}
         onChange={setAllowedIpRange}
         placeholder="e.g. 203.0.113.4 or 203.0.113.0/24"
@@ -220,7 +220,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
         </div>
         {proctoringEnforcement === 'block' && (
           <Select
-            label="Block after"
+            label="Block After"
             value={proctoringStrikeLimit}
             onChange={setProctoringStrikeLimit}
             options={[

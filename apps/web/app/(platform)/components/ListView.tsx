@@ -130,7 +130,7 @@ export function ListView<T>({
             onChange={setSearch}
           />
           <DropdownMenu>
-            <DropdownMenuTrigger aria-label="Choose columns" className="rounded border border-recruiter-border p-2">
+            <DropdownMenuTrigger aria-label="Choose Columns" className="rounded border border-recruiter-border p-2">
               <Settings2 size={16} />
             </DropdownMenuTrigger>
             <DropdownMenuContent>

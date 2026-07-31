@@ -49,7 +49,7 @@ describe('QuestionPreviewCard', () => {
     expect(screen.getByText('C. 72')).toBeInTheDocument();
     // The whole point of the preview: the recruiter can see which option is right
     // without opening the editor.
-    expect(screen.getByLabelText('Correct answer')).toBeInTheDocument();
+    expect(screen.getByLabelText('Correct Answer')).toBeInTheDocument();
   });
 
   it('marks every correct option on a multi-select question, not just the first', () => {
@@ -67,7 +67,7 @@ describe('QuestionPreviewCard', () => {
       />,
     );
 
-    expect(screen.getAllByLabelText('Correct answer')).toHaveLength(2);
+    expect(screen.getAllByLabelText('Correct Answer')).toHaveLength(2);
     expect(screen.getByText('Multi-select')).toBeInTheDocument();
   });
 

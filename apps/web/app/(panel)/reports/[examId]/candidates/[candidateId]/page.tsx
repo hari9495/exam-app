@@ -57,7 +57,7 @@ export default function PanelCandidateDetailPage() {
 
   return (
     <div>
-      <BackLink href={`/reports/${examId}`} label="Back to results" className="print:hidden" />
+      <BackLink href={`/reports/${examId}`} label="Back To Results" className="print:hidden" />
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">{candidate.candidateName}</h1>
         <div className="flex items-center gap-2">

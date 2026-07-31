@@ -80,9 +80,9 @@ describe('ProfileForm', () => {
   it('submits current and new password via POST /users/me/change-password', async () => {
     renderProfileForm();
     await screen.findByDisplayValue('Jane Recruiter');
-    await userEvent.type(screen.getByLabelText('Current password'), 'OldPassw0rd!');
-    await userEvent.type(screen.getByLabelText('New password'), 'NewPassw0rd!');
-    await userEvent.type(screen.getByLabelText('Confirm new password'), 'NewPassw0rd!');
+    await userEvent.type(screen.getByLabelText('Current Password'), 'OldPassw0rd!');
+    await userEvent.type(screen.getByLabelText('New Password'), 'NewPassw0rd!');
+    await userEvent.type(screen.getByLabelText('Confirm New Password'), 'NewPassw0rd!');
     await userEvent.click(screen.getByRole('button', { name: 'Change password' }));
 
     await waitFor(() => {
@@ -100,10 +100,10 @@ describe('ProfileForm', () => {
   it('disables Change password until the two new-password fields match', async () => {
     renderProfileForm();
     await screen.findByDisplayValue('Jane Recruiter');
-    await userEvent.type(screen.getByLabelText('Current password'), 'OldPassw0rd!');
-    await userEvent.type(screen.getByLabelText('New password'), 'NewPassw0rd!');
+    await userEvent.type(screen.getByLabelText('Current Password'), 'OldPassw0rd!');
+    await userEvent.type(screen.getByLabelText('New Password'), 'NewPassw0rd!');
     expect(screen.getByRole('button', { name: 'Change password' })).toBeDisabled();
-    await userEvent.type(screen.getByLabelText('Confirm new password'), 'Mismatch!');
+    await userEvent.type(screen.getByLabelText('Confirm New Password'), 'Mismatch!');
     expect(screen.getByRole('button', { name: 'Change password' })).toBeDisabled();
   });
 });

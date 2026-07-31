@@ -128,13 +128,13 @@ describe('CandidatesPage', () => {
 
     // With two published exams, neither is auto-selected: the combobox shows
     // neither exam title and the invite button stays disabled.
-    const combobox = screen.getByRole('combobox', { name: 'Exam to invite to' });
+    const combobox = screen.getByRole('combobox', { name: 'Exam To Invite To' });
     expect(combobox).not.toHaveTextContent('Backend Round');
     expect(combobox).not.toHaveTextContent('Frontend Round');
     expect(screen.getByRole('button', { name: 'Send invitations' })).toBeDisabled();
 
     // Simulate the recruiter making an explicit choice.
-    await userEvent.click(screen.getByRole('combobox', { name: 'Exam to invite to' }));
+    await userEvent.click(screen.getByRole('combobox', { name: 'Exam To Invite To' }));
     await userEvent.click(screen.getByRole('option', { name: 'Frontend Round' }));
 
     expect(screen.getByRole('button', { name: 'Send invitations' })).toBeEnabled();

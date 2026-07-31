@@ -125,7 +125,7 @@ export default function ExamsPage() {
           <DropdownMenu>
             <DropdownMenuTrigger
               disabled={duplicateExam.isPending}
-              aria-label="More actions"
+              aria-label="More Actions"
               className="rounded p-1 text-recruiter-text-tertiary hover:bg-recruiter-bg-subtle"
             >
               <MoreHorizontal size={16} />
@@ -184,7 +184,7 @@ export default function ExamsPage() {
               setPage(1);
             }}
             placeholder="Search exams…"
-            aria-label="Search exams"
+            aria-label="Search Exams"
             className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
           />
         </div>

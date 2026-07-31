@@ -128,7 +128,7 @@ describe('ExamsPage', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Backend Round')).toBeInTheDocument());
-    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await userEvent.click(screen.getByRole('button', { name: 'More Actions' }));
     await userEvent.click(await screen.findByText('Duplicate'));
 
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/exams/exam-2/edit'));
@@ -162,7 +162,7 @@ describe('ExamsPage', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Backend Round')).toBeInTheDocument());
-    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await userEvent.click(screen.getByRole('button', { name: 'More Actions' }));
     await userEvent.click(await screen.findByText('Duplicate'));
 
     await waitFor(() => expect(screen.getByText('Exam not found')).toBeInTheDocument());
@@ -243,7 +243,7 @@ describe('ExamsPage', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Backend Round')).toBeInTheDocument());
-    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await userEvent.click(screen.getByRole('button', { name: 'More Actions' }));
     await userEvent.click(await screen.findByText('Delete'));
 
     expect(screen.getByText('Delete exam')).toBeInTheDocument();
@@ -281,7 +281,7 @@ describe('ExamsPage', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Backend Round')).toBeInTheDocument());
-    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await userEvent.click(screen.getByRole('button', { name: 'More Actions' }));
     await userEvent.click(await screen.findByText('Delete'));
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
@@ -314,7 +314,7 @@ describe('ExamsPage', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Backend Round')).toBeInTheDocument());
-    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await userEvent.click(screen.getByRole('button', { name: 'More Actions' }));
     await userEvent.click(await screen.findByText('Delete'));
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
@@ -349,7 +349,7 @@ describe('ExamsPage', () => {
 
     await waitFor(() => expect(screen.getByText('Backend Round')).toBeInTheDocument());
 
-    fireEvent.change(screen.getByLabelText('Search exams'), { target: { value: 'onboarding' } });
+    fireEvent.change(screen.getByLabelText('Search Exams'), { target: { value: 'onboarding' } });
 
     // If page.tsx reverted to filtering an already-fetched array client-side,
     // no request carrying the typed text would ever be made -- this fails in

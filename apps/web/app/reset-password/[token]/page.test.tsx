@@ -21,10 +21,10 @@ describe('ResetPasswordPage', () => {
     const submit = screen.getByRole('button', { name: 'Reset password' });
     expect(submit).toBeDisabled();
 
-    await userEvent.type(screen.getByLabelText('New password'), 'NewPassw0rd!');
+    await userEvent.type(screen.getByLabelText('New Password'), 'NewPassw0rd!');
     expect(submit).toBeDisabled();
 
-    await userEvent.type(screen.getByLabelText('Confirm new password'), 'NewPassw0rd!');
+    await userEvent.type(screen.getByLabelText('Confirm New Password'), 'NewPassw0rd!');
     expect(submit).not.toBeDisabled();
   });
 
@@ -34,8 +34,8 @@ describe('ResetPasswordPage', () => {
 
     render(<ResetPasswordPage />);
 
-    await userEvent.type(screen.getByLabelText('New password'), 'NewPassw0rd!');
-    await userEvent.type(screen.getByLabelText('Confirm new password'), 'NewPassw0rd!');
+    await userEvent.type(screen.getByLabelText('New Password'), 'NewPassw0rd!');
+    await userEvent.type(screen.getByLabelText('Confirm New Password'), 'NewPassw0rd!');
     await userEvent.click(screen.getByRole('button', { name: 'Reset password' }));
 
     const call = fetchMock.mock.calls.find((c) => String(c[0]).endsWith('/auth/reset-password'));
@@ -55,8 +55,8 @@ describe('ResetPasswordPage', () => {
 
     render(<ResetPasswordPage />);
 
-    await userEvent.type(screen.getByLabelText('New password'), 'NewPassw0rd!');
-    await userEvent.type(screen.getByLabelText('Confirm new password'), 'NewPassw0rd!');
+    await userEvent.type(screen.getByLabelText('New Password'), 'NewPassw0rd!');
+    await userEvent.type(screen.getByLabelText('Confirm New Password'), 'NewPassw0rd!');
     await userEvent.click(screen.getByRole('button', { name: 'Reset password' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('This reset link is invalid or has expired');

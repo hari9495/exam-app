@@ -46,7 +46,7 @@ export function InviteCandidatesModal({ examId, open, onClose, existingCandidate
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Search candidates…"
-        aria-label="Search candidates"
+        aria-label="Search Candidates"
         className="mb-3 w-full rounded-md border border-recruiter-border px-3 py-1.5 text-sm"
       />
       <div className="flex max-h-80 flex-col gap-2 overflow-y-auto">

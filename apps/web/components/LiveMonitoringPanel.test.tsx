@@ -215,7 +215,7 @@ describe('LiveMonitoringPanel', () => {
       const user = userEvent.setup({ delay: null });
       await user.click(screen.getByRole('button', { name: 'View log' }));
 
-      const thumbnail = screen.getByRole('button', { name: 'Enlarge webcam snapshot' });
+      const thumbnail = screen.getByRole('button', { name: 'Enlarge Webcam Snapshot' });
       expect(thumbnail.querySelector('img')).toHaveAttribute('src', 'blob:webcam-1');
       expect(screen.getByText('Strike 2')).toBeInTheDocument();
 
@@ -244,7 +244,7 @@ describe('LiveMonitoringPanel', () => {
       const user = userEvent.setup({ delay: null });
       await user.click(screen.getByRole('button', { name: 'View log' }));
 
-      const thumbnail = screen.getByRole('button', { name: 'Enlarge screen capture' });
+      const thumbnail = screen.getByRole('button', { name: 'Enlarge Screen Capture' });
       expect(thumbnail.querySelector('img')).toHaveAttribute('src', 'blob:screen-1');
 
       await user.click(thumbnail);
@@ -273,7 +273,7 @@ describe('LiveMonitoringPanel', () => {
       await user.click(screen.getByRole('button', { name: 'View log' }));
 
       expect(screen.getByText('Screen-capture limit reached — no image for this event')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Enlarge screen capture' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Enlarge Screen Capture' })).not.toBeInTheDocument();
     });
 
     it("labels a screen_share_stopped row from a refresh (reason: 'absent') so it isn't mistaken for a deliberate stop", async () => {
@@ -413,7 +413,7 @@ describe('LiveMonitoringPanel', () => {
       await user.click(screen.getByRole('button', { name: 'View log' }));
 
       expect(screen.getByText('dev_tools_detected')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Enlarge webcam snapshot' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Enlarge Webcam Snapshot' })).not.toBeInTheDocument();
     });
   });
 

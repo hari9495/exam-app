@@ -81,7 +81,7 @@ export default function ResetPasswordPage() {
               >
                 <div className="relative">
                   <Input
-                    label="New password"
+                    label="New Password"
                     type={showPassword ? 'text' : 'password'}
                     value={newPassword}
                     onChange={setNewPassword}
@@ -98,7 +98,7 @@ export default function ResetPasswordPage() {
                   </button>
                 </div>
                 <Input
-                  label="Confirm new password"
+                  label="Confirm New Password"
                   type={showPassword ? 'text' : 'password'}
                   value={confirmPassword}
                   onChange={setConfirmPassword}

@@ -112,7 +112,7 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <Input
-            label="Organization slug"
+            label="Organization Slug"
             value={organizationSlug}
             onChange={setOrganizationSlug}
           />

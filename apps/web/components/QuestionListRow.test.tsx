@@ -58,7 +58,7 @@ describe('QuestionListRow', () => {
 
     expect(screen.getByText('A. 45')).toBeInTheDocument();
     expect(screen.getByText('B. 63')).toBeInTheDocument();
-    expect(screen.getByLabelText('Correct answer')).toBeInTheDocument();
+    expect(screen.getByLabelText('Correct Answer')).toBeInTheDocument();
   });
 
   it('collapses again when the row is clicked a second time', async () => {

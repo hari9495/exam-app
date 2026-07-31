@@ -169,7 +169,7 @@ describe('Org admin layout', () => {
       </QueryProvider>,
     );
 
-    const logoutButton = await screen.findByRole('button', { name: 'Log out' });
+    const logoutButton = await screen.findByRole('button', { name: 'Log Out' });
     await userEvent.click(logoutButton);
 
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/login'));

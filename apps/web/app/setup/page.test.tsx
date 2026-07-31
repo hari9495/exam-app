@@ -24,7 +24,7 @@ describe('SetupPage', () => {
     mockedApiFetch.mockResolvedValueOnce({ needsSetup: true });
     render(<SetupPage />);
 
-    const tokenInput = await screen.findByLabelText('Setup token');
+    const tokenInput = await screen.findByLabelText('Setup Token');
     fireEvent.change(tokenInput, { target: { value: 'raw-token-value' } });
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'ops@test.local' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'SetupVerify123!' } });
@@ -47,8 +47,8 @@ describe('SetupPage', () => {
     mockedApiFetch.mockResolvedValueOnce({ needsSetup: true });
     render(<SetupPage />);
 
-    await screen.findByLabelText('Setup token');
-    fireEvent.change(screen.getByLabelText('Setup token'), { target: { value: 'wrong-token' } });
+    await screen.findByLabelText('Setup Token');
+    fireEvent.change(screen.getByLabelText('Setup Token'), { target: { value: 'wrong-token' } });
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'ops@test.local' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'SetupVerify123!' } });
 

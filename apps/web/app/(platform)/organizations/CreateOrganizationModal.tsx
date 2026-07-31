@@ -47,8 +47,8 @@ export function CreateOrganizationModal({ open, onClose }: { open: boolean; onCl
         <Input label="Name" value={name} onChange={setName} required />
         <Input label="Slug" value={slug} onChange={setSlug} required />
         <Select label="Region" value={region} onChange={setRegion} options={REGION_OPTIONS} />
-        <Input label="Admin name" value={adminName} onChange={setAdminName} required />
-        <Input label="Admin email" type="email" value={adminEmail} onChange={setAdminEmail} required />
+        <Input label="Admin Name" value={adminName} onChange={setAdminName} required />
+        <Input label="Admin Email" type="email" value={adminEmail} onChange={setAdminEmail} required />
         <Button type="submit" loading={createOrganization.isPending}>
           Create organization
         </Button>
