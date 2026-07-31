@@ -1,14 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '../../../../lib/auth-context';
-import { useBranding, useUpdateBranding, useUpdateBrandingLogo } from '../../../../lib/hooks/useBranding';
+import { useOrgBranding, useUpdateBranding, useUpdateBrandingLogo } from '../../../../lib/hooks/useBranding';
 import { Button, Input, Card, useToast } from '../../../../components/ui';
 import { motion } from 'framer-motion';
 
 export default function BrandingSettingsPage() {
-  const { organizationSlug } = useAuth();
-  const { data: branding } = useBranding(organizationSlug);
+  const { data: branding, isLoading, isError, error: loadError } = useOrgBranding();
   const updateBranding = useUpdateBranding();
   const updateLogo = useUpdateBrandingLogo();
   const { toast } = useToast();
@@ -48,12 +46,21 @@ export default function BrandingSettingsPage() {
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: 'easeOut' }}>
       <Card className="max-w-md">
         <h1 className="mb-4 text-xl font-semibold text-recruiter-text">Branding Settings</h1>
-        {!branding && <p className="mb-4 text-sm text-recruiter-text-secondary">Loading current branding…</p>}
+        {isLoading && <p className="mb-4 text-sm text-recruiter-text-secondary">Loading current branding…</p>}
+        {isError && (
+          <p role="alert" className="mb-4 rounded-md bg-status-danger-bg px-3 py-2 text-sm text-status-danger">
+            Couldn&apos;t load your current branding:{' '}
+            {loadError instanceof Error ? loadError.message : 'unknown error'}. You can still upload a logo.
+          </p>
+        )}
         {branding?.logoUrl && <img src={branding.logoUrl} alt="Organization logo" className="mb-4 max-h-20" />}
         <form onSubmit={handleColorsSubmit} className="mb-4 flex flex-col gap-3">
-          <Input label="Primary color" type="color" value={primaryColor} onChange={setPrimaryColor} />
-          <Input label="Accent color" type="color" value={accentColor} onChange={setAccentColor} />
-          <Button type="submit" disabled={!branding}>
+          {/* h-11: a bare type=color collapses to a sliver under the shared input padding. */}
+          <Input label="Primary color" type="color" value={primaryColor} onChange={setPrimaryColor} className="h-11" />
+          <Input label="Accent color" type="color" value={accentColor} onChange={setAccentColor} className="h-11" />
+          {/* Colours stay gated until the current values load, so a save can't overwrite
+              the org's real colours with this component's #0057f0/#fbbc04 defaults. */}
+          <Button type="submit" disabled={!branding} loading={updateBranding.isPending}>
             Save colors
           </Button>
         </form>
@@ -67,7 +74,10 @@ export default function BrandingSettingsPage() {
               className="mt-1 block w-full rounded-md border border-recruiter-border p-1.5 text-sm text-recruiter-text-secondary"
             />
           </label>
-          <Button type="submit" variant="secondary" disabled={!branding}>
+          {/* Gated on the FILE, not on the branding fetch: uploading a logo does not
+              need the current branding, and coupling them meant one failed GET
+              disabled the upload button entirely. */}
+          <Button type="submit" variant="secondary" disabled={!logoFile} loading={updateLogo.isPending}>
             Upload logo
           </Button>
         </form>
