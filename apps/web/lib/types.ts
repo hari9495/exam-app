@@ -131,6 +131,10 @@ export interface Exam {
   sections: ExamSection[];
   invitationCount: number;
   hasStartedAttempts: boolean;
+  /** True only when the exam could ever produce a code question needing manual
+   *  grading (a fixed section has one, a pool section currently matches one, or an
+   *  attempt is already sitting in pending_manual_grade) -- gates the Grading tab. */
+  requiresManualGrading: boolean;
 }
 
 // GET /exams (list) also returns attempt-progress counts that GET /exams/:id (detail) omits.

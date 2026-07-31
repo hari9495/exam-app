@@ -85,7 +85,7 @@ describe('ExamDetailsForm', () => {
       passCriteriaPercent: 40, randomizeOrder: false, feedbackVisibility: 'pass_fail' as const, schedulingEnabled: true,
       availabilityWindowStart: '2026-07-20T09:00:00.000Z', availabilityWindowEnd: '2026-07-27T18:00:00.000Z',
       walkInEnabled: false, allowedIpRange: null, createdAt: '2026-07-01T00:00:00.000Z', sections: [], invitationCount: 0,
-      hasStartedAttempts: false,
+      hasStartedAttempts: false, requiresManualGrading: false,
       webcamProctoringEnabled: true, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
       disabledProctoringSignalsJson: null, screenCaptureEnabled: false,
     };
@@ -165,7 +165,7 @@ describe('ExamDetailsForm', () => {
       passCriteriaPercent: 40, randomizeOrder: false, feedbackVisibility: 'pass_fail' as const, schedulingEnabled: false,
       availabilityWindowStart: null, availabilityWindowEnd: null, walkInEnabled: false,
       allowedIpRange: '203.0.113.0/24', createdAt: '2026-07-01T00:00:00.000Z', sections: [], invitationCount: 0,
-      hasStartedAttempts: false,
+      hasStartedAttempts: false, requiresManualGrading: false,
       webcamProctoringEnabled: true, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
       disabledProctoringSignalsJson: null, screenCaptureEnabled: false,
     };

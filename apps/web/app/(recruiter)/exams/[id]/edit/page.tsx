@@ -118,7 +118,10 @@ export default function EditExamPage() {
           <TabsTrigger value="candidates">Candidates</TabsTrigger>
           <TabsTrigger value="live">Live{flagged.size > 0 ? ` (${flagged.size})` : ''}</TabsTrigger>
           <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
-          <TabsTrigger value="grading">Grading</TabsTrigger>
+          {/* Grading only ever does anything for code questions -- every other type
+              auto-grades. Hidden rather than shown empty for an exam that can't
+              produce one. */}
+          {exam.requiresManualGrading && <TabsTrigger value="grading">Grading</TabsTrigger>}
         </TabsList>
         <TabsContent value="details">
           <ExamDetailsForm
@@ -156,9 +159,11 @@ export default function EditExamPage() {
         <TabsContent value="leaderboard">
           <LeaderboardPanel leaderboard={monitoring.leaderboard} />
         </TabsContent>
-        <TabsContent value="grading">
-          <GradingQueuePanel examId={exam.id} />
-        </TabsContent>
+        {exam.requiresManualGrading && (
+          <TabsContent value="grading">
+            <GradingQueuePanel examId={exam.id} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

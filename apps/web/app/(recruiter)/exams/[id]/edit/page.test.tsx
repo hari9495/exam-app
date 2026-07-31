@@ -25,7 +25,7 @@ const mockExam: Exam = {
   availabilityWindowStart: null, availabilityWindowEnd: null, walkInEnabled: false, allowedIpRange: null,
   webcamProctoringEnabled: false, proctoringEnforcement: 'block', proctoringStrikeLimit: 3,
   disabledProctoringSignalsJson: null, screenCaptureEnabled: false, createdAt: '2026-07-25T09:00:00.000Z', sections: [],
-  invitationCount: 1, hasStartedAttempts: true,
+  invitationCount: 1, hasStartedAttempts: true, requiresManualGrading: false,
 };
 
 let currentExam: Exam = mockExam;
@@ -132,5 +132,23 @@ describe('EditExamPage details lock', () => {
     expect(screen.getByLabelText('Title')).not.toBeDisabled();
     expect(screen.queryByText(/its details are locked/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/candidate has already started it/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('EditExamPage Grading tab visibility', () => {
+  afterEach(() => jest.clearAllMocks());
+
+  it('hides the Grading tab for an exam that can never produce a code question', () => {
+    currentExam = { ...mockExam, requiresManualGrading: false };
+    renderPage([], []);
+
+    expect(screen.queryByRole('tab', { name: 'Grading' })).not.toBeInTheDocument();
+  });
+
+  it('shows the Grading tab for an exam that could produce a code question', () => {
+    currentExam = { ...mockExam, requiresManualGrading: true };
+    renderPage([], []);
+
+    expect(screen.getByRole('tab', { name: 'Grading' })).toBeInTheDocument();
   });
 });

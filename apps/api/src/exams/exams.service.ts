@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Exam, ExamSection, ExamSectionQuestion, Prisma, Question, QuestionOption } from '@prisma/client';
+import { Exam, ExamSection, ExamSectionPoolTag, ExamSectionQuestion, Prisma, Question, QuestionOption } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
@@ -13,6 +13,7 @@ import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } fr
 
 type ExamSectionWithQuestions = ExamSection & {
   questions: (ExamSectionQuestion & { question: Question & { options: QuestionOption[] } })[];
+  poolTags?: ExamSectionPoolTag[];
 };
 
 interface ExamFilters {
@@ -173,7 +174,14 @@ export class ExamsService {
   async findOne(
     context: TenantContext,
     id: string,
-  ): Promise<Exam & { sections: ExamSectionWithQuestions[]; invitationCount: number; hasStartedAttempts: boolean }> {
+  ): Promise<
+    Exam & {
+      sections: ExamSectionWithQuestions[];
+      invitationCount: number;
+      hasStartedAttempts: boolean;
+      requiresManualGrading: boolean;
+    }
+  > {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({
         where: { id, organizationId: context.organizationId as string },
@@ -185,6 +193,7 @@ export class ExamsService {
                 orderBy: { orderIndex: 'asc' },
                 include: { question: { include: { options: true } } },
               },
+              poolTags: true,
             },
           },
         },
@@ -194,8 +203,50 @@ export class ExamsService {
       }
       const invitationCount = await tx.invitation.count({ where: { examId: id } });
       const startedAttemptCount = await tx.attempt.count({ where: { examId: id } });
-      return { ...exam, invitationCount, hasStartedAttempts: startedAttemptCount > 0 };
+      const requiresManualGrading = await this.computeRequiresManualGrading(tx, context, exam);
+      return { ...exam, invitationCount, hasStartedAttempts: startedAttemptCount > 0, requiresManualGrading };
     });
+  }
+
+  // Grading is only ever needed for 'code' questions -- every other type auto-grades
+  // (see AttemptSettlementService.finalize's own hasCodeQuestions check). Fixed
+  // sections are checked directly; a pool section draws randomly at attempt time, so
+  // it's treated as code-capable if any question CURRENTLY matching its filters is
+  // code -- the same AND-tagIds query publish() already uses to validate pool
+  // availability. The trailing pending-grade count covers the one case that check
+  // can miss: a pool's tag composition changed after an attempt already drew a code
+  // question from it, and that attempt is still sitting there waiting to be graded.
+  private async computeRequiresManualGrading(
+    tx: Prisma.TransactionClient,
+    context: TenantContext,
+    exam: { id: string; sections: ExamSectionWithQuestions[] },
+  ): Promise<boolean> {
+    const hasFixedCodeQuestion = exam.sections.some(
+      (section) => section.selectionMode === 'fixed' && section.questions.some((q) => q.question.type === 'code'),
+    );
+    if (hasFixedCodeQuestion) {
+      return true;
+    }
+
+    for (const section of exam.sections) {
+      if (section.selectionMode !== 'pool') continue;
+      const tagIds = (section.poolTags ?? []).map((poolTag) => poolTag.tagId);
+      const codeMatchCount = await tx.question.count({
+        where: {
+          organizationId: context.organizationId as string,
+          status: 'active',
+          type: 'code',
+          ...(section.poolDifficulty ? { difficulty: section.poolDifficulty } : {}),
+          AND: tagIds.map((tagId) => ({ tags: { some: { tagId } } })),
+        },
+      });
+      if (codeMatchCount > 0) {
+        return true;
+      }
+    }
+
+    const pendingGradeCount = await tx.attempt.count({ where: { examId: exam.id, status: 'pending_manual_grade' } });
+    return pendingGradeCount > 0;
   }
 
   // The exam locks the moment any candidate has actually started it -- title, scheduling,

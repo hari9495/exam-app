@@ -307,6 +307,109 @@ describe('ExamsService', () => {
     expect(tx.attempt.count).toHaveBeenCalledWith({ where: { examId: 'exam-1' } });
   });
 
+  describe('findOne requiresManualGrading', () => {
+    const fixedQuestion = (type: string) => ({ orderIndex: 0, question: { type } });
+
+    it('is false when no section has a code question and there are no pool sections', async () => {
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1',
+            sections: [{ selectionMode: 'fixed', questions: [fixedQuestion('single_mcq'), fixedQuestion('true_false')] }],
+          }),
+        },
+        invitation: { count: jest.fn().mockResolvedValue(0) },
+        attempt: { count: jest.fn().mockResolvedValue(0) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.findOne(context, 'exam-1');
+
+      expect(result.requiresManualGrading).toBe(false);
+    });
+
+    it('is true when a fixed section has at least one code question', async () => {
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1',
+            sections: [{ selectionMode: 'fixed', questions: [fixedQuestion('single_mcq'), fixedQuestion('code')] }],
+          }),
+        },
+        invitation: { count: jest.fn().mockResolvedValue(0) },
+        attempt: { count: jest.fn().mockResolvedValue(0) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.findOne(context, 'exam-1');
+
+      expect(result.requiresManualGrading).toBe(true);
+    });
+
+    it('is true when a pool section currently matches at least one active code question in the bank', async () => {
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1',
+            sections: [{ selectionMode: 'pool', poolDifficulty: 'medium', poolTags: [{ tagId: 'tag-1' }], questions: [] }],
+          }),
+        },
+        invitation: { count: jest.fn().mockResolvedValue(0) },
+        attempt: { count: jest.fn().mockResolvedValue(0) },
+        question: { count: jest.fn().mockResolvedValue(1) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.findOne(context, 'exam-1');
+
+      expect(result.requiresManualGrading).toBe(true);
+      expect(tx.question.count).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ type: 'code', difficulty: 'medium' }) }),
+      );
+    });
+
+    it('is false when a pool section matches no code questions and nothing is pending grade', async () => {
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1',
+            sections: [{ selectionMode: 'pool', poolDifficulty: 'medium', poolTags: [{ tagId: 'tag-1' }], questions: [] }],
+          }),
+        },
+        invitation: { count: jest.fn().mockResolvedValue(0) },
+        attempt: { count: jest.fn().mockResolvedValue(0) },
+        question: { count: jest.fn().mockResolvedValue(0) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.findOne(context, 'exam-1');
+
+      expect(result.requiresManualGrading).toBe(false);
+    });
+
+    it('is true when nothing currently matches code but an attempt is still waiting on manual grading', async () => {
+      // Covers a pool whose tag composition changed after an attempt already drew a
+      // code question from it -- the live match check alone would wrongly hide the tab.
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1',
+            sections: [{ selectionMode: 'pool', poolDifficulty: 'medium', poolTags: [{ tagId: 'tag-1' }], questions: [] }],
+          }),
+        },
+        invitation: { count: jest.fn().mockResolvedValue(0) },
+        attempt: { count: jest.fn(({ where }) => Promise.resolve(where.status === 'pending_manual_grade' ? 1 : 0)) },
+        question: { count: jest.fn().mockResolvedValue(0) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.findOne(context, 'exam-1');
+
+      expect(result.requiresManualGrading).toBe(true);
+      expect(result.hasStartedAttempts).toBe(false);
+    });
+  });
+
   it("updates an exam's title and instructions", async () => {
     const tx = {
       exam: {
