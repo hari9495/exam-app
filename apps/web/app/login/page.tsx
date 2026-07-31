@@ -91,7 +91,7 @@ export default function LoginPage() {
   return (
     <MotionConfig reducedMotion="user">
       <AuthPageLayout
-        title="Staff login"
+        title="Staff Login"
         logoUrl={branding?.logoUrl}
         panelHeading="Automate early screens."
         panelCopy="Focus human judgment on what matters. Prudent Hire runs the first round end to end, so your panel only meets the candidates worth meeting."
