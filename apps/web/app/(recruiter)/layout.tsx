@@ -83,7 +83,8 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
   return (
     <MotionConfig reducedMotion="user">
     <div style={themeStyle} className="flex min-h-screen">
-      <nav className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r border-recruiter-border bg-white">
+      {/* print:hidden so a printed exam preview doesn't carry the sidebar. */}
+      <nav className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r border-recruiter-border bg-white print:hidden">
         <div className="flex items-center gap-2 border-b border-recruiter-border px-4 py-4">
           {branding?.logoUrl ? (
             <img src={branding.logoUrl} alt="Organization logo" className="max-h-7 max-w-7 rounded" />

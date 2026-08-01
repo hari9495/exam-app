@@ -2,9 +2,10 @@
 
 import { useMemo } from 'react';
 import { useParams } from 'next/navigation';
+import { Printer } from 'lucide-react';
 import { useExam } from '../../../../../lib/hooks/useExams';
 import { useQuestions } from '../../../../../lib/hooks/useQuestions';
-import { Card } from '../../../../../components/ui';
+import { Card, Button } from '../../../../../components/ui';
 import { BackLink } from '../../../../../components/BackLink';
 import type { Question } from '../../../../../lib/types';
 
@@ -38,8 +39,14 @@ export default function PreviewPage() {
     // Widened, but still capped and centred: this is a read-through of question text, and
     // full-bleed prose across a 2560px screen is harder to review, not easier.
     <div className="mx-auto max-w-4xl xl:max-w-5xl 2xl:max-w-6xl">
-      <BackLink href={`/exams/${exam.id}/edit`} label="Back To Exam" />
-      <h1 className="mb-2 text-2xl font-semibold text-recruiter-text">{exam.title}</h1>
+      <BackLink href={`/exams/${exam.id}/edit`} label="Back To Exam" className="print:hidden" />
+      <div className="mb-2 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold text-recruiter-text">{exam.title}</h1>
+        <Button variant="secondary" onClick={() => window.print()} className="inline-flex items-center print:hidden">
+          <Printer size={16} className="mr-1.5" />
+          Print
+        </Button>
+      </div>
       {exam.instructions && <p className="mb-6 text-sm text-recruiter-text-secondary">{exam.instructions}</p>}
       <div className="flex flex-col gap-6">
         {exam.sections

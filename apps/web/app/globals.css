@@ -6,3 +6,12 @@
   --color-primary: #0057f0;
   --color-accent: #fbbc04;
 }
+
+/* Printed output should match what's on screen -- badge colors, code-block
+   backgrounds, etc. -- not the browser's default "skip backgrounds" behavior. */
+@media print {
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import PreviewPage from './page';
 import { AuthProvider } from '../../../../../lib/auth-context';
 import { QueryProvider } from '../../../../../lib/query-provider';
@@ -91,6 +92,49 @@ describe('Exam preview page', () => {
     expect(screen.getByText('4')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /3|4/ })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /back to exam/i })).toHaveAttribute('href', '/exams/exam-1/edit');
+  });
+
+  it('prints the page when the Print button is clicked', async () => {
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/exams/exam-1')) {
+        return new Response(
+          JSON.stringify({
+            id: 'exam-1',
+            title: 'Backend Round',
+            instructions: null,
+            status: 'draft',
+            durationMinutes: 60,
+            passCriteriaPercent: 40,
+            randomizeOrder: false,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            sections: [],
+          }),
+          { status: 200 },
+        );
+      }
+      if (String(url).includes('/questions')) {
+        return new Response(JSON.stringify({ data: [], total: 0, page: 1, pageSize: 100, totalPages: 1 }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+    const printSpy = jest.fn();
+    window.print = printSpy;
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <PreviewPage />
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Backend Round')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: /print/i }));
+
+    expect(printSpy).toHaveBeenCalledTimes(1);
   });
 
   it('summarizes a pool-mode section instead of listing every pool question', async () => {
