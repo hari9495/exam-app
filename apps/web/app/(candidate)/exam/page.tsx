@@ -20,6 +20,7 @@ import { useCountdown } from '../../../lib/hooks/useCountdown';
 import { useEditorTelemetry } from '../../../lib/hooks/useEditorTelemetry';
 import { useProctoringMonitor } from '../../../lib/hooks/useProctoringMonitor';
 import { useScreenCapture } from '../../../lib/hooks/useScreenCapture';
+import { usePeriodicScreenAnalysis } from '../../../lib/hooks/usePeriodicScreenAnalysis';
 import { useWebcamMonitor } from '../../../lib/hooks/useWebcamMonitor';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
 import { AttemptAnswerSummary, isAttemptStarted } from '../../../lib/types';
@@ -136,6 +137,11 @@ export default function CandidateExamPage() {
     }
     postShareInactive('absent');
   }, [captureEnabled, screenCapture.active]);
+
+  // Remote-access detection: while the attempt is live and a share is active, periodically
+  // send a frame of the shared monitor for server-side AI analysis (AnyDesk/TeamViewer/etc.
+  // UI is visible on the monitor even though the browser can't see other processes).
+  usePeriodicScreenAnalysis(started && captureEnabled && screenCapture.active, screenCapture.capture);
 
   const [isRequestingShare, setIsRequestingShare] = useState(false);
   async function handleShareScreen() {

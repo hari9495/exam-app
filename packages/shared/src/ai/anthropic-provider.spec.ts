@@ -46,6 +46,47 @@ describe('AnthropicProvider', () => {
     expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-sonnet-5' }));
   });
 
+  it('sends images as base64 blocks ahead of the prompt text', async () => {
+    mockCreate.mockResolvedValue({ content: [{ type: 'tool_use', name: 'report_thing', input: { value: 'seen' } }] });
+    const provider = new AnthropicProvider('sk-ant-test');
+
+    await provider.generateStructured({
+      modelTier: 'fast',
+      maxTokens: 512,
+      prompt: 'What is in this image?',
+      images: ['data:image/jpeg;base64,Zm9v'],
+      tool,
+    });
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'Zm9v' } },
+              { type: 'text', text: 'What is in this image?' },
+            ],
+          },
+        ],
+      }),
+    );
+  });
+
+  it('rejects an image that is not a base64 data URI', async () => {
+    const provider = new AnthropicProvider('sk-ant-test');
+
+    await expect(
+      provider.generateStructured({
+        modelTier: 'fast',
+        maxTokens: 512,
+        prompt: 'x',
+        images: ['https://example.com/img.jpg'],
+        tool,
+      }),
+    ).rejects.toThrow('Image must be a base64 data URI');
+  });
+
   it('throws when the response contains no tool_use block', async () => {
     mockCreate.mockResolvedValue({ content: [{ type: 'text', text: 'I refuse.' }] });
     const provider = new AnthropicProvider('sk-ant-test');

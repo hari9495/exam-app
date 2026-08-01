@@ -153,6 +153,18 @@ export function useReportProctoringEvent() {
   };
 }
 
+// Periodic AI screen analysis (remote-access detection). Best-effort: no retry -- the next
+// scheduled tick is the retry -- and no cache invalidation, since the response carries no
+// attempt state the UI renders.
+export function useScreenAnalysis() {
+  const { accessToken } = useCandidateAuth();
+  return useMutation({
+    mutationFn: ({ screenshot }: { screenshot: string }): Promise<{ status: 'flagged' | 'clear' | 'skipped' }> =>
+      candidateApiFetch('/attempt/screen-analysis', { method: 'POST', body: JSON.stringify({ screenshot }) }, accessToken ?? undefined),
+    retry: false,
+  });
+}
+
 export function useScreenShareState() {
   const { accessToken } = useCandidateAuth();
   const queryClient = useQueryClient();

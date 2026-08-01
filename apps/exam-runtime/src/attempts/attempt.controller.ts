@@ -13,6 +13,7 @@ import { RunCodeDto } from './dto/run-code.dto';
 import { WebcamViolationDto } from './dto/webcam-violation.dto';
 import { WebcamSnapshotDto } from './dto/webcam-snapshot.dto';
 import { ScreenShareStateDto } from './dto/screen-share-state.dto';
+import { ScreenAnalysisDto } from './dto/screen-analysis.dto';
 import { MODERATE_ATTEMPT_THROTTLE, STRICT_CODE_RUN_THROTTLE } from '../rate-limit-tiers';
 
 @Controller('attempt')
@@ -72,6 +73,12 @@ export class AttemptController {
   @Throttle(MODERATE_ATTEMPT_THROTTLE)
   screenShareState(@CurrentCandidate() candidate: CandidateSession, @Body() dto: ScreenShareStateDto) {
     return this.attemptService.screenShareState(candidate, dto);
+  }
+
+  @Post('screen-analysis')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  screenAnalysis(@CurrentCandidate() candidate: CandidateSession, @Body() dto: ScreenAnalysisDto) {
+    return this.attemptService.analyzeScreenCapture(candidate, dto);
   }
 
   @Get('leaderboard')

@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { BadRequestException, ForbiddenException, HttpException, HttpStatus, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { AttemptService } from './attempt.service';
-import { TenantPrismaService, AuditService, BlobStorageService, POOL_EXHAUSTED_RESPONSE } from '@exam-platform/shared';
+import { TenantPrismaService, AuditService, BlobStorageService, AiApiKeyResolverService, POOL_EXHAUSTED_RESPONSE } from '@exam-platform/shared';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { LeaderboardService } from '../leaderboard/leaderboard.service';
@@ -36,6 +36,8 @@ describe('AttemptService', () => {
   let leaderboardService: { computeRecruiterView: jest.Mock; computeCandidateView: jest.Mock };
   let audit: { record: jest.Mock };
   let blobStorage: { upload: jest.Mock; uploadDataUri: jest.Mock; signIfOurs: jest.Mock };
+  let aiApiKeyResolver: { resolve: jest.Mock };
+  let generateStructured: jest.Mock;
   const session = { invitationId: 'inv-1' };
   const exam = {
     id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false,
@@ -68,6 +70,8 @@ describe('AttemptService', () => {
       uploadDataUri: jest.fn().mockImplementation((path, dataUri) => Promise.resolve(`https://blob.test/${path}`)),
       signIfOurs: jest.fn(async (value: unknown) => value),
     };
+    generateStructured = jest.fn();
+    aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue({ generateStructured, ping: jest.fn() }) };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -81,6 +85,7 @@ describe('AttemptService', () => {
         { provide: LeaderboardService, useValue: leaderboardService },
         { provide: AuditService, useValue: audit },
         { provide: BlobStorageService, useValue: blobStorage },
+        { provide: AiApiKeyResolverService, useValue: aiApiKeyResolver },
       ],
     }).compile();
     service = moduleRef.get(AttemptService);
@@ -3196,6 +3201,112 @@ describe('AttemptService', () => {
       expect(tx.attempt.update).toHaveBeenNthCalledWith(2, { where: { id: 'attempt-1' }, data: { status: 'paused', pausedAt: expect.any(Date), pausedReason: 'screen_share' } });
       expect(monitoringGateway.emitAttemptStatus).toHaveBeenCalledWith('exam-1', { attemptId: 'attempt-1', candidateId: 'cand-1', status: 'paused' });
       expect(result).toEqual({ status: 'paused' });
+    });
+  });
+  describe('analyzeScreenCapture', () => {
+    const SHOT = 'data:image/jpeg;base64,Zm9v';
+    const examWithCapture = { ...exam, screenCaptureEnabled: true };
+    const invitationWithCapture = { ...invitationRecord, exam: examWithCapture };
+    const attemptFixture = () => ({
+      id: 'attempt-1', status: 'in_progress', screenCaptureCount: 0,
+      proctoringBypassedAt: null, proctoringBypassRevokedAt: null,
+    });
+
+    function scopedTxFor(attempt: unknown) {
+      return {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt), update: jest.fn().mockResolvedValue({}) },
+        aiCreditUsage: { create: jest.fn().mockResolvedValue({}) },
+        proctoringEvent: {
+          create: jest.fn().mockImplementation(({ data }) =>
+            Promise.resolve({ id: 'event-1', occurredAt: new Date(), ...data }),
+          ),
+        },
+      };
+    }
+
+    function mockBootstrapThenAllScoped(scopedTx: unknown, invitation: unknown = invitationWithCapture) {
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve(invitation))
+        .mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(scopedTx));
+    }
+
+    it('skips without calling the AI when screen capture is not enabled on the exam', async () => {
+      const tx = scopedTxFor(attemptFixture());
+      mockBootstrapThenAllScoped(tx, invitationRecord); // exam without screenCaptureEnabled
+
+      const result = await service.analyzeScreenCapture(session, { screenshot: SHOT });
+
+      expect(result).toEqual({ status: 'skipped' });
+      expect(aiApiKeyResolver.resolve).not.toHaveBeenCalled();
+      expect(tx.proctoringEvent.create).not.toHaveBeenCalled();
+    });
+
+    it('skips when the org has no AI configured (resolver throws), without recording an event or credit', async () => {
+      aiApiKeyResolver.resolve.mockRejectedValue(new Error('No AI API key configured'));
+      const tx = scopedTxFor(attemptFixture());
+      mockBootstrapThenAllScoped(tx);
+
+      const result = await service.analyzeScreenCapture(session, { screenshot: SHOT });
+
+      expect(result).toEqual({ status: 'skipped' });
+      expect(tx.aiCreditUsage.create).not.toHaveBeenCalled();
+      expect(tx.proctoringEvent.create).not.toHaveBeenCalled();
+    });
+
+    it('returns clear (and bills one credit) when the model sees no remote-access UI', async () => {
+      generateStructured.mockResolvedValue({ remoteAccessVisible: false, toolName: 'none', reasoning: 'clean' });
+      const tx = scopedTxFor(attemptFixture());
+      mockBootstrapThenAllScoped(tx);
+
+      const result = await service.analyzeScreenCapture(session, { screenshot: SHOT });
+
+      expect(result).toEqual({ status: 'clear' });
+      expect(generateStructured).toHaveBeenCalledWith(expect.objectContaining({ images: [SHOT], modelTier: 'fast' }));
+      expect(tx.aiCreditUsage.create).toHaveBeenCalledWith({
+        data: { organizationId: 'org-1', source: 'screen_analysis', credits: 1, sourceId: 'attempt-1' },
+      });
+      expect(tx.proctoringEvent.create).not.toHaveBeenCalled();
+      expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
+    });
+
+    it('uploads the screenshot and records a high-severity remote_access_suspected event when flagged', async () => {
+      generateStructured.mockResolvedValue({ remoteAccessVisible: true, toolName: 'AnyDesk', reasoning: 'AnyDesk toolbar top-right' });
+      const tx = scopedTxFor(attemptFixture());
+      mockBootstrapThenAllScoped(tx);
+
+      const result = await service.analyzeScreenCapture(session, { screenshot: SHOT });
+
+      expect(result).toEqual({ status: 'flagged' });
+      expect(blobStorage.uploadDataUri).toHaveBeenCalledWith(expect.stringContaining('screen-captures/attempt-1-'), SHOT);
+      const created = tx.proctoringEvent.create.mock.calls[0][0].data;
+      expect(created.eventType).toBe('remote_access_suspected');
+      expect(created.severity).toBe('high');
+      const metadata = JSON.parse(created.metadataJson);
+      expect(metadata.toolName).toBe('AnyDesk');
+      expect(metadata.screenshot).toContain('screen-captures/attempt-1-');
+      expect(monitoringGateway.emitProctoringFlag).toHaveBeenCalledWith(
+        'exam-1',
+        expect.objectContaining({ attemptId: 'attempt-1', eventType: 'remote_access_suspected', severity: 'high' }),
+      );
+      // The stored image counts against the same server-authoritative cap as violation captures.
+      expect(tx.attempt.update).toHaveBeenCalledWith({
+        where: { id: 'attempt-1' },
+        data: { screenCaptureCount: { increment: 1 } },
+      });
+    });
+
+    it('enforces the server-side minimum interval between analyses of the same attempt', async () => {
+      generateStructured.mockResolvedValue({ remoteAccessVisible: false, toolName: 'none', reasoning: 'clean' });
+      const tx = scopedTxFor(attemptFixture());
+      mockBootstrapThenAllScoped(tx);
+
+      await service.analyzeScreenCapture(session, { screenshot: SHOT });
+      tenantPrisma.forTenant.mockReset();
+      mockBootstrapThenAllScoped(tx);
+      const second = await service.analyzeScreenCapture(session, { screenshot: SHOT });
+
+      expect(second).toEqual({ status: 'skipped' });
+      expect(generateStructured).toHaveBeenCalledTimes(1);
     });
   });
 });

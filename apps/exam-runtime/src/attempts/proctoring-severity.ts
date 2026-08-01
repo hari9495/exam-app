@@ -20,6 +20,9 @@ const SEVERITY_BY_EVENT_TYPE: Record<string, Severity> = {
   dev_tools_detected: 'high',
   multi_login: 'high',
   multi_monitor_detected: 'high',
+  // Server-generated only (AI screen analysis) -- deliberately NOT client-reportable and NOT
+  // strike-worthy: an AI false positive must flag for recruiter review, never auto-punish.
+  remote_access_suspected: 'high',
   screen_share_stopped: 'high',
   tab_switch: 'medium',
   fullscreen_exit: 'medium',

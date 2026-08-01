@@ -22,6 +22,7 @@ jest.mock('../../../lib/hooks/useAttempt', () => ({
   useCodeLanguages: jest.fn(),
   useReportProctoringEvent: jest.fn(() => jest.fn()),
   useScreenShareState: jest.fn(),
+  useScreenAnalysis: jest.fn(() => ({ mutate: jest.fn() })),
 }));
 jest.mock('../../../lib/hooks/useScreenCapture', () => ({ useScreenCapture: jest.fn() }));
 

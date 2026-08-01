@@ -56,6 +56,35 @@ describe('OpenAiCompatibleProvider', () => {
     expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ model: 'gpt-standard' }));
   });
 
+  it('sends images as image_url parts ahead of the prompt text', async () => {
+    mockCreate.mockResolvedValue({
+      choices: [{ message: { tool_calls: [{ function: { name: 'report_thing', arguments: '{"value":"seen"}' } }] } }],
+    });
+    const provider = new OpenAiCompatibleProvider('azure-key', 'https://example.openai.azure.com/openai/v1', 'gpt-fast', 'gpt-standard');
+
+    await provider.generateStructured({
+      modelTier: 'fast',
+      maxTokens: 512,
+      prompt: 'What is in this image?',
+      images: ['data:image/jpeg;base64,Zm9v'],
+      tool,
+    });
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,Zm9v' } },
+              { type: 'text', text: 'What is in this image?' },
+            ],
+          },
+        ],
+      }),
+    );
+  });
+
   it('throws when the response contains no matching tool call', async () => {
     mockCreate.mockResolvedValue({ choices: [{ message: { tool_calls: [] } }] });
     const provider = new OpenAiCompatibleProvider('azure-key', 'https://example.openai.azure.com/openai/v1', 'gpt-fast', 'gpt-standard');

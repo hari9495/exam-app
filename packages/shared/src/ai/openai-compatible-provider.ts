@@ -46,7 +46,18 @@ export class OpenAiCompatibleProvider implements AiProvider {
       ...tokenParams(model, request.maxTokens),
       tools: [{ type: 'function', function: { name: request.tool.name, description: request.tool.description, parameters: request.tool.schema } }],
       tool_choice: { type: 'function', function: { name: request.tool.name } },
-      messages: [{ role: 'user', content: request.prompt }],
+      // OpenAI's image_url parts accept data URIs directly, so no decode step is needed here.
+      messages: [
+        {
+          role: 'user',
+          content: request.images?.length
+            ? [
+                ...request.images.map((image) => ({ type: 'image_url' as const, image_url: { url: image } })),
+                { type: 'text' as const, text: request.prompt },
+              ]
+            : request.prompt,
+        },
+      ],
     });
 
     const toolCall = response.choices[0]?.message?.tool_calls?.[0];

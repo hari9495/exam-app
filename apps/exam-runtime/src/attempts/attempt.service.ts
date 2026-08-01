@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Attempt, Prisma } from '@prisma/client';
-import { TenantPrismaService, AuditService, isIpAllowed, BlobStorageService } from '@exam-platform/shared';
+import { TenantPrismaService, AuditService, isIpAllowed, BlobStorageService, AiApiKeyResolverService } from '@exam-platform/shared';
 import { AttemptSettlementService, PauseReason, SettlementExam } from '../grading/attempt-settlement.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { LeaderboardService, AUTO_GRADABLE_QUESTION_TYPES, CandidateLeaderboardResponse } from '../leaderboard/leaderboard.service';
@@ -19,6 +19,7 @@ import { RunCodeDto } from './dto/run-code.dto';
 import { WebcamViolationDto } from './dto/webcam-violation.dto';
 import { WebcamSnapshotDto } from './dto/webcam-snapshot.dto';
 import { ScreenShareStateDto } from './dto/screen-share-state.dto';
+import { ScreenAnalysisDto } from './dto/screen-analysis.dto';
 import { sanitizeMetadataOrDrop } from './sanitize-metadata';
 
 interface AttemptQuestionOption {
@@ -151,6 +152,33 @@ const SCREENSHOT_UPLOAD_TIMEOUT_MS = 3000;
 // useScreenCapture.ts, which is a separate, non-authoritative politeness limit.
 const MAX_SCREEN_CAPTURES = 150;
 
+// Server-authoritative floor between AI screen analyses per attempt. The client aims for ~75s;
+// this guard is what actually bounds AI spend against a tampered client hammering the endpoint.
+const SCREEN_ANALYSIS_MIN_INTERVAL_MS = 60_000;
+
+const SCREEN_ANALYSIS_PROMPT =
+  'This is a screenshot of an exam candidate\'s entire shared monitor during a proctored online exam. ' +
+  'Determine whether any remote-access or remote-control software UI is visible: AnyDesk, TeamViewer, ' +
+  'Chrome Remote Desktop, RustDesk, Zoom/Teams/Meet screen-sharing or remote-control bars or borders, ' +
+  'VNC, or any other indication that this machine is being viewed or controlled remotely. The exam page ' +
+  'itself asks the candidate to share their screen with the exam platform -- the browser\'s own ' +
+  '"sharing this screen" bar for the exam tab alone is expected and must NOT be flagged. ' +
+  'Only flag genuine third-party remote-access indicators.';
+
+const SCREEN_ANALYSIS_TOOL = {
+  name: 'report_screen_analysis',
+  description: 'Report whether remote-access software is visible in the screenshot.',
+  schema: {
+    type: 'object' as const,
+    properties: {
+      remoteAccessVisible: { type: 'boolean', description: 'True only if third-party remote-access/control UI is visible.' },
+      toolName: { type: 'string', description: 'Name of the tool detected, or "unknown".' },
+      reasoning: { type: 'string', description: 'One sentence: what is visible and where.' },
+    },
+    required: ['remoteAccessVisible', 'toolName', 'reasoning'],
+  },
+};
+
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer!: ReturnType<typeof setTimeout>;
   const timeout = new Promise<never>((_, reject) => {
@@ -173,7 +201,12 @@ export class AttemptService {
     private readonly leaderboardService: LeaderboardService,
     private readonly audit: AuditService,
     private readonly blobStorage: BlobStorageService,
+    private readonly aiApiKeyResolver: AiApiKeyResolverService,
   ) {}
+
+  // ponytail: in-memory per-attempt floor between AI screen analyses -- single pm2 process, so a
+  // Map is enough; move to a DB column or Redis if the runtime ever runs multi-instance.
+  private readonly lastScreenAnalysisAt = new Map<string, number>();
 
   async getCurrent(session: CandidateSession): Promise<AttemptCurrentResponse> {
     const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
@@ -817,6 +850,97 @@ export class AttemptService {
       this.logger.error('Failed to increment screenCaptureCount after a successful screen-capture upload', error as Error);
     }
     return { screenshot: screenshotUrl };
+  }
+
+  // Periodic AI check of the candidate's shared monitor for remote-access tool UI (AnyDesk,
+  // TeamViewer, Zoom remote control, ...). A browser cannot see other processes, so this vision
+  // pass over the already-mandatory full-monitor share is the only browser-side signal we have
+  // for a helper remotely viewing/controlling the machine. Flags are evidence for recruiter
+  // review -- high severity, never a strike/auto-block, because a vision-model false positive
+  // must not end a live attempt.
+  async analyzeScreenCapture(session: CandidateSession, dto: ScreenAnalysisDto): Promise<{ status: 'flagged' | 'clear' | 'skipped' }> {
+    const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
+    const context = { organizationId, isSuperAdmin: false };
+
+    // Phase 1: cheap in-tx read, server-authoritative gates only. No network I/O in here.
+    const phase1 = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
+      if (!attempt) {
+        throw new NotFoundException('No attempt has been started');
+      }
+      const proctoring = resolveProctoringConfig(exam, attempt);
+      if (!proctoring.screenCaptureEnabled || attempt.status !== 'in_progress') {
+        return null;
+      }
+      return attempt;
+    });
+    if (!phase1) {
+      return { status: 'skipped' };
+    }
+
+    const now = Date.now();
+    if (now - (this.lastScreenAnalysisAt.get(phase1.id) ?? 0) < SCREEN_ANALYSIS_MIN_INTERVAL_MS) {
+      return { status: 'skipped' };
+    }
+    this.lastScreenAnalysisAt.set(phase1.id, now);
+
+    // The AI call runs with no transaction open, same rule as every upload in this file. An org
+    // without AI configured (resolve throws) or a failed/slow model call just skips -- periodic
+    // analysis is best-effort, the violation-triggered capture pipeline is unaffected.
+    let flagged: { toolName: string; reasoning: string } | null = null;
+    try {
+      const aiProvider = await this.aiApiKeyResolver.resolve(organizationId);
+      const verdict = await aiProvider.generateStructured({
+        modelTier: 'fast',
+        maxTokens: 300,
+        prompt: SCREEN_ANALYSIS_PROMPT,
+        images: [dto.screenshot],
+        tool: SCREEN_ANALYSIS_TOOL,
+      });
+      if (verdict.remoteAccessVisible === true) {
+        flagged = { toolName: String(verdict.toolName ?? 'unknown'), reasoning: String(verdict.reasoning ?? '') };
+      }
+    } catch (error) {
+      this.logger.warn(`Screen analysis skipped for attempt ${phase1.id}: ${(error as Error).message}`);
+      return { status: 'skipped' };
+    }
+
+    // Same ledger the other AI features write -- one credit per analysis call, billed whether or
+    // not it flags (the spend happened either way).
+    await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.aiCreditUsage.create({ data: { organizationId, source: 'screen_analysis', credits: 1, sourceId: phase1.id } }),
+    );
+
+    if (!flagged) {
+      return { status: 'clear' };
+    }
+
+    // Flagged: persist the evidence via the same decide / upload / commit split as every other
+    // capture site (see ADO #6810). Cap-aware -- a capped attempt still gets the event, just
+    // without a stored image.
+    const decision = this.decideScreenCapture(phase1, dto.screenshot, true);
+    const screenshotUrl = decision.shouldUpload ? await this.uploadScreenCapture(phase1.id, dto.screenshot) : undefined;
+
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const serverMetadata = await this.commitScreenCapture(tx, phase1.id, decision, screenshotUrl);
+      const metadata = { ...serverMetadata, toolName: flagged.toolName, reasoning: flagged.reasoning };
+      const event = await tx.proctoringEvent.create({
+        data: {
+          attemptId: phase1.id,
+          eventType: 'remote_access_suspected',
+          severity: getProctoringEventSeverity('remote_access_suspected'),
+          metadataJson: JSON.stringify(metadata),
+        },
+      });
+      this.monitoringGateway.emitProctoringFlag(exam.id, {
+        attemptId: phase1.id,
+        candidateId: invitation.candidateId,
+        eventType: event.eventType,
+        severity: event.severity,
+        occurredAt: event.occurredAt,
+      });
+      return { status: 'flagged' as const };
+    });
   }
 
   async webcamSnapshot(session: CandidateSession, dto: WebcamSnapshotDto): Promise<{ ok: true }> {
