@@ -73,7 +73,10 @@ export default function PreviewPage() {
 
 function PreviewQuestion({ question, index }: { question: Question; index: number }) {
   return (
-    <Card>
+    // break-inside-avoid keeps a question's text and options together when the browser
+    // paginates for print/PDF -- without it a long question splits across two pages
+    // wherever it happens to cross the page boundary.
+    <Card className="break-inside-avoid">
       <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary">
         Q{index + 1} · {QUESTION_TYPE_LABEL[question.type]} · {question.marks} marks
       </span>
