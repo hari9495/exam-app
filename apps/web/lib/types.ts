@@ -103,7 +103,10 @@ export interface ExamSection {
   poolSize: number | null;
   poolDifficulty: Difficulty | null;
   targetDurationMinutes: number | null;
-  questions: { questionId: string; question?: { text: string; marks: number; type: QuestionType; difficulty: Difficulty } }[];
+  // The exam detail endpoint embeds the full question (options included), not
+  // just a summary -- widened to match so callers like the exam preview page
+  // don't need a second, separately-filtered fetch to render a question.
+  questions: { questionId: string; question?: Question }[];
 }
 
 export type FeedbackVisibility = 'none' | 'pass_fail' | 'score' | 'breakdown';

@@ -63,15 +63,12 @@ describe('Exam preview page', () => {
                 poolSize: null,
                 poolDifficulty: null,
                 targetDurationMinutes: null,
-                questions: [{ questionId: 'q-1' }],
+                questions: [{ questionId: 'q-1', question: QUESTION }],
               },
             ],
           }),
           { status: 200 },
         );
-      }
-      if (String(url).includes('/questions')) {
-        return new Response(JSON.stringify({ data: [QUESTION], total: 1, page: 1, pageSize: 100, totalPages: 1 }), { status: 200 });
       }
       return new Response(JSON.stringify({}), { status: 200 });
     }) as unknown as typeof fetch;
@@ -94,6 +91,53 @@ describe('Exam preview page', () => {
     expect(screen.getByRole('link', { name: /back to exam/i })).toHaveAttribute('href', '/exams/exam-1/edit');
   });
 
+  it('shows a question even if it has since been archived in the Question Bank -- the section already carries it', async () => {
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/exams/exam-1')) {
+        return new Response(
+          JSON.stringify({
+            id: 'exam-1',
+            title: 'Backend Round',
+            instructions: null,
+            status: 'draft',
+            durationMinutes: 60,
+            passCriteriaPercent: 40,
+            randomizeOrder: false,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            sections: [
+              {
+                id: 's-1',
+                examId: 'exam-1',
+                title: 'Section One',
+                orderIndex: 0,
+                selectionMode: 'fixed',
+                poolSize: null,
+                poolDifficulty: null,
+                targetDurationMinutes: null,
+                questions: [{ questionId: 'q-1', question: { ...QUESTION, status: 'archived' } }],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <PreviewPage />
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('What is 2 + 2?')).toBeInTheDocument());
+  });
+
   it('prints the page when the Print button is clicked', async () => {
     global.fetch = jest.fn(async (url) => {
       if (String(url).endsWith('/auth/refresh')) {
@@ -114,9 +158,6 @@ describe('Exam preview page', () => {
           }),
           { status: 200 },
         );
-      }
-      if (String(url).includes('/questions')) {
-        return new Response(JSON.stringify({ data: [], total: 0, page: 1, pageSize: 100, totalPages: 1 }), { status: 200 });
       }
       return new Response(JSON.stringify({}), { status: 200 });
     }) as unknown as typeof fetch;
@@ -169,9 +210,6 @@ describe('Exam preview page', () => {
           }),
           { status: 200 },
         );
-      }
-      if (String(url).includes('/questions')) {
-        return new Response(JSON.stringify({ data: [QUESTION], total: 1, page: 1, pageSize: 100, totalPages: 1 }), { status: 200 });
       }
       return new Response(JSON.stringify({}), { status: 200 });
     }) as unknown as typeof fetch;

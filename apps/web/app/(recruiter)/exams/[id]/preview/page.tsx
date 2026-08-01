@@ -1,10 +1,8 @@
 'use client';
 
-import { useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { Printer } from 'lucide-react';
 import { useExam } from '../../../../../lib/hooks/useExams';
-import { useQuestions } from '../../../../../lib/hooks/useQuestions';
 import { Card, Button } from '../../../../../components/ui';
 import { BackLink } from '../../../../../components/BackLink';
 import type { Question } from '../../../../../lib/types';
@@ -19,16 +17,6 @@ const QUESTION_TYPE_LABEL: Record<Question['type'], string> = {
 export default function PreviewPage() {
   const params = useParams<{ id: string }>();
   const { data: exam } = useExam(params.id);
-  // ponytail: mirrors SectionQuestionPicker's pageSize:100 workaround -- no
-  // fetch-by-ids endpoint exists yet, so orgs with >100 active questions can
-  // silently miss some in preview. Same upgrade path as that component.
-  const { data: questionsResponse } = useQuestions({ pageSize: 100 });
-
-  const questionsById = useMemo(() => {
-    const map = new Map<string, Question>();
-    (questionsResponse?.data ?? []).forEach((question) => map.set(question.id, question));
-    return map;
-  }, [questionsResponse]);
 
   if (!exam) {
     return <p className="text-sm text-gray-500">Loading…</p>;
@@ -68,10 +56,13 @@ export default function PreviewPage() {
                   <p className="text-sm text-recruiter-text-secondary">No questions added to this section yet.</p>
                 </Card>
               ) : (
-                section.questions.map(({ questionId }, index) => {
-                  const question = questionsById.get(questionId);
-                  return question ? <PreviewQuestion key={questionId} question={question} index={index} /> : null;
-                })
+                // question comes straight off the exam's own section data (the same
+                // source the Sections & Questions tab uses), not a separate, status-
+                // filtered Question Bank fetch -- so an archived question attached to
+                // a section still shows here instead of silently vanishing.
+                section.questions.map(({ questionId, question }, index) =>
+                  question ? <PreviewQuestion key={questionId} question={question} index={index} /> : null,
+                )
               )}
             </div>
           ))}
