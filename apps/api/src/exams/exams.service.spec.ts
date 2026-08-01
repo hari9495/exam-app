@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { ExamsService } from './exams.service';
-import { TenantPrismaService, AuditService } from '@exam-platform/shared';
+import { TenantPrismaService, AuditService, BlobStorageService } from '@exam-platform/shared';
 import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
 
 describe('ExamsService', () => {
@@ -9,18 +9,23 @@ describe('ExamsService', () => {
   let tenantPrisma: { forTenant: jest.Mock };
   let examRuntime: { settleIfExpiredBatch: jest.Mock };
   let audit: { record: jest.Mock };
+  let blobStorage: { signIfOurs: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
     examRuntime = { settleIfExpiredBatch: jest.fn() };
     audit = { record: jest.fn() };
+    // Identity pass-through by default -- signing behaviour itself is covered end
+    // to end in blob-storage.service.spec.ts, same convention as ReportsService.
+    blobStorage = { signIfOurs: jest.fn(async (value) => value) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         ExamsService,
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: ExamRuntimeInternalClient, useValue: examRuntime },
         { provide: AuditService, useValue: audit },
+        { provide: BlobStorageService, useValue: blobStorage },
       ],
     }).compile();
     service = moduleRef.get(ExamsService);
@@ -308,7 +313,7 @@ describe('ExamsService', () => {
   });
 
   describe('findOne requiresManualGrading', () => {
-    const fixedQuestion = (type: string) => ({ orderIndex: 0, question: { type } });
+    const fixedQuestion = (type: string) => ({ orderIndex: 0, question: { type, options: [] } });
 
     it('is false when no section has a code question and there are no pool sections', async () => {
       const tx = {
@@ -1281,8 +1286,8 @@ describe('ExamsService', () => {
     const updatedSection = {
       id: 'section-1',
       questions: [
-        { questionId: 'q1', orderIndex: 0, question: { id: 'q1', options: [] } },
-        { questionId: 'q2', orderIndex: 1, question: { id: 'q2', options: [] } },
+        { questionId: 'q1', orderIndex: 0, question: { id: 'q1', imageUrl: null, options: [] } },
+        { questionId: 'q2', orderIndex: 1, question: { id: 'q2', imageUrl: null, options: [] } },
       ],
     };
     const tx = {

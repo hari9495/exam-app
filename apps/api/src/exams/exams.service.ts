@@ -3,6 +3,7 @@ import { Exam, ExamSection, ExamSectionPoolTag, ExamSectionQuestion, Prisma, Que
 import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
+import { BlobStorageService } from '@exam-platform/shared';
 import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
 import { CreateExamDto } from './dto/create-exam.dto';
 import { UpdateExamDto } from './dto/update-exam.dto';
@@ -79,7 +80,36 @@ export class ExamsService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly examRuntime: ExamRuntimeInternalClient,
     private readonly audit: AuditService,
+    private readonly blobStorage: BlobStorageService,
   ) {}
+
+  // Question/option images sit in the private blob container; the raw stored path
+  // 404s in the browser, so mint a short-lived read SAS on the way out -- same
+  // pattern QuestionsService.toResponse already uses. The exam-detail response
+  // embeds full question records too (for the editor and preview to render
+  // without a second, separately-filtered fetch), so it needs the same signing.
+  private async signSectionQuestionImages(sections: ExamSectionWithQuestions[]): Promise<ExamSectionWithQuestions[]> {
+    return Promise.all(
+      sections.map(async (section) => ({
+        ...section,
+        questions: await Promise.all(
+          section.questions.map(async (sectionQuestion) => ({
+            ...sectionQuestion,
+            question: {
+              ...sectionQuestion.question,
+              imageUrl: (await this.blobStorage.signIfOurs(sectionQuestion.question.imageUrl ?? null)) as string | null,
+              options: await Promise.all(
+                sectionQuestion.question.options.map(async (option) => ({
+                  ...option,
+                  imageUrl: (await this.blobStorage.signIfOurs(option.imageUrl ?? null)) as string | null,
+                })),
+              ),
+            },
+          })),
+        ),
+      })),
+    );
+  }
 
   private resolveSchedulingFields(
     schedulingEnabled: boolean | undefined,
@@ -182,7 +212,7 @@ export class ExamsService {
       requiresManualGrading: boolean;
     }
   > {
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+    const result = await this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({
         where: { id, organizationId: context.organizationId as string },
         include: {
@@ -206,6 +236,11 @@ export class ExamsService {
       const requiresManualGrading = await this.computeRequiresManualGrading(tx, context, exam);
       return { ...exam, invitationCount, hasStartedAttempts: startedAttemptCount > 0, requiresManualGrading };
     });
+    // Signed outside the transaction (an external call to blob storage, not a DB
+    // read) -- same reasoning as the recent fix that moved blob uploads off the
+    // forTenant transaction.
+    const sections = await this.signSectionQuestionImages(result.sections);
+    return { ...result, sections };
   }
 
   // Grading is only ever needed for 'code' questions -- every other type auto-grades
@@ -641,7 +676,7 @@ export class ExamsService {
     sectionId: string,
     questionIds: string[],
   ): Promise<ExamSectionWithQuestions> {
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+    const updatedSection = await this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({ where: { id: examId, organizationId: context.organizationId as string } });
       if (!exam) {
         throw new NotFoundException(`Exam ${examId} not found`);
@@ -690,7 +725,7 @@ export class ExamsService {
         });
       }
 
-      const updatedSection = await tx.examSection.findFirst({
+      const refreshedSection = await tx.examSection.findFirst({
         where: { id: sectionId },
         include: {
           questions: {
@@ -699,8 +734,10 @@ export class ExamsService {
           },
         },
       });
-      return updatedSection as ExamSectionWithQuestions;
+      return refreshedSection as ExamSectionWithQuestions;
     });
+    const [signed] = await this.signSectionQuestionImages([updatedSection]);
+    return signed;
   }
 
   async getResults(context: TenantContext, examId: string): Promise<ExamResultRow[]> {
