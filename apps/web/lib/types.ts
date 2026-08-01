@@ -130,6 +130,7 @@ export interface Exam {
   proctoringStrikeLimit: number;
   disabledProctoringSignalsJson: string | null;
   screenCaptureEnabled: boolean;
+  lockdownRequired: boolean;
   createdAt: string;
   sections: ExamSection[];
   invitationCount: number;
@@ -331,6 +332,7 @@ export interface ExamProctoringConfig {
   strikeLimit: number;
   disabledSignals: string[];
   screenCaptureEnabled: boolean;
+  lockdownRequired: boolean;
 }
 
 export interface AttemptPreview {

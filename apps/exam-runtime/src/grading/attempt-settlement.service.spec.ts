@@ -55,6 +55,7 @@ describe('AttemptSettlementService', () => {
     proctoringStrikeLimit: 3,
     disabledProctoringSignalsJson: null,
     screenCaptureEnabled: false,
+    lockdownRequired: false,
   };
 
   beforeEach(() => {
@@ -1163,6 +1164,7 @@ describe('AttemptSettlementService', () => {
       proctoringStrikeLimit: 2,
       disabledProctoringSignalsJson: null,
       screenCaptureEnabled: false,
+      lockdownRequired: false,
     };
     const warnExam = { ...strictExam, proctoringEnforcement: 'warn', proctoringStrikeLimit: 3 };
 

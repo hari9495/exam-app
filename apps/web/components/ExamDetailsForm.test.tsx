@@ -87,7 +87,7 @@ describe('ExamDetailsForm', () => {
       walkInEnabled: false, allowedIpRange: null, createdAt: '2026-07-01T00:00:00.000Z', sections: [], invitationCount: 0,
       hasStartedAttempts: false, requiresManualGrading: false,
       webcamProctoringEnabled: true, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
-      disabledProctoringSignalsJson: null, screenCaptureEnabled: false,
+      disabledProctoringSignalsJson: null, screenCaptureEnabled: false, lockdownRequired: false,
     };
     render(<ExamDetailsForm initialExam={scheduledExam} onSubmit={jest.fn()} submitLabel="Save" />);
 
@@ -167,7 +167,7 @@ describe('ExamDetailsForm', () => {
       allowedIpRange: '203.0.113.0/24', createdAt: '2026-07-01T00:00:00.000Z', sections: [], invitationCount: 0,
       hasStartedAttempts: false, requiresManualGrading: false,
       webcamProctoringEnabled: true, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
-      disabledProctoringSignalsJson: null, screenCaptureEnabled: false,
+      disabledProctoringSignalsJson: null, screenCaptureEnabled: false, lockdownRequired: false,
     };
     render(<ExamDetailsForm initialExam={examWithIpRange} onSubmit={onSubmit} submitLabel="Save" />);
 

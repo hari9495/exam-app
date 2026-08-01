@@ -4,6 +4,7 @@ export interface ProctoringConfigSource {
   proctoringStrikeLimit: number;
   disabledProctoringSignalsJson: string | null;
   screenCaptureEnabled: boolean;
+  lockdownRequired: boolean;
 }
 
 export interface ExamProctoringConfig {
@@ -12,6 +13,7 @@ export interface ExamProctoringConfig {
   strikeLimit: number;
   disabledSignals: string[];
   screenCaptureEnabled: boolean;
+  lockdownRequired: boolean;
 }
 
 export interface ProctoringBypassSource {
@@ -56,6 +58,8 @@ export function resolveProctoringConfig(
     disabledSignals: parseDisabledSignals(exam.disabledProctoringSignalsJson),
     // Never touched by a bypass -- a bypass narrows what is punished, never what is watched.
     screenCaptureEnabled: exam.screenCaptureEnabled,
+    // Same rule: a bypass never relaxes the Safe Exam Browser requirement.
+    lockdownRequired: exam.lockdownRequired,
   };
 }
 

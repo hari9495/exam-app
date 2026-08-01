@@ -18,6 +18,9 @@ export default function CandidateWelcomePage() {
   const { toast } = useToast();
   const [cameraStatus, setCameraStatus] = useState<'idle' | 'checking' | 'granted' | 'denied'>('idle');
   const [consentChecked, setConsentChecked] = useState(false);
+  // Honor-system attestation -- a browser cannot see or close other apps, so this sets the
+  // expectation up front; the periodic AI screen analysis is what actually verifies it.
+  const [appsClosedChecked, setAppsClosedChecked] = useState(false);
   const [step, setStep] = useState<'practice' | 'consent'>('practice');
   const [multiMonitorBlocked, setMultiMonitorBlocked] = useState(false);
   const [screenShareUnsupported, setScreenShareUnsupported] = useState(false);
@@ -39,6 +42,11 @@ export default function CandidateWelcomePage() {
   }
 
   const proctoring = current.exam.proctoring;
+  // UX-only detection -- SEB's user agent contains "SEB/x.y". The server independently
+  // verifies the SEB ConfigKey hash on /attempt/start, so spoofing this string only gets a
+  // candidate as far as a rejected start.
+  const inSeb = typeof navigator !== 'undefined' && navigator.userAgent.includes('SEB');
+  const sebGateActive = proctoring?.lockdownRequired === true && !inSeb;
 
   if (step === 'practice') {
     return (
@@ -57,6 +65,27 @@ export default function CandidateWelcomePage() {
       setCameraStatus('granted');
     } catch {
       setCameraStatus('denied');
+    }
+  }
+
+  async function handleDownloadSebConfig() {
+    try {
+      const base = process.env.NEXT_PUBLIC_EXAM_RUNTIME_API_BASE ?? 'http://localhost:3002/api/v1';
+      const response = await fetch(`${base}/attempt/seb-config`, {
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+      });
+      if (!response.ok) {
+        throw new Error(`Download failed (${response.status})`);
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = 'exam.seb';
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast('Could not download the exam configuration. Please try again.', 'error');
     }
   }
 
@@ -152,6 +181,16 @@ export default function CandidateWelcomePage() {
                 />
                 I understand and consent to monitoring during this exam
               </label>
+              <label className="mt-2 flex items-start gap-2 text-xs text-candidate-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={appsClosedChecked}
+                  onChange={(event) => setAppsClosedChecked(event.target.checked)}
+                  className="mt-0.5"
+                />
+                I have closed all other applications, browser windows and tabs — including messaging
+                apps and any screen-sharing or remote-access tools
+              </label>
               <p className="mt-1 text-xs text-candidate-text-tertiary">
                 If you do not consent, close this page and contact your recruiter.
               </p>
@@ -169,8 +208,31 @@ export default function CandidateWelcomePage() {
               </div>
             ) : null}
 
-            {proctoring?.webcamEnabled === false || cameraStatus === 'granted' ? (
-              <CandidateButton onClick={handleStart} disabled={startAttempt.isPending || !consentChecked} className="w-full">
+            {sebGateActive ? (
+              <div className="mb-3 rounded-md border border-candidate-border p-3">
+                <h2 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-candidate-text-secondary">
+                  Safe Exam Browser required
+                </h2>
+                <p className="mb-2 text-xs text-candidate-text-secondary">
+                  This exam can only be taken inside Safe Exam Browser, which locks your computer to the exam and closes
+                  other applications while you take it.
+                </p>
+                <ol className="mb-3 list-decimal pl-4 text-xs text-candidate-text-secondary">
+                  <li>
+                    Install Safe Exam Browser from{' '}
+                    <a href="https://safeexambrowser.org/download_en.html" target="_blank" rel="noreferrer" className="underline">
+                      safeexambrowser.org
+                    </a>
+                  </li>
+                  <li>Download your exam configuration below</li>
+                  <li>Open the downloaded file — Safe Exam Browser will bring you back to this page, ready to start</li>
+                </ol>
+                <CandidateButton onClick={handleDownloadSebConfig} className="w-full">
+                  Download exam configuration (.seb)
+                </CandidateButton>
+              </div>
+            ) : proctoring?.webcamEnabled === false || cameraStatus === 'granted' ? (
+              <CandidateButton onClick={handleStart} disabled={startAttempt.isPending || !consentChecked || !appsClosedChecked} className="w-full">
                 {startAttempt.isPending ? 'Starting…' : 'Start exam'}
               </CandidateButton>
             ) : null}

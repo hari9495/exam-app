@@ -91,4 +91,9 @@ export class CreateExamDto {
   @IsOptional()
   @IsBoolean()
   screenCaptureEnabled?: boolean;
+
+  // Require Safe Exam Browser (verified server-side via SEB ConfigKey headers) to start.
+  @IsOptional()
+  @IsBoolean()
+  lockdownRequired?: boolean;
 }

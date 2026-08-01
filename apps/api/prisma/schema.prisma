@@ -269,6 +269,7 @@ model Exam {
   proctoringStrikeLimit         Int           @default(3) @map("proctoring_strike_limit")
   disabledProctoringSignalsJson String?       @map("disabled_proctoring_signals_json") @db.NVarChar(Max)
   screenCaptureEnabled          Boolean       @default(false) @map("screen_capture_enabled")
+  lockdownRequired              Boolean       @default(false) @map("lockdown_required")
   createdBy                     String        @map("created_by") @db.UniqueIdentifier
   createdAt                     DateTime      @default(now()) @map("created_at")
   sections                      ExamSection[]

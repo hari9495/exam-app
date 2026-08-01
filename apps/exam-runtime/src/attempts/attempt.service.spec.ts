@@ -1,7 +1,15 @@
 import { Test } from '@nestjs/testing';
 import { BadRequestException, ForbiddenException, HttpException, HttpStatus, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { AttemptService } from './attempt.service';
-import { TenantPrismaService, AuditService, BlobStorageService, AiApiKeyResolverService, POOL_EXHAUSTED_RESPONSE } from '@exam-platform/shared';
+import {
+  TenantPrismaService,
+  AuditService,
+  BlobStorageService,
+  AiApiKeyResolverService,
+  POOL_EXHAUSTED_RESPONSE,
+  buildSebConfig,
+  requestConfigKeyHash,
+} from '@exam-platform/shared';
 import { AttemptSettlementService } from '../grading/attempt-settlement.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { LeaderboardService } from '../leaderboard/leaderboard.service';
@@ -3203,6 +3211,74 @@ describe('AttemptService', () => {
       expect(result).toEqual({ status: 'paused' });
     });
   });
+  describe('SEB lockdown', () => {
+    const lockdownExam = { ...exam, lockdownRequired: true, screenCaptureEnabled: true };
+    const lockdownInvitation = { ...invitationRecord, token: 'tok-1', exam: lockdownExam };
+
+    it('rejects start when the exam requires SEB and the ConfigKey header is absent', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce(() => Promise.resolve(lockdownInvitation));
+
+      await expect(
+        service.start({ invitationId: 'inv-1' }, { consent: true }, '', {
+          configKeyHash: undefined,
+          requestUrl: 'https://runtime.test/api/v1/attempt/start',
+        }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('rejects start when the ConfigKey header does not match our config', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce(() => Promise.resolve(lockdownInvitation));
+
+      await expect(
+        service.start({ invitationId: 'inv-1' }, { consent: true }, '', {
+          configKeyHash: 'f'.repeat(64),
+          requestUrl: 'https://runtime.test/api/v1/attempt/start',
+        }),
+      ).rejects.toThrow(/Safe Exam Browser/);
+    });
+
+    it('allows start when the ConfigKey hash matches the config generated for this candidate', async () => {
+      const requestUrl = 'https://runtime.test/api/v1/attempt/start';
+      const { configKey } = buildSebConfig({ startUrl: 'http://localhost:3000/start?token=tok-1' });
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) } };
+      mockBootstrapThenScoped(tx);
+      tenantPrisma.forTenant.mockReset();
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve(lockdownInvitation))
+        .mockImplementationOnce((_ctx, fn) => fn(tx));
+
+      const result = await service.start({ invitationId: 'inv-1' }, { consent: true }, '', {
+        configKeyHash: requestConfigKeyHash(requestUrl, configKey),
+        requestUrl,
+      });
+
+      expect(result).toEqual({ id: 'attempt-1', status: 'in_progress' });
+    });
+
+    it('does not demand SEB when the exam has lockdown off', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) } };
+      mockBootstrapThenScoped(tx);
+
+      const result = await service.start({ invitationId: 'inv-1' }, { consent: true }, '', {
+        configKeyHash: undefined,
+        requestUrl: 'https://runtime.test/api/v1/attempt/start',
+      });
+
+      expect(result).toEqual({ id: 'attempt-1', status: 'in_progress' });
+    });
+
+    it('serves the .seb config for a lockdown exam and refuses it otherwise', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce(() => Promise.resolve(lockdownInvitation));
+      const { plistXml } = await service.getSebConfig({ invitationId: 'inv-1' });
+      expect(plistXml).toContain('<key>startURL</key>');
+      expect(plistXml).toContain('token=tok-1');
+      expect(plistXml).toContain('<string>anydesk</string>');
+
+      tenantPrisma.forTenant.mockImplementationOnce(() => Promise.resolve(invitationRecord));
+      await expect(service.getSebConfig({ invitationId: 'inv-1' })).rejects.toThrow(/does not require/);
+    });
+  });
+
   describe('analyzeScreenCapture', () => {
     const SHOT = 'data:image/jpeg;base64,Zm9v';
     const examWithCapture = { ...exam, screenCaptureEnabled: true };
@@ -3293,6 +3369,40 @@ describe('AttemptService', () => {
         where: { id: 'attempt-1' },
         data: { screenCaptureCount: { increment: 1 } },
       });
+    });
+
+    it('records a medium-severity background_app_detected event when a messaging app (not remote access) is visible', async () => {
+      generateStructured.mockResolvedValue({
+        remoteAccessVisible: false,
+        backgroundAppVisible: true,
+        toolName: 'WhatsApp',
+        reasoning: 'WhatsApp window open behind the exam',
+      });
+      const tx = scopedTxFor(attemptFixture());
+      mockBootstrapThenAllScoped(tx);
+
+      const result = await service.analyzeScreenCapture(session, { screenshot: SHOT });
+
+      expect(result).toEqual({ status: 'flagged' });
+      const created = tx.proctoringEvent.create.mock.calls[0][0].data;
+      expect(created.eventType).toBe('background_app_detected');
+      expect(created.severity).toBe('medium');
+      expect(JSON.parse(created.metadataJson).toolName).toBe('WhatsApp');
+    });
+
+    it('prefers remote_access_suspected when both remote access and a background app are visible', async () => {
+      generateStructured.mockResolvedValue({
+        remoteAccessVisible: true,
+        backgroundAppVisible: true,
+        toolName: 'AnyDesk',
+        reasoning: 'AnyDesk session bar and WhatsApp both visible',
+      });
+      const tx = scopedTxFor(attemptFixture());
+      mockBootstrapThenAllScoped(tx);
+
+      await service.analyzeScreenCapture(session, { screenshot: SHOT });
+
+      expect(tx.proctoringEvent.create.mock.calls[0][0].data.eventType).toBe('remote_access_suspected');
     });
 
     it('enforces the server-side minimum interval between analyses of the same attempt', async () => {

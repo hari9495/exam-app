@@ -21,6 +21,7 @@ export interface ExamDetailsValue {
   proctoringStrikeLimit: number;
   disabledProctoringSignals: string[];
   screenCaptureEnabled: boolean;
+  lockdownRequired: boolean;
 }
 
 interface ExamDetailsFormProps {
@@ -84,6 +85,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
   });
   const [signalsOpen, setSignalsOpen] = useState(false);
   const [screenCaptureEnabled, setScreenCaptureEnabled] = useState(initialExam?.screenCaptureEnabled ?? false);
+  const [lockdownRequired, setLockdownRequired] = useState(initialExam?.lockdownRequired ?? false);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -117,6 +119,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
       proctoringStrikeLimit: Number(proctoringStrikeLimit),
       disabledProctoringSignals: disabledSignals,
       screenCaptureEnabled,
+      lockdownRequired,
     });
   }
 
@@ -253,6 +256,17 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
             <p className="pl-6 text-xs text-recruiter-text-secondary">
               Candidates must share their whole screen to start, and cannot use a phone or tablet. Their screen is captured only
               when a rule is broken.
+            </p>
+          ) : null}
+          <Checkbox
+            label="Require Safe Exam Browser (lockdown)"
+            checked={lockdownRequired}
+            onChange={setLockdownRequired}
+          />
+          {lockdownRequired ? (
+            <p className="pl-6 text-xs text-recruiter-text-secondary">
+              Candidates must install Safe Exam Browser and open the exam inside it. SEB refuses to start while remote-access
+              tools or other apps are running, closes background applications, and locks the machine to the exam until submission.
             </p>
           ) : null}
         </Card>

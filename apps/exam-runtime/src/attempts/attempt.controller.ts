@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Header, Post, Req, UseGuards, UseInterceptors } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { CandidateJwtAuthGuard } from '../candidate-auth/candidate-jwt-auth.guard';
@@ -30,7 +30,21 @@ export class AttemptController {
   @Post('start')
   @Throttle(MODERATE_ATTEMPT_THROTTLE)
   start(@CurrentCandidate() candidate: CandidateSession, @Body() dto: StartAttemptDto, @Req() req: Request) {
-    return this.attemptService.start(candidate, dto, resolveClientIp(req));
+    return this.attemptService.start(candidate, dto, resolveClientIp(req), {
+      configKeyHash: req.get('x-safeexambrowser-configkeyhash') ?? undefined,
+      // The URL exactly as the client addressed it -- SEB hashes this string. TRUST_PROXY
+      // makes protocol/host reflect the public origin behind nginx.
+      requestUrl: `${req.protocol}://${req.get('host')}${req.originalUrl}`,
+    });
+  }
+
+  @Get('seb-config')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  @Header('Content-Type', 'application/seb')
+  @Header('Content-Disposition', 'attachment; filename="exam.seb"')
+  async sebConfig(@CurrentCandidate() candidate: CandidateSession): Promise<string> {
+    const { plistXml } = await this.attemptService.getSebConfig(candidate);
+    return plistXml;
   }
 
   @Post('answer')

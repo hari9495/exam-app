@@ -1,6 +1,14 @@
 import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Attempt, Prisma } from '@prisma/client';
-import { TenantPrismaService, AuditService, isIpAllowed, BlobStorageService, AiApiKeyResolverService } from '@exam-platform/shared';
+import {
+  TenantPrismaService,
+  AuditService,
+  isIpAllowed,
+  BlobStorageService,
+  AiApiKeyResolverService,
+  buildSebConfig,
+  requestConfigKeyHash,
+} from '@exam-platform/shared';
 import { AttemptSettlementService, PauseReason, SettlementExam } from '../grading/attempt-settlement.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { LeaderboardService, AUTO_GRADABLE_QUESTION_TYPES, CandidateLeaderboardResponse } from '../leaderboard/leaderboard.service';
@@ -136,6 +144,14 @@ interface AttemptStateResponse {
 
 export type AttemptCurrentResponse = AttemptPreviewResponse | AttemptStateResponse;
 
+// What the controller extracts from the incoming request for SEB verification: the ConfigKey
+// hash header SEB attaches, and the absolute URL of this request exactly as the client
+// addressed it (SEB hashes that URL string; TRUST_PROXY makes protocol/host trustworthy).
+export interface SebRequestContext {
+  configKeyHash: string | undefined;
+  requestUrl: string;
+}
+
 // As of ADO #6810 fix round 1, none of this file's three upload call sites (webcamViolation,
 // reportProctoringEvent, webcamSnapshot) run the blob upload inside a Prisma transaction anymore
 // -- each does decide / upload / commit as separate forTenant calls, so a slow upload can no
@@ -158,24 +174,32 @@ const SCREEN_ANALYSIS_MIN_INTERVAL_MS = 60_000;
 
 const SCREEN_ANALYSIS_PROMPT =
   'This is a screenshot of an exam candidate\'s entire shared monitor during a proctored online exam. ' +
-  'Determine whether any remote-access or remote-control software UI is visible: AnyDesk, TeamViewer, ' +
-  'Chrome Remote Desktop, RustDesk, Zoom/Teams/Meet screen-sharing or remote-control bars or borders, ' +
-  'VNC, or any other indication that this machine is being viewed or controlled remotely. The exam page ' +
-  'itself asks the candidate to share their screen with the exam platform -- the browser\'s own ' +
-  '"sharing this screen" bar for the exam tab alone is expected and must NOT be flagged. ' +
-  'Only flag genuine third-party remote-access indicators.';
+  'Check two things. (1) Remote access: is any remote-access or remote-control software UI visible -- ' +
+  'AnyDesk, TeamViewer, Chrome Remote Desktop, RustDesk, VNC, Zoom/Teams/Meet screen-sharing or ' +
+  'remote-control bars or borders, or any other indication this machine is being viewed or controlled ' +
+  'remotely? (2) Background apps: are any messaging or communication apps visible as open windows or ' +
+  'active/highlighted taskbar items (WhatsApp, Telegram, Discord, Slack, Teams chat, email), or any ' +
+  'additional browser windows showing non-exam content (search results, AI chatbots, documentation)? ' +
+  'The exam page itself asks the candidate to share their screen with the exam platform -- the ' +
+  'browser\'s own "sharing this screen" bar for the exam tab alone is expected and must NOT be ' +
+  'flagged, and merely-pinned (inactive) taskbar icons must NOT be flagged. Only flag what is ' +
+  'genuinely visible and running.';
 
 const SCREEN_ANALYSIS_TOOL = {
   name: 'report_screen_analysis',
-  description: 'Report whether remote-access software is visible in the screenshot.',
+  description: 'Report whether remote-access software or background apps are visible in the screenshot.',
   schema: {
     type: 'object' as const,
     properties: {
       remoteAccessVisible: { type: 'boolean', description: 'True only if third-party remote-access/control UI is visible.' },
-      toolName: { type: 'string', description: 'Name of the tool detected, or "unknown".' },
+      backgroundAppVisible: {
+        type: 'boolean',
+        description: 'True only if a messaging/communication app window or active taskbar item, or a non-exam browser window, is visible.',
+      },
+      toolName: { type: 'string', description: 'Name of the most significant tool/app detected, or "unknown".' },
       reasoning: { type: 'string', description: 'One sentence: what is visible and where.' },
     },
-    required: ['remoteAccessVisible', 'toolName', 'reasoning'],
+    required: ['remoteAccessVisible', 'backgroundAppVisible', 'toolName', 'reasoning'],
   },
 };
 
@@ -287,8 +311,18 @@ export class AttemptService {
     return { languages };
   }
 
-  async start(session: CandidateSession, dto: StartAttemptDto = {}, clientIp = ''): Promise<{ id: string; status: string }> {
+  async start(
+    session: CandidateSession,
+    dto: StartAttemptDto = {},
+    clientIp = '',
+    seb?: SebRequestContext,
+  ): Promise<{ id: string; status: string }> {
     const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
+
+    // Lockdown gate, before any attempt row exists: the request must carry the ConfigKey hash
+    // only SEB running OUR generated config can produce (see packages/shared/src/seb). Checked
+    // outside the transaction -- pure hashing, no I/O.
+    this.enforceSebLockdown(exam, invitation.token, seb);
 
     return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
       const existing = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
@@ -852,6 +886,35 @@ export class AttemptService {
     return { screenshot: screenshotUrl };
   }
 
+  // The candidate's personal .seb file: SEB opens straight into their own start link, and the
+  // embedded settings yield the ConfigKey that enforceSebLockdown verifies on start. Available
+  // from the welcome page (behind candidate auth) only when the exam actually requires it.
+  async getSebConfig(session: CandidateSession): Promise<{ plistXml: string }> {
+    const { exam, invitation } = await this.resolveContext(session.invitationId);
+    if (!exam.lockdownRequired) {
+      throw new BadRequestException('This exam does not require Safe Exam Browser');
+    }
+    return { plistXml: buildSebConfig({ startUrl: this.sebStartUrl(invitation.token) }).plistXml };
+  }
+
+  private sebStartUrl(invitationToken: string): string {
+    return `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/start?token=${invitationToken}`;
+  }
+
+  private enforceSebLockdown(exam: { lockdownRequired: boolean }, invitationToken: string, seb?: SebRequestContext): void {
+    if (!exam.lockdownRequired) {
+      return;
+    }
+    const expected = seb
+      ? requestConfigKeyHash(seb.requestUrl, buildSebConfig({ startUrl: this.sebStartUrl(invitationToken) }).configKey)
+      : undefined;
+    if (!seb?.configKeyHash || seb.configKeyHash.toLowerCase() !== expected) {
+      throw new ForbiddenException(
+        'This exam must be started inside Safe Exam Browser. Download the exam configuration from the welcome page and open it in SEB.',
+      );
+    }
+  }
+
   // Periodic AI check of the candidate's shared monitor for remote-access tool UI (AnyDesk,
   // TeamViewer, Zoom remote control, ...). A browser cannot see other processes, so this vision
   // pass over the already-mandatory full-monitor share is the only browser-side signal we have
@@ -887,7 +950,7 @@ export class AttemptService {
     // The AI call runs with no transaction open, same rule as every upload in this file. An org
     // without AI configured (resolve throws) or a failed/slow model call just skips -- periodic
     // analysis is best-effort, the violation-triggered capture pipeline is unaffected.
-    let flagged: { toolName: string; reasoning: string } | null = null;
+    let flagged: { eventType: 'remote_access_suspected' | 'background_app_detected'; toolName: string; reasoning: string } | null = null;
     try {
       const aiProvider = await this.aiApiKeyResolver.resolve(organizationId);
       const verdict = await aiProvider.generateStructured({
@@ -897,8 +960,14 @@ export class AttemptService {
         images: [dto.screenshot],
         tool: SCREEN_ANALYSIS_TOOL,
       });
-      if (verdict.remoteAccessVisible === true) {
-        flagged = { toolName: String(verdict.toolName ?? 'unknown'), reasoning: String(verdict.reasoning ?? '') };
+      // Remote access outranks a background app when both are visible -- one event per
+      // analysis, carrying the single most serious finding.
+      if (verdict.remoteAccessVisible === true || verdict.backgroundAppVisible === true) {
+        flagged = {
+          eventType: verdict.remoteAccessVisible === true ? 'remote_access_suspected' : 'background_app_detected',
+          toolName: String(verdict.toolName ?? 'unknown'),
+          reasoning: String(verdict.reasoning ?? ''),
+        };
       }
     } catch (error) {
       this.logger.warn(`Screen analysis skipped for attempt ${phase1.id}: ${(error as Error).message}`);
@@ -927,8 +996,8 @@ export class AttemptService {
       const event = await tx.proctoringEvent.create({
         data: {
           attemptId: phase1.id,
-          eventType: 'remote_access_suspected',
-          severity: getProctoringEventSeverity('remote_access_suspected'),
+          eventType: flagged.eventType,
+          severity: getProctoringEventSeverity(flagged.eventType),
           metadataJson: JSON.stringify(metadata),
         },
       });

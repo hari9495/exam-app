@@ -7,6 +7,7 @@ function source(overrides: Partial<Parameters<typeof resolveProctoringConfig>[0]
     proctoringStrikeLimit: 3,
     disabledProctoringSignalsJson: null,
     screenCaptureEnabled: false,
+    lockdownRequired: false,
     ...overrides,
   };
 }
@@ -19,6 +20,7 @@ describe('resolveProctoringConfig', () => {
       strikeLimit: 3,
       disabledSignals: [],
       screenCaptureEnabled: false,
+      lockdownRequired: false,
     });
   });
 
@@ -75,6 +77,7 @@ describe('proctoring bypass', () => {
     proctoringStrikeLimit: 5,
     disabledProctoringSignalsJson: JSON.stringify(['right_click']),
     screenCaptureEnabled: true,
+    lockdownRequired: true,
   };
 
   it('forces warn enforcement when the attempt is bypassed', () => {

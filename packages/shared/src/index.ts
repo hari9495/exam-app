@@ -16,3 +16,4 @@ export * from './network/ip-range';
 export * from './storage/storage.module';
 export * from './storage/blob-storage.service';
 export * from './organizations/organization-status';
+export * from './seb/seb-config';

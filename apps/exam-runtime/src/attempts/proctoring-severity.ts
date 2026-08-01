@@ -30,6 +30,10 @@ const SEVERITY_BY_EVENT_TYPE: Record<string, Severity> = {
   editor_paste: 'medium',
   window_blur: 'medium',
   looking_down: 'medium',
+  // Server-generated only (AI screen analysis), like remote_access_suspected: a visible
+  // messaging app / extra browser window is worth recruiter attention but is far more
+  // false-positive-prone than remote-access UI, so it flags at medium and never strikes.
+  background_app_detected: 'medium',
   right_click: 'low',
   refresh_warning: 'low',
   idle_timeout: 'low',

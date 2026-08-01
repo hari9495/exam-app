@@ -28,6 +28,7 @@ function mockCameraGranted() {
 
 async function checkConsent() {
   await userEvent.click(screen.getByRole('checkbox', { name: /i understand and consent to monitoring/i }));
+  await userEvent.click(screen.getByRole('checkbox', { name: /i have closed all other applications/i }));
 }
 
 async function skipPractice() {
@@ -307,6 +308,45 @@ describe('CandidateWelcomePage', () => {
     render(<CandidateWelcomePage />);
     await skipPractice();
     await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
+
+    expect(await screen.findByRole('button', { name: 'Start exam' })).toBeDisabled();
+  });
+
+  it('blocks starting outside Safe Exam Browser when the exam requires lockdown', async () => {
+    mockCameraGranted();
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: {
+        exam: {
+          title: 'Backend Screening', instructions: null, durationMinutes: 45,
+          proctoring: { webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [], lockdownRequired: true },
+        },
+        sections: [],
+      },
+      isLoading: false,
+    });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+
+    render(<CandidateWelcomePage />);
+    await skipPractice();
+
+    expect(await screen.findByText('Safe Exam Browser required')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /download exam configuration/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start exam' })).not.toBeInTheDocument();
+  });
+
+  it('keeps Start exam disabled until the close-all-apps attestation is also checked', async () => {
+    mockCameraGranted();
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45, proctoring: { webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] } }, sections: [] },
+      isLoading: false,
+    });
+    (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+
+    render(<CandidateWelcomePage />);
+    await skipPractice();
+    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
+    // Only the monitoring consent -- not the apps-closed attestation.
+    await userEvent.click(screen.getByRole('checkbox', { name: /i understand and consent to monitoring/i }));
 
     expect(await screen.findByRole('button', { name: 'Start exam' })).toBeDisabled();
   });

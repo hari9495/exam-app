@@ -7,6 +7,10 @@ import { useScreenAnalysis } from './useAttempt';
 // politeness, not enforcement.
 const BASE_DELAY_MS = 60_000;
 const JITTER_MS = 30_000;
+// First scan fires almost immediately after the attempt starts -- a candidate who left a
+// messaging app or remote-access tool open gets flagged in the opening seconds instead of
+// after the first full interval. Small delay so the exam page has painted over the share.
+const FIRST_SCAN_DELAY_MS = 5_000;
 
 // While the candidate is in an active, screen-captured attempt, periodically captures the
 // shared monitor and posts it for AI remote-access analysis. Fire-and-forget: a failed post
@@ -26,17 +30,15 @@ export function usePeriodicScreenAnalysis(enabled: boolean, capture: () => strin
     }
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
-    const schedule = () => {
-      timer = setTimeout(() => {
-        if (cancelled) return;
-        const screenshot = captureRef.current();
-        if (screenshot) {
-          mutateRef.current({ screenshot });
-        }
-        schedule();
-      }, BASE_DELAY_MS + Math.random() * JITTER_MS);
+    const tick = () => {
+      if (cancelled) return;
+      const screenshot = captureRef.current();
+      if (screenshot) {
+        mutateRef.current({ screenshot });
+      }
+      timer = setTimeout(tick, BASE_DELAY_MS + Math.random() * JITTER_MS);
     };
-    schedule();
+    timer = setTimeout(tick, FIRST_SCAN_DELAY_MS);
     return () => {
       cancelled = true;
       clearTimeout(timer);

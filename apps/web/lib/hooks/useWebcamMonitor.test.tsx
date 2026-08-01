@@ -229,6 +229,7 @@ describe('useWebcamMonitor', () => {
         strikeLimit: 3,
         disabledSignals: [],
         screenCaptureEnabled: false,
+        lockdownRequired: false,
       });
       return null;
     }
