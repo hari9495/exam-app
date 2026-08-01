@@ -21,6 +21,8 @@ export interface SmtpTransportOptions {
   connectionTimeout: number;
   greetingTimeout: number;
   socketTimeout: number;
+  pool: boolean;
+  maxConnections: number;
 }
 
 /**
@@ -44,6 +46,14 @@ export const SMTP_CONNECTION_TIMEOUT_MS = 10_000;
 export const SMTP_GREETING_TIMEOUT_MS = 10_000;
 export const SMTP_SOCKET_TIMEOUT_MS = 20_000;
 
+// A bulk invite fires every invitation email back-to-back with no delay. Without
+// pooling, nodemailer opens one brand-new SMTP connection per send -- a 97-candidate
+// batch became 97 near-simultaneous connection attempts against the same mailbox,
+// and Office365 rejected most of them with "432 4.3.2 Concurrent connections limit
+// exceeded". Pooling makes nodemailer queue sends and reuse a small, bounded set of
+// connections instead of opening one per message.
+export const SMTP_MAX_CONNECTIONS = 3;
+
 export function buildSmtpTransportOptions({ host, port, user, password }: SmtpConnectionInput): SmtpTransportOptions {
   return {
     host,
@@ -56,5 +66,7 @@ export function buildSmtpTransportOptions({ host, port, user, password }: SmtpCo
     connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
     greetingTimeout: SMTP_GREETING_TIMEOUT_MS,
     socketTimeout: SMTP_SOCKET_TIMEOUT_MS,
+    pool: true,
+    maxConnections: SMTP_MAX_CONNECTIONS,
   };
 }

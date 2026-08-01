@@ -3,6 +3,7 @@ import {
   isImplicitTlsPort,
   SMTP_CONNECTION_TIMEOUT_MS,
   SMTP_GREETING_TIMEOUT_MS,
+  SMTP_MAX_CONNECTIONS,
 } from './smtp-transport';
 
 describe('isImplicitTlsPort', () => {
@@ -53,5 +54,14 @@ describe('buildSmtpTransportOptions', () => {
   it('tolerates a missing password alongside a user rather than sending undefined', () => {
     const opts = buildSmtpTransportOptions({ host: 'h', port: 587, user: 'me@x.test', password: null });
     expect(opts.auth).toEqual({ user: 'me@x.test', pass: '' });
+  });
+
+  it('pools connections with a bounded concurrency, so a large bulk-invite batch queues instead of opening one connection per email', () => {
+    // A 97-recipient bulk invite fired 97 near-simultaneous connections against the
+    // same mailbox without this, and Office365 rejected most of them with 432 4.3.2
+    // "Concurrent connections limit exceeded".
+    const opts = buildSmtpTransportOptions({ host: 'smtp.office365.com', port: 587, user: 'u', password: 'p' });
+    expect(opts.pool).toBe(true);
+    expect(opts.maxConnections).toBe(SMTP_MAX_CONNECTIONS);
   });
 });
