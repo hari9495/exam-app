@@ -41,6 +41,20 @@ describe('ExamsService', () => {
     expect(tenantPrisma.forTenant).toHaveBeenCalledWith(context, expect.any(Function));
   });
 
+  it('records an exam.created audit event with the creator as actor', async () => {
+    tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', title: 'Backend Round' });
+
+    await service.create(context, 'user-1', { title: 'Backend Round' });
+
+    expect(audit.record).toHaveBeenCalledWith(context, {
+      actorUserId: 'user-1',
+      action: 'exam.created',
+      entityType: 'exam',
+      entityId: 'exam-1',
+      metadata: { title: 'Backend Round' },
+    });
+  });
+
   it('passes durationMinutes and passCriteriaPercent through to the created exam when provided', async () => {
     const tx = { exam: { create: jest.fn().mockResolvedValue({ id: 'exam-1' }) } };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));

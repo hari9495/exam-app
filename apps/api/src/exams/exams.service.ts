@@ -132,7 +132,7 @@ export class ExamsService {
 
   async create(context: TenantContext, userId: string, dto: CreateExamDto): Promise<Exam> {
     const scheduling = this.resolveSchedulingFields(dto.schedulingEnabled, dto.availabilityWindowStart, dto.availabilityWindowEnd);
-    return this.tenantPrisma.forTenant(context, (tx) =>
+    const exam = await this.tenantPrisma.forTenant(context, (tx) =>
       tx.exam.create({
         data: {
           organizationId: context.organizationId as string,
@@ -158,6 +158,14 @@ export class ExamsService {
         },
       }),
     );
+    await this.audit.record(context, {
+      actorUserId: userId,
+      action: 'exam.created',
+      entityType: 'exam',
+      entityId: exam.id,
+      metadata: { title: exam.title },
+    });
+    return exam;
   }
 
   async list(
