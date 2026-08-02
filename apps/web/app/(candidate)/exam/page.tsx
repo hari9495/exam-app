@@ -40,10 +40,11 @@ function markButtonClasses(marked: boolean | undefined) {
 
 function optionClasses(selected: boolean) {
   return clsx(
-    'rounded-lg border px-3 py-2 text-left text-sm',
+    'rounded-lg border px-3 py-2 text-left text-sm transition-colors',
     selected
       ? 'border-[1.5px] border-candidate-primary bg-candidate-primary-light font-semibold text-candidate-primary'
-      : 'border-candidate-border text-candidate-text-secondary',
+      // An unselected option had no hover feedback at all despite being a clickable button.
+      : 'border-candidate-border text-candidate-text-secondary hover:border-candidate-primary/40 hover:bg-candidate-bg',
   );
 }
 
@@ -437,7 +438,11 @@ export default function CandidateExamPage() {
             <span className="text-xs text-candidate-text-tertiary">{attemptState.candidateName}</span>
           </div>
         </div>
-        <TimerBar remainingSeconds={remainingSeconds} totalSeconds={totalSecondsRef.current ?? remainingSeconds} />
+        <TimerBar
+          remainingSeconds={remainingSeconds}
+          totalSeconds={totalSecondsRef.current ?? remainingSeconds}
+          progressLabel={`${answeredCount}/${questions.length} answered`}
+        />
       </div>
 
       {reviewFilter && activeFilterIndices.length > 0 ? (

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Info, ShieldCheck } from 'lucide-react';
 import { CandidateButton } from '../components/CandidateButton';
 import { CameraPreview } from '../components/CameraPreview';
 import { PracticeStep } from '../components/PracticeStep';
@@ -154,13 +155,19 @@ export default function CandidateWelcomePage() {
           <>
             {current.exam.instructions ? (
               <div className="mb-3 rounded-md border border-candidate-border p-3">
-                <h2 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-candidate-text-secondary">Instructions</h2>
+                <h2 className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-candidate-text-secondary">
+                  <Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  Instructions
+                </h2>
                 <p className="whitespace-pre-wrap text-sm text-candidate-text-secondary">{current.exam.instructions}</p>
               </div>
             ) : null}
 
             <div className="mb-4 rounded-md border border-candidate-border p-3">
-              <h2 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-candidate-text-secondary">Monitoring &amp; consent</h2>
+              <h2 className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-candidate-text-secondary">
+                <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                Monitoring &amp; consent
+              </h2>
               <p className="mb-2 text-xs text-candidate-text-secondary">This exam is monitored. While you take it, we collect:</p>
               <ul className="mb-2 list-disc pl-4 text-xs text-candidate-text-secondary">
                 {proctoring?.webcamEnabled !== false ? <li>Webcam snapshots and face-presence checks</li> : null}

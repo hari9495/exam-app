@@ -181,6 +181,21 @@ describe('CandidateExamPage', () => {
 
   afterEach(() => jest.useRealTimers());
 
+  it('gives an unselected option hover feedback classes, unlike the selected one', () => {
+    // Default fixture has no answer yet, so select one first via the mocked server state --
+    // both options render unselected otherwise, which would not exercise the distinction.
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: { ...attemptState, answers: [{ questionId: 'q1', selectedOptionIds: ['o1'], isMarkedForReview: false, answerText: null, codeLanguage: null }] },
+      isError: false,
+    });
+    render(<CandidateExamPage />);
+
+    const selected = screen.getByRole('button', { name: /4/ });
+    const unselected = screen.getByRole('button', { name: /5/ });
+    expect(unselected).toHaveClass('hover:border-candidate-primary/40');
+    expect(selected).not.toHaveClass('hover:border-candidate-primary/40');
+  });
+
   it('renders the current question and saves an answer on selection', async () => {
     render(<CandidateExamPage />);
 
@@ -197,6 +212,22 @@ describe('CandidateExamPage', () => {
     render(<CandidateExamPage />);
 
     expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
+  });
+
+  it('shows an answered-count progress chip beside the timer', () => {
+    render(<CandidateExamPage />);
+
+    expect(screen.getByText('0/1 answered')).toBeInTheDocument();
+  });
+
+  it('updates the progress chip once a question has an answer', () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({
+      data: { ...attemptState, answers: [{ questionId: 'q1', selectedOptionIds: ['o1'], isMarkedForReview: false, answerText: null, codeLanguage: null }] },
+      isError: false,
+    });
+    render(<CandidateExamPage />);
+
+    expect(screen.getByText('1/1 answered')).toBeInTheDocument();
   });
 
   it('toggles mark-for-review', async () => {

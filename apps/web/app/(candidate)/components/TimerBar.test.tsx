@@ -40,4 +40,15 @@ describe('TimerBar', () => {
     const bar = screen.getByTestId('timer-bar-fill');
     expect(bar).toHaveStyle({ width: '25%' });
   });
+
+  it('renders no progress chip when progressLabel is omitted', () => {
+    render(<TimerBar remainingSeconds={300} totalSeconds={1000} />);
+    expect(screen.queryByText(/answered/)).not.toBeInTheDocument();
+  });
+
+  it('renders the progress chip beside the timer when progressLabel is given', () => {
+    render(<TimerBar remainingSeconds={300} totalSeconds={1000} progressLabel="12/20 answered" />);
+    expect(screen.getByText('12/20 answered')).toBeInTheDocument();
+    expect(screen.getByText('5:00 remaining')).toBeInTheDocument();
+  });
 });
