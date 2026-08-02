@@ -26,6 +26,13 @@ export function defaultFilterState(): DashboardFilterState {
   return { examId: 'all', candidateId: 'all', timeMode: 'relative', window: '14d', year: CURRENT_YEAR, month: new Date().getMonth(), from: '', to: '' };
 }
 
+// Shared with the page's "Analysis" context chips (dashboard/page.tsx) -- that row
+// only needs to exist when it's telling the recruiter something the filter bar
+// above doesn't already say, i.e. when a filter has actually been narrowed.
+export function isDefaultFilterState(s: DashboardFilterState): boolean {
+  return s.examId === 'all' && s.candidateId === 'all' && s.timeMode === 'relative' && s.window === '14d';
+}
+
 const pad = (n: number) => String(n).padStart(2, '0');
 
 // Turns the UI filter state into the query the analytics endpoint understands.
@@ -95,8 +102,7 @@ function DateInput({ label, value, onChange }: { label: string; value: string; o
 
 export function DashboardFilterBar({ value, onChange, exams, candidates }: FilterBarProps) {
   const set = (patch: Partial<DashboardFilterState>) => onChange({ ...value, ...patch });
-  const isDefault =
-    value.examId === 'all' && value.candidateId === 'all' && value.timeMode === 'relative' && value.window === '14d';
+  const isDefault = isDefaultFilterState(value);
 
   const examOptions: SelectOption[] = [{ value: 'all', label: 'All exams' }, ...exams.map((e) => ({ value: e.id, label: e.title }))];
   const candidateOptions: SelectOption[] = [{ value: 'all', label: 'All candidates' }, ...candidates.map((c) => ({ value: c.id, label: c.name }))];

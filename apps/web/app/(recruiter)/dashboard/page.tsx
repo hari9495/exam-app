@@ -15,6 +15,7 @@ import {
   DashboardFilterBar,
   defaultFilterState,
   describeTimeFilter,
+  isDefaultFilterState,
   toAnalyticsFilters,
   type DashboardFilterState,
 } from '../../../components/dashboard/DashboardFilterBar';
@@ -66,8 +67,14 @@ function StatCard({ icon: Icon, value, label, metric, color, delay, range }: Sta
             <div className="flex h-8 w-8 items-center justify-center rounded-md" style={{ backgroundColor: `${color}26`, color }}>
               <Icon size={16} />
             </div>
-            <span className={`text-xs font-semibold ${changePercent >= 0 ? 'text-status-success' : 'text-status-danger'}`}>
-              {changePercent >= 0 ? '▲' : '▼'} {Math.abs(changePercent)}%
+            {/* Flat is neither growth nor decline -- showing it as a green "up" arrow
+                overstated a change that didn't happen. */}
+            <span
+              className={`text-xs font-semibold ${
+                changePercent > 0 ? 'text-status-success' : changePercent < 0 ? 'text-status-danger' : 'text-recruiter-text-tertiary'
+              }`}
+            >
+              {changePercent > 0 ? '▲' : changePercent < 0 ? '▼' : '–'} {Math.abs(changePercent)}%
             </span>
           </div>
           <p className="text-2xl font-bold text-recruiter-text">{value}</p>
@@ -153,14 +160,20 @@ export default function DashboardPage() {
         />
       </div>
 
-      <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-recruiter-text-tertiary">
-        <span className="font-semibold uppercase tracking-wide">Analysis</span>
-        <span className="rounded-full bg-recruiter-bg-subtle px-2 py-0.5">{filters.examId === 'all' ? 'All exams' : exams.find((e) => e.id === filters.examId)?.title ?? 'Exam'}</span>
-        {filters.candidateId !== 'all' && (
-          <span className="rounded-full bg-recruiter-bg-subtle px-2 py-0.5">{candidates.find((c) => c.id === filters.candidateId)?.name ?? 'Candidate'}</span>
-        )}
-        <span className="rounded-full bg-recruiter-bg-subtle px-2 py-0.5">{describeTimeFilter(filters)}</span>
-      </div>
+      {/* Only worth a line when it says something the filter bar above doesn't already --
+          i.e. once a filter has actually been narrowed from "everything, last 14 days". */}
+      {!isDefaultFilterState(filters) && (
+        <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-recruiter-text-tertiary">
+          <span className="font-semibold uppercase tracking-wide">Analysis</span>
+          {filters.examId !== 'all' && (
+            <span className="rounded-full bg-recruiter-bg-subtle px-2 py-0.5">{exams.find((e) => e.id === filters.examId)?.title ?? 'Exam'}</span>
+          )}
+          {filters.candidateId !== 'all' && (
+            <span className="rounded-full bg-recruiter-bg-subtle px-2 py-0.5">{candidates.find((c) => c.id === filters.candidateId)?.name ?? 'Candidate'}</span>
+          )}
+          <span className="rounded-full bg-recruiter-bg-subtle px-2 py-0.5">{describeTimeFilter(filters)}</span>
+        </div>
+      )}
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.16 }} className="mb-5">
         {analytics ? (

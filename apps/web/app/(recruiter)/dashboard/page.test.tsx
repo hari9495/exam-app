@@ -99,6 +99,33 @@ describe('DashboardPage', () => {
     expect(screen.getByText('9')).toBeInTheDocument();
   });
 
+  it('shows a neutral flat indicator, not a green up arrow, when a stat card has 0% trend', async () => {
+    mockDashboardFetch({ ...emptySummary, stats: { totalCandidates: 248, invitationsSent: 312, attemptsInProgress: 17, pendingGradingCount: 9 } });
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('248')).toBeInTheDocument());
+    // useDashboardTrend resolves { points: [] } here, so every card's change is exactly 0%.
+    const flatBadges = screen.getAllByText('– 0%');
+    expect(flatBadges).toHaveLength(4);
+    flatBadges.forEach((badge) => {
+      expect(badge).toHaveClass('text-recruiter-text-tertiary');
+      expect(badge).not.toHaveClass('text-status-success');
+    });
+  });
+
+  it('hides the Analysis context row until a filter narrows away from the default, then shows it', async () => {
+    mockDashboardFetch(emptySummary);
+    renderPage();
+
+    await waitFor(() => expect(screen.getByLabelText('Exam')).toBeInTheDocument());
+    expect(screen.queryByText('Analysis')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Exam'));
+    fireEvent.click(await screen.findByRole('option', { name: 'Backend Round' }));
+
+    await waitFor(() => expect(screen.getByText('Analysis')).toBeInTheDocument());
+  });
+
   it('defaults to a 14-day range and fetches summary, trends, and analytics; refetches on range change', async () => {
     mockDashboardFetch({ ...emptySummary, stats: { totalCandidates: 248, invitationsSent: 312, attemptsInProgress: 17, pendingGradingCount: 9 } });
     renderPage();
