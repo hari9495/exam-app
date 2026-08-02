@@ -151,11 +151,11 @@ export default function IntegrationsSettingsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold text-recruiter-text">Integrations</h1>
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
+      <h1 className="text-center text-2xl font-semibold text-recruiter-text">Integrations</h1>
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0, ease: 'easeOut' }}>
-        <Card className="max-w-md">
+        <Card className="w-full">
           <h2 className="mb-1 text-lg font-semibold text-recruiter-text">Email (SMTP)</h2>
           <p className="mb-4 text-sm text-recruiter-text-secondary">
             {integrations?.smtpConfigured
@@ -181,7 +181,7 @@ export default function IntegrationsSettingsPage() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.05, ease: 'easeOut' }}>
-        <Card className="max-w-md">
+        <Card className="w-full">
           <h2 className="mb-1 text-lg font-semibold text-recruiter-text">AI API key</h2>
           <p className="mb-4 text-sm text-recruiter-text-secondary">
             {integrations?.aiKeyConfigured
@@ -211,7 +211,7 @@ export default function IntegrationsSettingsPage() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.1, ease: 'easeOut' }}>
-        <Card className="max-w-md">
+        <Card className="w-full">
           <h2 className="mb-1 text-lg font-semibold text-recruiter-text">Public API</h2>
           <p className="mb-4 text-sm text-recruiter-text-secondary">
             {integrations?.apiKeyConfigured
@@ -243,7 +243,7 @@ export default function IntegrationsSettingsPage() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.15, ease: 'easeOut' }}>
-        <Card className="max-w-md">
+        <Card className="w-full">
           <h2 className="mb-1 text-lg font-semibold text-recruiter-text">Webhooks</h2>
           <div className="flex flex-col gap-3">
             <Input
