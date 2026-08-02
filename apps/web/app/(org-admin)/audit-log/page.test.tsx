@@ -45,14 +45,15 @@ describe('AuditLogPage', () => {
       </QueryProvider>,
     );
 
-    await waitFor(() => expect(screen.getByText('candidate.erased')).toBeInTheDocument());
-    expect(screen.getByText('user.created')).toBeInTheDocument();
+    // Actions render as human-readable labels, not raw "<entity>.<verb>" keys.
+    await waitFor(() => expect(screen.getByText('Candidate data erased (GDPR)')).toBeInTheDocument());
+    expect(screen.getByText('Staff user created')).toBeInTheDocument();
 
     await userEvent.type(screen.getByLabelText('Action'), 'user.created');
     await userEvent.click(screen.getByRole('button', { name: 'Apply filters' }));
 
-    await waitFor(() => expect(screen.queryByText('candidate.erased')).not.toBeInTheDocument());
-    expect(screen.getByText('user.created')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('Candidate data erased (GDPR)')).not.toBeInTheDocument());
+    expect(screen.getByText('Staff user created')).toBeInTheDocument();
 
     const filteredCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('action=user.created'));
     expect(filteredCall).toBeDefined();
@@ -106,19 +107,19 @@ describe('AuditLogPage', () => {
     );
 
     // Wait for first entry to appear
-    await waitFor(() => expect(screen.getByText('user.created')).toBeInTheDocument());
-    expect(screen.queryByText('candidate.erased')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Staff user created')).toBeInTheDocument());
+    expect(screen.queryByText('Candidate data erased (GDPR)')).not.toBeInTheDocument();
 
     // Click "Load more"
     const loadMoreBtn = screen.getByRole('button', { name: 'Load more' });
     await userEvent.click(loadMoreBtn);
 
     // Wait for second entry to appear
-    await waitFor(() => expect(screen.getByText('candidate.erased')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Candidate data erased (GDPR)')).toBeInTheDocument());
 
     // Assert both entries are now visible (proving append, not replace)
-    expect(screen.getByText('user.created')).toBeInTheDocument();
-    expect(screen.getByText('candidate.erased')).toBeInTheDocument();
+    expect(screen.getByText('Staff user created')).toBeInTheDocument();
+    expect(screen.getByText('Candidate data erased (GDPR)')).toBeInTheDocument();
 
     // Assert the second fetch includes cursor=log-1
     const paginationCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('cursor=log-1'));
@@ -144,10 +145,46 @@ describe('AuditLogPage', () => {
       </QueryProvider>,
     );
 
-    await waitFor(() => expect(screen.getByText('user.created')).toBeInTheDocument());
-    const createdBadge = screen.getByText('user.created');
+    await waitFor(() => expect(screen.getByText('Staff user created')).toBeInTheDocument());
+    const createdBadge = screen.getByText('Staff user created');
     expect(createdBadge.className).toContain('bg-status-success-bg');
-    const erasedBadge = screen.getByText('candidate.erased');
+    const erasedBadge = screen.getByText('Candidate data erased (GDPR)');
     expect(erasedBadge.className).toContain('bg-status-danger-bg');
+  });
+
+  it('opens a detail view showing the raw action key, entity id, and metadata', async () => {
+    const entryWithMeta = {
+      id: 'log-3', action: 'invitation.created', entityType: 'invitation', entityId: 'inv-1',
+      actorUserId: 'user-1', actorEmail: 'admin@demo-org.test',
+      metadata: { count: 2, examTitle: 'Backend Round' }, createdAt: '2026-07-14T10:00:00.000Z',
+    };
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/audit-logs')) {
+        return new Response(JSON.stringify([entryWithMeta]), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <AuditLogPage />
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    // Metadata specifics show inline in the Details column (label not repeated there).
+    await waitFor(() => expect(screen.getByText(/“Backend Round”/)).toBeInTheDocument());
+    expect(screen.getByText(/2 records/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'View' }));
+
+    // Detail modal exposes the raw action key, the full entity id, and the metadata.
+    expect(screen.getByText('invitation.created')).toBeInTheDocument();
+    expect(screen.getByText('inv-1')).toBeInTheDocument();
+    expect(screen.getByText(/"examTitle": "Backend Round"/)).toBeInTheDocument();
   });
 });
