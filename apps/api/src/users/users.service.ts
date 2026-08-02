@@ -58,9 +58,21 @@ export class UsersService {
       throw new BadRequestException('A user must be created within an organization');
     }
 
-    const passwordHash = await argon2.hash(dto.password);
-    const user = await this.tenantPrisma.forTenant(context, (tx) =>
-      tx.user.create({
+    const user = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const org = await tx.organization.findUnique({
+        where: { id: context.organizationId as string },
+        select: { samlEnabled: true },
+      });
+      // SSO-enabled orgs authenticate staff via SAML, matched by email (see
+      // AuthService's ssoExchange) -- passwordHash is never checked for these users, so
+      // a caller-supplied password would just be dead weight nobody can use. Force a
+      // random, unusable one instead of trusting/requiring the frontend to send one.
+      const password = org?.samlEnabled ? randomBytes(32).toString('hex') : dto.password;
+      if (!password) {
+        throw new BadRequestException('Password is required');
+      }
+      const passwordHash = await argon2.hash(password);
+      return tx.user.create({
         data: {
           organizationId: context.organizationId as string,
           email: dto.email,
@@ -68,8 +80,8 @@ export class UsersService {
           role: dto.role,
         },
         select: SAFE_USER_SELECT,
-      }),
-    );
+      });
+    });
     await this.audit.record(context, {
       actorUserId: null,
       action: 'user.created',
@@ -381,6 +393,11 @@ export class UsersService {
     if (!context.organizationId) {
       throw new BadRequestException('Users must be created within an organization');
     }
+    // Read once, not per email -- samlEnabled can't change mid-call, and each of the
+    // (up to 200) emails already runs its own transaction below.
+    const org = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.organization.findUnique({ where: { id: context.organizationId as string }, select: { samlEnabled: true } }),
+    );
     const created: SafeUser[] = [];
     const skipped: { email: string; reason: string }[] = [];
     for (const email of dto.emails) {
@@ -396,14 +413,19 @@ export class UsersService {
           data: { organizationId: context.organizationId as string, email, passwordHash, role: dto.role },
           select: SAFE_USER_SELECT,
         });
-        const rawToken = randomBytes(32).toString('hex');
-        const tokenHash = createHash('sha256').update(rawToken).digest('hex');
-        await tx.passwordResetToken.create({
-          data: { userId: user.id, tokenHash, expiresAt: new Date(Date.now() + PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000) },
-        });
-        this.dispatchResetLink(email, rawToken, context.organizationId as string).catch((error) =>
-          this.logger.error(`Failed to dispatch invite email to ${email}`, error as Error),
-        );
+        // SSO-enabled orgs authenticate staff via SAML, matched by email -- no set-password
+        // link is ever needed, and sending one would promise an access path that doesn't
+        // apply. Skip the token and the email entirely rather than send a dead link.
+        if (!org?.samlEnabled) {
+          const rawToken = randomBytes(32).toString('hex');
+          const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+          await tx.passwordResetToken.create({
+            data: { userId: user.id, tokenHash, expiresAt: new Date(Date.now() + PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000) },
+          });
+          this.dispatchResetLink(email, rawToken, context.organizationId as string).catch((error) =>
+            this.logger.error(`Failed to dispatch invite email to ${email}`, error as Error),
+          );
+        }
         return { created: user };
       });
       if ('created' in outcome) {

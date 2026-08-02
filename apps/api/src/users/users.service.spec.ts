@@ -99,6 +99,35 @@ describe('UsersService', () => {
     expect(result).toHaveProperty('name', null);
   });
 
+  describe('create - SSO-enabled org', () => {
+    const ctx = { organizationId: 'org-1', isSuperAdmin: false };
+
+    it('ignores a supplied password and generates a random one when the org has SSO enabled', async () => {
+      const tx = {
+        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: true }) },
+        user: { create: jest.fn().mockResolvedValue({ id: 'u1', email: 'a@b.com', organizationId: 'org-1', role: 'recruiter' }) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+
+      const result = await service.create(ctx, { email: 'a@b.com', role: 'recruiter' });
+
+      expect(result.id).toBe('u1');
+      const createCall = tx.user.create.mock.calls[0][0];
+      // The generated hash must not be a hash of nothing -- argon2.hash was actually called
+      // with a real (random) value, not skipped.
+      expect(await argon2.verify(createCall.data.passwordHash, '')).toBe(false);
+    });
+
+    it('rejects creation with no password when the org does NOT have SSO enabled', async () => {
+      const tx = { organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) } };
+      tenantPrisma.forTenant.mockImplementation((_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+
+      await expect(service.create(ctx, { email: 'a@b.com', role: 'recruiter' })).rejects.toThrow(
+        'Password is required',
+      );
+    });
+  });
+
   it('getMe returns the caller\'s own user record', async () => {
     tenantPrisma.forTenant.mockResolvedValue({
       id: 'user-1',
@@ -523,6 +552,7 @@ describe('UsersService', () => {
     it('creates new emails and skips existing ones', async () => {
       const created = { id: 'n1', email: 'new@b.com', role: 'recruiter', name: null, organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date() };
       const tx = {
+        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
         user: {
           findFirst: jest.fn()
             .mockResolvedValueOnce({ id: 'dup' }) // exists@b.com -> skipped
@@ -537,6 +567,22 @@ describe('UsersService', () => {
       expect(result.skipped).toEqual([{ email: 'exists@b.com', reason: 'already exists' }]);
       expect(emailService.send).toHaveBeenCalledTimes(1);
       expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'new@b.com', organizationId: 'org1' }));
+    });
+
+    it('creates users but sends no set-password email when the org has SSO enabled', async () => {
+      const created = { id: 'n1', email: 'new@b.com', role: 'recruiter', name: null, organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date() };
+      const tx = {
+        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: true }) },
+        user: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(created) },
+        passwordResetToken: { create: jest.fn() },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+
+      const result = await service.bulkCreate(ctx, { emails: ['new@b.com'], role: 'recruiter' }, 'admin1');
+
+      expect(result.created).toHaveLength(1);
+      expect(tx.passwordResetToken.create).not.toHaveBeenCalled();
+      expect(emailService.send).not.toHaveBeenCalled();
     });
   });
 });

@@ -3,6 +3,7 @@
 import { FormEvent, useState } from 'react';
 import { Modal, Tabs, TabsList, TabsTrigger, TabsContent, Input, Select, Checkbox, Button, useToast } from './ui';
 import { useCreateUser, useBulkCreateUsers } from '../lib/hooks/useUsers';
+import { useSsoSettings } from '../lib/hooks/useSso';
 
 // Lifted from users/page.tsx -- this modal now owns it.
 const ROLE_OPTIONS = [
@@ -20,6 +21,11 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
   const { toast } = useToast();
   const createUser = useCreateUser();
   const bulkCreateUsers = useBulkCreateUsers();
+  // Staff sign in via the identity provider on an SSO-enabled org (email-matched, no
+  // password ever checked) -- the password field and the set-password-link option both
+  // become dead UI in that case, so hide them rather than offer a choice that does nothing.
+  const { data: ssoSettings } = useSsoSettings();
+  const ssoEnabled = ssoSettings?.samlEnabled === true;
 
   const [tab, setTab] = useState('single');
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +68,13 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
     }
     const onError = (err: unknown) => setError(err instanceof Error ? err.message : 'Failed to add user');
 
+    if (ssoEnabled) {
+      createUser.mutate(
+        { email, role },
+        { onSuccess: () => { toast(`Added ${email} as ${role}.`); handleClose(); }, onError },
+      );
+      return;
+    }
     if (sendLink) {
       // No password over the wire -- a single-email bulk call reuses the set-password-link path.
       bulkCreateUsers.mutate(
@@ -108,10 +121,19 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
           <form onSubmit={submitSingle} className="flex flex-col gap-3">
             <Input label="Email" type="email" value={email} onChange={setEmail} required />
             <Select label="Role" value={role} onChange={setRole} options={ROLE_OPTIONS} />
-            {!sendLink && (
-              <Input label="Password" type="password" value={password} onChange={setPassword} required minLength={8} />
+            {ssoEnabled ? (
+              <p className="text-xs text-gray-500">
+                Single sign-on is enabled for this organization. New users sign in with your identity provider — no
+                password is needed.
+              </p>
+            ) : (
+              <>
+                {!sendLink && (
+                  <Input label="Password" type="password" value={password} onChange={setPassword} required minLength={8} />
+                )}
+                <Checkbox label="Send Set-password Link Instead" checked={sendLink} onChange={setSendLink} />
+              </>
             )}
-            <Checkbox label="Send Set-password Link Instead" checked={sendLink} onChange={setSendLink} />
             {error && (
               <p role="alert" className="text-sm text-status-danger">
                 {error}
@@ -143,6 +165,12 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
               />
             </div>
             <Select label="Role" value={bulkRole} onChange={setBulkRole} options={ROLE_OPTIONS} />
+            {ssoEnabled && (
+              <p className="text-xs text-gray-500">
+                Single sign-on is enabled — these users won&apos;t receive a set-password email; they sign in with your
+                identity provider.
+              </p>
+            )}
             {error && (
               <p role="alert" className="text-sm text-status-danger">
                 {error}

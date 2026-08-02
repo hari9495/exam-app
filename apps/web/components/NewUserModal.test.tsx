@@ -5,10 +5,14 @@ import { ToastProvider } from './ui';
 
 const mockCreateMutate = jest.fn();
 const mockBulkMutate = jest.fn();
+let mockSsoSettings: { samlEnabled: boolean } | undefined = { samlEnabled: false };
 
 jest.mock('../lib/hooks/useUsers', () => ({
   useCreateUser: () => ({ mutate: mockCreateMutate, isPending: false }),
   useBulkCreateUsers: () => ({ mutate: mockBulkMutate, isPending: false, data: undefined }),
+}));
+jest.mock('../lib/hooks/useSso', () => ({
+  useSsoSettings: () => ({ data: mockSsoSettings }),
 }));
 
 function renderModal(props: Partial<React.ComponentProps<typeof NewUserModal>> = {}) {
@@ -22,6 +26,7 @@ function renderModal(props: Partial<React.ComponentProps<typeof NewUserModal>> =
 beforeEach(() => {
   mockCreateMutate.mockReset();
   mockBulkMutate.mockReset();
+  mockSsoSettings = { samlEnabled: false };
 });
 
 it('shows Single and Multiple tabs when open', () => {
@@ -76,4 +81,32 @@ it('does not submit the Multiple tab when the textarea is empty or whitespace-on
 
   expect(mockBulkMutate).not.toHaveBeenCalled();
   expect(screen.getByText(/enter at least one email/i)).toBeInTheDocument();
+});
+
+describe('when SSO is enabled', () => {
+  beforeEach(() => {
+    mockSsoSettings = { samlEnabled: true };
+  });
+
+  it('hides the password field and the send-link checkbox, showing an explanatory note instead', () => {
+    renderModal();
+    expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /send set-password link instead/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/single sign-on is enabled/i)).toBeInTheDocument();
+  });
+
+  it('submits single-tab email/role with no password via useCreateUser, ignoring send-link', async () => {
+    renderModal();
+    await userEvent.type(screen.getByLabelText('Email'), 'new@x.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Add user' }));
+
+    expect(mockCreateMutate).toHaveBeenCalledWith({ email: 'new@x.com', role: 'recruiter' }, expect.anything());
+    expect(mockBulkMutate).not.toHaveBeenCalled();
+  });
+
+  it('shows a no-email note on the Multiple tab', async () => {
+    renderModal();
+    await userEvent.click(screen.getByRole('tab', { name: /multiple/i }));
+    expect(screen.getByText(/won't receive a set-password email/i)).toBeInTheDocument();
+  });
 });
