@@ -7,6 +7,14 @@ jest.mock('../lib/hooks/useQuestions', () => ({
   useUploadQuestionImage: jest.fn(),
   useCodeLanguages: jest.fn(),
 }));
+jest.mock('@monaco-editor/react', () => ({
+  __esModule: true,
+  default: ({ value, onChange, wrapperProps }: { value?: string; onChange?: (value: string | undefined) => void; wrapperProps?: Record<string, string> }) => (
+    <textarea aria-label={wrapperProps?.['aria-label']} value={value} onChange={(event) => onChange?.(event.target.value)} />
+  ),
+  // lib/monaco-setup (imported by CodeEditor) calls loader.config; the mock must expose it.
+  loader: { config: jest.fn() },
+}));
 
 describe('QuestionForm', () => {
   beforeEach(() => {

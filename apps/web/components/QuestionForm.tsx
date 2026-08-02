@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Button, Input, Select, Checkbox, RadioGroup, RadioGroupItem } from '../components/ui';
+import { CodeEditor } from '../components/ui/CodeEditor';
 import { Question, QuestionType, Difficulty, Tag, CodeLanguage, CODE_LANGUAGE_OPTIONS } from '../lib/types';
 import { QuestionInput, useUploadQuestionImage, useCodeLanguages } from '../lib/hooks/useQuestions';
 
@@ -183,13 +184,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
           {languageMode === 'fixed' && allowedLanguages.length === 1 && (
             <div className="flex flex-col gap-1">
               <span className="text-sm font-medium text-gray-700">Starter code</span>
-              <textarea
-                aria-label="Starter Code"
-                value={starterCode}
-                onChange={(e) => setStarterCode(e.target.value)}
-                className="rounded border border-gray-300 px-3 py-2 font-mono text-sm"
-                rows={6}
-              />
+              <CodeEditor ariaLabel="Starter Code" language={allowedLanguages[0]} value={starterCode} onChange={setStarterCode} height="220px" />
             </div>
           )}
           <label className="flex items-center gap-2 text-sm text-gray-700">
@@ -215,13 +210,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
             </div>
             <div className="flex flex-col gap-1">
               <span className="text-sm font-medium text-gray-700">Code snippet (optional)</span>
-              <textarea
-                aria-label="Code Snippet"
-                value={snippetCode}
-                onChange={(e) => setSnippetCode(e.target.value)}
-                className="rounded border border-gray-300 px-3 py-2 font-mono text-sm"
-                rows={4}
-              />
+              <CodeEditor ariaLabel="Code Snippet" language={snippetLanguage} value={snippetCode} onChange={setSnippetCode} height="180px" />
             </div>
             <QuestionImageUpload label="Question Image (Optional)" value={imageUrl} onChange={setImageUrl} />
           </div>
