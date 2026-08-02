@@ -137,7 +137,7 @@ export default function BrandingSettingsPage() {
             {/* Gated on the FILE, not on the branding fetch: uploading a logo does not
                 need the current branding, and coupling them meant one failed GET
                 disabled the upload button entirely. */}
-            <Button type="submit" variant="secondary" disabled={!logoFile} loading={updateLogo.isPending} className="self-start">
+            <Button type="submit" disabled={!logoFile} loading={updateLogo.isPending} className="self-start">
               Upload logo
             </Button>
           </form>
