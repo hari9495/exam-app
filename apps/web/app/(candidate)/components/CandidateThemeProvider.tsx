@@ -6,10 +6,6 @@ import { useAttemptQuery } from '../../../lib/hooks/useAttempt';
 import { useDocumentBranding } from '../../../lib/hooks/useDocumentBranding';
 import { onPrimaryTextColor } from '../../../lib/candidate-theme';
 
-// The exam-taking screen packs real content (timer, questions) directly below
-// the header, so it gets a compact logo -- the large, low-positioned logo is
-// tuned for the sparse "terminal" screens (session-ended, invitation errors,
-// welcome) where it visually anchors an otherwise mostly-empty page.
 export function CandidateThemeProvider({ children }: { children: React.ReactNode }) {
   const { data } = useAttemptQuery();
   const primaryColor = data?.organizationPrimaryColor ?? null;
@@ -36,20 +32,15 @@ export function CandidateThemeProvider({ children }: { children: React.ReactNode
       className={clsx('flex flex-col bg-candidate-bg', isExamPage ? 'h-screen overflow-hidden' : 'min-h-screen')}
       style={themeStyle}
     >
-      <div className={clsx('flex shrink-0 justify-center px-4', isExamPage ? 'pt-4' : 'pt-28')}>
-        {data?.organizationLogoUrl ? (
-          <img
-            src={data.organizationLogoUrl}
-            alt="Organization logo"
-            className={clsx('w-auto object-contain', isExamPage ? 'h-10' : 'h-24')}
-          />
-        ) : (
-          <img
-            src="/logo.png"
-            alt="Prudent Hire"
-            className={clsx('object-contain', isExamPage ? 'h-10 w-10' : 'h-24 w-24')}
-          />
-        )}
+      <div className="flex shrink-0 items-center gap-2.5 border-b border-candidate-border bg-white px-5 py-3.5">
+        <img
+          src={data?.organizationLogoUrl || '/logo.png'}
+          alt={data?.organizationName ? `${data.organizationName} logo` : 'Prudent Hire'}
+          className="h-8 w-8 shrink-0 rounded object-contain"
+        />
+        <span className="text-[15px] font-bold tracking-tight text-candidate-text">
+          {data?.organizationName || 'Prudent Hire'}
+        </span>
       </div>
       <div className="flex min-h-0 flex-1 flex-col">{children}</div>
     </div>
