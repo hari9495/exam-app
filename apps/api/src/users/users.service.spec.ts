@@ -497,7 +497,11 @@ describe('UsersService', () => {
       const result = await service.requestPasswordReset(ctx, 't1', 'admin1');
       expect(result).toEqual({ success: true });
       expect(tx.passwordResetToken.create).toHaveBeenCalled();
-      expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'a@b.com' }));
+      // organizationId must reach EmailService so it resolves the org's own SMTP config
+      // instead of silently falling back to the platform transporter (which has no
+      // SMTP_HOST in production and fakes success via an Ethereal test account -- see
+      // the "set-password link never arrives" incident this test was added to catch).
+      expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'a@b.com', organizationId: 'org1' }));
       expect(audit.record).toHaveBeenCalledWith(ctx, expect.objectContaining({ action: 'user.password_reset_requested' }));
     });
 
@@ -532,6 +536,7 @@ describe('UsersService', () => {
       expect(result.created).toHaveLength(1);
       expect(result.skipped).toEqual([{ email: 'exists@b.com', reason: 'already exists' }]);
       expect(emailService.send).toHaveBeenCalledTimes(1);
+      expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'new@b.com', organizationId: 'org1' }));
     });
   });
 });

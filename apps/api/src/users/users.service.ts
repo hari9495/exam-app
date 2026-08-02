@@ -360,7 +360,7 @@ export class UsersService {
         data: { userId: target.id, tokenHash, expiresAt: new Date(Date.now() + PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000) },
       });
       // dispatched below, outside the tenant transaction, fire-and-forget
-      this.dispatchResetLink(target.email, rawToken).catch((error) =>
+      this.dispatchResetLink(target.email, rawToken, context.organizationId as string).catch((error) =>
         this.logger.error(`Failed to dispatch password reset email to ${target.email}`, error as Error),
       );
     });
@@ -401,7 +401,7 @@ export class UsersService {
         await tx.passwordResetToken.create({
           data: { userId: user.id, tokenHash, expiresAt: new Date(Date.now() + PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000) },
         });
-        this.dispatchResetLink(email, rawToken).catch((error) =>
+        this.dispatchResetLink(email, rawToken, context.organizationId as string).catch((error) =>
           this.logger.error(`Failed to dispatch invite email to ${email}`, error as Error),
         );
         return { created: user };
@@ -416,12 +416,13 @@ export class UsersService {
     return { created, skipped };
   }
 
-  private async dispatchResetLink(email: string, rawToken: string): Promise<void> {
+  private async dispatchResetLink(email: string, rawToken: string, organizationId: string): Promise<void> {
     const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/reset-password/${rawToken}`;
     await this.emailService.send({
       to: email,
       subject: 'Reset your Examination Platform password',
       html: `<p>A password reset was requested for your account. Click the link below to set a new password. This link expires in 15 minutes.</p><p><a href="${link}">${link}</a></p>`,
+      organizationId,
     });
   }
 
