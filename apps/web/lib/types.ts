@@ -39,8 +39,11 @@ export interface AuditLogEntry {
   action: string;
   entityType: string;
   entityId: string | null;
+  entityName: string | null;
   actorUserId: string | null;
   actorEmail: string | null;
+  actorName: string | null;
+  actorRole: string | null;
   metadata: Record<string, unknown> | null;
   createdAt: string;
 }

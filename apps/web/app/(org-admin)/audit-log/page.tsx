@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useAuditLogs, type AuditLogFilters } from '../../../lib/hooks/useAuditLogs';
 import { Input, Button, Modal, Table, StatusBadge, type StatusTone, type Column } from '../../../components/ui';
 import { AuditLogEntry } from '../../../lib/types';
-import { friendlyAction, auditDetail, formatAuditTimestamp } from '../../../lib/audit-display';
+import { friendlyAction, auditDetail, auditActor, formatAuditTimestamp } from '../../../lib/audit-display';
 
 // Action strings are open-ended ("<entity>.<verb>", e.g. "exam.published",
 // "candidate.erased", "attempt.settled") -- tone by verb suffix rather than
@@ -50,8 +50,18 @@ function makeColumns(onView: (entry: AuditLogEntry) => void): Column<AuditLogEnt
     {
       key: 'actor',
       header: 'Actor',
-      render: (entry) => entry.actorEmail ?? <span className="text-recruiter-text-tertiary">System</span>,
-      sortValue: (entry) => entry.actorEmail ?? '',
+      render: (entry) => {
+        const actor = auditActor(entry);
+        return actor === 'System' ? (
+          <span className="text-recruiter-text-tertiary">System</span>
+        ) : (
+          <span className="text-recruiter-text">
+            {actor}
+            {entry.actorRole && <span className="ml-1 text-xs text-recruiter-text-tertiary">({entry.actorRole})</span>}
+          </span>
+        );
+      },
+      sortValue: (entry) => auditActor(entry),
     },
     {
       key: 'view',
@@ -165,17 +175,23 @@ export default function AuditLogPage() {
 
             <dt className="font-medium text-recruiter-text-secondary">Actor</dt>
             <dd className="text-recruiter-text">
-              {selected.actorEmail ?? 'System'}
-              {/* actorEmail can be null for a super-admin actor that the org-scoped
-                  query can't resolve -- show the raw user id so the actor is at
-                  least traceable until the backend snapshots identity (Slice 2). */}
-              {!selected.actorEmail && selected.actorUserId && (
+              {auditActor(selected)}
+              {selected.actorRole && <span className="ml-2 text-xs text-recruiter-text-tertiary">{selected.actorRole}</span>}
+              {selected.actorEmail && selected.actorName && (
+                <span className="ml-2 text-xs text-recruiter-text-tertiary">{selected.actorEmail}</span>
+              )}
+              {/* If identity couldn't be captured, still surface the raw user id so
+                  the actor remains traceable. */}
+              {auditActor(selected) === 'System' && selected.actorUserId && (
                 <span className="ml-2 font-mono text-xs text-recruiter-text-tertiary">{selected.actorUserId}</span>
               )}
             </dd>
 
             <dt className="font-medium text-recruiter-text-secondary">Entity</dt>
-            <dd className="text-recruiter-text">{selected.entityType}</dd>
+            <dd className="text-recruiter-text">
+              {selected.entityName ? `${selected.entityName} ` : ''}
+              <span className="text-xs text-recruiter-text-tertiary">{selected.entityType}</span>
+            </dd>
 
             <dt className="font-medium text-recruiter-text-secondary">Entity ID</dt>
             <dd className="break-all font-mono text-xs text-recruiter-text">{selected.entityId ?? '—'}</dd>

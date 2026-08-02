@@ -73,21 +73,32 @@ export function friendlyAction(action: string): string {
     .replace(/^\w/, (c) => c.toUpperCase());
 }
 
-// The human-readable specifics pulled from metadata, WITHOUT repeating the
-// action label (the table shows the label separately as a badge). Returns ''
-// when there's nothing extra to say. Everything in metadata is still shown in
-// full in the detail view -- this is just the at-a-glance highlight.
+// The human-readable specifics for a row, WITHOUT repeating the action label
+// (the table shows the label separately as a badge). Leads with the resolved
+// entity name ("Backend Round") when the backend could resolve it, then adds
+// metadata highlights. Returns '' when there's nothing extra to say.
+// Everything in metadata is still shown in full in the detail view.
 export function auditDetail(entry: AuditLogEntry): string {
   const meta = entry.metadata ?? {};
   const bits: string[] = [];
 
-  if (typeof meta.examTitle === 'string') bits.push(`“${meta.examTitle}”`);
+  if (entry.entityName) bits.push(`“${entry.entityName}”`);
+  // Only fall back to the metadata title when the entity name wasn't resolved,
+  // to avoid printing the same name twice.
+  else if (typeof meta.examTitle === 'string') bits.push(`“${meta.examTitle}”`);
+
   if (typeof meta.count === 'number') bits.push(`${meta.count} record${meta.count === 1 ? '' : 's'}`);
   if (Array.isArray(meta.fields) && meta.fields.length > 0) bits.push(`changed: ${meta.fields.join(', ')}`);
   if (typeof meta.reason === 'string' && meta.reason.trim()) bits.push(meta.reason.trim());
   if (typeof meta.questionId === 'string') bits.push(`question ${meta.questionId}`);
 
   return bits.join(', ');
+}
+
+// The actor's display name: their name, then email, then "System" when no actor
+// identity was captured (a genuine system event, or an unresolvable actor).
+export function auditActor(entry: AuditLogEntry): string {
+  return entry.actorName ?? entry.actorEmail ?? 'System';
 }
 
 // Full one-line summary (label + detail), used where the action label is not

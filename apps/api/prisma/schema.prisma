@@ -174,6 +174,14 @@ model AuditLog {
   action         String
   entityType     String        @map("entity_type")
   entityId       String?       @map("entity_id")
+  // Actor identity snapshotted at write time. The live `actor` relation can't be
+  // resolved at read time when the viewer is an org-admin and the actor is a
+  // super-admin (RLS hides the super-admin's out-of-org user row), which rendered
+  // such events as "System". Snapshotting also survives the actor being renamed
+  // or deleted later -- both required for a trustworthy audit trail.
+  actorEmail     String?       @map("actor_email")
+  actorName      String?       @map("actor_name")
+  actorRole      String?       @map("actor_role")
   metadataJson   String?       @map("metadata_json") @db.NVarChar(Max)
   createdAt      DateTime      @default(now()) @map("created_at")
 
