@@ -16,6 +16,7 @@ import {
   Modal,
   StatusBadge,
   useToast,
+  useColumnVisibility,
   Pagination,
   type Column,
 } from '../../../components/ui';
@@ -187,6 +188,8 @@ export default function CandidatesPage() {
     },
   ];
 
+  const { visibleColumns, chooser } = useColumnVisibility('recruiter-candidates', columns);
+
   if (isLoading) {
     return (
       <div>
@@ -251,9 +254,10 @@ export default function CandidatesPage() {
           <Plus size={14} />
           Send invitations
         </Button>
+        {chooser}
       </div>
       <Table
-        columns={columns}
+        columns={visibleColumns}
         rows={candidatesResponse?.data ?? []}
         rowKey={(candidate) => candidate.id}
         emptyMessage="No candidates yet."

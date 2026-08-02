@@ -118,6 +118,25 @@ describe('LiveMonitoringPanel', () => {
     expect(names).toEqual(['Bex Blocked', 'Pat Paused', 'Ivy Invited', 'Sam Submitted']);
   });
 
+  it('offers a column chooser that hides a roster column', async () => {
+    const user = userEvent.setup({ delay: null });
+    renderPanel({
+      roster: [
+        { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'in_progress', online: true, remainingSeconds: 60, answeredCount: 1, totalQuestions: 5, proctoringBypassed: false },
+      ],
+    });
+
+    expect(screen.getByRole('columnheader', { name: 'Progress' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Choose Columns' }));
+    await user.click(screen.getByRole('menuitemcheckbox', { name: 'Progress' }));
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('columnheader', { name: 'Progress' })).not.toBeInTheDocument();
+    // The candidate row itself is unaffected -- only the one column is gone.
+    expect(screen.getByText('Alice')).toBeInTheDocument();
+  });
+
   it('filters the roster by status', async () => {
     const user = userEvent.setup({ delay: null });
     renderPanel({

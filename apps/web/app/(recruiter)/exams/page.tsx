@@ -11,6 +11,7 @@ import {
   Button,
   Modal,
   useToast,
+  useColumnVisibility,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -142,6 +143,8 @@ export default function ExamsPage() {
     },
   ];
 
+  const { visibleColumns, chooser } = useColumnVisibility('recruiter-exams', columns);
+
   if (isLoading) {
     return (
       <div>
@@ -188,9 +191,10 @@ export default function ExamsPage() {
             className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
           />
         </div>
+        {chooser}
       </div>
       <Table
-        columns={columns}
+        columns={visibleColumns}
         rows={examsResponse?.data ?? []}
         rowKey={(exam) => exam.id}
         emptyMessage="No exams yet."

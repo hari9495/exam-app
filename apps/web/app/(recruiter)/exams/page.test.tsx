@@ -13,6 +13,7 @@ describe('ExamsPage', () => {
   afterEach(() => {
     global.fetch = originalFetch;
     mockPush.mockClear();
+    localStorage.clear();
   });
 
   it('lists exams with their status badge', async () => {
@@ -40,6 +41,49 @@ describe('ExamsPage', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Backend Round')).toBeInTheDocument());
+  });
+
+  it('offers a column chooser that hides the Duration column', async () => {
+    const user = userEvent.setup();
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/exams')) {
+        return new Response(
+          JSON.stringify({
+            data: [{ id: 'exam-1', title: 'Backend Round', status: 'draft', durationMinutes: 45, invitationCount: 0, attemptSettledCount: 0, attemptTotalCount: 0, createdAt: '2026-01-01T00:00:00.000Z', sections: [] }],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+            totalPages: 1,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ExamsPage />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Backend Round')).toBeInTheDocument());
+    // Duration is sortable, so Table renders its <th> with role="button", not columnheader.
+    expect(screen.getByRole('button', { name: /Duration/ })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Choose Columns' }));
+    await user.click(screen.getByRole('menuitemcheckbox', { name: 'Duration' }));
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('button', { name: /Duration/ })).not.toBeInTheDocument();
+    expect(screen.getByText('Backend Round')).toBeInTheDocument();
   });
 
   it('shows loading state while exams are fetching', async () => {

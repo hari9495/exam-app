@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ShieldAlert, ShieldCheck, AlertTriangle, AlertCircle, Info, Search, Users, Activity, CheckCircle2, BellRing } from 'lucide-react';
 import { useUnblockAttempt, useBypassProctoring, useRevokeProctoringBypass } from '../lib/hooks/useAttemptModeration';
 import { useProctoringEvents } from '../lib/hooks/useProctoringEvents';
-import { Table, Badge, Button, Card, Modal, Select, useToast, type Column } from './ui';
+import { Table, Badge, Button, Card, Modal, Select, useToast, useColumnVisibility, type Column } from './ui';
 import { RosterRow, ProctoringFlag, ConnectionStatus } from '../lib/types';
 
 const STATUS_VARIANT: Record<string, 'default' | 'success' | 'warning' | 'danger'> = {
@@ -367,6 +367,11 @@ export function LiveMonitoringPanel({
     },
   ];
 
+  const { visibleColumns: visibleRosterColumns, chooser: rosterColumnChooser } = useColumnVisibility(
+    'live-monitoring-roster',
+    rosterColumns,
+  );
+
   return (
     <div>
       <div className="mb-4 flex items-center justify-between gap-4">
@@ -451,9 +456,10 @@ export function LiveMonitoringPanel({
                 />
               </div>
               <Select label="Status" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTER_OPTIONS} />
+              {rosterColumnChooser}
             </div>
             <Table
-              columns={rosterColumns}
+              columns={visibleRosterColumns}
               rows={visibleRoster}
               rowKey={(row) => row.candidateId}
               emptyMessage={

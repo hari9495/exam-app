@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { Plus, Search } from 'lucide-react';
 import { useQuestions, useArchiveQuestion, useRestoreQuestion } from '../../../lib/hooks/useQuestions';
-import { Select, Button, Modal, Pagination, StatusBadge, Table, useToast, type Column } from '../../../components/ui';
+import { Select, Button, Modal, Pagination, StatusBadge, Table, useToast, useColumnVisibility, type Column } from '../../../components/ui';
 import { groupQuestions, type GroupBy } from '../../../lib/question-grouping';
 import { TYPE_TONE, TYPE_LABEL, DIFFICULTY_LABEL, DIFFICULTY_LEVEL } from '../../../lib/question-display';
 import { Question } from '../../../lib/types';
@@ -103,30 +103,6 @@ export default function QuestionsPage() {
     });
   }
 
-  if (isLoading) {
-    return (
-      <div>
-        <h1 className="mb-6 text-2xl font-semibold text-recruiter-text">Question Bank</h1>
-        <p className="text-sm text-recruiter-text-tertiary">Loading…</p>
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div>
-        <h1 className="mb-6 text-2xl font-semibold text-recruiter-text">Question Bank</h1>
-        <p role="alert" className="text-sm text-status-danger">
-          Failed to load questions.
-        </p>
-      </div>
-    );
-  }
-
-  const rows = questions?.data ?? [];
-  // Each group renders its own Table, so column-header sorting applies within a group.
-  const groups = groupBy === 'none' ? [{ label: '', questions: rows }] : groupQuestions(rows, groupBy);
-
   const columns: Column<Question>[] = [
     ...DISPLAY_COLUMNS,
     {
@@ -156,6 +132,31 @@ export default function QuestionsPage() {
       ),
     },
   ];
+  const { visibleColumns, chooser } = useColumnVisibility('recruiter-questions', columns);
+
+  if (isLoading) {
+    return (
+      <div>
+        <h1 className="mb-6 text-2xl font-semibold text-recruiter-text">Question Bank</h1>
+        <p className="text-sm text-recruiter-text-tertiary">Loading…</p>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div>
+        <h1 className="mb-6 text-2xl font-semibold text-recruiter-text">Question Bank</h1>
+        <p role="alert" className="text-sm text-status-danger">
+          Failed to load questions.
+        </p>
+      </div>
+    );
+  }
+
+  const rows = questions?.data ?? [];
+  // Each group renders its own Table, so column-header sorting applies within a group.
+  const groups = groupBy === 'none' ? [{ label: '', questions: rows }] : groupQuestions(rows, groupBy);
 
   return (
     <div>
@@ -201,6 +202,7 @@ export default function QuestionsPage() {
           }}
           options={STATUS_OPTIONS}
         />
+        {chooser}
       </div>
 
       {rows.length === 0 ? (
@@ -222,7 +224,7 @@ export default function QuestionsPage() {
                     </span>
                   </div>
                 )}
-                <Table columns={columns} rows={group.questions} rowKey={(question) => question.id} />
+                <Table columns={visibleColumns} rows={group.questions} rowKey={(question) => question.id} />
               </section>
             );
           })}

@@ -1,15 +1,7 @@
 'use client';
 
-import { ReactNode, useEffect, useMemo, useState } from 'react';
-import { Settings2, Check } from 'lucide-react';
-import {
-  Table,
-  type Column,
-  Input,
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-} from '../../../components/ui';
+import { ReactNode, useMemo, useState } from 'react';
+import { Table, type Column, Input, useColumnVisibility } from '../../../components/ui';
 
 interface ListViewProps<T> {
   title: string;
@@ -37,18 +29,6 @@ interface ListViewProps<T> {
   totalCount?: number;
 }
 
-function readHiddenColumns(storageKey: string, fallback: string[]): string[] {
-  const raw = window.localStorage.getItem(`listview:${storageKey}:hidden`);
-  if (raw === null) return fallback;
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : fallback;
-  } catch {
-    // A hand-edited or half-written value must not blank the whole console.
-    return fallback;
-  }
-}
-
 export function ListView<T>({
   title,
   icon,
@@ -68,26 +48,8 @@ export function ListView<T>({
   totalCount,
 }: ListViewProps<T>) {
   const [search, setSearch] = useState(initialSearch);
-  const [hidden, setHidden] = useState<string[]>(defaultHiddenColumns);
   const [sort, setSort] = useState<{ key: string; header: string; direction: 'asc' | 'desc' } | null>(null);
-
-  // Read on mount rather than in useState's initializer: this component renders on
-  // the server too, where localStorage does not exist, and seeding state from it
-  // directly would make the first client render disagree with the server's.
-  useEffect(() => {
-    setHidden(readHiddenColumns(storageKey, defaultHiddenColumns));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- defaultHiddenColumns is a literal at every call site; depending on it would re-read on every render
-  }, [storageKey]);
-
-  function toggleColumn(key: string) {
-    setHidden((current) => {
-      const next = current.includes(key) ? current.filter((k) => k !== key) : [...current, key];
-      window.localStorage.setItem(`listview:${storageKey}:hidden`, JSON.stringify(next));
-      return next;
-    });
-  }
-
-  const visibleColumns = useMemo(() => columns.filter((column) => !hidden.includes(column.key)), [columns, hidden]);
+  const { visibleColumns, chooser } = useColumnVisibility(storageKey, columns, defaultHiddenColumns);
 
   const query = search.trim().toLowerCase();
   const visibleRows = useMemo(() => (query ? rows.filter((row) => searchMatch(row, query)) : rows), [rows, query, searchMatch]);
@@ -129,38 +91,7 @@ export function ListView<T>({
             value={search}
             onChange={setSearch}
           />
-          <DropdownMenu>
-            <DropdownMenuTrigger aria-label="Choose Columns" className="rounded border border-recruiter-border p-2">
-              <Settings2 size={16} />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              {columns
-                // A column with no header is a layout slot (the row-action cell);
-                // offering "show/hide ''" in the chooser would be meaningless.
-                .filter((column) => column.header !== '')
-                .map((column) => {
-                  const visible = !hidden.includes(column.key);
-                  // A non-text header (e.g. a filter dropdown trigger) has no string to
-                  // read as the checkbox's accessible name -- fall back the same way
-                  // Table's own sort announcement does.
-                  const label = column.sortLabel ?? (typeof column.header === 'string' ? column.header : column.key);
-                  return (
-                    <button
-                      key={column.key}
-                      type="button"
-                      role="menuitemcheckbox"
-                      aria-checked={visible}
-                      aria-label={label}
-                      onClick={() => toggleColumn(column.key)}
-                      className="flex w-full cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-recruiter-bg-subtle"
-                    >
-                      <Check size={14} className={visible ? 'opacity-100' : 'opacity-0'} aria-hidden="true" />
-                      {column.header}
-                    </button>
-                  );
-                })}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {chooser}
         </div>
       </div>
 

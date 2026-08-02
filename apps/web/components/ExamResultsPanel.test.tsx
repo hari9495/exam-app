@@ -40,6 +40,7 @@ function row(overrides: Record<string, unknown> = {}) {
 
 describe('ExamResultsPanel', () => {
   beforeEach(() => {
+    localStorage.clear();
     (useResultsExport as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
   });
 
@@ -58,6 +59,24 @@ describe('ExamResultsPanel', () => {
     expect(screen.getByText('Alice')).toBeInTheDocument();
     expect(screen.queryByText('Bob')).not.toBeInTheDocument();
     expect(screen.queryByText('Cara')).not.toBeInTheDocument();
+  });
+
+  it('offers a column chooser that can hide the Integrity column but never the select column', async () => {
+    const user = userEvent.setup();
+    (useResultsList as jest.Mock).mockReturnValue({ data: [row()], isLoading: false });
+
+    renderPanel();
+    expect(screen.getByRole('columnheader', { name: 'Integrity' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Choose Columns' }));
+    // The select-all checkbox column must not appear as a toggle at all -- hiding it
+    // would strand an in-progress bulk selection with no way to change it.
+    expect(screen.queryByRole('menuitemcheckbox', { name: 'Select' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('menuitemcheckbox', { name: 'Integrity' }));
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('columnheader', { name: 'Integrity' })).not.toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Select all' })).toBeInTheDocument();
   });
 
   it('shows status, score, result, and integrity for an attended candidate', () => {

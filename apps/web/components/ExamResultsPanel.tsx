@@ -11,6 +11,7 @@ import {
   StatusBadge,
   IntegrityBadge,
   useToast,
+  useColumnVisibility,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -161,20 +162,24 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
     }
   }
 
-  const columns: Column<ExamResultRow>[] = [
-    {
-      key: 'select',
-      header: <Checkbox checked={allVisibleSelected} onChange={toggleSelectAll} label="Select all" hideLabel />,
-      sortLabel: 'Select',
-      render: (row) => (
-        <Checkbox
-          checked={selectedIds.includes(row.candidateId)}
-          onChange={() => toggleSelected(row.candidateId)}
-          label={`Select ${row.candidateName}`}
-          hideLabel
-        />
-      ),
-    },
+  // Kept out of the column chooser (below): hiding the bulk-select checkbox would
+  // strand an in-progress selection with no way to change it, so this one column
+  // is never optional.
+  const selectColumn: Column<ExamResultRow> = {
+    key: 'select',
+    header: <Checkbox checked={allVisibleSelected} onChange={toggleSelectAll} label="Select all" hideLabel />,
+    sortLabel: 'Select',
+    render: (row) => (
+      <Checkbox
+        checked={selectedIds.includes(row.candidateId)}
+        onChange={() => toggleSelected(row.candidateId)}
+        label={`Select ${row.candidateName}`}
+        hideLabel
+      />
+    ),
+  };
+
+  const dataColumns: Column<ExamResultRow>[] = [
     {
       key: 'name',
       header: 'Candidate',
@@ -211,6 +216,8 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
     },
   ];
 
+  const { visibleColumns: visibleDataColumns, chooser } = useColumnVisibility('exam-results', dataColumns);
+
   if (isLoading) {
     return <p className="text-sm text-gray-500">Loading…</p>;
   }
@@ -231,10 +238,11 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
           <Button onClick={() => setAdvanceModalOpen(true)} disabled={selectedIds.length === 0}>
             Advance to Next Round
           </Button>
+          {chooser}
         </div>
       </div>
       <Table
-        columns={columns}
+        columns={[selectColumn, ...visibleDataColumns]}
         rows={visible}
         rowKey={(row) => row.candidateId}
         emptyMessage={filtersActive ? 'No candidates match your search or filters.' : 'No candidates have attended this exam yet.'}
