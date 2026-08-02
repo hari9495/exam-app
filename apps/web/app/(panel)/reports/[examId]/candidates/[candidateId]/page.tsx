@@ -14,6 +14,7 @@ import {
 import type { WebcamTimelineEntry } from '../../../../../../lib/types';
 import { Badge, Button, Card, Modal, StatusBadge, IntegrityBadge, useToast, type StatusTone } from '../../../../../../components/ui';
 import { BackLink } from '../../../../../../components/BackLink';
+import { AuditHistoryLink } from '../../../../../../components/AuditHistoryLink';
 
 const PASS_FAIL_VARIANT: Record<string, 'success' | 'danger'> = { pass: 'success', fail: 'danger' };
 const SEVERITY_TONE: Record<string, StatusTone> = { high: 'danger', medium: 'warning', low: 'neutral' };
@@ -59,7 +60,15 @@ export default function PanelCandidateDetailPage() {
     <div>
       <BackLink href={`/reports/${examId}`} label="Back To Results" className="print:hidden" />
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{candidate.candidateName}</h1>
+        <div>
+          <h1 className="text-2xl font-semibold">{candidate.candidateName}</h1>
+          <AuditHistoryLink
+            entityType="candidate"
+            entityId={candidateId}
+            entityName={candidate.candidateName}
+            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline print:hidden"
+          />
+        </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" onClick={() => window.print()} className="inline-flex items-center print:hidden">
             <Download size={16} className="mr-1.5" />

@@ -3,6 +3,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import { QuestionForm } from '../../../../../components/QuestionForm';
 import { BackLink } from '../../../../../components/BackLink';
+import { AuditHistoryLink } from '../../../../../components/AuditHistoryLink';
 import { useQuestion, useUpdateQuestion, useTags } from '../../../../../lib/hooks/useQuestions';
 import { useToast } from '../../../../../components/ui';
 
@@ -21,7 +22,10 @@ export default function EditQuestionPage() {
   return (
     <div>
       <BackLink href="/questions" label="Back To Question Bank" />
-      <h1 className="mb-6 text-2xl font-semibold">Edit question</h1>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Edit question</h1>
+        <AuditHistoryLink entityType="question" entityId={question.id} entityName={question.text} />
+      </div>
       <QuestionForm
         initialQuestion={question}
         tags={tags ?? []}

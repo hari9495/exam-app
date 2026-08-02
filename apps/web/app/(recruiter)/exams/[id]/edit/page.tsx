@@ -10,6 +10,7 @@ import { GradingQueuePanel } from '../../../../../components/GradingQueuePanel';
 import { LeaderboardPanel } from '../../../../../components/LeaderboardPanel';
 import { CandidatesPanel } from '../../../../../components/CandidatesPanel';
 import { ExamResultsPanel } from '../../../../../components/ExamResultsPanel';
+import { AuditHistoryLink } from '../../../../../components/AuditHistoryLink';
 import { useExam, useUpdateExam, usePublishExam, useUnpublishExam } from '../../../../../lib/hooks/useExams';
 import { useExamMonitoring } from '../../../../../lib/hooks/useExamMonitoring';
 import { useAttentionNotifications } from '../../../../../lib/hooks/useAttentionNotifications';
@@ -75,7 +76,15 @@ export default function EditExamPage() {
     <div>
       <BackLink href="/exams" label="Back To Exams" />
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{exam.title}</h1>
+        <div>
+          <h1 className="text-2xl font-semibold">{exam.title}</h1>
+          <AuditHistoryLink
+            entityType="exam"
+            entityId={exam.id}
+            entityName={exam.title}
+            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+          />
+        </div>
         <div className="flex gap-2">
           <Link href={`/exams/${exam.id}/preview`}>
             <Button variant="secondary">Preview</Button>
