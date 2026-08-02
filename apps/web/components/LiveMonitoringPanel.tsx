@@ -443,7 +443,7 @@ export function LiveMonitoringPanel({
       ) : (
         <div className="grid grid-cols-3 gap-4">
           <div className="col-span-2">
-            <div className="mb-2 flex items-end justify-between gap-2">
+            <div className="mb-2 flex items-end gap-2">
               <div className="relative max-w-xs flex-1">
                 <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-recruiter-text-tertiary" />
                 <input
