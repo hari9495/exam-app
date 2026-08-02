@@ -20,7 +20,7 @@ export default function EditQuestionPage() {
   }
 
   return (
-    <div>
+    <div className="mx-auto max-w-2xl">
       <BackLink href="/questions" label="Back To Question Bank" />
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Edit question</h1>

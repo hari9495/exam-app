@@ -13,7 +13,7 @@ export default function NewQuestionPage() {
   const createQuestion = useCreateQuestion();
 
   return (
-    <div>
+    <div className="mx-auto max-w-2xl">
       <BackLink href="/questions" label="Back To Question Bank" />
       <h1 className="mb-6 text-2xl font-semibold">New question</h1>
       <QuestionForm
