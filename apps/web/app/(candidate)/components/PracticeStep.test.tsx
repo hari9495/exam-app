@@ -36,4 +36,21 @@ describe('PracticeStep', () => {
 
     expect(onDone).toHaveBeenCalled();
   });
+
+  it('gives unselected options the same hover feedback the real exam uses, unlike the selected one', async () => {
+    render(<PracticeStep onDone={jest.fn()} />);
+
+    const unselected = screen.getByRole('button', { name: '12' });
+    expect(unselected).toHaveClass('hover:border-candidate-primary/40');
+
+    await userEvent.click(unselected);
+    expect(unselected).not.toHaveClass('hover:border-candidate-primary/40');
+    expect(screen.getByRole('button', { name: '10' })).toHaveClass('hover:border-candidate-primary/40');
+  });
+
+  it('gives the practice code editor the same dark IDE chrome as the real exam', () => {
+    render(<PracticeStep onDone={jest.fn()} />);
+
+    expect(screen.getByText('javascript')).toBeInTheDocument();
+  });
 });

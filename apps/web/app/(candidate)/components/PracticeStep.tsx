@@ -29,8 +29,9 @@ export function PracticeStep({ onDone }: { onDone: () => void }) {
               onClick={() => setSelectedOption(option)}
               className={
                 selectedOption === option
-                  ? 'rounded-lg border-[1.5px] border-candidate-primary bg-candidate-primary-light px-3 py-2 text-sm font-semibold text-candidate-primary'
-                  : 'rounded-lg border border-candidate-border px-3 py-2 text-sm text-candidate-text-secondary'
+                  ? 'rounded-lg border-[1.5px] border-candidate-primary bg-candidate-primary-light px-3 py-2 text-sm font-semibold text-candidate-primary transition-colors'
+                  // Matches the real exam's option hover treatment (same gap existed here).
+                  : 'rounded-lg border border-candidate-border px-3 py-2 text-sm text-candidate-text-secondary transition-colors hover:border-candidate-primary/40 hover:bg-candidate-bg'
               }
             >
               {option}
@@ -41,12 +42,24 @@ export function PracticeStep({ onDone }: { onDone: () => void }) {
 
       <div className="mb-4 rounded-md border border-candidate-border p-3">
         <p className="mb-2 text-sm font-medium text-candidate-text">Write a one-line fix for this function (optional)</p>
-        <div className="h-32 overflow-hidden rounded border border-candidate-border">
+        {/* Matches the real exam's code-question chrome (traffic lights, language badge, dark
+            theme) -- this step exists so the interface "feels familiar" once the timed exam
+            starts, which wasn't true while this box looked nothing like the real one. */}
+        <div className="overflow-hidden rounded-lg border border-[#2D2D2D] shadow-sm">
+          <div className="flex items-center justify-between bg-[#1E1E1E] px-3 py-2">
+            <span className="inline-flex items-center gap-1.5" aria-hidden="true">
+              <span className="h-2.5 w-2.5 rounded-full bg-[#FF5F56]" />
+              <span className="h-2.5 w-2.5 rounded-full bg-[#FFBD2E]" />
+              <span className="h-2.5 w-2.5 rounded-full bg-[#27C93F]" />
+            </span>
+            <span className="rounded bg-[#2D2D2D] px-2 py-0.5 text-[11px] font-semibold text-candidate-text-faint">javascript</span>
+          </div>
           <Editor
-            height="100%"
+            height="128px"
             defaultLanguage="javascript"
             defaultValue={PRACTICE_CODE_STARTER}
-            options={{ minimap: { enabled: false }, fontSize: 13 }}
+            options={{ minimap: { enabled: false }, fontSize: 13, padding: { top: 12 } }}
+            theme="vs-dark"
           />
         </div>
         <p className="mt-1 text-xs text-candidate-text-tertiary">
