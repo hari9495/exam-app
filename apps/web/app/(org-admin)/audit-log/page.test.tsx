@@ -152,6 +152,40 @@ describe('AuditLogPage', () => {
     expect(erasedBadge.className).toContain('bg-status-danger-bg');
   });
 
+  it('exports loaded entries to CSV when Export CSV is clicked', async () => {
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/audit-logs')) {
+        return new Response(JSON.stringify([ENTRY_1]), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    // jsdom has no real Blob URL / download; stub the bits the handler touches.
+    const createObjectURL = jest.fn(() => 'blob:audit');
+    const revokeObjectURL = jest.fn();
+    (URL as unknown as { createObjectURL: unknown }).createObjectURL = createObjectURL;
+    (URL as unknown as { revokeObjectURL: unknown }).revokeObjectURL = revokeObjectURL;
+    const clickSpy = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    render(
+      <QueryProvider>
+        <AuthProvider>
+          <AuditLogPage />
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Staff user created')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: /export csv/i }));
+
+    expect(createObjectURL).toHaveBeenCalled();
+    expect(clickSpy).toHaveBeenCalled();
+    clickSpy.mockRestore();
+  });
+
   it('opens a detail view showing the raw action key, entity id, and metadata', async () => {
     const entryWithMeta = {
       id: 'log-3', action: 'invitation.created', entityType: 'invitation', entityId: 'inv-1',

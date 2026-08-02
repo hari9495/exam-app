@@ -25,11 +25,20 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'candidate.erased.evidence_deleted': 'Candidate evidence deleted (GDPR)',
   'candidate.updated': 'Candidate updated',
   'exam.archived': 'Exam archived',
+  'exam.created': 'Exam created',
   'exam.duplicated': 'Exam duplicated',
   'exam.published': 'Exam published',
   'exam.unpublished': 'Exam unpublished',
+  'exam.updated': 'Exam updated',
+  'invitation.accommodation_updated': 'Extra time updated',
   'invitation.created': 'Candidate(s) invited',
+  'invitation.resent': 'Invitation resent',
   'invitation.revoked': 'Invitation revoked',
+  'question.archived': 'Question archived',
+  'question.bulk_uploaded': 'Questions bulk-uploaded',
+  'question.created': 'Question created',
+  'question.published': 'Question published',
+  'question.updated': 'Question updated',
   'login.success': 'Signed in',
   'organization.ai_key_configured': 'AI API key configured',
   'organization.api_key_generated': 'Public API key generated',
@@ -39,6 +48,8 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'organization.logo_updated': 'Logo updated',
   'organization.smtp_configured': 'Email (SMTP) configured',
   'organization.sso_configured': 'SSO configured',
+  'organization.sso_enabled': 'SSO enabled',
+  'organization.sso_disabled': 'SSO disabled',
   'organization.webhook_secret_generated': 'Webhook signing secret generated',
   'organization.webhook_url_updated': 'Webhook URL updated',
   'password.changed': 'Password changed',
@@ -107,6 +118,34 @@ export function auditSummary(entry: AuditLogEntry): string {
   const detail = auditDetail(entry);
   const label = friendlyAction(entry.action);
   return detail ? `${label} — ${detail}` : label;
+}
+
+// Serialise loaded audit entries to CSV for download. Auditors expect a
+// spreadsheet-friendly export; this covers the entries currently loaded in the
+// page (after "Load more", more are included). Columns are the human-readable
+// values, with the raw action key and full ids kept for traceability.
+export function auditRowsToCsv(entries: AuditLogEntry[]): string {
+  const header = ['When', 'Action', 'Action key', 'Details', 'Actor', 'Actor role', 'Entity', 'Entity name', 'Entity ID'];
+  const escape = (value: string) => `"${value.replace(/"/g, '""')}"`;
+  const lines = [header.map(escape).join(',')];
+  for (const entry of entries) {
+    lines.push(
+      [
+        formatAuditTimestamp(entry.createdAt),
+        friendlyAction(entry.action),
+        entry.action,
+        auditDetail(entry),
+        auditActor(entry),
+        entry.actorRole ?? '',
+        entry.entityType,
+        entry.entityName ?? '',
+        entry.entityId ?? '',
+      ]
+        .map((cell) => escape(String(cell ?? '')))
+        .join(','),
+    );
+  }
+  return lines.join('\r\n');
 }
 
 // Full timestamp for the detail view / hover; the table shows a shorter form.

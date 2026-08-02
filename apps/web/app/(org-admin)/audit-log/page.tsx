@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { useAuditLogs, type AuditLogFilters } from '../../../lib/hooks/useAuditLogs';
 import { Input, Button, Modal, Table, StatusBadge, type StatusTone, type Column } from '../../../components/ui';
 import { AuditLogEntry } from '../../../lib/types';
-import { friendlyAction, auditDetail, auditActor, formatAuditTimestamp } from '../../../lib/audit-display';
+import { ScrollText, Download } from 'lucide-react';
+import { friendlyAction, auditDetail, auditActor, auditRowsToCsv, formatAuditTimestamp } from '../../../lib/audit-display';
 
 // Action strings are open-ended ("<entity>.<verb>", e.g. "exam.published",
 // "candidate.erased", "attempt.settled") -- tone by verb suffix rather than
@@ -106,9 +107,30 @@ export default function AuditLogPage() {
     setCursor(entries[entries.length - 1].id);
   }
 
+  function handleExportCsv() {
+    if (entries.length === 0) return;
+    const csv = auditRowsToCsv(entries);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'audit-log.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-semibold text-recruiter-text">Audit Log</h1>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="flex items-center gap-2 text-2xl font-semibold text-recruiter-text">
+          <ScrollText size={22} aria-hidden="true" />
+          Audit Log
+        </h1>
+        <Button variant="secondary" onClick={handleExportCsv} disabled={entries.length === 0} className="inline-flex items-center gap-1.5">
+          <Download size={16} />
+          Export CSV
+        </Button>
+      </div>
       <form onSubmit={handleApplyFilters} className="mb-6 flex flex-wrap items-end gap-2">
         <Input
           label="Actor User ID"
