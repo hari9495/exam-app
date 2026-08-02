@@ -79,7 +79,7 @@ export default function SsoSettingsPage() {
 
           <Button
             className="mt-3"
-            variant="secondary"
+            variant={sso?.samlEnabled ? 'danger' : 'primary'}
             loading={updateSso.isPending}
             onClick={handleToggleEnabled}
             disabled={!sso?.samlEnabled && (!entityId || !ssoUrl || !certificate)}
