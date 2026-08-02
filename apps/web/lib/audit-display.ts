@@ -72,6 +72,67 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'user.updated': 'Staff user updated',
 };
 
+// View/session events, not data changes -- kept in sync with the backend's copy
+// in apps/api/src/audit/audit-query.service.ts (ACCESS_ACTIONS). Both are short,
+// stable lists of action *keys*; duplicating them is simpler and safer than
+// sharing a backend package with the browser bundle for five string literals.
+export const ACCESS_ACTIONS = [
+  'super_admin.org_switch_in',
+  'super_admin.org_switch_out',
+  'login.success',
+  'user.impersonate_start',
+  'user.impersonate_stop',
+];
+
+export function isAccessEvent(action: string): boolean {
+  return ACCESS_ACTIONS.includes(action);
+}
+
+// The prefix before the first "." groups related actions in the Action filter
+// dropdown -- "Exams", "Questions", etc. -- rather than one flat 51-item list.
+const GROUP_LABELS: Record<string, string> = {
+  attempt: 'Attempts',
+  auth: 'Security',
+  candidate: 'Candidates',
+  exam: 'Exams',
+  invitation: 'Invitations',
+  login: 'Security',
+  organization: 'Organization',
+  password: 'Security',
+  platform: 'Platform',
+  question: 'Questions',
+  super_admin: 'Super-admin',
+  user: 'Users',
+};
+
+export interface AuditActionOption {
+  value: string;
+  label: string;
+  group: string;
+}
+
+// Every known action as a { value, label, group } option, sorted by group then
+// label, for a grouped <select> -- built once from AUDIT_ACTION_LABELS so a
+// newly-added action key only needs adding there, not in two places.
+export const AUDIT_ACTION_OPTIONS: AuditActionOption[] = Object.keys(AUDIT_ACTION_LABELS)
+  .map((action) => {
+    const prefix = action.split('.')[0];
+    return { value: action, label: AUDIT_ACTION_LABELS[action], group: GROUP_LABELS[prefix] ?? 'Other' };
+  })
+  .sort((a, b) => a.group.localeCompare(b.group) || a.label.localeCompare(b.label));
+
+// The entity types the audit log actually records against today (matches
+// AuditQueryService's own resolvable set plus the read-only ones like attempt).
+export const AUDIT_ENTITY_TYPE_OPTIONS = [
+  { value: 'exam', label: 'Exam' },
+  { value: 'question', label: 'Question' },
+  { value: 'candidate', label: 'Candidate' },
+  { value: 'invitation', label: 'Invitation' },
+  { value: 'attempt', label: 'Attempt' },
+  { value: 'user', label: 'Staff user' },
+  { value: 'organization', label: 'Organization' },
+];
+
 export function friendlyAction(action: string): string {
   const known = AUDIT_ACTION_LABELS[action];
   if (known) return known;
@@ -112,43 +173,7 @@ export function auditActor(entry: AuditLogEntry): string {
   return entry.actorName ?? entry.actorEmail ?? 'System';
 }
 
-// Full one-line summary (label + detail), used where the action label is not
-// shown separately -- e.g. CSV/Excel export.
-export function auditSummary(entry: AuditLogEntry): string {
-  const detail = auditDetail(entry);
-  const label = friendlyAction(entry.action);
-  return detail ? `${label} — ${detail}` : label;
-}
-
-// Serialise loaded audit entries to CSV for download. Auditors expect a
-// spreadsheet-friendly export; this covers the entries currently loaded in the
-// page (after "Load more", more are included). Columns are the human-readable
-// values, with the raw action key and full ids kept for traceability.
-export function auditRowsToCsv(entries: AuditLogEntry[]): string {
-  const header = ['When', 'Action', 'Action key', 'Details', 'Actor', 'Actor role', 'Entity', 'Entity name', 'Entity ID'];
-  const escape = (value: string) => `"${value.replace(/"/g, '""')}"`;
-  const lines = [header.map(escape).join(',')];
-  for (const entry of entries) {
-    lines.push(
-      [
-        formatAuditTimestamp(entry.createdAt),
-        friendlyAction(entry.action),
-        entry.action,
-        auditDetail(entry),
-        auditActor(entry),
-        entry.actorRole ?? '',
-        entry.entityType,
-        entry.entityName ?? '',
-        entry.entityId ?? '',
-      ]
-        .map((cell) => escape(String(cell ?? '')))
-        .join(','),
-    );
-  }
-  return lines.join('\r\n');
-}
-
-// Full timestamp for the detail view / hover; the table shows a shorter form.
+// Full timestamp for the detail view / hover; the table shows a relative form.
 export function formatAuditTimestamp(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
     year: 'numeric',
@@ -158,4 +183,25 @@ export function formatAuditTimestamp(iso: string): string {
     minute: '2-digit',
     second: '2-digit',
   });
+}
+
+const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
+  ['year', 31536000], ['month', 2592000], ['week', 604800],
+  ['day', 86400], ['hour', 3600], ['minute', 60],
+];
+
+// "2 hours ago" for the table row; formatAuditTimestamp (exact) is what the
+// hover title and detail modal show, so precision is never actually lost, just
+// deferred until the reader wants it. `now` is injectable for deterministic
+// tests -- otherwise this reads real time on every render.
+export function formatRelativeTime(iso: string, now: Date = new Date()): string {
+  const diffSeconds = Math.round((now.getTime() - new Date(iso).getTime()) / 1000);
+  if (diffSeconds < 5) return 'just now';
+  if (diffSeconds < 60) return `${diffSeconds}s ago`;
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+  for (const [unit, secondsInUnit] of RELATIVE_UNITS) {
+    const value = Math.floor(diffSeconds / secondsInUnit);
+    if (value >= 1) return rtf.format(-value, unit);
+  }
+  return 'just now';
 }
