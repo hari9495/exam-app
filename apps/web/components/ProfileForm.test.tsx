@@ -6,6 +6,11 @@ import { QueryProvider } from '../lib/query-provider';
 import { ToastProvider } from './ui';
 import { fakeJwt } from '../lib/test-utils/fake-jwt';
 
+let mockSsoStatus: { enabled: boolean } | undefined = { enabled: false };
+jest.mock('../lib/hooks/useSso', () => ({
+  useSsoStatus: () => ({ data: mockSsoStatus }),
+}));
+
 function renderProfileForm() {
   const token = fakeJwt({ sub: 'u1', organizationId: 'org1', role: 'recruiter' });
   global.fetch = jest.fn(async (url, options) => {
@@ -45,6 +50,9 @@ describe('ProfileForm', () => {
   const originalFetch = global.fetch;
   afterEach(() => {
     global.fetch = originalFetch;
+  });
+  beforeEach(() => {
+    mockSsoStatus = { enabled: false };
   });
 
   it('shows the read-only email and role, and the current display name', async () => {
@@ -105,5 +113,19 @@ describe('ProfileForm', () => {
     expect(screen.getByRole('button', { name: 'Change password' })).toBeDisabled();
     await userEvent.type(screen.getByLabelText('Confirm New Password'), 'Mismatch!');
     expect(screen.getByRole('button', { name: 'Change password' })).toBeDisabled();
+  });
+
+  describe('when SSO is enabled', () => {
+    beforeEach(() => {
+      mockSsoStatus = { enabled: true };
+    });
+
+    it('hides the change-password form for every role and shows an explanatory note instead', async () => {
+      renderProfileForm();
+      await screen.findByDisplayValue('Jane Recruiter');
+      expect(screen.queryByLabelText('Current Password')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Change password' })).not.toBeInTheDocument();
+      expect(screen.getByText(/single sign-on is enabled/i)).toBeInTheDocument();
+    });
   });
 });

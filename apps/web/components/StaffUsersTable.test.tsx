@@ -9,6 +9,7 @@ const users = [
 
 const mockImpersonate = jest.fn();
 const mockPush = jest.fn();
+let mockSsoStatus: { enabled: boolean } | undefined = { enabled: false };
 jest.mock('../lib/auth-context', () => ({ useAuth: () => ({ impersonate: mockImpersonate }) }));
 jest.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush }) }));
 jest.mock('../lib/hooks/useUsers', () => ({
@@ -16,6 +17,9 @@ jest.mock('../lib/hooks/useUsers', () => ({
   useDeactivateUser: () => ({ mutate: jest.fn(), isPending: false }),
   useReactivateUser: () => ({ mutate: jest.fn(), isPending: false }),
   useResetUserPassword: () => ({ mutate: jest.fn(), isPending: false }),
+}));
+jest.mock('../lib/hooks/useSso', () => ({
+  useSsoStatus: () => ({ data: mockSsoStatus }),
 }));
 
 // ListView persists column visibility in localStorage; clear it so one test's
@@ -25,6 +29,7 @@ beforeEach(() => {
   mockImpersonate.mockReset();
   mockImpersonate.mockResolvedValue(undefined);
   mockPush.mockReset();
+  mockSsoStatus = { enabled: false };
 });
 
 // useToast() throws outside a ToastProvider (a mutation success path calls it), so
@@ -60,6 +65,22 @@ it('shows no row menu for a user the current user cannot manage', () => {
   renderTable({ users: selfRow, currentUserRole: 'org_admin', isActingSuperAdmin: false, currentUserId: 'admin1' });
   // RowActions renders null for an empty action list, so gating produces no menu.
   expect(screen.queryByRole('button', { name: /actions for/i })).not.toBeInTheDocument();
+});
+
+it('offers Reset password in the row menu when the org does not have SSO enabled', async () => {
+  renderTable({ users, currentUserRole: 'org_admin', isActingSuperAdmin: false, currentUserId: 'admin1' });
+  await userEvent.click(screen.getByRole('button', { name: /actions for rec@x.com/i }));
+  expect(screen.getByText('Reset password')).toBeInTheDocument();
+});
+
+it('hides Reset password from the row menu when the org has SSO enabled', async () => {
+  mockSsoStatus = { enabled: true };
+  renderTable({ users, currentUserRole: 'org_admin', isActingSuperAdmin: false, currentUserId: 'admin1' });
+  await userEvent.click(screen.getByRole('button', { name: /actions for rec@x.com/i }));
+  expect(screen.queryByText('Reset password')).not.toBeInTheDocument();
+  // The rest of the menu is unaffected.
+  expect(screen.getByText('Edit')).toBeInTheDocument();
+  expect(screen.getByText('Deactivate')).toBeInTheDocument();
 });
 
 it('filters rows by role and the item count follows', async () => {

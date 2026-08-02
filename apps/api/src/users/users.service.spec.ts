@@ -519,6 +519,7 @@ describe('UsersService', () => {
 
     it('creates a reset token and emails the target', async () => {
       const tx = {
+        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
         user: { findFirst: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', organizationId: 'org1' }) },
         passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'tok1' }) },
       };
@@ -531,6 +532,22 @@ describe('UsersService', () => {
       // SMTP_HOST in production and fakes success via an Ethereal test account -- see
       // the "set-password link never arrives" incident this test was added to catch).
       expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'a@b.com', organizationId: 'org1' }));
+      expect(audit.record).toHaveBeenCalledWith(ctx, expect.objectContaining({ action: 'user.password_reset_requested' }));
+    });
+
+    it('skips the reset token and email when the org has SSO enabled', async () => {
+      const tx = {
+        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: true }) },
+        user: { findFirst: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', organizationId: 'org1' }) },
+        passwordResetToken: { create: jest.fn() },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+
+      const result = await service.requestPasswordReset(ctx, 't1', 'admin1');
+
+      expect(result).toEqual({ success: true });
+      expect(tx.passwordResetToken.create).not.toHaveBeenCalled();
+      expect(emailService.send).not.toHaveBeenCalled();
       expect(audit.record).toHaveBeenCalledWith(ctx, expect.objectContaining({ action: 'user.password_reset_requested' }));
     });
 

@@ -8,6 +8,7 @@ import { ListView } from '../app/(platform)/components/ListView';
 import { RowActions, type RowAction } from '../app/(platform)/components/RowActions';
 import { useAuth } from '../lib/auth-context';
 import { useUpdateUser, useDeactivateUser, useReactivateUser, useResetUserPassword } from '../lib/hooks/useUsers';
+import { useSsoStatus } from '../lib/hooks/useSso';
 import { StaffUser } from '../lib/types';
 
 // Lifted from users/page.tsx -- this component now owns them.
@@ -76,6 +77,11 @@ export function StaffUsersTable({
   const deactivateUser = useDeactivateUser();
   const reactivateUser = useReactivateUser();
   const resetPassword = useResetUserPassword();
+  // Staff on an SSO-enabled org sign in via the identity provider, not a password --
+  // resetting one and emailing a set-password link would be dead UI (see NewUserModal
+  // for the same reasoning on user creation).
+  const { data: ssoStatus } = useSsoStatus();
+  const ssoEnabled = ssoStatus?.enabled === true;
 
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -131,10 +137,14 @@ export function StaffUsersTable({
                 onSelect: () => deactivateUser.mutate(u.id, { onSuccess: () => toast(`Deactivated ${u.email}.`) }),
               }
             : { label: 'Reactivate', onSelect: () => reactivateUser.mutate(u.id, { onSuccess: () => toast(`Reactivated ${u.email}.`) }) },
-          {
-            label: 'Reset password',
-            onSelect: () => resetPassword.mutate(u.id, { onSuccess: () => toast(`Password reset email sent to ${u.email}.`) }),
-          },
+          ...(ssoEnabled
+            ? []
+            : [
+                {
+                  label: 'Reset password',
+                  onSelect: () => resetPassword.mutate(u.id, { onSuccess: () => toast(`Password reset email sent to ${u.email}.`) }),
+                },
+              ]),
         ]
       : [];
 
@@ -175,10 +185,10 @@ export function StaffUsersTable({
       { key: 'createdAt', header: 'Created', render: (u) => new Date(u.createdAt).toLocaleDateString(), sortValue: (u) => u.createdAt },
       { key: 'actions', header: '', render: renderActions },
     ],
-    // renderActions closes over currentUserRole/isActingSuperAdmin/currentUserId (the
-    // gating inputs) and the mutation objects, which are stable per render of this hook.
+    // renderActions closes over currentUserRole/isActingSuperAdmin/currentUserId/ssoEnabled
+    // (the gating inputs) and the mutation objects, which are stable per render of this hook.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [currentUserRole, isActingSuperAdmin, currentUserId],
+    [currentUserRole, isActingSuperAdmin, currentUserId, ssoEnabled],
   );
 
   return (

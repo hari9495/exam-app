@@ -366,6 +366,13 @@ export class UsersService {
       if (!target) {
         throw new NotFoundException('User not found');
       }
+      const org = await tx.organization.findUnique({ where: { id: context.organizationId as string }, select: { samlEnabled: true } });
+      // SSO-enabled orgs authenticate via SAML, matched by email -- a reset link is
+      // meaningless there (see create/bulkCreate for the same reasoning), so skip the
+      // token and the email rather than send a link nobody can use.
+      if (org?.samlEnabled) {
+        return;
+      }
       const rawToken = randomBytes(32).toString('hex');
       const tokenHash = createHash('sha256').update(rawToken).digest('hex');
       await tx.passwordResetToken.create({

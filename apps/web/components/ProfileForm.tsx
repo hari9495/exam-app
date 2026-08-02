@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Eye, EyeOff } from 'lucide-react';
 import { useCurrentUser, useUpdateProfile, useChangePassword } from '../lib/hooks/useCurrentUser';
+import { useSsoStatus } from '../lib/hooks/useSso';
 import { useAuth } from '../lib/auth-context';
 import { Button, Input, Card, useToast } from './ui';
 
@@ -29,6 +30,11 @@ export function ProfileForm() {
   const updateProfile = useUpdateProfile();
   const changePassword = useChangePassword();
   const { toast } = useToast();
+  // SSO sign-in is email-matched and never checks passwordHash (for every role, not just
+  // org_admin), so this form's "Current Password" is unusable once SSO is on -- hide it
+  // rather than let someone fill it in and get a confusing failure.
+  const { data: ssoStatus } = useSsoStatus();
+  const ssoEnabled = ssoStatus?.enabled === true;
 
   const [name, setName] = useState('');
   const [nameError, setNameError] = useState<string | null>(null);
@@ -108,48 +114,55 @@ export function ProfileForm() {
       >
         <Card className="max-w-md">
           <h2 className="mb-4 text-lg font-semibold text-recruiter-text">Change password</h2>
-          <form onSubmit={handlePasswordSubmit} className="flex flex-col gap-3">
-            <div className="relative">
-              <Input
-                label="Current Password"
-                type={showPassword ? 'text' : 'password'}
-                autoComplete="current-password"
-                value={currentPassword}
-                onChange={setCurrentPassword}
-                required
-              />
-              <PasswordVisibilityToggle visible={showPassword} onToggle={() => setShowPassword((prev) => !prev)} />
-            </div>
-            <div className="relative">
-              <Input
-                label="New Password"
-                type={showPassword ? 'text' : 'password'}
-                autoComplete="new-password"
-                value={newPassword}
-                onChange={setNewPassword}
-                required
-              />
-              <PasswordVisibilityToggle visible={showPassword} onToggle={() => setShowPassword((prev) => !prev)} />
-            </div>
-            <div className="relative">
-              <Input
-                label="Confirm New Password"
-                type={showPassword ? 'text' : 'password'}
-                autoComplete="new-password"
-                value={confirmPassword}
-                onChange={setConfirmPassword}
-                required
-              />
-              <PasswordVisibilityToggle visible={showPassword} onToggle={() => setShowPassword((prev) => !prev)} />
-            </div>
-            <Button type="submit" disabled={!passwordsMatch || currentPassword.length === 0}>
-              Change password
-            </Button>
-            {!passwordsMatch && confirmPassword.length > 0 && (
-              <p className="text-xs text-recruiter-text-tertiary">Passwords must match.</p>
-            )}
-          </form>
-          {passwordError && (
+          {ssoEnabled ? (
+            <p className="text-sm text-recruiter-text-secondary">
+              Single sign-on is enabled for this organization. You sign in with your identity provider — there is no
+              password to change.
+            </p>
+          ) : (
+            <form onSubmit={handlePasswordSubmit} className="flex flex-col gap-3">
+              <div className="relative">
+                <Input
+                  label="Current Password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  value={currentPassword}
+                  onChange={setCurrentPassword}
+                  required
+                />
+                <PasswordVisibilityToggle visible={showPassword} onToggle={() => setShowPassword((prev) => !prev)} />
+              </div>
+              <div className="relative">
+                <Input
+                  label="New Password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={setNewPassword}
+                  required
+                />
+                <PasswordVisibilityToggle visible={showPassword} onToggle={() => setShowPassword((prev) => !prev)} />
+              </div>
+              <div className="relative">
+                <Input
+                  label="Confirm New Password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={setConfirmPassword}
+                  required
+                />
+                <PasswordVisibilityToggle visible={showPassword} onToggle={() => setShowPassword((prev) => !prev)} />
+              </div>
+              <Button type="submit" disabled={!passwordsMatch || currentPassword.length === 0}>
+                Change password
+              </Button>
+              {!passwordsMatch && confirmPassword.length > 0 && (
+                <p className="text-xs text-recruiter-text-tertiary">Passwords must match.</p>
+              )}
+            </form>
+          )}
+          {!ssoEnabled && passwordError && (
             <p role="alert" className="mt-3 text-sm text-status-danger">
               {passwordError}
             </p>
