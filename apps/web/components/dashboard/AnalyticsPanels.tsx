@@ -114,7 +114,12 @@ function IntegrityPanel({ integrity }: { integrity: DashboardAnalytics['integrit
   ];
   const topTypes = integrity.byType.slice(0, 5).map((t) => ({ ...t, label: t.type.replace(/_/g, ' ') }));
   return (
-    <Card>
+    // This card sits beside the score-distribution panel in a grid row, which stretches
+    // both cards to the taller one's height. Its own content (a small donut + a short bar
+    // list) is naturally shorter, so without the flex-col/flex-1/content-center below it
+    // just top-aligns and leaves the rest of the card empty -- centering it in the
+    // available height instead makes the card read as intentionally laid out.
+    <Card className="flex flex-col">
       <PanelHeader
         icon={integrity.flaggedRate > 0 ? ShieldAlert : ShieldCheck}
         title="Proctoring integrity"
@@ -123,7 +128,7 @@ function IntegrityPanel({ integrity }: { integrity: DashboardAnalytics['integrit
       {!hasData ? (
         <EmptyNote>No completed attempts to analyse yet.</EmptyNote>
       ) : (
-        <div className="grid grid-cols-[auto_1fr] gap-4">
+        <div className="grid flex-1 grid-cols-[auto_1fr] content-center gap-4">
           <div className="flex flex-col items-center">
             <div className="relative h-28 w-28">
               <ResponsiveContainer width="100%" height="100%">
