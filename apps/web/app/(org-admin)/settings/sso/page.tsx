@@ -43,11 +43,11 @@ export default function SsoSettingsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold text-recruiter-text">Single Sign-On</h1>
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
+      <h1 className="text-center text-2xl font-semibold text-recruiter-text">Single Sign-On</h1>
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: 'easeOut' }}>
-        <Card className="max-w-lg">
+        <Card className="w-full">
           <h2 className="mb-1 text-lg font-semibold text-recruiter-text">SAML configuration</h2>
           <p className="mb-4 text-sm text-recruiter-text-secondary">
             {sso?.samlEnabled ? 'Configured and enabled — staff can log in via SSO.' : 'Not configured — staff use password login only.'}
