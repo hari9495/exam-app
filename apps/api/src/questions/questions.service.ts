@@ -3,6 +3,7 @@ import { Prisma, Question, QuestionOption, QuestionTag, Tag } from '@prisma/clie
 import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
+import { AuditService } from '@exam-platform/shared';
 import { randomUUID } from 'crypto';
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
@@ -52,6 +53,7 @@ export class QuestionsService {
     private readonly jobsService: JobsService,
     private readonly examRuntime: ExamRuntimeInternalClient,
     private readonly blobStorage: BlobStorageService,
+    private readonly audit: AuditService,
   ) {}
 
   private async fetchAvailableLanguagesIfNeeded(type: string, languageMode: string | undefined): Promise<string[]> {
@@ -106,6 +108,13 @@ export class QuestionsService {
         },
         include: { options: true, tags: { include: { tag: true } } },
       });
+    });
+    await this.audit.record(context, {
+      actorUserId: userId,
+      action: 'question.created',
+      entityType: 'question',
+      entityId: question.id,
+      metadata: { type: dto.type, difficulty: dto.difficulty },
     });
     return this.toResponse(question as QuestionWithRelations);
   }
@@ -169,7 +178,7 @@ export class QuestionsService {
     });
   }
 
-  async update(context: TenantContext, id: string, dto: UpdateQuestionDto): Promise<QuestionResponse> {
+  async update(context: TenantContext, actorUserId: string, id: string, dto: UpdateQuestionDto): Promise<QuestionResponse> {
     const availableLanguages = await this.fetchAvailableLanguagesIfNeeded(dto.type, dto.languageMode);
     validateQuestionPayload(
       {
@@ -184,7 +193,7 @@ export class QuestionsService {
       availableLanguages,
     );
 
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+    const result = await this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.question.findFirst({ where: { id, organizationId: context.organizationId as string } });
       if (!existing) {
         throw new NotFoundException(`Question ${id} not found`);
@@ -223,10 +232,18 @@ export class QuestionsService {
       });
       return this.toResponse(updated as QuestionWithRelations);
     });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'question.updated',
+      entityType: 'question',
+      entityId: id,
+      metadata: { type: dto.type, difficulty: dto.difficulty },
+    });
+    return result;
   }
 
-  async archive(context: TenantContext, id: string): Promise<QuestionResponse> {
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+  async archive(context: TenantContext, actorUserId: string, id: string): Promise<QuestionResponse> {
+    const result = await this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.question.findFirst({ where: { id, organizationId: context.organizationId as string } });
       if (!existing) {
         throw new NotFoundException(`Question ${id} not found`);
@@ -238,6 +255,13 @@ export class QuestionsService {
       });
       return this.toResponse(archived as QuestionWithRelations);
     });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'question.archived',
+      entityType: 'question',
+      entityId: id,
+    });
+    return result;
   }
 
   async aiGenerate(context: TenantContext, userId: string, dto: AiGenerateQuestionsDto): Promise<{ aiJobId: string }> {
@@ -252,8 +276,8 @@ export class QuestionsService {
     return { aiJobId: aiJob.id };
   }
 
-  async publish(context: TenantContext, id: string): Promise<QuestionResponse> {
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+  async publish(context: TenantContext, actorUserId: string, id: string): Promise<QuestionResponse> {
+    const result = await this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.question.findFirst({ where: { id, organizationId: context.organizationId as string } });
       if (!existing) {
         throw new NotFoundException(`Question ${id} not found`);
@@ -265,6 +289,13 @@ export class QuestionsService {
       });
       return this.toResponse(published as QuestionWithRelations);
     });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'question.published',
+      entityType: 'question',
+      entityId: id,
+    });
+    return result;
   }
 
   async bulkUpload(context: TenantContext, userId: string, file: Express.Multer.File): Promise<BulkUploadResult> {
@@ -351,6 +382,15 @@ export class QuestionsService {
       }
       return results;
     });
+
+    if (created.length > 0) {
+      await this.audit.record(context, {
+        actorUserId: userId,
+        action: 'question.bulk_uploaded',
+        entityType: 'question',
+        metadata: { count: created.length },
+      });
+    }
 
     const errors = [...parseErrors, ...validationErrors].sort((a, b) => a.row - b.row);
     return { created, errors };

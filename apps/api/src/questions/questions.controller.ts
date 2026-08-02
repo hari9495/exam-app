@@ -89,19 +89,24 @@ export class QuestionsController {
 
   @Patch(':id')
   @RequirePermissions('question_bank:manage')
-  update(@CurrentTenant() tenant: TenantContext, @Param('id') id: string, @Body() dto: UpdateQuestionDto) {
-    return this.questionsService.update(tenant, id, dto);
+  update(
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentUserId() userId: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateQuestionDto,
+  ) {
+    return this.questionsService.update(tenant, userId, id, dto);
   }
 
   @Post(':id/archive')
   @RequirePermissions('question_bank:manage')
-  archive(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
-    return this.questionsService.archive(tenant, id);
+  archive(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.questionsService.archive(tenant, userId, id);
   }
 
   @Post(':id/publish')
   @RequirePermissions('question_bank:manage')
-  publish(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
-    return this.questionsService.publish(tenant, id);
+  publish(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.questionsService.publish(tenant, userId, id);
   }
 }

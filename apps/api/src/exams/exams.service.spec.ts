@@ -124,7 +124,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await service.update(context, 'exam-1', { title: 'Exam', feedbackVisibility: 'breakdown' });
+    await service.update(context, 'user-1', 'exam-1', { title: 'Exam', feedbackVisibility: 'breakdown' });
 
     expect(tx.exam.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ feedbackVisibility: 'breakdown' }) }),
@@ -439,7 +439,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    const result = await service.update(context, 'exam-1', { title: 'Updated Title' });
+    const result = await service.update(context, 'user-1', 'exam-1', { title: 'Updated Title' });
 
     expect(result.title).toBe('Updated Title');
     expect(tx.exam.update).toHaveBeenCalledWith({
@@ -461,7 +461,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await expect(service.update(context, 'exam-1', { title: 'New Title' })).rejects.toThrow(ConflictException);
+    await expect(service.update(context, 'user-1', 'exam-1', { title: 'New Title' })).rejects.toThrow(ConflictException);
     expect(tx.exam.update).not.toHaveBeenCalled();
   });
 
@@ -472,7 +472,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await expect(service.update(context, 'exam-1', { title: 'New Title' })).rejects.toThrow(
+    await expect(service.update(context, 'user-1', 'exam-1', { title: 'New Title' })).rejects.toThrow(
       /unpublish it before editing/i,
     );
     expect(tx.exam.update).not.toHaveBeenCalled();
@@ -490,7 +490,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await expect(service.update(context, 'exam-1', { title: 'New Title' })).resolves.toMatchObject({ title: 'New Title' });
+    await expect(service.update(context, 'user-1', 'exam-1', { title: 'New Title' })).resolves.toMatchObject({ title: 'New Title' });
   });
 
   it('persists walkInEnabled when provided', async () => {
@@ -509,7 +509,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await service.update(context, 'exam-1', { title: 'Exam', walkInEnabled: true });
+    await service.update(context, 'user-1', 'exam-1', { title: 'Exam', walkInEnabled: true });
 
     expect(tx.exam.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ walkInEnabled: true }) }),
@@ -532,7 +532,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await service.update(context, 'exam-1', { title: 'Exam' });
+    await service.update(context, 'user-1', 'exam-1', { title: 'Exam' });
 
     expect(tx.exam.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.not.objectContaining({ walkInEnabled: expect.anything() }) }),
@@ -566,14 +566,14 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await service.update(context, 'exam-1', { title: 'Exam', allowedIpRange: '198.51.100.5' });
+    await service.update(context, 'user-1', 'exam-1', { title: 'Exam', allowedIpRange: '198.51.100.5' });
 
     expect(tx.exam.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ allowedIpRange: '198.51.100.5' }) }),
     );
 
     tx.exam.update.mockClear();
-    await service.update(context, 'exam-1', { title: 'Exam', allowedIpRange: '' });
+    await service.update(context, 'user-1', 'exam-1', { title: 'Exam', allowedIpRange: '' });
 
     expect(tx.exam.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ allowedIpRange: null }) }),
@@ -596,7 +596,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await service.update(context, 'exam-1', { title: 'Exam' });
+    await service.update(context, 'user-1', 'exam-1', { title: 'Exam' });
 
     expect(tx.exam.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.not.objectContaining({ allowedIpRange: expect.anything() }) }),
@@ -607,7 +607,7 @@ describe('ExamsService', () => {
     const tx = { exam: { findFirst: jest.fn().mockResolvedValue(null) } };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await expect(service.update(context, 'missing-id', { title: 'x' })).rejects.toThrow(NotFoundException);
+    await expect(service.update(context, 'user-1', 'missing-id', { title: 'x' })).rejects.toThrow(NotFoundException);
   });
 
   it('update() re-syncs expiresAt on not-yet-started invitations when the window changes', async () => {
@@ -638,7 +638,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await service.update(context, 'exam-1', { title: 'exam-1', availabilityWindowEnd: newEnd });
+    await service.update(context, 'user-1', 'exam-1', { title: 'exam-1', availabilityWindowEnd: newEnd });
 
     expect(tx.invitation.updateMany).toHaveBeenCalledWith({
       where: { id: { in: ['inv-not-started'] } },
@@ -662,7 +662,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await service.update(context, 'exam-1', { title: 'New Title' });
+    await service.update(context, 'user-1', 'exam-1', { title: 'New Title' });
 
     expect(tx.invitation.findMany).not.toHaveBeenCalled();
     expect(tx.invitation.updateMany).not.toHaveBeenCalled();
@@ -1965,7 +1965,7 @@ describe('ExamsService', () => {
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      await service.update(context, 'exam-1', { title: 'Screen', proctoringStrikeLimit: 2 });
+      await service.update(context, 'user-1', 'exam-1', { title: 'Screen', proctoringStrikeLimit: 2 });
 
       const data = tx.exam.update.mock.calls[0][0].data;
       expect(data.proctoringStrikeLimit).toBe(2);
@@ -1984,7 +1984,7 @@ describe('ExamsService', () => {
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      await service.update(context, 'exam-1', { title: 'Screen', disabledProctoringSignals: [] });
+      await service.update(context, 'user-1', 'exam-1', { title: 'Screen', disabledProctoringSignals: [] });
 
       expect(tx.exam.update.mock.calls[0][0].data.disabledProctoringSignalsJson).toBeNull();
     });
@@ -1997,7 +1997,7 @@ describe('ExamsService', () => {
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
       await expect(
-        service.update(context, 'exam-1', { title: 'Exam', webcamProctoringEnabled: false }),
+        service.update(context, 'user-1', 'exam-1', { title: 'Exam', webcamProctoringEnabled: false }),
       ).rejects.toThrow(ConflictException);
       expect(tx.exam.update).not.toHaveBeenCalled();
     });
@@ -2012,7 +2012,7 @@ describe('ExamsService', () => {
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      await service.update(context, 'exam-1', { title: 'Exam', webcamProctoringEnabled: false });
+      await service.update(context, 'user-1', 'exam-1', { title: 'Exam', webcamProctoringEnabled: false });
 
       expect(tx.exam.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ webcamProctoringEnabled: false }) }),
@@ -2082,7 +2082,7 @@ describe('ExamsService', () => {
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      await service.update(context, 'exam-1', { title: 'Screen', screenCaptureEnabled: true });
+      await service.update(context, 'user-1', 'exam-1', { title: 'Screen', screenCaptureEnabled: true });
 
       expect(tx.exam.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ screenCaptureEnabled: true }) }),

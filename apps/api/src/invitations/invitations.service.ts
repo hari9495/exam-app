@@ -251,7 +251,7 @@ export class InvitationsService {
     });
   }
 
-  async resend(context: TenantContext, invitationId: string): Promise<Invitation> {
+  async resend(context: TenantContext, actorUserId: string, invitationId: string): Promise<Invitation> {
     const { invitation, exam, candidate } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.invitation.findFirst({
         where: { id: invitationId, exam: { organizationId: context.organizationId as string } },
@@ -273,11 +273,23 @@ export class InvitationsService {
     this.dispatchInvitationEmail(context, exam, invitation, candidate).catch((error) =>
       this.logger.error(`Failed to dispatch invitation email for invitation ${invitation.id}`, error as Error),
     );
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'invitation.resent',
+      entityType: 'invitation',
+      entityId: invitation.id,
+      metadata: { examTitle: exam.title, candidateEmail: candidate.email },
+    });
     return invitation;
   }
 
-  async updateAccommodation(context: TenantContext, invitationId: string, extraTimePercent: number): Promise<Invitation> {
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+  async updateAccommodation(
+    context: TenantContext,
+    actorUserId: string,
+    invitationId: string,
+    extraTimePercent: number,
+  ): Promise<Invitation> {
+    const updated = await this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.invitation.findFirst({
         where: { id: invitationId, exam: { organizationId: context.organizationId as string } },
         include: { attempt: true },
@@ -290,6 +302,15 @@ export class InvitationsService {
       }
       return tx.invitation.update({ where: { id: invitationId }, data: { extraTimePercent } });
     });
+    // Fairness-sensitive: granting extra time must be auditable.
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'invitation.accommodation_updated',
+      entityType: 'invitation',
+      entityId: invitationId,
+      metadata: { extraTimePercent },
+    });
+    return updated;
   }
 
   async revoke(context: TenantContext, actorUserId: string, invitationId: string): Promise<Invitation> {

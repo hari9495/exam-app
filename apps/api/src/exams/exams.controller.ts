@@ -43,8 +43,13 @@ export class ExamsController {
 
   @Patch(':id')
   @RequirePermissions('exam:manage')
-  update(@CurrentTenant() tenant: TenantContext, @Param('id') id: string, @Body() dto: UpdateExamDto) {
-    return this.examsService.update(tenant, id, dto);
+  update(
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentUserId() userId: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateExamDto,
+  ) {
+    return this.examsService.update(tenant, userId, id, dto);
   }
 
   @Delete(':id')

@@ -57,14 +57,19 @@ export class InvitationsController {
 
   @Post('invitations/:id/resend')
   @RequirePermissions('candidate:manage')
-  resend(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
-    return this.invitationsService.resend(tenant, id);
+  resend(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.invitationsService.resend(tenant, userId, id);
   }
 
   @Post('invitations/:id/accommodation')
   @RequirePermissions('candidate:manage')
-  updateAccommodation(@CurrentTenant() tenant: TenantContext, @Param('id') id: string, @Body() dto: UpdateAccommodationDto) {
-    return this.invitationsService.updateAccommodation(tenant, id, dto.extraTimePercent);
+  updateAccommodation(
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentUserId() userId: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateAccommodationDto,
+  ) {
+    return this.invitationsService.updateAccommodation(tenant, userId, id, dto.extraTimePercent);
   }
 
   @Post('invitations/:id/revoke')

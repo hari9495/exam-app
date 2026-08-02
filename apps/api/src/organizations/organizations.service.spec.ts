@@ -1214,6 +1214,17 @@ describe('OrganizationsService', () => {
       const result = await service.updateSsoSettings(context, 'user-1', { samlEnabled: true });
 
       expect(result.samlEnabled).toBe(true);
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'organization.sso_enabled' }));
+    });
+
+    it('records organization.sso_disabled when SSO is turned off', async () => {
+      prisma.organization.update.mockResolvedValue({
+        samlEnabled: false, samlIdpEntityId: null, samlIdpSsoUrl: null, samlIdpCertificate: null,
+      });
+
+      await service.updateSsoSettings(context, 'user-1', { samlEnabled: false });
+
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'organization.sso_disabled' }));
     });
   });
 

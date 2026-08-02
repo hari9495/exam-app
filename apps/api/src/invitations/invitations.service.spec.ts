@@ -386,7 +386,7 @@ describe('InvitationsService', () => {
       .mockImplementationOnce((_ctx, fn) => fn(orgTx))
       .mockImplementationOnce((_ctx, fn) => fn(notifTx));
 
-    const result = await service.resend(context, 'inv-1');
+    const result = await service.resend(context, 'user-1', 'inv-1');
 
     expect(result).toEqual(updated);
     expect(resendTx.invitation.update).toHaveBeenCalledWith({
@@ -416,7 +416,7 @@ describe('InvitationsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await service.resend(context, 'inv-1');
+    await service.resend(context, 'user-1', 'inv-1');
 
     expect(tx.invitation.update).toHaveBeenCalledWith({
       where: { id: 'inv-1' },
@@ -428,7 +428,7 @@ describe('InvitationsService', () => {
     const tx = { invitation: { findFirst: jest.fn().mockResolvedValue(null) } };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await expect(service.resend(context, 'missing-inv')).rejects.toThrow(NotFoundException);
+    await expect(service.resend(context, 'user-1', 'missing-inv')).rejects.toThrow(NotFoundException);
   });
 
   it('throws BadRequestException when resending a revoked invitation', async () => {
@@ -444,7 +444,7 @@ describe('InvitationsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await expect(service.resend(context, 'inv-1')).rejects.toThrow(BadRequestException);
+    await expect(service.resend(context, 'user-1', 'inv-1')).rejects.toThrow(BadRequestException);
   });
 
   it('revokes a live invitation', async () => {
@@ -502,7 +502,7 @@ describe('InvitationsService', () => {
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      const result = await service.updateAccommodation(context, 'inv-1', 50);
+      const result = await service.updateAccommodation(context, 'user-1', 'inv-1', 50);
 
       expect(tx.invitation.update).toHaveBeenCalledWith({ where: { id: 'inv-1' }, data: { extraTimePercent: 50 } });
       expect(result.extraTimePercent).toBe(50);
@@ -517,7 +517,7 @@ describe('InvitationsService', () => {
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      await expect(service.updateAccommodation(context, 'inv-1', 50)).rejects.toThrow(BadRequestException);
+      await expect(service.updateAccommodation(context, 'user-1', 'inv-1', 50)).rejects.toThrow(BadRequestException);
       expect(tx.invitation.update).not.toHaveBeenCalled();
     });
 
@@ -525,7 +525,7 @@ describe('InvitationsService', () => {
       const tx = { invitation: { findFirst: jest.fn().mockResolvedValue(null), update: jest.fn() } };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      await expect(service.updateAccommodation(context, 'missing', 50)).rejects.toThrow(NotFoundException);
+      await expect(service.updateAccommodation(context, 'user-1', 'missing', 50)).rejects.toThrow(NotFoundException);
     });
   });
 

@@ -4,6 +4,7 @@ import { QuestionsService } from './questions.service';
 import { TenantPrismaService, BlobStorageService } from '@exam-platform/shared';
 import { JobsService } from '../jobs/jobs.service';
 import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
+import { AuditService } from '@exam-platform/shared';
 
 describe('QuestionsService', () => {
   let service: QuestionsService;
@@ -22,6 +23,7 @@ describe('QuestionsService', () => {
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: JobsService, useValue: jobsService },
         { provide: ExamRuntimeInternalClient, useValue: examRuntime },
+        { provide: AuditService, useValue: { record: jest.fn() } },
         { provide: BlobStorageService, useValue: { upload: jest.fn(), uploadDataUri: jest.fn(), signIfOurs: jest.fn((v) => Promise.resolve(v)) } },
       ],
     }).compile();
@@ -333,7 +335,7 @@ describe('QuestionsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await service.update(context, 'q-1', { ...validDto, tags: ['new-tag'] });
+    await service.update(context, 'user-1', 'q-1', { ...validDto, tags: ['new-tag'] });
 
     expect(tx.questionTag.deleteMany).toHaveBeenCalledWith({ where: { questionId: 'q-1' } });
     expect(tx.question.update).toHaveBeenCalledWith(
@@ -366,7 +368,7 @@ describe('QuestionsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await service.update(context, 'q-1', dto);
+    await service.update(context, 'user-1', 'q-1', dto);
 
     expect(tx.question.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -397,7 +399,7 @@ describe('QuestionsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await service.update(context, 'q-1', dto);
+    await service.update(context, 'user-1', 'q-1', dto);
 
     expect(tx.question.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ starterCode: null }) }),
@@ -413,7 +415,7 @@ describe('QuestionsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    const result = await service.archive(context, 'q-1');
+    const result = await service.archive(context, 'user-1', 'q-1');
 
     expect(result.status).toBe('archived');
     expect(tx.question.update).toHaveBeenCalledWith({
@@ -427,7 +429,7 @@ describe('QuestionsService', () => {
     const tx = { question: { findFirst: jest.fn().mockResolvedValue(null) } };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await expect(service.archive(context, 'missing-id')).rejects.toThrow(NotFoundException);
+    await expect(service.archive(context, 'user-1', 'missing-id')).rejects.toThrow(NotFoundException);
   });
 
   describe('aiGenerate', () => {
@@ -461,7 +463,7 @@ describe('QuestionsService', () => {
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      const result = await service.publish(context, 'q-1');
+      const result = await service.publish(context, 'user-1', 'q-1');
 
       expect(result.status).toBe('active');
       expect(tx.question.update).toHaveBeenCalledWith({
@@ -475,7 +477,7 @@ describe('QuestionsService', () => {
       const tx = { question: { findFirst: jest.fn().mockResolvedValue(null) } };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      await expect(service.publish(context, 'missing-id')).rejects.toThrow(NotFoundException);
+      await expect(service.publish(context, 'user-1', 'missing-id')).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -554,6 +556,7 @@ describe('QuestionsService.uploadImage', () => {
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: JobsService, useValue: jobsService },
         { provide: ExamRuntimeInternalClient, useValue: examRuntime },
+        { provide: AuditService, useValue: { record: jest.fn() } },
         { provide: BlobStorageService, useValue: blobStorage },
       ],
     }).compile();

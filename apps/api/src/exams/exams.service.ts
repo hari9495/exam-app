@@ -314,8 +314,8 @@ export class ExamsService {
     }
   }
 
-  async update(context: TenantContext, id: string, dto: UpdateExamDto): Promise<Exam> {
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+  async update(context: TenantContext, actorUserId: string, id: string, dto: UpdateExamDto): Promise<Exam> {
+    const updated = await this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.exam.findFirst({ where: { id, organizationId: context.organizationId as string } });
       if (!existing) {
         throw new NotFoundException(`Exam ${id} not found`);
@@ -374,6 +374,14 @@ export class ExamsService {
 
       return updated;
     });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'exam.updated',
+      entityType: 'exam',
+      entityId: id,
+      metadata: { title: updated.title },
+    });
+    return updated;
   }
 
   async archive(context: TenantContext, actorUserId: string, id: string): Promise<Exam> {

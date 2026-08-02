@@ -645,9 +645,18 @@ export class OrganizationsService {
         ...(dto.samlIdpCertificate !== undefined && { samlIdpCertificate: dto.samlIdpCertificate }),
       },
     });
+    // Record the enable/disable toggle as its own action when samlEnabled was
+    // explicitly changed -- turning org-wide SSO on or off is a security-relevant
+    // event worth surfacing distinctly from a plain IdP-config edit.
+    const action =
+      dto.samlEnabled === true
+        ? 'organization.sso_enabled'
+        : dto.samlEnabled === false
+          ? 'organization.sso_disabled'
+          : 'organization.sso_configured';
     await this.audit.record(context, {
       actorUserId,
-      action: 'organization.sso_configured',
+      action,
       entityType: 'organization',
       entityId: organizationId,
     });
