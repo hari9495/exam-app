@@ -8,12 +8,12 @@ describe('Home (landing page)', () => {
     expect(navLogin).toHaveAttribute('href', '/login');
   });
 
-  it('shows the headline and Get Started CTAs linking to /login', () => {
+  it('shows the headline and Get Started CTAs linking to the lead-capture form', () => {
     render(<Home />);
     expect(screen.getByRole('heading', { name: /hiring exams that run themselves/i })).toBeInTheDocument();
     const getStartedLinks = screen.getAllByRole('link', { name: 'Get Started' });
     expect(getStartedLinks.length).toBeGreaterThan(0);
-    getStartedLinks.forEach((link) => expect(link).toHaveAttribute('href', '/login'));
+    getStartedLinks.forEach((link) => expect(link).toHaveAttribute('href', '/get-started'));
   });
 
   it('shows nav anchors and the security proof strip', () => {
@@ -56,7 +56,7 @@ describe('Home (landing page)', () => {
     expect(screen.getByRole('heading', { name: 'Audit log' })).toBeInTheDocument();
   });
 
-  it('shows a closing CTA banner linking to /login', () => {
+  it('shows a closing CTA banner linking to the lead-capture form', () => {
     render(<Home />);
     expect(screen.getByRole('heading', { name: /ready to run an exam instead of another call/i })).toBeInTheDocument();
   });

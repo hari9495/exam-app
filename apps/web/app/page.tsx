@@ -125,7 +125,7 @@ export default function Home() {
           <Link href="/login" className="text-sm font-medium text-recruiter-text hover:text-primary">
             Login
           </Link>
-          <Link href="/login" className={PRIMARY_LINK_CLASSES}>
+          <Link href="/get-started" className={PRIMARY_LINK_CLASSES}>
             Get Started
           </Link>
         </div>
@@ -143,7 +143,7 @@ export default function Home() {
                 SSO-ready org accounts -- built to replace a folder of shared docs and a Zoom call, not imitate one.
               </p>
               <div className="flex gap-3">
-                <Link href="/login" className={PRIMARY_LINK_CLASSES}>
+                <Link href="/get-started" className={PRIMARY_LINK_CLASSES}>
                   Get Started
                 </Link>
                 <a href="#how-it-works" className={OUTLINE_LINK_CLASSES}>
@@ -338,7 +338,7 @@ export default function Home() {
           <p className="mx-auto mb-6 max-w-md text-sm text-recruiter-text-secondary">
             Create an organization and build your first exam in a few minutes.
           </p>
-          <Link href="/login" className={PRIMARY_LINK_CLASSES}>
+          <Link href="/get-started" className={PRIMARY_LINK_CLASSES}>
             Get Started
           </Link>
         </section>

@@ -159,6 +159,20 @@ model SetupToken {
   @@map("setup_tokens")
 }
 
+// Landing-page "Get Started" submissions. Platform-level, no organizationId -- these are
+// prospects who don't have an org yet, unlike everything else in this schema.
+model Lead {
+  id        String   @id @default(uuid()) @db.UniqueIdentifier
+  name      String
+  workEmail String   @map("work_email")
+  company   String
+  teamSize  String?  @map("team_size")
+  message   String?  @db.NVarChar(Max)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("leads")
+}
+
 model AuditLog {
   id             String        @id @default(uuid()) @db.UniqueIdentifier
   organizationId String?       @map("organization_id") @db.UniqueIdentifier
