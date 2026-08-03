@@ -206,6 +206,27 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+// Production error/diagnostic events: unhandled backend exceptions and candidate-browser
+// failures, viewable in the admin console without SSH access to pm2 logs. Deliberately no
+// Organization FK relation -- org id is a scoping value only (RLS filters on the column),
+// and a relation would add another cascade path into the AuditLog-style validator mess.
+model SystemEvent {
+  id             String   @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String?  @map("organization_id") @db.UniqueIdentifier
+  // 'api' | 'exam-runtime' | 'candidate-browser'
+  service        String
+  // 'error' | 'warn'
+  severity       String
+  message        String   @db.NVarChar(2000)
+  contextJson    String?  @map("context_json") @db.NVarChar(Max)
+  occurredAt     DateTime @default(now()) @map("occurred_at")
+
+  @@index([organizationId, occurredAt])
+  @@index([occurredAt])
+  @@index([service])
+  @@map("system_events")
+}
+
 model Question {
   id               String                @id @default(uuid()) @db.UniqueIdentifier
   organizationId   String                @map("organization_id") @db.UniqueIdentifier

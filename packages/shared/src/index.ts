@@ -17,3 +17,5 @@ export * from './storage/storage.module';
 export * from './storage/blob-storage.service';
 export * from './organizations/organization-status';
 export * from './seb/seb-config';
+export * from './system-events/system-events.module';
+export * from './system-events/system-events.service';
