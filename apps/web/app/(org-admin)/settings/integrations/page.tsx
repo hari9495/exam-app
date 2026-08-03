@@ -11,7 +11,7 @@ import {
   useGenerateWebhookSecret,
   useWebhookDeliveries,
 } from '../../../../lib/hooks/useIntegrations';
-import { Input, Button, Card, Table, StatusBadge, Select, type SelectOption, type Column, type StatusTone, useToast } from '../../../../components/ui';
+import { Input, Button, Card, Table, StatusBadge, Select, RequiredFieldsNote, type SelectOption, type Column, type StatusTone, useToast } from '../../../../components/ui';
 import { WebhookDeliveryRow } from '../../../../lib/types';
 
 function deliveryTone(status: string): StatusTone {
@@ -136,6 +136,7 @@ export default function IntegrationsSettingsPage() {
   }
 
   function handleSaveWebhookUrl() {
+    if (!webhookUrlInput.trim()) return;
     setWebhookError(null);
     updateWebhookUrl.mutate(webhookUrlInput, {
       onError: (err) => setWebhookError(err instanceof Error ? err.message : 'Failed to save webhook URL'),
@@ -153,6 +154,7 @@ export default function IntegrationsSettingsPage() {
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
       <h1 className="text-center text-2xl font-semibold text-recruiter-text">Integrations</h1>
+      <RequiredFieldsNote />
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0, ease: 'easeOut' }}>
         <Card className="w-full">
@@ -189,7 +191,7 @@ export default function IntegrationsSettingsPage() {
               : 'Not configured — AI features currently use the platform default key.'}
           </p>
           <form onSubmit={handleAiKeySubmit} className="flex flex-col gap-3">
-            <Select label="AI Provider" value={aiProvider} onChange={(value) => setAiProvider(value as 'anthropic' | 'openai-compatible')} options={AI_PROVIDER_OPTIONS} />
+            <Select label="AI Provider" value={aiProvider} onChange={(value) => setAiProvider(value as 'anthropic' | 'openai-compatible')} options={AI_PROVIDER_OPTIONS} required />
             <Input label="AI API Key" type="password" value={aiApiKey} onChange={setAiApiKey} required />
             {aiProvider === 'openai-compatible' && (
               <>
@@ -251,8 +253,14 @@ export default function IntegrationsSettingsPage() {
               value={webhookUrlInput}
               onChange={setWebhookUrlInput}
               placeholder="https://your-ats.example.com/webhooks/exam-platform"
+              required
             />
-            <Button loading={updateWebhookUrl.isPending} onClick={handleSaveWebhookUrl} className="self-start">
+            <Button
+              loading={updateWebhookUrl.isPending}
+              onClick={handleSaveWebhookUrl}
+              disabled={!webhookUrlInput.trim()}
+              className="self-start"
+            >
               Save URL
             </Button>
           </div>

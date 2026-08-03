@@ -67,6 +67,7 @@ function CodeQuestionGrader({ attemptId, question }: { attemptId: string; questi
           max={question.marks}
           value={marks}
           onChange={setMarks}
+          required
         />
         <Button type="button" disabled={gradeAnswer.isPending} onClick={handleSaveGrade}>
           Save grade

@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
-import { Modal, Tabs, TabsList, TabsTrigger, TabsContent, Input, Select, Checkbox, Button, useToast } from './ui';
+import { Modal, Tabs, TabsList, TabsTrigger, TabsContent, Input, Select, Checkbox, Button, RequiredFieldsNote, useToast } from './ui';
 import { useCreateUser, useBulkCreateUsers } from '../lib/hooks/useUsers';
 import { useSsoSettings } from '../lib/hooks/useSso';
 
@@ -122,9 +122,10 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
 
         <TabsContent value="single">
           <form onSubmit={submitSingle} className="flex flex-col gap-3">
+            <RequiredFieldsNote />
             <Input label="Name" value={name} onChange={setName} />
             <Input label="Email" type="email" value={email} onChange={setEmail} required />
-            <Select label="Role" value={role} onChange={setRole} options={ROLE_OPTIONS} />
+            <Select label="Role" value={role} onChange={setRole} options={ROLE_OPTIONS} required />
             {ssoEnabled ? (
               <p className="text-xs text-gray-500">
                 Single sign-on is enabled for this organization. New users sign in with your identity provider — no
@@ -156,8 +157,12 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
 
         <TabsContent value="multiple">
           <form onSubmit={submitBulk} className="flex flex-col gap-3">
+            <RequiredFieldsNote />
             <div className="flex flex-col gap-1">
-              <label htmlFor="bulk-emails" className="text-sm font-medium text-gray-700">
+              <label
+                htmlFor="bulk-emails"
+                className="text-sm font-medium text-gray-700 after:ml-0.5 after:text-status-danger after:content-['*']"
+              >
                 Emails (one per line)
               </label>
               <textarea
@@ -168,7 +173,7 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
                 className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none"
               />
             </div>
-            <Select label="Role" value={bulkRole} onChange={setBulkRole} options={ROLE_OPTIONS} />
+            <Select label="Role" value={bulkRole} onChange={setBulkRole} options={ROLE_OPTIONS} required />
             {ssoEnabled && (
               <p className="text-xs text-gray-500">
                 Single sign-on is enabled — these users won&apos;t receive a set-password email; they sign in with your

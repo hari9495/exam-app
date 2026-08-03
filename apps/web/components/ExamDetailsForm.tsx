@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Card, Checkbox, Input, RadioGroup, RadioGroupItem, Select } from '../components/ui';
+import { Button, Card, Checkbox, Input, RadioGroup, RadioGroupItem, RequiredFieldsNote, Select } from '../components/ui';
 import { Exam, FeedbackVisibility } from '../lib/types';
 
 export interface ExamDetailsValue {
@@ -124,7 +124,15 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex max-w-xl flex-col gap-6">
+    <form
+      onSubmit={handleSubmit}
+      // This form already validates the scheduling window itself (both fields together, plus
+      // end-after-start) with its own message -- native HTML5 required validation on those two
+      // inputs would otherwise silently block the submit event before that custom check ever
+      // runs, so it's turned off here in favor of the form's own validation.
+      noValidate
+      className="flex max-w-xl flex-col gap-6"
+    >
       {locked && (
         <p className="rounded-md border border-recruiter-border bg-recruiter-bg-subtle p-3 text-sm text-recruiter-text-secondary">
           {lockedMessage ??
@@ -132,6 +140,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
         </p>
       )}
       <fieldset disabled={locked} className="m-0 flex min-w-0 flex-col gap-6 border-0 p-0">
+        <RequiredFieldsNote />
         <Card className="flex flex-col gap-4">
           <h2 className="text-lg font-semibold text-recruiter-text">Basic details</h2>
           <Input label="Title" value={title} onChange={setTitle} required />
@@ -182,12 +191,14 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
                 type="datetime-local"
                 value={availabilityWindowStart}
                 onChange={setAvailabilityWindowStart}
+                required
               />
               <Input
                 label="Window Closes"
                 type="datetime-local"
                 value={availabilityWindowEnd}
                 onChange={setAvailabilityWindowEnd}
+                required
               />
               {schedulingError && <p className="text-xs text-red-600">{schedulingError}</p>}
             </div>

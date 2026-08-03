@@ -80,6 +80,24 @@ describe('AdvanceToNextRoundModal', () => {
     expect(screen.queryByRole('combobox', { name: 'Move to exam' })).not.toBeInTheDocument();
   });
 
+  // Regression: the placeholder option used value: '', which Radix's Select treats as its
+  // internal "nothing selected" sentinel -- it silently rendered the trigger blank instead of
+  // "Choose an exam…" (same bug fixed in StaffUsersTable's role/status filters).
+  it('shows "Choose an exam…" as the default trigger text, not a blank trigger', async () => {
+    const fetchMock = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      if (String(url).includes('/exams?') && String(url).includes('status=published')) {
+        return new Response(JSON.stringify({ data: [{ id: 'exam-2', title: 'Technical Round' }], total: 1, page: 1, pageSize: 100, totalPages: 1 }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    renderModal();
+
+    expect(await screen.findByRole('combobox', { name: 'Move to exam' })).toHaveTextContent('Choose an exam…');
+  });
+
   it('disables Advance until a target exam is chosen', async () => {
     const fetchMock = jest.fn(async (url) => {
       if (String(url).endsWith('/auth/refresh')) {

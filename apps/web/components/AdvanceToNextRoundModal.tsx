@@ -15,21 +15,27 @@ interface AdvanceToNextRoundModalProps {
   onAdvanced: () => void;
 }
 
+// Radix's Select treats value="" as its internal "nothing selected" sentinel and renders the
+// (unset) placeholder instead of the option's own label -- see StaffUsersTable's role/status
+// filters for the same bug. A non-empty sentinel is required for the placeholder to actually
+// display.
+const NO_TARGET_SENTINEL = 'none';
+
 export function AdvanceToNextRoundModal({ examId, candidateIds, open, onClose, onAdvanced }: AdvanceToNextRoundModalProps) {
-  const [targetExamId, setTargetExamId] = useState('');
+  const [targetExamId, setTargetExamId] = useState(NO_TARGET_SENTINEL);
   // Bulk-invite 400s against a non-published exam, so only published exams are
   // valid targets. ponytail: pageSize:100 is the server's max -- an org with
   // >100 published exams won't see #101+ here, same cap the exam switcher lives with.
   const { data: examsResponse } = useExams('published', { pageSize: 100 });
   const targetOptions = [
-    { value: '', label: 'Choose an exam…' },
+    { value: NO_TARGET_SENTINEL, label: 'Choose an exam…' },
     ...(examsResponse?.data ?? []).filter((exam) => exam.id !== examId).map((exam) => ({ value: exam.id, label: exam.title })),
   ];
   const bulkInvite = useBulkInvite(targetExamId);
   const { toast } = useToast();
 
   function handleAdvance() {
-    if (!targetExamId) return;
+    if (targetExamId === NO_TARGET_SENTINEL) return;
     bulkInvite.mutate(candidateIds, {
       onSuccess: (result) => {
         toast(
@@ -56,14 +62,14 @@ export function AdvanceToNextRoundModal({ examId, candidateIds, open, onClose, o
             Invite the selected candidates to a different exam, e.g. the next interview round. This doesn&apos;t change
             anything about their result here.
           </p>
-          <Select label="Move to exam" value={targetExamId} onChange={setTargetExamId} options={targetOptions} />
+          <Select label="Move to exam" value={targetExamId} onChange={setTargetExamId} options={targetOptions} required />
         </>
       )}
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>
           Cancel
         </Button>
-        <Button onClick={handleAdvance} disabled={!targetExamId} loading={bulkInvite.isPending}>
+        <Button onClick={handleAdvance} disabled={targetExamId === NO_TARGET_SENTINEL} loading={bulkInvite.isPending}>
           Advance
         </Button>
       </div>

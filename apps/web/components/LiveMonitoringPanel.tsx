@@ -526,7 +526,10 @@ export function LiveMonitoringPanel({
             Violations will still be recorded, but this candidate will no longer be paused or blocked. Only this candidate is
             affected.
           </p>
-          <label htmlFor="bypass-reason" className="mb-1 block text-sm font-medium text-gray-700">
+          <label
+            htmlFor="bypass-reason"
+            className="mb-1 block text-sm font-medium text-gray-700 after:ml-0.5 after:text-status-danger after:content-['*']"
+          >
             Why are you relaxing proctoring?
           </label>
           <textarea

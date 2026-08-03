@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useCreateOrganization } from '../../../lib/hooks/useOrganizations';
-import { Modal, Input, Select, Button, useToast } from '../../../components/ui';
+import { Modal, Input, Select, Button, RequiredFieldsNote, useToast } from '../../../components/ui';
 
 const REGION_OPTIONS = [
   { value: 'us', label: 'US' },
@@ -44,9 +44,10 @@ export function CreateOrganizationModal({ open, onClose }: { open: boolean; onCl
   return (
     <Modal open={open} title="New organization" onClose={onClose}>
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        <RequiredFieldsNote />
         <Input label="Name" value={name} onChange={setName} required />
         <Input label="Slug" value={slug} onChange={setSlug} required />
-        <Select label="Region" value={region} onChange={setRegion} options={REGION_OPTIONS} />
+        <Select label="Region" value={region} onChange={setRegion} options={REGION_OPTIONS} required />
         <Input label="Admin Name" value={adminName} onChange={setAdminName} required />
         <Input label="Admin Email" type="email" value={adminEmail} onChange={setAdminEmail} required />
         <Button type="submit" loading={createOrganization.isPending}>

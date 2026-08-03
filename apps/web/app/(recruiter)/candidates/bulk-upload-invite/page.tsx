@@ -7,7 +7,7 @@ import {
   BulkUploadInviteResult,
 } from '../../../../lib/hooks/useInvitations';
 import { useExams } from '../../../../lib/hooks/useExams';
-import { Button, Select, useToast } from '../../../../components/ui';
+import { Button, Select, RequiredFieldsNote, useToast } from '../../../../components/ui';
 import { BackLink } from '../../../../components/BackLink';
 
 export default function BulkUploadInviteCandidatesPage() {
@@ -61,12 +61,14 @@ export default function BulkUploadInviteCandidatesPage() {
     <div className="max-w-2xl">
       <BackLink href="/candidates" label="Back To Candidates" />
       <h1 className="mb-6 text-2xl font-semibold">Bulk Upload &amp; Invite Candidates</h1>
-      <div className="mb-4">
+      <RequiredFieldsNote />
+      <div className="mb-4 mt-2">
         <Select
           label="Exam To Invite To"
           value={examId}
           onChange={setExamId}
           options={(publishedExams ?? []).map((exam) => ({ value: exam.id, label: exam.title }))}
+          required
         />
       </div>
       <Button variant="secondary" onClick={handleDownloadTemplate} disabled={downloadTemplate.isPending}>

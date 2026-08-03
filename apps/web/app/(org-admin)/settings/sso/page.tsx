@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSsoSettings, useUpdateSsoSettings } from '../../../../lib/hooks/useSso';
 import { useAuth } from '../../../../lib/auth-context';
 import { motion } from 'framer-motion';
-import { Input, Button, Card } from '../../../../components/ui';
+import { Input, Button, Card, RequiredFieldsNote } from '../../../../components/ui';
 
 export default function SsoSettingsPage() {
   const { organizationSlug } = useAuth();
@@ -59,9 +59,10 @@ export default function SsoSettingsPage() {
           </div>
 
           <form onSubmit={handleSave} className="flex flex-col gap-3">
+            <RequiredFieldsNote />
             <Input label="Microsoft Entra Identifier" value={entityId} onChange={setEntityId} required />
             <Input label="SSO Url" value={ssoUrl} onChange={setSsoUrl} required />
-            <label className="flex flex-col gap-1 text-sm font-medium text-recruiter-text">
+            <label className="flex flex-col gap-1 text-sm font-medium text-recruiter-text after:ml-0.5 after:text-status-danger after:content-['*']">
               IdP Certificate
               <textarea
                 value={certificate}

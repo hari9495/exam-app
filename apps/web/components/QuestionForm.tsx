@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Input, Select, Checkbox, RadioGroup, RadioGroupItem } from '../components/ui';
+import { Button, Input, Select, Checkbox, RadioGroup, RadioGroupItem, RequiredFieldsNote } from '../components/ui';
 import { CodeEditor } from '../components/ui/CodeEditor';
 import { Question, QuestionType, Difficulty, Tag, CodeLanguage, CODE_LANGUAGE_OPTIONS } from '../lib/types';
 import { QuestionInput, useUploadQuestionImage, useCodeLanguages } from '../lib/hooks/useQuestions';
@@ -127,9 +127,13 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
 
   return (
     <form onSubmit={handleSubmit} className="flex max-w-xl flex-col gap-4">
-      <Select label="Question Type" value={type} onChange={handleTypeChange} options={TYPE_OPTIONS} />
+      <RequiredFieldsNote />
+      <Select label="Question Type" value={type} onChange={handleTypeChange} options={TYPE_OPTIONS} required />
       <div className="flex flex-col gap-1">
-        <label htmlFor="question-text" className="text-sm font-medium text-gray-700">
+        <label
+          htmlFor="question-text"
+          className="text-sm font-medium text-gray-700 after:ml-0.5 after:text-status-danger after:content-['*']"
+        >
           Question text
         </label>
         <textarea
@@ -141,9 +145,9 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
           required
         />
       </div>
-      <Select label="Difficulty" value={difficulty} onChange={(value) => setDifficulty(value as Difficulty)} options={DIFFICULTY_OPTIONS} />
+      <Select label="Difficulty" value={difficulty} onChange={(value) => setDifficulty(value as Difficulty)} options={DIFFICULTY_OPTIONS} required />
       <div className="flex gap-4">
-        <Input label="Marks" type="number" min={1} value={marks} onChange={setMarks} />
+        <Input label="Marks" type="number" min={1} value={marks} onChange={setMarks} required />
         <Input label="Negative Marks" type="number" min={0} value={negativeMarks} onChange={setNegativeMarks} />
       </div>
       {/* Topic and Category are what the question-bank "Group by" filter groups on, so the form

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { motion, MotionConfig } from 'framer-motion';
 import { AlertCircle, MailCheck } from 'lucide-react';
-import { Button, Input, Select } from '../../../components/ui';
+import { Button, Input, Select, RequiredFieldsNote } from '../../../components/ui';
 import { AuthPageLayout } from '../../../components/AuthPageLayout';
 import { useWalkInExams, useWalkInRegister } from '../../../lib/hooks/useWalkIn';
 
@@ -97,6 +97,7 @@ export default function WalkInPage() {
                     {error}
                   </p>
                 )}
+                <RequiredFieldsNote />
                 <Input label="Name" value={name} onChange={setName} required />
                 <Input label="Email" type="email" value={email} onChange={setEmail} required />
                 <Input label="Phone" value={phone} onChange={setPhone} />
@@ -109,6 +110,7 @@ export default function WalkInPage() {
                       value: exam.id,
                       label: exam.title,
                     }))}
+                    required
                   />
                 )}
                 <Button type="submit" loading={register.isPending} disabled={!resolvedExamId} className="w-full">
