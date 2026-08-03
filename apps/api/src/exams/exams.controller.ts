@@ -11,6 +11,7 @@ import { UpdateExamDto } from './dto/update-exam.dto';
 import { CreateExamSectionDto } from './dto/create-exam-section.dto';
 import { UpdateExamSectionDto } from './dto/update-exam-section.dto';
 import { ReplaceSectionQuestionsDto } from './dto/replace-section-questions.dto';
+import { SetWalkInEnabledDto } from './dto/set-walk-in-enabled.dto';
 
 @Controller('exams')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -68,6 +69,19 @@ export class ExamsController {
   @RequirePermissions('exam:manage')
   unpublish(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
     return this.examsService.unpublish(tenant, userId, id);
+  }
+
+  // Separate from PATCH :id -- that route is blocked once an exam is published, but
+  // walk-in eligibility should stay editable regardless of publish state.
+  @Patch(':id/walk-in')
+  @RequirePermissions('exam:manage')
+  setWalkInEnabled(
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentUserId() userId: string,
+    @Param('id') id: string,
+    @Body() dto: SetWalkInEnabledDto,
+  ) {
+    return this.examsService.setWalkInEnabled(tenant, userId, id, dto.walkInEnabled);
   }
 
   @Post(':id/duplicate')

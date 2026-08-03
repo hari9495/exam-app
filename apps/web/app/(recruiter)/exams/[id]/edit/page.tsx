@@ -11,11 +11,11 @@ import { LeaderboardPanel } from '../../../../../components/LeaderboardPanel';
 import { CandidatesPanel } from '../../../../../components/CandidatesPanel';
 import { ExamResultsPanel } from '../../../../../components/ExamResultsPanel';
 import { AuditHistoryLink } from '../../../../../components/AuditHistoryLink';
-import { useExam, useUpdateExam, usePublishExam, useUnpublishExam } from '../../../../../lib/hooks/useExams';
+import { useExam, useUpdateExam, usePublishExam, useUnpublishExam, useSetWalkInEnabled } from '../../../../../lib/hooks/useExams';
 import { useExamMonitoring } from '../../../../../lib/hooks/useExamMonitoring';
 import { useAttentionNotifications } from '../../../../../lib/hooks/useAttentionNotifications';
 import { flaggedAttemptIds } from '../../../../../lib/attention-alert';
-import { Tabs, TabsList, TabsTrigger, TabsContent, Button, useToast } from '../../../../../components/ui';
+import { Tabs, TabsList, TabsTrigger, TabsContent, Button, Checkbox, useToast } from '../../../../../components/ui';
 import { BackLink } from '../../../../../components/BackLink';
 
 export default function EditExamPage() {
@@ -25,6 +25,7 @@ export default function EditExamPage() {
   const updateExam = useUpdateExam(params.id);
   const publishExam = usePublishExam(params.id);
   const unpublishExam = useUnpublishExam(params.id);
+  const setWalkInEnabled = useSetWalkInEnabled(params.id);
   const monitoring = useExamMonitoring(params.id);
 
   // The flag is derived from Date.now(), and a burst that stops produces no further
@@ -121,6 +122,24 @@ export default function EditExamPage() {
           )}
         </div>
       </div>
+      {detailsLocked && (
+        // The details form (and its own walk-in checkbox) is locked while published --
+        // this stays editable regardless, since walk-in eligibility isn't exam content.
+        <div className="mb-6">
+          <Checkbox
+            label="Enable walk-in registration for this exam"
+            checked={exam.walkInEnabled}
+            onChange={(checked) =>
+              setWalkInEnabled.mutate(checked, {
+                onSuccess: () => toast(checked ? 'Walk-in registration enabled.' : 'Walk-in registration disabled.'),
+                onError: (error) => {
+                  toast(error instanceof Error ? error.message : 'Failed to update walk-in registration.', 'error');
+                },
+              })
+            }
+          />
+        </div>
+      )}
       <Tabs defaultValue="details">
         <TabsList>
           <TabsTrigger value="details">Details</TabsTrigger>
@@ -140,6 +159,7 @@ export default function EditExamPage() {
             submitLabel="Save details"
             locked={detailsLocked}
             lockedMessage={detailsLockedMessage}
+            hideWalkInField={detailsLocked}
             onSubmit={(input) =>
               updateExam.mutate(input, {
                 onSuccess: () => toast('Exam updated.'),

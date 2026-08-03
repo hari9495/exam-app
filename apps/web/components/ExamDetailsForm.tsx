@@ -32,6 +32,9 @@ interface ExamDetailsFormProps {
   /** Overrides the default "a candidate has started it" banner text -- callers use
    *  this for the other lock reason (published, no attempts yet: unpublish to edit). */
   lockedMessage?: string;
+  /** The edit page renders its own always-editable walk-in toggle outside this form's
+   *  locked fieldset -- set when that's in use, so the two controls don't duplicate. */
+  hideWalkInField?: boolean;
 }
 
 // Recruiters will not recognise the raw event-type names, so every toggle carries
@@ -54,7 +57,7 @@ function toDatetimeLocalValue(iso: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = false, lockedMessage }: ExamDetailsFormProps) {
+export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = false, lockedMessage, hideWalkInField = false }: ExamDetailsFormProps) {
   const [title, setTitle] = useState(initialExam?.title ?? '');
   const [instructions, setInstructions] = useState(initialExam?.instructions ?? '');
   const [durationMinutes, setDurationMinutes] = useState(String(initialExam?.durationMinutes ?? 60));
@@ -203,7 +206,11 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
               {schedulingError && <p className="text-xs text-red-600">{schedulingError}</p>}
             </div>
           )}
-          <Checkbox label="Enable walk-in registration for this exam" checked={walkInEnabled} onChange={setWalkInEnabled} />
+          {/* Once published, this whole fieldset is disabled -- the edit page renders its
+              own always-editable walk-in toggle instead (see hideWalkInField). */}
+          {!hideWalkInField && (
+            <Checkbox label="Enable walk-in registration for this exam" checked={walkInEnabled} onChange={setWalkInEnabled} />
+          )}
           <Input
             label="Allowed IP / CIDR Range (Optional)"
             value={allowedIpRange}

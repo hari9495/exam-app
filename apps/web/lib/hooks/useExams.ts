@@ -99,6 +99,19 @@ export function useUnpublishExam(id: string) {
   });
 }
 
+export function useSetWalkInEnabled(id: string) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (walkInEnabled: boolean) =>
+      apiFetch(`/exams/${id}/walk-in`, { method: 'PATCH', body: JSON.stringify({ walkInEnabled }) }, accessToken ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['exams'] });
+      queryClient.invalidateQueries({ queryKey: ['exams', id] });
+    },
+  });
+}
+
 export function useDuplicateExam() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();

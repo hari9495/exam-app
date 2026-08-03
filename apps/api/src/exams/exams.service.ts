@@ -384,6 +384,28 @@ export class ExamsService {
     return updated;
   }
 
+  // Deliberately bypasses assertExamMutable's published-lock: unlike title/questions/
+  // scheduling, walk-in eligibility doesn't change what a candidate who already started
+  // sees, so there's no reason recruiters should have to unpublish a live exam just to
+  // open (or close) walk-in registration for it.
+  async setWalkInEnabled(context: TenantContext, actorUserId: string, id: string, walkInEnabled: boolean): Promise<Exam> {
+    const updated = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const existing = await tx.exam.findFirst({ where: { id, organizationId: context.organizationId as string } });
+      if (!existing) {
+        throw new NotFoundException(`Exam ${id} not found`);
+      }
+      return tx.exam.update({ where: { id }, data: { walkInEnabled } });
+    });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'exam.updated',
+      entityType: 'exam',
+      entityId: id,
+      metadata: { walkInEnabled },
+    });
+    return updated;
+  }
+
   async archive(context: TenantContext, actorUserId: string, id: string): Promise<Exam> {
     const archived = await this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.exam.findFirst({ where: { id, organizationId: context.organizationId as string } });

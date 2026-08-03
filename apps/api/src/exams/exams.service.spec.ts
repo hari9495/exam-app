@@ -539,6 +539,27 @@ describe('ExamsService', () => {
     );
   });
 
+  it('setWalkInEnabled updates walkInEnabled even when the exam is published', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published', walkInEnabled: false }),
+        update: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published', walkInEnabled: true }),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.setWalkInEnabled(context, 'user-1', 'exam-1', true)).resolves.toMatchObject({ walkInEnabled: true });
+
+    expect(tx.exam.update).toHaveBeenCalledWith({ where: { id: 'exam-1' }, data: { walkInEnabled: true } });
+  });
+
+  it('setWalkInEnabled throws when the exam does not exist', async () => {
+    const tx = { exam: { findFirst: jest.fn().mockResolvedValue(null) } };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.setWalkInEnabled(context, 'user-1', 'missing', true)).rejects.toThrow('not found');
+  });
+
   it('persists allowedIpRange on create', async () => {
     const tx = { exam: { create: jest.fn().mockResolvedValue({ id: 'exam-1' }) } };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));

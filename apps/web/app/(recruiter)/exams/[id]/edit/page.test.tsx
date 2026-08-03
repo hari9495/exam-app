@@ -16,6 +16,7 @@ jest.mock('../../../../../lib/hooks/useExams', () => ({
   useUpdateExam: () => ({ mutate: jest.fn() }),
   usePublishExam: () => ({ mutate: jest.fn() }),
   useUnpublishExam: () => ({ mutate: jest.fn(), isPending: false }),
+  useSetWalkInEnabled: () => ({ mutate: jest.fn() }),
 }));
 jest.mock('../../../../../lib/hooks/useExamMonitoring', () => ({ useExamMonitoring: jest.fn() }));
 
@@ -132,6 +133,22 @@ describe('EditExamPage details lock', () => {
     expect(screen.getByLabelText('Title')).not.toBeDisabled();
     expect(screen.queryByText(/its details are locked/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/candidate has already started it/i)).not.toBeInTheDocument();
+  });
+
+  it('shows a standalone, always-editable walk-in toggle once published, since the details form is locked', () => {
+    currentExam = { ...mockExam, status: 'published', hasStartedAttempts: false, walkInEnabled: false };
+    renderPage([], []);
+
+    const checkboxes = screen.getAllByLabelText('Enable walk-in registration for this exam');
+    expect(checkboxes).toHaveLength(1);
+    expect(checkboxes[0]).not.toBeDisabled();
+  });
+
+  it('does not duplicate the walk-in toggle while the exam is still a draft', () => {
+    currentExam = { ...mockExam, status: 'draft', hasStartedAttempts: false, walkInEnabled: false };
+    renderPage([], []);
+
+    expect(screen.getAllByLabelText('Enable walk-in registration for this exam')).toHaveLength(1);
   });
 });
 
