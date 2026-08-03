@@ -24,19 +24,41 @@ describe('Home (landing page)', () => {
     expect(screen.getByText('SAML 2.0, org-scoped')).toBeInTheDocument();
   });
 
-  it('shows all four capability cards', () => {
+  it('names the problem before pitching the product', () => {
     render(<Home />);
-    expect(screen.getByRole('heading', { name: 'AI-generated questions' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Live proctoring & integrity' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Structured reports & dashboards' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Flexible AI providers' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /screening still looks like it did ten years ago/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /resumes don't test anything/i })).toBeInTheDocument();
   });
 
-  it('shows the three how-it-works steps', () => {
+  it('shows the five-step walkthrough from building an exam to a hiring decision', () => {
     render(<Home />);
-    expect(screen.getByRole('heading', { name: 'Create an exam' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Build the exam' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Invite candidates' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Review AI-assisted results' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Candidate takes a proctored exam' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'AI-assisted scoring' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Review structured results' })).toBeInTheDocument();
+  });
+
+  it('shows the four feature deep-dives', () => {
+    render(<Home />);
+    expect(screen.getByRole('heading', { name: /AI drafts the questions/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /real proctoring stack/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /code questions that actually run/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /reports built for a hiring decision/i })).toBeInTheDocument();
+  });
+
+  it('shows the three consoles and the enterprise-readiness items', () => {
+    render(<Home />);
+    expect(screen.getByRole('heading', { name: 'Candidate' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Recruiter' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Org admin' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'SAML SSO' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Audit log' })).toBeInTheDocument();
+  });
+
+  it('shows a closing CTA banner linking to /login', () => {
+    render(<Home />);
+    expect(screen.getByRole('heading', { name: /ready to run an exam instead of another call/i })).toBeInTheDocument();
   });
 
   it('shows the footer copyright without a redundant Login link (nav already has one)', () => {

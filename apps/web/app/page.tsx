@@ -1,7 +1,8 @@
 import Link from 'next/link';
-import { Sparkles, ShieldCheck, BarChart3, Cpu } from 'lucide-react';
+import { Sparkles, ShieldCheck, BarChart3, Cpu, Code2, Users, Building2, Lock, FileCheck2, MonitorX, KeyRound } from 'lucide-react';
 import { Card } from '../components/ui';
 import LandingHero from './LandingHero';
+import { Reveal } from './Reveal';
 
 const PRIMARY_LINK_CLASSES = 'rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90';
 const OUTLINE_LINK_CLASSES =
@@ -22,49 +23,87 @@ const PROOF_STATS = [
   { value: 'GDPR', label: 'export & erase, built in' },
 ];
 
-const CAPABILITIES = [
+const PROBLEM_POINTS = [
   {
-    icon: Sparkles,
-    kicker: 'QUESTIONS. Generated.',
-    title: 'AI-generated questions',
-    body: 'AI drafts exam questions from a topic and difficulty level, reviewed before publishing.',
+    title: "Resumes don't test anything",
+    body: "A polished resume says nothing about whether someone can write the code or reason through the problem you'll actually hand them on day one.",
   },
   {
-    icon: ShieldCheck,
-    kicker: 'INTEGRITY. Verified.',
-    title: 'Live proctoring & integrity',
-    body: 'Webcam monitoring, tab and copy-paste detection, and AI-assessed risk narratives during every attempt.',
+    title: "Early-round calls don't scale",
+    body: "Every phone screen burns thirty minutes of a recruiter's time asking the same questions, before you even know if the candidate can do the job.",
   },
   {
-    icon: BarChart3,
-    kicker: 'RESULTS. Clear.',
-    title: 'Structured reports & dashboards',
-    body: 'Pass/fail breakdowns, topic performance, and trend charts for every exam.',
-  },
-  {
-    icon: Cpu,
-    kicker: 'AI. Your choice.',
-    title: 'Flexible AI providers',
-    body: 'Use Anthropic, Azure OpenAI, or any OpenAI-compatible endpoint -- configurable per organization.',
+    title: 'Remote rounds are easy to game',
+    body: "An unmonitored video call can't tell you whether the person answering is the person who applied, or whether they're reading off a second screen.",
   },
 ];
 
-const STEPS = [
+const WALKTHROUGH_STEPS = [
   {
     number: '1',
-    title: 'Create an exam',
-    body: 'Build sections and questions, or let AI draft them for you.',
+    title: 'Build the exam',
+    body: 'Write sections and questions yourself, or describe a topic and difficulty and let AI draft them -- you review and publish.',
   },
   {
     number: '2',
     title: 'Invite candidates',
-    body: 'Send secure links; candidates take the exam with live proctoring.',
+    body: 'Send a secure, single-use link. No account signup required on the candidate side.',
   },
   {
     number: '3',
-    title: 'Review AI-assisted results',
-    body: 'Get scored reports, integrity flags, and evaluation summaries instantly.',
+    title: 'Candidate takes a proctored exam',
+    body: 'Webcam monitoring, required screen share, tab and copy-paste detection, and an optional lockdown browser -- with a live leaderboard if you want candidates to see how they stack up in real time.',
   },
+  {
+    number: '4',
+    title: 'AI-assisted scoring',
+    body: 'Code runs in a real sandbox across 8 languages; written answers get an AI-drafted evaluation with a risk narrative attached to anything that looked off.',
+  },
+  {
+    number: '5',
+    title: 'Review structured results',
+    body: 'Pass/fail breakdowns, topic-level performance, and trend charts -- so the decision is a five-minute review, not a fresh read of a resume.',
+  },
+];
+
+const FEATURE_DEEP_DIVES = [
+  {
+    icon: Sparkles,
+    kicker: 'QUESTIONS. Generated.',
+    title: 'AI drafts the questions, you keep the final say',
+    body: 'Give it a topic and a difficulty level and it drafts MCQ or code questions in seconds -- nothing publishes without a human reviewing it first.',
+  },
+  {
+    icon: ShieldCheck,
+    kicker: 'INTEGRITY. Verified.',
+    title: 'A real proctoring stack, not a single webcam check',
+    body: 'On-device face detection catches no-face and multiple-faces violations, screen share is required for the whole session, tab-switching and copy-paste are logged, and AI reads periodic screenshots for remote-access tools running in the background. A lockdown browser mode is available for exams that need it.',
+  },
+  {
+    icon: Code2,
+    kicker: 'CODE. Executed.',
+    title: 'Code questions that actually run',
+    body: 'Candidates write and execute real code against a sandbox supporting 8 languages, with a limited number of runs so testing code output never becomes a crutch.',
+  },
+  {
+    icon: BarChart3,
+    kicker: 'RESULTS. Clear.',
+    title: 'Reports built for a hiring decision, not a data dump',
+    body: 'Pass/fail breakdowns, per-topic performance, and trend charts for every exam, plus a side-by-side candidate comparison once you are down to a shortlist.',
+  },
+];
+
+const CONSOLES = [
+  { icon: Users, title: 'Candidate', body: 'A focused, distraction-free exam flow with a practice run before the clock starts.' },
+  { icon: Building2, title: 'Recruiter', body: 'Build exams, invite candidates, watch live sessions, and review results.' },
+  { icon: Lock, title: 'Org admin', body: 'Manage users and roles, branding, SSO, and integrations for the whole organization.' },
+];
+
+const ENTERPRISE_ITEMS = [
+  { icon: KeyRound, title: 'SAML SSO', body: 'Org-scoped single sign-on, tested against real identity providers.' },
+  { icon: FileCheck2, title: 'GDPR data controls', body: 'Candidates and staff can export or erase their data on request.' },
+  { icon: MonitorX, title: 'Audit log', body: 'Every sensitive action is recorded, per organization.' },
+  { icon: Cpu, title: 'Bring your own AI provider', body: 'Anthropic, Azure OpenAI, or any OpenAI-compatible endpoint -- configurable per organization.' },
 ];
 
 export default function Home() {
@@ -183,32 +222,127 @@ export default function Home() {
         ))}
       </section>
 
-      <section id="features" className="px-6 py-16 md:px-16">
-        <div className="grid gap-6 md:grid-cols-2">
-          {CAPABILITIES.map(({ icon: Icon, kicker, title, body }) => (
-            <Card key={title} className="flex flex-col gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full border border-primary text-primary">
-                <Icon size={20} aria-hidden="true" />
-              </span>
-              <h2 className="text-lg font-semibold text-recruiter-text">{title}</h2>
-              <p className="text-sm font-medium text-primary">{kicker}</p>
-              <p className="text-sm text-recruiter-text-secondary">{body}</p>
-            </Card>
+      {/* The problem this product exists to solve -- names the pain before the pitch, so the
+          feature list that follows reads as an answer instead of a spec sheet. */}
+      <section className="px-6 py-16 md:px-16">
+        <Reveal>
+          <h2 className="mb-8 max-w-xl text-2xl font-bold tracking-tight text-recruiter-text md:text-3xl">
+            Screening still looks like it did ten years ago.
+          </h2>
+        </Reveal>
+        <div className="grid gap-6 md:grid-cols-3">
+          {PROBLEM_POINTS.map(({ title, body }, i) => (
+            <Reveal key={title} delay={i * 0.08}>
+              <div className="h-full rounded-lg border border-recruiter-border bg-recruiter-bg-subtle p-5">
+                <h3 className="mb-2 text-base font-semibold text-recruiter-text">{title}</h3>
+                <p className="text-sm text-recruiter-text-secondary">{body}</p>
+              </div>
+            </Reveal>
           ))}
         </div>
       </section>
 
       <section id="how-it-works" className="border-t border-recruiter-border px-6 py-16 md:px-16">
-        <div className="grid gap-8 md:grid-cols-3">
-          {STEPS.map(({ number, title, body }) => (
-            <div key={title} className="flex flex-col gap-2">
-              <span className="text-sm font-semibold text-primary">{number}</span>
-              <h3 className="text-lg font-semibold text-recruiter-text">{title}</h3>
-              <p className="text-sm text-recruiter-text-secondary">{body}</p>
-            </div>
+        <Reveal>
+          <h2 className="mb-2 text-2xl font-bold tracking-tight text-recruiter-text md:text-3xl">From blank exam to hiring decision</h2>
+          <p className="mb-10 max-w-xl text-sm text-recruiter-text-secondary">Five steps, most of which run themselves.</p>
+        </Reveal>
+        <div className="grid gap-8 md:grid-cols-5">
+          {WALKTHROUGH_STEPS.map(({ number, title, body }, i) => (
+            <Reveal key={title} delay={i * 0.08}>
+              <div className="flex flex-col gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-bold text-white">
+                  {number}
+                </span>
+                <h3 className="text-base font-semibold text-recruiter-text">{title}</h3>
+                <p className="text-sm text-recruiter-text-secondary">{body}</p>
+              </div>
+            </Reveal>
           ))}
         </div>
       </section>
+
+      <section id="features" className="border-t border-recruiter-border px-6 py-16 md:px-16">
+        <Reveal>
+          <h2 className="mb-10 text-2xl font-bold tracking-tight text-recruiter-text md:text-3xl">What's actually under the hood</h2>
+        </Reveal>
+        <div className="flex flex-col gap-14">
+          {FEATURE_DEEP_DIVES.map(({ icon: Icon, kicker, title, body }, i) => (
+            <Reveal key={title}>
+              <div className={`grid items-center gap-8 md:grid-cols-2 ${i % 2 === 1 ? 'md:[&>*:first-child]:order-2' : ''}`}>
+                <div>
+                  <span className="mb-4 flex h-11 w-11 items-center justify-center rounded-full border border-primary text-primary">
+                    <Icon size={22} aria-hidden="true" />
+                  </span>
+                  <p className="mb-1.5 text-sm font-semibold text-primary">{kicker}</p>
+                  <h3 className="mb-2 text-xl font-bold text-recruiter-text">{title}</h3>
+                  <p className="text-sm text-recruiter-text-secondary">{body}</p>
+                </div>
+                <div className="flex h-40 items-center justify-center rounded-xl border border-recruiter-border bg-recruiter-bg-subtle">
+                  <Icon size={56} strokeWidth={1.25} aria-hidden="true" className="text-primary/30" />
+                </div>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
+      <section className="border-t border-recruiter-border px-6 py-16 md:px-16">
+        <Reveal>
+          <h2 className="mb-2 text-2xl font-bold tracking-tight text-recruiter-text md:text-3xl">Built for the whole hiring team</h2>
+          <p className="mb-10 max-w-xl text-sm text-recruiter-text-secondary">
+            Three separate consoles, each scoped to what that person actually needs to do.
+          </p>
+        </Reveal>
+        <div className="grid gap-6 md:grid-cols-3">
+          {CONSOLES.map(({ icon: Icon, title, body }, i) => (
+            <Reveal key={title} delay={i * 0.08}>
+              <Card className="flex h-full flex-col gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-full border border-primary text-primary">
+                  <Icon size={20} aria-hidden="true" />
+                </span>
+                <h3 className="text-lg font-semibold text-recruiter-text">{title}</h3>
+                <p className="text-sm text-recruiter-text-secondary">{body}</p>
+              </Card>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
+      <section className="border-t border-recruiter-border px-6 py-16 md:px-16">
+        <Reveal>
+          <h2 className="mb-10 text-2xl font-bold tracking-tight text-recruiter-text md:text-3xl">Enterprise-ready from day one</h2>
+        </Reveal>
+        <div className="grid gap-6 md:grid-cols-2">
+          {ENTERPRISE_ITEMS.map(({ icon: Icon, title, body }, i) => (
+            <Reveal key={title} delay={i * 0.06}>
+              <div className="flex items-start gap-4">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Icon size={20} aria-hidden="true" />
+                </span>
+                <div>
+                  <h3 className="mb-1 text-base font-semibold text-recruiter-text">{title}</h3>
+                  <p className="text-sm text-recruiter-text-secondary">{body}</p>
+                </div>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
+      <Reveal>
+        <section className="border-t border-recruiter-border bg-recruiter-bg-subtle px-6 py-16 text-center md:px-16">
+          <h2 className="mb-3 text-2xl font-bold tracking-tight text-recruiter-text md:text-3xl">
+            Ready to run an exam instead of another call?
+          </h2>
+          <p className="mx-auto mb-6 max-w-md text-sm text-recruiter-text-secondary">
+            Create an organization and build your first exam in a few minutes.
+          </p>
+          <Link href="/login" className={PRIMARY_LINK_CLASSES}>
+            Get Started
+          </Link>
+        </section>
+      </Reveal>
 
       <footer className="flex items-center justify-center gap-2 border-t border-recruiter-border px-6 py-8 text-sm text-recruiter-text-secondary md:px-16">
         <img src="/logo.png" alt="Prudent Hire" className="h-6 w-6 object-contain" />

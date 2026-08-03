@@ -26,6 +26,16 @@ if (typeof (globalThis as { ResizeObserver?: unknown }).ResizeObserver === 'unde
   };
 }
 
+// Polyfill for IntersectionObserver -- needed for framer-motion's `whileInView`
+// (used by scroll-reveal animations), which jsdom does not implement.
+if (typeof (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver === 'undefined') {
+  (globalThis as unknown as { IntersectionObserver: unknown }).IntersectionObserver = class IntersectionObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
 // Minimal Fetch API `Response` polyfill.
 // jest-environment-jsdom (jsdom itself) does not implement the Fetch API, so
 // `global.fetch` mocks that construct `new Response(json, { status })` throw
