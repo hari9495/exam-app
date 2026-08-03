@@ -48,6 +48,21 @@ it('submits single-tab email/password/role via useCreateUser', async () => {
   expect(mockBulkMutate).not.toHaveBeenCalled();
 });
 
+// Regression for ADO #6842: the single-user form had no Name field at all, so every
+// user created that way ended up with no name.
+it('lets the recruiter set a Name on the single-user tab and submits it', async () => {
+  renderModal();
+  await userEvent.type(screen.getByLabelText('Name'), 'Ada Lovelace');
+  await userEvent.type(screen.getByLabelText('Email'), 'new@x.com');
+  await userEvent.type(screen.getByLabelText('Password'), 'Passw0rd!');
+  await userEvent.click(screen.getByRole('button', { name: 'Add user' }));
+
+  expect(mockCreateMutate).toHaveBeenCalledWith(
+    { email: 'new@x.com', name: 'Ada Lovelace', password: 'Passw0rd!', role: 'recruiter' },
+    expect.anything(),
+  );
+});
+
 it('hides the password field and sends a single-email bulk request when "send link" is checked', async () => {
   renderModal();
   await userEvent.type(screen.getByLabelText('Email'), 'new@x.com');
@@ -60,24 +75,27 @@ it('hides the password field and sends a single-email bulk request when "send li
   expect(mockCreateMutate).not.toHaveBeenCalled();
 });
 
-it('splits/trims/drops blank lines on the Multiple tab and shows the created/skipped summary', async () => {
+it('splits/trims/drops blank lines on the Multiple tab and closes the modal on success', async () => {
+  const onClose = jest.fn();
   mockBulkMutate.mockImplementation((_input, { onSuccess }) => {
     onSuccess({ created: [{}, {}], skipped: [{}] });
   });
-  renderModal();
+  renderModal({ onClose });
   await userEvent.click(screen.getByRole('tab', { name: /multiple/i }));
   fireEvent.change(screen.getByLabelText(/emails/i), { target: { value: ' a@x.com \n\n b@x.com \n' } });
-  await userEvent.click(screen.getByRole('button', { name: /create users/i }));
+  await userEvent.click(screen.getByRole('button', { name: /add users/i }));
 
   expect(mockBulkMutate).toHaveBeenCalledWith({ emails: ['a@x.com', 'b@x.com'], role: 'recruiter' }, expect.anything());
-  expect(screen.getByText(/created 2 \/ skipped 1/i)).toBeInTheDocument();
+  // Regression for ADO #6845: the modal used to stay open with no visible way forward after a
+  // successful bulk create -- it must close now, same as the single-user flow.
+  expect(onClose).toHaveBeenCalled();
 });
 
 it('does not submit the Multiple tab when the textarea is empty or whitespace-only', async () => {
   renderModal();
   await userEvent.click(screen.getByRole('tab', { name: /multiple/i }));
   fireEvent.change(screen.getByLabelText(/emails/i), { target: { value: '   \n  \n' } });
-  await userEvent.click(screen.getByRole('button', { name: /create users/i }));
+  await userEvent.click(screen.getByRole('button', { name: /add users/i }));
 
   expect(mockBulkMutate).not.toHaveBeenCalled();
   expect(screen.getByText(/enter at least one email/i)).toBeInTheDocument();

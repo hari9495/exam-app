@@ -31,6 +31,7 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
   const [error, setError] = useState<string | null>(null);
 
   // Single tab
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('recruiter');
@@ -39,18 +40,17 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
   // Multiple tab
   const [emailsText, setEmailsText] = useState('');
   const [bulkRole, setBulkRole] = useState('recruiter');
-  const [summary, setSummary] = useState<{ created: number; skipped: number } | null>(null);
 
   function reset() {
     setTab('single');
     setError(null);
+    setName('');
     setEmail('');
     setPassword('');
     setRole('recruiter');
     setSendLink(false);
     setEmailsText('');
     setBulkRole('recruiter');
-    setSummary(null);
   }
 
   function handleClose() {
@@ -70,7 +70,7 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
 
     if (ssoEnabled) {
       createUser.mutate(
-        { email, role },
+        { email, name: name.trim() || undefined, role },
         { onSuccess: () => { toast(`Added ${email} as ${role}.`); handleClose(); }, onError },
       );
       return;
@@ -84,7 +84,7 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
       return;
     }
     createUser.mutate(
-      { email, password, role },
+      { email, name: name.trim() || undefined, password, role },
       { onSuccess: () => { toast(`Added ${email} as ${role}.`); handleClose(); }, onError },
     );
   }
@@ -101,8 +101,11 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
       { emails, role: bulkRole },
       {
         onSuccess: (result: { created: unknown[]; skipped: unknown[] }) => {
-          setSummary({ created: result.created.length, skipped: result.skipped.length });
+          // The toast (not a summary left sitting in the modal) is the source of truth for the
+          // outcome, same as the single-user flow -- so this closes on success too instead of
+          // leaving the modal open with no visible way forward (ADO #6845).
           toast(`Created ${result.created.length} user(s), skipped ${result.skipped.length}.`);
+          handleClose();
         },
         onError: (err: unknown) => setError(err instanceof Error ? err.message : 'Failed to create users'),
       },
@@ -119,6 +122,7 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
 
         <TabsContent value="single">
           <form onSubmit={submitSingle} className="flex flex-col gap-3">
+            <Input label="Name" value={name} onChange={setName} />
             <Input label="Email" type="email" value={email} onChange={setEmail} required />
             <Select label="Role" value={role} onChange={setRole} options={ROLE_OPTIONS} />
             {ssoEnabled ? (
@@ -176,17 +180,12 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
                 {error}
               </p>
             )}
-            {summary && (
-              <p className="text-sm text-gray-700">
-                Created {summary.created} / skipped {summary.skipped}
-              </p>
-            )}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="secondary" onClick={handleClose}>
                 Cancel
               </Button>
               <Button type="submit" loading={bulkCreateUsers.isPending}>
-                Create users
+                Add users
               </Button>
             </div>
           </form>

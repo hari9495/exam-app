@@ -280,6 +280,7 @@ export class AuthService {
       role: 'super_admin',
       actingSuperAdmin: true,
       actingOrgName: org.name,
+      actingOrgSlug: org.slug,
     });
   }
 
@@ -366,6 +367,7 @@ export class AuthService {
     role: string;
     actingSuperAdmin?: boolean;
     actingOrgName?: string;
+    actingOrgSlug?: string;
     impersonatorUserId?: string;
     impersonatorEmail?: string;
   }): string {

@@ -1,8 +1,13 @@
-import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class CreateUserDto {
   @IsEmail()
   email!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  name?: string;
 
   // Optional: omitted for SSO-enabled orgs, where UsersService generates a random,
   // unusable password server-side instead (SAML login never checks passwordHash).

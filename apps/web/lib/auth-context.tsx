@@ -64,6 +64,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setActingOrgName(payload && typeof payload.actingOrgName === 'string' ? payload.actingOrgName : null);
     setImpersonating(Boolean(payload?.impersonatorUserId));
     setImpersonatorEmail(payload && typeof payload.impersonatorEmail === 'string' ? payload.impersonatorEmail : null);
+    // A super_admin has no organizationSlug of their own (they log in without one), so acting
+    // into an org left it stuck empty -- which silently disabled useSsoStatus()'s per-org check
+    // (it no-ops without a slug) and showed staff actions like "Reset password" for every user
+    // regardless of whether the org they were viewing actually had SSO enabled (ADO #6849).
+    if (payload && typeof payload.actingOrgSlug === 'string') {
+      setOrganizationSlug(payload.actingOrgSlug);
+    } else if (payload?.role === 'super_admin' && !payload?.actingSuperAdmin) {
+      setOrganizationSlug(null);
+    }
   }
 
   async function silentRefresh(): Promise<string | null> {

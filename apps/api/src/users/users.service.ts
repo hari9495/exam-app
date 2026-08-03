@@ -59,6 +59,14 @@ export class UsersService {
     }
 
     const user = await this.tenantPrisma.forTenant(context, async (tx) => {
+      // Pre-check, same pattern as bulkCreate below: without it, a duplicate insert throws
+      // Prisma's raw P2002 straight out of this method with no exception filter anywhere in
+      // the app to translate it, surfacing a generic 500 instead of a clear message (ADO #6847).
+      const existing = await tx.user.findFirst({ where: { organizationId: context.organizationId as string, email: dto.email } });
+      if (existing) {
+        throw new ConflictException('A user with this email already exists in your organization.');
+      }
+
       const org = await tx.organization.findUnique({
         where: { id: context.organizationId as string },
         select: { samlEnabled: true },
@@ -76,6 +84,7 @@ export class UsersService {
         data: {
           organizationId: context.organizationId as string,
           email: dto.email,
+          name: dto.name,
           passwordHash,
           role: dto.role,
         },
@@ -357,10 +366,21 @@ export class UsersService {
     return promoted;
   }
 
-  async requestPasswordReset(context: TenantContext, targetUserId: string, actorUserId: string): Promise<{ success: true }> {
+  async requestPasswordReset(
+    context: TenantContext,
+    targetUserId: string,
+    actorUserId: string,
+  ): Promise<{ success: true; emailSent: boolean }> {
     if (!context.organizationId) {
       throw new BadRequestException('A user must be within an organization');
     }
+    let ssoSkipped = false;
+    // Captured inside the transaction, dispatched (and awaited) after it commits -- this is an
+    // explicit, single admin action clicked once and waited on, unlike the best-effort bulk
+    // invite/notification emails elsewhere in this file, so it's worth the extra round trip to
+    // report whether the email actually sent instead of claiming success unconditionally
+    // (ADO #6850: rakesh.t@prudentconsulting.com never got the email and nothing surfaced that).
+    let pending: { email: string; rawToken: string } | null = null;
     await this.tenantPrisma.forTenant(context, async (tx) => {
       const target = await tx.user.findFirst({ where: { id: targetUserId, organizationId: context.organizationId } });
       if (!target) {
@@ -371,6 +391,7 @@ export class UsersService {
       // meaningless there (see create/bulkCreate for the same reasoning), so skip the
       // token and the email rather than send a link nobody can use.
       if (org?.samlEnabled) {
+        ssoSkipped = true;
         return;
       }
       const rawToken = randomBytes(32).toString('hex');
@@ -378,10 +399,7 @@ export class UsersService {
       await tx.passwordResetToken.create({
         data: { userId: target.id, tokenHash, expiresAt: new Date(Date.now() + PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000) },
       });
-      // dispatched below, outside the tenant transaction, fire-and-forget
-      this.dispatchResetLink(target.email, rawToken, context.organizationId as string).catch((error) =>
-        this.logger.error(`Failed to dispatch password reset email to ${target.email}`, error as Error),
-      );
+      pending = { email: target.email, rawToken };
     });
     await this.audit.record(context, {
       actorUserId,
@@ -389,7 +407,15 @@ export class UsersService {
       entityType: 'user',
       entityId: targetUserId,
     });
-    return { success: true };
+    if (ssoSkipped || !pending) {
+      return { success: true, emailSent: false };
+    }
+    const { email, rawToken } = pending as { email: string; rawToken: string };
+    const result = await this.dispatchResetLink(email, rawToken, context.organizationId as string);
+    if (!result.success) {
+      this.logger.error(`Failed to dispatch password reset email to ${email}`);
+    }
+    return { success: true, emailSent: result.success };
   }
 
   async bulkCreate(
@@ -445,9 +471,9 @@ export class UsersService {
     return { created, skipped };
   }
 
-  private async dispatchResetLink(email: string, rawToken: string, organizationId: string): Promise<void> {
+  private dispatchResetLink(email: string, rawToken: string, organizationId: string) {
     const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/reset-password/${rawToken}`;
-    await this.emailService.send({
+    return this.emailService.send({
       to: email,
       subject: 'Reset your Examination Platform password',
       html: `<p>A password reset was requested for your account. Click the link below to set a new password. This link expires in 15 minutes.</p><p><a href="${link}">${link}</a></p>`,

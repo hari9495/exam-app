@@ -29,6 +29,7 @@ export function useUsers(params: UseUsersParams = {}) {
 
 interface CreateUserInput {
   email: string;
+  name?: string;
   // Omitted for SSO-enabled orgs -- the API generates a random, unusable password
   // server-side since SAML login never checks it.
   password?: string;

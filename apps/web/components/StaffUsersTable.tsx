@@ -142,7 +142,16 @@ export function StaffUsersTable({
             : [
                 {
                   label: 'Reset password',
-                  onSelect: () => resetPassword.mutate(u.id, { onSuccess: () => toast(`Password reset email sent to ${u.email}.`) }),
+                  onSelect: () =>
+                    resetPassword.mutate(u.id, {
+                      // The request can succeed (token created) while the email itself fails to
+                      // send -- report which one actually happened instead of a blanket "sent"
+                      // that hid real SMTP failures from the admin (ADO #6850).
+                      onSuccess: (result: { emailSent?: boolean }) =>
+                        result.emailSent === false
+                          ? toast(`Reset link created for ${u.email}, but the email failed to send.`, 'error')
+                          : toast(`Password reset email sent to ${u.email}.`),
+                    }),
                 },
               ]),
         ]

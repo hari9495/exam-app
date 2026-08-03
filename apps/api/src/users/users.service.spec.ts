@@ -105,7 +105,10 @@ describe('UsersService', () => {
     it('ignores a supplied password and generates a random one when the org has SSO enabled', async () => {
       const tx = {
         organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: true }) },
-        user: { create: jest.fn().mockResolvedValue({ id: 'u1', email: 'a@b.com', organizationId: 'org-1', role: 'recruiter' }) },
+        user: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'u1', email: 'a@b.com', organizationId: 'org-1', role: 'recruiter' }),
+        },
       };
       tenantPrisma.forTenant.mockImplementation((_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
 
@@ -119,11 +122,27 @@ describe('UsersService', () => {
     });
 
     it('rejects creation with no password when the org does NOT have SSO enabled', async () => {
-      const tx = { organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) } };
+      const tx = {
+        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
+        user: { findFirst: jest.fn().mockResolvedValue(null) },
+      };
       tenantPrisma.forTenant.mockImplementation((_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
 
       await expect(service.create(ctx, { email: 'a@b.com', role: 'recruiter' })).rejects.toThrow(
         'Password is required',
+      );
+    });
+
+    // Regression for ADO #6847: a duplicate insert previously fell through to Prisma's raw P2002
+    // with no exception filter to translate it, surfacing a generic 500 instead of a clear message.
+    it('rejects with a clear message when a user with that email already exists in the org', async () => {
+      const tx = {
+        user: { findFirst: jest.fn().mockResolvedValue({ id: 'existing-1', email: 'a@b.com' }) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+
+      await expect(service.create(ctx, { email: 'a@b.com', password: 'password1', role: 'recruiter' })).rejects.toThrow(
+        new ConflictException('A user with this email already exists in your organization.'),
       );
     });
   });
@@ -525,7 +544,7 @@ describe('UsersService', () => {
       };
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
       const result = await service.requestPasswordReset(ctx, 't1', 'admin1');
-      expect(result).toEqual({ success: true });
+      expect(result).toEqual({ success: true, emailSent: true });
       expect(tx.passwordResetToken.create).toHaveBeenCalled();
       // organizationId must reach EmailService so it resolves the org's own SMTP config
       // instead of silently falling back to the platform transporter (which has no
@@ -545,10 +564,27 @@ describe('UsersService', () => {
 
       const result = await service.requestPasswordReset(ctx, 't1', 'admin1');
 
-      expect(result).toEqual({ success: true });
+      expect(result).toEqual({ success: true, emailSent: false });
       expect(tx.passwordResetToken.create).not.toHaveBeenCalled();
       expect(emailService.send).not.toHaveBeenCalled();
       expect(audit.record).toHaveBeenCalledWith(ctx, expect.objectContaining({ action: 'user.password_reset_requested' }));
+    });
+
+    // Regression for ADO #6850: requestPasswordReset previously fired the email off
+    // fire-and-forget and always returned { success: true }, so a real SMTP failure
+    // (rakesh.t@prudentconsulting.com never got his email) was invisible to the admin.
+    it('reports emailSent: false when the email actually fails to send', async () => {
+      const tx = {
+        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
+        user: { findFirst: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', organizationId: 'org1' }) },
+        passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'tok1' }) },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      emailService.send.mockResolvedValueOnce({ success: false });
+
+      const result = await service.requestPasswordReset(ctx, 't1', 'admin1');
+
+      expect(result).toEqual({ success: true, emailSent: false });
     });
 
     it('throws NotFound when the target is out of scope', async () => {

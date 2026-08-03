@@ -399,7 +399,7 @@ describe('AuthService', () => {
     });
 
     it('audit-logs the switch-in against the target org and returns an acting access token', async () => {
-      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme Inc', status: 'active' });
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme Inc', slug: 'acme', status: 'active' });
 
       const token = await service.switchIntoOrg('super-admin-1', 'org-1');
 
@@ -408,10 +408,15 @@ describe('AuthService', () => {
         { actorUserId: 'super-admin-1', action: 'super_admin.org_switch_in', entityType: 'organization', entityId: 'org-1' },
       );
       const payload = jwt.verify(token, { secret: 'test-secret' }) as {
-        sub: string; organizationId: string; role: string; actingSuperAdmin: boolean; actingOrgName: string;
+        sub: string; organizationId: string; role: string; actingSuperAdmin: boolean; actingOrgName: string; actingOrgSlug: string;
       };
       expect(payload).toMatchObject({
         sub: 'super-admin-1', organizationId: 'org-1', role: 'super_admin', actingSuperAdmin: true, actingOrgName: 'Acme Inc',
+        // Regression for ADO #6849: without the acting org's slug in the token, the frontend's
+        // organizationSlug stayed at the super_admin's own (empty) value while acting into an
+        // org, which disabled the per-org SSO-status check and showed "Reset password" for
+        // every user regardless of whether the org they were viewing actually had SSO enabled.
+        actingOrgSlug: 'acme',
       });
     });
   });

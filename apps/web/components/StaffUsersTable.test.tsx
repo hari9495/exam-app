@@ -9,6 +9,7 @@ const users = [
 
 const mockImpersonate = jest.fn();
 const mockPush = jest.fn();
+const mockResetPasswordMutate = jest.fn();
 let mockSsoStatus: { enabled: boolean } | undefined = { enabled: false };
 jest.mock('../lib/auth-context', () => ({ useAuth: () => ({ impersonate: mockImpersonate }) }));
 jest.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush }) }));
@@ -16,7 +17,7 @@ jest.mock('../lib/hooks/useUsers', () => ({
   useUpdateUser: () => ({ mutate: jest.fn(), isPending: false }),
   useDeactivateUser: () => ({ mutate: jest.fn(), isPending: false }),
   useReactivateUser: () => ({ mutate: jest.fn(), isPending: false }),
-  useResetUserPassword: () => ({ mutate: jest.fn(), isPending: false }),
+  useResetUserPassword: () => ({ mutate: mockResetPasswordMutate, isPending: false }),
 }));
 jest.mock('../lib/hooks/useSso', () => ({
   useSsoStatus: () => ({ data: mockSsoStatus }),
@@ -29,6 +30,7 @@ beforeEach(() => {
   mockImpersonate.mockReset();
   mockImpersonate.mockResolvedValue(undefined);
   mockPush.mockReset();
+  mockResetPasswordMutate.mockReset();
   mockSsoStatus = { enabled: false };
 });
 
@@ -81,6 +83,24 @@ it('hides Reset password from the row menu when the org has SSO enabled', async 
   // The rest of the menu is unaffected.
   expect(screen.getByText('Edit')).toBeInTheDocument();
   expect(screen.getByText('Deactivate')).toBeInTheDocument();
+});
+
+it('shows a success toast when the reset email actually sends', async () => {
+  mockResetPasswordMutate.mockImplementation((_id, { onSuccess }) => onSuccess({ success: true, emailSent: true }));
+  renderTable({ users, currentUserRole: 'org_admin', isActingSuperAdmin: false, currentUserId: 'admin1' });
+  await userEvent.click(screen.getByRole('button', { name: /actions for rec@x.com/i }));
+  await userEvent.click(screen.getByText('Reset password'));
+  expect(await screen.findByText('Password reset email sent to rec@x.com.')).toBeInTheDocument();
+});
+
+// Regression for ADO #6850: the request can succeed (token created) while the email itself
+// fails to send -- this must surface as an error, not the same success toast as a real send.
+it('shows an error toast when the reset request succeeds but the email fails to send', async () => {
+  mockResetPasswordMutate.mockImplementation((_id, { onSuccess }) => onSuccess({ success: true, emailSent: false }));
+  renderTable({ users, currentUserRole: 'org_admin', isActingSuperAdmin: false, currentUserId: 'admin1' });
+  await userEvent.click(screen.getByRole('button', { name: /actions for rec@x.com/i }));
+  await userEvent.click(screen.getByText('Reset password'));
+  expect(await screen.findByText('Reset link created for rec@x.com, but the email failed to send.')).toBeInTheDocument();
 });
 
 it('filters rows by role and the item count follows', async () => {

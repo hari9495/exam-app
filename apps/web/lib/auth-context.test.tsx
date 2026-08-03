@@ -92,7 +92,7 @@ describe('AuthProvider', () => {
     expect(client.getQueryData(['currentUser'])).toBeUndefined();
   });
 
-  it('decodes actingSuperAdmin and actingOrgName off the access token after switchIntoOrg', async () => {
+  it('decodes actingSuperAdmin, actingOrgName, and actingOrgSlug off the access token after switchIntoOrg', async () => {
     const tokenA = fakeJwt({ sub: 'userA', organizationId: 'org1', role: 'super_admin' });
     const actingToken = fakeJwt({
       sub: 'userA',
@@ -100,6 +100,7 @@ describe('AuthProvider', () => {
       role: 'super_admin',
       actingSuperAdmin: true,
       actingOrgName: 'Acme Inc',
+      actingOrgSlug: 'acme',
     });
 
     global.fetch = jest.fn(async (url) => {
@@ -133,6 +134,9 @@ describe('AuthProvider', () => {
 
     expect(auth?.actingSuperAdmin).toBe(true);
     expect(auth?.actingOrgName).toBe('Acme Inc');
+    // Regression for ADO #6849: without this, organizationSlug stayed at the super_admin's own
+    // (empty) value while acting into an org, silently disabling useSsoStatus()'s per-org check.
+    expect(auth?.organizationSlug).toBe('acme');
   });
 
   it('switchOutOfOrg calls the switch-out endpoint and restores a non-acting token via silent refresh', async () => {
@@ -142,6 +146,7 @@ describe('AuthProvider', () => {
       role: 'super_admin',
       actingSuperAdmin: true,
       actingOrgName: 'Acme Inc',
+      actingOrgSlug: 'acme',
     });
     const restoredToken = fakeJwt({ sub: 'userA', organizationId: 'org1', role: 'super_admin' });
 
@@ -172,6 +177,7 @@ describe('AuthProvider', () => {
     );
 
     await waitFor(() => expect(auth?.actingSuperAdmin).toBe(true));
+    expect(auth?.organizationSlug).toBe('acme');
 
     await act(async () => {
       await auth!.switchOutOfOrg();
@@ -179,6 +185,10 @@ describe('AuthProvider', () => {
 
     expect(auth?.actingSuperAdmin).toBe(false);
     expect(auth?.accessToken).toBe(restoredToken);
+    // Regression for ADO #6849: the acting org's slug must not linger after switching out, or
+    // the super_admin's base (org-less) session would keep evaluating SSO status for the org
+    // they just left.
+    expect(auth?.organizationSlug).toBeNull();
   });
 
   it('decodes impersonating and impersonatorEmail off the access token after impersonate', async () => {
