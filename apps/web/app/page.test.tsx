@@ -8,10 +8,20 @@ describe('Home (landing page)', () => {
     expect(navLogin).toHaveAttribute('href', '/login');
   });
 
-  it('shows the headline and a hero CTA linking to /login', () => {
+  it('shows the headline and Get Started CTAs linking to /login', () => {
     render(<Home />);
-    expect(screen.getByRole('heading', { name: /automate early screens/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Get Started' })).toHaveAttribute('href', '/login');
+    expect(screen.getByRole('heading', { name: /hiring exams that run themselves/i })).toBeInTheDocument();
+    const getStartedLinks = screen.getAllByRole('link', { name: 'Get Started' });
+    expect(getStartedLinks.length).toBeGreaterThan(0);
+    getStartedLinks.forEach((link) => expect(link).toHaveAttribute('href', '/login'));
+  });
+
+  it('shows nav anchors and the security proof strip', () => {
+    render(<Home />);
+    expect(screen.getByRole('link', { name: 'Features' })).toHaveAttribute('href', '#features');
+    expect(screen.getByRole('link', { name: 'How it works' })).toHaveAttribute('href', '#how-it-works');
+    expect(screen.getByRole('link', { name: 'Security' })).toHaveAttribute('href', '#security');
+    expect(screen.getByText('SAML 2.0, org-scoped')).toBeInTheDocument();
   });
 
   it('shows all four capability cards', () => {
