@@ -103,6 +103,18 @@ it('shows an error toast when the reset request succeeds but the email fails to 
   expect(await screen.findByText('Reset link created for rec@x.com, but the email failed to send.')).toBeInTheDocument();
 });
 
+// Regression: Radix's Select treats value="" as its internal "nothing selected" sentinel and
+// renders the (unset) placeholder instead of the option's label, no matter what text is passed
+// as children -- so a `{ value: '', label: 'All roles' }` option left the trigger showing only
+// a bare chevron. The default role/status filter option must use a non-empty sentinel so its
+// label actually renders.
+it('shows "All roles" and "All statuses" as the default filter labels, not a blank trigger', () => {
+  renderTable({ users, currentUserRole: 'org_admin', isActingSuperAdmin: false, currentUserId: 'admin1' });
+  const triggers = screen.getAllByRole('combobox');
+  expect(triggers[0]).toHaveTextContent('All roles');
+  expect(triggers[1]).toHaveTextContent('All statuses');
+});
+
 it('filters rows by role and the item count follows', async () => {
   const mixed = [
     { ...users[0] },

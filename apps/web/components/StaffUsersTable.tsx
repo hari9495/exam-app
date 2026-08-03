@@ -15,14 +15,19 @@ import { StaffUser } from '../lib/types';
 const ROLE_TONE: Record<string, StatusTone> = { org_admin: 'purple', recruiter: 'info', panel: 'neutral' };
 const ROLE_LABEL: Record<string, string> = { org_admin: 'Org Admin', recruiter: 'Recruiter', panel: 'Interview Panel' };
 
+// Radix's Select treats value="" as its internal "nothing selected" sentinel and renders the
+// (unset) placeholder instead of the option's own label, no matter what text is passed as
+// children -- the trigger showed only a bare chevron with "All roles"/"All statuses" invisible.
+// Every other filter dropdown in the app already sidesteps this with a non-empty 'all' sentinel;
+// these two just hadn't been written that way.
 const ROLE_FILTER_OPTIONS = [
-  { value: '', label: 'All roles' },
+  { value: 'all', label: 'All roles' },
   { value: 'org_admin', label: 'Org Admin' },
   { value: 'recruiter', label: 'Recruiter' },
   { value: 'panel', label: 'Interview Panel' },
 ];
 const STATUS_FILTER_OPTIONS = [
-  { value: '', label: 'All statuses' },
+  { value: 'all', label: 'All statuses' },
   { value: 'active', label: 'Active' },
   { value: 'deactivated', label: 'Deactivated' },
 ];
@@ -83,8 +88,8 @@ export function StaffUsersTable({
   const { data: ssoStatus } = useSsoStatus();
   const ssoEnabled = ssoStatus?.enabled === true;
 
-  const [roleFilter, setRoleFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [editing, setEditing] = useState<StaffUser | null>(null);
   const [editRole, setEditRole] = useState('');
   const [editName, setEditName] = useState('');
@@ -92,7 +97,10 @@ export function StaffUsersTable({
   // ListView holds no filter state -- it renders whatever rows it is given, and its
   // item count follows them. Filter here, before handing rows over.
   const rows = useMemo(
-    () => users.filter((u) => (!roleFilter || u.role === roleFilter) && (!statusFilter || u.status === statusFilter)),
+    () =>
+      users.filter(
+        (u) => (roleFilter === 'all' || u.role === roleFilter) && (statusFilter === 'all' || u.status === statusFilter),
+      ),
     [users, roleFilter, statusFilter],
   );
 
