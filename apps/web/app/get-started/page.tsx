@@ -78,10 +78,12 @@ export default function GetStartedPage() {
               </p>
             )}
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-              <Input label="Name" value={name} onChange={setName} required />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Input label="Name" value={name} onChange={setName} required />
+                <Select label="Team size" value={teamSize} onChange={setTeamSize} options={TEAM_SIZE_OPTIONS} />
+              </div>
               <Input label="Work email" type="email" value={workEmail} onChange={setWorkEmail} required />
               <Input label="Company" value={company} onChange={setCompany} required />
-              <Select label="Team size" value={teamSize} onChange={setTeamSize} options={TEAM_SIZE_OPTIONS} />
               <div className="flex flex-col gap-1">
                 <label htmlFor="get-started-message" className="text-sm font-medium text-gray-700">
                   What are you hoping to screen for? (optional)
@@ -90,7 +92,7 @@ export default function GetStartedPage() {
                   id="get-started-message"
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  rows={3}
+                  rows={2}
                   className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none"
                 />
               </div>

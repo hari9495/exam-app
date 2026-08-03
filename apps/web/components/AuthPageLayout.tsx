@@ -34,9 +34,9 @@ export function AuthPageLayout({
 }: AuthPageLayoutProps) {
   return (
     <main className="grid min-h-screen md:grid-cols-2">
-      <div className="flex flex-col items-center justify-center bg-white px-6 py-12">
+      <div className="flex flex-col items-center justify-center bg-white px-6 py-8">
         <div className="w-full max-w-sm">
-          <div className="mb-8 flex justify-center">
+          <div className="mb-6 flex justify-center">
             {logoUrl ? (
               <div className="flex items-center gap-0">
                 <img src={logoUrl} alt="Organization logo" className="max-h-20 object-contain" />
@@ -57,7 +57,7 @@ export function AuthPageLayout({
             {children}
           </div>
 
-          <p className="mt-8 text-center text-xs text-recruiter-text-tertiary">
+          <p className="mt-6 text-center text-xs text-recruiter-text-tertiary">
             © {new Date().getFullYear()} Prudent Technologies & Consulting. All rights reserved.
           </p>
         </div>
