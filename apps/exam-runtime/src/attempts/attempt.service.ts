@@ -8,6 +8,7 @@ import {
   AiApiKeyResolverService,
   buildSebConfig,
   requestConfigKeyHash,
+  SystemEventsService,
 } from '@exam-platform/shared';
 import { AttemptSettlementService, PauseReason, SettlementExam } from '../grading/attempt-settlement.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
@@ -28,6 +29,7 @@ import { WebcamViolationDto } from './dto/webcam-violation.dto';
 import { WebcamSnapshotDto } from './dto/webcam-snapshot.dto';
 import { ScreenShareStateDto } from './dto/screen-share-state.dto';
 import { ScreenAnalysisDto } from './dto/screen-analysis.dto';
+import { ClientErrorDto } from './dto/client-error.dto';
 import { sanitizeMetadataOrDrop } from './sanitize-metadata';
 
 interface AttemptQuestionOption {
@@ -226,6 +228,7 @@ export class AttemptService {
     private readonly audit: AuditService,
     private readonly blobStorage: BlobStorageService,
     private readonly aiApiKeyResolver: AiApiKeyResolverService,
+    private readonly systemEvents: SystemEventsService,
   ) {}
 
   // ponytail: in-memory per-attempt floor between AI screen analyses -- single pm2 process, so a
@@ -884,6 +887,31 @@ export class AttemptService {
       this.logger.error('Failed to increment screenCaptureCount after a successful screen-capture upload', error as Error);
     }
     return { screenshot: screenshotUrl };
+  }
+
+  // Candidate-browser failure reporting: the exam page posts its own errors (failed saves,
+  // JS crashes, webcam loss) here so exam-day failures are diagnosable from the admin
+  // console instead of dying silently on the candidate's machine. Best-effort by contract
+  // (SystemEventsService.record never throws), and the response carries nothing.
+  async reportClientError(session: CandidateSession, dto: ClientErrorDto): Promise<void> {
+    const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
+    const attempt = await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
+      tx.attempt.findUnique({ where: { invitationId: invitation.id }, select: { id: true } }),
+    );
+    await this.systemEvents.record({
+      organizationId,
+      service: 'candidate-browser',
+      severity: dto.severity ?? 'error',
+      message: `${dto.kind}: ${dto.message}`,
+      context: {
+        kind: dto.kind,
+        attemptId: attempt?.id ?? null,
+        candidateId: invitation.candidateId,
+        examId: exam.id,
+        invitationId: invitation.id,
+        ...(dto.detail ? { detail: dto.detail } : {}),
+      },
+    });
   }
 
   // The candidate's personal .seb file: SEB opens straight into their own start link, and the

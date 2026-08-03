@@ -9,6 +9,7 @@ import { resolveClientIp } from '../network/resolve-client-ip';
 import { AnswerDto } from './dto/answer.dto';
 import { StartAttemptDto } from './dto/start-attempt.dto';
 import { ReportProctoringEventDto } from './dto/report-proctoring-event.dto';
+import { ClientErrorDto } from './dto/client-error.dto';
 import { RunCodeDto } from './dto/run-code.dto';
 import { WebcamViolationDto } from './dto/webcam-violation.dto';
 import { WebcamSnapshotDto } from './dto/webcam-snapshot.dto';
@@ -57,6 +58,12 @@ export class AttemptController {
   @Throttle(MODERATE_ATTEMPT_THROTTLE)
   submit(@CurrentCandidate() candidate: CandidateSession) {
     return this.attemptService.submit(candidate);
+  }
+
+  @Post('client-error')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  clientError(@CurrentCandidate() candidate: CandidateSession, @Body() dto: ClientErrorDto) {
+    return this.attemptService.reportClientError(candidate, dto);
   }
 
   @Post('proctoring-event')

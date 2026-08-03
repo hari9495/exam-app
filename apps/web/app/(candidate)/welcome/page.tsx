@@ -10,6 +10,7 @@ import { useAttemptQuery, useStartAttempt } from '../../../lib/hooks/useAttempt'
 import { isAttemptStarted } from '../../../lib/types';
 import { useToast } from '../../../components/ui';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
+import { reportClientError } from '../../../lib/client-error-reporter';
 
 export default function CandidateWelcomePage() {
   const router = useRouter();
@@ -112,6 +113,10 @@ export default function CandidateWelcomePage() {
       router.push('/exam');
     } catch (error) {
       toast(error instanceof Error ? error.message : "Couldn't start the exam — please try again.", 'error');
+      reportClientError(accessToken, {
+        kind: 'start_failed',
+        message: error instanceof Error ? error.message : 'Start attempt failed',
+      });
     }
   }
 

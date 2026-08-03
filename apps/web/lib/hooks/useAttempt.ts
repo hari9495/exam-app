@@ -4,6 +4,7 @@ import { candidateApiFetch } from '../candidate-api-client';
 import { useCandidateAuth } from '../candidate-auth-context';
 import { useToast } from '../../components/ui';
 import { isRetryableError, withRetry } from '../retry';
+import { reportClientError } from '../client-error-reporter';
 import { AttemptCurrent, ProctoringEventType, CandidateLeaderboardResponse, AnswerTelemetry } from '../types';
 
 const ANSWER_DEBOUNCE_MS = 800;
@@ -64,7 +65,17 @@ export function useAnswerMutation() {
         // state updates promptly instead of waiting on the 30s poll interval.
         queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] });
       })
-      .catch(() => toast("Couldn't save your last answer — please check your connection.", 'error'));
+      .catch((error) => {
+        toast("Couldn't save your last answer — please check your connection.", 'error');
+        // A failed save is the single most important exam-day failure to have on record
+        // when a candidate later disputes lost answers.
+        reportClientError(accessToken, {
+          kind: 'answer_save_failed',
+          message: error instanceof Error ? error.message : 'Answer save failed',
+          detail: `questionId=${questionId}`,
+          severity: 'warn',
+        });
+      });
   }
 
   function saveAnswer(

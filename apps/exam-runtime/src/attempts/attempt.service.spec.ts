@@ -6,6 +6,7 @@ import {
   AuditService,
   BlobStorageService,
   AiApiKeyResolverService,
+  SystemEventsService,
   POOL_EXHAUSTED_RESPONSE,
   buildSebConfig,
   requestConfigKeyHash,
@@ -46,6 +47,7 @@ describe('AttemptService', () => {
   let blobStorage: { upload: jest.Mock; uploadDataUri: jest.Mock; signIfOurs: jest.Mock };
   let aiApiKeyResolver: { resolve: jest.Mock };
   let generateStructured: jest.Mock;
+  let systemEvents: { record: jest.Mock };
   const session = { invitationId: 'inv-1' };
   const exam = {
     id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false,
@@ -80,6 +82,7 @@ describe('AttemptService', () => {
     };
     generateStructured = jest.fn();
     aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue({ generateStructured, ping: jest.fn() }) };
+    systemEvents = { record: jest.fn().mockResolvedValue(undefined) };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -94,6 +97,7 @@ describe('AttemptService', () => {
         { provide: AuditService, useValue: audit },
         { provide: BlobStorageService, useValue: blobStorage },
         { provide: AiApiKeyResolverService, useValue: aiApiKeyResolver },
+        { provide: SystemEventsService, useValue: systemEvents },
       ],
     }).compile();
     service = moduleRef.get(AttemptService);
@@ -3417,6 +3421,34 @@ describe('AttemptService', () => {
 
       expect(second).toEqual({ status: 'skipped' });
       expect(generateStructured).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('reportClientError', () => {
+    it('records a candidate-browser system event with attempt/candidate/exam context', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) } };
+      mockBootstrapThenScoped(tx);
+
+      await service.reportClientError(session, { kind: 'answer_save_failed', message: 'network error', detail: 'q-3', severity: 'warn' });
+
+      expect(systemEvents.record).toHaveBeenCalledWith({
+        organizationId: 'org-1',
+        service: 'candidate-browser',
+        severity: 'warn',
+        message: 'answer_save_failed: network error',
+        context: { kind: 'answer_save_failed', attemptId: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', invitationId: 'inv-1', detail: 'q-3' },
+      });
+    });
+
+    it('records with a null attemptId when the attempt has not started yet (welcome-page errors)', async () => {
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) } };
+      mockBootstrapThenScoped(tx);
+
+      await service.reportClientError(session, { kind: 'js_error', message: 'boom' });
+
+      expect(systemEvents.record).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'error', context: expect.objectContaining({ attemptId: null }) }),
+      );
     });
   });
 });
