@@ -909,6 +909,13 @@ export class AttemptService {
       ? requestConfigKeyHash(seb.requestUrl, buildSebConfig({ startUrl: this.sebStartUrl(invitationToken) }).configKey)
       : undefined;
     if (!seb?.configKeyHash || seb.configKeyHash.toLowerCase() !== expected) {
+      // Not secret material: the hash derives from a config the candidate already holds.
+      // Deliberately verbose -- the ConfigKey algorithm has never been validated against a
+      // real SEB client (ADO #6858), and this is the only way to see WHY a real SEB request
+      // failed: header absent entirely vs. hash mismatch (algorithm or URL reconstruction).
+      this.logger.warn(
+        `SEB lockdown rejected start: headerPresent=${Boolean(seb?.configKeyHash)} received=${seb?.configKeyHash ?? 'none'} expected=${expected ?? 'n/a'} requestUrl=${seb?.requestUrl ?? 'n/a'}`,
+      );
       throw new ForbiddenException(
         'This exam must be started inside Safe Exam Browser. Download the exam configuration from the welcome page and open it in SEB.',
       );
