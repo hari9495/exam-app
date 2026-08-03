@@ -63,7 +63,7 @@ export function AuthPageLayout({
         </div>
       </div>
 
-      <aside className="hidden flex-col justify-center gap-6 bg-recruiter-bg-subtle px-16 py-12 md:flex">
+      <aside className="hidden flex-col items-center justify-center gap-6 bg-recruiter-bg-subtle px-16 py-12 md:flex">
         <h2 className="text-4xl font-bold leading-tight tracking-tight text-recruiter-text">{panelHeading}</h2>
         <p className="max-w-md text-lg leading-relaxed text-recruiter-text-secondary">{panelCopy}</p>
         <ul className="flex max-w-md flex-col gap-3">
