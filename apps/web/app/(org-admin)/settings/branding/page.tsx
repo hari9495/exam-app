@@ -131,7 +131,7 @@ export default function BrandingSettingsPage() {
                 type="file"
                 accept="image/png,image/jpeg,image/svg+xml"
                 onChange={(e) => setLogoFile(e.target.files?.[0] ?? null)}
-                className="mt-1 block w-full rounded-md border border-recruiter-border p-1.5 text-sm text-recruiter-text-secondary file:mr-3 file:rounded file:border-0 file:bg-recruiter-border file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-recruiter-text hover:file:bg-recruiter-border/80"
+                className="mt-1 block w-full rounded-md border border-recruiter-border p-1.5 text-sm text-recruiter-text-secondary file:mr-3 file:rounded file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:opacity-90"
               />
             </label>
             {/* Gated on the FILE, not on the branding fetch: uploading a logo does not
