@@ -296,6 +296,35 @@ describe('QuestionsPage', () => {
       expect(screen.getByText('1 question · 2 marks')).toBeInTheDocument();
     });
 
+    // Regression for ADO #6843: grouping only counted whatever happened to be on the current
+    // 20-row page, so a topic with 15 real questions could show a much smaller count if most of
+    // them were on other pages. Widening the fetch while grouped (and pinning to page 1) makes
+    // the counts reflect the whole filtered set instead of one page of it.
+    it('requests a wider page (and pins to page 1) once a Group By is picked, so counts reflect the whole filtered set', async () => {
+      const fetchMock = jest.fn(async (url) => {
+        if (String(url).endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        if (String(url).includes('/questions')) {
+          return new Response(JSON.stringify({ data: QUESTIONS, total: 2, page: 1, pageSize: 20, totalPages: 1 }), { status: 200 });
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+      renderPage();
+      await waitFor(() => expect(screen.getByText(/Two numbers are in the ratio/)).toBeInTheDocument());
+
+      const initialCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/questions'));
+      expect(String(initialCall![0])).toContain('pageSize=20');
+
+      await userEvent.click(screen.getByRole('combobox', { name: 'Group By' }));
+      await userEvent.click(screen.getByRole('option', { name: 'Topic' }));
+
+      await waitFor(() => {
+        const groupedCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('pageSize=100'));
+        expect(groupedCall).toBeDefined();
+        expect(String(groupedCall![0])).toContain('page=1');
+      });
+    });
+
     it('orders difficulty groups easy to hard rather than alphabetically', async () => {
       mockQuestions();
       renderPage();

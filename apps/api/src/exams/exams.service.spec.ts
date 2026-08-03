@@ -1087,7 +1087,9 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await service.deleteSection(context, 'exam-1', 'section-1');
+    // Regression for ADO #6838: a void return produced an empty 200 body, which apiFetch's
+    // unconditional response.json() threw on client-side even though the delete succeeded.
+    await expect(service.deleteSection(context, 'exam-1', 'section-1')).resolves.toEqual({ success: true });
 
     expect(tx.examSection.delete).toHaveBeenCalledWith({ where: { id: 'section-1' } });
   });

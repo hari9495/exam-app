@@ -9,4 +9,9 @@ describe('Checkbox', () => {
     await userEvent.click(screen.getByRole('checkbox', { name: 'Correct Answer' }));
     expect(onChange).toHaveBeenCalledWith(true);
   });
+
+  it('anchors the box to the top of the label instead of centering against its full (possibly multi-line) height', () => {
+    render(<Checkbox label="A long question label that wraps across several lines in a narrow list item" checked={false} onChange={jest.fn()} />);
+    expect(screen.getByRole('checkbox').parentElement).toHaveClass('items-start');
+  });
 });

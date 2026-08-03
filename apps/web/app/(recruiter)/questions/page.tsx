@@ -76,7 +76,20 @@ export default function QuestionsPage() {
   const [search, setSearch] = useState('');
   const [groupBy, setGroupBy] = useState<GroupBy>('none');
   const [status, setStatus] = useState('active');
-  const { data: questions, isLoading, isError } = useQuestions({ page, pageSize: 20, search: search || undefined, status });
+  // "Group by" groups whatever's already loaded, which is one 20-row page by default -- a
+  // topic with 15 real questions could show "3" if only 3 of them happened to land on the
+  // current page (ADO #6843). Widen to the server's max page size while grouping so the
+  // counts reflect (up to) the whole filtered set instead of one page of it.
+  // ponytail: still a real ceiling for an org with >100 questions matching the filter -- a
+  // dedicated backend group-by/count endpoint is the real fix if that becomes a problem.
+  const effectivePageSize = groupBy === 'none' ? 20 : 100;
+  const effectivePage = groupBy === 'none' ? page : 1;
+  const { data: questions, isLoading, isError } = useQuestions({
+    page: effectivePage,
+    pageSize: effectivePageSize,
+    search: search || undefined,
+    status,
+  });
   const [questionPendingDelete, setQuestionPendingDelete] = useState<Question | null>(null);
   const archiveQuestion = useArchiveQuestion();
   const restoreQuestion = useRestoreQuestion();
@@ -231,7 +244,11 @@ export default function QuestionsPage() {
         </div>
       )}
 
-      <Pagination page={questions?.page ?? 1} totalPages={questions?.totalPages ?? 1} onPageChange={setPage} />
+      {/* Paging is meaningless while grouped -- effectivePage is pinned to 1 above so every
+          group's count stays consistent regardless of which "page" the control might show. */}
+      {groupBy === 'none' && (
+        <Pagination page={questions?.page ?? 1} totalPages={questions?.totalPages ?? 1} onPageChange={setPage} />
+      )}
 
       {questionPendingDelete && (
         <Modal open title="Delete question" onClose={() => setQuestionPendingDelete(null)}>

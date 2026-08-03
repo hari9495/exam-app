@@ -72,6 +72,30 @@ describe('QuestionForm', () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ topic: 'Arrays', category: 'DSA' }));
   });
 
+  // Regression for ADO #6839: the API resolves the `tags` array by name (upsert-or-reuse),
+  // so submitting the selected tag's id instead of its name silently created a bogus new tag
+  // and left the real one unlinked.
+  it('submits selected tags by name, not by id', async () => {
+    const onSubmit = jest.fn();
+    render(
+      <QuestionForm
+        tags={[{ id: 'tag-1', name: 'Coding and Problem Solving' }, { id: 'tag-2', name: 'Backend' }]}
+        onSubmit={onSubmit}
+        submitLabel="Create question"
+      />,
+    );
+
+    await userEvent.type(screen.getByLabelText('Question text'), 'Q?');
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Coding and Problem Solving' }));
+    const optionInputs = screen.getAllByLabelText(/Option \d text/);
+    await userEvent.type(optionInputs[0], 'a');
+    await userEvent.type(optionInputs[1], 'b');
+    await userEvent.click(screen.getAllByRole('radio')[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Create question' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ tags: ['Coding and Problem Solving'] }));
+  });
+
   it('pre-fills every field from an initial question for editing', () => {
     render(
       <QuestionForm

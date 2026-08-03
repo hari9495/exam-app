@@ -256,4 +256,50 @@ describe('SectionQuestionPicker', () => {
     rerender(ui([]));
     expect(screen.getByRole('checkbox', { name: /What is 2\+2\?/ })).toBeChecked();
   });
+
+  // Regression for #6837: selecting a long (wrapping) question, then selecting a
+  // second one further down the list, must not un-select the first.
+  it('keeps an earlier selection checked after selecting a later question with a long, wrapping label', async () => {
+    const longText =
+      'This is a deliberately long question stem that wraps across several lines in the narrow picker list, ' +
+      'matching the kind of question text that triggered the misaligned-checkbox report in ADO #6837.';
+    const fetchMock = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      if (String(url).includes('/questions')) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              { id: 'q-1', type: 'single_mcq', text: longText, topic: null, category: null, difficulty: 'easy', marks: 5, negativeMarks: 0, status: 'active', aiGenerated: false, createdAt: '2026-01-01T00:00:00.000Z', options: [] },
+              { id: 'q-2', type: 'single_mcq', text: 'A short second question', topic: null, category: null, difficulty: 'easy', marks: 5, negativeMarks: 0, status: 'active', aiGenerated: false, createdAt: '2026-01-01T00:00:00.000Z', options: [] },
+            ],
+            total: 2, page: 1, pageSize: 100, totalPages: 1,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <SectionQuestionPicker examId="exam-1" sectionId="s-1" open onClose={() => {}} existingQuestionIds={[]} />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('A short second question')).toBeInTheDocument());
+    const first = screen.getByRole('checkbox', { name: new RegExp(longText.slice(0, 30)) });
+    const second = screen.getByRole('checkbox', { name: /A short second question/ });
+
+    await userEvent.click(first);
+    expect(first).toBeChecked();
+
+    await userEvent.click(second);
+    expect(second).toBeChecked();
+    expect(first).toBeChecked();
+  });
 });

@@ -630,7 +630,7 @@ export class ExamsService {
     });
   }
 
-  async deleteSection(context: TenantContext, examId: string, sectionId: string): Promise<void> {
+  async deleteSection(context: TenantContext, examId: string, sectionId: string): Promise<{ success: true }> {
     await this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({ where: { id: examId, organizationId: context.organizationId as string } });
       if (!exam) {
@@ -643,6 +643,11 @@ export class ExamsService {
       }
       await tx.examSection.delete({ where: { id: sectionId } });
     });
+    // apiFetch always parses the response as JSON -- an empty 200 body (the previous return type,
+    // Promise<void>) threw "Unexpected end of JSON input" client-side even though the delete
+    // succeeded, which is what ADO #6838 actually was (not a duplication-specific bug: EVERY
+    // section delete hit this, the tester just happened to test delete right after duplicate).
+    return { success: true };
   }
 
   async duplicateSection(context: TenantContext, examId: string, sectionId: string): Promise<ExamSection> {

@@ -109,7 +109,11 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
       negativeMarks: Number(negativeMarks),
       topic: topic.trim() || undefined,
       category: category.trim() || undefined,
-      tags: selectedTagIds,
+      // The API resolves this list by NAME (upsert-or-reuse, see resolveTagIds), not by id --
+      // sending ids here silently created a new tag literally named after each UUID and left
+      // the real selected tag unlinked, which is why tags (and everything saved alongside them
+      // in the same request) appeared to "not save".
+      tags: tags.filter((tag) => selectedTagIds.includes(tag.id)).map((tag) => tag.name),
       languageMode: type === 'code' ? languageMode : undefined,
       allowedLanguages: type === 'code' && languageMode === 'fixed' ? allowedLanguages : undefined,
       starterCode: type === 'code' && languageMode === 'fixed' && allowedLanguages.length === 1 ? starterCode : undefined,

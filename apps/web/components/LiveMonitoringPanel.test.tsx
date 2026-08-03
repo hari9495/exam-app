@@ -118,6 +118,25 @@ describe('LiveMonitoringPanel', () => {
     expect(names).toEqual(['Bex Blocked', 'Pat Paused', 'Ivy Invited', 'Sam Submitted']);
   });
 
+  // Regression for ADO #6841: a re-invited candidate can have two invitation rows sharing one
+  // candidateId. Using candidateId as the row key collided; sorting (which re-orders the keyed
+  // rows) then mis-rendered the duplicate-key rows as if a candidate had been duplicated.
+  it('keeps two same-candidate rows distinct after sorting by Candidate (invitationId is the row key)', async () => {
+    const user = userEvent.setup({ delay: null });
+    renderPanel({
+      roster: [
+        { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'in_progress', online: true, remainingSeconds: 60, answeredCount: 1, totalQuestions: 5, proctoringBypassed: false },
+        { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i2', attemptId: null, status: 'invited', online: false, remainingSeconds: null, answeredCount: null, totalQuestions: null, proctoringBypassed: false },
+        { candidateId: 'c2', candidateName: 'Bob', invitationId: 'i3', attemptId: 'a3', status: 'submitted', online: false, remainingSeconds: null, answeredCount: 5, totalQuestions: 5, proctoringBypassed: false },
+      ],
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Candidate' }));
+
+    expect(screen.getAllByText('Alice')).toHaveLength(2);
+    expect(screen.getAllByText('Bob')).toHaveLength(1);
+  });
+
   it('offers a column chooser that hides a roster column', async () => {
     const user = userEvent.setup({ delay: null });
     renderPanel({

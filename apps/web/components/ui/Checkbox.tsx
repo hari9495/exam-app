@@ -17,13 +17,16 @@ interface CheckboxProps {
 export function Checkbox({ label, checked, onChange, hideLabel }: CheckboxProps) {
   const id = useId();
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-start gap-2">
       <RadixCheckbox.Root
         id={id}
         checked={checked}
         onCheckedChange={(state) => onChange(state === true)}
         aria-label={label}
-        className="h-4 w-4 shrink-0 rounded border border-gray-400 data-[state=checked]:bg-primary"
+        // mt-0.5 lines the box up with the label's first line of text -- items-start
+        // alone puts its top edge flush with the label block, which sits a couple of
+        // pixels above where a single line of text actually starts.
+        className="mt-0.5 h-4 w-4 shrink-0 rounded border border-gray-400 data-[state=checked]:bg-primary"
       >
         <RadixCheckbox.Indicator className="flex items-center justify-center text-white text-xs">✓</RadixCheckbox.Indicator>
       </RadixCheckbox.Root>

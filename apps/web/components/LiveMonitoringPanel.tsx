@@ -461,7 +461,10 @@ export function LiveMonitoringPanel({
             <Table
               columns={visibleRosterColumns}
               rows={visibleRoster}
-              rowKey={(row) => row.candidateId}
+              // invitationId, not candidateId -- a candidate can have more than one invitation
+              // for the same exam (re-invite), and a duplicate React key across rows makes sort
+              // reordering mis-assign/duplicate DOM nodes (ADO #6841).
+              rowKey={(row) => row.invitationId}
               emptyMessage={
                 statusFilter === 'all' && !search.trim() ? 'No candidates invited yet.' : 'No candidates match your search or filter.'
               }
