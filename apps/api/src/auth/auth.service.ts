@@ -71,6 +71,7 @@ export class AuthService {
       { organizationId: user.organizationId, isSuperAdmin: user.role === 'super_admin' },
       { actorUserId: user.id, action: 'login.success', entityType: 'user', entityId: user.id },
     );
+    await this.recordLogin(user.id, user.organizationId, user.role);
     return tokens;
   }
 
@@ -247,7 +248,19 @@ export class AuthService {
   }
 
   async issueTokensForSso(userId: string, organizationId: string | null, role: string): Promise<TokenPair> {
-    return this.issueTokenPair(userId, organizationId, role);
+    const tokens = await this.issueTokenPair(userId, organizationId, role);
+    await this.recordLogin(userId, organizationId, role);
+    return tokens;
+  }
+
+  // Only called from the two real login entry points (password login, SSO exchange) --
+  // deliberately not folded into issueTokenPair(), which refresh() also calls on every
+  // silent token rotation. Bumping this on every refresh would turn "last login" into
+  // "last active", a different (and less useful) signal than the one the column promises.
+  private async recordLogin(userId: string, organizationId: string | null, role: string): Promise<void> {
+    await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: role === 'super_admin' }, (tx) =>
+      tx.user.update({ where: { id: userId }, data: { lastLoginAt: new Date() } }),
+    );
   }
 
   async switchIntoOrg(actorUserId: string, targetOrgId: string): Promise<string> {

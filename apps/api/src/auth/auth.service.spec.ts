@@ -98,6 +98,26 @@ describe('AuthService', () => {
     expect(decoded.role).toBe('org_admin');
   });
 
+  it('records lastLoginAt on successful password login, RLS-scoped to the user\'s own org', async () => {
+    const passwordHash = await argon2.hash('correct-password');
+    prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', status: 'active' });
+    const userUpdate = jest.fn();
+    tenantPrisma.forTenant
+      .mockResolvedValueOnce({
+        id: 'user-1', organizationId: 'org-1', role: 'org_admin', status: 'active', passwordHash,
+      })
+      .mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) => fn({ user: { update: userUpdate } }));
+    prisma.refreshToken.create.mockResolvedValue({});
+
+    await service.login({ organizationSlug: 'demo-org', email: 'admin@demo-org.test', password: 'correct-password' });
+
+    expect(tenantPrisma.forTenant).toHaveBeenLastCalledWith(
+      { organizationId: 'org-1', isSuperAdmin: false },
+      expect.any(Function),
+    );
+    expect(userUpdate).toHaveBeenCalledWith({ where: { id: 'user-1' }, data: { lastLoginAt: expect.any(Date) } });
+  });
+
   it('rejects login for a deactivated user even with the correct password', async () => {
     const passwordHash = await argon2.hash('password1');
     prisma.organization.findUnique.mockResolvedValue({ id: 'org1', status: 'active' });
@@ -353,6 +373,22 @@ describe('AuthService', () => {
         expect.objectContaining({ data: expect.objectContaining({ userId: 'user-1' }) }),
       );
     });
+
+    it('records lastLoginAt for the SSO-authenticated user', async () => {
+      prisma.refreshToken.create.mockResolvedValue({ id: 'rt-1' });
+      const userUpdate = jest.fn();
+      tenantPrisma.forTenant.mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+        fn({ user: { update: userUpdate } }),
+      );
+
+      await service.issueTokensForSso('user-1', 'org-1', 'recruiter');
+
+      expect(tenantPrisma.forTenant).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        expect.any(Function),
+      );
+      expect(userUpdate).toHaveBeenCalledWith({ where: { id: 'user-1' }, data: { lastLoginAt: expect.any(Date) } });
+    });
   });
 
   describe('switchIntoOrg', () => {
@@ -530,6 +566,7 @@ describe('AuthService', () => {
             findFirst: jest.fn().mockResolvedValue({
               id: 'u1', organizationId: null, role: 'super_admin', status: 'active', passwordHash,
             }),
+            update: jest.fn(),
           },
         }),
       );
