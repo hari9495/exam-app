@@ -110,8 +110,8 @@ export default function CandidateWelcomePage() {
     try {
       await startAttempt.mutateAsync();
       router.push('/exam');
-    } catch {
-      toast("Couldn't start the exam — please check your connection and try again.", 'error');
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Couldn't start the exam — please try again.", 'error');
     }
   }
 

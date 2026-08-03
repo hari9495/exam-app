@@ -93,8 +93,11 @@ describe('CandidateWelcomePage', () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith('/exam'));
   });
 
-  it('shows a toast and does not navigate when starting the attempt fails', async () => {
-    const mutateAsync = jest.fn().mockRejectedValue(new Error('network error'));
+  it('surfaces the real server error (not a generic connection message) when starting the attempt fails', async () => {
+    // Regression: the handler used to swallow this and always show a generic
+    // "check your connection" toast, which hid actionable errors like the
+    // SEB-lockdown-still-required 403 below behind a misleading message.
+    const mutateAsync = jest.fn().mockRejectedValue(new Error('This exam must be started inside Safe Exam Browser.'));
     (useAttemptQuery as jest.Mock).mockReturnValue({
       data: { exam: { title: 'Backend Screening', instructions: null, durationMinutes: 45, proctoring: { webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] } }, sections: [] },
       isLoading: false,
@@ -109,7 +112,7 @@ describe('CandidateWelcomePage', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
-    await waitFor(() => expect(mockToast).toHaveBeenCalledWith(expect.any(String), 'error'));
+    await waitFor(() => expect(mockToast).toHaveBeenCalledWith('This exam must be started inside Safe Exam Browser.', 'error'));
     expect(push).not.toHaveBeenCalledWith('/exam');
   });
 
