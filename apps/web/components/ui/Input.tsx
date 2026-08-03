@@ -13,12 +13,23 @@ interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChan
   hideLabel?: boolean;
 }
 
-export function Input({ label, value, onChange, error, icon, className, id, hideLabel, ...props }: InputProps) {
+export function Input({ label, value, onChange, error, icon, className, id, hideLabel, required, ...props }: InputProps) {
   const generatedId = useId();
   const inputId = id ?? generatedId;
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={inputId} className={clsx('text-sm font-medium text-gray-700', hideLabel && 'sr-only')}>
+      <label
+        htmlFor={inputId}
+        className={clsx(
+          'text-sm font-medium text-gray-700',
+          hideLabel && 'sr-only',
+          // CSS-generated content, not real text -- deliberately: a real "*" character in the
+          // label's textContent would break every getByLabelText('Email')-style exact-text
+          // query across the app the moment a field is marked required. The native `required`
+          // attribute below still gives screen readers the real "required" announcement.
+          required && "after:ml-0.5 after:text-status-danger after:content-['*']",
+        )}
+      >
         {label}
       </label>
       <div className="relative">
@@ -29,6 +40,7 @@ export function Input({ label, value, onChange, error, icon, className, id, hide
           id={inputId}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          required={required}
           className={clsx(
             'w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none',
             icon && 'pl-9',

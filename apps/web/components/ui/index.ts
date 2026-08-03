@@ -15,3 +15,4 @@ export { CardGrid, type SortOption } from './CardGrid';
 export { StatusBadge, type StatusTone } from './StatusBadge';
 export { IntegrityBadge, type IntegrityLevel } from './IntegrityBadge';
 export { Pagination } from './Pagination';
+export { RequiredFieldsNote } from './RequiredFieldsNote';

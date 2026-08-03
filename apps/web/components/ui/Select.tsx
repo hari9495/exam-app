@@ -2,6 +2,7 @@
 
 import * as RadixSelect from '@radix-ui/react-select';
 import { ChevronDown } from 'lucide-react';
+import clsx from 'clsx';
 
 export interface SelectOption {
   value: string;
@@ -13,13 +14,23 @@ interface SelectProps {
   value: string;
   onChange: (value: string) => void;
   options: SelectOption[];
+  required?: boolean;
 }
 
-export function Select({ label, value, onChange, options }: SelectProps) {
+export function Select({ label, value, onChange, options, required }: SelectProps) {
   const selected = options.find((option) => option.value === value);
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-sm font-medium text-gray-700">{label}</span>
+      <span
+        className={clsx(
+          'text-sm font-medium text-gray-700',
+          // CSS-generated content, not real text -- a real "*" character here would break any
+          // getByText(label)-style exact-text query the moment a field is marked required.
+          required && "after:ml-0.5 after:text-status-danger after:content-['*']",
+        )}
+      >
+        {label}
+      </span>
       <RadixSelect.Root value={value} onValueChange={onChange}>
         <RadixSelect.Trigger
           aria-label={label}
