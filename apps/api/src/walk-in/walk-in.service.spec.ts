@@ -77,16 +77,16 @@ describe('WalkInService', () => {
     });
 
     it('creates a new candidate and invitation for a first-time registrant', async () => {
-      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org', logoPath: null, name: 'Acme Hiring' });
       const tx = {
         exam: {
           findFirst: jest.fn().mockResolvedValue({
-            id: 'exam-1', status: 'published', walkInEnabled: true, schedulingEnabled: false, availabilityWindowEnd: null,
+            id: 'exam-1', title: 'Backend Round', durationMinutes: 60, status: 'published', walkInEnabled: true, schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null,
           }),
         },
         candidate: {
           findFirst: jest.fn().mockResolvedValue(null),
-          create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com' }),
+          create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
         },
         invitation: {
           findFirst: jest.fn().mockResolvedValue(null),
@@ -107,11 +107,29 @@ describe('WalkInService', () => {
       );
       expect(result).toEqual({ token: 'raw-token' });
       expect(webhooksService.enqueue).toHaveBeenCalledWith('org-1', 'invitation.created', expect.objectContaining({ id: 'inv-1' }));
+
+      // Email dispatch is fire-and-forget -- flush the microtask queue before asserting.
+      await new Promise((resolve) => setImmediate(resolve));
+
       // Always emails the exam link rather than relying on the browser that registered
       // (often a phone, scanned from a QR code) to also be the device the exam is taken on.
       expect(emailService.send).toHaveBeenCalledWith(
-        expect.objectContaining({ to: 'alice@test.com', organizationId: 'org-1', html: expect.stringContaining('token=raw-token') }),
+        expect.objectContaining({
+          to: 'alice@test.com',
+          organizationId: 'org-1',
+          subject: 'Your Backend Round assessment - link and instructions',
+          html: expect.stringContaining('token=raw-token'),
+        }),
       );
+      // Same branded layout as recruiter invitations, not the old bare link-only note.
+      const html = emailService.send.mock.calls[0][0].html;
+      expect(html).toContain('Dear Alice,');
+      expect(html).toContain('Thanks for registering for the <strong>Backend Round</strong> assessment');
+      expect(html).toContain('Duration:</strong> 60 minutes');
+      expect(html).toContain('Before You Begin');
+      expect(html).toContain('Examination Rules &amp; Guidelines');
+      expect(html).toContain('Best regards,<br/>Acme Hiring');
+      expect(html).toContain('please do not reply');
     });
 
     it('reuses the existing candidate and a live invitation instead of creating a duplicate', async () => {

@@ -3,7 +3,7 @@ import { Candidate, Invitation } from '@prisma/client';
 import { PrismaService, TenantPrismaService, AuditService } from '@exam-platform/shared';
 import { WebhooksService } from '../webhooks/webhooks.service';
 import { EmailService } from '../email/email.service';
-import { generateToken, resolveInvitationExpiry } from '../invitations/invitations.service';
+import { buildAssessmentEmailHtml, generateToken, resolveInvitationExpiry } from '../invitations/invitations.service';
 import { RegisterWalkInDto } from './dto/register-walk-in.dto';
 
 export interface WalkInExamOption {
@@ -49,7 +49,7 @@ export class WalkInService {
     const org = await this.resolveOrg(orgSlug);
     const context = { organizationId: org.id, isSuperAdmin: true };
 
-    const { invitation, examTitle, candidate } = await this.tenantPrisma.forTenant(context, async (tx) => {
+    const { invitation, exam, candidate } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({ where: { id: dto.examId, organizationId: org.id } });
       if (!exam || exam.status !== 'published' || !exam.walkInEnabled) {
         throw new BadRequestException('This exam is not currently open for walk-in registration');
@@ -69,7 +69,7 @@ export class WalkInService {
         where: { examId: exam.id, candidateId: candidate.id, status: 'invited', expiresAt: { gt: new Date() } },
       });
       if (liveInvitation) {
-        return { invitation: liveInvitation, examTitle: exam.title, candidate };
+        return { invitation: liveInvitation, exam, candidate };
       }
       const created = await tx.invitation.create({
         data: {
@@ -85,7 +85,7 @@ export class WalkInService {
           emailStatus: 'none',
         },
       });
-      return { invitation: created, examTitle: exam.title, candidate };
+      return { invitation: created, exam, candidate };
     });
 
     await this.audit.record(context, {
@@ -107,19 +107,40 @@ export class WalkInService {
     // The candidate registers from whatever device is at the walk-in kiosk (often a phone via
     // QR scan), which can't run the exam UI -- always emailing the link, instead of returning
     // it for an immediate same-device redirect, lets them open it later on a proper device.
-    this.dispatchWalkInEmail(org.id, examTitle, invitation, candidate).catch((error) =>
+    this.dispatchWalkInEmail(org.id, exam, invitation, candidate).catch((error) =>
       this.logger.error(`Failed to dispatch walk-in email for invitation ${invitation.id}`, error as Error),
     );
 
     return { token: invitation.token };
   }
 
-  private async dispatchWalkInEmail(organizationId: string, examTitle: string, invitation: Invitation, candidate: Candidate): Promise<void> {
+  private async dispatchWalkInEmail(
+    organizationId: string,
+    exam: { title: string; durationMinutes: number; schedulingEnabled: boolean; availabilityWindowStart: Date | null },
+    invitation: Invitation,
+    candidate: Candidate,
+  ): Promise<void> {
     const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/start?token=${invitation.token}`;
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { logoPath: true, name: true },
+    });
+    // Same branded layout as recruiter invitations -- only the intro differs, since a
+    // walk-in candidate registered themselves rather than being invited.
+    const html = buildAssessmentEmailHtml({
+      candidateName: candidate.name,
+      examTitle: exam.title,
+      durationMinutes: exam.durationMinutes,
+      availabilityWindowStart: exam.schedulingEnabled ? exam.availabilityWindowStart : null,
+      startLink: link,
+      logoUrl: organization?.logoPath ?? null,
+      organizationName: organization?.name ?? null,
+      introHtml: `Thanks for registering for the <strong>${exam.title}</strong> assessment. Everything you need is below - open this email on the device you'll use to take the exam, then use the button to begin when you are ready.`,
+    });
     await this.emailService.send({
       to: candidate.email,
-      subject: `Your link to start "${examTitle}"`,
-      html: `<p>Thanks for registering for "${examTitle}".</p><p>Open this link on the device you'll use to take the exam:</p><p><a href="${link}">${link}</a></p>`,
+      subject: `Your ${exam.title} assessment - link and instructions`,
+      html,
       organizationId,
     });
   }
