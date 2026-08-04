@@ -16,13 +16,18 @@ import {
   NumberFilterHeader,
   matchesNumberFilter,
   NO_NUMBER_FILTER,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
   type Column,
   type StatusTone,
   type NumberFilterValue,
 } from './ui';
-import { useResultsList, useResultsExport } from '../lib/hooks/usePanelReports';
+import { useResultsList, useResultsExport, useQuestionAccuracy } from '../lib/hooks/usePanelReports';
 import { RESULT_STATUS_LABEL, RESULT_STATUS_TONE } from '../lib/candidate-status';
 import { AdvanceToNextRoundModal } from './AdvanceToNextRoundModal';
+import { QuestionAccuracyPanel } from './QuestionAccuracyPanel';
 import { ExamResultRow } from '../lib/types';
 
 const PASS_FAIL_TONE: Record<string, StatusTone> = { pass: 'success', fail: 'danger' };
@@ -51,6 +56,9 @@ const INTEGRITY_FILTER_OPTIONS = [
 
 export function ExamResultsPanel({ examId }: { examId: string }) {
   const { data: results, isLoading } = useResultsList(examId);
+  // Only for the sub-tab trigger count -- QuestionAccuracyPanel fetches the same
+  // query itself, and React Query dedupes the two by key.
+  const { data: accuracyRows } = useQuestionAccuracy(examId);
   const exportMutation = useResultsExport(examId);
   const { toast } = useToast();
   const [search, setSearch] = useState('');
@@ -206,40 +214,58 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
     return <p className="text-sm text-gray-500">Loading…</p>;
   }
 
+  // Same Candidates / Question accuracy split the panel-facing Results page has,
+  // embedded here so a recruiter can sanity-check question quality for THIS exam
+  // without leaving the exam edit page.
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div className="max-w-xs flex-1">
-          <Input label="Search candidates" hideLabel value={search} onChange={setSearch} placeholder="Search candidates…" icon={<Search size={14} />} />
+    <Tabs defaultValue="candidates">
+      <TabsList>
+        <TabsTrigger value="candidates">Candidates{visible.length > 0 ? ` (${visible.length})` : ''}</TabsTrigger>
+        <TabsTrigger value="accuracy">
+          Question accuracy{(accuracyRows ?? []).length > 0 ? ` (${(accuracyRows ?? []).length})` : ''}
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="candidates">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div className="max-w-xs flex-1">
+              <Input label="Search candidates" hideLabel value={search} onChange={setSearch} placeholder="Search candidates…" icon={<Search size={14} />} />
+            </div>
+            <div className="flex items-end gap-2">
+              <Button variant="secondary" onClick={() => handleExport('csv')} disabled={exportMutation.isPending}>
+                Export CSV
+              </Button>
+              <Button variant="secondary" onClick={() => handleExport('xlsx')} disabled={exportMutation.isPending}>
+                Export Excel
+              </Button>
+              <Button onClick={() => setAdvanceModalOpen(true)} disabled={selectedIds.length === 0}>
+                Advance to Next Round
+              </Button>
+              {chooser}
+            </div>
+          </div>
+          <Table
+            columns={[selectColumn, indexColumn, ...visibleDataColumns]}
+            rows={visible}
+            rowKey={(row) => row.invitationId}
+            emptyMessage={filtersActive ? 'No candidates match your search or filters.' : 'No candidates have attended this exam yet.'}
+          />
+          {advanceModalOpen && (
+            <AdvanceToNextRoundModal
+              examId={examId}
+              candidateIds={selectedCandidateIds}
+              open
+              onClose={() => setAdvanceModalOpen(false)}
+              onAdvanced={() => setSelectedIds([])}
+            />
+          )}
         </div>
-        <div className="flex items-end gap-2">
-          <Button variant="secondary" onClick={() => handleExport('csv')} disabled={exportMutation.isPending}>
-            Export CSV
-          </Button>
-          <Button variant="secondary" onClick={() => handleExport('xlsx')} disabled={exportMutation.isPending}>
-            Export Excel
-          </Button>
-          <Button onClick={() => setAdvanceModalOpen(true)} disabled={selectedIds.length === 0}>
-            Advance to Next Round
-          </Button>
-          {chooser}
-        </div>
-      </div>
-      <Table
-        columns={[selectColumn, indexColumn, ...visibleDataColumns]}
-        rows={visible}
-        rowKey={(row) => row.invitationId}
-        emptyMessage={filtersActive ? 'No candidates match your search or filters.' : 'No candidates have attended this exam yet.'}
-      />
-      {advanceModalOpen && (
-        <AdvanceToNextRoundModal
-          examId={examId}
-          candidateIds={selectedCandidateIds}
-          open
-          onClose={() => setAdvanceModalOpen(false)}
-          onAdvanced={() => setSelectedIds([])}
-        />
-      )}
-    </div>
+      </TabsContent>
+
+      <TabsContent value="accuracy">
+        <QuestionAccuracyPanel examId={examId} />
+      </TabsContent>
+    </Tabs>
   );
 }

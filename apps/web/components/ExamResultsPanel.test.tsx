@@ -1,10 +1,10 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useResultsList, useResultsExport } from '../lib/hooks/usePanelReports';
+import { useResultsList, useResultsExport, useQuestionAccuracy } from '../lib/hooks/usePanelReports';
 import { ToastProvider } from './ui';
 import { ExamResultsPanel } from './ExamResultsPanel';
 
-jest.mock('../lib/hooks/usePanelReports', () => ({ useResultsList: jest.fn(), useResultsExport: jest.fn() }));
+jest.mock('../lib/hooks/usePanelReports', () => ({ useResultsList: jest.fn(), useResultsExport: jest.fn(), useQuestionAccuracy: jest.fn() }));
 jest.mock('./AdvanceToNextRoundModal', () => ({
   AdvanceToNextRoundModal: ({ candidateIds }: { candidateIds: string[] }) => (
     <div data-testid="advance-modal">candidateIds:{JSON.stringify(candidateIds)}</div>
@@ -42,6 +42,7 @@ describe('ExamResultsPanel', () => {
   beforeEach(() => {
     localStorage.clear();
     (useResultsExport as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+    (useQuestionAccuracy as jest.Mock).mockReturnValue({ data: [], isLoading: false });
   });
 
   it('shows only candidates who attended, not those still invited or revoked', () => {
@@ -439,5 +440,36 @@ describe('ExamResultsPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Advance to Next Round' }));
 
     expect(screen.getByTestId('advance-modal')).toHaveTextContent('candidateIds:["c1"]');
+  });
+
+  describe('sub-tabs', () => {
+    const accuracyRows = [
+      { questionId: 'q1', questionText: 'Which collection is synchronized?', accuracyPercentage: 0, timesAttempted: 2, timesIncluded: 2 },
+      { questionId: 'q2', questionText: 'Choose the correct synonym for Enhance:', accuracyPercentage: 50, timesAttempted: 1, timesIncluded: 2 },
+    ];
+
+    it('opens on Candidates with both sub-tabs counted, accuracy list hidden', () => {
+      (useResultsList as jest.Mock).mockReturnValue({ data: [row()], isLoading: false });
+      (useQuestionAccuracy as jest.Mock).mockReturnValue({ data: accuracyRows, isLoading: false });
+
+      renderPanel();
+
+      expect(screen.getByRole('tab', { name: 'Candidates (1)' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Question accuracy (2)' })).toBeInTheDocument();
+      expect(screen.getByText('Alice')).toBeInTheDocument();
+      expect(screen.queryByText('Which collection is synchronized?')).not.toBeInTheDocument();
+    });
+
+    it('shows the question accuracy list for this exam once its sub-tab is selected, without leaving the page', async () => {
+      (useResultsList as jest.Mock).mockReturnValue({ data: [row()], isLoading: false });
+      (useQuestionAccuracy as jest.Mock).mockReturnValue({ data: accuracyRows, isLoading: false });
+
+      renderPanel();
+      await userEvent.click(screen.getByRole('tab', { name: /Question accuracy/ }));
+
+      expect(await screen.findByText('Which collection is synchronized?')).toBeInTheDocument();
+      expect(screen.getByText('0.0%')).toBeInTheDocument();
+      expect(screen.getByText('2 / 2')).toBeInTheDocument();
+    });
   });
 });
