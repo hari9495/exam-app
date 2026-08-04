@@ -402,4 +402,39 @@ describe('ExamsPage', () => {
       expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/exams') && String(call[0]).includes('search=onboarding'))).toBe(true),
     );
   });
+
+  it('sends the selected status filter to the server as a query param, and resets to page 1', async () => {
+    const user = userEvent.setup();
+    const fetchMock = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/exams')) {
+        return new Response(
+          JSON.stringify({ data: [{ id: 'exam-1', title: 'Backend Round', status: 'draft', sections: [] }], total: 1, page: 1, pageSize: 20, totalPages: 1 }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ExamsPage />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+    await waitFor(() => expect(screen.getByText('Backend Round')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('combobox'));
+    await user.click(screen.getByRole('option', { name: 'Published' }));
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/exams') && String(call[0]).includes('status=published'))).toBe(true),
+    );
+  });
 });

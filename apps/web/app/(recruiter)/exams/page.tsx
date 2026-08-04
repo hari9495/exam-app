@@ -10,6 +10,7 @@ import {
   StatusBadge,
   Button,
   Modal,
+  Select,
   useToast,
   useColumnVisibility,
   DropdownMenu,
@@ -34,11 +35,23 @@ const STATUS_LABEL: Record<ExamStatus, string> = {
   archived: 'Archived',
 };
 
+const STATUS_FILTER_OPTIONS = [
+  { value: 'all', label: 'All statuses' },
+  { value: 'draft', label: 'Draft' },
+  { value: 'published', label: 'Published' },
+  { value: 'archived', label: 'Archived' },
+];
+
 export default function ExamsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [examPendingDelete, setExamPendingDelete] = useState<ExamListItem | null>(null);
-  const { data: examsResponse, isLoading, isError } = useExams(undefined, { page, pageSize: 20, search: search || undefined });
+  const { data: examsResponse, isLoading, isError } = useExams(statusFilter === 'all' ? undefined : statusFilter, {
+    page,
+    pageSize: 20,
+    search: search || undefined,
+  });
   const router = useRouter();
   const { toast } = useToast();
   const duplicateExam = useDuplicateExam();
@@ -191,6 +204,15 @@ export default function ExamsPage() {
             className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
           />
         </div>
+        <Select
+          label=""
+          value={statusFilter}
+          onChange={(value) => {
+            setStatusFilter(value);
+            setPage(1);
+          }}
+          options={STATUS_FILTER_OPTIONS}
+        />
         {chooser}
       </div>
       <Table
