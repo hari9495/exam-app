@@ -93,12 +93,14 @@ export default function QuestionsPage() {
     {
       key: 'number',
       header: '#',
+      width: '3%',
       render: (question) => <span className="text-recruiter-text-tertiary">{question.number}</span>,
       sortValue: (question) => question.number,
     },
     {
       key: 'text',
       header: 'Question',
+      width: '28%',
       render: (question) => (
         <Link
           href={`/questions/${question.id}/edit`}
@@ -123,12 +125,14 @@ export default function QuestionsPage() {
           options={STATUS_OPTIONS}
         />
       ),
+      width: '10%',
       sortLabel: 'Status',
       render: (question) => <StatusBadge tone={question.status === 'active' ? 'success' : 'neutral'}>{question.status === 'active' ? 'Active' : 'Archived'}</StatusBadge>,
     },
     {
       key: 'type',
       header: 'Type',
+      width: '9%',
       render: (question) => (
         <StatusBadge tone={TYPE_TONE[question.type] ?? 'neutral'}>{TYPE_LABEL[question.type] ?? question.type}</StatusBadge>
       ),
@@ -137,18 +141,21 @@ export default function QuestionsPage() {
     {
       key: 'difficulty',
       header: 'Difficulty',
+      width: '10%',
       render: (question) => DIFFICULTY_LABEL[question.difficulty] ?? question.difficulty,
       sortValue: (question) => DIFFICULTY_LEVEL[question.difficulty] ?? 0,
     },
     {
       key: 'marks',
       header: 'Marks',
+      width: '7%',
       render: (question) => question.marks,
       sortValue: (question) => question.marks,
     },
     {
       key: 'topic',
       header: 'Topic',
+      width: '15%',
       render: (question) => (
         <span className="block max-w-[10rem] truncate" title={question.topic ?? undefined}>
           {question.topic ?? '—'}
@@ -159,6 +166,7 @@ export default function QuestionsPage() {
     {
       key: 'category',
       header: 'Category',
+      width: '15%',
       render: (question) => (
         <span className="block max-w-[10rem] truncate" title={question.category ?? undefined}>
           {question.category ?? '—'}
@@ -169,6 +177,7 @@ export default function QuestionsPage() {
     {
       key: 'actions',
       header: '',
+      width: '3%',
       render: (question) => (
         <div className="flex items-center justify-end opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
           {question.status === 'archived' ? (

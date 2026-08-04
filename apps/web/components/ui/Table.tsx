@@ -15,6 +15,13 @@ export interface Column<T> {
   sortLabel?: string;
   render: (row: T) => ReactNode;
   sortValue?: (row: T) => string | number;
+  /** Opt-in, e.g. '28%' or '4rem'. Only meant for a caller that renders several
+   *  independent <Table>s meant to line up as one (grouped views) -- browsers size
+   *  each table's columns from its OWN rows, so two tables with different content
+   *  drift out of alignment unless every column's width is pinned the same way in
+   *  both. Leaving this unset on every column keeps the existing auto-sized
+   *  behavior identical for every other caller. */
+  width?: string;
 }
 
 interface TableProps<T> {
@@ -63,12 +70,13 @@ export function Table<T>({ columns, rows, rowKey, emptyMessage = 'No results.', 
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-sm">
+      <table className={clsx('w-full border-collapse text-sm', columns.some((c) => c.width) && 'table-fixed')}>
         <thead>
           <tr className="border-b border-recruiter-border bg-recruiter-bg-subtle text-left">
             {columns.map((column) => (
               <th
                 key={column.key}
+                style={column.width ? { width: column.width } : undefined}
                 className={clsx(
                   'px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary',
                   column.sortValue && 'cursor-pointer select-none',

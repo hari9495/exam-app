@@ -72,4 +72,24 @@ describe('Table', () => {
 
     expect(onSortChange).not.toHaveBeenCalled();
   });
+
+  it('leaves the table auto-sized when no column sets a width, unchanged from today', () => {
+    render(<Table columns={columns} rows={rows} rowKey={(row) => row.id} />);
+    const table = screen.getByRole('table');
+
+    expect(table.className).not.toContain('table-fixed');
+    expect(screen.getByText('Name').closest('th')).not.toHaveAttribute('style');
+  });
+
+  it('pins column widths and switches to table-fixed when a column opts in -- for callers rendering several independent tables meant to line up (grouped views)', () => {
+    const withWidths: Column<Row>[] = [
+      { ...columns[0], width: '70%' },
+      { ...columns[1], width: '30%' },
+    ];
+    render(<Table columns={withWidths} rows={rows} rowKey={(row) => row.id} />);
+
+    expect(screen.getByRole('table').className).toContain('table-fixed');
+    expect(screen.getByText('Name').closest('th')).toHaveStyle({ width: '70%' });
+    expect(screen.getByText('Score').closest('th')).toHaveStyle({ width: '30%' });
+  });
 });
