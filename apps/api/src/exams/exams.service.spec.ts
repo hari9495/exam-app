@@ -561,6 +561,67 @@ describe('ExamsService', () => {
     await expect(service.setWalkInEnabled(context, 'user-1', 'missing', true)).rejects.toThrow('not found');
   });
 
+  it('persists walkInListed when provided', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'exam-1', schedulingEnabled: false, availabilityWindowStart: null,
+          availabilityWindowEnd: null, walkInListed: true,
+        }),
+        update: jest.fn().mockResolvedValue({ id: 'exam-1', walkInListed: false, schedulingEnabled: false }),
+      },
+      attempt: { count: jest.fn().mockResolvedValue(0) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.update(context, 'user-1', 'exam-1', { title: 'Exam', walkInListed: false });
+
+    expect(tx.exam.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ walkInListed: false }) }),
+    );
+  });
+
+  it('leaves walkInListed untouched when omitted from the update', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'exam-1', schedulingEnabled: false, availabilityWindowStart: null,
+          availabilityWindowEnd: null, walkInListed: true,
+        }),
+        update: jest.fn().mockResolvedValue({ id: 'exam-1', walkInListed: true, schedulingEnabled: false }),
+      },
+      attempt: { count: jest.fn().mockResolvedValue(0) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.update(context, 'user-1', 'exam-1', { title: 'Exam' });
+
+    expect(tx.exam.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.not.objectContaining({ walkInListed: expect.anything() }) }),
+    );
+  });
+
+  it('setWalkInListed updates walkInListed even when the exam is published', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published', walkInListed: true }),
+        update: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published', walkInListed: false }),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.setWalkInListed(context, 'user-1', 'exam-1', false)).resolves.toMatchObject({ walkInListed: false });
+
+    expect(tx.exam.update).toHaveBeenCalledWith({ where: { id: 'exam-1' }, data: { walkInListed: false } });
+  });
+
+  it('setWalkInListed throws when the exam does not exist', async () => {
+    const tx = { exam: { findFirst: jest.fn().mockResolvedValue(null) } };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.setWalkInListed(context, 'user-1', 'missing', true)).rejects.toThrow('not found');
+  });
+
   it('persists allowedIpRange on create', async () => {
     const tx = { exam: { create: jest.fn().mockResolvedValue({ id: 'exam-1' }) } };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));

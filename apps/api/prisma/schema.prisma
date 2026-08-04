@@ -306,6 +306,11 @@ model Exam {
   availabilityWindowStart       DateTime?     @map("availability_window_start")
   availabilityWindowEnd         DateTime?     @map("availability_window_end")
   walkInEnabled                 Boolean       @default(false) @map("walk_in_enabled")
+  // Independent of walkInEnabled: controls whether this exam appears in the shared
+  // /walk-in/{orgSlug} picker alongside every other walk-in-enabled exam, vs. only being
+  // reachable via its own exam-specific link/QR (see WalkInShareCard, which always embeds
+  // ?exam=<id> regardless of this flag).
+  walkInListed                  Boolean       @default(true) @map("walk_in_listed")
   allowedIpRange                String?       @map("allowed_ip_range")
   // Master switch for every anti-cheating measure below. Off forces webcam/screen-capture/
   // lockdown to false and every browser-behavior signal disabled at write time (exams.service's

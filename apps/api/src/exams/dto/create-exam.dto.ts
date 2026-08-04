@@ -62,6 +62,10 @@ export class CreateExamDto {
   @IsBoolean()
   walkInEnabled?: boolean;
 
+  @IsOptional()
+  @IsBoolean()
+  walkInListed?: boolean;
+
   // '' means "clear the restriction" (stored as NULL); any other value must be a valid IP/CIDR.
   @IsOptional()
   @IsIpOrCidr()

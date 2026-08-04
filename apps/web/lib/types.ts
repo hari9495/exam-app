@@ -142,6 +142,7 @@ export interface Exam {
   availabilityWindowStart: string | null;
   availabilityWindowEnd: string | null;
   walkInEnabled: boolean;
+  walkInListed: boolean;
   allowedIpRange: string | null;
   enableAntiCheating: boolean;
   webcamProctoringEnabled: boolean;
@@ -220,6 +221,7 @@ export interface WalkInExamOption {
   id: string;
   title: string;
   durationMinutes: number;
+  walkInListed: boolean;
 }
 
 export interface SuperAdminSummary {

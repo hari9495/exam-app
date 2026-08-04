@@ -36,7 +36,7 @@ describe('WalkInPage', () => {
 
   it('shows the form without an exam picker when exactly one exam is open', () => {
     (useWalkInExams as jest.Mock).mockReturnValue({
-      data: [{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60 }],
+      data: [{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }],
       isLoading: false,
       isError: false,
     });
@@ -50,8 +50,8 @@ describe('WalkInPage', () => {
   it('shows the form with an exam picker listing every exam when two or more are open', async () => {
     (useWalkInExams as jest.Mock).mockReturnValue({
       data: [
-        { id: 'exam-1', title: 'Backend Round', durationMinutes: 60 },
-        { id: 'exam-2', title: 'Frontend Round', durationMinutes: 45 },
+        { id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true },
+        { id: 'exam-2', title: 'Frontend Round', durationMinutes: 45, walkInListed: true },
       ],
       isLoading: false,
       isError: false,
@@ -71,8 +71,8 @@ describe('WalkInPage', () => {
     mockSearchParams = new URLSearchParams('exam=exam-2');
     (useWalkInExams as jest.Mock).mockReturnValue({
       data: [
-        { id: 'exam-1', title: 'Backend Round', durationMinutes: 60 },
-        { id: 'exam-2', title: 'Frontend Round', durationMinutes: 45 },
+        { id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true },
+        { id: 'exam-2', title: 'Frontend Round', durationMinutes: 45, walkInListed: true },
       ],
       isLoading: false,
       isError: false,
@@ -88,8 +88,8 @@ describe('WalkInPage', () => {
     mockSearchParams = new URLSearchParams('exam=not-a-real-exam');
     (useWalkInExams as jest.Mock).mockReturnValue({
       data: [
-        { id: 'exam-1', title: 'Backend Round', durationMinutes: 60 },
-        { id: 'exam-2', title: 'Frontend Round', durationMinutes: 45 },
+        { id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true },
+        { id: 'exam-2', title: 'Frontend Round', durationMinutes: 45, walkInListed: true },
       ],
       isLoading: false,
       isError: false,
@@ -98,5 +98,72 @@ describe('WalkInPage', () => {
     render(<WalkInPage />);
 
     expect(screen.getByRole('combobox', { name: 'Exam' })).toBeInTheDocument();
+  });
+
+  it('excludes a walkInListed=false exam from the shared picker', async () => {
+    (useWalkInExams as jest.Mock).mockReturnValue({
+      data: [
+        { id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true },
+        { id: 'exam-2', title: 'Frontend Round', durationMinutes: 45, walkInListed: true },
+        { id: 'exam-3', title: 'Internal Only', durationMinutes: 30, walkInListed: false },
+      ],
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<WalkInPage />);
+
+    const combobox = screen.getByRole('combobox', { name: 'Exam' });
+    await userEvent.click(combobox);
+
+    expect(screen.getByRole('option', { name: 'Backend Round' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Frontend Round' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Internal Only' })).not.toBeInTheDocument();
+  });
+
+  it('still resolves and submits a walkInListed=false exam via its own ?exam= link', () => {
+    mockSearchParams = new URLSearchParams('exam=exam-3');
+    (useWalkInExams as jest.Mock).mockReturnValue({
+      data: [
+        { id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true },
+        { id: 'exam-3', title: 'Internal Only', durationMinutes: 30, walkInListed: false },
+      ],
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<WalkInPage />);
+
+    expect(screen.getByLabelText('Name')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Exam' })).not.toBeInTheDocument();
+  });
+
+  it('auto-selects the sole listed exam even when an unlisted exam is also open, skipping the picker', () => {
+    (useWalkInExams as jest.Mock).mockReturnValue({
+      data: [
+        { id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true },
+        { id: 'exam-3', title: 'Internal Only', durationMinutes: 30, walkInListed: false },
+      ],
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<WalkInPage />);
+
+    expect(screen.getByLabelText('Name')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Exam' })).not.toBeInTheDocument();
+  });
+
+  it('shows the no-exams message when every open exam is unlisted and there is no ?exam= link', () => {
+    (useWalkInExams as jest.Mock).mockReturnValue({
+      data: [{ id: 'exam-3', title: 'Internal Only', durationMinutes: 30, walkInListed: false }],
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<WalkInPage />);
+
+    expect(screen.getByText('No exams are currently open for walk-in registration.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
   });
 });

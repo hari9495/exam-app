@@ -41,7 +41,11 @@ describe('WalkInService', () => {
     it('returns only published, walk-in-enabled exams for the org', async () => {
       prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
       const tx = {
-        exam: { findMany: jest.fn().mockResolvedValue([{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60 }]) },
+        exam: {
+          findMany: jest
+            .fn()
+            .mockResolvedValue([{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }]),
+        },
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
@@ -50,7 +54,7 @@ describe('WalkInService', () => {
       expect(tx.exam.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { organizationId: 'org-1', status: 'published', walkInEnabled: true } }),
       );
-      expect(result).toEqual([{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60 }]);
+      expect(result).toEqual([{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }]);
     });
   });
 

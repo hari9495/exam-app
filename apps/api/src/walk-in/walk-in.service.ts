@@ -10,6 +10,7 @@ export interface WalkInExamOption {
   id: string;
   title: string;
   durationMinutes: number;
+  walkInListed: boolean;
 }
 
 @Injectable()
@@ -38,7 +39,7 @@ export class WalkInService {
     return this.tenantPrisma.forTenant(context, (tx) =>
       tx.exam.findMany({
         where: { organizationId: org.id, status: 'published', walkInEnabled: true },
-        select: { id: true, title: true, durationMinutes: true },
+        select: { id: true, title: true, durationMinutes: true, walkInListed: true },
         orderBy: { title: 'asc' },
       }),
     );

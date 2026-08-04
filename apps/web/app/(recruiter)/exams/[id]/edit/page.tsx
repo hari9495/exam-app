@@ -12,7 +12,14 @@ import { LeaderboardPanel } from '../../../../../components/LeaderboardPanel';
 import { CandidatesPanel } from '../../../../../components/CandidatesPanel';
 import { ExamResultsPanel } from '../../../../../components/ExamResultsPanel';
 import { AuditHistoryLink } from '../../../../../components/AuditHistoryLink';
-import { useExam, useUpdateExam, usePublishExam, useUnpublishExam, useSetWalkInEnabled } from '../../../../../lib/hooks/useExams';
+import {
+  useExam,
+  useUpdateExam,
+  usePublishExam,
+  useUnpublishExam,
+  useSetWalkInEnabled,
+  useSetWalkInListed,
+} from '../../../../../lib/hooks/useExams';
 import { useAuth } from '../../../../../lib/auth-context';
 import { useExamMonitoring } from '../../../../../lib/hooks/useExamMonitoring';
 import { useAttentionNotifications } from '../../../../../lib/hooks/useAttentionNotifications';
@@ -29,6 +36,7 @@ export default function EditExamPage() {
   const publishExam = usePublishExam(params.id);
   const unpublishExam = useUnpublishExam(params.id);
   const setWalkInEnabled = useSetWalkInEnabled(params.id);
+  const setWalkInListed = useSetWalkInListed(params.id);
   const monitoring = useExamMonitoring(params.id);
 
   // The flag is derived from Date.now(), and a burst that stops produces no further
@@ -163,7 +171,23 @@ export default function EditExamPage() {
                         })
                       }
                     />
-                    {exam.walkInEnabled && organizationSlug && <WalkInShareCard examId={exam.id} orgSlug={organizationSlug} />}
+                    {exam.walkInEnabled && (
+                      <>
+                        <Checkbox
+                          label="Show in the shared walk-in exam list"
+                          checked={exam.walkInListed}
+                          onChange={(checked) =>
+                            setWalkInListed.mutate(checked, {
+                              onSuccess: () => toast(checked ? 'Now shown in the shared walk-in list.' : 'Hidden from the shared walk-in list.'),
+                              onError: (error) => {
+                                toast(error instanceof Error ? error.message : 'Failed to update the walk-in list setting.', 'error');
+                              },
+                            })
+                          }
+                        />
+                        {organizationSlug && <WalkInShareCard examId={exam.id} orgSlug={organizationSlug} />}
+                      </>
+                    )}
                   </>
                 )
               }

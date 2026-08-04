@@ -17,6 +17,7 @@ jest.mock('../../../../../lib/hooks/useExams', () => ({
   usePublishExam: () => ({ mutate: jest.fn() }),
   useUnpublishExam: () => ({ mutate: jest.fn(), isPending: false }),
   useSetWalkInEnabled: () => ({ mutate: jest.fn() }),
+  useSetWalkInListed: () => ({ mutate: jest.fn() }),
 }));
 jest.mock('../../../../../lib/hooks/useExamMonitoring', () => ({ useExamMonitoring: jest.fn() }));
 jest.mock('../../../../../lib/auth-context', () => ({ useAuth: () => ({ accessToken: 'test-token', organizationSlug: 'acme' }) }));
@@ -24,7 +25,7 @@ jest.mock('../../../../../lib/auth-context', () => ({ useAuth: () => ({ accessTo
 const mockExam: Exam = {
   id: 'exam-1', title: 'Backend Round', instructions: null, status: 'published', durationMinutes: 60,
   passCriteriaPercent: 40, randomizeOrder: false, feedbackVisibility: 'none', schedulingEnabled: false,
-  availabilityWindowStart: null, availabilityWindowEnd: null, walkInEnabled: false, allowedIpRange: null,
+  availabilityWindowStart: null, availabilityWindowEnd: null, walkInEnabled: false, walkInListed: true, allowedIpRange: null,
   enableAntiCheating: true, webcamProctoringEnabled: false, proctoringEnforcement: 'block', proctoringStrikeLimit: 3,
   disabledProctoringSignalsJson: null, screenCaptureEnabled: false, lockdownRequired: false, createdAt: '2026-07-25T09:00:00.000Z', sections: [],
   invitationCount: 1, hasStartedAttempts: true, requiresManualGrading: false,
@@ -156,6 +157,23 @@ describe('EditExamPage details lock', () => {
     renderPage([], []);
 
     expect(screen.getAllByLabelText('Enable walk-in registration for this exam')).toHaveLength(1);
+  });
+
+  it('shows an always-editable "show in shared list" toggle alongside the always-editable walk-in toggle once published and walk-in is on', () => {
+    currentExam = { ...mockExam, status: 'published', hasStartedAttempts: false, walkInEnabled: true, walkInListed: true };
+    renderPage([], []);
+
+    const checkboxes = screen.getAllByLabelText('Show in the shared walk-in exam list');
+    expect(checkboxes).toHaveLength(1);
+    expect(checkboxes[0]).not.toBeDisabled();
+    expect(checkboxes[0]).toBeChecked();
+  });
+
+  it('hides the "show in shared list" toggle when walk-in itself is off, even while published', () => {
+    currentExam = { ...mockExam, status: 'published', hasStartedAttempts: false, walkInEnabled: false };
+    renderPage([], []);
+
+    expect(screen.queryByLabelText('Show in the shared walk-in exam list')).not.toBeInTheDocument();
   });
 });
 

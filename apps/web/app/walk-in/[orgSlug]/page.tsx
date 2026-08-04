@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { motion, MotionConfig } from 'framer-motion';
 import { AlertCircle, MailCheck } from 'lucide-react';
@@ -30,11 +30,17 @@ export default function WalkInPage() {
   // auto-starting on whatever device just submitted this form.
   const [submitted, setSubmitted] = useState(false);
 
-  // A recruiter's shared link/QR code carries ?exam=<id> so it jumps straight to the
-  // right exam instead of making the candidate pick from every walk-in-enabled exam.
+  // A recruiter's shared link/QR code carries ?exam=<id> so it jumps straight to the right
+  // exam instead of making the candidate pick from every walk-in-enabled exam -- this check
+  // (and resolvedExamId below) intentionally uses the FULL exams list, not listedExams, so a
+  // walkInListed=false exam's own dedicated link still works even though it's hidden from
+  // the shared picker.
   const examParam = searchParams.get('exam');
   const preselectedExamId = exams?.some((exam) => exam.id === examParam) ? examParam : null;
-  const resolvedExamId = exams && exams.length === 1 ? exams[0].id : (preselectedExamId ?? examId);
+  // Only exams opted into the shared picker -- an exam with walkInListed=false is reachable
+  // solely via its own link/QR (see WalkInShareCard), never via this generic org URL.
+  const listedExams = useMemo(() => (exams ?? []).filter((exam) => exam.walkInListed), [exams]);
+  const resolvedExamId = preselectedExamId ?? (listedExams.length === 1 ? listedExams[0].id : examId);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -79,13 +85,13 @@ export default function WalkInPage() {
               </p>
             )}
 
-            {!isLoading && !isError && exams && exams.length === 0 && (
+            {!isLoading && !isError && exams && !preselectedExamId && listedExams.length === 0 && (
               <p className="text-sm text-recruiter-text-secondary">
                 No exams are currently open for walk-in registration.
               </p>
             )}
 
-            {!isLoading && !isError && exams && exams.length > 0 && (
+            {!isLoading && !isError && exams && (preselectedExamId || listedExams.length > 0) && (
               <motion.form
                 onSubmit={handleSubmit}
                 className="flex flex-col gap-4"
@@ -106,12 +112,12 @@ export default function WalkInPage() {
                 <Input label="Name" value={name} onChange={setName} required />
                 <Input label="Email" type="email" value={email} onChange={setEmail} required />
                 <Input label="Phone" value={phone} onChange={setPhone} />
-                {exams.length > 1 && !preselectedExamId && (
+                {listedExams.length > 1 && !preselectedExamId && (
                   <Select
                     label="Exam"
                     value={examId}
                     onChange={setExamId}
-                    options={exams.map((exam) => ({
+                    options={listedExams.map((exam) => ({
                       value: exam.id,
                       label: exam.title,
                     }))}

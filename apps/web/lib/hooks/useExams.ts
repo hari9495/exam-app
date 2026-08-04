@@ -50,6 +50,7 @@ interface CreateExamInput {
   availabilityWindowStart?: string;
   availabilityWindowEnd?: string;
   walkInEnabled?: boolean;
+  walkInListed?: boolean;
   enableAntiCheating?: boolean;
 }
 
@@ -106,6 +107,19 @@ export function useSetWalkInEnabled(id: string) {
   return useMutation({
     mutationFn: (walkInEnabled: boolean) =>
       apiFetch(`/exams/${id}/walk-in`, { method: 'PATCH', body: JSON.stringify({ walkInEnabled }) }, accessToken ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['exams'] });
+      queryClient.invalidateQueries({ queryKey: ['exams', id] });
+    },
+  });
+}
+
+export function useSetWalkInListed(id: string) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (walkInListed: boolean) =>
+      apiFetch(`/exams/${id}/walk-in-listed`, { method: 'PATCH', body: JSON.stringify({ walkInListed }) }, accessToken ?? undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['exams'] });
       queryClient.invalidateQueries({ queryKey: ['exams', id] });
