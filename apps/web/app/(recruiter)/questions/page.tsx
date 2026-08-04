@@ -2,12 +2,18 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Search, ChevronDown } from 'lucide-react';
+import clsx from 'clsx';
 import { useQuestions, useArchiveQuestion, useRestoreQuestion } from '../../../lib/hooks/useQuestions';
 import { Select, Button, Modal, Pagination, StatusBadge, Table, useToast, useColumnVisibility, FilterableHeader, type Column } from '../../../components/ui';
 import { groupQuestions, type GroupBy } from '../../../lib/question-grouping';
 import { TYPE_TONE, TYPE_LABEL, DIFFICULTY_LABEL, DIFFICULTY_LEVEL } from '../../../lib/question-display';
 import { Question } from '../../../lib/types';
+
+// Numbered within its own group (topic, category, ...) so a recruiter can say "question 7
+// under Arrays" -- not a running count across the whole filtered set, which would keep
+// changing as other groups load/collapse.
+type NumberedQuestion = Question & { number: number };
 
 const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
   { value: 'none', label: 'No grouping' },
@@ -45,6 +51,22 @@ export default function QuestionsPage() {
   const archiveQuestion = useArchiveQuestion();
   const restoreQuestion = useRestoreQuestion();
   const { toast } = useToast();
+  // Collapsed by default: with many topics/categories, dumping every group's full row list
+  // open at once is exactly the clutter grouping is meant to cut through. Keyed by group
+  // label rather than index -- stable across a re-group even though group order can shift.
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  function toggleGroup(label: string) {
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      return next;
+    });
+  }
 
   function handleConfirmDelete() {
     if (!questionPendingDelete) return;
@@ -67,7 +89,13 @@ export default function QuestionsPage() {
     });
   }
 
-  const columns: Column<Question>[] = [
+  const columns: Column<NumberedQuestion>[] = [
+    {
+      key: 'number',
+      header: '#',
+      render: (question) => <span className="text-recruiter-text-tertiary">{question.number}</span>,
+      sortValue: (question) => question.number,
+    },
     {
       key: 'text',
       header: 'Question',
@@ -225,21 +253,37 @@ export default function QuestionsPage() {
           {status === 'archived' ? 'No archived questions.' : 'No questions yet.'}
         </p>
       ) : (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-3">
           {groups.map((group) => {
             const totalMarks = group.questions.reduce((sum, question) => sum + (question.marks ?? 0), 0);
+            const numberedQuestions: NumberedQuestion[] = group.questions.map((question, index) => ({ ...question, number: index + 1 }));
+            const expanded = groupBy === 'none' || expandedGroups.has(group.label);
             return (
-              <section key={group.label}>
+              <section key={group.label} className={groupBy !== 'none' ? 'overflow-hidden rounded-lg border border-recruiter-border' : undefined}>
                 {groupBy !== 'none' && (
-                  <div className="mb-2.5 flex flex-wrap items-baseline gap-2 border-b border-recruiter-border pb-1.5">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.label)}
+                    aria-expanded={expanded}
+                    className="flex w-full flex-wrap items-baseline gap-2 bg-recruiter-bg-subtle px-3 py-2 text-left"
+                  >
+                    <ChevronDown
+                      size={14}
+                      className={clsx('shrink-0 self-center text-recruiter-text-secondary transition-transform', !expanded && '-rotate-90')}
+                      aria-hidden="true"
+                    />
                     <h2 className="text-sm font-semibold text-recruiter-text">{group.label}</h2>
                     <span className="text-xs text-recruiter-text-tertiary">
                       {group.questions.length} {group.questions.length === 1 ? 'question' : 'questions'} · {totalMarks}{' '}
                       {totalMarks === 1 ? 'mark' : 'marks'}
                     </span>
+                  </button>
+                )}
+                {expanded && (
+                  <div className={groupBy !== 'none' ? 'p-3' : undefined}>
+                    <Table columns={visibleColumns} rows={numberedQuestions} rowKey={(question) => question.id} />
                   </div>
                 )}
-                <Table columns={visibleColumns} rows={group.questions} rowKey={(question) => question.id} />
               </section>
             );
           })}

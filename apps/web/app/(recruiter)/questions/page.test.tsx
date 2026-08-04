@@ -417,6 +417,43 @@ describe('QuestionsPage', () => {
       expect(screen.getByRole('heading', { name: 'Aptitude' })).toBeInTheDocument();
     });
 
+    it('starts each group collapsed, and expands it on clicking the heading', async () => {
+      mockQuestions();
+      renderPage();
+      await waitFor(() => expect(screen.getByText(/Two numbers are in the ratio/)).toBeInTheDocument());
+
+      await userEvent.click(screen.getByRole('combobox', { name: 'Group By' }));
+      await userEvent.click(screen.getByRole('option', { name: 'Topic' }));
+
+      const ratiosHeading = screen.getByRole('button', { name: /Ratios/ });
+      expect(ratiosHeading).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByText(/Two numbers are in the ratio/)).not.toBeInTheDocument();
+
+      await userEvent.click(ratiosHeading);
+
+      expect(ratiosHeading).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByText(/Two numbers are in the ratio/)).toBeInTheDocument();
+      // The other group (Percentages) is untouched -- still collapsed.
+      expect(screen.queryByText(/If 20% of a number is 50/)).not.toBeInTheDocument();
+    });
+
+    it('numbers questions 1-based within their own group, not as a running count across groups', async () => {
+      mockQuestions();
+      renderPage();
+      await waitFor(() => expect(screen.getByText(/Two numbers are in the ratio/)).toBeInTheDocument());
+
+      await userEvent.click(screen.getByRole('combobox', { name: 'Group By' }));
+      await userEvent.click(screen.getByRole('option', { name: 'Topic' }));
+
+      await userEvent.click(screen.getByRole('button', { name: /Ratios/ }));
+      const ratiosRow = screen.getByText(/Two numbers are in the ratio/).closest('tr');
+      expect(ratiosRow).toHaveTextContent('1');
+
+      await userEvent.click(screen.getByRole('button', { name: /Percentages/ }));
+      const percentagesRow = screen.getByText(/If 20% of a number is 50/).closest('tr');
+      expect(percentagesRow).toHaveTextContent('1');
+    });
+
     it('opens a delete confirmation from a question row action', async () => {
       mockQuestions();
       renderPage();
