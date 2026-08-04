@@ -14,4 +14,20 @@ describe('Checkbox', () => {
     render(<Checkbox label="A long question label that wraps across several lines in a narrow list item" checked={false} onChange={jest.fn()} />);
     expect(screen.getByRole('checkbox').parentElement).toHaveClass('items-start');
   });
+
+  it('is not disabled by default', () => {
+    render(<Checkbox label="Correct Answer" checked={false} onChange={jest.fn()} />);
+    expect(screen.getByRole('checkbox', { name: 'Correct Answer' })).not.toBeDisabled();
+  });
+
+  it('disables the control and blocks onChange when disabled is set', async () => {
+    const onChange = jest.fn();
+    render(<Checkbox label="Correct Answer" checked={false} onChange={onChange} disabled />);
+
+    const checkbox = screen.getByRole('checkbox', { name: 'Correct Answer' });
+    expect(checkbox).toBeDisabled();
+
+    await userEvent.click(checkbox);
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });

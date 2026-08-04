@@ -155,13 +155,16 @@ export default function EditExamPage() {
               lockedMessage={detailsLockedMessage}
               hideWalkInField={detailsLocked}
               walkInSlot={
-                // The details form (and its own walk-in checkbox) is locked while published --
-                // this stays editable regardless, since walk-in eligibility isn't exam content.
+                // Rendered outside the Details form's own disabled fieldset (see
+                // hideWalkInField) purely so the share card's Copy/Share buttons keep
+                // working once published -- the checkboxes themselves are locked below,
+                // same as every other field: change walk-in settings via Unpublish.
                 detailsLocked && (
                   <>
                     <Checkbox
                       label="Enable walk-in registration for this exam"
                       checked={exam.walkInEnabled}
+                      disabled={detailsLocked}
                       onChange={(checked) =>
                         setWalkInEnabled.mutate(checked, {
                           onSuccess: () => toast(checked ? 'Walk-in registration enabled.' : 'Walk-in registration disabled.'),
@@ -176,6 +179,7 @@ export default function EditExamPage() {
                         <Checkbox
                           label="Show in the shared walk-in exam list"
                           checked={exam.walkInListed}
+                          disabled={detailsLocked}
                           onChange={(checked) =>
                             setWalkInListed.mutate(checked, {
                               onSuccess: () => toast(checked ? 'Now shown in the shared walk-in list.' : 'Hidden from the shared walk-in list.'),
