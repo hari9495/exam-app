@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { MotionConfig } from 'framer-motion';
 import clsx from 'clsx';
-import { Users, History, ShieldCheck, Settings, Plug, KeyRound, LogOut, LayoutDashboard, FileText, BookOpen } from 'lucide-react';
+import { Users, History, ShieldCheck, Settings, Plug, KeyRound, LogOut, LayoutDashboard, FileText, BookOpen, TerminalSquare } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
 import { staffLandingPath } from '../../lib/staff-landing';
 import { SUPER_ADMIN_FULL_NAV } from '../../lib/super-admin-nav';
@@ -16,6 +16,7 @@ import { useCurrentUser } from '../../lib/hooks/useCurrentUser';
 const BASE_NAV_ITEMS = [
   { href: '/users', label: 'Staff Users', icon: Users },
   { href: '/audit-log', label: 'Audit Log', icon: History },
+  { href: '/system-logs', label: 'System Logs', icon: TerminalSquare },
   { href: '/data-rights', label: 'Candidate Data Rights', icon: ShieldCheck },
   { href: '/settings/branding', label: 'Org Settings', icon: Settings },
   { href: '/settings/integrations', label: 'Integrations', icon: Plug },
