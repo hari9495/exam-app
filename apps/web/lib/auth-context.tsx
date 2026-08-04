@@ -111,9 +111,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         applyToken(result.accessToken);
         return result.accessToken;
-      } catch {
-        applyToken(null);
-        return null;
+      } catch (error) {
+        // Only a definitive 401 (the server saying the refresh token itself is invalid,
+        // expired, or revoked) means the session is actually over. Anything else --
+        // 429 from the auth endpoints' strict rate limit (easy to trip with several tabs
+        // of the app open, each refreshing independently), a network blip, a 5xx -- is
+        // transient. Treating those the same as an invalid session would log someone out
+        // from under a still-perfectly-valid access token just because one refresh
+        // attempt got rate-limited; leave the existing session in place and let the next
+        // trigger retry instead.
+        if ((error as { status?: number } | undefined)?.status === 401) {
+          applyToken(null);
+          return null;
+        }
+        return accessTokenRef.current;
       }
     })();
     refreshInFlightRef.current = promise;
@@ -139,10 +150,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // refresh -- without this, a promoted/demoted user keeps the old role's nav and
   // route gates until the access token naturally expires (up to
   // ACCESS_TOKEN_TTL_SECONDS, 15min by default). `visibilitychange` catches a tab
-  // switch away and back (window `focus` alone misses plain in-browser tab switching
-  // in some browsers); the interval is the fallback for a tab that's the active one
-  // the whole time and never fires either event, which is the common case for this
-  // bug -- both the promoter and the promoted user just watching their screens.
+  // switch away and back; the interval is the fallback for a tab that's the active
+  // one the whole time and never fires it, which is the common case for this bug --
+  // both the promoter and the promoted user just watching their screens.
+  //
+  // Deliberately NOT also listening for window `focus`: it fires alongside
+  // `visibilitychange` on essentially the same "back to this tab" moment, so it only
+  // doubles the request without covering anything extra -- and /auth/refresh is
+  // strictly rate-limited (STRICT_AUTH_THROTTLE, apps/api/src/rate-limit-tiers.ts:
+  // 5/60s). A user with several tabs of the app open all switching back at once is
+  // real; the interval is 5 minutes for the same reason, comfortably inside the
+  // 15-minute access-token TTL while keeping the steady-state request rate low.
   useEffect(() => {
     function refreshIfSignedIn() {
       if (accessTokenRef.current) {
@@ -155,11 +173,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', refreshIfSignedIn);
-    const intervalId = setInterval(refreshIfSignedIn, 120_000);
+    const intervalId = setInterval(refreshIfSignedIn, 300_000);
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', refreshIfSignedIn);
       clearInterval(intervalId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

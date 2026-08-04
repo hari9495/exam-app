@@ -40,44 +40,7 @@ describe('AuthProvider', () => {
     await waitFor(() => expect(screen.getByText(/token:refreshed-token/)).toBeInTheDocument());
   });
 
-  it('re-runs the silent refresh when the window regains focus, picking up a role change made while the tab was away', async () => {
-    const staleToken = fakeJwt({ sub: 'userA', organizationId: 'org1', role: 'recruiter' });
-    const promotedToken = fakeJwt({ sub: 'userA', organizationId: 'org1', role: 'org_admin' });
-
-    let refreshCallCount = 0;
-    global.fetch = jest.fn(async (url) => {
-      if (String(url).endsWith('/auth/refresh')) {
-        refreshCallCount += 1;
-        const token = refreshCallCount === 1 ? staleToken : promotedToken;
-        return new Response(JSON.stringify({ accessToken: token }), { status: 200 });
-      }
-      throw new Error(`Unexpected fetch to ${url}`);
-    }) as unknown as typeof fetch;
-
-    let auth: ReturnType<typeof useAuth> | undefined;
-    function Consumer() {
-      auth = useAuth();
-      return null;
-    }
-
-    renderWithQueryClient(
-      <AuthProvider>
-        <Consumer />
-      </AuthProvider>,
-    );
-
-    await waitFor(() => expect(auth?.role).toBe('recruiter'));
-
-    await act(async () => {
-      window.dispatchEvent(new Event('focus'));
-      await Promise.resolve();
-    });
-
-    await waitFor(() => expect(auth?.role).toBe('org_admin'));
-    expect(refreshCallCount).toBe(2);
-  });
-
-  it('re-runs the silent refresh when the tab becomes visible again, not just on window focus (in-browser tab switches do not reliably fire window focus)', async () => {
+  it('re-runs the silent refresh when the tab becomes visible again, picking up a role change made while the tab was away', async () => {
     const staleToken = fakeJwt({ sub: 'userA', organizationId: 'org1', role: 'recruiter' });
     const promotedToken = fakeJwt({ sub: 'userA', organizationId: 'org1', role: 'org_admin' });
 
@@ -114,14 +77,50 @@ describe('AuthProvider', () => {
     expect(refreshCallCount).toBe(2);
   });
 
+  it('does not refresh on window focus alone, since visibilitychange already fires on the same "back to this tab" moment and /auth/refresh is strictly rate-limited', async () => {
+    let refreshCallCount = 0;
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        refreshCallCount += 1;
+        return new Response(
+          JSON.stringify({ accessToken: fakeJwt({ sub: 'userA', organizationId: 'org1', role: 'recruiter' }) }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`Unexpected fetch to ${url}`);
+    }) as unknown as typeof fetch;
+
+    let auth: ReturnType<typeof useAuth> | undefined;
+    function Consumer() {
+      auth = useAuth();
+      return null;
+    }
+
+    renderWithQueryClient(
+      <AuthProvider>
+        <Consumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(auth?.role).toBe('recruiter'));
+    expect(refreshCallCount).toBe(1);
+
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+      await Promise.resolve();
+    });
+
+    expect(refreshCallCount).toBe(1);
+  });
+
   it('collapses concurrent refresh triggers into a single in-flight /auth/refresh call, since refresh tokens rotate on every use', async () => {
     const initialToken = fakeJwt({ sub: 'userA', organizationId: 'org1', role: 'recruiter' });
     let refreshCallCount = 0;
     let resolveRefresh: (() => void) | undefined;
 
-    // First call (mount) resolves immediately so accessToken is set -- the focus/visibility
+    // First call (mount) resolves immediately so accessToken is set -- the visibilitychange
     // triggers below are no-ops without one. Every call after that hangs until resolved, so
-    // the two triggers fired back-to-back land while the same refresh is still in flight.
+    // both triggers fired back-to-back land while the same refresh is still in flight.
     global.fetch = jest.fn(async (url) => {
       if (String(url).endsWith('/auth/refresh')) {
         refreshCallCount += 1;
@@ -151,7 +150,7 @@ describe('AuthProvider', () => {
     await waitFor(() => expect(auth?.role).toBe('recruiter'));
     expect(refreshCallCount).toBe(1);
 
-    window.dispatchEvent(new Event('focus'));
+    document.dispatchEvent(new Event('visibilitychange'));
     document.dispatchEvent(new Event('visibilitychange'));
     await waitFor(() => expect(refreshCallCount).toBe(2));
     // A third trigger would show up as a call count of 3 -- it doesn't.
@@ -164,6 +163,46 @@ describe('AuthProvider', () => {
 
     await waitFor(() => expect(auth?.role).toBe('recruiter'));
     expect(refreshCallCount).toBe(2);
+  });
+
+  it('keeps the existing session on a rate-limited (429) refresh instead of logging the user out, since the failure is transient not an invalid session', async () => {
+    const initialToken = fakeJwt({ sub: 'userA', organizationId: 'org1', role: 'recruiter' });
+    let refreshCallCount = 0;
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        refreshCallCount += 1;
+        if (refreshCallCount === 1) {
+          return new Response(JSON.stringify({ accessToken: initialToken }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ message: 'ThrottlerException: Too Many Requests' }), { status: 429 });
+      }
+      throw new Error(`Unexpected fetch to ${url}`);
+    }) as unknown as typeof fetch;
+
+    let auth: ReturnType<typeof useAuth> | undefined;
+    function Consumer() {
+      auth = useAuth();
+      return null;
+    }
+
+    renderWithQueryClient(
+      <AuthProvider>
+        <Consumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(auth?.accessToken).toBe(initialToken));
+
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(refreshCallCount).toBe(2);
+    // Still signed in, still the same token -- a 429 must not be treated as a dead session.
+    expect(auth?.accessToken).toBe(initialToken);
+    expect(auth?.role).toBe('recruiter');
   });
 
   it('leaves accessToken null when the silent refresh fails (no prior session)', async () => {
