@@ -52,6 +52,17 @@ const STATUS_FILTER_OPTIONS = [
 
 const RECENT_ALERT_WINDOW_MS = 5 * 60 * 1000;
 
+// The candidate's integrity level only ever climbs, never drops back down: once a
+// high-severity alert has fired, later low/medium ones don't make it look better
+// again -- it's a running worst-case, not a snapshot of the most recent alert.
+const SEVERITY_RANK: Record<string, number> = { low: 1, medium: 2, high: 3 };
+const INTEGRITY_LEVEL_LABEL: Record<string, string> = { low: 'Low', medium: 'Medium', high: 'High' };
+const INTEGRITY_LEVEL_VARIANT: Record<string, 'default' | 'warning' | 'danger'> = {
+  low: 'default',
+  medium: 'warning',
+  high: 'danger',
+};
+
 // The alerts feed is no longer capped exam-wide (retention is age + per-attempt based,
 // so it can hold thousands). The sidebar only ever needs to show the newest handful --
 // counts and the flagged set still read the full array below.
@@ -303,6 +314,19 @@ export function LiveMonitoringPanel({
     return counts;
   }, [alerts]);
 
+  // Worst severity seen so far per attempt -- climbs from low to high as alerts
+  // arrive, never drops back down even if the most recent alert was milder.
+  const worstSeverityByAttempt = useMemo(() => {
+    const worst = new Map<string, string>();
+    for (const alert of alerts) {
+      const alertRank = SEVERITY_RANK[alert.severity] ?? 0;
+      if (alertRank === 0) continue;
+      const currentRank = SEVERITY_RANK[worst.get(alert.attemptId) ?? ''] ?? 0;
+      if (alertRank > currentRank) worst.set(alert.attemptId, alert.severity);
+    }
+    return worst;
+  }, [alerts]);
+
   const rosterColumns: Column<RosterRow>[] = [
     { key: 'name', header: 'Candidate', render: (row) => row.candidateName, sortValue: (row) => row.candidateName },
     {
@@ -323,6 +347,18 @@ export function LiveMonitoringPanel({
       key: 'progress',
       header: 'Progress',
       render: (row) => (row.answeredCount !== null && row.totalQuestions !== null ? `${row.answeredCount} / ${row.totalQuestions}` : '—'),
+    },
+    {
+      key: 'integrityLevel',
+      header: 'Integrity level',
+      render: (row) => {
+        const level = row.attemptId ? worstSeverityByAttempt.get(row.attemptId) : undefined;
+        return level ? (
+          <Badge variant={INTEGRITY_LEVEL_VARIANT[level] ?? 'default'}>{INTEGRITY_LEVEL_LABEL[level] ?? level}</Badge>
+        ) : (
+          <span className="text-gray-400">—</span>
+        );
+      },
     },
     {
       key: 'integrityAlerts',

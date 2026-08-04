@@ -95,6 +95,49 @@ describe('LiveMonitoringPanel', () => {
     expect(screen.getByText('2')).toBeInTheDocument();
   });
 
+  describe('Integrity level column', () => {
+    function panelWithAlerts(alerts: ProctoringFlag[]) {
+      renderPanel({
+        roster: [
+          { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'in_progress', online: true, remainingSeconds: 120, answeredCount: 2, totalQuestions: 5, proctoringBypassed: false },
+        ],
+        alerts,
+      });
+    }
+
+    it('shows a dash when the candidate has no alerts yet', () => {
+      panelWithAlerts([]);
+
+      expect(screen.getByText('Integrity level')).toBeInTheDocument();
+      expect(screen.getByText('—')).toBeInTheDocument();
+    });
+
+    it('shows Low when only a low-severity alert has fired', () => {
+      panelWithAlerts([{ attemptId: 'a1', candidateId: 'c1', eventType: 'right_click', severity: 'low', occurredAt: '2026-01-01T00:01:00Z' }]);
+
+      expect(screen.getByText('Low')).toBeInTheDocument();
+    });
+
+    it('escalates to High once a high-severity alert fires, even after starting Low', () => {
+      panelWithAlerts([
+        { attemptId: 'a1', candidateId: 'c1', eventType: 'right_click', severity: 'low', occurredAt: '2026-01-01T00:01:00Z' },
+        { attemptId: 'a1', candidateId: 'c1', eventType: 'dev_tools_detected', severity: 'high', occurredAt: '2026-01-01T00:05:00Z' },
+      ]);
+
+      expect(screen.getByText('High')).toBeInTheDocument();
+      expect(screen.queryByText('Low')).not.toBeInTheDocument();
+    });
+
+    it('stays High even when the most recent alert afterward is only low severity', () => {
+      panelWithAlerts([
+        { attemptId: 'a1', candidateId: 'c1', eventType: 'dev_tools_detected', severity: 'high', occurredAt: '2026-01-01T00:01:00Z' },
+        { attemptId: 'a1', candidateId: 'c1', eventType: 'right_click', severity: 'low', occurredAt: '2026-01-01T00:05:00Z' },
+      ]);
+
+      expect(screen.getByText('High')).toBeInTheDocument();
+    });
+  });
+
   it('renders the roster table with candidate rows', () => {
     renderPanel({
       roster: [
