@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ScrollText, Download, X } from 'lucide-react';
 import { useAuditLogs, useAuditLogExport, type AuditLogFilters } from '../../../lib/hooks/useAuditLogs';
-import { Button, Modal, Table, StatusBadge, Select, type StatusTone, type Column } from '../../../components/ui';
+import { Button, Modal, Table, StatusBadge, Select, FilterableHeader, type StatusTone, type Column } from '../../../components/ui';
 import { AuditActorFilter } from '../../../components/AuditActorFilter';
 import { AuditLogEntry } from '../../../lib/types';
 import {
@@ -48,8 +48,28 @@ function presetRange(daysBack: number): { from: string; to: string } {
   return { from: toDateOnly(from), to: toDateOnly(to) };
 }
 
-function makeColumns(onView: (entry: AuditLogEntry) => void): Column<AuditLogEntry>[] {
-  return [
+export default function AuditLogPage() {
+  const searchParams = useSearchParams();
+  const linkedEntityType = searchParams.get('entityType') ?? undefined;
+  const linkedEntityId = searchParams.get('entityId') ?? undefined;
+  const linkedEntityName = searchParams.get('entityName') ?? undefined;
+
+  const [filters, setFilters] = useState<AuditLogFilters>(
+    linkedEntityType && linkedEntityId ? { entityType: linkedEntityType, entityId: linkedEntityId } : {},
+  );
+  const [formFilters, setFormFilters] = useState<AuditLogFilters>(filters);
+  const [actorLabel, setActorLabel] = useState<string | undefined>(undefined);
+  const [cursor, setCursor] = useState<string | undefined>(undefined);
+  const [entries, setEntries] = useState<AuditLogEntry[]>([]);
+  const [selected, setSelected] = useState<AuditLogEntry | null>(null);
+  const { data, isLoading, isError } = useAuditLogs({ ...filters, cursor });
+  const exportMutation = useAuditLogExport();
+
+  // The Action filter's control lives in the column header, but -- like every other
+  // filter on this page -- it stages into formFilters and only takes effect once
+  // "Apply filters" is submitted; it does not instant-apply like the header filters
+  // on other pages, so it stays consistent with the Entity Type filter beside it.
+  const columns: Column<AuditLogEntry>[] = [
     {
       key: 'createdAt',
       header: 'When',
@@ -64,9 +84,16 @@ function makeColumns(onView: (entry: AuditLogEntry) => void): Column<AuditLogEnt
     },
     {
       key: 'action',
-      header: 'Action',
+      header: (
+        <FilterableHeader
+          label="Action"
+          value={formFilters.action ?? 'all'}
+          onChange={(value) => setFormFilters((f) => ({ ...f, action: value === 'all' ? undefined : value }))}
+          options={ACTION_OPTIONS}
+        />
+      ),
+      sortLabel: 'Action',
       render: (entry) => <StatusBadge tone={actionTone(entry.action)}>{friendlyAction(entry.action)}</StatusBadge>,
-      sortValue: (entry) => friendlyAction(entry.action),
     },
     {
       key: 'summary',
@@ -99,7 +126,7 @@ function makeColumns(onView: (entry: AuditLogEntry) => void): Column<AuditLogEnt
       render: (entry) => (
         <button
           type="button"
-          onClick={() => onView(entry)}
+          onClick={() => setSelected(entry)}
           className="whitespace-nowrap text-sm font-medium text-primary hover:underline"
         >
           View
@@ -107,25 +134,6 @@ function makeColumns(onView: (entry: AuditLogEntry) => void): Column<AuditLogEnt
       ),
     },
   ];
-}
-
-export default function AuditLogPage() {
-  const searchParams = useSearchParams();
-  const linkedEntityType = searchParams.get('entityType') ?? undefined;
-  const linkedEntityId = searchParams.get('entityId') ?? undefined;
-  const linkedEntityName = searchParams.get('entityName') ?? undefined;
-
-  const [filters, setFilters] = useState<AuditLogFilters>(
-    linkedEntityType && linkedEntityId ? { entityType: linkedEntityType, entityId: linkedEntityId } : {},
-  );
-  const [formFilters, setFormFilters] = useState<AuditLogFilters>(filters);
-  const [actorLabel, setActorLabel] = useState<string | undefined>(undefined);
-  const [cursor, setCursor] = useState<string | undefined>(undefined);
-  const [entries, setEntries] = useState<AuditLogEntry[]>([]);
-  const [selected, setSelected] = useState<AuditLogEntry | null>(null);
-  const { data, isLoading, isError } = useAuditLogs({ ...filters, cursor });
-  const exportMutation = useAuditLogExport();
-  const columns = makeColumns(setSelected);
 
   useEffect(() => {
     if (!data) return;
@@ -235,12 +243,6 @@ export default function AuditLogPage() {
             setActorLabel(label);
             setFormFilters((f) => ({ ...f, actorUserId }));
           }}
-        />
-        <Select
-          label="Action"
-          value={formFilters.action ?? 'all'}
-          onChange={(value) => setFormFilters((f) => ({ ...f, action: value === 'all' ? undefined : value }))}
-          options={ACTION_OPTIONS}
         />
         <Select
           label="Entity Type"

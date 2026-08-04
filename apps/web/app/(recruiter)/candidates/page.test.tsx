@@ -315,8 +315,8 @@ describe('CandidatesPage', () => {
       renderPage();
       await waitFor(() => expect(screen.getByText('Nanji')).toBeInTheDocument());
 
-      await userEvent.click(screen.getByRole('combobox', { name: 'Status' }));
-      await userEvent.click(screen.getByRole('option', { name: 'All' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Filter by Status' }));
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'All' }));
 
       await waitFor(() =>
         expect(

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ShieldAlert, ShieldCheck, AlertTriangle, AlertCircle, Info, Search, Users, Activity, CheckCircle2, BellRing } from 'lucide-react';
 import { useUnblockAttempt, useBypassProctoring, useRevokeProctoringBypass } from '../lib/hooks/useAttemptModeration';
 import { useProctoringEvents } from '../lib/hooks/useProctoringEvents';
-import { Table, Badge, Button, Card, Modal, Select, useToast, useColumnVisibility, type Column } from './ui';
+import { Table, Badge, Button, Card, Modal, useToast, useColumnVisibility, FilterableHeader, type Column } from './ui';
 import { RosterRow, ProctoringFlag, ConnectionStatus } from '../lib/types';
 
 const STATUS_VARIANT: Record<string, 'default' | 'success' | 'warning' | 'danger'> = {
@@ -293,7 +293,8 @@ export function LiveMonitoringPanel({
     { key: 'name', header: 'Candidate', render: (row) => row.candidateName, sortValue: (row) => row.candidateName },
     {
       key: 'status',
-      header: 'Status',
+      header: <FilterableHeader label="Status" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTER_OPTIONS} />,
+      sortLabel: 'Status',
       render: (row) => (
         <>
           <Badge variant={STATUS_VARIANT[row.status] ?? 'default'}>{STATUS_LABEL[row.status] ?? row.status}</Badge>
@@ -301,7 +302,6 @@ export function LiveMonitoringPanel({
           {row.attemptId && flagged.has(row.attemptId) ? <Badge variant="danger">Needs attention</Badge> : null}
         </>
       ),
-      sortValue: (row) => STATUS_PRIORITY[row.status] ?? DEFAULT_STATUS_PRIORITY,
     },
     { key: 'online', header: 'Online', render: (row) => <Badge variant={row.online ? 'success' : 'default'}>{row.online ? 'Online' : 'Offline'}</Badge> },
     { key: 'remaining', header: 'Time remaining', render: (row) => formatRemaining(row.remainingSeconds) },
@@ -455,7 +455,6 @@ export function LiveMonitoringPanel({
                   className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
                 />
               </div>
-              <Select label="Status" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTER_OPTIONS} />
               {rosterColumnChooser}
             </div>
             <Table

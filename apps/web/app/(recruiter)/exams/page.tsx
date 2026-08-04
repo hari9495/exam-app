@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { Plus, Search, MoreHorizontal, ChevronDown } from 'lucide-react';
+import { Plus, Search, MoreHorizontal } from 'lucide-react';
 import { useExams, useDuplicateExam, useArchiveExam } from '../../../lib/hooks/useExams';
 import {
   Table,
@@ -17,6 +17,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   Pagination,
+  FilterableHeader,
   type StatusTone,
   type Column,
 } from '../../../components/ui';
@@ -40,38 +41,6 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'published', label: 'Published' },
   { value: 'archived', label: 'Archived' },
 ];
-
-// Same header-embedded filter pattern as ExamResultsPanel's FilterableHeader -- the header
-// cell has no sortValue (see the 'status' column below), so Table gives it no click handler
-// of its own and this dropdown is free to own the click.
-function FilterableHeader({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: { value: string; label: string }[];
-}) {
-  const active = value !== 'all';
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger aria-label={`Filter by ${label}`} className={`flex items-center gap-1 ${active ? 'text-primary' : ''}`}>
-        {label}
-        <ChevronDown size={12} />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent>
-        {options.map((option) => (
-          <DropdownMenuItem key={option.value} onSelect={() => onChange(option.value)} className={value === option.value ? 'font-semibold text-primary' : ''}>
-            {option.label}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
 
 export default function ExamsPage() {
   const [page, setPage] = useState(1);

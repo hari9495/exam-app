@@ -20,6 +20,7 @@ import {
   TabsList,
   TabsTrigger,
   TabsContent,
+  FilterableHeader,
   type Column,
   type StatusTone,
 } from '../../../../components/ui';
@@ -166,9 +167,9 @@ export default function PanelExamResultsPage() {
     },
     {
       key: 'status',
-      header: 'Status',
+      header: <FilterableHeader label="Status" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTER_OPTIONS} />,
+      sortLabel: 'Status',
       render: (row) => <StatusBadge tone={RESULT_STATUS_TONE[row.status] ?? 'neutral'}>{RESULT_STATUS_LABEL[row.status] ?? row.status}</StatusBadge>,
-      sortValue: (row) => RESULT_STATUS_LABEL[row.status] ?? row.status,
     },
     {
       key: 'score',
@@ -184,9 +185,9 @@ export default function PanelExamResultsPage() {
     },
     {
       key: 'integrity',
-      header: 'Integrity',
+      header: <FilterableHeader label="Integrity" value={integrityFilter} onChange={setIntegrityFilter} options={INTEGRITY_FILTER_OPTIONS} />,
+      sortLabel: 'Integrity',
       render: (row) => <IntegrityBadge level={row.integrityLevel} />,
-      sortValue: (row) => row.integrityLevel ?? '',
     },
   ];
 
@@ -203,9 +204,9 @@ export default function PanelExamResultsPage() {
     },
     {
       key: 'accuracy',
-      header: 'Accuracy',
+      header: <FilterableHeader label="Accuracy" value={accuracyFilter} onChange={setAccuracyFilter} options={ACCURACY_FILTER_OPTIONS} />,
+      sortLabel: 'Accuracy',
       render: (row) => `${row.accuracyPercentage.toFixed(1)}%`,
-      sortValue: (row) => row.accuracyPercentage,
     },
     {
       key: 'attempted',
@@ -288,7 +289,6 @@ export default function PanelExamResultsPage() {
                 className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
               />
             </div>
-            <Select label="Accuracy" value={accuracyFilter} onChange={setAccuracyFilter} options={ACCURACY_FILTER_OPTIONS} />
           </div>
           {accuracyLoading ? (
             <p className="text-sm text-gray-500">Loading…</p>
@@ -322,8 +322,6 @@ export default function PanelExamResultsPage() {
               onChange={(nextExamId) => nextExamId !== examId && router.push(`/reports/${nextExamId}`)}
               options={examOptions}
             />
-            <Select label="Status" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTER_OPTIONS} />
-            <Select label="Integrity" value={integrityFilter} onChange={setIntegrityFilter} options={INTEGRITY_FILTER_OPTIONS} />
           </div>
           <div className="flex items-end gap-2">
             <Button variant="secondary" onClick={() => handleExport('csv')} disabled={exportMutation.isPending}>

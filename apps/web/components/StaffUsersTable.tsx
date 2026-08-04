@@ -3,7 +3,7 @@
 import { ReactNode, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { UsersRound } from 'lucide-react';
-import { StatusBadge, Select, Input, Button, Modal, useToast, type Column, type StatusTone } from './ui';
+import { StatusBadge, Select, Input, Button, Modal, useToast, FilterableHeader, type Column, type StatusTone } from './ui';
 import { ListView } from '../app/(platform)/components/ListView';
 import { RowActions, type RowAction } from '../app/(platform)/components/RowActions';
 import { useAuth } from '../lib/auth-context';
@@ -183,15 +183,15 @@ export function StaffUsersTable({
       { key: 'email', header: 'Email', render: (u) => u.email, sortValue: (u) => u.email },
       {
         key: 'role',
-        header: 'Role',
+        header: <FilterableHeader label="Role" value={roleFilter} onChange={setRoleFilter} options={ROLE_FILTER_OPTIONS} />,
+        sortLabel: 'Role',
         render: (u) => <StatusBadge tone={ROLE_TONE[u.role] ?? 'neutral'}>{ROLE_LABEL[u.role] ?? u.role}</StatusBadge>,
-        sortValue: (u) => u.role,
       },
       {
         key: 'status',
-        header: 'Status',
+        header: <FilterableHeader label="Status" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTER_OPTIONS} />,
+        sortLabel: 'Status',
         render: (u) => <StatusBadge tone={u.status === 'active' ? 'success' : 'neutral'}>{u.status}</StatusBadge>,
-        sortValue: (u) => u.status,
       },
       {
         key: 'lastLoginAt',
@@ -205,7 +205,7 @@ export function StaffUsersTable({
     // renderActions closes over currentUserRole/isActingSuperAdmin/currentUserId/ssoEnabled
     // (the gating inputs) and the mutation objects, which are stable per render of this hook.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [currentUserRole, isActingSuperAdmin, currentUserId, ssoEnabled],
+    [currentUserRole, isActingSuperAdmin, currentUserId, ssoEnabled, roleFilter, statusFilter],
   );
 
   return (
@@ -224,12 +224,6 @@ export function StaffUsersTable({
         isError={isError}
         totalCount={totalCount}
         actions={actions}
-        filters={
-          <>
-            <Select label="" value={roleFilter} onChange={setRoleFilter} options={ROLE_FILTER_OPTIONS} />
-            <Select label="" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTER_OPTIONS} />
-          </>
-        }
       />
 
       {editing && (

@@ -134,8 +134,8 @@ describe('PanelExamResultsPage', () => {
     expect(screen.getByRole('link', { name: 'Alice' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Bob' })).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('combobox', { name: 'Integrity' }));
-    await userEvent.click(screen.getByRole('option', { name: 'High concern' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Filter by Integrity' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'High concern' }));
 
     expect(screen.queryByRole('link', { name: 'Alice' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Bob' })).toBeInTheDocument();
@@ -163,8 +163,8 @@ describe('PanelExamResultsPage', () => {
     });
     renderPage();
 
-    await userEvent.click(screen.getByRole('combobox', { name: 'Status' }));
-    await userEvent.click(screen.getByRole('option', { name: 'Invited' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Filter by Status' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Invited' }));
 
     expect(screen.queryByRole('link', { name: 'Alice' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Cara' })).toBeInTheDocument();
@@ -232,8 +232,8 @@ describe('PanelExamResultsPage', () => {
       (useQuestionAccuracy as jest.Mock).mockReturnValue({ data: accuracyRows, isLoading: false });
       renderPage();
 
-      await userEvent.click(screen.getByRole('combobox', { name: /Integrity/ }));
-      await userEvent.click(await screen.findByRole('option', { name: 'High concern' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Filter by Integrity' }));
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'High concern' }));
 
       expect(await screen.findByRole('tab', { name: 'Candidates (1)' })).toBeInTheDocument();
       expect(screen.queryByText('Alice')).not.toBeInTheDocument();
@@ -261,8 +261,8 @@ describe('PanelExamResultsPage', () => {
       await screen.findByText('Which collection is synchronized?');
 
       // q1 is 0% (low), q2 is 50% (medium).
-      await userEvent.click(screen.getByRole('combobox', { name: 'Accuracy' }));
-      await userEvent.click(screen.getByRole('option', { name: /Low accuracy/ }));
+      await userEvent.click(screen.getByRole('button', { name: 'Filter by Accuracy' }));
+      await userEvent.click(await screen.findByRole('menuitem', { name: /Low accuracy/ }));
 
       expect(screen.getByText('Which collection is synchronized?')).toBeInTheDocument();
       expect(screen.queryByText('Choose the correct synonym for Enhance:')).not.toBeInTheDocument();

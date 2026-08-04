@@ -71,9 +71,9 @@ describe('AuditLogPage', () => {
     expect(screen.getByText('Staff user created')).toBeInTheDocument();
     expect(screen.getByText('Showing 2 of 2 events')).toBeInTheDocument();
 
-    // Action is now a grouped dropdown, not a free-text box.
-    await userEvent.click(screen.getByRole('combobox', { name: 'Action' }));
-    await userEvent.click(screen.getByRole('option', { name: /Staff user created/ }));
+    // Action filtering lives in the Action column header, not a toolbar combobox.
+    await userEvent.click(screen.getByRole('button', { name: 'Filter by Action' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: /Staff user created/ }));
     await userEvent.click(screen.getByRole('button', { name: 'Apply filters' }));
 
     await waitFor(() => expect(screen.queryByText('Candidate data erased (GDPR)')).not.toBeInTheDocument());

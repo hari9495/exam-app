@@ -18,6 +18,7 @@ import {
   useToast,
   useColumnVisibility,
   Pagination,
+  FilterableHeader,
   type Column,
 } from '../../../components/ui';
 import { Candidate } from '../../../lib/types';
@@ -140,13 +141,23 @@ export default function CandidatesPage() {
     },
     {
       key: 'status',
-      header: 'Status',
+      header: (
+        <FilterableHeader
+          label="Status"
+          value={statusFilter}
+          onChange={(value) => {
+            setStatusFilter(value);
+            setPage(1);
+          }}
+          options={STATUS_FILTER_OPTIONS}
+        />
+      ),
+      sortLabel: 'Status',
       render: (candidate) => (
         <StatusBadge tone={candidate.status === 'inactive' ? 'neutral' : 'success'}>
           {candidate.status === 'inactive' ? 'Inactive' : 'Active'}
         </StatusBadge>
       ),
-      sortValue: (candidate) => candidate.status,
     },
     {
       key: 'added',
@@ -243,7 +254,6 @@ export default function CandidatesPage() {
             className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
           />
         </div>
-        <Select label="Status" value={statusFilter} onChange={(value) => { setStatusFilter(value); setPage(1); }} options={STATUS_FILTER_OPTIONS} />
         <Select
           label="Exam To Invite To"
           value={examId}

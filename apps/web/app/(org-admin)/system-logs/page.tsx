@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { TerminalSquare } from 'lucide-react';
 import { useSystemEvents, type SystemEventEntry, type SystemEventFilters } from '../../../lib/hooks/useSystemEvents';
-import { Button, Modal, Table, StatusBadge, Select, type StatusTone, type Column } from '../../../components/ui';
+import { Button, Modal, Table, StatusBadge, FilterableHeader, type StatusTone, type Column } from '../../../components/ui';
 import { formatAuditTimestamp, formatRelativeTime } from '../../../lib/audit-display';
 
 const SERVICE_OPTIONS = [
@@ -46,61 +46,6 @@ function contextSummary(entry: SystemEventEntry): string {
   return parts.join(' · ');
 }
 
-function makeColumns(onView: (entry: SystemEventEntry) => void): Column<SystemEventEntry>[] {
-  return [
-    {
-      key: 'occurredAt',
-      header: 'When',
-      render: (entry) => (
-        <span title={formatAuditTimestamp(entry.occurredAt)} className="whitespace-nowrap text-recruiter-text-secondary">
-          {formatRelativeTime(entry.occurredAt)}
-        </span>
-      ),
-      sortValue: (entry) => entry.occurredAt,
-    },
-    {
-      key: 'service',
-      header: 'Service',
-      render: (entry) => <span className="whitespace-nowrap text-recruiter-text">{SERVICE_LABELS[entry.service] ?? entry.service}</span>,
-      sortValue: (entry) => entry.service,
-    },
-    {
-      key: 'severity',
-      header: 'Severity',
-      render: (entry) => <StatusBadge tone={severityTone(entry.severity)}>{entry.severity}</StatusBadge>,
-      sortValue: (entry) => entry.severity,
-    },
-    {
-      key: 'message',
-      header: 'Message',
-      render: (entry) => <span className="break-all text-recruiter-text">{entry.message}</span>,
-      sortValue: (entry) => entry.message,
-    },
-    {
-      key: 'context',
-      header: 'Context',
-      render: (entry) => {
-        const summary = contextSummary(entry);
-        return summary ? (
-          <span className="break-all text-xs text-recruiter-text-secondary">{summary}</span>
-        ) : (
-          <span className="text-recruiter-text-tertiary">—</span>
-        );
-      },
-      sortValue: (entry) => contextSummary(entry),
-    },
-    {
-      key: 'view',
-      header: '',
-      render: (entry) => (
-        <Button variant="secondary" onClick={() => onView(entry)}>
-          View
-        </Button>
-      ),
-    },
-  ];
-}
-
 export default function SystemLogsPage() {
   const [service, setService] = useState('all');
   const [severity, setSeverity] = useState('all');
@@ -139,6 +84,71 @@ export default function SystemLogsPage() {
     applyFilterChange(() => setRange({ ...presetRange(daysBack), label }));
   }
 
+  const columns: Column<SystemEventEntry>[] = [
+    {
+      key: 'occurredAt',
+      header: 'When',
+      render: (entry) => (
+        <span title={formatAuditTimestamp(entry.occurredAt)} className="whitespace-nowrap text-recruiter-text-secondary">
+          {formatRelativeTime(entry.occurredAt)}
+        </span>
+      ),
+      sortValue: (entry) => entry.occurredAt,
+    },
+    {
+      key: 'service',
+      header: (
+        <FilterableHeader
+          label="Service"
+          value={service}
+          onChange={(value) => applyFilterChange(() => setService(value))}
+          options={SERVICE_OPTIONS}
+        />
+      ),
+      render: (entry) => <span className="whitespace-nowrap text-recruiter-text">{SERVICE_LABELS[entry.service] ?? entry.service}</span>,
+    },
+    {
+      key: 'severity',
+      header: (
+        <FilterableHeader
+          label="Severity"
+          value={severity}
+          onChange={(value) => applyFilterChange(() => setSeverity(value))}
+          options={SEVERITY_OPTIONS}
+        />
+      ),
+      render: (entry) => <StatusBadge tone={severityTone(entry.severity)}>{entry.severity}</StatusBadge>,
+    },
+    {
+      key: 'message',
+      header: 'Message',
+      render: (entry) => <span className="break-all text-recruiter-text">{entry.message}</span>,
+      sortValue: (entry) => entry.message,
+    },
+    {
+      key: 'context',
+      header: 'Context',
+      render: (entry) => {
+        const summary = contextSummary(entry);
+        return summary ? (
+          <span className="break-all text-xs text-recruiter-text-secondary">{summary}</span>
+        ) : (
+          <span className="text-recruiter-text-tertiary">—</span>
+        );
+      },
+      sortValue: (entry) => contextSummary(entry),
+    },
+    {
+      key: 'view',
+      header: '',
+      render: (entry) => (
+        <Button variant="secondary" onClick={() => setSelected(entry)}>
+          View
+        </Button>
+      ),
+    },
+  ];
+
   return (
     <div>
       <div className="mb-1 flex items-center gap-2">
@@ -150,8 +160,6 @@ export default function SystemLogsPage() {
       </p>
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
-        <Select label="Service" value={service} onChange={(value) => applyFilterChange(() => setService(value))} options={SERVICE_OPTIONS} />
-        <Select label="Severity" value={severity} onChange={(value) => applyFilterChange(() => setSeverity(value))} options={SEVERITY_OPTIONS} />
         <div className="flex items-center gap-1" role="group" aria-label="Time range">
           {[
             { days: 1, label: '24h' },
@@ -183,7 +191,7 @@ export default function SystemLogsPage() {
           <p className="mb-2 text-xs text-recruiter-text-secondary">
             Showing {allEntries.length} of {total} events
           </p>
-          <Table columns={makeColumns(setSelected)} rows={allEntries} rowKey={(entry) => entry.id} />
+          <Table columns={columns} rows={allEntries} rowKey={(entry) => entry.id} />
           {canLoadMore && (
             <div className="mt-3 flex justify-center">
               <Button variant="secondary" onClick={loadMore}>

@@ -82,8 +82,8 @@ describe('SystemLogsPage', () => {
     renderPage();
     await screen.findByText('TypeError: boom');
 
-    await userEvent.click(screen.getByRole('combobox', { name: 'Service' }));
-    await userEvent.click(screen.getByRole('option', { name: 'Candidate browser' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Filter by Service' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Candidate browser' }));
 
     await waitFor(() => expect(screen.queryByText('TypeError: boom')).not.toBeInTheDocument());
     expect(screen.getByText('answer_save_failed: network error')).toBeInTheDocument();

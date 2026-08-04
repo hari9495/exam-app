@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
-import { Table, Button, Input, Select, StatusBadge, useToast, type Column, type StatusTone } from './ui';
+import { Table, Button, Input, StatusBadge, useToast, FilterableHeader, type Column, type StatusTone } from './ui';
 import { useExamInvitations, useUpdateAccommodation, useResendInvitation } from '../lib/hooks/useInvitations';
 import { InviteCandidatesModal } from './InviteCandidatesModal';
 import { Invitation } from '../lib/types';
@@ -107,7 +107,7 @@ export function CandidatesPanel({ examId }: { examId: string }) {
     { key: 'email', header: 'Email', render: (row) => row.candidate.email },
     {
       key: 'status',
-      header: 'Status',
+      header: <FilterableHeader label="Status" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTER_OPTIONS} />,
       render: (row) => {
         const status = candidateStatus(row);
         return <StatusBadge tone={CANDIDATE_STATUS_TONE[status] ?? 'neutral'}>{CANDIDATE_STATUS_LABEL[status] ?? status}</StatusBadge>;
@@ -183,7 +183,6 @@ export function CandidatesPanel({ examId }: { examId: string }) {
               icon={<Search size={16} />}
             />
           </div>
-          <Select label="Status" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTER_OPTIONS} />
         </div>
         <Button onClick={() => setInviteModalOpen(true)}>Invite candidates</Button>
       </div>

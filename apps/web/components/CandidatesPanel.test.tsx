@@ -198,8 +198,8 @@ describe('CandidatesPanel', () => {
 
     renderPanel();
 
-    await userEvent.click(screen.getByRole('combobox', { name: 'Status' }));
-    await userEvent.click(screen.getByRole('option', { name: 'Ended' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Filter by Status' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Ended' }));
 
     expect(screen.queryByText('Alice')).not.toBeInTheDocument();
     expect(screen.getByText('Bob')).toBeInTheDocument();

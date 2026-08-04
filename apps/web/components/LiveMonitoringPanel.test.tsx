@@ -168,8 +168,8 @@ describe('LiveMonitoringPanel', () => {
     expect(screen.getByText('Alice')).toBeInTheDocument();
     expect(screen.getByText('Bob')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('combobox', { name: 'Status' }));
-    await user.click(screen.getByRole('option', { name: 'Blocked' }));
+    await user.click(screen.getByRole('button', { name: 'Filter by Status' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Blocked' }));
 
     expect(screen.queryByText('Alice')).not.toBeInTheDocument();
     expect(screen.getByText('Bob')).toBeInTheDocument();

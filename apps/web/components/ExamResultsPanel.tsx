@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Search, ChevronDown } from 'lucide-react';
+import { Search } from 'lucide-react';
 import {
   Table,
   Input,
@@ -12,10 +12,7 @@ import {
   IntegrityBadge,
   useToast,
   useColumnVisibility,
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
+  FilterableHeader,
   type Column,
   type StatusTone,
 } from './ui';
@@ -62,42 +59,6 @@ const INTEGRITY_FILTER_OPTIONS = [
   { value: 'review', label: 'Review recommended' },
   { value: 'high_concern', label: 'High concern' },
 ];
-
-// A column header that's a filter trigger instead of plain text: clicking it opens
-// a dropdown of values rather than sorting the column, mirroring the toolbar
-// Select-based filters used elsewhere but living directly in the header the way a
-// Salesforce list view's column filters do.
-function FilterableHeader({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: { value: string; label: string }[];
-}) {
-  const active = value !== 'all';
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        aria-label={`Filter by ${label}`}
-        className={`flex items-center gap-1 ${active ? 'text-primary' : ''}`}
-      >
-        {label}
-        <ChevronDown size={12} />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent>
-        {options.map((option) => (
-          <DropdownMenuItem key={option.value} onSelect={() => onChange(option.value)} className={value === option.value ? 'font-semibold text-primary' : ''}>
-            {option.label}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
 
 export function ExamResultsPanel({ examId }: { examId: string }) {
   const { data: results, isLoading } = useResultsList(examId);

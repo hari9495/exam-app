@@ -15,7 +15,6 @@ import {
   Input,
   Card,
   Modal,
-  Select,
   StatusBadge,
   Table,
   useToast,
@@ -23,6 +22,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  FilterableHeader,
   type Column,
 } from '../components/ui';
 import { TYPE_TONE, TYPE_LABEL, DIFFICULTY_LABEL, DIFFICULTY_LEVEL } from '../lib/question-display';
@@ -95,16 +95,14 @@ function SectionQuestionList({ examId, section, locked }: { examId: string; sect
     },
     {
       key: 'type',
-      header: 'Type',
+      header: <FilterableHeader label="Type" value={typeFilter} onChange={setTypeFilter} options={TYPE_OPTIONS} />,
       render: (q) =>
         q.question ? <StatusBadge tone={TYPE_TONE[q.question.type] ?? 'neutral'}>{TYPE_LABEL[q.question.type] ?? q.question.type}</StatusBadge> : '—',
-      sortValue: (q) => (q.question ? TYPE_LABEL[q.question.type] ?? '' : ''),
     },
     {
       key: 'difficulty',
-      header: 'Difficulty',
+      header: <FilterableHeader label="Difficulty" value={difficultyFilter} onChange={setDifficultyFilter} options={DIFFICULTY_OPTIONS} />,
       render: (q) => (q.question ? DIFFICULTY_LABEL[q.question.difficulty] ?? q.question.difficulty : '—'),
-      sortValue: (q) => (q.question ? DIFFICULTY_LEVEL[q.question.difficulty] ?? 0 : 0),
     },
     {
       key: 'marks',
@@ -147,8 +145,6 @@ function SectionQuestionList({ examId, section, locked }: { examId: string; sect
             className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
           />
         </div>
-        <Select label="Type" value={typeFilter} onChange={setTypeFilter} options={TYPE_OPTIONS} />
-        <Select label="Difficulty" value={difficultyFilter} onChange={setDifficultyFilter} options={DIFFICULTY_OPTIONS} />
       </div>
       {visible.length === 0 ? (
         <p className="py-4 text-center text-sm text-recruiter-text-tertiary">No questions match your search.</p>

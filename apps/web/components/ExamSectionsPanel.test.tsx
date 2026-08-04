@@ -292,8 +292,8 @@ describe('ExamSectionsPanel', () => {
     await userEvent.clear(screen.getByLabelText("Search this section's questions"));
     expect(screen.getByText('What is 2+2?')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByLabelText('Type'));
-    await userEvent.click(screen.getByRole('option', { name: 'Code' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Filter by Type' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Code' }));
     expect(screen.queryByText('What is 2+2?')).not.toBeInTheDocument();
     expect(screen.getByText('Reverse a string')).toBeInTheDocument();
   });
