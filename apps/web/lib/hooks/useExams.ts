@@ -50,6 +50,7 @@ interface CreateExamInput {
   availabilityWindowStart?: string;
   availabilityWindowEnd?: string;
   walkInEnabled?: boolean;
+  enableAntiCheating?: boolean;
 }
 
 export function useCreateExam() {

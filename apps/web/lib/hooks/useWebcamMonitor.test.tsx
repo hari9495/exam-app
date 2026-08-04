@@ -224,6 +224,7 @@ describe('useWebcamMonitor', () => {
   it('never touches the camera when the exam has webcam proctoring turned off', async () => {
     function ConfigProbe() {
       useWebcamMonitor(true, undefined, {
+        enableAntiCheating: true,
         webcamEnabled: false,
         enforcement: 'block',
         strikeLimit: 3,

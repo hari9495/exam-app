@@ -291,7 +291,7 @@ export class AttemptService {
         browserActivityViolationCount: settled.browserActivityViolationCount,
         pausedReason: settled.pausedReason as PauseReason | null,
         exam: { title: exam.title, proctoring: resolveProctoringConfig(exam, settled) },
-        screenShareRequired: exam.screenCaptureEnabled && !isProctoringBypassActive(settled),
+        screenShareRequired: exam.enableAntiCheating && exam.screenCaptureEnabled && !isProctoringBypassActive(settled),
         sections,
         answers: answers.map((answer) => ({
           questionId: answer.questionId,
@@ -919,7 +919,7 @@ export class AttemptService {
   // from the welcome page (behind candidate auth) only when the exam actually requires it.
   async getSebConfig(session: CandidateSession): Promise<{ plistXml: string }> {
     const { exam, invitation } = await this.resolveContext(session.invitationId);
-    if (!exam.lockdownRequired) {
+    if (!exam.enableAntiCheating || !exam.lockdownRequired) {
       throw new BadRequestException('This exam does not require Safe Exam Browser');
     }
     return { plistXml: buildSebConfig({ startUrl: this.sebStartUrl(invitation.token) }).plistXml };
@@ -929,8 +929,12 @@ export class AttemptService {
     return `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/start?token=${invitationToken}`;
   }
 
-  private enforceSebLockdown(exam: { lockdownRequired: boolean }, invitationToken: string, seb?: SebRequestContext): void {
-    if (!exam.lockdownRequired) {
+  private enforceSebLockdown(
+    exam: { enableAntiCheating: boolean; lockdownRequired: boolean },
+    invitationToken: string,
+    seb?: SebRequestContext,
+  ): void {
+    if (!exam.enableAntiCheating || !exam.lockdownRequired) {
       return;
     }
     const expected = seb

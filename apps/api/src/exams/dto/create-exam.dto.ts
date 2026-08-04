@@ -67,6 +67,12 @@ export class CreateExamDto {
   @IsIpOrCidr()
   allowedIpRange?: string;
 
+  // Master switch for every anti-cheating measure below. Off forces the rest of them
+  // off too (see ExamsService.resolveProctoringFields) regardless of what's submitted.
+  @IsOptional()
+  @IsBoolean()
+  enableAntiCheating?: boolean;
+
   @IsOptional()
   @IsBoolean()
   webcamProctoringEnabled?: boolean;

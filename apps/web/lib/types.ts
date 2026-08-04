@@ -128,6 +128,7 @@ export interface Exam {
   availabilityWindowEnd: string | null;
   walkInEnabled: boolean;
   allowedIpRange: string | null;
+  enableAntiCheating: boolean;
   webcamProctoringEnabled: boolean;
   proctoringEnforcement: 'warn' | 'block';
   proctoringStrikeLimit: number;
@@ -330,6 +331,7 @@ export interface AttemptSectionSummary {
 }
 
 export interface ExamProctoringConfig {
+  enableAntiCheating: boolean;
   webcamEnabled: boolean;
   enforcement: 'warn' | 'block';
   strikeLimit: number;

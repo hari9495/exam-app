@@ -52,6 +52,7 @@ describe('AttemptService', () => {
   const exam = {
     id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false,
     schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null, feedbackVisibility: 'breakdown',
+    enableAntiCheating: true,
     webcamProctoringEnabled: true,
     proctoringEnforcement: 'block',
     proctoringStrikeLimit: 3,
@@ -165,7 +166,7 @@ describe('AttemptService', () => {
         exam: {
           title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60,
           schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null,
-          proctoring: { webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] },
+          proctoring: { enableAntiCheating: true, webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] },
         },
         schedulingWindowState: null,
         sections: [
@@ -400,7 +401,7 @@ describe('AttemptService', () => {
         candidateName: 'Ada Lovelace',
         status: 'in_progress',
         remainingSeconds: 3300,
-        exam: { title: 'Backend Round', proctoring: { webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] } },
+        exam: { title: 'Backend Round', proctoring: { enableAntiCheating: true, webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] } },
         sections: [
           {
             title: 'Section One', targetDurationMinutes: 20,
@@ -791,6 +792,7 @@ describe('AttemptService', () => {
 
       expect('schedulingWindowState' in result).toBe(true);
       expect((result as { exam: { proctoring: unknown } }).exam.proctoring).toEqual({
+        enableAntiCheating: true,
         webcamEnabled: true,
         enforcement: 'block',
         strikeLimit: 3,
@@ -817,7 +819,7 @@ describe('AttemptService', () => {
 
       expect((result as { exam: { title: string; proctoring: unknown } }).exam).toEqual({
         title: expect.any(String),
-        proctoring: { webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] },
+        proctoring: { enableAntiCheating: true, webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] },
       });
     });
   });
@@ -1224,7 +1226,7 @@ describe('AttemptService', () => {
           schedulingEnabled: true,
           availabilityWindowStart: notYetOpenExam.availabilityWindowStart,
           availabilityWindowEnd: notYetOpenExam.availabilityWindowEnd,
-          proctoring: { webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] },
+          proctoring: { enableAntiCheating: true, webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] },
         },
         schedulingWindowState: 'not_open',
         sections: [],

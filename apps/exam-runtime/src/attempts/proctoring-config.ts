@@ -1,4 +1,5 @@
 export interface ProctoringConfigSource {
+  enableAntiCheating: boolean;
   webcamProctoringEnabled: boolean;
   proctoringEnforcement: string;
   proctoringStrikeLimit: number;
@@ -8,6 +9,7 @@ export interface ProctoringConfigSource {
 }
 
 export interface ExamProctoringConfig {
+  enableAntiCheating: boolean;
   webcamEnabled: boolean;
   enforcement: 'warn' | 'block';
   strikeLimit: number;
@@ -50,7 +52,23 @@ export function resolveProctoringConfig(
   // the candidate. It never widens what is watched -- only what is punished.
   // A revoked bypass enforces again.
   const bypassed = isProctoringBypassActive(attempt);
+  if (!exam.enableAntiCheating) {
+    // Defense in depth: the write path (ExamsService.resolveProctoringFields) already
+    // forces webcam/screen-capture/lockdown off and every signal disabled when this
+    // master switch is off, but a stale or duplicated row must still resolve to
+    // fully-off here too -- same "the row can't lie" guarantee for every reader.
+    return {
+      enableAntiCheating: false,
+      webcamEnabled: false,
+      enforcement: 'warn',
+      strikeLimit: Math.max(1, exam.proctoringStrikeLimit),
+      disabledSignals: parseDisabledSignals(exam.disabledProctoringSignalsJson),
+      screenCaptureEnabled: false,
+      lockdownRequired: false,
+    };
+  }
   return {
+    enableAntiCheating: true,
     webcamEnabled: exam.webcamProctoringEnabled,
     // Anything other than an explicit 'warn' enforces, so a corrupt row fails safe.
     enforcement: (bypassed || exam.proctoringEnforcement === 'warn') ? 'warn' : 'block',
@@ -64,5 +82,5 @@ export function resolveProctoringConfig(
 }
 
 export function isSignalEnabled(config: ExamProctoringConfig, eventType: string): boolean {
-  return !config.disabledSignals.includes(eventType);
+  return config.enableAntiCheating && !config.disabledSignals.includes(eventType);
 }

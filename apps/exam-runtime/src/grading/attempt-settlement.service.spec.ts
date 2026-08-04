@@ -50,6 +50,7 @@ describe('AttemptSettlementService', () => {
     organizationId: 'org-1',
     durationMinutes: 30,
     passCriteriaPercent: 50,
+    enableAntiCheating: true,
     webcamProctoringEnabled: true,
     proctoringEnforcement: 'block',
     proctoringStrikeLimit: 3,
@@ -1159,6 +1160,7 @@ describe('AttemptSettlementService', () => {
       organizationId: 'org-1',
       durationMinutes: 60,
       passCriteriaPercent: 40,
+      enableAntiCheating: true,
       webcamProctoringEnabled: true,
       proctoringEnforcement: 'block',
       proctoringStrikeLimit: 2,
@@ -1417,6 +1419,7 @@ describe('AttemptSettlementService', () => {
     const blockingExam = {
       id: 'exam-1',
       durationMinutes: 60,
+      enableAntiCheating: true,
       webcamProctoringEnabled: true,
       proctoringEnforcement: 'block',
       proctoringStrikeLimit: 2,

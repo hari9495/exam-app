@@ -307,6 +307,10 @@ model Exam {
   availabilityWindowEnd         DateTime?     @map("availability_window_end")
   walkInEnabled                 Boolean       @default(false) @map("walk_in_enabled")
   allowedIpRange                String?       @map("allowed_ip_range")
+  // Master switch for every anti-cheating measure below. Off forces webcam/screen-capture/
+  // lockdown to false and every browser-behavior signal disabled at write time (exams.service's
+  // resolveProctoringFields), so a stale/duplicated row can't leave monitoring silently active.
+  enableAntiCheating            Boolean       @default(true) @map("enable_anti_cheating")
   webcamProctoringEnabled       Boolean       @default(true) @map("webcam_proctoring_enabled")
   proctoringEnforcement         String        @default("block") @map("proctoring_enforcement")
   proctoringStrikeLimit         Int           @default(3) @map("proctoring_strike_limit")

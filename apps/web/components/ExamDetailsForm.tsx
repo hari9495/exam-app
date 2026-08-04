@@ -18,6 +18,7 @@ export interface ExamDetailsValue {
   availabilityWindowEnd?: string;
   walkInEnabled: boolean;
   allowedIpRange?: string | null;
+  enableAntiCheating: boolean;
   webcamProctoringEnabled: boolean;
   proctoringEnforcement: 'warn' | 'block';
   proctoringStrikeLimit: number;
@@ -77,6 +78,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
   const [schedulingError, setSchedulingError] = useState<string | undefined>(undefined);
   const [walkInEnabled, setWalkInEnabled] = useState(initialExam?.walkInEnabled ?? false);
   const [allowedIpRange, setAllowedIpRange] = useState(initialExam?.allowedIpRange ?? '');
+  const [enableAntiCheating, setEnableAntiCheating] = useState(initialExam?.enableAntiCheating ?? true);
   const [webcamProctoringEnabled, setWebcamProctoringEnabled] = useState(initialExam?.webcamProctoringEnabled ?? true);
   const [proctoringEnforcement, setProctoringEnforcement] = useState<'warn' | 'block'>(initialExam?.proctoringEnforcement ?? 'block');
   const [proctoringStrikeLimit, setProctoringStrikeLimit] = useState(String(initialExam?.proctoringStrikeLimit ?? 3));
@@ -89,7 +91,6 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
       return [];
     }
   });
-  const [signalsOpen, setSignalsOpen] = useState(false);
   const [screenCaptureEnabled, setScreenCaptureEnabled] = useState(initialExam?.screenCaptureEnabled ?? false);
   const [lockdownRequired, setLockdownRequired] = useState(initialExam?.lockdownRequired ?? false);
 
@@ -120,6 +121,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
         : initialExam?.allowedIpRange
           ? null
           : undefined,
+      enableAntiCheating,
       webcamProctoringEnabled,
       proctoringEnforcement,
       proctoringStrikeLimit: Number(proctoringStrikeLimit),
@@ -235,81 +237,84 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
 
       <CollapsibleSection title="Proctoring & integrity" locked={locked}>
         <div className="sm:col-span-2">
-          <Checkbox label="Require webcam proctoring" checked={webcamProctoringEnabled} onChange={setWebcamProctoringEnabled} />
+          <Checkbox
+            label="Enable anti-cheating monitoring for this exam"
+            checked={enableAntiCheating}
+            onChange={setEnableAntiCheating}
+          />
         </div>
-        <div className="flex flex-col gap-1.5 sm:col-span-2">
-          <span className="text-sm font-medium text-gray-700">If a rule is broken</span>
-          <RadioGroup value={proctoringEnforcement} onChange={(value) => setProctoringEnforcement(value as 'warn' | 'block')}>
-            <RadioGroupItem value="block" label="Pause the exam, then block after repeated strikes" />
-            <RadioGroupItem value="warn" label="Record only — never pause the exam" />
-          </RadioGroup>
-        </div>
-        {proctoringEnforcement === 'block' && (
-          <div className="sm:col-span-2">
-            <Select
-              label="Block After"
-              value={proctoringStrikeLimit}
-              onChange={setProctoringStrikeLimit}
-              options={[
-                { value: '2', label: '2 strikes' },
-                { value: '3', label: '3 strikes' },
-                { value: '5', label: '5 strikes' },
-              ]}
-            />
-          </div>
-        )}
-        <div className="sm:col-span-2">
-          <button
-            type="button"
-            onClick={() => setSignalsOpen((open) => !open)}
-            className="self-start text-sm font-medium text-primary hover:underline"
-          >
-            {signalsOpen ? 'Hide' : 'Choose'} which activity to watch ({PROCTORING_SIGNAL_LABELS.length - disabledSignals.length}/
-            {PROCTORING_SIGNAL_LABELS.length})
-          </button>
-        </div>
-        {signalsOpen && (
-          <div className="flex flex-col gap-1.5 pl-1 sm:col-span-2">
-            {PROCTORING_SIGNAL_LABELS.map((signal) => (
-              <Checkbox
-                key={signal.value}
-                label={signal.label}
-                checked={!disabledSignals.includes(signal.value)}
-                onChange={(checked) =>
-                  setDisabledSignals((current) =>
-                    checked ? current.filter((entry) => entry !== signal.value) : [...current, signal.value],
-                  )
-                }
+        {/* Everything below is inert once the master switch above is off -- the submit
+            handler still sends whatever these are currently set to, but the backend
+            (ExamsService.resolveProctoringFields) forces them all off in that case
+            regardless, so nothing here can end up silently active while hidden. */}
+        {enableAntiCheating && (
+          <div className="flex flex-col gap-4 border-l-2 border-recruiter-border pl-4 sm:col-span-2">
+            <Checkbox label="Require webcam proctoring" checked={webcamProctoringEnabled} onChange={setWebcamProctoringEnabled} />
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-gray-700">If a rule is broken</span>
+              <RadioGroup value={proctoringEnforcement} onChange={(value) => setProctoringEnforcement(value as 'warn' | 'block')}>
+                <RadioGroupItem value="block" label="Pause the exam, then block after repeated strikes" />
+                <RadioGroupItem value="warn" label="Record only — never pause the exam" />
+              </RadioGroup>
+            </div>
+            {proctoringEnforcement === 'block' && (
+              <Select
+                label="Block After"
+                value={proctoringStrikeLimit}
+                onChange={setProctoringStrikeLimit}
+                options={[
+                  { value: '2', label: '2 strikes' },
+                  { value: '3', label: '3 strikes' },
+                  { value: '5', label: '5 strikes' },
+                ]}
               />
-            ))}
+            )}
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-gray-700">
+                Watch for ({PROCTORING_SIGNAL_LABELS.length - disabledSignals.length}/{PROCTORING_SIGNAL_LABELS.length} selected)
+              </span>
+              {PROCTORING_SIGNAL_LABELS.map((signal) => (
+                <Checkbox
+                  key={signal.value}
+                  label={signal.label}
+                  checked={!disabledSignals.includes(signal.value)}
+                  onChange={(checked) =>
+                    setDisabledSignals((current) =>
+                      checked ? current.filter((entry) => entry !== signal.value) : [...current, signal.value],
+                    )
+                  }
+                />
+              ))}
+            </div>
+            <div>
+              <Checkbox
+                label="Record the candidate's screen as evidence"
+                checked={screenCaptureEnabled}
+                onChange={setScreenCaptureEnabled}
+              />
+              {screenCaptureEnabled ? (
+                <p className="pl-6 pt-1 text-xs text-recruiter-text-secondary">
+                  Candidates must share their whole screen to start, and cannot use a phone or tablet. Their screen is captured
+                  only when a rule is broken.
+                </p>
+              ) : null}
+            </div>
+            <div>
+              <Checkbox
+                label="Require Safe Exam Browser (lockdown)"
+                checked={lockdownRequired}
+                onChange={setLockdownRequired}
+              />
+              {lockdownRequired ? (
+                <p className="pl-6 pt-1 text-xs text-recruiter-text-secondary">
+                  Candidates must install Safe Exam Browser and open the exam inside it. SEB refuses to start while
+                  remote-access tools or other apps are running, closes background applications, and locks the machine to the
+                  exam until submission.
+                </p>
+              ) : null}
+            </div>
           </div>
         )}
-        <div className="sm:col-span-2">
-          <Checkbox
-            label="Record the candidate's screen as evidence"
-            checked={screenCaptureEnabled}
-            onChange={setScreenCaptureEnabled}
-          />
-          {screenCaptureEnabled ? (
-            <p className="pl-6 pt-1 text-xs text-recruiter-text-secondary">
-              Candidates must share their whole screen to start, and cannot use a phone or tablet. Their screen is captured only
-              when a rule is broken.
-            </p>
-          ) : null}
-        </div>
-        <div className="sm:col-span-2">
-          <Checkbox
-            label="Require Safe Exam Browser (lockdown)"
-            checked={lockdownRequired}
-            onChange={setLockdownRequired}
-          />
-          {lockdownRequired ? (
-            <p className="pl-6 pt-1 text-xs text-recruiter-text-secondary">
-              Candidates must install Safe Exam Browser and open the exam inside it. SEB refuses to start while remote-access
-              tools or other apps are running, closes background applications, and locks the machine to the exam until submission.
-            </p>
-          ) : null}
-        </div>
       </CollapsibleSection>
 
       {!locked && (

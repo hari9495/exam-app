@@ -88,7 +88,7 @@ describe('ExamDetailsForm', () => {
       availabilityWindowStart: '2026-07-20T09:00:00.000Z', availabilityWindowEnd: '2026-07-27T18:00:00.000Z',
       walkInEnabled: false, allowedIpRange: null, createdAt: '2026-07-01T00:00:00.000Z', sections: [], invitationCount: 0,
       hasStartedAttempts: false, requiresManualGrading: false,
-      webcamProctoringEnabled: true, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
+      enableAntiCheating: true, webcamProctoringEnabled: true, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
       disabledProctoringSignalsJson: null, screenCaptureEnabled: false, lockdownRequired: false,
     };
     render(<ExamDetailsForm initialExam={scheduledExam} onSubmit={jest.fn()} submitLabel="Save" />);
@@ -168,7 +168,7 @@ describe('ExamDetailsForm', () => {
       availabilityWindowStart: null, availabilityWindowEnd: null, walkInEnabled: false,
       allowedIpRange: '203.0.113.0/24', createdAt: '2026-07-01T00:00:00.000Z', sections: [], invitationCount: 0,
       hasStartedAttempts: false, requiresManualGrading: false,
-      webcamProctoringEnabled: true, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
+      enableAntiCheating: true, webcamProctoringEnabled: true, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
       disabledProctoringSignalsJson: null, screenCaptureEnabled: false, lockdownRequired: false,
     };
     render(<ExamDetailsForm initialExam={examWithIpRange} onSubmit={onSubmit} submitLabel="Save" />);
@@ -180,6 +180,54 @@ describe('ExamDetailsForm', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ allowedIpRange: null }));
+  });
+
+  describe('anti-cheating master switch', () => {
+    it('defaults to on for a new exam, with every dependent control visible', () => {
+      render(<ExamDetailsForm onSubmit={jest.fn()} submitLabel="Create" />);
+
+      expect(screen.getByLabelText('Enable anti-cheating monitoring for this exam')).toBeChecked();
+      expect(screen.getByLabelText('Require webcam proctoring')).toBeInTheDocument();
+      expect(screen.getByText('If a rule is broken')).toBeInTheDocument();
+      expect(screen.getByLabelText('Switching browser tabs')).toBeInTheDocument();
+      expect(screen.getByLabelText("Record the candidate's screen as evidence")).toBeInTheDocument();
+      expect(screen.getByLabelText('Require Safe Exam Browser (lockdown)')).toBeInTheDocument();
+    });
+
+    it('hides every dependent control when the master switch is turned off', async () => {
+      render(<ExamDetailsForm onSubmit={jest.fn()} submitLabel="Create" />);
+
+      await userEvent.click(screen.getByLabelText('Enable anti-cheating monitoring for this exam'));
+
+      expect(screen.queryByLabelText('Require webcam proctoring')).not.toBeInTheDocument();
+      expect(screen.queryByText('If a rule is broken')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Switching browser tabs')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Record the candidate's screen as evidence")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Require Safe Exam Browser (lockdown)')).not.toBeInTheDocument();
+    });
+
+    it('restores the dependent controls, with prior choices intact, when turned back on', async () => {
+      render(<ExamDetailsForm onSubmit={jest.fn()} submitLabel="Create" />);
+
+      await userEvent.click(screen.getByLabelText('Right-click / context menu'));
+      const masterSwitch = screen.getByLabelText('Enable anti-cheating monitoring for this exam');
+      await userEvent.click(masterSwitch);
+      await userEvent.click(masterSwitch);
+
+      expect(screen.getByLabelText('Right-click / context menu')).not.toBeChecked();
+      expect(screen.getByLabelText('Switching browser tabs')).toBeChecked();
+    });
+
+    it('submits enableAntiCheating alongside the rest of the form', async () => {
+      const onSubmit = jest.fn();
+      render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Create" />);
+
+      await userEvent.type(screen.getByLabelText('Title'), 'Screen');
+      await userEvent.click(screen.getByLabelText('Enable anti-cheating monitoring for this exam'));
+      await userEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ enableAntiCheating: false }));
+    });
   });
 
   describe('proctoring settings', () => {
@@ -206,7 +254,6 @@ describe('ExamDetailsForm', () => {
 
       await userEvent.type(screen.getByLabelText('Title'), 'Screen');
       await userEvent.click(screen.getByLabelText('Require webcam proctoring'));
-      await userEvent.click(screen.getByRole('button', { name: /which activity to watch/i }));
       await userEvent.click(screen.getByLabelText('Right-click / context menu'));
       await userEvent.click(screen.getByRole('button', { name: 'Create' }));
 

@@ -2,6 +2,7 @@ import { resolveProctoringConfig, isSignalEnabled } from './proctoring-config';
 
 function source(overrides: Partial<Parameters<typeof resolveProctoringConfig>[0]> = {}) {
   return {
+    enableAntiCheating: true,
     webcamProctoringEnabled: true,
     proctoringEnforcement: 'block',
     proctoringStrikeLimit: 3,
@@ -15,8 +16,25 @@ function source(overrides: Partial<Parameters<typeof resolveProctoringConfig>[0]
 describe('resolveProctoringConfig', () => {
   it("reproduces today's behaviour for an exam left on the schema defaults", () => {
     expect(resolveProctoringConfig(source())).toEqual({
+      enableAntiCheating: true,
       webcamEnabled: true,
       enforcement: 'block',
+      strikeLimit: 3,
+      disabledSignals: [],
+      screenCaptureEnabled: false,
+      lockdownRequired: false,
+    });
+  });
+
+  it('forces every measure off when the master switch is off, regardless of the sub-fields', () => {
+    const config = resolveProctoringConfig(
+      source({ enableAntiCheating: false, webcamProctoringEnabled: true, screenCaptureEnabled: true, lockdownRequired: true }),
+    );
+
+    expect(config).toEqual({
+      enableAntiCheating: false,
+      webcamEnabled: false,
+      enforcement: 'warn',
       strikeLimit: 3,
       disabledSignals: [],
       screenCaptureEnabled: false,
@@ -68,10 +86,18 @@ describe('isSignalEnabled', () => {
     expect(isSignalEnabled(config, 'tab_switch')).toBe(true);
     expect(isSignalEnabled(config, 'dev_tools_detected')).toBe(true);
   });
+
+  it('reports every signal as off when anti-cheating is disabled, even one not in disabledSignals', () => {
+    const offConfig = resolveProctoringConfig(source({ enableAntiCheating: false }));
+
+    expect(isSignalEnabled(offConfig, 'tab_switch')).toBe(false);
+    expect(isSignalEnabled(offConfig, 'right_click')).toBe(false);
+  });
 });
 
 describe('proctoring bypass', () => {
   const blockingExam = {
+    enableAntiCheating: true,
     webcamProctoringEnabled: true,
     proctoringEnforcement: 'block',
     proctoringStrikeLimit: 5,

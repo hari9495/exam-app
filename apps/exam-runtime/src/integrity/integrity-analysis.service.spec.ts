@@ -17,7 +17,8 @@ describe('IntegrityAnalysisService', () => {
       exam: {
         organizationId: 'org-1',
         title: 'Backend Engineer Exam',
-        // Schema defaults (apps/api/prisma/schema.prisma): webcam on, block enforcement, limit 3, no disabled signals.
+        // Schema defaults (apps/api/prisma/schema.prisma): anti-cheating on, webcam on, block enforcement, limit 3, no disabled signals.
+        enableAntiCheating: true,
         webcamProctoringEnabled: true,
         proctoringEnforcement: 'block',
         proctoringStrikeLimit: 3,

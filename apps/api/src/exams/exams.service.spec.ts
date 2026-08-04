@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { ExamsService } from './exams.service';
+import { TOGGLEABLE_PROCTORING_SIGNALS } from './dto/create-exam.dto';
 import { TenantPrismaService, AuditService, BlobStorageService } from '@exam-platform/shared';
 import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
 
@@ -2078,6 +2079,117 @@ describe('ExamsService', () => {
             disabledProctoringSignalsJson: JSON.stringify(['right_click']),
           }),
         }),
+      );
+    });
+  });
+
+  describe('anti-cheating master switch', () => {
+    it('persists enableAntiCheating alongside the individual fields when on', async () => {
+      const tx = { exam: { create: jest.fn().mockResolvedValue({ id: 'exam-1' }) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.create(context, 'user-1', { title: 'Screen', enableAntiCheating: true, webcamProctoringEnabled: true });
+
+      expect(tx.exam.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ enableAntiCheating: true, webcamProctoringEnabled: true }) }),
+      );
+    });
+
+    it('forces webcam, screen capture, and lockdown off on create when the master switch is off, regardless of what else was submitted', async () => {
+      const tx = { exam: { create: jest.fn().mockResolvedValue({ id: 'exam-1' }) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.create(context, 'user-1', {
+        title: 'Screen',
+        enableAntiCheating: false,
+        webcamProctoringEnabled: true,
+        screenCaptureEnabled: true,
+        lockdownRequired: true,
+        disabledProctoringSignals: [],
+      });
+
+      const data = tx.exam.create.mock.calls[0][0].data;
+      expect(data).toMatchObject({
+        enableAntiCheating: false,
+        webcamProctoringEnabled: false,
+        screenCaptureEnabled: false,
+        lockdownRequired: false,
+      });
+      expect(JSON.parse(data.disabledProctoringSignalsJson)).toEqual(TOGGLEABLE_PROCTORING_SIGNALS);
+    });
+
+    it('forces every dependent field off on update too, even ones the caller did not touch this request', async () => {
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'draft', schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null }),
+          update: jest.fn().mockResolvedValue({ id: 'exam-1', schedulingEnabled: false }),
+        },
+        attempt: { count: jest.fn().mockResolvedValue(0) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      // Note: only enableAntiCheating is submitted -- webcamProctoringEnabled etc. are
+      // deliberately omitted, mirroring a UI that hides those fields once the master
+      // switch is off and doesn't resubmit stale values for them.
+      await service.update(context, 'user-1', 'exam-1', { title: 'Screen', enableAntiCheating: false });
+
+      const data = tx.exam.update.mock.calls[0][0].data;
+      expect(data).toMatchObject({
+        enableAntiCheating: false,
+        webcamProctoringEnabled: false,
+        screenCaptureEnabled: false,
+        lockdownRequired: false,
+      });
+    });
+
+    it('leaves the individual proctoring fields to their own conditional updates when the master switch is on or omitted', async () => {
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'draft', schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null }),
+          update: jest.fn().mockResolvedValue({ id: 'exam-1', schedulingEnabled: false }),
+        },
+        attempt: { count: jest.fn().mockResolvedValue(0) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.update(context, 'user-1', 'exam-1', { title: 'Screen', proctoringStrikeLimit: 2 });
+
+      const data = tx.exam.update.mock.calls[0][0].data;
+      expect(data.proctoringStrikeLimit).toBe(2);
+      expect(data).not.toHaveProperty('enableAntiCheating');
+      expect(data).not.toHaveProperty('webcamProctoringEnabled');
+    });
+
+    it('carries enableAntiCheating onto a duplicated exam', async () => {
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1',
+            title: 'Screen',
+            instructions: null,
+            durationMinutes: 45,
+            passCriteriaPercent: 60,
+            randomizeOrder: false,
+            feedbackVisibility: 'score',
+            schedulingEnabled: false,
+            availabilityWindowStart: null,
+            availabilityWindowEnd: null,
+            enableAntiCheating: false,
+            webcamProctoringEnabled: false,
+            proctoringEnforcement: 'warn',
+            proctoringStrikeLimit: 5,
+            disabledProctoringSignalsJson: JSON.stringify(TOGGLEABLE_PROCTORING_SIGNALS),
+            sections: [],
+          }),
+          create: jest.fn().mockResolvedValue({ id: 'exam-2' }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.duplicate(context, 'user-1', 'exam-1');
+
+      expect(tx.exam.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ enableAntiCheating: false }) }),
       );
     });
   });

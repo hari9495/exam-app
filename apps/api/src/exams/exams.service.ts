@@ -5,7 +5,7 @@ import { TenantContext } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
 import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
-import { CreateExamDto } from './dto/create-exam.dto';
+import { CreateExamDto, TOGGLEABLE_PROCTORING_SIGNALS } from './dto/create-exam.dto';
 import { UpdateExamDto } from './dto/update-exam.dto';
 import { CreateExamSectionDto } from './dto/create-exam-section.dto';
 import { UpdateExamSectionDto } from './dto/update-exam-section.dto';
@@ -130,8 +130,52 @@ export class ExamsService {
     return { schedulingEnabled: true, availabilityWindowStart: start, availabilityWindowEnd: end };
   }
 
+  // Mirrors resolveSchedulingFields' write-time-nulling approach: when the master switch is
+  // off, every dependent field is forced off in the row itself (not just left unsubmitted),
+  // so a reader that forgets to check enableAntiCheating still sees a genuinely-off config --
+  // same "the DB row can't lie" guarantee, extended to a five-field group instead of two.
+  private resolveProctoringFields(dto: {
+    enableAntiCheating?: boolean;
+    webcamProctoringEnabled?: boolean;
+    proctoringEnforcement?: string;
+    proctoringStrikeLimit?: number;
+    disabledProctoringSignals?: string[];
+    screenCaptureEnabled?: boolean;
+    lockdownRequired?: boolean;
+  }): {
+    enableAntiCheating?: boolean;
+    webcamProctoringEnabled?: boolean;
+    proctoringEnforcement?: string;
+    proctoringStrikeLimit?: number;
+    disabledProctoringSignalsJson?: string | null;
+    screenCaptureEnabled?: boolean;
+    lockdownRequired?: boolean;
+  } {
+    if (dto.enableAntiCheating === false) {
+      return {
+        enableAntiCheating: false,
+        webcamProctoringEnabled: false,
+        disabledProctoringSignalsJson: JSON.stringify(TOGGLEABLE_PROCTORING_SIGNALS),
+        screenCaptureEnabled: false,
+        lockdownRequired: false,
+      };
+    }
+    return {
+      ...(dto.enableAntiCheating !== undefined ? { enableAntiCheating: dto.enableAntiCheating } : {}),
+      ...(dto.webcamProctoringEnabled !== undefined ? { webcamProctoringEnabled: dto.webcamProctoringEnabled } : {}),
+      ...(dto.proctoringEnforcement !== undefined ? { proctoringEnforcement: dto.proctoringEnforcement } : {}),
+      ...(dto.proctoringStrikeLimit !== undefined ? { proctoringStrikeLimit: dto.proctoringStrikeLimit } : {}),
+      ...(dto.disabledProctoringSignals !== undefined
+        ? { disabledProctoringSignalsJson: dto.disabledProctoringSignals.length > 0 ? JSON.stringify(dto.disabledProctoringSignals) : null }
+        : {}),
+      ...(dto.screenCaptureEnabled !== undefined ? { screenCaptureEnabled: dto.screenCaptureEnabled } : {}),
+      ...(dto.lockdownRequired !== undefined ? { lockdownRequired: dto.lockdownRequired } : {}),
+    };
+  }
+
   async create(context: TenantContext, userId: string, dto: CreateExamDto): Promise<Exam> {
     const scheduling = this.resolveSchedulingFields(dto.schedulingEnabled, dto.availabilityWindowStart, dto.availabilityWindowEnd);
+    const proctoring = this.resolveProctoringFields(dto);
     const exam = await this.tenantPrisma.forTenant(context, (tx) =>
       tx.exam.create({
         data: {
@@ -146,14 +190,7 @@ export class ExamsService {
           availabilityWindowStart: scheduling.availabilityWindowStart,
           availabilityWindowEnd: scheduling.availabilityWindowEnd,
           allowedIpRange: dto.allowedIpRange ?? null,
-          ...(dto.webcamProctoringEnabled !== undefined ? { webcamProctoringEnabled: dto.webcamProctoringEnabled } : {}),
-          ...(dto.proctoringEnforcement !== undefined ? { proctoringEnforcement: dto.proctoringEnforcement } : {}),
-          ...(dto.proctoringStrikeLimit !== undefined ? { proctoringStrikeLimit: dto.proctoringStrikeLimit } : {}),
-          ...(dto.disabledProctoringSignals !== undefined
-            ? { disabledProctoringSignalsJson: dto.disabledProctoringSignals.length > 0 ? JSON.stringify(dto.disabledProctoringSignals) : null }
-            : {}),
-          ...(dto.screenCaptureEnabled !== undefined ? { screenCaptureEnabled: dto.screenCaptureEnabled } : {}),
-          ...(dto.lockdownRequired !== undefined ? { lockdownRequired: dto.lockdownRequired } : {}),
+          ...proctoring,
           createdBy: userId,
         },
       }),
@@ -332,6 +369,7 @@ export class ExamsService {
       const availabilityWindowEndInput =
         dto.availabilityWindowEnd !== undefined ? dto.availabilityWindowEnd : (existing.availabilityWindowEnd?.toISOString() ?? undefined);
       const scheduling = this.resolveSchedulingFields(schedulingEnabledInput, availabilityWindowStartInput, availabilityWindowEndInput);
+      const proctoring = this.resolveProctoringFields(dto);
 
       const updated = await tx.exam.update({
         where: { id },
@@ -344,14 +382,7 @@ export class ExamsService {
           ...(dto.feedbackVisibility !== undefined ? { feedbackVisibility: dto.feedbackVisibility } : {}),
           ...(dto.walkInEnabled !== undefined ? { walkInEnabled: dto.walkInEnabled } : {}),
           ...(dto.allowedIpRange !== undefined ? { allowedIpRange: dto.allowedIpRange || null } : {}),
-          ...(dto.webcamProctoringEnabled !== undefined ? { webcamProctoringEnabled: dto.webcamProctoringEnabled } : {}),
-          ...(dto.proctoringEnforcement !== undefined ? { proctoringEnforcement: dto.proctoringEnforcement } : {}),
-          ...(dto.proctoringStrikeLimit !== undefined ? { proctoringStrikeLimit: dto.proctoringStrikeLimit } : {}),
-          ...(dto.disabledProctoringSignals !== undefined
-            ? { disabledProctoringSignalsJson: dto.disabledProctoringSignals.length > 0 ? JSON.stringify(dto.disabledProctoringSignals) : null }
-            : {}),
-          ...(dto.screenCaptureEnabled !== undefined ? { screenCaptureEnabled: dto.screenCaptureEnabled } : {}),
-          ...(dto.lockdownRequired !== undefined ? { lockdownRequired: dto.lockdownRequired } : {}),
+          ...proctoring,
           schedulingEnabled: scheduling.schedulingEnabled,
           availabilityWindowStart: scheduling.availabilityWindowStart,
           availabilityWindowEnd: scheduling.availabilityWindowEnd,
@@ -509,6 +540,7 @@ export class ExamsService {
           passCriteriaPercent: exam.passCriteriaPercent,
           randomizeOrder: exam.randomizeOrder,
           feedbackVisibility: exam.feedbackVisibility,
+          enableAntiCheating: exam.enableAntiCheating,
           webcamProctoringEnabled: exam.webcamProctoringEnabled,
           proctoringEnforcement: exam.proctoringEnforcement,
           proctoringStrikeLimit: exam.proctoringStrikeLimit,

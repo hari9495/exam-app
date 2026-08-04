@@ -25,7 +25,7 @@ const mockExam: Exam = {
   id: 'exam-1', title: 'Backend Round', instructions: null, status: 'published', durationMinutes: 60,
   passCriteriaPercent: 40, randomizeOrder: false, feedbackVisibility: 'none', schedulingEnabled: false,
   availabilityWindowStart: null, availabilityWindowEnd: null, walkInEnabled: false, allowedIpRange: null,
-  webcamProctoringEnabled: false, proctoringEnforcement: 'block', proctoringStrikeLimit: 3,
+  enableAntiCheating: true, webcamProctoringEnabled: false, proctoringEnforcement: 'block', proctoringStrikeLimit: 3,
   disabledProctoringSignalsJson: null, screenCaptureEnabled: false, lockdownRequired: false, createdAt: '2026-07-25T09:00:00.000Z', sections: [],
   invitationCount: 1, hasStartedAttempts: true, requiresManualGrading: false,
 };

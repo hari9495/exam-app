@@ -26,6 +26,7 @@ export interface SettlementExam {
   organizationId: string;
   durationMinutes: number;
   passCriteriaPercent: number;
+  enableAntiCheating: boolean;
   webcamProctoringEnabled: boolean;
   proctoringEnforcement: string;
   proctoringStrikeLimit: number;
