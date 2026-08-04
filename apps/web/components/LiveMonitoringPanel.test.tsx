@@ -52,7 +52,8 @@ describe('LiveMonitoringPanel', () => {
     jest.useRealTimers();
   });
 
-  it('renders stat tiles computed from the roster and alert feed', () => {
+  it('renders stat tiles computed from the whole roster, regardless of the Live/Offline sub-tab', async () => {
+    const user = userEvent.setup({ delay: null });
     renderPanel({
       roster: [
         { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'in_progress', online: true, remainingSeconds: 120, answeredCount: 2, totalQuestions: 5, proctoringBypassed: false },
@@ -66,13 +67,16 @@ describe('LiveMonitoringPanel', () => {
 
     expect(screen.getByText('Online now')).toBeInTheDocument();
     // The four stat tiles (online, in-progress, submitted, recent alerts) plus the
-    // per-row integrity alert chip for a1 (one medium alert) all compute to 1.
+    // per-row integrity alert chip for a1 (one medium alert), Alice being the only
+    // row visible on the default Live sub-tab, all compute to 1.
     expect(screen.getAllByText('1', { exact: true })).toHaveLength(5);
     expect(screen.getByText('In progress')).toBeInTheDocument();
-    // "Submitted" now appears twice: the stat tile label, and Bob's status badge
-    // (the badge used to read the raw lowercase 'submitted', which didn't collide).
-    expect(screen.getAllByText('Submitted')).toHaveLength(2);
     expect(screen.getByText('Alerts (last 5 min)')).toBeInTheDocument();
+
+    // Bob (submitted) is Offline, not Live -- his status badge only shows up once the
+    // recruiter switches tabs, confirming the stat tile isn't what's gating his row.
+    await user.click(screen.getByRole('tab', { name: /Offline/ }));
+    expect(screen.getAllByText('Submitted')).toHaveLength(2);
   });
 
   it('shows a per-row integrity alert chip counting medium/high severity alerts for that attemptId', () => {
@@ -107,15 +111,28 @@ describe('LiveMonitoringPanel', () => {
   it('orders the roster by urgency by default -- blocked first, a normal submission last', () => {
     renderPanel({
       roster: [
-        { candidateId: 'c1', candidateName: 'Sam Submitted', invitationId: 'i1', attemptId: 'a1', status: 'submitted', online: false, remainingSeconds: null, answeredCount: 5, totalQuestions: 5, proctoringBypassed: false },
-        { candidateId: 'c2', candidateName: 'Ivy Invited', invitationId: 'i2', attemptId: null, status: 'invited', online: false, remainingSeconds: null, answeredCount: null, totalQuestions: null, proctoringBypassed: false },
         { candidateId: 'c3', candidateName: 'Bex Blocked', invitationId: 'i3', attemptId: 'a3', status: 'blocked', online: true, remainingSeconds: 60, answeredCount: 1, totalQuestions: 5, proctoringBypassed: false },
         { candidateId: 'c4', candidateName: 'Pat Paused', invitationId: 'i4', attemptId: 'a4', status: 'paused', online: false, remainingSeconds: 90, answeredCount: 2, totalQuestions: 5, proctoringBypassed: false },
       ],
     });
 
-    const names = screen.getAllByRole('cell', { name: /^(Sam Submitted|Ivy Invited|Bex Blocked|Pat Paused)$/ }).map((cell) => cell.textContent);
-    expect(names).toEqual(['Bex Blocked', 'Pat Paused', 'Ivy Invited', 'Sam Submitted']);
+    const names = screen.getAllByRole('cell', { name: /^(Bex Blocked|Pat Paused)$/ }).map((cell) => cell.textContent);
+    expect(names).toEqual(['Bex Blocked', 'Pat Paused']);
+  });
+
+  it('orders the Offline roster by urgency too -- an invited candidate before a settled submission', async () => {
+    const user = userEvent.setup({ delay: null });
+    renderPanel({
+      roster: [
+        { candidateId: 'c1', candidateName: 'Sam Submitted', invitationId: 'i1', attemptId: 'a1', status: 'submitted', online: false, remainingSeconds: null, answeredCount: 5, totalQuestions: 5, proctoringBypassed: false },
+        { candidateId: 'c2', candidateName: 'Ivy Invited', invitationId: 'i2', attemptId: null, status: 'invited', online: false, remainingSeconds: null, answeredCount: null, totalQuestions: null, proctoringBypassed: false },
+      ],
+    });
+
+    await user.click(screen.getByRole('tab', { name: /Offline/ }));
+
+    const names = screen.getAllByRole('cell', { name: /^(Sam Submitted|Ivy Invited)$/ }).map((cell) => cell.textContent);
+    expect(names).toEqual(['Ivy Invited', 'Sam Submitted']);
   });
 
   // Regression for ADO #6841: a re-invited candidate can have two invitation rows sharing one
@@ -126,8 +143,8 @@ describe('LiveMonitoringPanel', () => {
     renderPanel({
       roster: [
         { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'in_progress', online: true, remainingSeconds: 60, answeredCount: 1, totalQuestions: 5, proctoringBypassed: false },
-        { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i2', attemptId: null, status: 'invited', online: false, remainingSeconds: null, answeredCount: null, totalQuestions: null, proctoringBypassed: false },
-        { candidateId: 'c2', candidateName: 'Bob', invitationId: 'i3', attemptId: 'a3', status: 'submitted', online: false, remainingSeconds: null, answeredCount: 5, totalQuestions: 5, proctoringBypassed: false },
+        { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i2', attemptId: 'a2', status: 'blocked', online: true, remainingSeconds: null, answeredCount: null, totalQuestions: null, proctoringBypassed: false },
+        { candidateId: 'c2', candidateName: 'Bob', invitationId: 'i3', attemptId: 'a3', status: 'paused', online: true, remainingSeconds: 5, answeredCount: 1, totalQuestions: 5, proctoringBypassed: false },
       ],
     });
 
@@ -191,6 +208,52 @@ describe('LiveMonitoringPanel', () => {
 
     expect(screen.queryByText('Alice Smith')).not.toBeInTheDocument();
     expect(screen.getByText('Bob Jones')).toBeInTheDocument();
+  });
+
+  describe('Live / Offline sub-tabs', () => {
+    const roster: RosterRow[] = [
+      { candidateId: 'c1', candidateName: 'Online Now', invitationId: 'i1', attemptId: 'a1', status: 'in_progress', online: true, remainingSeconds: 60, answeredCount: 1, totalQuestions: 5, proctoringBypassed: false },
+      { candidateId: 'c2', candidateName: 'Blocked Now', invitationId: 'i2', attemptId: 'a2', status: 'blocked', online: false, remainingSeconds: null, answeredCount: 1, totalQuestions: 5, proctoringBypassed: false },
+      { candidateId: 'c3', candidateName: 'Never Started', invitationId: 'i3', attemptId: null, status: 'invited', online: false, remainingSeconds: null, answeredCount: null, totalQuestions: null, proctoringBypassed: false },
+      { candidateId: 'c4', candidateName: 'All Done', invitationId: 'i4', attemptId: 'a4', status: 'submitted', online: false, remainingSeconds: null, answeredCount: 5, totalQuestions: 5, proctoringBypassed: false },
+    ];
+
+    it('defaults to the Live tab, showing only online/in-progress/paused/blocked candidates', () => {
+      renderPanelWithRoster(roster);
+
+      expect(screen.getByText('Online Now')).toBeInTheDocument();
+      expect(screen.getByText('Blocked Now')).toBeInTheDocument();
+      expect(screen.queryByText('Never Started')).not.toBeInTheDocument();
+      expect(screen.queryByText('All Done')).not.toBeInTheDocument();
+    });
+
+    it('shows everyone else on the Offline tab: not yet started or already settled', async () => {
+      const user = userEvent.setup({ delay: null });
+      renderPanelWithRoster(roster);
+
+      await user.click(screen.getByRole('tab', { name: /Offline/ }));
+
+      expect(screen.getByText('Never Started')).toBeInTheDocument();
+      expect(screen.getByText('All Done')).toBeInTheDocument();
+      expect(screen.queryByText('Online Now')).not.toBeInTheDocument();
+      expect(screen.queryByText('Blocked Now')).not.toBeInTheDocument();
+    });
+
+    it('labels each tab with a live count of how many candidates are in it', () => {
+      renderPanelWithRoster(roster);
+
+      expect(screen.getByRole('tab', { name: 'Live (2)' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Offline (2)' })).toBeInTheDocument();
+    });
+
+    it('counts a candidate marked online but already settled as Live, since "online" always wins', () => {
+      renderPanelWithRoster([
+        { candidateId: 'c1', candidateName: 'Lingering Tab', invitationId: 'i1', attemptId: 'a1', status: 'submitted', online: true, remainingSeconds: null, answeredCount: 5, totalQuestions: 5, proctoringBypassed: false },
+      ]);
+
+      expect(screen.getByText('Lingering Tab')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Live (1)' })).toBeInTheDocument();
+    });
   });
 
   it('shows an empty state when no proctoring alerts have arrived', () => {
@@ -539,6 +602,7 @@ describe('LiveMonitoringPanel', () => {
     });
 
     it('offers neither action on a settled attempt, which the server would reject with a 400', async () => {
+      const user = userEvent.setup({ delay: null });
       renderPanelWithRoster([
         { candidateId: 'c1', candidateName: 'Ann', invitationId: 'i1', attemptId: 'a1', status: 'submitted',
           online: false, remainingSeconds: null, answeredCount: 5, totalQuestions: 5, proctoringBypassed: false },
@@ -547,6 +611,9 @@ describe('LiveMonitoringPanel', () => {
         { candidateId: 'c3', candidateName: 'Cat', invitationId: 'i3', attemptId: 'a3', status: 'force_submitted',
           online: false, remainingSeconds: null, answeredCount: 5, totalQuestions: 5, proctoringBypassed: false },
       ]);
+
+      // All three are settled (Offline), not Live.
+      await user.click(screen.getByRole('tab', { name: /Offline/ }));
 
       expect(await screen.findByText('Ann')).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Relax proctoring' })).not.toBeInTheDocument();

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ShieldAlert, ShieldCheck, AlertTriangle, AlertCircle, Info, Search, Users, Activity, CheckCircle2, BellRing } from 'lucide-react';
 import { useUnblockAttempt, useBypassProctoring, useRevokeProctoringBypass } from '../lib/hooks/useAttemptModeration';
 import { useProctoringEvents } from '../lib/hooks/useProctoringEvents';
-import { Table, Badge, Button, Card, Modal, useToast, useColumnVisibility, FilterableHeader, type Column } from './ui';
+import { Table, Badge, Button, Card, Modal, Tabs, TabsList, TabsTrigger, useToast, useColumnVisibility, FilterableHeader, type Column } from './ui';
 import { RosterRow, ProctoringFlag, ConnectionStatus } from '../lib/types';
 
 const STATUS_VARIANT: Record<string, 'default' | 'success' | 'warning' | 'danger'> = {
@@ -61,6 +61,14 @@ const SIDEBAR_ALERT_LIMIT = 50;
 // offering the buttons on a settled attempt turns a deliberate 400 into what reads as
 // a transient "please try again" glitch.
 const BYPASSABLE_STATUSES = ['in_progress', 'paused', 'blocked'];
+
+// "Live" = actually online right now, or in a state that needs the recruiter watching
+// it live (an active attempt, or one paused/blocked mid-exam). Everything else --
+// not yet started, or already settled one way or another -- is "Offline": still
+// useful to look up, but not something that needs live attention.
+function isLiveRow(row: RosterRow): boolean {
+  return row.online || row.status === 'in_progress' || row.status === 'paused' || row.status === 'blocked';
+}
 
 function formatRemaining(seconds: number | null): string {
   if (seconds === null) {
@@ -235,21 +243,27 @@ export function LiveMonitoringPanel({
   const [bypassReason, setBypassReason] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [subTab, setSubTab] = useState<'live' | 'offline'>('live');
   const previousStatusRef = useRef<ConnectionStatus>(connectionStatus);
 
-  // Searched, filtered, then sorted by urgency (see STATUS_PRIORITY) so the roster
-  // always opens with whoever needs the recruiter's attention first, not insertion order.
+  const liveCount = useMemo(() => roster.filter(isLiveRow).length, [roster]);
+  const offlineCount = roster.length - liveCount;
+
+  // Sub-tab first, then searched and filtered, then sorted by urgency (see
+  // STATUS_PRIORITY) so the roster always opens with whoever needs the recruiter's
+  // attention first, not insertion order.
   const visibleRoster = useMemo(() => {
     const query = search.trim().toLowerCase();
     const filtered = roster.filter(
       (row) =>
+        isLiveRow(row) === (subTab === 'live') &&
         (statusFilter === 'all' || row.status === statusFilter) &&
         (!query || row.candidateName.toLowerCase().includes(query)),
     );
     return [...filtered].sort(
       (a, b) => (STATUS_PRIORITY[a.status] ?? DEFAULT_STATUS_PRIORITY) - (STATUS_PRIORITY[b.status] ?? DEFAULT_STATUS_PRIORITY),
     );
-  }, [roster, statusFilter, search]);
+  }, [roster, statusFilter, search, subTab]);
 
   function handleConfirmBypass() {
     if (!bypassAttemptId || !bypassReason.trim()) return;
@@ -443,7 +457,13 @@ export function LiveMonitoringPanel({
       ) : (
         <div className="grid grid-cols-3 gap-4">
           <div className="col-span-2">
-            <div className="mb-2 flex items-end gap-2">
+            <Tabs value={subTab} onValueChange={(value) => setSubTab(value as 'live' | 'offline')}>
+              <TabsList>
+                <TabsTrigger value="live">Live ({liveCount})</TabsTrigger>
+                <TabsTrigger value="offline">Offline ({offlineCount})</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <div className="mb-2 mt-3 flex items-end gap-2">
               <div className="relative max-w-xs flex-1">
                 <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-recruiter-text-tertiary" />
                 <input
@@ -465,7 +485,13 @@ export function LiveMonitoringPanel({
               // reordering mis-assign/duplicate DOM nodes (ADO #6841).
               rowKey={(row) => row.invitationId}
               emptyMessage={
-                statusFilter === 'all' && !search.trim() ? 'No candidates invited yet.' : 'No candidates match your search or filter.'
+                roster.length === 0
+                  ? 'No candidates invited yet.'
+                  : statusFilter === 'all' && !search.trim()
+                    ? subTab === 'live'
+                      ? 'No candidates online or in progress right now.'
+                      : 'No offline candidates yet.'
+                    : 'No candidates match your search or filter.'
               }
             />
           </div>
