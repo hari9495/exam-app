@@ -223,21 +223,21 @@ export default function CandidatesPage() {
 
   return (
     <div>
-      <div className="mb-4.5 flex items-center justify-between">
+      <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-recruiter-text">Candidates</h1>
-        <Link href="/candidates/bulk-upload-invite">
-          <Button variant="secondary">Upload &amp; invite</Button>
-        </Link>
-      </div>
-      <div className="mb-6">
-        <CandidateInviteForm
-          onSubmit={(input) =>
-            createCandidate.mutate(input, {
-              onSuccess: () => toast('Candidate added.'),
-              onError: (error) => toast(error instanceof Error ? error.message : 'Failed to add candidate.', 'error'),
-            })
-          }
-        />
+        <div className="flex items-center gap-2">
+          <CandidateInviteForm
+            onSubmit={(input) =>
+              createCandidate.mutate(input, {
+                onSuccess: () => toast('Candidate added.'),
+                onError: (error) => toast(error instanceof Error ? error.message : 'Failed to add candidate.', 'error'),
+              })
+            }
+          />
+          <Link href="/candidates/bulk-upload-invite">
+            <Button variant="secondary">Upload &amp; invite</Button>
+          </Link>
+        </div>
       </div>
       <div className="mb-3 flex items-end gap-2">
         <div className="relative max-w-xs flex-1">
