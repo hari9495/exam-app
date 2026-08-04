@@ -7,6 +7,7 @@ import {
   useRegenerateAttemptInsight,
   useResultsList,
 } from '../../../../../../lib/hooks/usePanelReports';
+import { useSystemEvents } from '../../../../../../lib/hooks/useSystemEvents';
 import { ToastProvider } from '../../../../../../components/ui';
 import PanelCandidateDetailPage from './page';
 
@@ -17,6 +18,7 @@ jest.mock('../../../../../../lib/hooks/usePanelReports', () => ({
   useRegenerateAttemptInsight: jest.fn(),
   useResultsList: jest.fn(),
 }));
+jest.mock('../../../../../../lib/hooks/useSystemEvents', () => ({ useSystemEvents: jest.fn() }));
 
 const candidateDetail = {
   candidateId: 'c1',
@@ -73,6 +75,28 @@ describe('PanelCandidateDetailPage', () => {
     (useCandidateReport as jest.Mock).mockReturnValue({ data: candidateDetail, isLoading: false });
     (useRegenerateAttemptInsight as jest.Mock).mockReturnValue({ mutateAsync, isPending: false });
     (useResultsList as jest.Mock).mockReturnValue({ data: [], isLoading: false });
+    (useSystemEvents as jest.Mock).mockReturnValue({ data: undefined, isLoading: false });
+  });
+
+  it('shows technical issues recorded for the attempt, and hides the section when there are none', () => {
+    (useAttemptInsight as jest.Mock).mockReturnValue({ data: null, isLoading: false });
+    (useSystemEvents as jest.Mock).mockReturnValue({
+      data: {
+        data: [
+          { id: 'evt-1', service: 'candidate-browser', severity: 'warn', message: 'answer_save_failed: network error', context: null, occurredAt: '2026-08-03T09:42:00.000Z', organizationId: 'org-1' },
+        ],
+        total: 1,
+      },
+      isLoading: false,
+    });
+    renderPage();
+
+    expect(screen.getByText('Technical issues during exam')).toBeInTheDocument();
+    expect(screen.getByText('answer_save_failed: network error')).toBeInTheDocument();
+
+    (useSystemEvents as jest.Mock).mockReturnValue({ data: { data: [], total: 0 }, isLoading: false });
+    renderPage();
+    expect(screen.getAllByText('Technical issues during exam')).toHaveLength(1);
   });
 
   it('renders the candidate score, pass/fail, and per-question breakdown', () => {

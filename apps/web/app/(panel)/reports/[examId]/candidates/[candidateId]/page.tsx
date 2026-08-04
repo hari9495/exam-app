@@ -11,6 +11,7 @@ import {
   useRegenerateAttemptInsight,
   useResultsList,
 } from '../../../../../../lib/hooks/usePanelReports';
+import { useSystemEvents } from '../../../../../../lib/hooks/useSystemEvents';
 import type { WebcamTimelineEntry } from '../../../../../../lib/types';
 import { Badge, Button, Card, Modal, StatusBadge, IntegrityBadge, useToast, type StatusTone } from '../../../../../../components/ui';
 import { BackLink } from '../../../../../../components/BackLink';
@@ -36,6 +37,11 @@ export default function PanelCandidateDetailPage() {
   const { data: insight, isLoading: insightLoading } = useAttemptInsight(attemptId);
   const { data: results } = useResultsList(examId);
   const regenerate = useRegenerateAttemptInsight();
+  // Technical issues recorded for this attempt (failed saves, JS crashes, webcam loss).
+  // Viewers without audit:view get a 403 -- the hook doesn't retry and the section below
+  // silently stays hidden, so panel members see no error for a report they can't access.
+  const systemEventsQuery = useSystemEvents({ attemptId: attemptId ?? undefined }, { enabled: Boolean(attemptId) });
+  const technicalIssues = systemEventsQuery.data?.data ?? [];
   const { toast } = useToast();
   const [selectedSnapshot, setSelectedSnapshot] = useState<WebcamTimelineEntry | null>(null);
   const [selectedScreenshot, setSelectedScreenshot] = useState<string | null>(null);
@@ -127,6 +133,20 @@ export default function PanelCandidateDetailPage() {
           </p>
         </Card>
       </motion.div>
+
+      {technicalIssues.length > 0 && (
+        <div className="mb-6">
+          <h2 className="mb-2 text-lg font-medium">Technical issues during exam</h2>
+          <ul className="flex flex-col gap-1.5">
+            {technicalIssues.map((event) => (
+              <li key={event.id} className="flex items-baseline gap-2 rounded border border-gray-200 p-2.5 text-sm">
+                <span className="whitespace-nowrap text-xs text-gray-500">{new Date(event.occurredAt).toLocaleString()}</span>
+                <span className="text-gray-800">{event.message}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="mb-6">
         <h2 className="mb-2 text-lg font-medium">Webcam timeline</h2>
