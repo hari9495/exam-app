@@ -11,7 +11,7 @@ import {
   useGenerateWebhookSecret,
   useWebhookDeliveries,
 } from '../../../../lib/hooks/useIntegrations';
-import { Input, Button, Card, Table, StatusBadge, Select, RequiredFieldsNote, type SelectOption, type Column, type StatusTone, useToast } from '../../../../components/ui';
+import { Input, Button, CollapsibleSection, Table, StatusBadge, Select, RequiredFieldsNote, type SelectOption, type Column, type StatusTone, useToast } from '../../../../components/ui';
 import { WebhookDeliveryRow } from '../../../../lib/types';
 
 function deliveryTone(status: string): StatusTone {
@@ -152,81 +152,86 @@ export default function IntegrationsSettingsPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
       <h1 className="text-center text-2xl font-semibold text-recruiter-text">Integrations</h1>
       <RequiredFieldsNote />
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0, ease: 'easeOut' }}>
-        <Card className="w-full">
-          <h2 className="mb-1 text-lg font-semibold text-recruiter-text">Email (SMTP)</h2>
-          <p className="mb-4 text-sm text-recruiter-text-secondary">
+        <CollapsibleSection title="Email (SMTP)">
+          <p className="text-sm text-recruiter-text-secondary sm:col-span-2">
             {integrations?.smtpConfigured
               ? `Configured — ${integrations.smtpHost}:${integrations.smtpPort}${integrations.emailFromAddress ? `, from ${integrations.emailFromAddress}` : ''}`
               : 'Not configured — invites and password resets currently use the platform default.'}
           </p>
-          <form onSubmit={handleSmtpSubmit} className="flex flex-col gap-3">
+          <form onSubmit={handleSmtpSubmit} className="contents">
             <Input label="SMTP Host" value={smtpHost} onChange={setSmtpHost} required />
             <Input label="SMTP Port" type="number" value={smtpPort} onChange={setSmtpPort} required />
             <Input label="SMTP Username" value={smtpUser} onChange={setSmtpUser} required />
             <Input label="SMTP Password" type="password" value={smtpPassword} onChange={setSmtpPassword} required />
-            <Input label="From Address (Optional)" type="email" value={fromAddress} onChange={setFromAddress} />
-            <Button type="submit" loading={updateSmtp.isPending}>
-              {integrations?.smtpConfigured ? 'Replace SMTP settings' : 'Save SMTP settings'}
-            </Button>
+            <div className="sm:col-span-2">
+              <Input label="From Address (Optional)" type="email" value={fromAddress} onChange={setFromAddress} />
+            </div>
+            <div className="sm:col-span-2">
+              <Button type="submit" loading={updateSmtp.isPending}>
+                {integrations?.smtpConfigured ? 'Replace SMTP settings' : 'Save SMTP settings'}
+              </Button>
+            </div>
           </form>
           {smtpError && (
-            <p role="alert" className="mt-3 text-sm text-status-danger">
+            <p role="alert" className="text-sm text-status-danger sm:col-span-2">
               {smtpError}
             </p>
           )}
-        </Card>
+        </CollapsibleSection>
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.05, ease: 'easeOut' }}>
-        <Card className="w-full">
-          <h2 className="mb-1 text-lg font-semibold text-recruiter-text">AI API key</h2>
-          <p className="mb-4 text-sm text-recruiter-text-secondary">
+        <CollapsibleSection title="AI API key">
+          <p className="text-sm text-recruiter-text-secondary sm:col-span-2">
             {integrations?.aiKeyConfigured
               ? `Configured — AI features use this organization's ${integrations.aiProvider === 'openai-compatible' ? 'Azure OpenAI / OpenAI-compatible' : 'Anthropic'} endpoint.`
               : 'Not configured — AI features currently use the platform default key.'}
           </p>
-          <form onSubmit={handleAiKeySubmit} className="flex flex-col gap-3">
+          <form onSubmit={handleAiKeySubmit} className="contents">
             <Select label="AI Provider" value={aiProvider} onChange={(value) => setAiProvider(value as 'anthropic' | 'openai-compatible')} options={AI_PROVIDER_OPTIONS} required />
             <Input label="AI API Key" type="password" value={aiApiKey} onChange={setAiApiKey} required />
             {aiProvider === 'openai-compatible' && (
               <>
-                <Input label="Base URL" value={aiBaseUrl} onChange={setAiBaseUrl} required placeholder="https://your-resource.openai.azure.com/openai/v1" />
+                <div className="sm:col-span-2">
+                  <Input label="Base URL" value={aiBaseUrl} onChange={setAiBaseUrl} required placeholder="https://your-resource.openai.azure.com/openai/v1" />
+                </div>
                 <Input label="Fast-tier Model/deployment Name" value={aiModelFast} onChange={setAiModelFast} required />
                 <Input label="Standard-tier Model/deployment Name" value={aiModelStandard} onChange={setAiModelStandard} required />
               </>
             )}
-            <Button type="submit" loading={updateAiKey.isPending}>
-              {integrations?.aiKeyConfigured ? 'Replace AI API key' : 'Save AI API key'}
-            </Button>
+            <div className="sm:col-span-2">
+              <Button type="submit" loading={updateAiKey.isPending}>
+                {integrations?.aiKeyConfigured ? 'Replace AI API key' : 'Save AI API key'}
+              </Button>
+            </div>
           </form>
           {aiKeyError && (
-            <p role="alert" className="mt-3 text-sm text-status-danger">
+            <p role="alert" className="text-sm text-status-danger sm:col-span-2">
               {aiKeyError}
             </p>
           )}
-        </Card>
+        </CollapsibleSection>
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.1, ease: 'easeOut' }}>
-        <Card className="w-full">
-          <h2 className="mb-1 text-lg font-semibold text-recruiter-text">Public API</h2>
-          <p className="mb-4 text-sm text-recruiter-text-secondary">
+        <CollapsibleSection title="Public API">
+          <p className="text-sm text-recruiter-text-secondary sm:col-span-2">
             {integrations?.apiKeyConfigured
               ? `Active key: ${integrations.apiKeyPrefix}… (created ${new Date(integrations.apiKeyCreatedAt as string).toLocaleDateString()})`
               : 'No API key generated'}
           </p>
           {revealedApiKey && (
-            <div className="mb-4 rounded-md bg-status-warning-bg p-3">
+            <div className="rounded-md bg-status-warning-bg p-3 sm:col-span-2">
               <p className="mb-1 break-all font-mono text-sm text-status-warning">{revealedApiKey}</p>
               <p className="text-xs text-status-warning">Copy this now &mdash; it won&apos;t be shown again.</p>
             </div>
           )}
-          <div className="flex gap-2">
+          <div className="flex gap-2 sm:col-span-2">
             <Button loading={generateApiKey.isPending} onClick={handleGenerateApiKey}>
               {integrations?.apiKeyConfigured ? 'Regenerate' : 'Generate'}
             </Button>
@@ -237,57 +242,56 @@ export default function IntegrationsSettingsPage() {
             )}
           </div>
           {apiKeyError && (
-            <p role="alert" className="mt-3 text-sm text-status-danger">
+            <p role="alert" className="text-sm text-status-danger sm:col-span-2">
               {apiKeyError}
             </p>
           )}
-        </Card>
+        </CollapsibleSection>
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.15, ease: 'easeOut' }}>
-        <Card className="w-full">
-          <h2 className="mb-1 text-lg font-semibold text-recruiter-text">Webhooks</h2>
-          <div className="flex flex-col gap-3">
-            <Input
-              label="Webhook URL"
-              value={webhookUrlInput}
-              onChange={setWebhookUrlInput}
-              placeholder="https://your-ats.example.com/webhooks/exam-platform"
-              required
-            />
-            <Button
-              loading={updateWebhookUrl.isPending}
-              onClick={handleSaveWebhookUrl}
-              disabled={!webhookUrlInput.trim()}
-              className="self-start"
-            >
-              Save URL
-            </Button>
-          </div>
+        <CollapsibleSection title="Webhooks">
+          <Input
+            label="Webhook URL"
+            value={webhookUrlInput}
+            onChange={setWebhookUrlInput}
+            placeholder="https://your-ats.example.com/webhooks/exam-platform"
+            required
+          />
+          <Button
+            loading={updateWebhookUrl.isPending}
+            onClick={handleSaveWebhookUrl}
+            disabled={!webhookUrlInput.trim()}
+            className="self-end"
+          >
+            Save URL
+          </Button>
 
           {revealedWebhookSecret && (
-            <div className="mt-4 rounded-md bg-status-warning-bg p-3">
+            <div className="rounded-md bg-status-warning-bg p-3 sm:col-span-2">
               <p className="mb-1 break-all font-mono text-sm text-status-warning">{revealedWebhookSecret}</p>
               <p className="text-xs text-status-warning">Copy this now &mdash; it won&apos;t be shown again.</p>
             </div>
           )}
           <Button
-            className="mt-3"
             variant="secondary"
             loading={generateWebhookSecret.isPending}
             onClick={handleGenerateWebhookSecret}
+            className="sm:col-span-2 self-start"
           >
             {integrations?.webhookConfigured ? 'Regenerate signing secret' : 'Generate signing secret'}
           </Button>
           {webhookError && (
-            <p role="alert" className="mt-3 text-sm text-status-danger">
+            <p role="alert" className="text-sm text-status-danger sm:col-span-2">
               {webhookError}
             </p>
           )}
 
-          <h3 className="mb-2 mt-5 text-sm font-semibold text-recruiter-text">Recent deliveries</h3>
-          <Table columns={DELIVERY_COLUMNS} rows={deliveries ?? []} rowKey={(row) => row.id} emptyMessage="No deliveries yet." />
-        </Card>
+          <div className="sm:col-span-2">
+            <h3 className="mb-2 mt-2 text-sm font-semibold text-recruiter-text">Recent deliveries</h3>
+            <Table columns={DELIVERY_COLUMNS} rows={deliveries ?? []} rowKey={(row) => row.id} emptyMessage="No deliveries yet." />
+          </div>
+        </CollapsibleSection>
       </motion.div>
     </div>
   );

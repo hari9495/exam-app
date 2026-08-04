@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { ImageIcon } from 'lucide-react';
 import { useOrgBranding, useUpdateBranding, useUpdateBrandingLogo } from '../../../../lib/hooks/useBranding';
-import { Button, Input, Card, useToast } from '../../../../components/ui';
+import { Button, Input, CollapsibleSection, useToast } from '../../../../components/ui';
 import { motion } from 'framer-motion';
 
 function ColorSwatch({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
@@ -71,7 +71,7 @@ export default function BrandingSettingsPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
       <h1 className="text-center text-2xl font-semibold text-recruiter-text">Branding Settings</h1>
 
       {isError && (
@@ -82,37 +82,35 @@ export default function BrandingSettingsPage() {
       )}
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0, ease: 'easeOut' }}>
-        <Card className="w-full">
-          <h2 className="mb-1 text-lg font-semibold text-recruiter-text">Colors</h2>
-          <p className="mb-4 text-sm text-recruiter-text-secondary">
+        <CollapsibleSection title="Colors">
+          <p className="text-sm text-recruiter-text-secondary sm:col-span-2">
             Used to theme the candidate exam experience and staff console for your organization.
           </p>
-          <form onSubmit={handleColorsSubmit} className="flex flex-col gap-4">
-            <div className="flex flex-wrap gap-6">
-              <ColorSwatch label="Primary Color" value={primaryColor} onChange={setPrimaryColor} />
-              <ColorSwatch label="Accent Color" value={accentColor} onChange={setAccentColor} />
-            </div>
+          <form onSubmit={handleColorsSubmit} className="contents">
+            <ColorSwatch label="Primary Color" value={primaryColor} onChange={setPrimaryColor} />
+            <ColorSwatch label="Accent Color" value={accentColor} onChange={setAccentColor} />
             {/* Colours stay gated until the current values load, so a save can't overwrite
                 the org's real colours with this component's #0057f0/#fbbc04 defaults. */}
-            <Button type="submit" disabled={!branding} loading={updateBranding.isPending} className="self-start">
-              Save colors
-            </Button>
+            <div className="sm:col-span-2">
+              <Button type="submit" disabled={!branding} loading={updateBranding.isPending} className="self-start">
+                Save colors
+              </Button>
+            </div>
           </form>
           {colorsError && (
-            <p role="alert" className="mt-3 text-sm text-status-danger">
+            <p role="alert" className="text-sm text-status-danger sm:col-span-2">
               {colorsError}
             </p>
           )}
-        </Card>
+        </CollapsibleSection>
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.05, ease: 'easeOut' }}>
-        <Card className="w-full">
-          <h2 className="mb-1 text-lg font-semibold text-recruiter-text">Logo</h2>
-          <p className="mb-4 text-sm text-recruiter-text-secondary">
+        <CollapsibleSection title="Logo">
+          <p className="text-sm text-recruiter-text-secondary sm:col-span-2">
             Shown on the login page, invitation emails, and the candidate exam header.
           </p>
-          <div className="mb-4 flex h-24 w-full items-center justify-center rounded-md border border-dashed border-recruiter-border bg-gray-50">
+          <div className="flex h-24 w-full items-center justify-center rounded-md border border-dashed border-recruiter-border bg-gray-50 sm:col-span-2">
             {isLoading ? (
               <span className="text-sm text-recruiter-text-tertiary">Loading…</span>
             ) : branding?.logoUrl ? (
@@ -124,8 +122,8 @@ export default function BrandingSettingsPage() {
               </div>
             )}
           </div>
-          <form onSubmit={handleLogoSubmit} className="flex flex-col gap-3">
-            <label className="text-sm font-medium text-recruiter-text-secondary">
+          <form onSubmit={handleLogoSubmit} className="contents">
+            <label className="text-sm font-medium text-recruiter-text-secondary sm:col-span-2">
               Upload new logo (PNG, JPEG, or SVG, max 2MB)
               <input
                 type="file"
@@ -137,16 +135,18 @@ export default function BrandingSettingsPage() {
             {/* Gated on the FILE, not on the branding fetch: uploading a logo does not
                 need the current branding, and coupling them meant one failed GET
                 disabled the upload button entirely. */}
-            <Button type="submit" disabled={!logoFile} loading={updateLogo.isPending} className="self-start">
-              Upload logo
-            </Button>
+            <div className="sm:col-span-2">
+              <Button type="submit" disabled={!logoFile} loading={updateLogo.isPending} className="self-start">
+                Upload logo
+              </Button>
+            </div>
           </form>
           {logoError && (
-            <p role="alert" className="mt-3 text-sm text-status-danger">
+            <p role="alert" className="text-sm text-status-danger sm:col-span-2">
               {logoError}
             </p>
           )}
-        </Card>
+        </CollapsibleSection>
       </motion.div>
     </div>
   );

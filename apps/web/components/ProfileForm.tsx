@@ -6,7 +6,7 @@ import { Eye, EyeOff } from 'lucide-react';
 import { useCurrentUser, useUpdateProfile, useChangePassword } from '../lib/hooks/useCurrentUser';
 import { useSsoStatus } from '../lib/hooks/useSso';
 import { useAuth } from '../lib/auth-context';
-import { Button, Input, Card, RequiredFieldsNote, useToast } from './ui';
+import { Button, Input, CollapsibleSection, RequiredFieldsNote, useToast } from './ui';
 
 // One shared showPassword state drives all three password fields, so every field
 // gets its own toggle button rather than just the one a user happens to click --
@@ -82,30 +82,35 @@ export function ProfileForm() {
 
   return (
     <div className="flex flex-col gap-6">
+      <h1 className="text-xl font-semibold text-recruiter-text">My Profile</h1>
+      {!user && <p className="text-sm text-recruiter-text-secondary">Loading…</p>}
+
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0, ease: 'easeOut' }}
       >
-        <Card className="max-w-md">
-          <h1 className="mb-4 text-xl font-semibold text-recruiter-text">My Profile</h1>
-          {!user && <p className="mb-4 text-sm text-recruiter-text-secondary">Loading…</p>}
-          <form onSubmit={handleNameSubmit} className="mb-4 flex flex-col gap-3">
+        <CollapsibleSection title="Profile">
+          <div className="sm:col-span-2">
             <RequiredFieldsNote />
+          </div>
+          <form onSubmit={handleNameSubmit} className="contents">
             <Input label="Display Name" value={name} onChange={setName} disabled={!user} placeholder="e.g. Jane Doe" required />
             <Input label="Email" value={user?.email ?? ''} onChange={() => {}} disabled readOnly />
             <Input label="Role" value={user?.role ?? ''} onChange={() => {}} disabled readOnly />
             <Input label="Organization" value={organizationSlug ?? ''} onChange={() => {}} disabled readOnly />
-            <Button type="submit" disabled={!user || name.trim().length === 0}>
-              Save name
-            </Button>
+            <div className="sm:col-span-2">
+              <Button type="submit" disabled={!user || name.trim().length === 0}>
+                Save name
+              </Button>
+            </div>
           </form>
           {nameError && (
-            <p role="alert" className="mt-3 text-sm text-status-danger">
+            <p role="alert" className="text-sm text-status-danger sm:col-span-2">
               {nameError}
             </p>
           )}
-        </Card>
+        </CollapsibleSection>
       </motion.div>
 
       <motion.div
@@ -113,17 +118,18 @@ export function ProfileForm() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.05, ease: 'easeOut' }}
       >
-        <Card className="max-w-md">
-          <h2 className="mb-4 text-lg font-semibold text-recruiter-text">Change password</h2>
+        <CollapsibleSection title="Password">
           {ssoEnabled ? (
-            <p className="text-sm text-recruiter-text-secondary">
+            <p className="text-sm text-recruiter-text-secondary sm:col-span-2">
               Single sign-on is enabled for this organization. You sign in with your identity provider — there is no
               password to change.
             </p>
           ) : (
-            <form onSubmit={handlePasswordSubmit} className="flex flex-col gap-3">
-              <RequiredFieldsNote />
-              <div className="relative">
+            <form onSubmit={handlePasswordSubmit} className="contents">
+              <div className="sm:col-span-2">
+                <RequiredFieldsNote />
+              </div>
+              <div className="relative sm:col-span-2">
                 <Input
                   label="Current Password"
                   type={showPassword ? 'text' : 'password'}
@@ -134,7 +140,7 @@ export function ProfileForm() {
                 />
                 <PasswordVisibilityToggle visible={showPassword} onToggle={() => setShowPassword((prev) => !prev)} />
               </div>
-              <div className="relative">
+              <div className="relative sm:col-span-2">
                 <Input
                   label="New Password"
                   type={showPassword ? 'text' : 'password'}
@@ -145,7 +151,7 @@ export function ProfileForm() {
                 />
                 <PasswordVisibilityToggle visible={showPassword} onToggle={() => setShowPassword((prev) => !prev)} />
               </div>
-              <div className="relative">
+              <div className="relative sm:col-span-2">
                 <Input
                   label="Confirm New Password"
                   type={showPassword ? 'text' : 'password'}
@@ -156,20 +162,22 @@ export function ProfileForm() {
                 />
                 <PasswordVisibilityToggle visible={showPassword} onToggle={() => setShowPassword((prev) => !prev)} />
               </div>
-              <Button type="submit" disabled={!passwordsMatch || currentPassword.length === 0}>
-                Change password
-              </Button>
+              <div className="sm:col-span-2">
+                <Button type="submit" disabled={!passwordsMatch || currentPassword.length === 0}>
+                  Change password
+                </Button>
+              </div>
               {!passwordsMatch && confirmPassword.length > 0 && (
-                <p className="text-xs text-recruiter-text-tertiary">Passwords must match.</p>
+                <p className="text-xs text-recruiter-text-tertiary sm:col-span-2">Passwords must match.</p>
               )}
             </form>
           )}
           {!ssoEnabled && passwordError && (
-            <p role="alert" className="mt-3 text-sm text-status-danger">
+            <p role="alert" className="text-sm text-status-danger sm:col-span-2">
               {passwordError}
             </p>
           )}
-        </Card>
+        </CollapsibleSection>
       </motion.div>
     </div>
   );

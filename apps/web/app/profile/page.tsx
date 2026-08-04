@@ -42,7 +42,7 @@ export default function ProfilePage() {
             Back
           </Link>
         </div>
-        <main className="mx-auto max-w-md p-8">
+        <main className="mx-auto max-w-2xl p-8">
           <ProfileForm />
         </main>
       </div>

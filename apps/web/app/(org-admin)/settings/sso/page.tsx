@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSsoSettings, useUpdateSsoSettings } from '../../../../lib/hooks/useSso';
 import { useAuth } from '../../../../lib/auth-context';
 import { motion } from 'framer-motion';
-import { Input, Button, Card, RequiredFieldsNote } from '../../../../components/ui';
+import { Input, Button, CollapsibleSection, RequiredFieldsNote } from '../../../../components/ui';
 
 export default function SsoSettingsPage() {
   const { organizationSlug } = useAuth();
@@ -43,26 +43,27 @@ export default function SsoSettingsPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
       <h1 className="text-center text-2xl font-semibold text-recruiter-text">Single Sign-On</h1>
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: 'easeOut' }}>
-        <Card className="w-full">
-          <h2 className="mb-1 text-lg font-semibold text-recruiter-text">SAML configuration</h2>
-          <p className="mb-4 text-sm text-recruiter-text-secondary">
+        <CollapsibleSection title="SAML configuration">
+          <p className="text-sm text-recruiter-text-secondary sm:col-span-2">
             {sso?.samlEnabled ? 'Configured and enabled — staff can log in via SSO.' : 'Not configured — staff use password login only.'}
           </p>
 
-          <div className="mb-4 rounded-md bg-recruiter-bg-subtle p-3">
+          <div className="rounded-md bg-recruiter-bg-subtle p-3 sm:col-span-2">
             <p className="mb-1 text-xs font-semibold text-recruiter-text-secondary">Give this to your IdP admin</p>
             <p className="break-all font-mono text-xs text-recruiter-text">{metadataUrl}</p>
           </div>
 
-          <form onSubmit={handleSave} className="flex flex-col gap-3">
+          <div className="sm:col-span-2">
             <RequiredFieldsNote />
+          </div>
+          <form onSubmit={handleSave} className="contents">
             <Input label="Microsoft Entra Identifier" value={entityId} onChange={setEntityId} required />
             <Input label="SSO Url" value={ssoUrl} onChange={setSsoUrl} required />
-            <label className="flex flex-col gap-1 text-sm font-medium text-recruiter-text after:ml-0.5 after:text-status-danger after:content-['*']">
+            <label className="flex flex-col gap-1 text-sm font-medium text-recruiter-text after:ml-0.5 after:text-status-danger after:content-['*'] sm:col-span-2">
               IdP Certificate
               <textarea
                 value={certificate}
@@ -73,27 +74,30 @@ export default function SsoSettingsPage() {
                 placeholder="-----BEGIN CERTIFICATE-----"
               />
             </label>
-            <Button type="submit" loading={updateSso.isPending}>
-              Save IdP settings
-            </Button>
+            <div className="sm:col-span-2">
+              <Button type="submit" loading={updateSso.isPending}>
+                Save IdP settings
+              </Button>
+            </div>
           </form>
 
-          <Button
-            className="mt-3"
-            variant={sso?.samlEnabled ? 'danger' : 'primary'}
-            loading={updateSso.isPending}
-            onClick={handleToggleEnabled}
-            disabled={!sso?.samlEnabled && (!entityId || !ssoUrl || !certificate)}
-          >
-            {sso?.samlEnabled ? 'Disable SSO' : 'Enable SSO'}
-          </Button>
+          <div className="sm:col-span-2">
+            <Button
+              variant={sso?.samlEnabled ? 'danger' : 'primary'}
+              loading={updateSso.isPending}
+              onClick={handleToggleEnabled}
+              disabled={!sso?.samlEnabled && (!entityId || !ssoUrl || !certificate)}
+            >
+              {sso?.samlEnabled ? 'Disable SSO' : 'Enable SSO'}
+            </Button>
+          </div>
 
           {error && (
-            <p role="alert" className="mt-3 text-sm text-status-danger">
+            <p role="alert" className="text-sm text-status-danger sm:col-span-2">
               {error}
             </p>
           )}
-        </Card>
+        </CollapsibleSection>
       </motion.div>
     </div>
   );
