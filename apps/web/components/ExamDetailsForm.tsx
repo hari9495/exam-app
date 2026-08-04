@@ -250,6 +250,26 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
         {enableAntiCheating && (
           <div className="flex flex-col gap-4 border-l-2 border-recruiter-border pl-4 sm:col-span-2">
             <Checkbox label="Require webcam proctoring" checked={webcamProctoringEnabled} onChange={setWebcamProctoringEnabled} />
+            {/* What counts as a rule violation has to be decided before what happens
+                when one fires -- reads as "watch for X; if a rule is broken, do Y;
+                after N strikes" instead of stating the consequence before the trigger. */}
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-gray-700">
+                Watch for ({PROCTORING_SIGNAL_LABELS.length - disabledSignals.length}/{PROCTORING_SIGNAL_LABELS.length} selected)
+              </span>
+              {PROCTORING_SIGNAL_LABELS.map((signal) => (
+                <Checkbox
+                  key={signal.value}
+                  label={signal.label}
+                  checked={!disabledSignals.includes(signal.value)}
+                  onChange={(checked) =>
+                    setDisabledSignals((current) =>
+                      checked ? current.filter((entry) => entry !== signal.value) : [...current, signal.value],
+                    )
+                  }
+                />
+              ))}
+            </div>
             <div className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-gray-700">If a rule is broken</span>
               <RadioGroup value={proctoringEnforcement} onChange={(value) => setProctoringEnforcement(value as 'warn' | 'block')}>
@@ -269,23 +289,6 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
                 ]}
               />
             )}
-            <div className="flex flex-col gap-1.5">
-              <span className="text-sm font-medium text-gray-700">
-                Watch for ({PROCTORING_SIGNAL_LABELS.length - disabledSignals.length}/{PROCTORING_SIGNAL_LABELS.length} selected)
-              </span>
-              {PROCTORING_SIGNAL_LABELS.map((signal) => (
-                <Checkbox
-                  key={signal.value}
-                  label={signal.label}
-                  checked={!disabledSignals.includes(signal.value)}
-                  onChange={(checked) =>
-                    setDisabledSignals((current) =>
-                      checked ? current.filter((entry) => entry !== signal.value) : [...current, signal.value],
-                    )
-                  }
-                />
-              ))}
-            </div>
             <div>
               <Checkbox
                 label="Record the candidate's screen as evidence"
