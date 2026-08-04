@@ -9,7 +9,7 @@ import { Candidate } from '../lib/types';
 function makeCandidate(overrides: Partial<Candidate> = {}): Candidate {
   return {
     id: 'cand-1',
-    name: 'Nanji',
+    name: 'Nanji Sharma',
     email: 'nanji.s@prudentconsulting.com',
     phone: null,
     status: 'active',
@@ -52,34 +52,68 @@ describe('CandidateEditModal', () => {
     return fetchMock;
   }
 
-  it('prefills the form with the current values', () => {
+  it('prefills First Name / Last Name by splitting the stored name on the first space', () => {
     mockFetch({ body: {}, status: 200 });
     renderModal(makeCandidate({ phone: '+91 99999 11111' }));
 
-    expect(screen.getByLabelText('Name')).toHaveValue('Nanji');
+    expect(screen.getByLabelText('First Name')).toHaveValue('Nanji');
+    expect(screen.getByLabelText('Last Name')).toHaveValue('Sharma');
     expect(screen.getByLabelText('Email')).toHaveValue('nanji.s@prudentconsulting.com');
     expect(screen.getByLabelText('Phone')).toHaveValue('+91 99999 11111');
   });
 
-  it('sends the edited name and email as a PATCH', async () => {
+  it('prefills Last Name empty for a legacy single-word name instead of losing data', () => {
+    mockFetch({ body: {}, status: 200 });
+    renderModal(makeCandidate({ name: 'Nanji' }));
+
+    expect(screen.getByLabelText('First Name')).toHaveValue('Nanji');
+    expect(screen.getByLabelText('Last Name')).toHaveValue('');
+  });
+
+  it('sends the edited first/last name and email as a PATCH, recombined into one name', async () => {
     const fetchMock = mockFetch({ body: { id: 'cand-1' }, status: 200 });
     renderModal();
 
-    const nameInput = screen.getByLabelText('Name');
-    await userEvent.clear(nameInput);
-    await userEvent.type(nameInput, 'Nanji Sharma');
+    const lastNameInput = screen.getByLabelText('Last Name');
+    await userEvent.clear(lastNameInput);
+    await userEvent.type(lastNameInput, 'Shah');
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => {
       const patchCall = fetchMock.mock.calls.find((call) => call[1]?.method === 'PATCH');
       expect(patchCall).toBeDefined();
       expect(JSON.parse(String(patchCall![1]?.body))).toEqual({
-        name: 'Nanji Sharma',
+        name: 'Nanji Shah',
         email: 'nanji.s@prudentconsulting.com',
         phone: '',
       });
     });
     expect(await screen.findByText('Candidate updated.')).toBeInTheDocument();
+  });
+
+  it('blocks saving and shows inline errors when First Name, Last Name, or Email is cleared', async () => {
+    const fetchMock = mockFetch({ body: {}, status: 200 });
+    renderModal();
+
+    await userEvent.clear(screen.getByLabelText('Last Name'));
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(fetchMock.mock.calls.some((call) => call[1]?.method === 'PATCH')).toBe(false);
+    expect(screen.getByText('Complete this field.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Last Name')).toBeInvalid();
+  });
+
+  it('blocks saving and shows an inline error for a malformed email', async () => {
+    const fetchMock = mockFetch({ body: {}, status: 200 });
+    renderModal();
+
+    const emailInput = screen.getByLabelText('Email');
+    await userEvent.clear(emailInput);
+    await userEvent.type(emailInput, 'not-an-email');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(fetchMock.mock.calls.some((call) => call[1]?.method === 'PATCH')).toBe(false);
+    expect(screen.getByText('Enter a valid email address.')).toBeInTheDocument();
   });
 
   it('surfaces a duplicate-email conflict from the server', async () => {

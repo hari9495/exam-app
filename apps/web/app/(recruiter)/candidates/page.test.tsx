@@ -383,12 +383,13 @@ describe('CandidatesPage', () => {
 
       await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
 
-      // Scoped to the dialog: the page's own "Add candidate" form has an Email
-      // field too, so an unscoped query matches both.
+      // Scoped to the dialog: the page's own "Add candidate" popup has an Email
+      // field too when open, so an unscoped query could match both.
       const dialog = within(screen.getByRole('dialog'));
       expect(dialog.getByText('Edit candidate')).toBeInTheDocument();
       expect(dialog.getByLabelText('Email')).toHaveValue('nanji.s@prudentconsulting.com');
-      expect(dialog.getByLabelText('Name')).toHaveValue('Nanji');
+      expect(dialog.getByLabelText('First Name')).toHaveValue('Nanji');
+      expect(dialog.getByLabelText('Last Name')).toHaveValue('');
     });
   });
 });

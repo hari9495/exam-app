@@ -10,17 +10,48 @@ interface CandidateEditModalProps {
   onClose: () => void;
 }
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+interface FormErrors {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+}
+
+// Existing candidates only ever had a single "name" field -- split on the first space so a
+// two-word name round-trips cleanly, and a legacy single-word name (there are plenty in prod)
+// just starts with an empty Last Name rather than losing data.
+function splitName(name: string): { firstName: string; lastName: string } {
+  const [firstName = '', ...rest] = name.trim().split(/\s+/);
+  return { firstName, lastName: rest.join(' ') };
+}
+
 export function CandidateEditModal({ candidate, onClose }: CandidateEditModalProps) {
-  const [name, setName] = useState(candidate.name);
+  const initial = splitName(candidate.name);
+  const [firstName, setFirstName] = useState(initial.firstName);
+  const [lastName, setLastName] = useState(initial.lastName);
   const [email, setEmail] = useState(candidate.email);
   const [phone, setPhone] = useState(candidate.phone ?? '');
+  const [errors, setErrors] = useState<FormErrors>({});
   const updateCandidate = useUpdateCandidate();
   const { toast } = useToast();
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    const nextErrors: FormErrors = {};
+    if (!firstName.trim()) nextErrors.firstName = 'Complete this field.';
+    if (!lastName.trim()) nextErrors.lastName = 'Complete this field.';
+    if (!email.trim()) {
+      nextErrors.email = 'Complete this field.';
+    } else if (!EMAIL_PATTERN.test(email.trim())) {
+      nextErrors.email = 'Enter a valid email address.';
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
+      return;
+    }
     updateCandidate.mutate(
-      { id: candidate.id, name, email, phone },
+      { id: candidate.id, name: `${firstName.trim()} ${lastName.trim()}`, email: email.trim(), phone },
       {
         onSuccess: () => {
           toast('Candidate updated.');
@@ -33,9 +64,41 @@ export function CandidateEditModal({ candidate, onClose }: CandidateEditModalPro
 
   return (
     <Modal open title="Edit candidate" onClose={onClose}>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-        <Input label="Name" value={name} onChange={setName} required />
-        <Input label="Email" type="email" value={email} onChange={setEmail} required />
+      {/* noValidate: styled inline validation (error prop below) instead of native
+          browser tooltips -- the required attribute would otherwise block the submit
+          event before this runs. */}
+      <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-3">
+        <Input
+          label="First Name"
+          value={firstName}
+          onChange={(value) => {
+            setFirstName(value);
+            if (errors.firstName) setErrors((current) => ({ ...current, firstName: undefined }));
+          }}
+          error={errors.firstName}
+          required
+        />
+        <Input
+          label="Last Name"
+          value={lastName}
+          onChange={(value) => {
+            setLastName(value);
+            if (errors.lastName) setErrors((current) => ({ ...current, lastName: undefined }));
+          }}
+          error={errors.lastName}
+          required
+        />
+        <Input
+          label="Email"
+          type="email"
+          value={email}
+          onChange={(value) => {
+            setEmail(value);
+            if (errors.email) setErrors((current) => ({ ...current, email: undefined }));
+          }}
+          error={errors.email}
+          required
+        />
         <Input label="Phone" value={phone} onChange={setPhone} />
         {(candidate.invitationCount ?? 0) > 0 && email !== candidate.email && (
           <p className="rounded-md bg-status-warning-bg px-3 py-2 text-xs text-status-warning">
