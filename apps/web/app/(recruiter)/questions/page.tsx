@@ -149,13 +149,21 @@ export default function QuestionsPage() {
     {
       key: 'topic',
       header: 'Topic',
-      render: (question) => question.topic ?? '—',
+      render: (question) => (
+        <span className="block max-w-[10rem] truncate" title={question.topic ?? undefined}>
+          {question.topic ?? '—'}
+        </span>
+      ),
       sortValue: (question) => question.topic ?? '',
     },
     {
       key: 'category',
       header: 'Category',
-      render: (question) => question.category ?? '—',
+      render: (question) => (
+        <span className="block max-w-[10rem] truncate" title={question.category ?? undefined}>
+          {question.category ?? '—'}
+        </span>
+      ),
       sortValue: (question) => question.category ?? '',
     },
     {
