@@ -214,6 +214,62 @@ describe('QuestionsPage', () => {
     );
   });
 
+  it('shows a Status column and sends the selected status filter to the server as a query param', async () => {
+    const fetchMock = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/questions')) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'q-1',
+                type: 'single_mcq',
+                text: 'What is 2+2?',
+                topic: null,
+                category: null,
+                difficulty: 'easy',
+                marks: 5,
+                negativeMarks: 0,
+                status: 'active',
+                aiGenerated: false,
+                createdAt: '2026-01-01T00:00:00.000Z',
+                options: [],
+              },
+            ],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+            totalPages: 1,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <QuestionsPage />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+    await waitFor(() => expect(screen.getByText('What is 2+2?')).toBeInTheDocument());
+    expect(screen.getByText('Active')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Filter by Status' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Archived' }));
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/questions') && String(call[0]).includes('status=archived'))).toBe(true),
+    );
+  });
+
   describe('preview and grouping', () => {
     const QUESTIONS = [
       {

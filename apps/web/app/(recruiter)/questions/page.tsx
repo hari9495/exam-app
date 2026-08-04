@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { Plus, Search } from 'lucide-react';
 import { useQuestions, useArchiveQuestion, useRestoreQuestion } from '../../../lib/hooks/useQuestions';
-import { Select, Button, Modal, Pagination, StatusBadge, Table, useToast, useColumnVisibility, type Column } from '../../../components/ui';
+import { Select, Button, Modal, Pagination, StatusBadge, Table, useToast, useColumnVisibility, FilterableHeader, type Column } from '../../../components/ui';
 import { groupQuestions, type GroupBy } from '../../../lib/question-grouping';
 import { TYPE_TONE, TYPE_LABEL, DIFFICULTY_LABEL, DIFFICULTY_LEVEL } from '../../../lib/question-display';
 import { Question } from '../../../lib/types';
@@ -20,55 +20,6 @@ const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
   { value: 'archived', label: 'Archived' },
-];
-
-const DISPLAY_COLUMNS: Column<Question>[] = [
-  {
-    key: 'text',
-    header: 'Question',
-    render: (question) => (
-      <Link
-        href={`/questions/${question.id}/edit`}
-        className="block max-w-md truncate font-medium text-primary hover:underline"
-        title={question.text}
-      >
-        {question.text}
-      </Link>
-    ),
-    sortValue: (question) => question.text.toLowerCase(),
-  },
-  {
-    key: 'type',
-    header: 'Type',
-    render: (question) => (
-      <StatusBadge tone={TYPE_TONE[question.type] ?? 'neutral'}>{TYPE_LABEL[question.type] ?? question.type}</StatusBadge>
-    ),
-    sortValue: (question) => TYPE_LABEL[question.type] ?? question.type,
-  },
-  {
-    key: 'difficulty',
-    header: 'Difficulty',
-    render: (question) => DIFFICULTY_LABEL[question.difficulty] ?? question.difficulty,
-    sortValue: (question) => DIFFICULTY_LEVEL[question.difficulty] ?? 0,
-  },
-  {
-    key: 'marks',
-    header: 'Marks',
-    render: (question) => question.marks,
-    sortValue: (question) => question.marks,
-  },
-  {
-    key: 'topic',
-    header: 'Topic',
-    render: (question) => question.topic ?? '—',
-    sortValue: (question) => question.topic ?? '',
-  },
-  {
-    key: 'category',
-    header: 'Category',
-    render: (question) => question.category ?? '—',
-    sortValue: (question) => question.category ?? '',
-  },
 ];
 
 export default function QuestionsPage() {
@@ -117,7 +68,68 @@ export default function QuestionsPage() {
   }
 
   const columns: Column<Question>[] = [
-    ...DISPLAY_COLUMNS,
+    {
+      key: 'text',
+      header: 'Question',
+      render: (question) => (
+        <Link
+          href={`/questions/${question.id}/edit`}
+          className="block max-w-md truncate font-medium text-primary hover:underline"
+          title={question.text}
+        >
+          {question.text}
+        </Link>
+      ),
+      sortValue: (question) => question.text.toLowerCase(),
+    },
+    {
+      key: 'status',
+      header: (
+        <FilterableHeader
+          label="Status"
+          value={status}
+          onChange={(value) => {
+            setStatus(value);
+            setPage(1);
+          }}
+          options={STATUS_OPTIONS}
+        />
+      ),
+      sortLabel: 'Status',
+      render: (question) => <StatusBadge tone={question.status === 'active' ? 'success' : 'neutral'}>{question.status === 'active' ? 'Active' : 'Archived'}</StatusBadge>,
+    },
+    {
+      key: 'type',
+      header: 'Type',
+      render: (question) => (
+        <StatusBadge tone={TYPE_TONE[question.type] ?? 'neutral'}>{TYPE_LABEL[question.type] ?? question.type}</StatusBadge>
+      ),
+      sortValue: (question) => TYPE_LABEL[question.type] ?? question.type,
+    },
+    {
+      key: 'difficulty',
+      header: 'Difficulty',
+      render: (question) => DIFFICULTY_LABEL[question.difficulty] ?? question.difficulty,
+      sortValue: (question) => DIFFICULTY_LEVEL[question.difficulty] ?? 0,
+    },
+    {
+      key: 'marks',
+      header: 'Marks',
+      render: (question) => question.marks,
+      sortValue: (question) => question.marks,
+    },
+    {
+      key: 'topic',
+      header: 'Topic',
+      render: (question) => question.topic ?? '—',
+      sortValue: (question) => question.topic ?? '',
+    },
+    {
+      key: 'category',
+      header: 'Category',
+      render: (question) => question.category ?? '—',
+      sortValue: (question) => question.category ?? '',
+    },
     {
       key: 'actions',
       header: '',
@@ -205,16 +217,6 @@ export default function QuestionsPage() {
         </div>
 
         <Select label="Group By" value={groupBy} onChange={(value) => setGroupBy(value as GroupBy)} options={GROUP_BY_OPTIONS} />
-
-        <Select
-          label="Status"
-          value={status}
-          onChange={(value) => {
-            setStatus(value);
-            setPage(1);
-          }}
-          options={STATUS_OPTIONS}
-        />
         {chooser}
       </div>
 
