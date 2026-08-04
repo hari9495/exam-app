@@ -101,7 +101,9 @@ describe('WalkInService', () => {
         expect.objectContaining({ data: expect.objectContaining({ organizationId: 'org-1', email: 'alice@test.com', name: 'Alice' }) }),
       );
       expect(tx.invitation.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ examId: 'exam-1', candidateId: 'cand-1', source: 'walk_in' }) }),
+        // emailStatus 'none': the walk-in courtesy email is untracked, so the row must
+        // not enter the recruiter-facing email lifecycle (no "In queue" badge).
+        expect.objectContaining({ data: expect.objectContaining({ examId: 'exam-1', candidateId: 'cand-1', source: 'walk_in', emailStatus: 'none' }) }),
       );
       expect(result).toEqual({ token: 'raw-token' });
       expect(webhooksService.enqueue).toHaveBeenCalledWith('org-1', 'invitation.created', expect.objectContaining({ id: 'inv-1' }));

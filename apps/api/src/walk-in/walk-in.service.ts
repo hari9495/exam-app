@@ -78,6 +78,11 @@ export class WalkInService {
           token: generateToken(),
           expiresAt: resolveInvitationExpiry(exam),
           source: 'walk_in',
+          // The walk-in link email below is a courtesy side channel (the candidate is
+          // standing at the kiosk with a live token already) -- it isn't tracked as a
+          // Notification and can't be resent, so keep the row out of the recruiter-facing
+          // email lifecycle: 'pending' here would show "In queue" until someone noticed.
+          emailStatus: 'none',
         },
       });
       return { invitation: created, examTitle: exam.title, candidate };

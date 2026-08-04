@@ -10,7 +10,8 @@ export type QuestionType = 'single_mcq' | 'multi_mcq' | 'true_false' | 'code';
 export type Difficulty = 'easy' | 'medium' | 'hard';
 export type ExamStatus = 'draft' | 'published' | 'archived';
 export type InvitationStatus = 'invited' | 'revoked';
-export type InvitationEmailStatus = 'pending' | 'sent' | 'failed';
+// 'none' = no invite email is part of this invitation's lifecycle (walk-in registration).
+export type InvitationEmailStatus = 'pending' | 'sent' | 'failed' | 'none';
 
 export const CODE_LANGUAGE_OPTIONS = ['javascript', 'typescript', 'python', 'java', 'csharp', 'cpp', 'go', 'ruby'] as const;
 export type CodeLanguage = (typeof CODE_LANGUAGE_OPTIONS)[number];
