@@ -103,6 +103,7 @@ export function CandidatesPanel({ examId }: { examId: string }) {
   }, [invitations, search, statusFilter]);
 
   const columns: Column<Invitation>[] = [
+    { key: 'index', header: '#', render: (row) => visibleInvitations.indexOf(row) + 1 },
     { key: 'name', header: 'Candidate', render: (row) => row.candidate.name },
     { key: 'email', header: 'Email', render: (row) => row.candidate.email },
     {
