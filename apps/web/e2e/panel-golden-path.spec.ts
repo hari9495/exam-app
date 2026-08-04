@@ -137,7 +137,7 @@ test('panel member views results, opens a candidate, compares, and exports', asy
   await page.getByRole('checkbox', { name: `Select ${candidateBName}` }).click();
   await page.getByRole('button', { name: 'Compare selected' }).click();
 
-  await expect(page).toHaveURL(/\/compare\?candidateIds=/);
+  await expect(page).toHaveURL(/\/compare\?invitationIds=/);
   await expect(page.getByRole('heading', { name: 'Compare candidates' })).toBeVisible();
   await expect(page.getByRole('columnheader', { name: candidateAName })).toBeVisible();
   await expect(page.getByRole('columnheader', { name: candidateBName })).toBeVisible();

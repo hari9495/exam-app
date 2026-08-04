@@ -77,7 +77,7 @@ describe('PanelExamResultsPage', () => {
     expect(compareButton).toBeEnabled();
 
     await userEvent.click(compareButton);
-    expect(push).toHaveBeenCalledWith('/reports/exam-1/compare?candidateIds=c1,c2');
+    expect(push).toHaveBeenCalledWith('/reports/exam-1/compare?invitationIds=i1,i2');
   });
 
   it('renders an integrity badge per candidate row', () => {
@@ -179,7 +179,7 @@ describe('PanelExamResultsPage', () => {
     renderPage();
     await userEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
 
-    expect(mutateAsync).toHaveBeenCalledWith({ format: 'csv', candidateIds: [] });
+    expect(mutateAsync).toHaveBeenCalledWith({ format: 'csv', invitationIds: [] });
     expect(createObjectURL).toHaveBeenCalled();
   });
 
@@ -191,7 +191,26 @@ describe('PanelExamResultsPage', () => {
     await userEvent.click(screen.getByRole('checkbox', { name: 'Select Alice' }));
     await userEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
 
-    expect(mutateAsync).toHaveBeenCalledWith({ format: 'csv', candidateIds: ['c1'] });
+    expect(mutateAsync).toHaveBeenCalledWith({ format: 'csv', invitationIds: ['i1'] });
+  });
+
+  it('checking one row of a re-invited candidate does not also check their other invitation row', async () => {
+    (useResultsList as jest.Mock).mockReturnValue({
+      data: [
+        ...resultRows,
+        { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1-retry', attemptId: null, status: 'invited', score: null, maxScore: null, percentage: null, passFail: null, submittedAt: null, proctoringAnalysis: null, integrityLevel: null, integrityFlagCount: 0 },
+      ],
+      isLoading: false,
+    });
+    renderPage();
+
+    const aliceCheckboxes = screen.getAllByRole('checkbox', { name: 'Select Alice' });
+    expect(aliceCheckboxes).toHaveLength(2);
+
+    await userEvent.click(aliceCheckboxes[0]);
+
+    expect(aliceCheckboxes[0]).toBeChecked();
+    expect(aliceCheckboxes[1]).not.toBeChecked();
   });
 
   describe('tabbed layout', () => {

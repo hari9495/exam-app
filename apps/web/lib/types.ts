@@ -538,6 +538,7 @@ export interface CandidateDetail {
 
 export interface CandidateComparisonRow {
   candidateId: string;
+  invitationId: string;
   candidateName: string;
   status: string;
   score: number | null;

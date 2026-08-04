@@ -109,6 +109,7 @@ export interface CandidateDetail {
 
 export interface CandidateComparisonRow {
   candidateId: string;
+  invitationId: string;
   candidateName: string;
   status: string;
   score: number | null;
@@ -267,13 +268,16 @@ export class ReportsService {
     });
   }
 
-  async getExportRows(context: TenantContext, examId: string, candidateIds?: string[]): Promise<ExportResultRow[]> {
+  async getExportRows(context: TenantContext, examId: string, invitationIds?: string[]): Promise<ExportResultRow[]> {
     const allRows = await this.examsService.getResults(context, examId);
     // Scoped export (a recruiter selected specific rows before exporting): an empty
     // or omitted list means "export everything", matching every other list/filter
     // in the product where no selection defaults to the full set, not an empty file.
-    const candidateIdSet = candidateIds && candidateIds.length > 0 ? new Set(candidateIds) : null;
-    const rows = candidateIdSet ? allRows.filter((row) => candidateIdSet.has(row.candidateId)) : allRows;
+    // Keyed by invitationId, not candidateId -- a re-invited candidate has multiple
+    // rows sharing one candidateId, so a candidateId-keyed filter would export every
+    // invitation for that candidate instead of just the one the recruiter checked.
+    const invitationIdSet = invitationIds && invitationIds.length > 0 ? new Set(invitationIds) : null;
+    const rows = invitationIdSet ? allRows.filter((row) => invitationIdSet.has(row.invitationId)) : allRows;
     const attemptIds = rows.map((row) => row.attemptId).filter((id): id is string => id !== null);
     const startedAtById = await this.fetchStartedAtByAttemptId(context, attemptIds);
 
@@ -426,24 +430,28 @@ export class ReportsService {
     });
   }
 
-  async compareCandidates(context: TenantContext, examId: string, candidateIdsParam: string): Promise<CandidateComparisonRow[]> {
-    const candidateIds = candidateIdsParam.split(',').map((id) => id.trim()).filter((id) => id.length > 0);
-    if (candidateIds.length < 2) {
-      throw new BadRequestException('At least 2 candidateIds are required to compare');
+  async compareCandidates(context: TenantContext, examId: string, invitationIdsParam: string): Promise<CandidateComparisonRow[]> {
+    const invitationIds = invitationIdsParam.split(',').map((id) => id.trim()).filter((id) => id.length > 0);
+    if (invitationIds.length < 2) {
+      throw new BadRequestException('At least 2 invitationIds are required to compare');
     }
 
     const rows = await this.examsService.getResults(context, examId);
-    const rowByCandidateId = new Map(rows.map((row) => [row.candidateId, row]));
-    const missingIds = candidateIds.filter((id) => !rowByCandidateId.has(id));
+    // Keyed by invitationId, not candidateId -- a re-invited candidate has multiple rows
+    // sharing one candidateId, and a candidateId-keyed Map would silently drop to whichever
+    // of those rows getResults returned last, comparing the wrong attempt's data.
+    const rowByInvitationId = new Map(rows.map((row) => [row.invitationId, row]));
+    const missingIds = invitationIds.filter((id) => !rowByInvitationId.has(id));
     if (missingIds.length > 0) {
-      throw new BadRequestException(`Candidate(s) not invited to this exam: ${missingIds.join(', ')}`);
+      throw new BadRequestException(`Invitation(s) not found on this exam: ${missingIds.join(', ')}`);
     }
-    const selectedRows = candidateIds.map((id) => rowByCandidateId.get(id)!);
+    const selectedRows = invitationIds.map((id) => rowByInvitationId.get(id)!);
     const attemptIds = selectedRows.map((row) => row.attemptId).filter((id): id is string => id !== null);
 
     if (attemptIds.length === 0) {
       return selectedRows.map((row) => ({
         candidateId: row.candidateId,
+        invitationId: row.invitationId,
         candidateName: row.candidateName,
         status: row.status,
         score: row.score,
@@ -476,6 +484,7 @@ export class ReportsService {
       return selectedRows.map((row) => {
         const base = {
           candidateId: row.candidateId,
+          invitationId: row.invitationId,
           candidateName: row.candidateName,
           status: row.status,
           score: row.score,

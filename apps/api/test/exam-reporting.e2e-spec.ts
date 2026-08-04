@@ -351,34 +351,34 @@ describe('Exam Reporting HTTP flow', () => {
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
     const byName = (name: string) =>
-      resultsResponse.body.find((row: { candidateName: string }) => row.candidateName === name).candidateId;
-    const aliceId = byName('Alice');
-    const bobId = byName('Bob');
-    const carolId = byName('Carol');
+      resultsResponse.body.find((row: { candidateName: string }) => row.candidateName === name).invitationId;
+    const aliceInvitationId = byName('Alice');
+    const bobInvitationId = byName('Bob');
+    const carolInvitationId = byName('Carol');
 
     const compareResponse = await request(adminHttp)
-      .get(`/api/v1/exams/${examId}/candidates/compare?candidateIds=${aliceId},${bobId},${carolId}`)
+      .get(`/api/v1/exams/${examId}/candidates/compare?invitationIds=${aliceInvitationId},${bobInvitationId},${carolInvitationId}`)
       .set('Authorization', `Bearer ${panelAccessToken}`)
       .expect(200);
 
     expect(compareResponse.body).toHaveLength(3);
-    const alice = compareResponse.body.find((row: { candidateId: string }) => row.candidateId === aliceId);
+    const alice = compareResponse.body.find((row: { invitationId: string }) => row.invitationId === aliceInvitationId);
     expect(alice.score).toBe(10);
     expect(alice.sectionScores).toEqual([{ sectionId: expect.any(String), title: 'Section One', score: 10, maxScore: 10 }]);
-    const carol = compareResponse.body.find((row: { candidateId: string }) => row.candidateId === carolId);
+    const carol = compareResponse.body.find((row: { invitationId: string }) => row.invitationId === carolInvitationId);
     expect(carol.status).toBe('in_progress');
     expect(carol.score).toBeNull();
   });
 
-  it('returns 400 when fewer than 2 candidateIds are provided', async () => {
+  it('returns 400 when fewer than 2 invitationIds are provided', async () => {
     const resultsResponse = await request(adminHttp)
       .get(`/api/v1/exams/${examId}/results`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
-    const aliceId = resultsResponse.body.find((row: { candidateName: string }) => row.candidateName === 'Alice').candidateId;
+    const aliceInvitationId = resultsResponse.body.find((row: { candidateName: string }) => row.candidateName === 'Alice').invitationId;
 
     await request(adminHttp)
-      .get(`/api/v1/exams/${examId}/candidates/compare?candidateIds=${aliceId}`)
+      .get(`/api/v1/exams/${examId}/candidates/compare?invitationIds=${aliceInvitationId}`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(400);
   });

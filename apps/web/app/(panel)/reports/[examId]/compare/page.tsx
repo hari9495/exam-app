@@ -8,9 +8,9 @@ import { BackLink } from '../../../../../components/BackLink';
 export default function PanelComparePage() {
   const { examId } = useParams<{ examId: string }>();
   const searchParams = useSearchParams();
-  const candidateIds = (searchParams.get('candidateIds') ?? '').split(',').filter((id) => id.length > 0);
+  const invitationIds = (searchParams.get('invitationIds') ?? '').split(',').filter((id) => id.length > 0);
 
-  const { data: rows, isLoading } = useCandidateComparison(examId, candidateIds);
+  const { data: rows, isLoading } = useCandidateComparison(examId, invitationIds);
 
   const header = (
     <>
@@ -19,7 +19,7 @@ export default function PanelComparePage() {
     </>
   );
 
-  if (candidateIds.length < 2) {
+  if (invitationIds.length < 2) {
     return (
       <div>
         {header}
@@ -48,7 +48,7 @@ export default function PanelComparePage() {
             <tr className="border-b border-gray-200 text-left">
               <th className="px-3 py-2 font-medium text-gray-600">Metric</th>
               {rows.map((row) => (
-                <th key={row.candidateId} className="px-3 py-2 font-medium text-gray-600">
+                <th key={row.invitationId} className="px-3 py-2 font-medium text-gray-600">
                   {row.candidateName}
                 </th>
               ))}
@@ -58,7 +58,7 @@ export default function PanelComparePage() {
             <tr className="border-b border-gray-100">
               <td className="px-3 py-2 font-medium">Overall score</td>
               {rows.map((row) => (
-                <td key={row.candidateId} className="px-3 py-2">
+                <td key={row.invitationId} className="px-3 py-2">
                   {row.percentage !== null ? `${row.percentage.toFixed(1)}%` : '—'}
                 </td>
               ))}
@@ -66,7 +66,7 @@ export default function PanelComparePage() {
             <tr className="border-b border-gray-100">
               <td className="px-3 py-2 font-medium">Result</td>
               {rows.map((row) => (
-                <td key={row.candidateId} className="px-3 py-2">
+                <td key={row.invitationId} className="px-3 py-2">
                   {row.passFail ?? '—'}
                 </td>
               ))}
@@ -74,7 +74,7 @@ export default function PanelComparePage() {
             <tr className="border-b border-gray-100">
               <td className="px-3 py-2 font-medium">Integrity</td>
               {rows.map((row) => (
-                <td key={row.candidateId} className="px-3 py-2">
+                <td key={row.invitationId} className="px-3 py-2">
                   <IntegrityBadge level={row.integrityAnalysis?.level} />
                 </td>
               ))}
@@ -85,7 +85,7 @@ export default function PanelComparePage() {
                 {rows.map((row) => {
                   const section = row.sectionScores.find((s) => s.title === title);
                   return (
-                    <td key={row.candidateId} className="px-3 py-2">
+                    <td key={row.invitationId} className="px-3 py-2">
                       {section ? `${section.score}/${section.maxScore}` : '—'}
                     </td>
                   );

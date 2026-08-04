@@ -50,9 +50,9 @@ export class ReportsController {
   compareCandidates(
     @CurrentTenant() tenant: TenantContext,
     @Param('id') id: string,
-    @Query('candidateIds') candidateIds: string,
+    @Query('invitationIds') invitationIds: string,
   ): Promise<CandidateComparisonRow[]> {
-    return this.reportsService.compareCandidates(tenant, id, candidateIds ?? '');
+    return this.reportsService.compareCandidates(tenant, id, invitationIds ?? '');
   }
 
   @Get(':id/results/export')
@@ -61,11 +61,11 @@ export class ReportsController {
     @CurrentTenant() tenant: TenantContext,
     @Param('id') id: string,
     @Query() query: ExportFormatQueryDto,
-    @Query('candidateIds') candidateIds: string | undefined,
+    @Query('invitationIds') invitationIds: string | undefined,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
-    const candidateIdList = candidateIds ? candidateIds.split(',').filter(Boolean) : undefined;
-    const rows = await this.reportsService.getExportRows(tenant, id, candidateIdList);
+    const invitationIdList = invitationIds ? invitationIds.split(',').filter(Boolean) : undefined;
+    const rows = await this.reportsService.getExportRows(tenant, id, invitationIdList);
     const buffer = await this.buildExportBuffer(query.format, rows);
 
     res.set({

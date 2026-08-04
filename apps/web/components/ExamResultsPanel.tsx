@@ -69,6 +69,9 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
   const [scoreFilter, setScoreFilter] = useState('all');
   const [resultFilter, setResultFilter] = useState('all');
   const [integrityFilter, setIntegrityFilter] = useState('all');
+  // invitationId, not candidateId -- a re-invited candidate has multiple rows sharing
+  // one candidateId, and a candidateId-keyed selection would check/export every one of
+  // that candidate's invitations at once instead of just the row picked.
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [advanceModalOpen, setAdvanceModalOpen] = useState(false);
 
@@ -91,15 +94,15 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
   });
   const filtersActive = query !== '' || statusFilter !== 'all' || scoreFilter !== 'all' || resultFilter !== 'all' || integrityFilter !== 'all';
 
-  const allVisibleSelected = visible.length > 0 && visible.every((row) => selectedIds.includes(row.candidateId));
+  const allVisibleSelected = visible.length > 0 && visible.every((row) => selectedIds.includes(row.invitationId));
 
-  function toggleSelected(candidateId: string) {
-    setSelectedIds((current) => (current.includes(candidateId) ? current.filter((id) => id !== candidateId) : [...current, candidateId]));
+  function toggleSelected(invitationId: string) {
+    setSelectedIds((current) => (current.includes(invitationId) ? current.filter((id) => id !== invitationId) : [...current, invitationId]));
   }
 
   function toggleSelectAll() {
     setSelectedIds((current) => {
-      const visibleIds = visible.map((row) => row.candidateId);
+      const visibleIds = visible.map((row) => row.invitationId);
       if (allVisibleSelected) {
         return current.filter((id) => !visibleIds.includes(id));
       }
@@ -107,9 +110,14 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
     });
   }
 
+  // Advancing to the next round targets the candidate, not a specific invitation --
+  // dedupe back to candidateId so selecting both of a re-invited candidate's rows
+  // advances them once, not twice.
+  const selectedCandidateIds = [...new Set(attended.filter((row) => selectedIds.includes(row.invitationId)).map((row) => row.candidateId))];
+
   async function handleExport(format: 'csv' | 'xlsx') {
     try {
-      const { blob, filename } = await exportMutation.mutateAsync({ format, candidateIds: selectedIds });
+      const { blob, filename } = await exportMutation.mutateAsync({ format, invitationIds: selectedIds });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -132,8 +140,8 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
     sortLabel: 'Select',
     render: (row) => (
       <Checkbox
-        checked={selectedIds.includes(row.candidateId)}
-        onChange={() => toggleSelected(row.candidateId)}
+        checked={selectedIds.includes(row.invitationId)}
+        onChange={() => toggleSelected(row.invitationId)}
         label={`Select ${row.candidateName}`}
         hideLabel
       />
@@ -205,13 +213,13 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
       <Table
         columns={[selectColumn, ...visibleDataColumns]}
         rows={visible}
-        rowKey={(row) => row.candidateId}
+        rowKey={(row) => row.invitationId}
         emptyMessage={filtersActive ? 'No candidates match your search or filters.' : 'No candidates have attended this exam yet.'}
       />
       {advanceModalOpen && (
         <AdvanceToNextRoundModal
           examId={examId}
-          candidateIds={selectedIds}
+          candidateIds={selectedCandidateIds}
           open
           onClose={() => setAdvanceModalOpen(false)}
           onAdvanced={() => setSelectedIds([])}

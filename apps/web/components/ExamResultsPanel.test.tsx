@@ -202,7 +202,7 @@ describe('ExamResultsPanel', () => {
 
   it('selects and deselects every visible row via the header "select all" checkbox', async () => {
     (useResultsList as jest.Mock).mockReturnValue({
-      data: [row({ candidateId: 'c1', candidateName: 'Alice' }), row({ candidateId: 'c2', candidateName: 'Bob' })],
+      data: [row({ candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1' }), row({ candidateId: 'c2', candidateName: 'Bob', invitationId: 'i2' })],
       isLoading: false,
     });
     renderPanel();
@@ -220,7 +220,7 @@ describe('ExamResultsPanel', () => {
     const mutateAsync = jest.fn().mockResolvedValue({ blob: new Blob(['x']), filename: 'exam-exam-1-results.csv' });
     (useResultsExport as jest.Mock).mockReturnValue({ mutateAsync, isPending: false });
     (useResultsList as jest.Mock).mockReturnValue({
-      data: [row({ candidateId: 'c1', candidateName: 'Alice' }), row({ candidateId: 'c2', candidateName: 'Bob' })],
+      data: [row({ candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1' }), row({ candidateId: 'c2', candidateName: 'Bob', invitationId: 'i2' })],
       isLoading: false,
     });
     global.URL.createObjectURL = jest.fn().mockReturnValue('blob:mock');
@@ -230,7 +230,7 @@ describe('ExamResultsPanel', () => {
     await userEvent.click(screen.getByRole('checkbox', { name: 'Select Bob' }));
     await userEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
 
-    expect(mutateAsync).toHaveBeenCalledWith({ format: 'csv', candidateIds: ['c2'] });
+    expect(mutateAsync).toHaveBeenCalledWith({ format: 'csv', invitationIds: ['i2'] });
   });
 
   it('exports as Excel when no rows are checked, scoped to nothing (i.e. everything)', async () => {
@@ -243,7 +243,32 @@ describe('ExamResultsPanel', () => {
     renderPanel();
     await userEvent.click(screen.getByRole('button', { name: 'Export Excel' }));
 
-    expect(mutateAsync).toHaveBeenCalledWith({ format: 'xlsx', candidateIds: [] });
+    expect(mutateAsync).toHaveBeenCalledWith({ format: 'xlsx', invitationIds: [] });
+  });
+
+  it('checking one row of a re-invited candidate does not also check or export their other invitation row', async () => {
+    const mutateAsync = jest.fn().mockResolvedValue({ blob: new Blob(['x']), filename: 'exam-exam-1-results.csv' });
+    (useResultsExport as jest.Mock).mockReturnValue({ mutateAsync, isPending: false });
+    (useResultsList as jest.Mock).mockReturnValue({
+      data: [
+        row({ candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', score: 3, maxScore: 10, percentage: 30 }),
+        row({ candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1-retry', score: 8, maxScore: 10, percentage: 80 }),
+      ],
+      isLoading: false,
+    });
+    global.URL.createObjectURL = jest.fn().mockReturnValue('blob:mock');
+    global.URL.revokeObjectURL = jest.fn();
+
+    renderPanel();
+    const aliceCheckboxes = screen.getAllByRole('checkbox', { name: 'Select Alice' });
+    expect(aliceCheckboxes).toHaveLength(2);
+
+    await userEvent.click(aliceCheckboxes[0]);
+    expect(aliceCheckboxes[0]).toBeChecked();
+    expect(aliceCheckboxes[1]).not.toBeChecked();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
+    expect(mutateAsync).toHaveBeenCalledWith({ format: 'csv', invitationIds: ['i1'] });
   });
 
   it('disables Advance to Next Round until a candidate is checked, then opens it with the checked ids', async () => {
@@ -257,6 +282,24 @@ describe('ExamResultsPanel', () => {
     await userEvent.click(screen.getByRole('checkbox', { name: 'Select Alice' }));
     expect(screen.getByRole('button', { name: 'Advance to Next Round' })).toBeEnabled();
 
+    await userEvent.click(screen.getByRole('button', { name: 'Advance to Next Round' }));
+
+    expect(screen.getByTestId('advance-modal')).toHaveTextContent('candidateIds:["c1"]');
+  });
+
+  it('advancing to next round dedupes to one candidateId when both of a re-invited candidate\'s rows are checked', async () => {
+    (useResultsList as jest.Mock).mockReturnValue({
+      data: [
+        row({ candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1' }),
+        row({ candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1-retry' }),
+      ],
+      isLoading: false,
+    });
+
+    renderPanel();
+    const aliceCheckboxes = screen.getAllByRole('checkbox', { name: 'Select Alice' });
+    await userEvent.click(aliceCheckboxes[0]);
+    await userEvent.click(aliceCheckboxes[1]);
     await userEvent.click(screen.getByRole('button', { name: 'Advance to Next Round' }));
 
     expect(screen.getByTestId('advance-modal')).toHaveTextContent('candidateIds:["c1"]');

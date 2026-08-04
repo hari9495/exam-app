@@ -88,6 +88,9 @@ export default function PanelExamResultsPage() {
   const { data: accuracyRows, isLoading: accuracyLoading } = useQuestionAccuracy(examId);
   const { data: results, isLoading: resultsLoading } = useResultsList(examId);
   const exportMutation = useResultsExport(examId);
+  // invitationId, not candidateId -- a re-invited candidate has multiple rows sharing
+  // one candidateId, and a candidateId-keyed selection would check/export/compare every
+  // one of that candidate's invitations at once instead of just the row the user picked.
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [integrityFilter, setIntegrityFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -115,9 +118,9 @@ export default function PanelExamResultsPage() {
   );
   const accuracyFiltersActive = accuracyFilter !== 'all' || accuracyQuery !== '';
 
-  function toggleSelected(candidateId: string) {
+  function toggleSelected(invitationId: string) {
     setSelectedIds((current) =>
-      current.includes(candidateId) ? current.filter((id) => id !== candidateId) : [...current, candidateId],
+      current.includes(invitationId) ? current.filter((id) => id !== invitationId) : [...current, invitationId],
     );
   }
 
@@ -125,7 +128,7 @@ export default function PanelExamResultsPage() {
     try {
       // Exports the checked rows; falls back to everything when nothing is checked,
       // same "no selection = no scoping" default the backend itself applies.
-      const { blob, filename } = await exportMutation.mutateAsync({ format, candidateIds: selectedIds });
+      const { blob, filename } = await exportMutation.mutateAsync({ format, invitationIds: selectedIds });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -145,8 +148,8 @@ export default function PanelExamResultsPage() {
       header: '',
       render: (row) => (
         <Checkbox
-          checked={selectedIds.includes(row.candidateId)}
-          onChange={() => toggleSelected(row.candidateId)}
+          checked={selectedIds.includes(row.invitationId)}
+          onChange={() => toggleSelected(row.invitationId)}
           label={`Select ${row.candidateName}`}
           hideLabel
         />
@@ -335,7 +338,7 @@ export default function PanelExamResultsPage() {
             </Button>
             <Button
               disabled={selectedIds.length < 2}
-              onClick={() => router.push(`/reports/${examId}/compare?candidateIds=${selectedIds.join(',')}`)}
+              onClick={() => router.push(`/reports/${examId}/compare?invitationIds=${selectedIds.join(',')}`)}
             >
               Compare selected
             </Button>

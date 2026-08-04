@@ -227,14 +227,14 @@ describe('ReportsService', () => {
       expect(exportRows[2].durationMinutes).toBeNull();
     });
 
-    it('scopes the export to the given candidateIds when provided', async () => {
+    it('scopes the export to the given invitationIds when provided', async () => {
       examsService.getResults.mockResolvedValue([
-        row({ candidateId: 'cand-1', status: 'submitted', attemptId: 'a1', submittedAt: new Date('2026-01-01T00:20:00Z') }),
-        row({ candidateId: 'cand-2', status: 'submitted', attemptId: 'a2', submittedAt: new Date('2026-01-01T00:20:00Z') }),
+        row({ candidateId: 'cand-1', invitationId: 'inv-1', status: 'submitted', attemptId: 'a1', submittedAt: new Date('2026-01-01T00:20:00Z') }),
+        row({ candidateId: 'cand-2', invitationId: 'inv-2', status: 'submitted', attemptId: 'a2', submittedAt: new Date('2026-01-01T00:20:00Z') }),
       ]);
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ attempt: { findMany: jest.fn().mockResolvedValue([]) } }));
 
-      const exportRows = await service.getExportRows(context, 'exam-1', ['cand-2']);
+      const exportRows = await service.getExportRows(context, 'exam-1', ['inv-2']);
 
       expect(exportRows.map((r) => r.candidateId)).toEqual(['cand-2']);
     });
@@ -251,6 +251,18 @@ describe('ReportsService', () => {
 
       expect(withEmptyArray).toHaveLength(2);
       expect(withNoArg).toHaveLength(2);
+    });
+
+    it('exports only the re-invited row that was selected, not every invitation sharing that candidateId', async () => {
+      examsService.getResults.mockResolvedValue([
+        row({ candidateId: 'cand-1', invitationId: 'inv-1', status: 'invited', attemptId: null }),
+        row({ candidateId: 'cand-1', invitationId: 'inv-2', status: 'submitted', attemptId: 'a2', submittedAt: new Date('2026-01-01T00:20:00Z') }),
+      ]);
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ attempt: { findMany: jest.fn().mockResolvedValue([]) } }));
+
+      const exportRows = await service.getExportRows(context, 'exam-1', ['inv-2']);
+
+      expect(exportRows.map((r) => r.invitationId)).toEqual(['inv-2']);
     });
   });
 
@@ -859,8 +871,8 @@ describe('ReportsService', () => {
   describe('compareCandidates', () => {
     it('computes section-wise scores per candidate from their own attempt snapshot, aligning by sectionId even when pool sections drew different questions', async () => {
       examsService.getResults.mockResolvedValue([
-        row({ candidateId: 'cand-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted', score: 5, maxScore: 5, percentage: 100, passFail: 'pass' }),
-        row({ candidateId: 'cand-2', candidateName: 'Bob', attemptId: 'a2', status: 'submitted', score: 0, maxScore: 5, percentage: 0, passFail: 'fail' }),
+        row({ candidateId: 'cand-1', invitationId: 'inv-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted', score: 5, maxScore: 5, percentage: 100, passFail: 'pass' }),
+        row({ candidateId: 'cand-2', invitationId: 'inv-2', candidateName: 'Bob', attemptId: 'a2', status: 'submitted', score: 0, maxScore: 5, percentage: 0, passFail: 'fail' }),
       ]);
       const tx = {
         attempt: {
@@ -873,33 +885,61 @@ describe('ReportsService', () => {
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      const comparison = await service.compareCandidates(context, 'exam-1', 'cand-1,cand-2');
+      const comparison = await service.compareCandidates(context, 'exam-1', 'inv-1,inv-2');
 
       expect(comparison[0].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Pool Section', score: 5, maxScore: 5 }]);
       expect(comparison[1].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Pool Section', score: 0, maxScore: 5 }]);
     });
 
-    it('throws BadRequestException when fewer than 2 candidateIds are provided, without calling getResults', async () => {
-      await expect(service.compareCandidates(context, 'exam-1', 'cand-1')).rejects.toThrow(BadRequestException);
+    it('throws BadRequestException when fewer than 2 invitationIds are provided, without calling getResults', async () => {
+      await expect(service.compareCandidates(context, 'exam-1', 'inv-1')).rejects.toThrow(BadRequestException);
       expect(examsService.getResults).not.toHaveBeenCalled();
     });
 
-    it('throws BadRequestException naming candidate(s) not invited to this exam', async () => {
-      examsService.getResults.mockResolvedValue([row({ candidateId: 'cand-1', candidateName: 'Alice' })]);
+    it('throws BadRequestException naming invitation(s) not found on this exam', async () => {
+      examsService.getResults.mockResolvedValue([row({ candidateId: 'cand-1', invitationId: 'inv-1', candidateName: 'Alice' })]);
 
-      await expect(service.compareCandidates(context, 'exam-1', 'cand-1,cand-999')).rejects.toThrow(BadRequestException);
+      await expect(service.compareCandidates(context, 'exam-1', 'inv-1,inv-999')).rejects.toThrow(BadRequestException);
+    });
+
+    it('compares the two specific invitations selected, not every invitation sharing a candidateId', async () => {
+      // Same candidateId re-invited to the exam -- one still-unsettled invitation and one
+      // settled invitation. A candidateId-keyed lookup would collapse these to a single
+      // row (whichever getResults happened to order last) and silently compare the wrong
+      // attempt's data instead of the two rows the caller actually selected.
+      examsService.getResults.mockResolvedValue([
+        row({ candidateId: 'cand-1', invitationId: 'inv-1', candidateName: 'Alice', attemptId: null, status: 'invited' }),
+        row({ candidateId: 'cand-1', invitationId: 'inv-2', candidateName: 'Alice', attemptId: 'a2', status: 'submitted', score: 5, maxScore: 5, percentage: 100, passFail: 'pass' }),
+      ]);
+      const tx = {
+        attempt: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'a2', sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Pool Section', questionIds: ['q1'] }]), answers: [{ questionId: 'q1', marksAwarded: 5 }] },
+          ]),
+        },
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5 }]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const comparison = await service.compareCandidates(context, 'exam-1', 'inv-1,inv-2');
+
+      expect(comparison.map((c) => c.invitationId)).toEqual(['inv-1', 'inv-2']);
+      expect(comparison[0].status).toBe('invited');
+      expect(comparison[0].sectionScores).toEqual([]);
+      expect(comparison[1].status).toBe('submitted');
+      expect(comparison[1].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Pool Section', score: 5, maxScore: 5 }]);
     });
 
     it('returns null score fields and empty sectionScores for a candidate with no attempt', async () => {
       examsService.getResults.mockResolvedValue([
-        row({ candidateId: 'cand-1', candidateName: 'Alice', attemptId: null, status: 'invited' }),
-        row({ candidateId: 'cand-2', candidateName: 'Bob', attemptId: null, status: 'invited' }),
+        row({ candidateId: 'cand-1', invitationId: 'inv-1', candidateName: 'Alice', attemptId: null, status: 'invited' }),
+        row({ candidateId: 'cand-2', invitationId: 'inv-2', candidateName: 'Bob', attemptId: null, status: 'invited' }),
       ]);
 
-      const comparison = await service.compareCandidates(context, 'exam-1', 'cand-1,cand-2');
+      const comparison = await service.compareCandidates(context, 'exam-1', 'inv-1,inv-2');
 
       expect(comparison[0]).toEqual({
-        candidateId: 'cand-1', candidateName: 'Alice', status: 'invited',
+        candidateId: 'cand-1', invitationId: 'inv-1', candidateName: 'Alice', status: 'invited',
         score: null, maxScore: null, percentage: null, passFail: null,
         proctoringAnalysis: null, integrityAnalysis: null, sectionScores: [],
       });
@@ -907,8 +947,8 @@ describe('ReportsService', () => {
 
     it("floors a section's score at 0 when negative marking makes the raw sum negative", async () => {
       examsService.getResults.mockResolvedValue([
-        row({ candidateId: 'cand-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted', score: 0, maxScore: 10, percentage: 0, passFail: 'fail' }),
-        row({ candidateId: 'cand-2', candidateName: 'Bob', attemptId: 'a2', status: 'submitted', score: 5, maxScore: 10, percentage: 50, passFail: 'fail' }),
+        row({ candidateId: 'cand-1', invitationId: 'inv-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted', score: 0, maxScore: 10, percentage: 0, passFail: 'fail' }),
+        row({ candidateId: 'cand-2', invitationId: 'inv-2', candidateName: 'Bob', attemptId: 'a2', status: 'submitted', score: 5, maxScore: 10, percentage: 50, passFail: 'fail' }),
       ]);
       const tx = {
         attempt: {
@@ -921,7 +961,7 @@ describe('ReportsService', () => {
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      const comparison = await service.compareCandidates(context, 'exam-1', 'cand-1,cand-2');
+      const comparison = await service.compareCandidates(context, 'exam-1', 'inv-1,inv-2');
 
       expect(comparison[0].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Section One', score: 0, maxScore: 10 }]);
       expect(comparison[1].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Section One', score: 5, maxScore: 10 }]);

@@ -6,6 +6,7 @@ import {
   useResultsSummary,
   useResultsList,
   useCandidateReport,
+  useCandidateComparison,
   useAttemptInsight,
   useRegenerateAttemptInsight,
   useResultsExport,
@@ -167,12 +168,12 @@ describe('usePanelReports', () => {
     expect(result.filename).toBe('exam-exam-1-results.csv');
   });
 
-  it('useResultsExport includes candidateIds in the query string when scoping the export', async () => {
+  it('useResultsExport includes invitationIds in the query string when scoping the export', async () => {
     global.fetch = jest.fn(async (url) => {
       if (String(url).endsWith('/auth/refresh')) {
         return new Response(JSON.stringify({ accessToken: 'test-token' }), { status: 200 });
       }
-      if (String(url).includes('/exams/exam-1/results/export') && String(url).includes('candidateIds=c1%2Cc2')) {
+      if (String(url).includes('/exams/exam-1/results/export') && String(url).includes('invitationIds=i1%2Ci2')) {
         return new Response(new Blob(['a,b']), { status: 200, headers: { 'Content-Disposition': 'attachment; filename="exam-exam-1-results.csv"' } });
       }
       throw new Error(`Unexpected fetch to ${url}`);
@@ -184,7 +185,33 @@ describe('usePanelReports', () => {
       return null;
     }
     render(<Probe />, { wrapper });
-    const result = await hook!.mutateAsync({ format: 'csv', candidateIds: ['c1', 'c2'] });
+    const result = await hook!.mutateAsync({ format: 'csv', invitationIds: ['i1', 'i2'] });
     expect(result.filename).toBe('exam-exam-1-results.csv');
+  });
+
+  it('useCandidateComparison requests the compare endpoint scoped by invitationIds, not candidateIds', async () => {
+    let requestedUrl = '';
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'test-token' }), { status: 200 });
+      }
+      requestedUrl = String(url);
+      return new Response(
+        JSON.stringify([
+          { candidateId: 'c1', invitationId: 'i1', candidateName: 'Alice', status: 'invited', score: null, maxScore: null, percentage: null, passFail: null, proctoringAnalysis: null, integrityAnalysis: null, sectionScores: [] },
+          { candidateId: 'c1', invitationId: 'i2', candidateName: 'Alice', status: 'submitted', score: 5, maxScore: 5, percentage: 100, passFail: 'pass', proctoringAnalysis: null, integrityAnalysis: null, sectionScores: [] },
+        ]),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+
+    function Probe() {
+      const { data, isLoading } = useCandidateComparison('exam-1', ['i1', 'i2']);
+      if (isLoading || !data) return <p>Loading</p>;
+      return <p>rows:{data.length}</p>;
+    }
+    render(<Probe />, { wrapper });
+    await waitFor(() => expect(screen.getByText('rows:2')).toBeInTheDocument());
+    expect(requestedUrl).toContain('/exams/exam-1/candidates/compare?invitationIds=i1,i2');
   });
 });
