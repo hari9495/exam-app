@@ -66,4 +66,17 @@ describe('WalkInShareCard', () => {
 
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining('/walk-in/demo-org?exam=exam-1'));
   });
+
+  it('shows an error instead of silently failing when the clipboard write is rejected', async () => {
+    // Real-world cause: clipboard permission denied, an unfocused document, or
+    // browser policy -- navigator.clipboard.writeText can and does reject.
+    writeText.mockRejectedValueOnce(new Error('Document is not focused.'));
+    renderCard();
+    await screen.findByText(/\/walk-in\/demo-org/);
+
+    await userEvent.click(screen.getByRole('button', { name: /copy link/i }));
+
+    expect(await screen.findByText(/failed to copy link/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /copied/i })).not.toBeInTheDocument();
+  });
 });

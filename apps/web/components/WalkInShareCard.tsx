@@ -36,10 +36,16 @@ export function WalkInShareCard({ examId, orgSlug }: WalkInShareCardProps) {
   if (!url) return null;
 
   async function handleCopy() {
-    await navigator.clipboard.writeText(url);
-    setCopied(true);
-    toast('Link copied.');
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      toast('Link copied.');
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Can genuinely fail (clipboard permission denied, unfocused document,
+      // browser policy) -- surface it rather than leaving the click silent.
+      toast('Failed to copy link.', 'error');
+    }
   }
 
   async function handleShare() {
