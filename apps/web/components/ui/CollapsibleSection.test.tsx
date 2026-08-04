@@ -52,4 +52,19 @@ describe('CollapsibleSection', () => {
     await userEvent.click(header);
     expect(screen.queryByLabelText('Title')).not.toBeInTheDocument();
   });
+
+  it('keeps alwaysEditable content interactive even when locked, unlike the regular children', () => {
+    render(
+      <CollapsibleSection
+        title="Scheduling & access"
+        locked
+        alwaysEditable={<input aria-label="Walk-in toggle" />}
+      >
+        <input aria-label="Window Opens" />
+      </CollapsibleSection>,
+    );
+
+    expect(screen.getByLabelText('Window Opens')).toBeDisabled();
+    expect(screen.getByLabelText('Walk-in toggle')).toBeEnabled();
+  });
 });

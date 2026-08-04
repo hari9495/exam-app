@@ -136,13 +136,19 @@ describe('EditExamPage details lock', () => {
     expect(screen.queryByText(/candidate has already started it/i)).not.toBeInTheDocument();
   });
 
-  it('shows a standalone, always-editable walk-in toggle once published, since the details form is locked', () => {
+  it('shows an always-editable walk-in toggle inside Scheduling & access once published, since the rest of the details form is locked', () => {
     currentExam = { ...mockExam, status: 'published', hasStartedAttempts: false, walkInEnabled: false };
     renderPage([], []);
 
     const checkboxes = screen.getAllByLabelText('Enable walk-in registration for this exam');
     expect(checkboxes).toHaveLength(1);
     expect(checkboxes[0]).not.toBeDisabled();
+    // Regression: this control used to float in its own block above the tab bar
+    // (visible on every tab, not just Details). It must live inside the Scheduling
+    // & access section instead, alongside every other lock reason.
+    expect(screen.getByText('Scheduling & access').compareDocumentPosition(checkboxes[0])).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   });
 
   it('does not duplicate the walk-in toggle while the exam is still a draft', () => {

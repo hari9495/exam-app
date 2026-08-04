@@ -35,9 +35,13 @@ interface ExamDetailsFormProps {
   /** Overrides the default "a candidate has started it" banner text -- callers use
    *  this for the other lock reason (published, no attempts yet: unpublish to edit). */
   lockedMessage?: string;
-  /** The edit page renders its own always-editable walk-in toggle outside this form's
-   *  locked fieldset -- set when that's in use, so the two controls don't duplicate. */
+  /** The edit page renders its own always-editable walk-in toggle -- set when that's
+   *  in use, so this form's own (lockable) copy doesn't duplicate it. */
   hideWalkInField?: boolean;
+  /** The edit page's always-editable walk-in toggle + share card, rendered in this
+   *  form's own walk-in slot inside "Scheduling & access" instead of floating outside
+   *  the form -- only used together with hideWalkInField. */
+  walkInSlot?: React.ReactNode;
 }
 
 // Recruiters will not recognise the raw event-type names, so every toggle carries
@@ -60,7 +64,15 @@ function toDatetimeLocalValue(iso: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = false, lockedMessage, hideWalkInField = false }: ExamDetailsFormProps) {
+export function ExamDetailsForm({
+  initialExam,
+  onSubmit,
+  submitLabel,
+  locked = false,
+  lockedMessage,
+  hideWalkInField = false,
+  walkInSlot,
+}: ExamDetailsFormProps) {
   const { organizationSlug } = useAuth();
   const [title, setTitle] = useState(initialExam?.title ?? '');
   const [instructions, setInstructions] = useState(initialExam?.instructions ?? '');
@@ -192,7 +204,17 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
         </div>
       </CollapsibleSection>
 
-      <CollapsibleSection title="Scheduling & access" locked={locked}>
+      <CollapsibleSection
+        title="Scheduling & access"
+        locked={locked}
+        // Once published, the rest of this section is disabled -- the edit page's own
+        // always-editable walk-in toggle (walkInSlot) renders here instead, via
+        // alwaysEditable, so it stays visually inside Scheduling & access without
+        // being caught by the section's own `disabled` fieldset.
+        alwaysEditable={
+          hideWalkInField && walkInSlot ? <div className="flex flex-col gap-3 sm:col-span-2">{walkInSlot}</div> : undefined
+        }
+      >
         <div className="sm:col-span-2">
           <Checkbox label="Enable scheduling" checked={schedulingEnabled} onChange={setSchedulingEnabled} />
         </div>
@@ -215,8 +237,6 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
             {schedulingError && <p className="text-xs text-red-600 sm:col-span-2">{schedulingError}</p>}
           </>
         )}
-        {/* Once published, this section is disabled -- the edit page renders its own
-            always-editable walk-in toggle instead (see hideWalkInField). */}
         {!hideWalkInField && (
           <div className="flex flex-col gap-3 sm:col-span-2">
             <Checkbox label="Enable walk-in registration for this exam" checked={walkInEnabled} onChange={setWalkInEnabled} />

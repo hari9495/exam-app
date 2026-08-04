@@ -12,9 +12,14 @@ interface CollapsibleSectionProps {
    *  controls (via a `disabled` fieldset) are affected, so a recruiter can still
    *  expand a section to review it while the exam is locked. */
   locked?: boolean;
+  /** Rendered in the same grid alongside `children`, but outside the `disabled`
+   *  fieldset -- a native <fieldset disabled> disables every descendant control
+   *  regardless of nesting, so a control that must stay interactive even while
+   *  `locked` is true (e.g. a bypass-the-lock toggle) has to sit outside it. */
+  alwaysEditable?: ReactNode;
 }
 
-export function CollapsibleSection({ title, children, defaultOpen = true, locked = false }: CollapsibleSectionProps) {
+export function CollapsibleSection({ title, children, defaultOpen = true, locked = false, alwaysEditable }: CollapsibleSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="overflow-hidden rounded-lg border border-recruiter-border bg-white shadow-sm">
@@ -31,11 +36,14 @@ export function CollapsibleSection({ title, children, defaultOpen = true, locked
         <h2 className="text-sm font-semibold text-recruiter-text">{title}</h2>
       </button>
       {open && (
-        // display:contents keeps the fieldset out of the grid layout below while still
-        // propagating `disabled` to every form control inside it.
-        <fieldset disabled={locked} className="contents">
-          <div className="grid grid-cols-1 gap-x-6 gap-y-4 p-4 sm:grid-cols-2">{children}</div>
-        </fieldset>
+        <div className="grid grid-cols-1 gap-x-6 gap-y-4 p-4 sm:grid-cols-2">
+          {/* display:contents keeps the fieldset out of the grid layout while still
+              propagating `disabled` to every form control inside it. */}
+          <fieldset disabled={locked} className="contents">
+            {children}
+          </fieldset>
+          {alwaysEditable}
+        </div>
       )}
     </div>
   );
