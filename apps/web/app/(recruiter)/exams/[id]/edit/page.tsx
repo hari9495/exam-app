@@ -139,42 +139,44 @@ export default function EditExamPage() {
           {exam.requiresManualGrading && <TabsTrigger value="grading">Grading</TabsTrigger>}
         </TabsList>
         <TabsContent value="details">
-          <ExamDetailsForm
-            initialExam={exam}
-            submitLabel="Save details"
-            locked={detailsLocked}
-            lockedMessage={detailsLockedMessage}
-            hideWalkInField={detailsLocked}
-            walkInSlot={
-              // The details form (and its own walk-in checkbox) is locked while published --
-              // this stays editable regardless, since walk-in eligibility isn't exam content.
-              detailsLocked && (
-                <>
-                  <Checkbox
-                    label="Enable walk-in registration for this exam"
-                    checked={exam.walkInEnabled}
-                    onChange={(checked) =>
-                      setWalkInEnabled.mutate(checked, {
-                        onSuccess: () => toast(checked ? 'Walk-in registration enabled.' : 'Walk-in registration disabled.'),
-                        onError: (error) => {
-                          toast(error instanceof Error ? error.message : 'Failed to update walk-in registration.', 'error');
-                        },
-                      })
-                    }
-                  />
-                  {exam.walkInEnabled && organizationSlug && <WalkInShareCard examId={exam.id} orgSlug={organizationSlug} />}
-                </>
-              )
-            }
-            onSubmit={(input) =>
-              updateExam.mutate(input, {
-                onSuccess: () => toast('Exam updated.'),
-                onError: (error) => {
-                  toast(error instanceof Error ? error.message : 'Failed to update exam.', 'error');
-                },
-              })
-            }
-          />
+          <div className="mx-auto max-w-3xl">
+            <ExamDetailsForm
+              initialExam={exam}
+              submitLabel="Save details"
+              locked={detailsLocked}
+              lockedMessage={detailsLockedMessage}
+              hideWalkInField={detailsLocked}
+              walkInSlot={
+                // The details form (and its own walk-in checkbox) is locked while published --
+                // this stays editable regardless, since walk-in eligibility isn't exam content.
+                detailsLocked && (
+                  <>
+                    <Checkbox
+                      label="Enable walk-in registration for this exam"
+                      checked={exam.walkInEnabled}
+                      onChange={(checked) =>
+                        setWalkInEnabled.mutate(checked, {
+                          onSuccess: () => toast(checked ? 'Walk-in registration enabled.' : 'Walk-in registration disabled.'),
+                          onError: (error) => {
+                            toast(error instanceof Error ? error.message : 'Failed to update walk-in registration.', 'error');
+                          },
+                        })
+                      }
+                    />
+                    {exam.walkInEnabled && organizationSlug && <WalkInShareCard examId={exam.id} orgSlug={organizationSlug} />}
+                  </>
+                )
+              }
+              onSubmit={(input) =>
+                updateExam.mutate(input, {
+                  onSuccess: () => toast('Exam updated.'),
+                  onError: (error) => {
+                    toast(error instanceof Error ? error.message : 'Failed to update exam.', 'error');
+                  },
+                })
+              }
+            />
+          </div>
         </TabsContent>
         <TabsContent value="sections">
           <ExamSectionsPanel examId={exam.id} />
