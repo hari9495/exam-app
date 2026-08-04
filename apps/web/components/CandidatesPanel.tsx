@@ -103,7 +103,10 @@ export function CandidatesPanel({ examId }: { examId: string }) {
   }, [invitations, search, statusFilter]);
 
   const columns: Column<Invitation>[] = [
-    { key: 'index', header: '#', render: (row) => visibleInvitations.indexOf(row) + 1 },
+    // index (Table's actual rendered-order position), not visibleInvitations.indexOf(row)
+    // -- the latter looks up the row's position in this unsorted array, so it stayed
+    // pinned to insertion order and didn't follow the table's own column-header sort.
+    { key: 'index', header: '#', render: (_row, index) => index + 1 },
     { key: 'name', header: 'Candidate', render: (row) => row.candidate.name },
     { key: 'email', header: 'Email', render: (row) => row.candidate.email },
     {

@@ -148,6 +148,16 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
     ),
   };
 
+  // Position in the currently sorted/filtered view, 1-based -- a quick way to see
+  // "how many candidates" at a glance without counting rows. Not sortable itself
+  // (it's derived from whatever sort is active, not an independent value) and kept
+  // out of the column chooser alongside the select checkbox for the same reason.
+  const indexColumn: Column<ExamResultRow> = {
+    key: 'index',
+    header: '#',
+    render: (_row, index) => index + 1,
+  };
+
   const dataColumns: Column<ExamResultRow>[] = [
     {
       key: 'name',
@@ -167,8 +177,8 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
     },
     {
       key: 'score',
-      header: <FilterableHeader label="Score" value={scoreFilter} onChange={setScoreFilter} options={SCORE_FILTER_OPTIONS} />,
-      sortLabel: 'Score',
+      header: <FilterableHeader label="Percentage" value={scoreFilter} onChange={setScoreFilter} options={SCORE_FILTER_OPTIONS} />,
+      sortLabel: 'Percentage',
       render: (row) => (row.percentage !== null ? `${row.percentage.toFixed(1)}%` : '—'),
     },
     {
@@ -211,7 +221,7 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
         </div>
       </div>
       <Table
-        columns={[selectColumn, ...visibleDataColumns]}
+        columns={[selectColumn, indexColumn, ...visibleDataColumns]}
         rows={visible}
         rowKey={(row) => row.invitationId}
         emptyMessage={filtersActive ? 'No candidates match your search or filters.' : 'No candidates have attended this exam yet.'}

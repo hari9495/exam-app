@@ -25,6 +25,24 @@ describe('Table', () => {
     expect(cells[0]).toHaveTextContent('Alpha');
   });
 
+  it('passes each row its position in the currently sorted/visible order', () => {
+    const indexColumns: Column<Row>[] = [
+      { key: 'name', header: 'Name', render: (row) => row.name, sortValue: (row) => row.name },
+      { key: 'index', header: '#', render: (_row, index) => index + 1 },
+    ];
+    render(<Table columns={indexColumns} rows={rows} rowKey={(row) => row.id} />);
+
+    // Unsorted: insertion order (Bravo, Alpha) -> indices 1, 2.
+    expect(screen.getAllByRole('cell', { name: /^[12]$/ }).map((cell) => cell.textContent)).toEqual(['1', '2']);
+
+    // Sorted by Name ascending: Alpha now comes first, so its index is 1, not its
+    // original position -- the index tracks the rendered order, not the input array.
+    fireEvent.click(screen.getByText('Name'));
+    const cells = screen.getAllByRole('cell');
+    expect(cells[0]).toHaveTextContent('Alpha');
+    expect(cells[1]).toHaveTextContent('1');
+  });
+
   it('shows the empty message when there are no rows', () => {
     render(<Table columns={columns} rows={[]} rowKey={(row) => row.id} emptyMessage="No candidates yet." />);
     expect(screen.getByText('No candidates yet.')).toBeInTheDocument();

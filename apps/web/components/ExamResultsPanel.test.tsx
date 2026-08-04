@@ -61,6 +61,43 @@ describe('ExamResultsPanel', () => {
     expect(screen.queryByText('Cara')).not.toBeInTheDocument();
   });
 
+  it('numbers rows 1-based by their position in the current view', () => {
+    (useResultsList as jest.Mock).mockReturnValue({
+      data: [
+        row({ candidateId: 'c1', candidateName: 'Alice' }),
+        row({ candidateId: 'c2', candidateName: 'Bob', invitationId: 'i2' }),
+        row({ candidateId: 'c3', candidateName: 'Cara', invitationId: 'i3' }),
+      ],
+      isLoading: false,
+    });
+
+    renderPanel();
+
+    expect(screen.getByRole('columnheader', { name: '#' })).toBeInTheDocument();
+    const cells = screen.getAllByRole('cell', { name: /^[123]$/ }).map((cell) => cell.textContent);
+    expect(cells).toEqual(['1', '2', '3']);
+  });
+
+  it('re-numbers rows after sorting, following the new order rather than the original one', async () => {
+    const user = userEvent.setup();
+    (useResultsList as jest.Mock).mockReturnValue({
+      data: [
+        row({ candidateId: 'c1', candidateName: 'Zed', percentage: 10 }),
+        row({ candidateId: 'c2', candidateName: 'Amy', invitationId: 'i2', percentage: 90 }),
+      ],
+      isLoading: false,
+    });
+
+    renderPanel();
+    await user.click(screen.getByRole('button', { name: 'Candidate' }));
+
+    const rows = screen.getAllByRole('row').slice(1); // drop the header row
+    expect(rows[0]).toHaveTextContent('Amy');
+    expect(rows[0]).toHaveTextContent('1');
+    expect(rows[1]).toHaveTextContent('Zed');
+    expect(rows[1]).toHaveTextContent('2');
+  });
+
   it('offers a column chooser that can hide the Integrity column but never the select column', async () => {
     const user = userEvent.setup();
     (useResultsList as jest.Mock).mockReturnValue({ data: [row()], isLoading: false });
@@ -138,7 +175,7 @@ describe('ExamResultsPanel', () => {
     expect(screen.getByText('Bob')).toBeInTheDocument();
   });
 
-  it('filters rows by clicking the Score column header', async () => {
+  it('filters rows by clicking the Percentage column header', async () => {
     (useResultsList as jest.Mock).mockReturnValue({
       data: [row({ candidateId: 'c1', candidateName: 'Alice', percentage: 20 }), row({ candidateId: 'c2', candidateName: 'Bob', percentage: 90 })],
       isLoading: false,
@@ -146,7 +183,7 @@ describe('ExamResultsPanel', () => {
 
     renderPanel();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Filter by Score' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Filter by Percentage' }));
     await userEvent.click(screen.getByRole('menuitem', { name: 'High (≥70%)' }));
 
     expect(screen.queryByText('Alice')).not.toBeInTheDocument();

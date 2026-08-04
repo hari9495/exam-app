@@ -28,6 +28,22 @@ describe('CandidatesPanel', () => {
     (useResendInvitation as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
   });
 
+  it('numbers rows 1-based in the current view', () => {
+    (useExamInvitations as jest.Mock).mockReturnValue({
+      data: [
+        { id: 'inv-1', extraTimePercent: 0, attempt: null, candidate: { id: 'cand-1', name: 'Alice', email: 'alice@example.com' } },
+        { id: 'inv-2', extraTimePercent: 0, attempt: null, candidate: { id: 'cand-2', name: 'Bob', email: 'bob@example.com' } },
+      ],
+      isLoading: false,
+    });
+    (useUpdateAccommodation as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
+
+    renderPanel();
+
+    expect(screen.getByRole('columnheader', { name: '#' })).toBeInTheDocument();
+    expect(screen.getAllByRole('cell', { name: /^[12]$/ }).map((cell) => cell.textContent)).toEqual(['1', '2']);
+  });
+
   it('shows an editable extra-time control for a candidate who has not started', async () => {
     const mutate = jest.fn();
     (useExamInvitations as jest.Mock).mockReturnValue({
