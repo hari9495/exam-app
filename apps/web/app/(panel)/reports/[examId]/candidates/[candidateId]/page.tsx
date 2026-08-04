@@ -33,7 +33,7 @@ export default function PanelCandidateDetailPage() {
   const { examId, candidateId } = useParams<{ examId: string; candidateId: string }>();
   const searchParams = useSearchParams();
   const attemptId = searchParams.get('attemptId') || null;
-  const { data: candidate, isLoading } = useCandidateReport(examId, candidateId);
+  const { data: candidate, isLoading } = useCandidateReport(examId, candidateId, attemptId);
   const { data: insight, isLoading: insightLoading } = useAttemptInsight(attemptId);
   const { data: results } = useResultsList(examId);
   const regenerate = useRegenerateAttemptInsight();

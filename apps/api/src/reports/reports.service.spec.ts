@@ -373,6 +373,49 @@ describe('ReportsService', () => {
       await expect(service.getCandidateDetail(context, 'exam-1', 'cand-999')).rejects.toThrow(NotFoundException);
     });
 
+    it('picks the specific attempt when a re-invited candidate has multiple rows and attemptId is given', async () => {
+      // Same candidateId, two invitations: an older settled one and a newer still-unsettled
+      // one. getResults orders newest-invited first, so without attemptId this would
+      // silently resolve to the unsettled row instead.
+      examsService.getResults.mockResolvedValue([
+        row({ candidateId: 'cand-1', invitationId: 'inv-2', attemptId: null, status: 'invited' }),
+        row({
+          candidateId: 'cand-1', invitationId: 'inv-1', attemptId: 'a1', status: 'submitted',
+          score: 5, maxScore: 10, percentage: 50, passFail: 'pass', submittedAt: new Date('2026-01-01T00:20:00Z'),
+        }),
+      ]);
+      const tx = {
+        attempt: { findFirst: jest.fn().mockResolvedValue(null) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const detail = await service.getCandidateDetail(context, 'exam-1', 'cand-1', 'a1');
+
+      expect(detail.score).toBe(5);
+      expect(detail.passFail).toBe('pass');
+    });
+
+    it('falls back to the first matching row (existing behavior) when no attemptId is given', async () => {
+      examsService.getResults.mockResolvedValue([
+        row({ candidateId: 'cand-1', invitationId: 'inv-2', attemptId: null, status: 'invited' }),
+        row({ candidateId: 'cand-1', invitationId: 'inv-1', attemptId: 'a1', status: 'submitted', score: 5, maxScore: 10 }),
+      ]);
+
+      const detail = await service.getCandidateDetail(context, 'exam-1', 'cand-1');
+
+      expect(detail.status).toBe('invited');
+      expect(detail.score).toBeNull();
+    });
+
+    it('throws NotFoundException when attemptId is given but belongs to a different candidate', async () => {
+      examsService.getResults.mockResolvedValue([
+        row({ candidateId: 'cand-1', invitationId: 'inv-1', attemptId: 'a1' }),
+        row({ candidateId: 'cand-2', invitationId: 'inv-2', attemptId: 'a2' }),
+      ]);
+
+      await expect(service.getCandidateDetail(context, 'exam-1', 'cand-1', 'a2')).rejects.toThrow(NotFoundException);
+    });
+
     it("floors a section's score at 0 when negative marking makes the raw sum negative", async () => {
       examsService.getResults.mockResolvedValue([
         row({

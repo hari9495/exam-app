@@ -347,7 +347,10 @@ export default function PanelExamResultsPage() {
           <Table
             columns={candidateColumns}
             rows={visibleResults}
-            rowKey={(row) => row.candidateId}
+            // invitationId, not candidateId -- a re-invited candidate has more than one row
+            // for the same exam, and a duplicate React key across rows makes sort reordering
+            // mis-assign/duplicate DOM nodes (same class of bug as ADO #6841).
+            rowKey={(row) => row.invitationId}
             emptyMessage={filtersActive ? 'No candidates match your search or filters.' : 'No candidates invited yet.'}
           />
         )}

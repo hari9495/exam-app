@@ -37,11 +37,20 @@ export function useResultsList(examId: string) {
   });
 }
 
-export function useCandidateReport(examId: string, candidateId: string | null) {
+// attemptId disambiguates a candidate re-invited to the same exam (multiple invitation
+// rows share one candidateId) -- without it the backend falls back to "most recently
+// invited," which can silently return a different, unsettled attempt's (blank) data
+// instead of the specific one the caller is looking at.
+export function useCandidateReport(examId: string, candidateId: string | null, attemptId?: string | null) {
   const { accessToken } = useAuth();
   return useQuery<CandidateDetail>({
-    queryKey: ['results', examId, 'candidates', candidateId],
-    queryFn: () => apiFetch(`/exams/${examId}/candidates/${candidateId}/report`, {}, accessToken ?? undefined),
+    queryKey: ['results', examId, 'candidates', candidateId, attemptId ?? null],
+    queryFn: () =>
+      apiFetch(
+        `/exams/${examId}/candidates/${candidateId}/report${attemptId ? `?attemptId=${attemptId}` : ''}`,
+        {},
+        accessToken ?? undefined,
+      ),
     enabled: Boolean(accessToken) && Boolean(examId) && Boolean(candidateId),
   });
 }

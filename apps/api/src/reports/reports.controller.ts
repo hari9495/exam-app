@@ -40,8 +40,9 @@ export class ReportsController {
     @CurrentTenant() tenant: TenantContext,
     @Param('id') id: string,
     @Param('candidateId') candidateId: string,
+    @Query('attemptId') attemptId?: string,
   ): Promise<CandidateDetail> {
-    return this.reportsService.getCandidateDetail(tenant, id, candidateId);
+    return this.reportsService.getCandidateDetail(tenant, id, candidateId, attemptId);
   }
 
   @Get(':id/candidates/compare')

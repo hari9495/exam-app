@@ -5,6 +5,7 @@ import { AuthProvider } from '../auth-context';
 import {
   useResultsSummary,
   useResultsList,
+  useCandidateReport,
   useAttemptInsight,
   useRegenerateAttemptInsight,
   useResultsExport,
@@ -63,6 +64,46 @@ describe('usePanelReports', () => {
     }
     render(<Probe />, { wrapper });
     await waitFor(() => expect(screen.getByText('rows:1')).toBeInTheDocument());
+  });
+
+  it('useCandidateReport appends attemptId to disambiguate a candidate re-invited to the same exam', async () => {
+    let requestedUrl = '';
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'test-token' }), { status: 200 });
+      }
+      requestedUrl = String(url);
+      return new Response(JSON.stringify({ candidateId: 'c1', candidateName: 'Alice', status: 'submitted', score: 8, maxScore: 10, percentage: 80, passFail: 'pass', submittedAt: null, proctoringAnalysis: null, integrityAnalysis: null, sections: [], webcamTimeline: [] }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    function Probe() {
+      const { data, isLoading } = useCandidateReport('exam-1', 'c1', 'a1');
+      if (isLoading || !data) return <p>Loading</p>;
+      return <p>name:{data.candidateName}</p>;
+    }
+    render(<Probe />, { wrapper });
+    await waitFor(() => expect(screen.getByText('name:Alice')).toBeInTheDocument());
+    expect(requestedUrl).toContain('/exams/exam-1/candidates/c1/report?attemptId=a1');
+  });
+
+  it('useCandidateReport omits attemptId from the URL when none is given', async () => {
+    let requestedUrl = '';
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'test-token' }), { status: 200 });
+      }
+      requestedUrl = String(url);
+      return new Response(JSON.stringify({ candidateId: 'c1', candidateName: 'Alice', status: 'invited', score: null, maxScore: null, percentage: null, passFail: null, submittedAt: null, proctoringAnalysis: null, integrityAnalysis: null, sections: [], webcamTimeline: [] }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    function Probe() {
+      const { data, isLoading } = useCandidateReport('exam-1', 'c1');
+      if (isLoading || !data) return <p>Loading</p>;
+      return <p>name:{data.candidateName}</p>;
+    }
+    render(<Probe />, { wrapper });
+    await waitFor(() => expect(screen.getByText('name:Alice')).toBeInTheDocument());
+    expect(requestedUrl.endsWith('/exams/exam-1/candidates/c1/report')).toBe(true);
   });
 
   it('useAttemptInsight returns null (not an error) when the insight has not been generated yet (404)', async () => {

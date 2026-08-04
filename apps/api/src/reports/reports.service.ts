@@ -286,9 +286,23 @@ export class ReportsService {
     });
   }
 
-  async getCandidateDetail(context: TenantContext, examId: string, candidateId: string): Promise<CandidateDetail> {
+  async getCandidateDetail(
+    context: TenantContext,
+    examId: string,
+    candidateId: string,
+    attemptId?: string,
+  ): Promise<CandidateDetail> {
     const rows = await this.examsService.getResults(context, examId);
-    const row = rows.find((resultRow) => resultRow.candidateId === candidateId);
+    // getResults returns one row per invitation, so a candidate re-invited to the same
+    // exam has several. Without attemptId this falls back to whichever invitation
+    // getResults ordered first (most recently invited) -- fine for a candidate with
+    // only one invitation, but silently wrong for a re-invited one: it could return a
+    // still-unsettled invitation's (blank) data instead of the specific attempt the
+    // caller is looking at. Callers that already know which attempt (the results list,
+    // which links each row's own attemptId) should always pass it.
+    const row = attemptId
+      ? rows.find((resultRow) => resultRow.candidateId === candidateId && resultRow.attemptId === attemptId)
+      : rows.find((resultRow) => resultRow.candidateId === candidateId);
     if (!row) {
       throw new NotFoundException(`Candidate ${candidateId} not found on exam ${examId}`);
     }
