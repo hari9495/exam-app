@@ -430,8 +430,8 @@ describe('ExamsPage', () => {
     );
     await waitFor(() => expect(screen.getByText('Backend Round')).toBeInTheDocument());
 
-    await user.click(screen.getByRole('combobox'));
-    await user.click(screen.getByRole('option', { name: 'Published' }));
+    await user.click(screen.getByRole('button', { name: 'Filter by Status' }));
+    await user.click(await screen.findByText('Published'));
 
     await waitFor(() =>
       expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/exams') && String(call[0]).includes('status=published'))).toBe(true),
