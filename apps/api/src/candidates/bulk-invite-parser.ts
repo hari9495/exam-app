@@ -32,17 +32,21 @@ export function detectFileKind(filename: string): 'csv' | 'xlsx' | null {
 
 function extractRow(record: Record<string, string>, rowNumber: number): BulkInviteCandidateRow | BulkInviteRowError {
   const email = (record.Email ?? '').trim();
-  const name = (record.Name ?? '').trim();
+  const firstName = (record['First Name'] ?? '').trim();
+  const lastName = (record['Last Name'] ?? '').trim();
   const phone = (record.Phone ?? '').trim() || undefined;
 
   if (!EMAIL_PATTERN.test(email)) {
     return { row: rowNumber, message: `Invalid or missing email: "${email}"` };
   }
-  if (!name) {
-    return { row: rowNumber, message: 'Missing name' };
+  if (!firstName) {
+    return { row: rowNumber, message: 'Missing first name' };
+  }
+  if (!lastName) {
+    return { row: rowNumber, message: 'Missing last name' };
   }
 
-  return { rowNumber, email, name, phone };
+  return { rowNumber, email, name: `${firstName} ${lastName}`, phone };
 }
 
 function isRowError(value: BulkInviteCandidateRow | BulkInviteRowError): value is BulkInviteRowError {

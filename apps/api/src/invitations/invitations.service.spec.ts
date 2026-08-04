@@ -532,10 +532,10 @@ describe('InvitationsService', () => {
   describe('bulkUploadAndInvite', () => {
     it('creates/updates candidates from a CSV, invites them, and reports skips and errors separately', async () => {
       const csv = [
-        'Email,Name,Phone',
-        'new@test.com,New Person,',
-        'existing@test.com,Existing Updated,555-0002',
-        'not-an-email,Bad Row,',
+        'Email,First Name,Last Name,Phone',
+        'new@test.com,New,Person,',
+        'existing@test.com,Existing,Updated,555-0002',
+        'not-an-email,Bad,Row,',
       ].join('\n');
       const file = { originalname: 'candidates.csv', size: Buffer.byteLength(csv), buffer: Buffer.from(csv) } as Express.Multer.File;
 
@@ -592,7 +592,7 @@ describe('InvitationsService', () => {
     });
 
     it('rejects the whole request when the exam is not published, before any candidate is created', async () => {
-      const csv = 'Email,Name,Phone\nalice@test.com,Alice,';
+      const csv = 'Email,First Name,Last Name,Phone\nalice@test.com,Alice,Test,';
       const file = { originalname: 'candidates.csv', size: Buffer.byteLength(csv), buffer: Buffer.from(csv) } as Express.Multer.File;
       const tx = { exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'draft' }) } };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));

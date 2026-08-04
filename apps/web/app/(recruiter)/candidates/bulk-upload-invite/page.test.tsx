@@ -55,7 +55,7 @@ describe('BulkUploadInviteCandidatesPage', () => {
     await userEvent.click(screen.getByRole('combobox', { name: 'Exam To Invite To' }));
     await userEvent.click(screen.getByRole('option', { name: 'Backend Round' }));
 
-    const file = new File(['Email,Name\nfrank@test.com,Frank'], 'candidates.csv', { type: 'text/csv' });
+    const file = new File(['Email,First Name,Last Name\nfrank@test.com,Frank,Miller'], 'candidates.csv', { type: 'text/csv' });
     const input = screen.getByLabelText(/Candidate file/) as HTMLInputElement;
     fireEvent.change(input, { target: { files: [file] } });
     fireEvent.click(screen.getByRole('button', { name: 'Upload & invite' }));
@@ -88,7 +88,7 @@ describe('BulkUploadInviteCandidatesPage', () => {
     await userEvent.click(screen.getByRole('combobox', { name: 'Exam To Invite To' }));
     await userEvent.click(screen.getByRole('option', { name: 'Backend Round' }));
 
-    const file = new File(['Email,Name'], 'candidates.csv', { type: 'text/csv' });
+    const file = new File(['Email,First Name,Last Name'], 'candidates.csv', { type: 'text/csv' });
     const input = screen.getByLabelText(/Candidate file/) as HTMLInputElement;
     fireEvent.change(input, { target: { files: [file] } });
     fireEvent.click(screen.getByRole('button', { name: 'Upload & invite' }));

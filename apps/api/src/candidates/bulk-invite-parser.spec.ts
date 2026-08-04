@@ -26,20 +26,24 @@ describe('detectFileKind', () => {
 });
 
 describe('parseBulkInviteFile (csv)', () => {
-  it('parses valid rows including an optional phone column', async () => {
-    const csv = ['Email,Name,Phone', 'alice@test.com,Alice,555-1234', 'bob@test.com,Bob,'].join('\n');
+  it('parses valid rows including an optional phone column, combining First/Last Name into one name', async () => {
+    const csv = [
+      'Email,First Name,Last Name,Phone',
+      'alice@test.com,Alice,Smith,555-1234',
+      'bob@test.com,Bob,Jones,',
+    ].join('\n');
 
     const { rows, errors } = await parseBulkInviteFile(Buffer.from(csv), 'csv');
 
     expect(errors).toEqual([]);
     expect(rows).toEqual([
-      { rowNumber: 1, email: 'alice@test.com', name: 'Alice', phone: '555-1234' },
-      { rowNumber: 2, email: 'bob@test.com', name: 'Bob', phone: undefined },
+      { rowNumber: 1, email: 'alice@test.com', name: 'Alice Smith', phone: '555-1234' },
+      { rowNumber: 2, email: 'bob@test.com', name: 'Bob Jones', phone: undefined },
     ]);
   });
 
   it('flags a row with a missing email', async () => {
-    const csv = ['Email,Name,Phone', ',Alice,555-1234'].join('\n');
+    const csv = ['Email,First Name,Last Name,Phone', ',Alice,Smith,555-1234'].join('\n');
 
     const { rows, errors } = await parseBulkInviteFile(Buffer.from(csv), 'csv');
 
@@ -48,27 +52,35 @@ describe('parseBulkInviteFile (csv)', () => {
   });
 
   it('flags a row with a malformed email', async () => {
-    const csv = ['Email,Name,Phone', 'not-an-email,Alice,'].join('\n');
+    const csv = ['Email,First Name,Last Name,Phone', 'not-an-email,Alice,Smith,'].join('\n');
 
     const { errors } = await parseBulkInviteFile(Buffer.from(csv), 'csv');
 
     expect(errors).toEqual([{ row: 1, message: 'Invalid or missing email: "not-an-email"' }]);
   });
 
-  it('flags a row with a missing name', async () => {
-    const csv = ['Email,Name,Phone', 'alice@test.com,,'].join('\n');
+  it('flags a row with a missing first name', async () => {
+    const csv = ['Email,First Name,Last Name,Phone', 'alice@test.com,,Smith,'].join('\n');
 
     const { errors } = await parseBulkInviteFile(Buffer.from(csv), 'csv');
 
-    expect(errors).toEqual([{ row: 1, message: 'Missing name' }]);
+    expect(errors).toEqual([{ row: 1, message: 'Missing first name' }]);
+  });
+
+  it('flags a row with a missing last name', async () => {
+    const csv = ['Email,First Name,Last Name,Phone', 'alice@test.com,Alice,,'].join('\n');
+
+    const { errors } = await parseBulkInviteFile(Buffer.from(csv), 'csv');
+
+    expect(errors).toEqual([{ row: 1, message: 'Missing last name' }]);
   });
 
   it('assigns sequential row numbers and continues past a bad row', async () => {
     const csv = [
-      'Email,Name,Phone',
-      'alice@test.com,Alice,',
-      'not-an-email,Bad Row,',
-      'carol@test.com,Carol,',
+      'Email,First Name,Last Name,Phone',
+      'alice@test.com,Alice,Smith,',
+      'not-an-email,Bad,Row,',
+      'carol@test.com,Carol,Jones,',
     ].join('\n');
 
     const { rows, errors } = await parseBulkInviteFile(Buffer.from(csv), 'csv');
@@ -79,12 +91,12 @@ describe('parseBulkInviteFile (csv)', () => {
 });
 
 describe('parseBulkInviteFile (xlsx)', () => {
-  it('parses a valid row from an in-memory workbook', async () => {
-    const buffer = await buildXlsxBuffer([{ Email: 'alice@test.com', Name: 'Alice', Phone: '555-1234' }]);
+  it('parses a valid row from an in-memory workbook, combining First/Last Name into one name', async () => {
+    const buffer = await buildXlsxBuffer([{ Email: 'alice@test.com', 'First Name': 'Alice', 'Last Name': 'Smith', Phone: '555-1234' }]);
 
     const { rows, errors } = await parseBulkInviteFile(buffer, 'xlsx');
 
     expect(errors).toEqual([]);
-    expect(rows).toEqual([{ rowNumber: 1, email: 'alice@test.com', name: 'Alice', phone: '555-1234' }]);
+    expect(rows).toEqual([{ rowNumber: 1, email: 'alice@test.com', name: 'Alice Smith', phone: '555-1234' }]);
   });
 });
