@@ -391,6 +391,12 @@ model Invitation {
   token                  String                  @unique
   status                 String                  @default("invited")
   source                 String                  @default("invited") @map("source")
+  // Tracks the invite EMAIL's own lifecycle, separate from `status` (which tracks the
+  // invitation itself: invited/revoked). 'pending' until dispatchInvitationEmail's fire-
+  // and-forget send resolves, then 'sent' or 'failed' -- lets the recruiter UI show
+  // "In queue" for the brief window before the email actually goes out.
+  emailStatus            String                  @default("pending") @map("email_status")
+  resendCount            Int                     @default(0) @map("resend_count")
   extraTimePercent       Int                     @default(0) @map("extra_time_percent")
   invitedAt              DateTime                @default(now()) @map("invited_at")
   expiresAt              DateTime                @map("expires_at")

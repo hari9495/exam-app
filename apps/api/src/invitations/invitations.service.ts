@@ -238,6 +238,8 @@ export class InvitationsService {
           candidateId: true,
           status: true,
           source: true,
+          emailStatus: true,
+          resendCount: true,
           extraTimePercent: true,
           invitedAt: true,
           expiresAt: true,
@@ -265,7 +267,12 @@ export class InvitationsService {
       }
       const updated = await tx.invitation.update({
         where: { id: invitationId },
-        data: { token: generateToken(), expiresAt: resolveInvitationExpiry(existing.exam) },
+        data: {
+          token: generateToken(),
+          expiresAt: resolveInvitationExpiry(existing.exam),
+          emailStatus: 'pending',
+          resendCount: { increment: 1 },
+        },
       });
       return { invitation: updated, exam: existing.exam, candidate: existing.candidate };
     });
@@ -386,14 +393,21 @@ export class InvitationsService {
       html,
       organizationId: context.organizationId ?? undefined,
     });
-    await this.tenantPrisma.forTenant(context, (tx) =>
-      tx.notification.create({
+    await this.tenantPrisma.forTenant(context, async (tx) => {
+      await tx.notification.create({
         data: {
           invitationId: invitation.id,
           status: result.success ? 'sent' : 'failed',
           sentAt: result.success ? new Date() : null,
         },
-      }),
-    );
+      });
+      // Settles the transient 'pending' set when the invite/resend was created -- this is
+      // the only place emailStatus moves off 'pending', so the recruiter UI's "In queue"
+      // badge clears once the send actually resolves, not before.
+      await tx.invitation.update({
+        where: { id: invitation.id },
+        data: { emailStatus: result.success ? 'sent' : 'failed' },
+      });
+    });
   }
 }
