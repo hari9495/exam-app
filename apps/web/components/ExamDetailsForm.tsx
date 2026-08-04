@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { Button, Checkbox, CollapsibleSection, Input, RadioGroup, RadioGroupItem, RequiredFieldsNote, Select } from '../components/ui';
 import { Exam, FeedbackVisibility } from '../lib/types';
+import { WalkInShareCard } from './WalkInShareCard';
+import { useAuth } from '../lib/auth-context';
 
 export interface ExamDetailsValue {
   title: string;
@@ -58,6 +60,7 @@ function toDatetimeLocalValue(iso: string): string {
 }
 
 export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = false, lockedMessage, hideWalkInField = false }: ExamDetailsFormProps) {
+  const { organizationSlug } = useAuth();
   const [title, setTitle] = useState(initialExam?.title ?? '');
   const [instructions, setInstructions] = useState(initialExam?.instructions ?? '');
   const [durationMinutes, setDurationMinutes] = useState(String(initialExam?.durationMinutes ?? 60));
@@ -213,8 +216,11 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
         {/* Once published, this section is disabled -- the edit page renders its own
             always-editable walk-in toggle instead (see hideWalkInField). */}
         {!hideWalkInField && (
-          <div className="sm:col-span-2">
+          <div className="flex flex-col gap-3 sm:col-span-2">
             <Checkbox label="Enable walk-in registration for this exam" checked={walkInEnabled} onChange={setWalkInEnabled} />
+            {walkInEnabled && initialExam?.id && organizationSlug && (
+              <WalkInShareCard examId={initialExam.id} orgSlug={organizationSlug} />
+            )}
           </div>
         )}
         <div className="sm:col-span-2">

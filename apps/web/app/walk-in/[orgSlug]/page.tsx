@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { motion, MotionConfig } from 'framer-motion';
 import { AlertCircle, MailCheck } from 'lucide-react';
 import { Button, Input, Select, RequiredFieldsNote } from '../../../components/ui';
@@ -16,6 +16,7 @@ const HIGHLIGHTS = [
 
 export default function WalkInPage() {
   const { orgSlug } = useParams<{ orgSlug: string }>();
+  const searchParams = useSearchParams();
   const { data: exams, isLoading, isError } = useWalkInExams(orgSlug);
   const register = useWalkInRegister(orgSlug);
 
@@ -29,7 +30,11 @@ export default function WalkInPage() {
   // auto-starting on whatever device just submitted this form.
   const [submitted, setSubmitted] = useState(false);
 
-  const resolvedExamId = exams && exams.length === 1 ? exams[0].id : examId;
+  // A recruiter's shared link/QR code carries ?exam=<id> so it jumps straight to the
+  // right exam instead of making the candidate pick from every walk-in-enabled exam.
+  const examParam = searchParams.get('exam');
+  const preselectedExamId = exams?.some((exam) => exam.id === examParam) ? examParam : null;
+  const resolvedExamId = exams && exams.length === 1 ? exams[0].id : (preselectedExamId ?? examId);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -101,7 +106,7 @@ export default function WalkInPage() {
                 <Input label="Name" value={name} onChange={setName} required />
                 <Input label="Email" type="email" value={email} onChange={setEmail} required />
                 <Input label="Phone" value={phone} onChange={setPhone} />
-                {exams.length > 1 && (
+                {exams.length > 1 && !preselectedExamId && (
                   <Select
                     label="Exam"
                     value={examId}

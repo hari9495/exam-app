@@ -1,4 +1,16 @@
 import '@testing-library/jest-dom';
+import { TextEncoder, TextDecoder } from 'util';
+
+// Polyfill for TextEncoder/TextDecoder -- Node's own runtime has these as
+// globals, but jest-environment-jsdom does not expose them inside the jsdom
+// VM sandbox it creates per test file. The `qrcode` package needs one to
+// encode a URL into a QR code.
+if (typeof (globalThis as { TextEncoder?: unknown }).TextEncoder === 'undefined') {
+  (globalThis as unknown as { TextEncoder: unknown }).TextEncoder = TextEncoder;
+}
+if (typeof (globalThis as { TextDecoder?: unknown }).TextDecoder === 'undefined') {
+  (globalThis as unknown as { TextDecoder: unknown }).TextDecoder = TextDecoder;
+}
 
 // Polyfill for hasPointerCapture - needed for Radix UI components in jsdom
 if (!Element.prototype.hasPointerCapture) {

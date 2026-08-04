@@ -2,6 +2,8 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ExamDetailsForm } from './ExamDetailsForm';
 
+jest.mock('../lib/auth-context', () => ({ useAuth: () => ({ accessToken: 'test-token', organizationSlug: 'acme' }) }));
+
 describe('ExamDetailsForm', () => {
   it('submits title, duration, and pass criteria', async () => {
     const onSubmit = jest.fn();

@@ -19,6 +19,7 @@ jest.mock('../../../../../lib/hooks/useExams', () => ({
   useSetWalkInEnabled: () => ({ mutate: jest.fn() }),
 }));
 jest.mock('../../../../../lib/hooks/useExamMonitoring', () => ({ useExamMonitoring: jest.fn() }));
+jest.mock('../../../../../lib/auth-context', () => ({ useAuth: () => ({ accessToken: 'test-token', organizationSlug: 'acme' }) }));
 
 const mockExam: Exam = {
   id: 'exam-1', title: 'Backend Round', instructions: null, status: 'published', durationMinutes: 60,

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ExamDetailsForm } from '../../../../../components/ExamDetailsForm';
+import { WalkInShareCard } from '../../../../../components/WalkInShareCard';
 import { ExamSectionsPanel } from '../../../../../components/ExamSectionsPanel';
 import { LiveMonitoringPanel } from '../../../../../components/LiveMonitoringPanel';
 import { GradingQueuePanel } from '../../../../../components/GradingQueuePanel';
@@ -12,6 +13,7 @@ import { CandidatesPanel } from '../../../../../components/CandidatesPanel';
 import { ExamResultsPanel } from '../../../../../components/ExamResultsPanel';
 import { AuditHistoryLink } from '../../../../../components/AuditHistoryLink';
 import { useExam, useUpdateExam, usePublishExam, useUnpublishExam, useSetWalkInEnabled } from '../../../../../lib/hooks/useExams';
+import { useAuth } from '../../../../../lib/auth-context';
 import { useExamMonitoring } from '../../../../../lib/hooks/useExamMonitoring';
 import { useAttentionNotifications } from '../../../../../lib/hooks/useAttentionNotifications';
 import { flaggedAttemptIds } from '../../../../../lib/attention-alert';
@@ -21,6 +23,7 @@ import { BackLink } from '../../../../../components/BackLink';
 export default function EditExamPage() {
   const params = useParams<{ id: string }>();
   const { toast } = useToast();
+  const { organizationSlug } = useAuth();
   const { data: exam } = useExam(params.id);
   const updateExam = useUpdateExam(params.id);
   const publishExam = usePublishExam(params.id);
@@ -125,7 +128,7 @@ export default function EditExamPage() {
       {detailsLocked && (
         // The details form (and its own walk-in checkbox) is locked while published --
         // this stays editable regardless, since walk-in eligibility isn't exam content.
-        <div className="mb-6">
+        <div className="mb-6 flex flex-col gap-3">
           <Checkbox
             label="Enable walk-in registration for this exam"
             checked={exam.walkInEnabled}
@@ -138,6 +141,7 @@ export default function EditExamPage() {
               })
             }
           />
+          {exam.walkInEnabled && organizationSlug && <WalkInShareCard examId={exam.id} orgSlug={organizationSlug} />}
         </div>
       )}
       <Tabs defaultValue="details">
