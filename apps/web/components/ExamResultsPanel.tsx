@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import { Search } from 'lucide-react';
 import {
   Table,
@@ -28,6 +27,7 @@ import { useResultsList, useResultsExport, useQuestionAccuracy } from '../lib/ho
 import { RESULT_STATUS_LABEL, RESULT_STATUS_TONE } from '../lib/candidate-status';
 import { AdvanceToNextRoundModal } from './AdvanceToNextRoundModal';
 import { QuestionAccuracyPanel } from './QuestionAccuracyPanel';
+import { CandidateReportPanel } from './CandidateReportPanel';
 import { ExamResultRow } from '../lib/types';
 
 const PASS_FAIL_TONE: Record<string, StatusTone> = { pass: 'success', fail: 'danger' };
@@ -71,6 +71,9 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
   // that candidate's invitations at once instead of just the row picked.
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [advanceModalOpen, setAdvanceModalOpen] = useState(false);
+  // Candidate report opened in place of the candidates table (null = table view) --
+  // keeps the recruiter on the exam edit page instead of routing to /reports/....
+  const [openReport, setOpenReport] = useState<{ candidateId: string; attemptId: string | null } | null>(null);
 
   // Only candidates who actually attended: an invitation with no attempt yet
   // (still 'invited') or a revoked one never took the exam, so there's no
@@ -167,9 +170,15 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
       key: 'name',
       header: 'Candidate',
       render: (row) => (
-        <Link href={`/reports/${examId}/candidates/${row.candidateId}?attemptId=${row.attemptId ?? ''}`} className="font-medium text-primary hover:underline">
+        // Opens the report inline (below the same sub-tabs) rather than routing to
+        // /reports/... -- the recruiter stays on the exam edit page.
+        <button
+          type="button"
+          onClick={() => setOpenReport({ candidateId: row.candidateId, attemptId: row.attemptId })}
+          className="font-medium text-primary hover:underline"
+        >
           {row.candidateName}
-        </Link>
+        </button>
       ),
       sortValue: (row) => row.candidateName.toLowerCase(),
     },
@@ -227,6 +236,23 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
       </TabsList>
 
       <TabsContent value="candidates">
+        {openReport ? (
+          <CandidateReportPanel
+            examId={examId}
+            candidateId={openReport.candidateId}
+            attemptId={openReport.attemptId}
+            backSlot={
+              <button
+                type="button"
+                onClick={() => setOpenReport(null)}
+                className="mb-4 inline-flex items-center text-sm font-medium text-primary hover:underline print:hidden"
+              >
+                ← Back To Results
+              </button>
+            }
+            onOpenCandidate={(candidateId, attemptId) => setOpenReport({ candidateId, attemptId })}
+          />
+        ) : (
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-end justify-between gap-2">
             <div className="max-w-xs flex-1">
@@ -261,6 +287,7 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
             />
           )}
         </div>
+        )}
       </TabsContent>
 
       <TabsContent value="accuracy">

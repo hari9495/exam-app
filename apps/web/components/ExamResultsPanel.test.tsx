@@ -10,6 +10,16 @@ jest.mock('./AdvanceToNextRoundModal', () => ({
     <div data-testid="advance-modal">candidateIds:{JSON.stringify(candidateIds)}</div>
   ),
 }));
+// The real report panel pulls in several more data hooks; its own rendering is
+// covered by the candidate detail page tests.
+jest.mock('./CandidateReportPanel', () => ({
+  CandidateReportPanel: ({ candidateId, attemptId, backSlot }: { candidateId: string; attemptId: string | null; backSlot?: React.ReactNode }) => (
+    <div data-testid="candidate-report">
+      {backSlot}
+      candidateId:{candidateId};attemptId:{String(attemptId)}
+    </div>
+  ),
+}));
 
 function renderPanel(examId = 'exam-1') {
   render(
@@ -181,12 +191,19 @@ describe('ExamResultsPanel', () => {
     expect(screen.getByText('No candidates have attended this exam yet.')).toBeInTheDocument();
   });
 
-  it('links a candidate to their results detail page with the attempt id', () => {
+  it('opens the candidate report inline (with the attempt id) instead of routing away, and Back returns to the table', async () => {
     (useResultsList as jest.Mock).mockReturnValue({ data: [row()], isLoading: false });
 
     renderPanel('exam-1');
+    await userEvent.click(screen.getByRole('button', { name: 'Alice' }));
 
-    expect(screen.getByRole('link', { name: 'Alice' })).toHaveAttribute('href', '/reports/exam-1/candidates/c1?attemptId=a1');
+    expect(screen.getByTestId('candidate-report')).toHaveTextContent('candidateId:c1;attemptId:a1');
+    expect(screen.queryByRole('button', { name: 'Advance to Next Round' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: '← Back To Results' }));
+
+    expect(screen.queryByTestId('candidate-report')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Alice' })).toBeInTheDocument();
   });
 
   it('filters rows by clicking the Status column header', async () => {
