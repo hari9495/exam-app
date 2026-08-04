@@ -1,0 +1,7 @@
+# Default: any change outside apps/web needs the owner's review.
+*                   @hari9495
+
+# UI-only work in apps/web doesn't require an owner review to open/merge --
+# the branch protection rule still requires *a* review, just not specifically
+# from @hari9495, so a UI collaborator's PRs aren't bottlenecked on them.
+/apps/web/
