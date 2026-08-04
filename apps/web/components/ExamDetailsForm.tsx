@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Card, Checkbox, Input, RadioGroup, RadioGroupItem, RequiredFieldsNote, Select } from '../components/ui';
+import { Button, Checkbox, CollapsibleSection, Input, RadioGroup, RadioGroupItem, RequiredFieldsNote, Select } from '../components/ui';
 import { Exam, FeedbackVisibility } from '../lib/types';
 
 export interface ExamDetailsValue {
@@ -134,7 +134,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
       // inputs would otherwise silently block the submit event before that custom check ever
       // runs, so it's turned off here in favor of the form's own validation.
       noValidate
-      className="flex max-w-xl flex-col gap-6"
+      className="flex max-w-3xl min-w-0 flex-col gap-6"
     >
       {locked && (
         <p className="rounded-md border border-recruiter-border bg-recruiter-bg-subtle p-3 text-sm text-recruiter-text-secondary">
@@ -142,35 +142,37 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
             'This exam is locked because a candidate has already started it. Nothing here can be changed anymore — you can still invite new candidates and manage live monitoring from their respective tabs.'}
         </p>
       )}
-      <fieldset disabled={locked} className="m-0 flex min-w-0 flex-col gap-6 border-0 p-0">
-        <RequiredFieldsNote />
-        <Card className="flex flex-col gap-4">
-          <h2 className="text-lg font-semibold text-recruiter-text">Basic details</h2>
+      <RequiredFieldsNote />
+
+      <CollapsibleSection title="Basic details" locked={locked}>
+        <div className="sm:col-span-2">
           <Input label="Title" value={title} onChange={setTitle} required />
-          <div className="flex flex-col gap-1">
-            <label htmlFor="exam-instructions" className="text-sm font-medium text-gray-700">
-              Instructions
-            </label>
-            <textarea
-              id="exam-instructions"
-              value={instructions}
-              onChange={(e) => setInstructions(e.target.value)}
-              className="rounded border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none"
-              rows={3}
-            />
-          </div>
-          <div className="flex gap-4">
-            <Input label="Duration (Minutes)" type="number" min={1} value={durationMinutes} onChange={setDurationMinutes} />
-            <Input
-              label="Pass Criteria (%)"
-              type="number"
-              min={0}
-              max={100}
-              value={passCriteriaPercent}
-              onChange={setPassCriteriaPercent}
-            />
-          </div>
+        </div>
+        <div className="flex flex-col gap-1 sm:col-span-2">
+          <label htmlFor="exam-instructions" className="text-sm font-medium text-gray-700">
+            Instructions
+          </label>
+          <textarea
+            id="exam-instructions"
+            value={instructions}
+            onChange={(e) => setInstructions(e.target.value)}
+            className="rounded border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none"
+            rows={3}
+          />
+        </div>
+        <Input label="Duration (Minutes)" type="number" min={1} value={durationMinutes} onChange={setDurationMinutes} />
+        <Input
+          label="Pass Criteria (%)"
+          type="number"
+          min={0}
+          max={100}
+          value={passCriteriaPercent}
+          onChange={setPassCriteriaPercent}
+        />
+        <div className="sm:col-span-2">
           <Checkbox label="Randomize question order for candidates" checked={randomizeOrder} onChange={setRandomizeOrder} />
+        </div>
+        <div className="sm:col-span-2">
           <Select
             label="Candidate Feedback"
             value={feedbackVisibility}
@@ -182,54 +184,62 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
               { value: 'breakdown', label: 'Per-section breakdown' },
             ]}
           />
-        </Card>
+        </div>
+      </CollapsibleSection>
 
-        <Card className="flex flex-col gap-4">
-          <h2 className="text-lg font-semibold text-recruiter-text">Scheduling &amp; access</h2>
+      <CollapsibleSection title="Scheduling & access" locked={locked}>
+        <div className="sm:col-span-2">
           <Checkbox label="Enable scheduling" checked={schedulingEnabled} onChange={setSchedulingEnabled} />
-          {schedulingEnabled && (
-            <div className="flex flex-col gap-2 pl-6">
-              <Input
-                label="Window Opens"
-                type="datetime-local"
-                value={availabilityWindowStart}
-                onChange={setAvailabilityWindowStart}
-                required
-              />
-              <Input
-                label="Window Closes"
-                type="datetime-local"
-                value={availabilityWindowEnd}
-                onChange={setAvailabilityWindowEnd}
-                required
-              />
-              {schedulingError && <p className="text-xs text-red-600">{schedulingError}</p>}
-            </div>
-          )}
-          {/* Once published, this whole fieldset is disabled -- the edit page renders its
-              own always-editable walk-in toggle instead (see hideWalkInField). */}
-          {!hideWalkInField && (
+        </div>
+        {schedulingEnabled && (
+          <>
+            <Input
+              label="Window Opens"
+              type="datetime-local"
+              value={availabilityWindowStart}
+              onChange={setAvailabilityWindowStart}
+              required
+            />
+            <Input
+              label="Window Closes"
+              type="datetime-local"
+              value={availabilityWindowEnd}
+              onChange={setAvailabilityWindowEnd}
+              required
+            />
+            {schedulingError && <p className="text-xs text-red-600 sm:col-span-2">{schedulingError}</p>}
+          </>
+        )}
+        {/* Once published, this section is disabled -- the edit page renders its own
+            always-editable walk-in toggle instead (see hideWalkInField). */}
+        {!hideWalkInField && (
+          <div className="sm:col-span-2">
             <Checkbox label="Enable walk-in registration for this exam" checked={walkInEnabled} onChange={setWalkInEnabled} />
-          )}
+          </div>
+        )}
+        <div className="sm:col-span-2">
           <Input
             label="Allowed IP / CIDR Range (Optional)"
             value={allowedIpRange}
             onChange={setAllowedIpRange}
             placeholder="e.g. 203.0.113.4 or 203.0.113.0/24"
           />
-        </Card>
+        </div>
+      </CollapsibleSection>
 
-        <Card className="flex flex-col gap-4">
-          <h2 className="text-lg font-semibold text-recruiter-text">Proctoring &amp; integrity</h2>
+      <CollapsibleSection title="Proctoring & integrity" locked={locked}>
+        <div className="sm:col-span-2">
           <Checkbox label="Require webcam proctoring" checked={webcamProctoringEnabled} onChange={setWebcamProctoringEnabled} />
-          <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-gray-700">If a rule is broken</span>
-            <RadioGroup value={proctoringEnforcement} onChange={(value) => setProctoringEnforcement(value as 'warn' | 'block')}>
-              <RadioGroupItem value="block" label="Pause the exam, then block after repeated strikes" />
-              <RadioGroupItem value="warn" label="Record only — never pause the exam" />
-            </RadioGroup>
-          </div>
-          {proctoringEnforcement === 'block' && (
+        </div>
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
+          <span className="text-sm font-medium text-gray-700">If a rule is broken</span>
+          <RadioGroup value={proctoringEnforcement} onChange={(value) => setProctoringEnforcement(value as 'warn' | 'block')}>
+            <RadioGroupItem value="block" label="Pause the exam, then block after repeated strikes" />
+            <RadioGroupItem value="warn" label="Record only — never pause the exam" />
+          </RadioGroup>
+        </div>
+        {proctoringEnforcement === 'block' && (
+          <div className="sm:col-span-2">
             <Select
               label="Block After"
               value={proctoringStrikeLimit}
@@ -240,7 +250,9 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
                 { value: '5', label: '5 strikes' },
               ]}
             />
-          )}
+          </div>
+        )}
+        <div className="sm:col-span-2">
           <button
             type="button"
             onClick={() => setSignalsOpen((open) => !open)}
@@ -249,52 +261,56 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, locked = f
             {signalsOpen ? 'Hide' : 'Choose'} which activity to watch ({PROCTORING_SIGNAL_LABELS.length - disabledSignals.length}/
             {PROCTORING_SIGNAL_LABELS.length})
           </button>
-          {signalsOpen && (
-            <div className="flex flex-col gap-1.5 pl-1">
-              {PROCTORING_SIGNAL_LABELS.map((signal) => (
-                <Checkbox
-                  key={signal.value}
-                  label={signal.label}
-                  checked={!disabledSignals.includes(signal.value)}
-                  onChange={(checked) =>
-                    setDisabledSignals((current) =>
-                      checked ? current.filter((entry) => entry !== signal.value) : [...current, signal.value],
-                    )
-                  }
-                />
-              ))}
-            </div>
-          )}
+        </div>
+        {signalsOpen && (
+          <div className="flex flex-col gap-1.5 pl-1 sm:col-span-2">
+            {PROCTORING_SIGNAL_LABELS.map((signal) => (
+              <Checkbox
+                key={signal.value}
+                label={signal.label}
+                checked={!disabledSignals.includes(signal.value)}
+                onChange={(checked) =>
+                  setDisabledSignals((current) =>
+                    checked ? current.filter((entry) => entry !== signal.value) : [...current, signal.value],
+                  )
+                }
+              />
+            ))}
+          </div>
+        )}
+        <div className="sm:col-span-2">
           <Checkbox
             label="Record the candidate's screen as evidence"
             checked={screenCaptureEnabled}
             onChange={setScreenCaptureEnabled}
           />
           {screenCaptureEnabled ? (
-            <p className="pl-6 text-xs text-recruiter-text-secondary">
+            <p className="pl-6 pt-1 text-xs text-recruiter-text-secondary">
               Candidates must share their whole screen to start, and cannot use a phone or tablet. Their screen is captured only
               when a rule is broken.
             </p>
           ) : null}
+        </div>
+        <div className="sm:col-span-2">
           <Checkbox
             label="Require Safe Exam Browser (lockdown)"
             checked={lockdownRequired}
             onChange={setLockdownRequired}
           />
           {lockdownRequired ? (
-            <p className="pl-6 text-xs text-recruiter-text-secondary">
+            <p className="pl-6 pt-1 text-xs text-recruiter-text-secondary">
               Candidates must install Safe Exam Browser and open the exam inside it. SEB refuses to start while remote-access
               tools or other apps are running, closes background applications, and locks the machine to the exam until submission.
             </p>
           ) : null}
-        </Card>
+        </div>
+      </CollapsibleSection>
 
-        {!locked && (
-          <Button type="submit" className="self-start">
-            {submitLabel}
-          </Button>
-        )}
-      </fieldset>
+      {!locked && (
+        <Button type="submit" className="self-start">
+          {submitLabel}
+        </Button>
+      )}
     </form>
   );
 }

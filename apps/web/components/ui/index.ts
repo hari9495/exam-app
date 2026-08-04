@@ -16,3 +16,4 @@ export { StatusBadge, type StatusTone } from './StatusBadge';
 export { IntegrityBadge, type IntegrityLevel } from './IntegrityBadge';
 export { Pagination } from './Pagination';
 export { RequiredFieldsNote } from './RequiredFieldsNote';
+export { CollapsibleSection } from './CollapsibleSection';

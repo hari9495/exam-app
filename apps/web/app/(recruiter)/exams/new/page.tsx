@@ -12,7 +12,7 @@ export default function NewExamPage() {
   const createExam = useCreateExam();
 
   return (
-    <div className="mx-auto max-w-xl">
+    <div className="mx-auto max-w-3xl">
       <BackLink href="/exams" label="Back To Exams" />
       <h1 className="mb-6 text-2xl font-semibold">New exam</h1>
       <ExamDetailsForm
