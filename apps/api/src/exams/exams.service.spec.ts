@@ -1251,6 +1251,91 @@ describe('ExamsService', () => {
     });
   });
 
+  describe('previewSectionPool', () => {
+    it("runs the exact same eligibility query attempt-start uses (minus shuffle) and reports the count vs the configured poolSize", async () => {
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
+        examSection: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'section-1',
+            selectionMode: 'pool',
+            poolSize: 10,
+            poolDifficulty: 'medium',
+            poolTags: [{ tagId: 'tag-1', tag: { id: 'tag-1', name: 'Arrays' } }],
+          }),
+        },
+        question: {
+          count: jest.fn().mockResolvedValue(3),
+          findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q1', type: 'single_mcq', difficulty: 'medium', marks: 5 }]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.previewSectionPool(context, 'exam-1', 'section-1');
+
+      const expectedWhere = {
+        organizationId: 'org-1',
+        status: 'active',
+        difficulty: 'medium',
+        AND: [{ tags: { some: { tagId: 'tag-1' } } }],
+      };
+      expect(tx.question.count).toHaveBeenCalledWith({ where: expectedWhere });
+      expect(tx.question.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expectedWhere, take: 50 }),
+      );
+      expect(result).toEqual({
+        poolSize: 10,
+        poolDifficulty: 'medium',
+        poolTags: [{ id: 'tag-1', name: 'Arrays' }],
+        totalMatching: 3,
+        questions: [{ id: 'q1', text: 'Q1', type: 'single_mcq', difficulty: 'medium', marks: 5 }],
+      });
+    });
+
+    it('omits the difficulty filter when the section has none set', async () => {
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
+        examSection: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'section-1',
+            selectionMode: 'pool',
+            poolSize: 5,
+            poolDifficulty: null,
+            poolTags: [],
+          }),
+        },
+        question: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.previewSectionPool(context, 'exam-1', 'section-1');
+
+      expect(tx.question.count).toHaveBeenCalledWith({
+        where: { organizationId: 'org-1', status: 'active', AND: [] },
+      });
+    });
+
+    it('rejects previewing a fixed-mode section', async () => {
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
+        examSection: { findFirst: jest.fn().mockResolvedValue({ id: 'section-1', selectionMode: 'fixed' }) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.previewSectionPool(context, 'exam-1', 'section-1')).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws NotFoundException when the section does not belong to the given exam', async () => {
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
+        examSection: { findFirst: jest.fn().mockResolvedValue(null) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.previewSectionPool(context, 'exam-1', 'section-1')).rejects.toThrow(NotFoundException);
+    });
+  });
+
   it('throws NotFoundException from replaceSectionQuestions when a questionId does not resolve in this organization', async () => {
     const tx = {
       exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },

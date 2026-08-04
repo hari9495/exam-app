@@ -119,6 +119,12 @@ export class ExamsController {
     return this.examsService.duplicateSection(tenant, examId, sectionId);
   }
 
+  @Get(':id/sections/:sectionId/pool-preview')
+  @RequirePermissions('exam:manage')
+  previewSectionPool(@CurrentTenant() tenant: TenantContext, @Param('id') examId: string, @Param('sectionId') sectionId: string) {
+    return this.examsService.previewSectionPool(tenant, examId, sectionId);
+  }
+
   @Put(':id/sections/:sectionId/questions')
   @RequirePermissions('exam:manage')
   replaceSectionQuestions(

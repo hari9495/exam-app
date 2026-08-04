@@ -110,6 +110,21 @@ export interface ExamSection {
   // just a summary -- widened to match so callers like the exam preview page
   // don't need a second, separately-filtered fetch to render a question.
   questions: { questionId: string; question?: Question }[];
+  // Only meaningful when selectionMode is 'pool' -- the AND-combined tag filter a candidate
+  // question must match every one of. Absent/empty for a fixed-mode section.
+  poolTags?: { tagId: string; tag: Tag }[];
+}
+
+// A pool section draws a random subset fresh at every attempt-start and never stores which
+// questions it picked (see the backend's previewSectionPool) -- this is what "preview" returns:
+// what the pool would currently draw from, capped at a sane list length, plus the real total
+// so a recruiter can see whether there are even enough matching questions to fill poolSize.
+export interface PoolPreview {
+  poolSize: number;
+  poolDifficulty: Difficulty | null;
+  poolTags: Tag[];
+  totalMatching: number;
+  questions: { id: string; text: string; type: QuestionType; difficulty: Difficulty; marks: number }[];
 }
 
 export type FeedbackVisibility = 'none' | 'pass_fail' | 'score' | 'breakdown';

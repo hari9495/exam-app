@@ -8,6 +8,7 @@ import {
   useDeleteSection,
   useDuplicateSection,
   useReplaceSectionQuestions,
+  usePoolPreview,
 } from '../lib/hooks/useExamSections';
 import { SectionQuestionPicker } from './SectionQuestionPicker';
 import {
@@ -26,7 +27,83 @@ import {
   type Column,
 } from '../components/ui';
 import { TYPE_TONE, TYPE_LABEL, DIFFICULTY_LABEL, DIFFICULTY_LEVEL } from '../lib/question-display';
-import { ExamSection, QuestionType, Difficulty } from '../lib/types';
+import { ExamSection, QuestionType, Difficulty, PoolPreview } from '../lib/types';
+
+const POOL_PREVIEW_COLUMNS: Column<PoolPreview['questions'][number]>[] = [
+  {
+    key: 'text',
+    header: 'Question',
+    render: (question) => (
+      <span className="block max-w-md truncate" title={question.text}>
+        {question.text}
+      </span>
+    ),
+  },
+  {
+    key: 'type',
+    header: 'Type',
+    render: (question) => <StatusBadge tone={TYPE_TONE[question.type] ?? 'neutral'}>{TYPE_LABEL[question.type] ?? question.type}</StatusBadge>,
+  },
+  {
+    key: 'difficulty',
+    header: 'Difficulty',
+    render: (question) => DIFFICULTY_LABEL[question.difficulty] ?? question.difficulty,
+  },
+  { key: 'marks', header: 'Marks', render: (question) => question.marks },
+];
+
+// A pool never stores which questions it drew (see the backend comment on
+// previewSectionPool) -- this shows what it WOULD currently draw from, and -- the reason this
+// exists at all -- whether there are even enough matching questions to fill poolSize. Fetches
+// lazily (only while open), since a page can list several pool sections and nobody needs all
+// of their previews loaded just from opening the tab.
+function PoolPreviewModal({ examId, sectionId, sectionTitle, onClose }: { examId: string; sectionId: string; sectionTitle: string; onClose: () => void }) {
+  const { data, isLoading, isError } = usePoolPreview(examId, sectionId, true);
+  const shortfall = data ? data.totalMatching < data.poolSize : false;
+
+  return (
+    <Modal open title={`Preview pool — ${sectionTitle}`} onClose={onClose}>
+      {isLoading ? (
+        <p className="text-sm text-gray-500">Loading…</p>
+      ) : isError || !data ? (
+        <p className="text-sm text-status-danger">Failed to load the pool preview.</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-1.5 text-sm text-recruiter-text-secondary">
+            <span>Criteria:</span>
+            {data.poolDifficulty && <StatusBadge tone="neutral">{DIFFICULTY_LABEL[data.poolDifficulty] ?? data.poolDifficulty}</StatusBadge>}
+            {data.poolTags.map((tag) => (
+              <StatusBadge key={tag.id} tone="info">
+                {tag.name}
+              </StatusBadge>
+            ))}
+            {!data.poolDifficulty && data.poolTags.length === 0 && <span className="text-recruiter-text-tertiary">none</span>}
+          </div>
+          <p className={`text-sm font-medium ${shortfall ? 'text-status-danger' : 'text-recruiter-text'}`}>
+            {data.totalMatching} question{data.totalMatching === 1 ? '' : 's'} currently match{data.totalMatching === 1 ? 'es' : ''} this pool
+            {shortfall
+              ? ` — fewer than the configured pool size of ${data.poolSize}. Candidates will get a shorter section than intended.`
+              : ` (configured pool size: ${data.poolSize}).`}
+          </p>
+          {data.questions.length === 0 ? (
+            <p className="text-sm text-recruiter-text-tertiary">No active questions currently match this pool&apos;s criteria.</p>
+          ) : (
+            <>
+              <div className="max-h-96 overflow-y-auto">
+                <Table columns={POOL_PREVIEW_COLUMNS} rows={data.questions} rowKey={(question) => question.id} />
+              </div>
+              {data.totalMatching > data.questions.length && (
+                <p className="text-xs text-recruiter-text-tertiary">
+                  Showing the first {data.questions.length} of {data.totalMatching} matching questions.
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </Modal>
+  );
+}
 
 type SectionQuestion = ExamSection['questions'][number];
 type NumberedSectionQuestion = SectionQuestion & { number: number };
@@ -162,6 +239,7 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
   const duplicateSection = useDuplicateSection(examId);
   const [newTitle, setNewTitle] = useState('');
   const [pickerSectionId, setPickerSectionId] = useState<string | null>(null);
+  const [poolPreviewSectionId, setPoolPreviewSectionId] = useState<string | null>(null);
   const [sectionPendingDelete, setSectionPendingDelete] = useState<ExamSection | null>(null);
   const { toast } = useToast();
   // Same two lock reasons as the Details tab: a started candidate is permanent, while
@@ -221,9 +299,16 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
             <div className="flex items-center justify-between gap-2">
               <p className="font-medium">{section.title}</p>
               <div className="flex items-center gap-1.5">
-                {!locked && (
+                {!locked && section.selectionMode !== 'pool' && (
                   <Button variant="secondary" onClick={() => setPickerSectionId(section.id)}>
                     Manage questions
+                  </Button>
+                )}
+                {section.selectionMode === 'pool' && (
+                  // Available even while locked -- it's read-only, so a candidate having
+                  // started doesn't need to block checking what the pool would draw from.
+                  <Button variant="secondary" onClick={() => setPoolPreviewSectionId(section.id)}>
+                    Preview pool
                   </Button>
                 )}
                 {!locked && (
@@ -263,6 +348,14 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
           open
           onClose={() => setPickerSectionId(null)}
           existingQuestionIds={exam?.sections.find((s) => s.id === pickerSectionId)?.questions.map((q) => q.questionId) ?? []}
+        />
+      )}
+      {poolPreviewSectionId && (
+        <PoolPreviewModal
+          examId={examId}
+          sectionId={poolPreviewSectionId}
+          sectionTitle={exam?.sections.find((s) => s.id === poolPreviewSectionId)?.title ?? ''}
+          onClose={() => setPoolPreviewSectionId(null)}
         />
       )}
       {sectionPendingDelete && (

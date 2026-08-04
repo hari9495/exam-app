@@ -17,6 +17,19 @@ type ExamSectionWithQuestions = ExamSection & {
   poolTags?: ExamSectionPoolTag[];
 };
 
+// A recruiter checking pool health doesn't need every match, just enough to sanity-check the
+// criteria -- totalMatching (a separate count(), uncapped) is what actually answers "is there
+// enough?"; this only bounds the list rendered underneath it.
+const POOL_PREVIEW_MAX_QUESTIONS = 50;
+
+export interface PoolPreview {
+  poolSize: number;
+  poolDifficulty: string | null;
+  poolTags: { id: string; name: string }[];
+  totalMatching: number;
+  questions: { id: string; text: string; type: string; difficulty: string; marks: number }[];
+}
+
 interface ExamFilters {
   status?: string;
   page?: string;
@@ -269,7 +282,7 @@ export class ExamsService {
                 orderBy: { orderIndex: 'asc' },
                 include: { question: { include: { options: true } } },
               },
-              poolTags: true,
+              poolTags: { include: { tag: true } },
             },
           },
         },
@@ -745,6 +758,55 @@ export class ExamsService {
       // (distinct) questions. Pool sections are unaffected -- they carry no fixed links.
 
       return clone;
+    });
+  }
+
+  // A pool section draws a random subset at attempt-start (see AttemptService.start in
+  // apps/exam-runtime) and never stores which questions it picked -- there is no fixed list
+  // to show a recruiter. This mirrors that exact eligibility query (organizationId + active +
+  // optional difficulty + AND-every-pool-tag), minus the shuffle/slice, so a recruiter can see
+  // what the pool WOULD draw from and -- critically -- whether there are even enough matching
+  // questions to fill poolSize (currently silent at attempt time: too few candidates just means
+  // a smaller-than-configured section, with no error anywhere).
+  async previewSectionPool(context: TenantContext, examId: string, sectionId: string): Promise<PoolPreview> {
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const exam = await tx.exam.findFirst({ where: { id: examId, organizationId: context.organizationId as string } });
+      if (!exam) {
+        throw new NotFoundException(`Exam ${examId} not found`);
+      }
+      const section = await tx.examSection.findFirst({ where: { id: sectionId, examId }, include: { poolTags: { include: { tag: true } } } });
+      if (!section) {
+        throw new NotFoundException(`Section ${sectionId} not found`);
+      }
+      if (section.selectionMode !== 'pool') {
+        throw new BadRequestException('This section is not pool-based.');
+      }
+
+      const tagIds = section.poolTags.map((poolTag) => poolTag.tagId);
+      const where: Prisma.QuestionWhereInput = {
+        organizationId: context.organizationId as string,
+        status: 'active',
+        ...(section.poolDifficulty ? { difficulty: section.poolDifficulty } : {}),
+        AND: tagIds.map((tagId) => ({ tags: { some: { tagId } } })),
+      };
+
+      const [totalMatching, questions] = await Promise.all([
+        tx.question.count({ where }),
+        tx.question.findMany({
+          where,
+          take: POOL_PREVIEW_MAX_QUESTIONS,
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, text: true, type: true, difficulty: true, marks: true },
+        }),
+      ]);
+
+      return {
+        poolSize: section.poolSize ?? 0,
+        poolDifficulty: section.poolDifficulty,
+        poolTags: section.poolTags.map((poolTag) => ({ id: poolTag.tag.id, name: poolTag.tag.name })),
+        totalMatching,
+        questions,
+      };
     });
   }
 

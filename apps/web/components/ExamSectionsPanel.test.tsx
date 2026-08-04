@@ -346,6 +346,179 @@ describe('ExamSectionsPanel', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Pool of 5 questions (medium)')).toBeInTheDocument());
+    // "Manage questions" writes fixed question links that attempt-generation never reads for
+    // a pool section (it re-derives candidates from poolTags/poolDifficulty every time) --
+    // showing it here would be a dead control that looks like it does something.
+    expect(screen.queryByRole('button', { name: 'Manage questions' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Preview pool' })).toBeInTheDocument();
+  });
+
+  it('previews a pool section\'s matching questions, criteria, and a shortfall warning when too few match', async () => {
+    const fetchMock = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/exams/exam-1/sections/s-1/pool-preview')) {
+        return new Response(
+          JSON.stringify({
+            poolSize: 5,
+            poolDifficulty: 'medium',
+            poolTags: [{ id: 'tag-1', name: 'Arrays' }],
+            totalMatching: 2,
+            questions: [
+              { id: 'q1', text: 'Reverse an array in place', type: 'code', difficulty: 'medium', marks: 10 },
+              { id: 'q2', text: 'Find the missing number', type: 'single_mcq', difficulty: 'medium', marks: 5 },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (String(url).includes('/exams/exam-1')) {
+        return new Response(
+          JSON.stringify({
+            id: 'exam-1',
+            title: 'Backend Round',
+            instructions: null,
+            status: 'draft',
+            durationMinutes: 60,
+            passCriteriaPercent: 40,
+            randomizeOrder: false,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            sections: [
+              {
+                id: 's-1',
+                examId: 'exam-1',
+                title: 'Reasoning',
+                orderIndex: 0,
+                selectionMode: 'pool',
+                poolSize: 5,
+                poolDifficulty: 'medium',
+                targetDurationMinutes: null,
+                questions: [],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ExamSectionsPanel examId="exam-1" />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Pool of 5 questions (medium)')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'Preview pool' }));
+
+    expect(await screen.findByText('Preview pool — Reasoning')).toBeInTheDocument();
+    expect(screen.getByText('Arrays')).toBeInTheDocument();
+    expect(screen.getByText('Reverse an array in place')).toBeInTheDocument();
+    expect(screen.getByText('Find the missing number')).toBeInTheDocument();
+    // Only 2 match a pool configured for 5 -- this is the whole point of the feature, so it
+    // must be impossible to miss.
+    expect(screen.getByText(/fewer than the configured pool size of 5/)).toBeInTheDocument();
+  });
+
+  it("shows a section's own pool tags as a request URL param, scoped to that section", async () => {
+    const fetchMock = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/exams/exam-1/sections/s-1/pool-preview')) {
+        return new Response(
+          JSON.stringify({ poolSize: 3, poolDifficulty: null, poolTags: [], totalMatching: 3, questions: [] }),
+          { status: 200 },
+        );
+      }
+      if (String(url).includes('/exams/exam-1')) {
+        return new Response(
+          JSON.stringify({
+            id: 'exam-1',
+            title: 'Backend Round',
+            instructions: null,
+            status: 'draft',
+            durationMinutes: 60,
+            passCriteriaPercent: 40,
+            randomizeOrder: false,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            sections: [
+              { id: 's-1', examId: 'exam-1', title: 'Reasoning', orderIndex: 0, selectionMode: 'pool', poolSize: 3, poolDifficulty: null, targetDurationMinutes: null, questions: [] },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ExamSectionsPanel examId="exam-1" />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Preview pool' })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'Preview pool' }));
+
+    // Exactly enough (3 of 3): no shortfall wording, plain confirmation instead.
+    expect(await screen.findByText(/3 questions currently match this pool \(configured pool size: 3\)/)).toBeInTheDocument();
+    expect(screen.getByText(/No active questions currently match this pool.s criteria\./)).toBeInTheDocument();
+  });
+
+  it('offers Preview pool even when the exam is locked, unlike Manage questions', async () => {
+    const fetchMock = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/exams/exam-1')) {
+        return new Response(
+          JSON.stringify({
+            id: 'exam-1',
+            title: 'Backend Round',
+            instructions: null,
+            status: 'published',
+            durationMinutes: 60,
+            passCriteriaPercent: 40,
+            randomizeOrder: false,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            invitationCount: 2,
+            hasStartedAttempts: true,
+            sections: [
+              { id: 's-1', examId: 'exam-1', title: 'Reasoning', orderIndex: 0, selectionMode: 'pool', poolSize: 5, poolDifficulty: null, targetDurationMinutes: null, questions: [] },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ExamSectionsPanel examId="exam-1" />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText(/locked because a candidate has already started/i)).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Preview pool' })).toBeInTheDocument();
   });
 
   it('duplicates a section via the more-actions menu', async () => {
