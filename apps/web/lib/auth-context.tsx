@@ -118,6 +118,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // A role change made by another admin only reaches this browser on its next token
+  // refresh -- without this, a promoted/demoted user keeps the old role's nav and
+  // route gates until the access token naturally expires (up to
+  // ACCESS_TOKEN_TTL_SECONDS, 15min by default). Refreshing on tab refocus catches
+  // that within seconds instead of leaving them to guess they need to reload.
+  useEffect(() => {
+    function handleFocus() {
+      if (accessTokenRef.current) {
+        void silentRefresh();
+      }
+    }
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function login(slug: string, token: string) {
     setOrganizationSlug(slug);
     applyToken(token);

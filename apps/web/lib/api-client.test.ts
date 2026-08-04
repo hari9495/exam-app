@@ -24,6 +24,22 @@ describe('apiFetch', () => {
     expect(result).toEqual({ ok: true });
   });
 
+  it('retries once with a fresh token after a 403, since a stale token reads as permission-denied rather than unauthenticated', async () => {
+    const calls: (string | undefined)[] = [];
+    global.fetch = jest.fn(async (_url, options) => {
+      const auth = (options?.headers as Record<string, string>)?.Authorization;
+      calls.push(auth);
+      const status = auth === 'Bearer stale-role' ? 403 : 200;
+      return new Response(JSON.stringify({ ok: true }), { status });
+    }) as unknown as typeof fetch;
+
+    setUnauthorizedHandler(async () => 'fresh-role');
+
+    const result = await apiFetch('/users', {}, 'stale-role');
+    expect(calls).toEqual(['Bearer stale-role', 'Bearer fresh-role']);
+    expect(result).toEqual({ ok: true });
+  });
+
   it('throws with a hand-written server message untouched when a request fails', async () => {
     global.fetch = jest.fn(
       async () => new Response(JSON.stringify({ message: 'This exam was deleted by a recruiter' }), { status: 404 }),

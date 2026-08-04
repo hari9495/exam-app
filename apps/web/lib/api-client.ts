@@ -38,10 +38,14 @@ async function throwForResponse(response: Response): Promise<never> {
 export async function apiFetch(path: string, options: RequestInit = {}, accessToken?: string) {
   let response = await doFetch(path, options, accessToken);
 
+  // 403 alongside 401: a role change made elsewhere leaves this tab holding a
+  // still-valid-but-stale access token, so a now-permitted request server-side
+  // denies with 403 (not 401) until that token is replaced. One retry through the
+  // same refresh handler picks up the current role instead of failing outright.
   // Exclude the refresh endpoint itself: the registered unauthorized handler
   // (AuthProvider's silentRefresh) calls this same endpoint, so retrying a
   // failed refresh through the handler would recurse into itself forever.
-  if (response.status === 401 && unauthorizedHandler && path !== '/auth/refresh') {
+  if ((response.status === 401 || response.status === 403) && unauthorizedHandler && path !== '/auth/refresh') {
     const freshToken = await unauthorizedHandler();
     if (freshToken) {
       response = await doFetch(path, options, freshToken);

@@ -40,6 +40,43 @@ describe('AuthProvider', () => {
     await waitFor(() => expect(screen.getByText(/token:refreshed-token/)).toBeInTheDocument());
   });
 
+  it('re-runs the silent refresh when the window regains focus, picking up a role change made while the tab was away', async () => {
+    const staleToken = fakeJwt({ sub: 'userA', organizationId: 'org1', role: 'recruiter' });
+    const promotedToken = fakeJwt({ sub: 'userA', organizationId: 'org1', role: 'org_admin' });
+
+    let refreshCallCount = 0;
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        refreshCallCount += 1;
+        const token = refreshCallCount === 1 ? staleToken : promotedToken;
+        return new Response(JSON.stringify({ accessToken: token }), { status: 200 });
+      }
+      throw new Error(`Unexpected fetch to ${url}`);
+    }) as unknown as typeof fetch;
+
+    let auth: ReturnType<typeof useAuth> | undefined;
+    function Consumer() {
+      auth = useAuth();
+      return null;
+    }
+
+    renderWithQueryClient(
+      <AuthProvider>
+        <Consumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(auth?.role).toBe('recruiter'));
+
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(auth?.role).toBe('org_admin'));
+    expect(refreshCallCount).toBe(2);
+  });
+
   it('leaves accessToken null when the silent refresh fails (no prior session)', async () => {
     global.fetch = jest.fn(async () => new Response(JSON.stringify({ message: 'Refresh token required' }), { status: 401 })) as unknown as typeof fetch;
 
