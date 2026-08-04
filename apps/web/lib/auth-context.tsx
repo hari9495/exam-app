@@ -54,6 +54,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Guards against silentRefresh re-entering the acting org more than once (the switch-into call
   // itself goes through apiFetch, whose 401 handler is silentRefresh).
   const restoringActingRef = useRef(false);
+  // Several independent triggers can now ask for a refresh close together (401/403 retry, tab
+  // refocus, the polling interval below) -- refresh tokens rotate on every use, so two concurrent
+  // /auth/refresh calls would have the second one reuse an already-rotated token and trip the
+  // reuse-detection path, revoking the whole session. Collapsing concurrent callers onto the same
+  // in-flight request keeps that to one real call at a time.
+  const refreshInFlightRef = useRef<Promise<string | null> | null>(null);
   const queryClient = useQueryClient();
 
   function applyToken(token: string | null) {
@@ -76,34 +82,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function silentRefresh(): Promise<string | null> {
-    try {
-      const result = await apiFetch('/auth/refresh', { method: 'POST', body: JSON.stringify({}) });
-      // Refresh returns the BASE session token. If the user was acting into an org, re-enter it so
-      // the acting session (and the org sidebar / results it grants) survives the refresh.
-      const actingOrgId = typeof window !== 'undefined' ? window.sessionStorage.getItem(ACTING_ORG_STORAGE_KEY) : null;
-      const payload = decodeJwtPayload(result.accessToken);
-      if (actingOrgId && !restoringActingRef.current && payload?.role === 'super_admin' && !payload?.actingSuperAdmin) {
-        restoringActingRef.current = true;
-        try {
-          const switched = await apiFetch(
-            `/auth/super-admin/switch-into/${actingOrgId}`,
-            { method: 'POST', body: JSON.stringify({}) },
-            result.accessToken,
-          );
-          applyToken(switched.accessToken);
-          return switched.accessToken;
-        } catch {
-          // The org is gone or access was revoked -- fall back to the base super_admin session.
-          if (typeof window !== 'undefined') window.sessionStorage.removeItem(ACTING_ORG_STORAGE_KEY);
-        } finally {
-          restoringActingRef.current = false;
+    if (refreshInFlightRef.current) {
+      return refreshInFlightRef.current;
+    }
+    const promise = (async () => {
+      try {
+        const result = await apiFetch('/auth/refresh', { method: 'POST', body: JSON.stringify({}) });
+        // Refresh returns the BASE session token. If the user was acting into an org, re-enter it so
+        // the acting session (and the org sidebar / results it grants) survives the refresh.
+        const actingOrgId = typeof window !== 'undefined' ? window.sessionStorage.getItem(ACTING_ORG_STORAGE_KEY) : null;
+        const payload = decodeJwtPayload(result.accessToken);
+        if (actingOrgId && !restoringActingRef.current && payload?.role === 'super_admin' && !payload?.actingSuperAdmin) {
+          restoringActingRef.current = true;
+          try {
+            const switched = await apiFetch(
+              `/auth/super-admin/switch-into/${actingOrgId}`,
+              { method: 'POST', body: JSON.stringify({}) },
+              result.accessToken,
+            );
+            applyToken(switched.accessToken);
+            return switched.accessToken;
+          } catch {
+            // The org is gone or access was revoked -- fall back to the base super_admin session.
+            if (typeof window !== 'undefined') window.sessionStorage.removeItem(ACTING_ORG_STORAGE_KEY);
+          } finally {
+            restoringActingRef.current = false;
+          }
         }
+        applyToken(result.accessToken);
+        return result.accessToken;
+      } catch {
+        applyToken(null);
+        return null;
       }
-      applyToken(result.accessToken);
-      return result.accessToken;
-    } catch {
-      applyToken(null);
-      return null;
+    })();
+    refreshInFlightRef.current = promise;
+    try {
+      return await promise;
+    } finally {
+      refreshInFlightRef.current = null;
     }
   }
 
@@ -121,16 +138,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // A role change made by another admin only reaches this browser on its next token
   // refresh -- without this, a promoted/demoted user keeps the old role's nav and
   // route gates until the access token naturally expires (up to
-  // ACCESS_TOKEN_TTL_SECONDS, 15min by default). Refreshing on tab refocus catches
-  // that within seconds instead of leaving them to guess they need to reload.
+  // ACCESS_TOKEN_TTL_SECONDS, 15min by default). `visibilitychange` catches a tab
+  // switch away and back (window `focus` alone misses plain in-browser tab switching
+  // in some browsers); the interval is the fallback for a tab that's the active one
+  // the whole time and never fires either event, which is the common case for this
+  // bug -- both the promoter and the promoted user just watching their screens.
   useEffect(() => {
-    function handleFocus() {
+    function refreshIfSignedIn() {
       if (accessTokenRef.current) {
         void silentRefresh();
       }
     }
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        refreshIfSignedIn();
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', refreshIfSignedIn);
+    const intervalId = setInterval(refreshIfSignedIn, 120_000);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', refreshIfSignedIn);
+      clearInterval(intervalId);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
