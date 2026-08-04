@@ -84,6 +84,13 @@ describe('Recruiter layout', () => {
     expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
     expect(mockPush).not.toHaveBeenCalledWith('/login');
     expect(mockPush).not.toHaveBeenCalledWith('/users');
+    // Regression: this shell hardcoded "Recruiter" in the profile footer regardless of the
+    // real role, so an org_admin using the recruiter console (Exams, Dashboard, etc.) saw
+    // their own label say "Recruiter" even with the full admin nav showing beside it.
+    // getAllByText, not getByText: this mock never resolves a /users/me name, so displayName
+    // also falls back to the same roleLabel string, matching a second element.
+    expect(screen.getAllByText('Org Admin').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Recruiter')).not.toBeInTheDocument();
   });
 
   it('admits an acting super_admin (role=super_admin, actingSuperAdmin=true) without redirecting, and shows cross-shell nav links', async () => {
@@ -118,6 +125,9 @@ describe('Recruiter layout', () => {
     expect(screen.getByRole('link', { name: 'Candidate Data Rights' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Org Settings' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Single Sign-On' })).toBeInTheDocument();
+    // Same mislabel regression as the org_admin case above -- an acting super_admin is
+    // presented as an org admin (matching the (org-admin) shell's own convention), not "Recruiter".
+    expect(screen.getAllByText('Org Admin').length).toBeGreaterThan(0);
   });
 
   it('does not show cross-shell nav links for a normal (non-acting) recruiter', async () => {

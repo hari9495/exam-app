@@ -67,9 +67,17 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
   // just like an acting super_admin.
   const navItems = actingSuperAdmin || role === 'org_admin' ? SUPER_ADMIN_FULL_NAV : BASE_NAV_ITEMS;
 
-  // Real name from useCurrentUser() once loaded; falls back to a per-role
-  // placeholder only while loading or if the user has never set one.
-  const displayName = currentUser?.name || 'Recruiter';
+  // This layout also mounts for org_admin (and an acting super_admin) -- see navItems above --
+  // so the profile label has to reflect the real role instead of hardcoding "Recruiter".
+  const roleLabel =
+    actingSuperAdmin || role === 'org_admin'
+      ? 'Org Admin'
+      : role === 'super_admin'
+        ? 'Super Admin'
+        : 'Recruiter';
+  // Real name from useCurrentUser() once loaded; falls back to the role label while loading or if
+  // the user has never set one.
+  const displayName = currentUser?.name || roleLabel;
   const initials = displayName
     .split(' ')
     .map((part) => part[0])
@@ -132,7 +140,7 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
             </div>
             <div className="min-w-0">
               <p className="truncate text-xs font-semibold text-recruiter-text">{displayName}</p>
-              <p className="text-[10.5px] text-recruiter-text-tertiary">Recruiter</p>
+              <p className="text-[10.5px] text-recruiter-text-tertiary">{roleLabel}</p>
             </div>
           </Link>
           <button
