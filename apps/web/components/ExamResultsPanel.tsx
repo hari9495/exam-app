@@ -172,6 +172,15 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
       render: (row) => <StatusBadge tone={RESULT_STATUS_TONE[row.status] ?? 'neutral'}>{RESULT_STATUS_LABEL[row.status] ?? row.status}</StatusBadge>,
     },
     {
+      // 'rawScore', not 'score' -- that key already belongs to the Percentage column
+      // below (a holdover from before it was renamed) and column-visibility choices
+      // are persisted by key, so reusing it would collide with a saved preference.
+      key: 'rawScore',
+      header: 'Score',
+      render: (row) => (row.score !== null && row.maxScore !== null ? `${row.score}/${row.maxScore}` : '—'),
+      sortValue: (row) => row.score ?? -1,
+    },
+    {
       key: 'score',
       header: <NumberFilterHeader label="Percentage" value={percentageFilter} onChange={setPercentageFilter} unit="%" />,
       sortLabel: 'Percentage',

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useResultsList, useResultsExport } from '../lib/hooks/usePanelReports';
 import { ToastProvider } from './ui';
@@ -76,6 +76,34 @@ describe('ExamResultsPanel', () => {
     expect(screen.getByRole('columnheader', { name: '#' })).toBeInTheDocument();
     const cells = screen.getAllByRole('cell', { name: /^[123]$/ }).map((cell) => cell.textContent);
     expect(cells).toEqual(['1', '2', '3']);
+  });
+
+  it('shows the raw score fraction in its own Score column, separate from Percentage', () => {
+    (useResultsList as jest.Mock).mockReturnValue({
+      data: [row({ candidateId: 'c1', candidateName: 'Alice', score: 5, maxScore: 6, percentage: 83.3 })],
+      isLoading: false,
+    });
+
+    renderPanel();
+
+    expect(screen.getByRole('button', { name: 'Score' })).toBeInTheDocument();
+    expect(screen.getByText('5/6')).toBeInTheDocument();
+    expect(screen.getByText('83.3%')).toBeInTheDocument();
+  });
+
+  it('shows a dash in the Score column when the attempt has no score yet', () => {
+    (useResultsList as jest.Mock).mockReturnValue({
+      data: [row({ candidateId: 'c1', candidateName: 'Alice', status: 'in_progress', score: null, maxScore: null, percentage: null, passFail: null })],
+      isLoading: false,
+    });
+
+    renderPanel();
+
+    const headerCell = screen.getByRole('button', { name: 'Score' });
+    const scoreColumnIndex = Array.from(headerCell.parentElement?.children ?? []).indexOf(headerCell);
+    const dataRow = screen.getAllByRole('row')[1];
+    const cellsInRow = within(dataRow).getAllByRole('cell');
+    expect(cellsInRow[scoreColumnIndex].textContent).toBe('—');
   });
 
   it('re-numbers rows after sorting, following the new order rather than the original one', async () => {
