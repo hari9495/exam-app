@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Button, Input, Modal } from '../components/ui';
+import { EMAIL_PATTERN, PHONE_PATTERN } from '../lib/candidateValidation';
 
 interface CandidateInput {
   name: string;
@@ -9,12 +10,11 @@ interface CandidateInput {
   phone: string;
 }
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 interface FormErrors {
   firstName?: string;
   lastName?: string;
   email?: string;
+  phone?: string;
 }
 
 export function CandidateInviteForm({ onSubmit }: { onSubmit: (input: CandidateInput) => void }) {
@@ -47,6 +47,9 @@ export function CandidateInviteForm({ onSubmit }: { onSubmit: (input: CandidateI
       nextErrors.email = 'Complete this field.';
     } else if (!EMAIL_PATTERN.test(email.trim())) {
       nextErrors.email = 'Enter a valid email address.';
+    }
+    if (phone.trim() && !PHONE_PATTERN.test(phone.trim())) {
+      nextErrors.phone = 'Enter a valid 10-digit phone number.';
     }
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors);
@@ -99,7 +102,15 @@ export function CandidateInviteForm({ onSubmit }: { onSubmit: (input: CandidateI
               error={errors.email}
               required
             />
-            <Input label="Phone" value={phone} onChange={setPhone} />
+            <Input
+              label="Phone"
+              value={phone}
+              onChange={(value) => {
+                setPhone(value);
+                if (errors.phone) setErrors((current) => ({ ...current, phone: undefined }));
+              }}
+              error={errors.phone}
+            />
             <div className="flex justify-end gap-2">
               <Button type="button" variant="secondary" onClick={close}>
                 Cancel

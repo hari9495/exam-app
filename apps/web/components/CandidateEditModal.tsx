@@ -4,18 +4,18 @@ import { useState } from 'react';
 import { Modal, Input, Button, useToast } from './ui';
 import { useUpdateCandidate } from '../lib/hooks/useCandidates';
 import { Candidate } from '../lib/types';
+import { EMAIL_PATTERN, PHONE_PATTERN } from '../lib/candidateValidation';
 
 interface CandidateEditModalProps {
   candidate: Candidate;
   onClose: () => void;
 }
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 interface FormErrors {
   firstName?: string;
   lastName?: string;
   email?: string;
+  phone?: string;
 }
 
 // Existing candidates only ever had a single "name" field -- split on the first space so a
@@ -45,6 +45,9 @@ export function CandidateEditModal({ candidate, onClose }: CandidateEditModalPro
       nextErrors.email = 'Complete this field.';
     } else if (!EMAIL_PATTERN.test(email.trim())) {
       nextErrors.email = 'Enter a valid email address.';
+    }
+    if (phone.trim() && !PHONE_PATTERN.test(phone.trim())) {
+      nextErrors.phone = 'Enter a valid 10-digit phone number.';
     }
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors);
@@ -99,7 +102,15 @@ export function CandidateEditModal({ candidate, onClose }: CandidateEditModalPro
           error={errors.email}
           required
         />
-        <Input label="Phone" value={phone} onChange={setPhone} />
+        <Input
+          label="Phone"
+          value={phone}
+          onChange={(value) => {
+            setPhone(value);
+            if (errors.phone) setErrors((current) => ({ ...current, phone: undefined }));
+          }}
+          error={errors.phone}
+        />
         {(candidate.invitationCount ?? 0) > 0 && email !== candidate.email && (
           <p className="rounded-md bg-status-warning-bg px-3 py-2 text-xs text-status-warning">
             This candidate has already been invited. Changing their email won&apos;t resend or update invitations already sent to the

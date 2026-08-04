@@ -116,6 +116,18 @@ describe('CandidateEditModal', () => {
     expect(screen.getByText('Enter a valid email address.')).toBeInTheDocument();
   });
 
+  it('blocks saving and shows an inline error for a phone number that is not 10 digits', async () => {
+    const fetchMock = mockFetch({ body: {}, status: 200 });
+    renderModal();
+
+    const phoneInput = screen.getByLabelText('Phone');
+    await userEvent.type(phoneInput, '12345');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(fetchMock.mock.calls.some((call) => call[1]?.method === 'PATCH')).toBe(false);
+    expect(screen.getByText('Enter a valid 10-digit phone number.')).toBeInTheDocument();
+  });
+
   it('surfaces a duplicate-email conflict from the server', async () => {
     mockFetch({ body: { message: 'A candidate with email taken@test.com already exists' }, status: 409 });
     renderModal();

@@ -29,10 +29,10 @@ describe('CandidateInviteForm', () => {
     await userEvent.type(dialog.getByLabelText('First Name'), 'Priya');
     await userEvent.type(dialog.getByLabelText('Last Name'), 'Shah');
     await userEvent.type(dialog.getByLabelText('Email'), 'priya@example.com');
-    await userEvent.type(dialog.getByLabelText('Phone'), '555-0101');
+    await userEvent.type(dialog.getByLabelText('Phone'), '5550101234');
     await userEvent.click(dialog.getByRole('button', { name: 'Add candidate' }));
 
-    expect(onSubmit).toHaveBeenCalledWith({ name: 'Priya Shah', email: 'priya@example.com', phone: '555-0101' });
+    expect(onSubmit).toHaveBeenCalledWith({ name: 'Priya Shah', email: 'priya@example.com', phone: '5550101234' });
   });
 
   it('closes the popup and resets its fields after a successful submit', async () => {
@@ -78,6 +78,34 @@ describe('CandidateInviteForm', () => {
 
     expect(onSubmit).not.toHaveBeenCalled();
     expect(dialog.getByText('Enter a valid email address.')).toBeInTheDocument();
+  });
+
+  it('blocks submission and shows an inline error for a phone number that is not 10 digits', async () => {
+    const onSubmit = jest.fn();
+    render(<CandidateInviteForm onSubmit={onSubmit} />);
+    const dialog = await openModal();
+
+    await userEvent.type(dialog.getByLabelText('First Name'), 'Priya');
+    await userEvent.type(dialog.getByLabelText('Last Name'), 'Shah');
+    await userEvent.type(dialog.getByLabelText('Email'), 'priya@example.com');
+    await userEvent.type(dialog.getByLabelText('Phone'), '12345');
+    await userEvent.click(dialog.getByRole('button', { name: 'Add candidate' }));
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(dialog.getByText('Enter a valid 10-digit phone number.')).toBeInTheDocument();
+  });
+
+  it('allows submission with no phone number at all, since the field is optional', async () => {
+    const onSubmit = jest.fn();
+    render(<CandidateInviteForm onSubmit={onSubmit} />);
+    const dialog = await openModal();
+
+    await userEvent.type(dialog.getByLabelText('First Name'), 'Priya');
+    await userEvent.type(dialog.getByLabelText('Last Name'), 'Shah');
+    await userEvent.type(dialog.getByLabelText('Email'), 'priya@example.com');
+    await userEvent.click(dialog.getByRole('button', { name: 'Add candidate' }));
+
+    expect(onSubmit).toHaveBeenCalledWith({ name: 'Priya Shah', email: 'priya@example.com', phone: '' });
   });
 
   it('clears a field error as soon as the recruiter starts fixing it', async () => {
