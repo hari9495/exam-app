@@ -175,7 +175,8 @@ describe('ExamResultsPanel', () => {
     expect(screen.getByText('Bob')).toBeInTheDocument();
   });
 
-  it('filters rows by clicking the Percentage column header', async () => {
+  it('filters rows via a Percentage number-filter operator (Greater Than Or Equal To)', async () => {
+    const user = userEvent.setup();
     (useResultsList as jest.Mock).mockReturnValue({
       data: [row({ candidateId: 'c1', candidateName: 'Alice', percentage: 20 }), row({ candidateId: 'c2', candidateName: 'Bob', percentage: 90 })],
       isLoading: false,
@@ -183,10 +184,80 @@ describe('ExamResultsPanel', () => {
 
     renderPanel();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Filter by Percentage' }));
-    await userEvent.click(screen.getByRole('menuitem', { name: 'High (≥70%)' }));
+    await user.click(screen.getByRole('button', { name: 'Filter by Percentage' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Greater Than Or Equal To...' }));
+    await user.type(screen.getByLabelText('Value'), '70');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
 
     expect(screen.queryByText('Alice')).not.toBeInTheDocument();
+    expect(screen.getByText('Bob')).toBeInTheDocument();
+  });
+
+  it('filters rows via the Between operator, accepting the two values in either order', async () => {
+    const user = userEvent.setup();
+    (useResultsList as jest.Mock).mockReturnValue({
+      data: [
+        row({ candidateId: 'c1', candidateName: 'Alice', percentage: 20 }),
+        row({ candidateId: 'c2', candidateName: 'Bob', percentage: 50 }),
+        row({ candidateId: 'c3', candidateName: 'Cara', percentage: 90 }),
+      ],
+      isLoading: false,
+    });
+
+    renderPanel();
+
+    await user.click(screen.getByRole('button', { name: 'Filter by Percentage' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Between...' }));
+    // Entered backwards (To < From) -- the filter should still treat it as 30-60.
+    await user.type(screen.getByLabelText('From'), '60');
+    await user.type(screen.getByLabelText('To'), '30');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+
+    expect(screen.queryByText('Alice')).not.toBeInTheDocument();
+    expect(screen.getByText('Bob')).toBeInTheDocument();
+    expect(screen.queryByText('Cara')).not.toBeInTheDocument();
+  });
+
+  it('filters rows via Above Average without opening a value modal', async () => {
+    const user = userEvent.setup();
+    (useResultsList as jest.Mock).mockReturnValue({
+      data: [
+        row({ candidateId: 'c1', candidateName: 'Alice', percentage: 10 }),
+        row({ candidateId: 'c2', candidateName: 'Bob', percentage: 90 }),
+      ],
+      isLoading: false,
+    });
+
+    renderPanel();
+
+    await user.click(screen.getByRole('button', { name: 'Filter by Percentage' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Above Average' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByText('Alice')).not.toBeInTheDocument();
+    expect(screen.getByText('Bob')).toBeInTheDocument();
+  });
+
+  it('clears the Percentage filter via "Clear Filter", which only appears once a filter is active', async () => {
+    const user = userEvent.setup();
+    (useResultsList as jest.Mock).mockReturnValue({
+      data: [row({ candidateId: 'c1', candidateName: 'Alice', percentage: 20 }), row({ candidateId: 'c2', candidateName: 'Bob', percentage: 90 })],
+      isLoading: false,
+    });
+
+    renderPanel();
+
+    await user.click(screen.getByRole('button', { name: 'Filter by Percentage' }));
+    expect(screen.queryByRole('menuitem', { name: 'Clear Filter' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('menuitem', { name: 'Greater Than Or Equal To...' }));
+    await user.type(screen.getByLabelText('Value'), '70');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(screen.queryByText('Alice')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Filter by Percentage' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Clear Filter' }));
+
+    expect(screen.getByText('Alice')).toBeInTheDocument();
     expect(screen.getByText('Bob')).toBeInTheDocument();
   });
 

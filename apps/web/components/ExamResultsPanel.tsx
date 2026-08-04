@@ -13,8 +13,12 @@ import {
   useToast,
   useColumnVisibility,
   FilterableHeader,
+  NumberFilterHeader,
+  matchesNumberFilter,
+  NO_NUMBER_FILTER,
   type Column,
   type StatusTone,
+  type NumberFilterValue,
 } from './ui';
 import { useResultsList, useResultsExport } from '../lib/hooks/usePanelReports';
 import { RESULT_STATUS_LABEL, RESULT_STATUS_TONE } from '../lib/candidate-status';
@@ -29,21 +33,6 @@ const ATTENDED_STATUSES = ['in_progress', 'paused', 'blocked', 'pending_manual_g
 const STATUS_FILTER_OPTIONS = [
   { value: 'all', label: 'All statuses' },
   ...ATTENDED_STATUSES.map((value) => ({ value, label: RESULT_STATUS_LABEL[value] })),
-];
-
-// Same low/medium/high split as the Question accuracy tab's accuracy filter --
-// one glance at who's struggling vs. acing it, not a raw percent range picker.
-type ScoreBucket = 'low' | 'medium' | 'high';
-function scoreBucket(percentage: number): ScoreBucket {
-  if (percentage < 30) return 'low';
-  if (percentage < 70) return 'medium';
-  return 'high';
-}
-const SCORE_FILTER_OPTIONS = [
-  { value: 'all', label: 'All scores' },
-  { value: 'low', label: 'Low (<30%)' },
-  { value: 'medium', label: 'Medium (30–69%)' },
-  { value: 'high', label: 'High (≥70%)' },
 ];
 
 const RESULT_FILTER_OPTIONS = [
@@ -66,7 +55,7 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
   const { toast } = useToast();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [scoreFilter, setScoreFilter] = useState('all');
+  const [percentageFilter, setPercentageFilter] = useState<NumberFilterValue>(NO_NUMBER_FILTER);
   const [resultFilter, setResultFilter] = useState('all');
   const [integrityFilter, setIntegrityFilter] = useState('all');
   // invitationId, not candidateId -- a re-invited candidate has multiple rows sharing
@@ -80,11 +69,17 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
   // result to show -- this tab is deliberately just the attended cohort,
   // unlike the full recruiter-facing Results page's Candidates tab.
   const attended = (results ?? []).filter((row) => row.attemptId !== null);
+  // Above/Below Average compares against the whole attended cohort's mean, not just
+  // whatever's currently visible -- otherwise applying the filter would shrink the
+  // set it's being measured against on every keystroke of an unrelated filter.
+  const settledPercentages = attended.map((row) => row.percentage).filter((value): value is number => value !== null);
+  const averagePercentage =
+    settledPercentages.length > 0 ? settledPercentages.reduce((sum, value) => sum + value, 0) / settledPercentages.length : 0;
   const query = search.trim().toLowerCase();
   const visible = attended.filter((row) => {
     if (query && !row.candidateName.toLowerCase().includes(query)) return false;
     if (statusFilter !== 'all' && row.status !== statusFilter) return false;
-    if (scoreFilter !== 'all' && (row.percentage === null || scoreBucket(row.percentage) !== scoreFilter)) return false;
+    if (!matchesNumberFilter(row.percentage, percentageFilter, averagePercentage)) return false;
     if (resultFilter !== 'all') {
       const bucket = row.passFail ?? 'pending';
       if (bucket !== resultFilter) return false;
@@ -92,7 +87,8 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
     if (integrityFilter !== 'all' && row.integrityLevel !== integrityFilter) return false;
     return true;
   });
-  const filtersActive = query !== '' || statusFilter !== 'all' || scoreFilter !== 'all' || resultFilter !== 'all' || integrityFilter !== 'all';
+  const filtersActive =
+    query !== '' || statusFilter !== 'all' || percentageFilter.operator !== null || resultFilter !== 'all' || integrityFilter !== 'all';
 
   const allVisibleSelected = visible.length > 0 && visible.every((row) => selectedIds.includes(row.invitationId));
 
@@ -177,7 +173,7 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
     },
     {
       key: 'score',
-      header: <FilterableHeader label="Percentage" value={scoreFilter} onChange={setScoreFilter} options={SCORE_FILTER_OPTIONS} />,
+      header: <NumberFilterHeader label="Percentage" value={percentageFilter} onChange={setPercentageFilter} unit="%" />,
       sortLabel: 'Percentage',
       render: (row) => (row.percentage !== null ? `${row.percentage.toFixed(1)}%` : '—'),
     },

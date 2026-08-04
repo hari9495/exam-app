@@ -16,5 +16,13 @@ export { StatusBadge, type StatusTone } from './StatusBadge';
 export { IntegrityBadge, type IntegrityLevel } from './IntegrityBadge';
 export { Pagination } from './Pagination';
 export { FilterableHeader } from './FilterableHeader';
+export {
+  NumberFilterHeader,
+  matchesNumberFilter,
+  describeNumberFilter,
+  NO_NUMBER_FILTER,
+  type NumberFilterOperator,
+  type NumberFilterValue,
+} from './NumberFilterHeader';
 export { RequiredFieldsNote } from './RequiredFieldsNote';
 export { CollapsibleSection } from './CollapsibleSection';
