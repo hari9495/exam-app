@@ -56,6 +56,20 @@ describe('WalkInService', () => {
       );
       expect(result).toEqual([{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }]);
     });
+
+    it('scopes to a single group when a groupId is given, on top of the usual filters', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
+      const tx = { exam: { findMany: jest.fn().mockResolvedValue([]) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.listExams('demo-org', 'group-1');
+
+      expect(tx.exam.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { organizationId: 'org-1', status: 'published', walkInEnabled: true, walkInGroupId: 'group-1' },
+        }),
+      );
+    });
   });
 
   describe('register', () => {

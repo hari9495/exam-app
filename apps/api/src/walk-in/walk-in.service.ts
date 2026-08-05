@@ -33,12 +33,21 @@ export class WalkInService {
     return org;
   }
 
-  async listExams(orgSlug: string): Promise<WalkInExamOption[]> {
+  // groupId scopes to exactly one walk-in group's members (a recruiter's group-specific
+  // link/QR) -- walkInListed is deliberately NOT checked in that branch, since being placed
+  // in a named group is itself the recruiter's explicit choice to expose the exam there,
+  // independent of whether it's also in the org-wide default picker.
+  async listExams(orgSlug: string, groupId?: string): Promise<WalkInExamOption[]> {
     const org = await this.resolveOrg(orgSlug);
     const context = { organizationId: org.id, isSuperAdmin: true };
     return this.tenantPrisma.forTenant(context, (tx) =>
       tx.exam.findMany({
-        where: { organizationId: org.id, status: 'published', walkInEnabled: true },
+        where: {
+          organizationId: org.id,
+          status: 'published',
+          walkInEnabled: true,
+          ...(groupId ? { walkInGroupId: groupId } : {}),
+        },
         select: { id: true, title: true, durationMinutes: true, walkInListed: true },
         orderBy: { title: 'asc' },
       }),

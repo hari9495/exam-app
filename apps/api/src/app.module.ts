@@ -16,6 +16,7 @@ import { ExamsModule } from './exams/exams.module';
 import { CandidatesModule } from './candidates/candidates.module';
 import { InvitationsModule } from './invitations/invitations.module';
 import { WalkInModule } from './walk-in/walk-in.module';
+import { WalkInGroupsModule } from './walk-in-groups/walk-in-groups.module';
 import { AttemptsAdminModule } from './attempts-admin/attempts-admin.module';
 import { ReportsModule } from './reports/reports.module';
 import { DashboardModule } from './dashboard/dashboard.module';
@@ -58,6 +59,7 @@ import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
     CandidatesModule,
     InvitationsModule,
     WalkInModule,
+    WalkInGroupsModule,
     AttemptsAdminModule,
     ReportsModule,
     DashboardModule,

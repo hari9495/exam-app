@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { MotionConfig } from 'framer-motion';
 import clsx from 'clsx';
-import { Users, History, ShieldCheck, Settings, Plug, KeyRound, LogOut, LayoutDashboard, FileText, BookOpen, TerminalSquare } from 'lucide-react';
+import { Users, History, ShieldCheck, Settings, Plug, KeyRound, LogOut, LayoutDashboard, FileText, BookOpen, TerminalSquare, QrCode } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
 import { staffLandingPath } from '../../lib/staff-landing';
 import { SUPER_ADMIN_FULL_NAV } from '../../lib/super-admin-nav';
@@ -21,6 +21,7 @@ const BASE_NAV_ITEMS = [
   { href: '/settings/branding', label: 'Org Settings', icon: Settings },
   { href: '/settings/integrations', label: 'Integrations', icon: Plug },
   { href: '/settings/sso', label: 'Single Sign-On', icon: KeyRound },
+  { href: '/walk-in-groups', label: 'Walk-in Groups', icon: QrCode },
 ];
 
 // A super_admin acting into an org sees the complete feature nav (SUPER_ADMIN_FULL_NAV), not this

@@ -228,6 +228,26 @@ export interface WalkInExamOption {
   walkInListed: boolean;
 }
 
+export interface WalkInGroupExamSummary {
+  id: string;
+  title: string;
+}
+
+export interface WalkInGroup {
+  id: string;
+  name: string;
+  createdAt: string;
+  exams: WalkInGroupExamSummary[];
+}
+
+// Every walk-in-enabled exam in the org, whichever group it's currently in (or none) --
+// the pool a "manage members" picker offers, so an exam can be moved between groups.
+export interface EligibleWalkInExam {
+  id: string;
+  title: string;
+  walkInGroupId: string | null;
+}
+
 export interface SuperAdminSummary {
   id: string;
   email: string;

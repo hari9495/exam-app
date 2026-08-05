@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, BookOpen, Users, BarChart3, History, ShieldCheck, Settings, Plug, KeyRound, TerminalSquare } from 'lucide-react';
+import { LayoutDashboard, FileText, BookOpen, Users, BarChart3, History, ShieldCheck, Settings, Plug, KeyRound, TerminalSquare, QrCode } from 'lucide-react';
 
 // The COMPLETE union of org-scoped staff features. A super_admin acting into an org sees this exact
 // nav in EVERY staff shell (recruiter / org-admin / panel), so no feature is ever hidden by whichever
@@ -18,4 +18,5 @@ export const SUPER_ADMIN_FULL_NAV = [
   { href: '/settings/branding', label: 'Org Settings', icon: Settings },
   { href: '/settings/integrations', label: 'Integrations', icon: Plug },
   { href: '/settings/sso', label: 'Single Sign-On', icon: KeyRound },
+  { href: '/walk-in-groups', label: 'Walk-in Groups', icon: QrCode },
 ];

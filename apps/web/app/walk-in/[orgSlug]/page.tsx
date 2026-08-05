@@ -18,7 +18,8 @@ const HIGHLIGHTS = [
 export default function WalkInPage() {
   const { orgSlug } = useParams<{ orgSlug: string }>();
   const searchParams = useSearchParams();
-  const { data: exams, isLoading, isError } = useWalkInExams(orgSlug);
+  const groupParam = searchParams.get('group');
+  const { data: exams, isLoading, isError } = useWalkInExams(orgSlug, groupParam);
   const register = useWalkInRegister(orgSlug);
 
   const [firstName, setFirstName] = useState('');
@@ -41,8 +42,11 @@ export default function WalkInPage() {
   const examParam = searchParams.get('exam');
   const preselectedExamId = exams?.some((exam) => exam.id === examParam) ? examParam : null;
   // Only exams opted into the shared picker -- an exam with walkInListed=false is reachable
-  // solely via its own link/QR (see WalkInShareCard), never via this generic org URL.
-  const listedExams = useMemo(() => (exams ?? []).filter((exam) => exam.walkInListed), [exams]);
+  // solely via its own link/QR (see WalkInShareCard), never via this generic org URL. A
+  // ?group= link already asked the server to scope to exactly that group's members, which
+  // is itself the recruiter's explicit curation -- skip the walkInListed filter entirely
+  // there, so every exam they put in the group actually shows.
+  const listedExams = useMemo(() => (groupParam ? (exams ?? []) : (exams ?? []).filter((exam) => exam.walkInListed)), [exams, groupParam]);
   const resolvedExamId = preselectedExamId ?? (listedExams.length === 1 ? listedExams[0].id : examId);
 
   function handleSubmit(e: React.FormEvent) {

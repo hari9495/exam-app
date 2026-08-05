@@ -282,6 +282,17 @@ model Tag {
   @@map("tags")
 }
 
+model WalkInGroup {
+  id             String   @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String   @map("organization_id") @db.UniqueIdentifier
+  name           String
+  createdAt      DateTime @default(now()) @map("created_at")
+  exams          Exam[]
+
+  @@unique([organizationId, name])
+  @@map("walk_in_groups")
+}
+
 model QuestionTag {
   questionId String   @map("question_id") @db.UniqueIdentifier
   tagId      String   @map("tag_id") @db.UniqueIdentifier
@@ -311,6 +322,12 @@ model Exam {
   // reachable via its own exam-specific link/QR (see WalkInShareCard, which always embeds
   // ?exam=<id> regardless of this flag).
   walkInListed                  Boolean       @default(true) @map("walk_in_listed")
+  // At most one group per exam -- assigning an exam to a new group moves it out of
+  // its old one. A group's own shared link (WalkInShareCard's ?group=<id>) shows
+  // exactly its member exams regardless of walkInListed, which only governs the
+  // org-wide default picker.
+  walkInGroupId                 String?       @map("walk_in_group_id") @db.UniqueIdentifier
+  walkInGroup                   WalkInGroup?  @relation(fields: [walkInGroupId], references: [id], onDelete: SetNull)
   allowedIpRange                String?       @map("allowed_ip_range")
   // Master switch for every anti-cheating measure below. Off forces webcam/screen-capture/
   // lockdown to false and every browser-behavior signal disabled at write time (exams.service's

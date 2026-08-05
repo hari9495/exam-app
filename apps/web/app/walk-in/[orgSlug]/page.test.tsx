@@ -193,4 +193,47 @@ describe('WalkInPage', () => {
     expect(screen.getByText('No exams are currently open for walk-in registration.')).toBeInTheDocument();
     expect(screen.queryByLabelText('First Name')).not.toBeInTheDocument();
   });
+
+  it('passes the ?group= id through to useWalkInExams', () => {
+    mockSearchParams = new URLSearchParams('group=group-1');
+    (useWalkInExams as jest.Mock).mockReturnValue({ data: [], isLoading: false, isError: false });
+
+    render(<WalkInPage />);
+
+    expect(useWalkInExams).toHaveBeenCalledWith('demo-org', 'group-1');
+  });
+
+  it('shows every exam the server returns for a ?group= link, ignoring walkInListed entirely', async () => {
+    mockSearchParams = new URLSearchParams('group=group-1');
+    (useWalkInExams as jest.Mock).mockReturnValue({
+      data: [
+        { id: 'exam-1', title: 'ServiceNow Fresher Drive', durationMinutes: 60, walkInListed: false },
+        { id: 'exam-2', title: 'Salesforce Fresher Drive', durationMinutes: 60, walkInListed: false },
+      ],
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<WalkInPage />);
+
+    const combobox = screen.getByRole('combobox', { name: 'Exam' });
+    await userEvent.click(combobox);
+
+    expect(screen.getByRole('option', { name: 'ServiceNow Fresher Drive' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Salesforce Fresher Drive' })).toBeInTheDocument();
+  });
+
+  it('auto-selects a group of exactly one exam without a picker', () => {
+    mockSearchParams = new URLSearchParams('group=group-1');
+    (useWalkInExams as jest.Mock).mockReturnValue({
+      data: [{ id: 'exam-1', title: 'Solo Group Exam', durationMinutes: 60, walkInListed: false }],
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<WalkInPage />);
+
+    expect(screen.getByLabelText('First Name')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Exam' })).not.toBeInTheDocument();
+  });
 });
