@@ -144,6 +144,11 @@ describe('Recruiter layout', () => {
     expect(await screen.findByRole('link', { name: 'Results' })).toHaveAttribute('href', '/reports');
   });
 
+  it('shows the Walk-in Groups link to a normal recruiter', async () => {
+    renderLayout();
+    expect(await screen.findByRole('link', { name: 'Walk-in Groups' })).toHaveAttribute('href', '/walk-in-groups');
+  });
+
   it('renders each nav item with an icon and marks the active route', async () => {
     renderLayout({ pathname: '/exams' });
     const examsLink = await screen.findByRole('link', { name: /Exams/i });

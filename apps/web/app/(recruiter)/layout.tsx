@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { MotionConfig } from 'framer-motion';
 import clsx from 'clsx';
-import { LayoutDashboard, FileText, BookOpen, Users, History, ShieldCheck, Settings, KeyRound, LogOut, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, FileText, BookOpen, Users, History, ShieldCheck, Settings, KeyRound, LogOut, BarChart3, QrCode } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
 import { staffLandingPath } from '../../lib/staff-landing';
 import { SUPER_ADMIN_FULL_NAV } from '../../lib/super-admin-nav';
@@ -22,6 +22,7 @@ const BASE_NAV_ITEMS = [
   // super-admin impersonating an org, so a plain recruiter had no way to reach the
   // reports console at all -- despite the recruiter role already holding results:view.
   { href: '/reports', label: 'Results', icon: BarChart3 },
+  { href: '/walk-in-groups', label: 'Walk-in Groups', icon: QrCode },
 ];
 
 // A super_admin acting into an org sees the complete feature nav (SUPER_ADMIN_FULL_NAV), not this
