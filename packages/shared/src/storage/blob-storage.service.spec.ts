@@ -170,6 +170,19 @@ describe('BlobStorageService.signIfOurs', () => {
     expect(startsOn).toBeLessThanOrEqual(after - 5 * 60_000 + 5_000);
   });
 
+  it('honors a caller-supplied TTL instead of the 15-minute default -- e.g. a link embedded in a static email, which may not be opened for days', async () => {
+    const before = Date.now();
+    const ninetyDaysMs = 90 * 24 * 60 * 60_000;
+    const result = await service.signIfOurs(`${CONTAINER_URL}/logos/org-1.png`, ninetyDaysMs);
+    const after = Date.now();
+
+    const signed = result as string;
+    const params = new URLSearchParams(signed.split('?')[1]);
+    const expiresOn = new Date(params.get('se')!).getTime();
+    expect(expiresOn).toBeGreaterThanOrEqual(before + ninetyDaysMs - 5_000);
+    expect(expiresOn).toBeLessThanOrEqual(after + ninetyDaysMs + 5_000);
+  });
+
   it('leaves an inline data: URI untouched', async () => {
     const dataUri = 'data:image/jpeg;base64,AAAA';
     await expect(service.signIfOurs(dataUri)).resolves.toBe(dataUri);

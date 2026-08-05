@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { InvitationsService } from './invitations.service';
-import { TenantPrismaService, AuditService } from '@exam-platform/shared';
+import { InvitationsService, EMAIL_LOGO_SAS_TTL_MS } from './invitations.service';
+import { TenantPrismaService, AuditService, BlobStorageService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { WebhooksService } from '../webhooks/webhooks.service';
 
@@ -11,6 +11,7 @@ describe('InvitationsService', () => {
   let emailService: { send: jest.Mock };
   let audit: { record: jest.Mock };
   let webhooksService: { enqueue: jest.Mock };
+  let blobStorage: { signIfOurs: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
@@ -18,6 +19,10 @@ describe('InvitationsService', () => {
     emailService = { send: jest.fn().mockResolvedValue({ success: true, previewUrl: 'https://ethereal.email/x' }) };
     audit = { record: jest.fn() };
     webhooksService = { enqueue: jest.fn() };
+    // Passes the value through unchanged by default, matching signIfOurs' real behavior for a
+    // null logoPath or an unconfigured storage account -- individual tests override this to
+    // verify the signing itself.
+    blobStorage = { signIfOurs: jest.fn((value) => Promise.resolve(value)) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         InvitationsService,
@@ -25,6 +30,7 @@ describe('InvitationsService', () => {
         { provide: EmailService, useValue: emailService },
         { provide: AuditService, useValue: audit },
         { provide: WebhooksService, useValue: webhooksService },
+        { provide: BlobStorageService, useValue: blobStorage },
       ],
     }).compile();
     service = moduleRef.get(InvitationsService);
@@ -151,14 +157,23 @@ describe('InvitationsService', () => {
       .mockImplementationOnce((_ctx, fn) => fn(createTx))
       .mockImplementationOnce((_ctx, fn) => fn(orgTx))
       .mockImplementationOnce((_ctx, fn) => fn(notifTx));
+    // The container is private -- an unsigned logoPath 403s in an email client (ADO-reported:
+    // the logo showed as a broken image icon). signIfOurs mints a SAS URL for it; assert the
+    // SIGNED url lands in the email, not the raw blob path, and that it's signed with a TTL
+    // long enough to survive a candidate opening the email days after it was sent.
+    blobStorage.signIfOurs.mockResolvedValue('https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png?sv=2024&sig=abc123');
 
     await service.bulkInvite(context, 'exam-1', ['cand-1']);
     await new Promise((resolve) => setImmediate(resolve));
 
     expect(orgTx.organization.findUnique).toHaveBeenCalledWith({ where: { id: 'org-1' }, select: { logoPath: true, name: true } });
+    expect(blobStorage.signIfOurs).toHaveBeenCalledWith(
+      'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png',
+      EMAIL_LOGO_SAS_TTL_MS,
+    );
     const html = emailService.send.mock.calls[0][0].html;
     expect(html).toContain(
-      `<img src="https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png" alt="Organization logo" height="40" />`,
+      `<img src="https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png?sv=2024&sig=abc123" alt="Organization logo" height="40" />`,
     );
     expect(html).toContain('Date &amp; Time');
     expect(html).toContain('Duration:</strong> 90 minutes');

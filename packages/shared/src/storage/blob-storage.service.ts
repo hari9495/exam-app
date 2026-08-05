@@ -122,7 +122,13 @@ export class BlobStorageService {
   //
   // Callers must only ever feed this values sourced from their own tenant-scoped queries --
   // never a client-supplied path/URL -- or this becomes an arbitrary-blob read oracle.
-  async signIfOurs(value: unknown): Promise<unknown> {
+  //
+  // ttlMs defaults to the evidence-review TTL (a live page load, signed fresh every request).
+  // A caller embedding the result in an EMAIL must pass a much longer TTL -- the HTML is
+  // rendered once at send time and the recipient may not open it for days, so a short-lived
+  // link would go from working to a broken image the moment it expires. See
+  // EMAIL_LOGO_SAS_TTL_MS in invitations.service.ts.
+  async signIfOurs(value: unknown, ttlMs: number = SAS_READ_TTL_MS): Promise<unknown> {
     if (typeof value !== 'string' || !value || !this.isConfigured()) {
       return value;
     }
@@ -137,7 +143,7 @@ export class BlobStorageService {
         permissions: BlobSASPermissions.parse('r'),
         protocol: SASProtocol.Https,
         startsOn: new Date(now - SAS_CLOCK_SKEW_MS),
-        expiresOn: new Date(now + SAS_READ_TTL_MS),
+        expiresOn: new Date(now + ttlMs),
       });
     } catch (error) {
       // Degrade, don't throw -- the caller falls back to the raw (unrenderable) URL rather than

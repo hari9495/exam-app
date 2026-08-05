@@ -4,6 +4,7 @@ import { Candidate, Invitation } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
+import { BlobStorageService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { WebhooksService } from '../webhooks/webhooks.service';
 import {
@@ -15,6 +16,13 @@ import {
 } from '../candidates/bulk-invite-parser';
 
 const INVITATION_EXPIRY_DAYS = 7;
+
+// Long enough that the signed logo link in a sent email practically never expires before
+// someone opens it -- unlike BlobStorageService's default (evidence-review) TTL, which is
+// signed fresh on every live page load, this URL is baked into static HTML at send time and
+// the recipient may not open the email for days or weeks. 90 days comfortably outlasts a
+// scheduled exam's availability window and any realistic delay in reading an invite.
+export const EMAIL_LOGO_SAS_TTL_MS = 90 * 24 * 60 * 60_000;
 
 export function generateToken(): string {
   return randomBytes(32).toString('hex');
@@ -100,6 +108,7 @@ export class InvitationsService {
     private readonly emailService: EmailService,
     private readonly audit: AuditService,
     private readonly webhooks: WebhooksService,
+    private readonly blobStorage: BlobStorageService,
   ) {}
 
   async bulkInvite(context: TenantContext, examId: string, candidateIds: string[]): Promise<BulkInviteResult> {
@@ -402,13 +411,17 @@ export class InvitationsService {
     const organization = await this.tenantPrisma.forTenant(context, (tx) =>
       tx.organization.findUnique({ where: { id: context.organizationId as string }, select: { logoPath: true, name: true } }),
     );
+    // The storage container is private -- an unsigned logoPath 403s in an email client, which
+    // has no session/cookie to fall back on the way a logged-in browser tab would. Sign it with
+    // a long TTL (see EMAIL_LOGO_SAS_TTL_MS) since this HTML is static from the moment it's sent.
+    const logoUrl = (await this.blobStorage.signIfOurs(organization?.logoPath ?? null, EMAIL_LOGO_SAS_TTL_MS)) as string | null;
     const html = buildAssessmentEmailHtml({
       candidateName: candidate.name,
       examTitle: exam.title,
       durationMinutes: exam.durationMinutes,
       availabilityWindowStart: exam.schedulingEnabled ? exam.availabilityWindowStart : null,
       startLink: link,
-      logoUrl: organization?.logoPath ?? null,
+      logoUrl,
       organizationName: organization?.name ?? null,
       // This is an invitation to SIT the exam. The previous wording ("Congratulations! Your
       // registration ... has been successfully completed") read as if the assessment itself

@@ -1,9 +1,9 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Candidate, Invitation } from '@prisma/client';
-import { PrismaService, TenantPrismaService, AuditService } from '@exam-platform/shared';
+import { PrismaService, TenantPrismaService, AuditService, BlobStorageService } from '@exam-platform/shared';
 import { WebhooksService } from '../webhooks/webhooks.service';
 import { EmailService } from '../email/email.service';
-import { buildAssessmentEmailHtml, generateToken, resolveInvitationExpiry } from '../invitations/invitations.service';
+import { buildAssessmentEmailHtml, generateToken, resolveInvitationExpiry, EMAIL_LOGO_SAS_TTL_MS } from '../invitations/invitations.service';
 import { RegisterWalkInDto } from './dto/register-walk-in.dto';
 
 export interface WalkInExamOption {
@@ -23,6 +23,7 @@ export class WalkInService {
     private readonly audit: AuditService,
     private readonly webhooks: WebhooksService,
     private readonly emailService: EmailService,
+    private readonly blobStorage: BlobStorageService,
   ) {}
 
   private async resolveOrg(orgSlug: string): Promise<{ id: string }> {
@@ -134,6 +135,9 @@ export class WalkInService {
       where: { id: organizationId },
       select: { logoPath: true, name: true },
     });
+    // The storage container is private -- an unsigned logoPath 403s in an email client. Sign it
+    // with a long TTL (see EMAIL_LOGO_SAS_TTL_MS) since this HTML is static from send time.
+    const logoUrl = (await this.blobStorage.signIfOurs(organization?.logoPath ?? null, EMAIL_LOGO_SAS_TTL_MS)) as string | null;
     // Same branded layout as recruiter invitations -- only the intro differs, since a
     // walk-in candidate registered themselves rather than being invited.
     const html = buildAssessmentEmailHtml({
@@ -142,7 +146,7 @@ export class WalkInService {
       durationMinutes: exam.durationMinutes,
       availabilityWindowStart: exam.schedulingEnabled ? exam.availabilityWindowStart : null,
       startLink: link,
-      logoUrl: organization?.logoPath ?? null,
+      logoUrl,
       organizationName: organization?.name ?? null,
       introHtml: `Thanks for registering for the <strong>${exam.title}</strong> assessment. Everything you need is below - open this email on the device you'll use to take the exam, then use the button to begin when you are ready.`,
     });

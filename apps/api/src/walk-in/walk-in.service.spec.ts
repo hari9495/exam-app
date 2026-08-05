@@ -1,9 +1,10 @@
 import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { WalkInService } from './walk-in.service';
-import { PrismaService, TenantPrismaService, AuditService } from '@exam-platform/shared';
+import { PrismaService, TenantPrismaService, AuditService, BlobStorageService } from '@exam-platform/shared';
 import { WebhooksService } from '../webhooks/webhooks.service';
 import { EmailService } from '../email/email.service';
+import { EMAIL_LOGO_SAS_TTL_MS } from '../invitations/invitations.service';
 
 describe('WalkInService', () => {
   let service: WalkInService;
@@ -12,6 +13,7 @@ describe('WalkInService', () => {
   let audit: { record: jest.Mock };
   let webhooksService: { enqueue: jest.Mock };
   let emailService: { send: jest.Mock };
+  let blobStorage: { signIfOurs: jest.Mock };
 
   beforeEach(async () => {
     prisma = { organization: { findUnique: jest.fn() } };
@@ -19,6 +21,9 @@ describe('WalkInService', () => {
     audit = { record: jest.fn() };
     webhooksService = { enqueue: jest.fn() };
     emailService = { send: jest.fn().mockResolvedValue({ success: true }) };
+    // Passes the value through unchanged by default, matching signIfOurs' real behavior for a
+    // null logoPath or an unconfigured storage account.
+    blobStorage = { signIfOurs: jest.fn((value) => Promise.resolve(value)) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         WalkInService,
@@ -27,6 +32,7 @@ describe('WalkInService', () => {
         { provide: AuditService, useValue: audit },
         { provide: WebhooksService, useValue: webhooksService },
         { provide: EmailService, useValue: emailService },
+        { provide: BlobStorageService, useValue: blobStorage },
       ],
     }).compile();
     service = moduleRef.get(WalkInService);
@@ -144,6 +150,43 @@ describe('WalkInService', () => {
       expect(html).toContain('Examination Rules &amp; Guidelines');
       expect(html).toContain('Best regards,<br/>Acme Hiring');
       expect(html).toContain('please do not reply');
+    });
+
+    it('signs a private-container logo URL before embedding it in the walk-in email, with a long TTL that outlasts the send-to-open delay', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        id: 'org-1', slug: 'demo-org',
+        logoPath: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png',
+        name: 'Acme Hiring',
+      });
+      blobStorage.signIfOurs.mockResolvedValue('https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png?sv=2024&sig=abc123');
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1', title: 'Backend Round', durationMinutes: 60, status: 'published', walkInEnabled: true, schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null,
+          }),
+        },
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
+        },
+        invitation: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'raw-token' }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.register('demo-org', dto);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(blobStorage.signIfOurs).toHaveBeenCalledWith(
+        'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png',
+        EMAIL_LOGO_SAS_TTL_MS,
+      );
+      const html = emailService.send.mock.calls[0][0].html;
+      expect(html).toContain(
+        `<img src="https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png?sv=2024&sig=abc123" alt="Organization logo" height="40" />`,
+      );
     });
 
     it('reuses the existing candidate and a live invitation instead of creating a duplicate', async () => {
