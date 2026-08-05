@@ -160,6 +160,103 @@ describe('AttemptSettlementService', () => {
     });
   });
 
+  describe('finalize section weighting', () => {
+    // Two sections, one question each, both worth the same raw marks -- so a FLAT formula would
+    // score 5/10 = 50%. The weights (20/80) are what make the correct answer 20%, proving the
+    // settlement path actually reads the snapshot rather than falling back to raw totals.
+    const weightedTx = () => ({
+      question: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] },
+          { id: 'q2', marks: 5, negativeMarks: 0, options: [{ id: 'opt-b', isCorrect: true }] },
+        ]),
+      },
+      answer: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'answer-1', questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']) }, // correct
+          { id: 'answer-2', questionId: 'q2', selectedOptionIdsJson: JSON.stringify([]) }, // unanswered
+        ]),
+        update: jest.fn(),
+      },
+      result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+      attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+      auditLog: { create: jest.fn() },
+    });
+
+    it("uses each section's weight rather than its raw marks share", async () => {
+      const attempt = {
+        id: 'attempt-1',
+        questionOrderJson: JSON.stringify(['q1', 'q2']),
+        sectionSnapshotJson: JSON.stringify([
+          { sectionId: 's1', title: 'Light', targetDurationMinutes: null, weightPercent: 20, questionIds: ['q1'] },
+          { sectionId: 's2', title: 'Heavy', targetDurationMinutes: null, weightPercent: 80, questionIds: ['q2'] },
+        ]),
+      };
+      const tx = weightedTx();
+
+      await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
+
+      // Full marks on the 20%-weighted section, nothing on the 80% one -> 20%, not the flat 50%.
+      expect(tx.result.create).toHaveBeenCalledWith({
+        data: { attemptId: 'attempt-1', score: 5, maxScore: 10, percentage: 20, passFail: 'fail' },
+      });
+    });
+
+    it('leaves score/maxScore as the RAW unweighted totals -- only percentage is weighted', async () => {
+      const attempt = {
+        id: 'attempt-1',
+        questionOrderJson: JSON.stringify(['q1', 'q2']),
+        sectionSnapshotJson: JSON.stringify([
+          { sectionId: 's1', title: 'Light', targetDurationMinutes: null, weightPercent: 20, questionIds: ['q1'] },
+          { sectionId: 's2', title: 'Heavy', targetDurationMinutes: null, weightPercent: 80, questionIds: ['q2'] },
+        ]),
+      };
+      const tx = weightedTx();
+
+      await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
+
+      const data = tx.result.create.mock.calls[0][0].data;
+      expect(data.score).toBe(5);
+      expect(data.maxScore).toBe(10);
+    });
+
+    // The migration hazard: an attempt that STARTED before weighting shipped has a snapshot with
+    // no weightPercent. Treating those as weight 0 would score every in-flight candidate at 0%.
+    it('falls back to the flat formula for a legacy snapshot whose entries predate weightPercent', async () => {
+      const attempt = {
+        id: 'attempt-1',
+        questionOrderJson: JSON.stringify(['q1', 'q2']),
+        sectionSnapshotJson: JSON.stringify([
+          { sectionId: 's1', title: 'Old', targetDurationMinutes: null, questionIds: ['q1'] },
+          { sectionId: 's2', title: 'Old Two', targetDurationMinutes: null, questionIds: ['q2'] },
+        ]),
+      };
+      const tx = weightedTx();
+
+      await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
+
+      // Flat: 5 of 10 raw marks = 50%, exactly what this attempt was started under.
+      expect(tx.result.create).toHaveBeenCalledWith({
+        data: { attemptId: 'attempt-1', score: 5, maxScore: 10, percentage: 50, passFail: 'pass' },
+      });
+    });
+
+    it('falls back to the flat formula when the snapshot is unparseable or empty', async () => {
+      const attempt = {
+        id: 'attempt-1',
+        questionOrderJson: JSON.stringify(['q1', 'q2']),
+        sectionSnapshotJson: 'not json at all',
+      };
+      const tx = weightedTx();
+
+      await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
+
+      expect(tx.result.create).toHaveBeenCalledWith({
+        data: { attemptId: 'attempt-1', score: 5, maxScore: 10, percentage: 50, passFail: 'pass' },
+      });
+    });
+  });
+
   describe('finalize', () => {
     it('grades an unanswered question as zero marks without creating an answer row', async () => {
       const attempt = { id: 'attempt-1', questionOrderJson: JSON.stringify(['q1']) };

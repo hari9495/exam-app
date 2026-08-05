@@ -30,15 +30,45 @@ export interface ResultSummary {
   passFail: 'pass' | 'fail';
 }
 
+export interface GradableSection {
+  sectionId: string;
+  weightPercent: number;
+  questionIds: string[];
+}
+
 export function computeResult(
-  gradedAnswers: { marksAwarded: number }[],
-  questions: { marks: number }[],
+  gradedAnswers: { questionId: string; marksAwarded: number }[],
+  questions: { id: string; marks: number }[],
   passCriteriaPercent: number,
+  sections: GradableSection[],
 ): ResultSummary {
   const rawScore = gradedAnswers.reduce((sum, answer) => sum + answer.marksAwarded, 0);
   const score = Math.max(0, rawScore);
   const maxScore = questions.reduce((sum, question) => sum + question.marks, 0);
-  const percentage = maxScore > 0 ? (score / maxScore) * 100 : 0;
+
+  const marksAwardedByQuestionId = new Map(gradedAnswers.map((answer) => [answer.questionId, answer.marksAwarded]));
+  const marksByQuestionId = new Map(questions.map((question) => [question.id, question.marks]));
+
+  // Weighted, not flat: each section's (score/max) ratio contributes its own weightPercent share
+  // of the overall percentage, independent of how many raw marks that section's questions carry.
+  // score/maxScore above stay the RAW unweighted totals -- only percentage becomes weighted.
+  // See docs/superpowers/specs/2026-08-05-section-weightage-design.md.
+  let percentage = 0;
+  for (const section of sections) {
+    let sectionScore = 0;
+    let sectionMax = 0;
+    for (const questionId of section.questionIds) {
+      sectionScore += marksAwardedByQuestionId.get(questionId) ?? 0;
+      sectionMax += marksByQuestionId.get(questionId) ?? 0;
+    }
+    // Floored per section, so one section's negative marking can never eat into another's
+    // earned contribution -- the flat formula's Math.max(0, ...) applied at section granularity.
+    sectionScore = Math.max(0, sectionScore);
+    if (sectionMax > 0) {
+      percentage += (sectionScore / sectionMax) * section.weightPercent;
+    }
+  }
+
   const passFail: 'pass' | 'fail' = percentage >= passCriteriaPercent ? 'pass' : 'fail';
   return { score, maxScore, percentage, passFail };
 }

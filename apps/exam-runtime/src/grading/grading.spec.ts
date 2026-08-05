@@ -43,34 +43,112 @@ describe('gradeAnswer', () => {
 });
 
 describe('computeResult', () => {
+  // A single 100%-weighted section covering every question makes the weighted formula
+  // arithmetically identical to the old flat one -- which is what keeps the pre-weighting
+  // expectations below (and every historical Result row) unchanged.
+  const oneSection = (questionIds: string[], weightPercent = 100) => [{ sectionId: 's1', weightPercent, questionIds }];
+
   it('computes score, maxScore, percentage, and pass when meeting the pass criteria', () => {
-    const summary = computeResult([{ marksAwarded: 5 }, { marksAwarded: 0 }], [{ marks: 5 }, { marks: 5 }], 50);
+    const summary = computeResult(
+      [{ questionId: 'q1', marksAwarded: 5 }, { questionId: 'q2', marksAwarded: 0 }],
+      [{ id: 'q1', marks: 5 }, { id: 'q2', marks: 5 }],
+      50,
+      oneSection(['q1', 'q2']),
+    );
     expect(summary).toEqual({ score: 5, maxScore: 10, percentage: 50, passFail: 'pass' });
   });
 
   it('returns fail when below the pass criteria', () => {
-    const summary = computeResult([{ marksAwarded: 2 }], [{ marks: 10 }], 50);
+    const summary = computeResult(
+      [{ questionId: 'q1', marksAwarded: 2 }],
+      [{ id: 'q1', marks: 10 }],
+      50,
+      oneSection(['q1']),
+    );
     expect(summary).toEqual({ score: 2, maxScore: 10, percentage: 20, passFail: 'fail' });
   });
 
   it('counts an unanswered question toward maxScore but contributes nothing to score', () => {
-    const summary = computeResult([{ marksAwarded: 3 }], [{ marks: 3 }, { marks: 7 }], 40);
+    const summary = computeResult(
+      [{ questionId: 'q1', marksAwarded: 3 }],
+      [{ id: 'q1', marks: 3 }, { id: 'q2', marks: 7 }],
+      40,
+      oneSection(['q1', 'q2']),
+    );
     expect(summary).toEqual({ score: 3, maxScore: 10, percentage: 30, passFail: 'fail' });
   });
 
   it('returns a zero percentage instead of dividing by zero when there are no questions', () => {
-    const summary = computeResult([], [], 40);
+    const summary = computeResult([], [], 40, []);
     expect(summary).toEqual({ score: 0, maxScore: 0, percentage: 0, passFail: 'fail' });
   });
 
   it('floors a negative raw score at zero instead of returning a negative score or percentage', () => {
-    const summary = computeResult([{ marksAwarded: 3 }, { marksAwarded: -5 }], [{ marks: 3 }, { marks: 3 }], 50);
+    const summary = computeResult(
+      [{ questionId: 'q1', marksAwarded: 3 }, { questionId: 'q2', marksAwarded: -5 }],
+      [{ id: 'q1', marks: 3 }, { id: 'q2', marks: 3 }],
+      50,
+      oneSection(['q1', 'q2']),
+    );
     expect(summary).toEqual({ score: 0, maxScore: 6, percentage: 0, passFail: 'fail' });
   });
 
   it('does not floor a positive score that is merely reduced by a deduction', () => {
-    const summary = computeResult([{ marksAwarded: 5 }, { marksAwarded: -2 }], [{ marks: 5 }, { marks: 5 }], 20);
+    const summary = computeResult(
+      [{ questionId: 'q1', marksAwarded: 5 }, { questionId: 'q2', marksAwarded: -2 }],
+      [{ id: 'q1', marks: 5 }, { id: 'q2', marks: 5 }],
+      20,
+      oneSection(['q1', 'q2']),
+    );
     expect(summary).toEqual({ score: 3, maxScore: 10, percentage: 30, passFail: 'pass' });
+  });
+
+  it('weights two sections independently of their raw marks -- a heavier-weighted section with a lower score pulls the overall percentage down', () => {
+    // Section A: 1/1 marks (100% raw) but only worth 30% of the grade.
+    // Section B: 0/1 marks (0% raw) but worth 70% of the grade.
+    // Flat (unweighted) would be 1/2 = 50%; weighted must be 0.3*100 + 0.7*0 = 30%.
+    const summary = computeResult(
+      [{ questionId: 'a1', marksAwarded: 1 }, { questionId: 'b1', marksAwarded: 0 }],
+      [{ id: 'a1', marks: 1 }, { id: 'b1', marks: 1 }],
+      50,
+      [
+        { sectionId: 'A', weightPercent: 30, questionIds: ['a1'] },
+        { sectionId: 'B', weightPercent: 70, questionIds: ['b1'] },
+      ],
+    );
+    expect(summary.score).toBe(1);
+    expect(summary.maxScore).toBe(2);
+    expect(summary.percentage).toBe(30);
+    expect(summary.passFail).toBe('fail');
+  });
+
+  it('floors a negative section score at zero before weighting, so one section cannot drag another negative', () => {
+    // Section A: -3 raw (negative marks exceed correct marks) but weighted 50% -- contributes 0, not negative.
+    // Section B: full marks, weighted 50% -- contributes 50.
+    const summary = computeResult(
+      [{ questionId: 'a1', marksAwarded: -3 }, { questionId: 'b1', marksAwarded: 5 }],
+      [{ id: 'a1', marks: 2 }, { id: 'b1', marks: 5 }],
+      40,
+      [
+        { sectionId: 'A', weightPercent: 50, questionIds: ['a1'] },
+        { sectionId: 'B', weightPercent: 50, questionIds: ['b1'] },
+      ],
+    );
+    expect(summary.percentage).toBe(50);
+    expect(summary.passFail).toBe('pass');
+  });
+
+  it('contributes zero for a section with no marks available, without dividing by zero', () => {
+    const summary = computeResult(
+      [{ questionId: 'a1', marksAwarded: 5 }],
+      [{ id: 'a1', marks: 5 }],
+      40,
+      [
+        { sectionId: 'A', weightPercent: 50, questionIds: ['a1'] },
+        { sectionId: 'B', weightPercent: 50, questionIds: [] }, // empty section, e.g. all-code section pre-manual-grading
+      ],
+    );
+    expect(summary.percentage).toBe(50); // only A's 50% contributes; B's 50% share earns 0
   });
 });
 

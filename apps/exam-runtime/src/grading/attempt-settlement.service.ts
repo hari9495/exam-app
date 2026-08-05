@@ -1,6 +1,6 @@
 import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { Attempt, Prisma } from '@prisma/client';
-import { gradeAnswer, computeResult, computeRemainingSeconds } from './grading';
+import { gradeAnswer, computeResult, computeRemainingSeconds, GradableSection } from './grading';
 import { ATTEMPT_STATUS_BROADCASTER, AttemptStatusBroadcaster } from '../monitoring/attempt-status-broadcaster';
 import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
 import { AttemptInsightService } from '../attempt-insight/attempt-insight.service';
@@ -20,6 +20,42 @@ const BROWSER_ACTIVITY_COOLDOWN_MS = 60_000;
 // webcamResume) since both are strike pauses cleared by acknowledgement; screen_share is a
 // precondition, only cleared by screenShareState's active:true path.
 export type PauseReason = 'webcam' | 'browser_activity' | 'screen_share';
+
+// Mirrors what AttemptService stamps into Attempt.sectionSnapshotJson at attempt-start. Read
+// (rather than re-queried from ExamSection) deliberately: the snapshot is the frozen, per-attempt
+// truth -- a recruiter editing weights after this candidate started must not retroactively
+// rescore them, and a pool section's drawn questionIds only exist here.
+interface SectionSnapshotEntry {
+  sectionId: string;
+  title: string;
+  targetDurationMinutes: number | null;
+  weightPercent: number;
+  questionIds: string[];
+}
+
+// Attempts that STARTED before section weighting shipped carry a snapshot with no weightPercent
+// on its entries. Defaulting those to 0 (the obvious reading) would give every section a zero
+// share, scoring every such in-flight candidate at 0% and failing them -- so a legacy snapshot
+// instead degrades to one synthetic 100%-weighted section spanning every question, which is
+// arithmetically the exact flat formula those attempts were started under.
+function toGradableSections(sectionSnapshotJson: string, allQuestionIds: string[]): GradableSection[] {
+  let snapshot: SectionSnapshotEntry[];
+  try {
+    snapshot = JSON.parse(sectionSnapshotJson);
+  } catch {
+    snapshot = [];
+  }
+  const isLegacy = !Array.isArray(snapshot) || snapshot.length === 0
+    || snapshot.some((section) => typeof section?.weightPercent !== 'number');
+  if (isLegacy) {
+    return [{ sectionId: '__flat__', weightPercent: 100, questionIds: allQuestionIds }];
+  }
+  return snapshot.map((section) => ({
+    sectionId: section.sectionId,
+    weightPercent: section.weightPercent,
+    questionIds: section.questionIds,
+  }));
+}
 
 export interface SettlementExam {
   id: string;
@@ -89,7 +125,7 @@ export class AttemptSettlementService {
     const answersByQuestionId = new Map(existingAnswers.map((answer) => [answer.questionId, answer]));
 
     const hasCodeQuestions = questions.some((question) => question.type === 'code');
-    const gradedAnswers: { marksAwarded: number }[] = [];
+    const gradedAnswers: { questionId: string; marksAwarded: number }[] = [];
     for (const question of questions) {
       if (question.type === 'code') {
         // Manual grading only — never auto-graded, never contributes to gradedAnswers until a
@@ -115,14 +151,18 @@ export class AttemptSettlementService {
         { marks: question.marks, negativeMarks: question.negativeMarks, correctOptionIds },
         selectedOptionIds,
       );
-      gradedAnswers.push({ marksAwarded });
+      gradedAnswers.push({ questionId: question.id, marksAwarded });
       if (answer) {
         await tx.answer.update({ where: { id: answer.id }, data: { isCorrect, marksAwarded } });
       }
     }
 
     const scoredQuestions = hasCodeQuestions ? questions.filter((question) => question.type !== 'code') : questions;
-    const summary = computeResult(gradedAnswers, scoredQuestions, exam.passCriteriaPercent);
+    const sections = toGradableSections(
+      attempt.sectionSnapshotJson,
+      scoredQuestions.map((question) => question.id),
+    );
+    const summary = computeResult(gradedAnswers, scoredQuestions, exam.passCriteriaPercent, sections);
     await tx.result.create({
       data: {
         attemptId: attempt.id,
@@ -213,8 +253,12 @@ export class AttemptSettlementService {
       throw new BadRequestException(`${ungraded.length} code question(s) still need grading before this attempt can be finalized`);
     }
 
-    const gradedAnswers = questions.map((question) => ({ marksAwarded: answersByQuestionId.get(question.id)?.marksAwarded ?? 0 }));
-    const summary = computeResult(gradedAnswers, questions, exam.passCriteriaPercent);
+    const gradedAnswers = questions.map((question) => ({
+      questionId: question.id,
+      marksAwarded: answersByQuestionId.get(question.id)?.marksAwarded ?? 0,
+    }));
+    const sections = toGradableSections(attempt.sectionSnapshotJson, questions.map((question) => question.id));
+    const summary = computeResult(gradedAnswers, questions, exam.passCriteriaPercent, sections);
 
     await tx.result.update({
       where: { attemptId: attempt.id },
