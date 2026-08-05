@@ -63,7 +63,7 @@ describe('Home (landing page)', () => {
 
   it('shows the footer copyright without a redundant Login link (nav already has one)', () => {
     render(<Home />);
-    expect(screen.getByText(`© ${new Date().getFullYear()} Prudent Hire`)).toBeInTheDocument();
+    expect(screen.getByText('© 2026 Prudent Consulting')).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: 'Login' })).toHaveLength(1);
   });
 });
