@@ -255,6 +255,24 @@ describe('AttemptSettlementService', () => {
         data: { attemptId: 'attempt-1', score: 5, maxScore: 10, percentage: 50, passFail: 'pass' },
       });
     });
+
+    it('scores the best N when the section carries a requiredCount', async () => {
+      const attempt = {
+        id: 'attempt-1',
+        questionOrderJson: JSON.stringify(['q1', 'q2']),
+        sectionSnapshotJson: JSON.stringify([
+          { sectionId: 's1', title: 'Coding', targetDurationMinutes: null, weightPercent: 100, requiredCount: 1, questionIds: ['q1', 'q2'] },
+        ]),
+      };
+      const tx = weightedTx();
+
+      await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
+
+      // q1 correct (5), q2 unanswered (0). Best 1 of 2 = 5 out of 5 = 100%.
+      expect(tx.result.create).toHaveBeenCalledWith({
+        data: { attemptId: 'attempt-1', score: 5, maxScore: 5, percentage: 100, passFail: 'pass' },
+      });
+    });
   });
 
   describe('finalize', () => {
@@ -889,6 +907,41 @@ describe('AttemptSettlementService', () => {
       await new Promise((resolve) => setImmediate(resolve));
 
       expect(integrityAnalysis.analyze).toHaveBeenCalledWith('attempt-1');
+    });
+
+    it('applies best-N again on the manual-grade pass, once code marks have landed', async () => {
+      const attempt = {
+        id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', status: 'pending_manual_grade',
+        questionOrderJson: JSON.stringify(['c1', 'c2', 'c3']),
+        sectionSnapshotJson: JSON.stringify([
+          { sectionId: 's1', title: 'Coding', targetDurationMinutes: null, weightPercent: 100, requiredCount: 2, questionIds: ['c1', 'c2', 'c3'] },
+        ]),
+      };
+      const tx = {
+        question: { findMany: jest.fn().mockResolvedValue([
+          { id: 'c1', type: 'code', marks: 10, negativeMarks: 0 },
+          { id: 'c2', type: 'code', marks: 10, negativeMarks: 0 },
+          { id: 'c3', type: 'code', marks: 10, negativeMarks: 0 },
+        ]) },
+        answer: { findMany: jest.fn().mockResolvedValue([
+          { questionId: 'c1', marksAwarded: 9 },
+          { questionId: 'c2', marksAwarded: 2 },
+          { questionId: 'c3', marksAwarded: 7 },
+        ]) },
+        // finalizeManualGrade recomputes an existing Result via update (created earlier by
+        // finalize()), not create/upsert -- see the "recomputes the Result..." test above.
+        result: { update: jest.fn() },
+        attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+        auditLog: { create: jest.fn() },
+      } as any;
+
+      await service.finalizeManualGrade(tx as unknown as Prisma.TransactionClient, exam, attempt as any);
+
+      // Best 2 of 3 = 9 + 7 = 16, out of 20 -> 80%. A flat score would be 18 of 30 = 60%.
+      expect(tx.result.update).toHaveBeenCalledWith({
+        where: { attemptId: 'attempt-1' },
+        data: expect.objectContaining({ score: 16, maxScore: 20, percentage: 80 }),
+      });
     });
   });
 

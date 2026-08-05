@@ -1,3 +1,5 @@
+import { selectCountedAnswers } from '@exam-platform/shared';
+
 export interface GradableQuestion {
   marks: number;
   negativeMarks: number;
@@ -33,6 +35,8 @@ export interface ResultSummary {
 export interface GradableSection {
   sectionId: string;
   weightPercent: number;
+  /** null/undefined = every question counts. Otherwise only the best N are scored, out of N. */
+  requiredCount?: number | null;
   questionIds: string[];
 }
 
@@ -42,30 +46,30 @@ export function computeResult(
   passCriteriaPercent: number,
   sections: GradableSection[],
 ): ResultSummary {
-  const rawScore = gradedAnswers.reduce((sum, answer) => sum + answer.marksAwarded, 0);
-  const score = Math.max(0, rawScore);
-  const maxScore = questions.reduce((sum, question) => sum + question.marks, 0);
-
   const marksAwardedByQuestionId = new Map(gradedAnswers.map((answer) => [answer.questionId, answer.marksAwarded]));
   const marksByQuestionId = new Map(questions.map((question) => [question.id, question.marks]));
 
   // Weighted, not flat: each section's (score/max) ratio contributes its own weightPercent share
-  // of the overall percentage, independent of how many raw marks that section's questions carry.
-  // score/maxScore above stay the RAW unweighted totals -- only percentage becomes weighted.
-  // See docs/superpowers/specs/2026-08-05-section-weightage-design.md.
+  // of the overall percentage. score/maxScore are the COUNTED totals -- for a section with a
+  // requiredCount they exclude the dropped answers, so the headline numbers agree with the
+  // percentage rather than contradicting it.
+  // See docs/superpowers/specs/2026-08-05-answer-any-n-design.md.
   let percentage = 0;
+  let score = 0;
+  let maxScore = 0;
   for (const section of sections) {
-    let sectionScore = 0;
-    let sectionMax = 0;
-    for (const questionId of section.questionIds) {
-      sectionScore += marksAwardedByQuestionId.get(questionId) ?? 0;
-      sectionMax += marksByQuestionId.get(questionId) ?? 0;
-    }
-    // Floored per section, so one section's negative marking can never eat into another's
-    // earned contribution -- the flat formula's Math.max(0, ...) applied at section granularity.
-    sectionScore = Math.max(0, sectionScore);
-    if (sectionMax > 0) {
-      percentage += (sectionScore / sectionMax) * section.weightPercent;
+    const counted = selectCountedAnswers(
+      section.questionIds.map((questionId) => ({
+        questionId,
+        marks: marksByQuestionId.get(questionId) ?? 0,
+        marksAwarded: marksAwardedByQuestionId.get(questionId) ?? 0,
+      })),
+      section.requiredCount,
+    );
+    score += counted.score;
+    maxScore += counted.maxScore;
+    if (counted.maxScore > 0) {
+      percentage += (counted.score / counted.maxScore) * section.weightPercent;
     }
   }
 

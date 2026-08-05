@@ -30,6 +30,7 @@ interface SectionSnapshotEntry {
   title: string;
   targetDurationMinutes: number | null;
   weightPercent: number;
+  requiredCount: number | null;
   questionIds: string[];
 }
 
@@ -48,11 +49,14 @@ function toGradableSections(sectionSnapshotJson: string, allQuestionIds: string[
   const isLegacy = !Array.isArray(snapshot) || snapshot.length === 0
     || snapshot.some((section) => typeof section?.weightPercent !== 'number');
   if (isLegacy) {
-    return [{ sectionId: '__flat__', weightPercent: 100, questionIds: allQuestionIds }];
+    return [{ sectionId: '__flat__', weightPercent: 100, requiredCount: null, questionIds: allQuestionIds }];
   }
   return snapshot.map((section) => ({
     sectionId: section.sectionId,
     weightPercent: section.weightPercent,
+    // A snapshot written before this feature has no key at all -- undefined must read as
+    // "all required", never as 0, which would score every section out of nothing.
+    requiredCount: section.requiredCount ?? null,
     questionIds: section.questionIds,
   }));
 }

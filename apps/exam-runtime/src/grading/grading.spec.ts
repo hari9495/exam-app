@@ -150,6 +150,54 @@ describe('computeResult', () => {
     );
     expect(summary.percentage).toBe(50); // only A's 50% contributes; B's 50% share earns 0
   });
+
+  it('scores only the best N of a section, out of N', () => {
+    // 5 questions worth 10 each, answer any 3. Awarded 10/10/7/0/0.
+    // Best 3 = 27 out of 30 = 90% of a 100%-weighted section.
+    const summary = computeResult(
+      [
+        { questionId: 'q1', marksAwarded: 10 },
+        { questionId: 'q2', marksAwarded: 10 },
+        { questionId: 'q3', marksAwarded: 7 },
+        { questionId: 'q4', marksAwarded: 0 },
+        { questionId: 'q5', marksAwarded: 0 },
+      ],
+      [
+        { id: 'q1', marks: 10 }, { id: 'q2', marks: 10 }, { id: 'q3', marks: 10 },
+        { id: 'q4', marks: 10 }, { id: 'q5', marks: 10 },
+      ],
+      50,
+      [{ sectionId: 's1', weightPercent: 100, requiredCount: 3, questionIds: ['q1', 'q2', 'q3', 'q4', 'q5'] }],
+    );
+    expect(summary.percentage).toBe(90);
+    expect(summary.score).toBe(27);
+    expect(summary.maxScore).toBe(30);
+  });
+
+  it('reports score/maxScore as the counted totals, not the raw totals over every question', () => {
+    // Raw would be 27/50. Counted must be 27/30 -- otherwise the headline numbers contradict
+    // the percentage printed beside them in the recruiter report.
+    const summary = computeResult(
+      [{ questionId: 'q1', marksAwarded: 27 }],
+      [
+        { id: 'q1', marks: 10 }, { id: 'q2', marks: 10 }, { id: 'q3', marks: 10 },
+        { id: 'q4', marks: 10 }, { id: 'q5', marks: 10 },
+      ],
+      50,
+      [{ sectionId: 's1', weightPercent: 100, requiredCount: 3, questionIds: ['q1', 'q2', 'q3', 'q4', 'q5'] }],
+    );
+    expect(summary.maxScore).toBe(30);
+  });
+
+  it('leaves a section with no requiredCount scoring every question, exactly as before', () => {
+    const summary = computeResult(
+      [{ questionId: 'q1', marksAwarded: 5 }, { questionId: 'q2', marksAwarded: 0 }],
+      [{ id: 'q1', marks: 5 }, { id: 'q2', marks: 5 }],
+      50,
+      [{ sectionId: 's1', weightPercent: 100, requiredCount: null, questionIds: ['q1', 'q2'] }],
+    );
+    expect(summary).toEqual({ score: 5, maxScore: 10, percentage: 50, passFail: 'pass' });
+  });
 });
 
 describe('computeRemainingSeconds', () => {
