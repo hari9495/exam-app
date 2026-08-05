@@ -63,6 +63,10 @@ interface SectionSnapshotEntry {
   sectionId: string;
   title: string;
   targetDurationMinutes: number | null;
+  // Frozen at attempt-start on purpose: a recruiter editing section weights afterwards must not
+  // retroactively rescore a candidate who already sat the exam. Read back by
+  // AttemptSettlementService's toGradableSections().
+  weightPercent: number;
   questionIds: string[];
 }
 
@@ -378,6 +382,7 @@ export class AttemptService {
           sectionId: section.id,
           title: section.title,
           targetDurationMinutes: section.targetDurationMinutes,
+          weightPercent: section.weightPercent,
           questionIds,
         });
       }

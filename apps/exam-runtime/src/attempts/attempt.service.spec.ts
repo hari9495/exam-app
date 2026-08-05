@@ -963,8 +963,8 @@ describe('AttemptService', () => {
         attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
         examSection: {
           findMany: jest.fn().mockResolvedValue([
-            { id: 'section-1', title: 'Section One', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: 20, poolTags: [], questions: [{ questionId: 'q1' }] },
-            { id: 'section-2', title: 'Section Two', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: null, poolTags: [], questions: [{ questionId: 'q2' }] },
+            { id: 'section-1', title: 'Section One', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: 20, weightPercent: 60, poolTags: [], questions: [{ questionId: 'q1' }] },
+            { id: 'section-2', title: 'Section Two', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: null, weightPercent: 40, poolTags: [], questions: [{ questionId: 'q2' }] },
           ]),
         },
       };
@@ -975,9 +975,29 @@ describe('AttemptService', () => {
       const createdData = tx.attempt.create.mock.calls[0][0].data;
       const snapshot = JSON.parse(createdData.sectionSnapshotJson);
       expect(snapshot).toEqual([
-        { sectionId: 'section-1', title: 'Section One', targetDurationMinutes: 20, questionIds: ['q1'] },
-        { sectionId: 'section-2', title: 'Section Two', targetDurationMinutes: null, questionIds: ['q2'] },
+        { sectionId: 'section-1', title: 'Section One', targetDurationMinutes: 20, weightPercent: 60, questionIds: ['q1'] },
+        { sectionId: 'section-2', title: 'Section Two', targetDurationMinutes: null, weightPercent: 40, questionIds: ['q2'] },
       ]);
+    });
+
+    // Guards the settlement contract: AttemptSettlementService reads weightPercent straight out of
+    // this snapshot, and treats an entry missing it as a legacy (flat-scored) attempt -- so a
+    // silently-dropped key here would quietly un-weight every newly started exam.
+    it("freezes each section's weightPercent into the snapshot at start time", async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
+        examSection: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'section-1', title: 'Only Section', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: null, weightPercent: 100, poolTags: [], questions: [{ questionId: 'q1' }] },
+          ]),
+        },
+      };
+      mockBootstrapThenScoped(tx);
+
+      await service.start(session, { consent: true });
+
+      const snapshot = JSON.parse(tx.attempt.create.mock.calls[0][0].data.sectionSnapshotJson);
+      expect(snapshot[0]).toHaveProperty('weightPercent', 100);
     });
 
     it('draws a pool section\'s questions matching tag and difficulty criteria, up to poolSize', async () => {
