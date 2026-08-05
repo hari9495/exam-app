@@ -492,7 +492,7 @@ export class ExamsService {
     const published = await this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({
         where: { id, organizationId: context.organizationId as string },
-        include: { sections: { include: { questions: true, poolTags: true } } },
+        include: { sections: { include: { questions: { include: { question: { select: { marks: true } } } }, poolTags: true } } },
       });
       if (!exam) {
         throw new NotFoundException(`Exam ${id} not found`);
@@ -510,6 +510,36 @@ export class ExamsService {
         throw new BadRequestException(`Section weights must sum to 100% before publishing (currently ${weightSum}%)`);
       }
       for (const section of exam.sections) {
+        if (section.requiredCount != null) {
+          const total = section.selectionMode === 'pool' ? (section.poolSize ?? 0) : section.questions.length;
+          if (section.requiredCount > total) {
+            throw new BadRequestException(
+              `Section "${section.title}" asks for ${section.requiredCount} answers but only has ${total} questions`,
+            );
+          }
+          // Candidates choose which questions to answer, so unequal marks would make two
+          // candidates' percentages incomparable -- one could pick the cheap questions and be
+          // capped below 100% through no fault of their own.
+          const marks = section.selectionMode === 'pool'
+            ? (
+                await tx.question.findMany({
+                  where: {
+                    organizationId: context.organizationId as string,
+                    status: 'active',
+                    ...(section.poolDifficulty ? { difficulty: section.poolDifficulty } : {}),
+                    AND: section.poolTags.map((poolTag) => ({ tags: { some: { tagId: poolTag.tagId } } })),
+                  },
+                  select: { marks: true },
+                  distinct: ['marks'],
+                })
+              ).map((question) => question.marks)
+            : [...new Set(section.questions.map((link) => link.question.marks))];
+          if (marks.length > 1) {
+            throw new BadRequestException(
+              `Section "${section.title}" lets candidates choose which questions to answer, so all its questions must carry the same marks`,
+            );
+          }
+        }
         if (section.selectionMode === 'pool') {
           const tagIds = section.poolTags.map((poolTag) => poolTag.tagId);
           const matchingCount = await tx.question.count({

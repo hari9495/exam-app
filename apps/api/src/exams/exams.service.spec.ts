@@ -1842,6 +1842,106 @@ describe('ExamsService', () => {
     await expect(service.publish(context, 'user-1', 'exam-1')).rejects.toThrow(BadRequestException);
   });
 
+  it('rejects publish when a fixed section requires more answers than it has questions', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'exam-1',
+          status: 'draft',
+          sections: [{
+            id: 'section-1', title: 'Coding', selectionMode: 'fixed', weightPercent: 100,
+            requiredCount: 4, poolTags: [],
+            questions: [{ questionId: 'q1', question: { marks: 10 } }, { questionId: 'q2', question: { marks: 10 } }],
+          }],
+        }),
+        update: jest.fn(),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.publish(context, 'user-1', 'exam-1')).rejects.toThrow(
+      'Section "Coding" asks for 4 answers but only has 2 questions',
+    );
+    expect(tx.exam.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects publish when an answer-any-N fixed section has unequal marks', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'exam-1',
+          status: 'draft',
+          sections: [{
+            id: 'section-1', title: 'Coding', selectionMode: 'fixed', weightPercent: 100,
+            requiredCount: 2, poolTags: [],
+            questions: [
+              { questionId: 'q1', question: { marks: 10 } },
+              { questionId: 'q2', question: { marks: 20 } },
+              { questionId: 'q3', question: { marks: 10 } },
+            ],
+          }],
+        }),
+        update: jest.fn(),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.publish(context, 'user-1', 'exam-1')).rejects.toThrow(
+      'Section "Coding" lets candidates choose which questions to answer, so all its questions must carry the same marks',
+    );
+  });
+
+  it('publishes an answer-any-N fixed section whose questions all carry equal marks', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'exam-1',
+          status: 'draft',
+          sections: [{
+            id: 'section-1', title: 'Coding', selectionMode: 'fixed', weightPercent: 100,
+            requiredCount: 2, poolTags: [],
+            questions: [
+              { questionId: 'q1', question: { marks: 10 } },
+              { questionId: 'q2', question: { marks: 10 } },
+              { questionId: 'q3', question: { marks: 10 } },
+            ],
+          }],
+        }),
+        update: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    const result = await service.publish(context, 'user-1', 'exam-1');
+
+    expect(result.status).toBe('published');
+  });
+
+  it('rejects publish when a pool section\'s eligible bank has unequal marks', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'exam-1',
+          status: 'draft',
+          sections: [{
+            id: 'section-1', title: 'Pool', selectionMode: 'pool', poolSize: 5, poolDifficulty: null,
+            weightPercent: 100, requiredCount: 3, questions: [], poolTags: [{ tagId: 'tag-1' }],
+          }],
+        }),
+        update: jest.fn(),
+      },
+      question: {
+        count: jest.fn().mockResolvedValue(8),
+        findMany: jest.fn().mockResolvedValue([{ marks: 10 }, { marks: 20 }]),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.publish(context, 'user-1', 'exam-1')).rejects.toThrow(
+      'Section "Pool" lets candidates choose which questions to answer, so all its questions must carry the same marks',
+    );
+  });
+
   describe('duplicate', () => {
     it("duplicates an exam's own settings, resetting status and scheduling regardless of source", async () => {
       const tx = {
