@@ -19,7 +19,7 @@ import { DashboardAnalytics } from '../../lib/types';
 // dashboard looks like one system. Semantic colours (pass=green, flagged=red) are
 // separate from the neutral brand blue used for plain magnitude bars.
 const C = {
-  primary: '#0057f0',
+  primary: '#0053e2',
   accent: '#c98a00',
   success: '#2F6F5E',
   warning: '#8A5A00',

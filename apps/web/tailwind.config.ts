@@ -5,10 +5,16 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        primary: 'var(--color-primary, #0057f0)',
+        primary: 'var(--color-primary, #0053e2)',
         accent: 'var(--color-accent, #fbbc04)',
+        brand: {
+          navy: '#001E60',
+          blue: '#0053E2',
+          picton: '#4DBDF5',
+          sail: '#A9DDF7',
+        },
         candidate: {
-          primary: 'var(--color-candidate-primary, #0057f0)',
+          primary: 'var(--color-candidate-primary, #0053e2)',
           'primary-light': 'var(--color-candidate-primary-light, #E0EBFD)',
           'on-primary': 'var(--color-candidate-on-primary, #ffffff)',
           bg: '#F4F7F6',

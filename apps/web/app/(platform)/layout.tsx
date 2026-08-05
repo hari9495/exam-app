@@ -8,6 +8,7 @@ import { MotionConfig } from 'framer-motion';
 import clsx from 'clsx';
 import { useAuth } from '../../lib/auth-context';
 import { staffLandingPath } from '../../lib/staff-landing';
+import { PrudentMark } from '../../components/PrudentMark';
 
 const NAV_LINKS = [
   { href: '/organizations', label: 'Organizations' },
@@ -40,18 +41,21 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="min-h-screen bg-gray-50">
-        <div className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
-          <div className="flex items-center gap-6">
-            <span className="text-sm font-bold text-gray-900">Platform Admin</span>
-            <nav className="flex items-center gap-4">
+      <div className="min-h-screen bg-recruiter-bg-subtle">
+        <div className="flex items-center justify-between bg-brand-navy px-6 py-4">
+          <div className="flex items-center gap-8">
+            <div className="flex items-center gap-2.5">
+              <PrudentMark className="h-6 w-[4.15rem] text-white" />
+              <span className="text-sm font-medium text-white">Platform Admin</span>
+            </div>
+            <nav className="flex items-center gap-5">
               {NAV_LINKS.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
                   className={clsx(
                     'text-sm font-medium transition-colors duration-150',
-                    pathname === link.href ? 'text-primary' : 'text-gray-500 hover:text-gray-900',
+                    pathname === link.href ? 'text-brand-picton' : 'text-white/60 hover:text-white',
                   )}
                 >
                   {link.label}
@@ -63,9 +67,10 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
             type="button"
             aria-label="Log Out"
             onClick={handleLogout}
-            className="rounded-md p-1.5 text-gray-500 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-900"
+            className="flex items-center gap-2 rounded-md border border-white/20 px-3 py-1.5 text-sm font-medium text-white/70 transition-colors duration-150 hover:border-white/40 hover:bg-white/10 hover:text-white"
           >
-            <LogOut size={16} />
+            <LogOut size={15} />
+            Logout
           </button>
         </div>
         <main className="p-8">{children}</main>

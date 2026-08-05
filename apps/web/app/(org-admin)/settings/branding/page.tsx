@@ -34,7 +34,7 @@ export default function BrandingSettingsPage() {
   const updateBranding = useUpdateBranding();
   const updateLogo = useUpdateBrandingLogo();
   const { toast } = useToast();
-  const [primaryColor, setPrimaryColor] = useState('#0057f0');
+  const [primaryColor, setPrimaryColor] = useState('#0053e2');
   const [accentColor, setAccentColor] = useState('#fbbc04');
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [colorsError, setColorsError] = useState<string | null>(null);
@@ -90,7 +90,7 @@ export default function BrandingSettingsPage() {
             <ColorSwatch label="Primary Color" value={primaryColor} onChange={setPrimaryColor} />
             <ColorSwatch label="Accent Color" value={accentColor} onChange={setAccentColor} />
             {/* Colours stay gated until the current values load, so a save can't overwrite
-                the org's real colours with this component's #0057f0/#fbbc04 defaults. */}
+                the org's real colours with this component's #0053e2/#fbbc04 defaults. */}
             <div className="sm:col-span-2">
               <Button type="submit" disabled={!branding} loading={updateBranding.isPending} className="self-start">
                 Save colors
