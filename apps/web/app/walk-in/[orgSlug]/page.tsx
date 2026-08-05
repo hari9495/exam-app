@@ -112,9 +112,16 @@ export default function WalkInPage() {
                   </p>
                 )}
                 <RequiredFieldsNote />
-                <Input label="First Name" value={firstName} onChange={setFirstName} required />
-                <Input label="Middle Name" value={middleName} onChange={setMiddleName} />
-                <Input label="Last Name" value={lastName} onChange={setLastName} required />
+                {/* One row, not stacked: three more fields than the old single Name
+                    field pushed the whole card past the fold (this page is mostly
+                    opened from a QR scan on a phone, where every extra scroll costs
+                    completions) -- First/Middle/Last sharing a row keeps the card the
+                    same height it was before the split. */}
+                <div className="grid grid-cols-3 gap-2">
+                  <Input label="First Name" value={firstName} onChange={setFirstName} required />
+                  <Input label="Middle Name" value={middleName} onChange={setMiddleName} />
+                  <Input label="Last Name" value={lastName} onChange={setLastName} required />
+                </div>
                 <Input label="Email" type="email" value={email} onChange={setEmail} required />
                 <Input label="Phone" value={phone} onChange={setPhone} />
                 {listedExams.length > 1 && !preselectedExamId && (
