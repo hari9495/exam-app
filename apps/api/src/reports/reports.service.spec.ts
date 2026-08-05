@@ -877,8 +877,8 @@ describe('ReportsService', () => {
       const tx = {
         attempt: {
           findMany: jest.fn().mockResolvedValue([
-            { id: 'a1', sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Pool Section', questionIds: ['q1'] }]), answers: [{ questionId: 'q1', marksAwarded: 5 }] },
-            { id: 'a2', sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Pool Section', questionIds: ['q2'] }]), answers: [{ questionId: 'q2', marksAwarded: 0 }] },
+            { id: 'a1', sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Pool Section', weightPercent: 100, questionIds: ['q1'] }]), answers: [{ questionId: 'q1', marksAwarded: 5 }] },
+            { id: 'a2', sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Pool Section', weightPercent: 100, questionIds: ['q2'] }]), answers: [{ questionId: 'q2', marksAwarded: 0 }] },
           ]),
         },
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5 }, { id: 'q2', marks: 5 }]) },
@@ -887,8 +887,8 @@ describe('ReportsService', () => {
 
       const comparison = await service.compareCandidates(context, 'exam-1', 'inv-1,inv-2');
 
-      expect(comparison[0].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Pool Section', score: 5, maxScore: 5 }]);
-      expect(comparison[1].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Pool Section', score: 0, maxScore: 5 }]);
+      expect(comparison[0].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Pool Section', score: 5, maxScore: 5, weightPercent: 100 }]);
+      expect(comparison[1].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Pool Section', score: 0, maxScore: 5, weightPercent: 100 }]);
     });
 
     it('throws BadRequestException when fewer than 2 invitationIds are provided, without calling getResults', async () => {
@@ -914,7 +914,7 @@ describe('ReportsService', () => {
       const tx = {
         attempt: {
           findMany: jest.fn().mockResolvedValue([
-            { id: 'a2', sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Pool Section', questionIds: ['q1'] }]), answers: [{ questionId: 'q1', marksAwarded: 5 }] },
+            { id: 'a2', sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Pool Section', weightPercent: 100, questionIds: ['q1'] }]), answers: [{ questionId: 'q1', marksAwarded: 5 }] },
           ]),
         },
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5 }]) },
@@ -927,7 +927,7 @@ describe('ReportsService', () => {
       expect(comparison[0].status).toBe('invited');
       expect(comparison[0].sectionScores).toEqual([]);
       expect(comparison[1].status).toBe('submitted');
-      expect(comparison[1].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Pool Section', score: 5, maxScore: 5 }]);
+      expect(comparison[1].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Pool Section', score: 5, maxScore: 5, weightPercent: 100 }]);
     });
 
     it('returns null score fields and empty sectionScores for a candidate with no attempt', async () => {
@@ -963,8 +963,11 @@ describe('ReportsService', () => {
 
       const comparison = await service.compareCandidates(context, 'exam-1', 'inv-1,inv-2');
 
-      expect(comparison[0].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Section One', score: 0, maxScore: 10 }]);
-      expect(comparison[1].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Section One', score: 5, maxScore: 10 }]);
+      // These two fixtures deliberately keep the pre-weighting snapshot shape (no weightPercent),
+      // so this doubles as coverage for a legacy attempt: it reports 0% weight rather than
+      // inventing a weight that never applied to how that attempt was actually scored.
+      expect(comparison[0].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Section One', score: 0, maxScore: 10, weightPercent: 0 }]);
+      expect(comparison[1].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Section One', score: 5, maxScore: 10, weightPercent: 0 }]);
     });
   });
 });

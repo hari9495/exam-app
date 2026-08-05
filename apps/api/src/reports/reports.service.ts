@@ -41,11 +41,15 @@ export interface SectionScore {
   title: string;
   score: number;
   maxScore: number;
+  weightPercent: number;
 }
 
 interface SectionSnapshotEntryShape {
   sectionId: string;
   title: string;
+  // Absent on attempts that started before section weighting shipped -- those are scored flat,
+  // so they report 0 here rather than a weight that never applied to them.
+  weightPercent?: number;
   questionIds: string[];
 }
 
@@ -407,6 +411,7 @@ export class ReportsService {
           title: section.title,
           score: scoreEntry.score,
           maxScore: scoreEntry.maxScore,
+          weightPercent: scoreEntry.weightPercent,
           questions: section.questionIds.map((questionId) => {
             const question = questionsById.get(questionId);
             const answer = answersByQuestionId.get(questionId);
@@ -547,7 +552,13 @@ export class ReportsService {
         score += marksAwardedByQuestionId.get(questionId) ?? 0;
         maxScore += marksByQuestionId.get(questionId) ?? 0;
       }
-      return { sectionId: section.sectionId, title: section.title, score: Math.max(0, score), maxScore };
+      return {
+        sectionId: section.sectionId,
+        title: section.title,
+        score: Math.max(0, score),
+        maxScore,
+        weightPercent: section.weightPercent ?? 0,
+      };
     });
   }
 }
