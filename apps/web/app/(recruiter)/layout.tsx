@@ -98,12 +98,9 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
         orgName={orgName}
         orgLogoUrl={branding?.logoUrl}
         orgInitial={orgInitial}
-        displayName={displayName}
-        initials={initials}
-        roleLabel={roleLabel}
       />
       <div className="flex flex-1 flex-col">
-        <StaffTopBar onLogout={handleLogout} />
+        <StaffTopBar displayName={displayName} initials={initials} roleLabel={roleLabel} onLogout={handleLogout} />
         <main className="flex-1 p-8">{children}</main>
       </div>
     </div>

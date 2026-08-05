@@ -2,11 +2,33 @@
 
 import { useState, useEffect } from 'react';
 import { ImageIcon } from 'lucide-react';
+import clsx from 'clsx';
 import { useOrgBranding, useUpdateBranding, useUpdateBrandingLogo } from '../../../../lib/hooks/useBranding';
 import { Button, Input, CollapsibleSection, useToast } from '../../../../components/ui';
 import { motion } from 'framer-motion';
 
+// Prudent's own brand colors (Science Blue / Lightning Yellow) -- what an org gets by
+// default when it hasn't picked its own, and what "Use Prudent defaults" resets to.
+const PRUDENT_PRIMARY_COLOR = '#0053e2';
+const PRUDENT_ACCENT_COLOR = '#ffc220';
+
+const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+
 function ColorSwatch({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  // Typed hex tracks independently of `value` so a mid-edit string like "#12" (not yet a
+  // valid 6-digit hex) doesn't get clobbered by the picker's own onChange -- only a valid
+  // hex is ever forwarded to the parent.
+  const [typedHex, setTypedHex] = useState(value);
+  useEffect(() => setTypedHex(value), [value]);
+
+  const isValid = HEX_COLOR_PATTERN.test(typedHex);
+
+  function handleHexChange(next: string) {
+    const withHash = next.startsWith('#') ? next : `#${next}`;
+    setTypedHex(withHash);
+    if (HEX_COLOR_PATTERN.test(withHash)) onChange(withHash);
+  }
+
   return (
     <div className="flex flex-col gap-1">
       <span className="text-sm font-medium text-gray-700">{label}</span>
@@ -21,10 +43,20 @@ function ColorSwatch({ label, value, onChange }: { label: string; value: string;
           aria-label={label}
           className="h-10 w-10 shrink-0 cursor-pointer rounded-md border border-recruiter-border p-0.5"
         />
-        <span className="rounded border border-recruiter-border bg-gray-50 px-2 py-1.5 font-mono text-sm uppercase text-recruiter-text-secondary">
-          {value}
-        </span>
+        <input
+          type="text"
+          value={typedHex}
+          onChange={(e) => handleHexChange(e.target.value)}
+          aria-label={`${label} hex code`}
+          spellCheck={false}
+          maxLength={7}
+          className={clsx(
+            'w-28 rounded border bg-gray-50 px-2 py-1.5 font-mono text-sm uppercase text-recruiter-text-secondary focus:outline-none focus:ring-1',
+            isValid ? 'border-recruiter-border focus:ring-primary' : 'border-status-danger focus:ring-status-danger',
+          )}
+        />
       </div>
+      {!isValid && <span className="text-xs text-status-danger">Enter a 6-digit hex code, e.g. #0053E2.</span>}
     </div>
   );
 }
@@ -34,16 +66,24 @@ export default function BrandingSettingsPage() {
   const updateBranding = useUpdateBranding();
   const updateLogo = useUpdateBrandingLogo();
   const { toast } = useToast();
-  const [primaryColor, setPrimaryColor] = useState('#0053e2');
-  const [accentColor, setAccentColor] = useState('#fbbc04');
+  const [primaryColor, setPrimaryColor] = useState(PRUDENT_PRIMARY_COLOR);
+  const [accentColor, setAccentColor] = useState(PRUDENT_ACCENT_COLOR);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [colorsError, setColorsError] = useState<string | null>(null);
   const [logoError, setLogoError] = useState<string | null>(null);
 
+  // An org that has never picked its own colors comes back with primaryColor/accentColor
+  // both null -- the state above already defaults to Prudent's colors, so there's nothing
+  // to overwrite here for that case, and this effect only fires once real values exist.
   useEffect(() => {
     if (branding?.primaryColor) setPrimaryColor(branding.primaryColor);
     if (branding?.accentColor) setAccentColor(branding.accentColor);
   }, [branding]);
+
+  function handleUsePrudentDefaults() {
+    setPrimaryColor(PRUDENT_PRIMARY_COLOR);
+    setAccentColor(PRUDENT_ACCENT_COLOR);
+  }
 
   function handleColorsSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -90,10 +130,19 @@ export default function BrandingSettingsPage() {
             <ColorSwatch label="Primary Color" value={primaryColor} onChange={setPrimaryColor} />
             <ColorSwatch label="Accent Color" value={accentColor} onChange={setAccentColor} />
             {/* Colours stay gated until the current values load, so a save can't overwrite
-                the org's real colours with this component's #0053e2/#fbbc04 defaults. */}
-            <div className="sm:col-span-2">
+                the org's real colours with this component's Prudent-default state. */}
+            <div className="flex items-center gap-3 sm:col-span-2">
               <Button type="submit" disabled={!branding} loading={updateBranding.isPending} className="self-start">
                 Save colors
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={!branding}
+                onClick={handleUsePrudentDefaults}
+                className="self-start"
+              >
+                Use Prudent defaults
               </Button>
             </div>
           </form>

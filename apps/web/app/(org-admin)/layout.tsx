@@ -18,7 +18,7 @@ const BASE_NAV_ITEMS = [
   { href: '/audit-log', label: 'Audit Log', icon: History },
   { href: '/system-logs', label: 'System Logs', icon: TerminalSquare },
   { href: '/data-rights', label: 'Candidate Data Rights', icon: ShieldCheck },
-  { href: '/settings/branding', label: 'Org Settings', icon: Settings },
+  { href: '/settings/branding', label: 'Brand Settings', icon: Settings },
   { href: '/settings/integrations', label: 'Integrations', icon: Plug },
   { href: '/settings/sso', label: 'Single Sign-On', icon: KeyRound },
   { href: '/walk-in-groups', label: 'Walk-in Groups', icon: QrCode },
@@ -94,12 +94,9 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
         orgName={orgName}
         orgLogoUrl={branding?.logoUrl}
         orgInitial={orgInitial}
-        displayName={displayName}
-        initials={initials}
-        roleLabel={roleLabel}
       />
       <div className="flex flex-1 flex-col">
-        <StaffTopBar onLogout={handleLogout} />
+        <StaffTopBar displayName={displayName} initials={initials} roleLabel={roleLabel} onLogout={handleLogout} />
         <main className="flex-1 p-8">{children}</main>
       </div>
     </div>
