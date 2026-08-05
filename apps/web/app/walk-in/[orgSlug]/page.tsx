@@ -7,7 +7,14 @@ import { AlertCircle, MailCheck } from 'lucide-react';
 import { Button, Input, Select, RequiredFieldsNote } from '../../../components/ui';
 import { AuthPageLayout } from '../../../components/AuthPageLayout';
 import { useWalkInExams, useWalkInRegister } from '../../../lib/hooks/useWalkIn';
-import { composeName } from '../../../lib/candidateValidation';
+import { composeName, EMAIL_PATTERN, PHONE_PATTERN } from '../../../lib/candidateValidation';
+
+interface FormErrors {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+}
 
 const HIGHLIGHTS = [
   'No account to create — we email you a link to your exam',
@@ -29,6 +36,7 @@ export default function WalkInPage() {
   const [phone, setPhone] = useState('');
   const [examId, setExamId] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FormErrors>({});
   // A QR-scanned registration often happens on a phone, which can't run the exam UI
   // (Monaco editor, webcam proctoring) -- so the link always goes by email instead of
   // auto-starting on whatever device just submitted this form.
@@ -52,8 +60,23 @@ export default function WalkInPage() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    const nextErrors: FormErrors = {};
+    if (!firstName.trim()) nextErrors.firstName = 'Complete this field.';
+    if (!lastName.trim()) nextErrors.lastName = 'Complete this field.';
+    if (!email.trim()) {
+      nextErrors.email = 'Complete this field.';
+    } else if (!EMAIL_PATTERN.test(email.trim())) {
+      nextErrors.email = 'Enter a valid email address.';
+    }
+    if (phone.trim() && !PHONE_PATTERN.test(phone.trim())) {
+      nextErrors.phone = 'Enter a valid 10-digit phone number.';
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors);
+      return;
+    }
     register.mutate(
-      { name: composeName(firstName, middleName, lastName), email, phone: phone || undefined, examId: resolvedExamId },
+      { name: composeName(firstName, middleName, lastName), email: email.trim(), phone: phone.trim() || undefined, examId: resolvedExamId },
       {
         onSuccess: () => setSubmitted(true),
         onError: (err) => setError(err instanceof Error ? err.message : 'Registration failed.'),
@@ -64,8 +87,8 @@ export default function WalkInPage() {
   return (
     <MotionConfig reducedMotion="user">
       <AuthPageLayout
-        title="Walk-in registration"
-        panelHeading="Register on the spot."
+        title="Walk-In Registration"
+        panelHeading="Register On The Spot."
         panelCopy="Fill in your details and we'll send your exam link straight to your inbox."
         panelHighlights={HIGHLIGHTS}
       >
@@ -101,6 +124,11 @@ export default function WalkInPage() {
             {!isLoading && !isError && exams && (preselectedExamId || listedExams.length > 0) && (
               <motion.form
                 onSubmit={handleSubmit}
+                // noValidate: styled inline errors (below) replace native browser
+                // tooltips, matching CandidateInviteForm/CandidateEditModal -- native
+                // type="email" validation is also looser than EMAIL_PATTERN (it would
+                // accept "a@b", which isn't a real-looking address).
+                noValidate
                 className="flex flex-col gap-4"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -122,12 +150,48 @@ export default function WalkInPage() {
                     completions) -- First/Middle/Last sharing a row keeps the card the
                     same height it was before the split. */}
                 <div className="grid grid-cols-3 gap-2">
-                  <Input label="First Name" value={firstName} onChange={setFirstName} required />
+                  <Input
+                    label="First Name"
+                    value={firstName}
+                    onChange={(value) => {
+                      setFirstName(value);
+                      if (fieldErrors.firstName) setFieldErrors((current) => ({ ...current, firstName: undefined }));
+                    }}
+                    error={fieldErrors.firstName}
+                    required
+                  />
                   <Input label="Middle Name" value={middleName} onChange={setMiddleName} />
-                  <Input label="Last Name" value={lastName} onChange={setLastName} required />
+                  <Input
+                    label="Last Name"
+                    value={lastName}
+                    onChange={(value) => {
+                      setLastName(value);
+                      if (fieldErrors.lastName) setFieldErrors((current) => ({ ...current, lastName: undefined }));
+                    }}
+                    error={fieldErrors.lastName}
+                    required
+                  />
                 </div>
-                <Input label="Email" type="email" value={email} onChange={setEmail} required />
-                <Input label="Phone" value={phone} onChange={setPhone} />
+                <Input
+                  label="Email"
+                  type="email"
+                  value={email}
+                  onChange={(value) => {
+                    setEmail(value);
+                    if (fieldErrors.email) setFieldErrors((current) => ({ ...current, email: undefined }));
+                  }}
+                  error={fieldErrors.email}
+                  required
+                />
+                <Input
+                  label="Phone"
+                  value={phone}
+                  onChange={(value) => {
+                    setPhone(value);
+                    if (fieldErrors.phone) setFieldErrors((current) => ({ ...current, phone: undefined }));
+                  }}
+                  error={fieldErrors.phone}
+                />
                 {listedExams.length > 1 && !preselectedExamId && (
                   <Select
                     label="Exam"

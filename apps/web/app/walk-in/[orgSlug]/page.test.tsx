@@ -74,6 +74,80 @@ describe('WalkInPage', () => {
     );
   });
 
+  it('blocks submission and shows an inline error for a malformed email', async () => {
+    const mutate = jest.fn();
+    (useWalkInRegister as jest.Mock).mockReturnValue({ mutate, isPending: false });
+    (useWalkInExams as jest.Mock).mockReturnValue({
+      data: [{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }],
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<WalkInPage />);
+    await userEvent.type(screen.getByLabelText('First Name'), 'Priya');
+    await userEvent.type(screen.getByLabelText('Last Name'), 'Sharma');
+    await userEvent.type(screen.getByLabelText('Email'), 'gfddt');
+    await userEvent.click(screen.getByRole('button', { name: 'Email me my exam link' }));
+
+    expect(screen.getByText('Enter a valid email address.')).toBeInTheDocument();
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it('blocks submission and shows an inline error for a phone number that is not 10 digits', async () => {
+    const mutate = jest.fn();
+    (useWalkInRegister as jest.Mock).mockReturnValue({ mutate, isPending: false });
+    (useWalkInExams as jest.Mock).mockReturnValue({
+      data: [{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }],
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<WalkInPage />);
+    await userEvent.type(screen.getByLabelText('First Name'), 'Priya');
+    await userEvent.type(screen.getByLabelText('Last Name'), 'Sharma');
+    await userEvent.type(screen.getByLabelText('Email'), 'priya@example.com');
+    await userEvent.type(screen.getByLabelText('Phone'), '12345');
+    await userEvent.click(screen.getByRole('button', { name: 'Email me my exam link' }));
+
+    expect(screen.getByText('Enter a valid 10-digit phone number.')).toBeInTheDocument();
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it('allows submission with no phone number at all, since the field is optional', async () => {
+    const mutate = jest.fn();
+    (useWalkInRegister as jest.Mock).mockReturnValue({ mutate, isPending: false });
+    (useWalkInExams as jest.Mock).mockReturnValue({
+      data: [{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }],
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<WalkInPage />);
+    await userEvent.type(screen.getByLabelText('First Name'), 'Priya');
+    await userEvent.type(screen.getByLabelText('Last Name'), 'Sharma');
+    await userEvent.type(screen.getByLabelText('Email'), 'priya@example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Email me my exam link' }));
+
+    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ phone: undefined }), expect.anything());
+  });
+
+  it('clears a field error as soon as the candidate starts fixing it', async () => {
+    (useWalkInExams as jest.Mock).mockReturnValue({
+      data: [{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }],
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<WalkInPage />);
+    await userEvent.type(screen.getByLabelText('Email'), 'not-an-email');
+    await userEvent.click(screen.getByRole('button', { name: 'Email me my exam link' }));
+    expect(screen.getByText('Enter a valid email address.')).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText('Email'), 'x');
+
+    expect(screen.queryByText('Enter a valid email address.')).not.toBeInTheDocument();
+  });
+
   it('shows the form with an exam picker listing every exam when two or more are open', async () => {
     (useWalkInExams as jest.Mock).mockReturnValue({
       data: [
