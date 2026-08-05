@@ -56,6 +56,7 @@ interface AttemptQuestion {
 interface AttemptSection {
   title: string;
   targetDurationMinutes: number | null;
+  requiredCount: number | null;
   questions: AttemptQuestion[];
 }
 
@@ -67,6 +68,9 @@ interface SectionSnapshotEntry {
   // retroactively rescore a candidate who already sat the exam. Read back by
   // AttemptSettlementService's toGradableSections().
   weightPercent: number;
+  // Frozen per-attempt like weightPercent: a recruiter changing the requirement afterwards must
+  // not retroactively rescore a candidate who already sat the exam. null = every question required.
+  requiredCount: number | null;
   questionIds: string[];
 }
 
@@ -383,6 +387,7 @@ export class AttemptService {
           title: section.title,
           targetDurationMinutes: section.targetDurationMinutes,
           weightPercent: section.weightPercent,
+          requiredCount: section.requiredCount,
           questionIds,
         });
       }
@@ -1383,6 +1388,7 @@ export class AttemptService {
       snapshot.map(async (section) => ({
         title: section.title,
         targetDurationMinutes: section.targetDurationMinutes,
+        requiredCount: section.requiredCount ?? null,
         questions: await Promise.all(
           section.questionIds
             .map((questionId) => questionsById.get(questionId))

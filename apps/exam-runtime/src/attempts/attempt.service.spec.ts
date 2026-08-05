@@ -404,7 +404,7 @@ describe('AttemptService', () => {
         exam: { title: 'Backend Round', proctoring: { enableAntiCheating: true, webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] } },
         sections: [
           {
-            title: 'Section One', targetDurationMinutes: 20,
+            title: 'Section One', targetDurationMinutes: 20, requiredCount: null,
             questions: [{
               id: 'q1', text: 'What is 2+2?', type: 'single_mcq', marks: 5,
               languageMode: 'fixed', allowedLanguages: [],
@@ -1117,6 +1117,44 @@ describe('AttemptService', () => {
 
       expect(result).toEqual({ id: 'attempt-1', status: 'in_progress' });
       expect(tx.attempt.create).not.toHaveBeenCalled();
+    });
+
+    // Guards the settlement contract: AttemptSettlementService reads requiredCount straight out
+    // of this snapshot and treats a missing key as "all required". JSON.stringify drops undefined
+    // keys, so a silently-absent field here would quietly un-limit every newly started exam --
+    // hence toHaveProperty rather than a toEqual that would pass on absence.
+    it("freezes each section's requiredCount into the snapshot at start time", async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
+        examSection: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'section-1', title: 'Coding', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: null, weightPercent: 100, requiredCount: 3, poolTags: [], questions: [{ questionId: 'q1' }, { questionId: 'q2' }] },
+          ]),
+        },
+      };
+      mockBootstrapThenScoped(tx);
+
+      await service.start(session, { consent: true });
+
+      const snapshot = JSON.parse(tx.attempt.create.mock.calls[0][0].data.sectionSnapshotJson);
+      expect(snapshot[0]).toHaveProperty('requiredCount', 3);
+    });
+
+    it('freezes requiredCount as null for a section with no requirement', async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
+        examSection: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'section-1', title: 'Coding', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: null, weightPercent: 100, requiredCount: null, poolTags: [], questions: [{ questionId: 'q1' }] },
+          ]),
+        },
+      };
+      mockBootstrapThenScoped(tx);
+
+      await service.start(session, { consent: true });
+
+      const snapshot = JSON.parse(tx.attempt.create.mock.calls[0][0].data.sectionSnapshotJson);
+      expect(snapshot[0]).toHaveProperty('requiredCount', null);
     });
   });
 
