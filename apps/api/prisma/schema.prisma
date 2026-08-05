@@ -363,11 +363,10 @@ model ExamSection {
   poolSize              Int?                  @map("pool_size")
   poolDifficulty        String?               @map("pool_difficulty")
   targetDurationMinutes Int?                  @map("target_duration_minutes")
-  // Nullable during the backfill window (Task 3 makes it NOT NULL). A section's share of the
-  // exam's grade, independent of its questions' raw marks -- see docs/superpowers/specs/
-  // 2026-08-05-section-weightage-design.md. Every exam's sections must sum to exactly 100
-  // before it can be published (enforced in ExamsService#publish).
-  weightPercent         Int?                  @map("weight_percent")
+  // A section's share of the exam's grade, independent of its questions' raw marks -- see
+  // docs/superpowers/specs/2026-08-05-section-weightage-design.md. Every exam's sections must
+  // sum to exactly 100 before it can be published (enforced in ExamsService#publish).
+  weightPercent         Int                   @map("weight_percent")
   exam                  Exam                  @relation(fields: [examId], references: [id], onDelete: Cascade)
   questions             ExamSectionQuestion[]
   poolTags              ExamSectionPoolTag[]
