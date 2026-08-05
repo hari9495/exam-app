@@ -310,13 +310,13 @@ describe('ReportsService', () => {
         questionId: 'q1', questionText: 'Q1 text', type: 'single_mcq', marks: 5, negativeMarks: 0,
         options: [{ id: 'opt-a', text: 'A' }, { id: 'opt-b', text: 'B' }],
         selectedOptionIds: ['opt-a'], correctOptionIds: ['opt-a'],
-        isCorrect: true, marksAwarded: 5,
+        isCorrect: true, marksAwarded: 5, counted: true,
       });
       expect(detail.sections[0].questions[1]).toEqual({
         questionId: 'q2', questionText: 'Q2 text', type: 'single_mcq', marks: 6, negativeMarks: 0,
         options: [{ id: 'opt-c2', text: 'C' }],
         selectedOptionIds: [], correctOptionIds: ['opt-c2'],
-        isCorrect: null, marksAwarded: null,
+        isCorrect: null, marksAwarded: null, counted: true,
       });
       expect(detail.sections[1]).toMatchObject({ sectionId: 'sec-2', title: 'Section Two', score: 0, maxScore: 3 });
     });
@@ -887,8 +887,8 @@ describe('ReportsService', () => {
 
       const comparison = await service.compareCandidates(context, 'exam-1', 'inv-1,inv-2');
 
-      expect(comparison[0].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Pool Section', score: 5, maxScore: 5, weightPercent: 100 }]);
-      expect(comparison[1].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Pool Section', score: 0, maxScore: 5, weightPercent: 100 }]);
+      expect(comparison[0].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Pool Section', score: 5, maxScore: 5, weightPercent: 100, requiredCount: null }]);
+      expect(comparison[1].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Pool Section', score: 0, maxScore: 5, weightPercent: 100, requiredCount: null }]);
     });
 
     it('throws BadRequestException when fewer than 2 invitationIds are provided, without calling getResults', async () => {
@@ -927,7 +927,7 @@ describe('ReportsService', () => {
       expect(comparison[0].status).toBe('invited');
       expect(comparison[0].sectionScores).toEqual([]);
       expect(comparison[1].status).toBe('submitted');
-      expect(comparison[1].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Pool Section', score: 5, maxScore: 5, weightPercent: 100 }]);
+      expect(comparison[1].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Pool Section', score: 5, maxScore: 5, weightPercent: 100, requiredCount: null }]);
     });
 
     it('returns null score fields and empty sectionScores for a candidate with no attempt', async () => {
@@ -966,8 +966,41 @@ describe('ReportsService', () => {
       // These two fixtures deliberately keep the pre-weighting snapshot shape (no weightPercent),
       // so this doubles as coverage for a legacy attempt: it reports 0% weight rather than
       // inventing a weight that never applied to how that attempt was actually scored.
-      expect(comparison[0].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Section One', score: 0, maxScore: 10, weightPercent: 0 }]);
-      expect(comparison[1].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Section One', score: 5, maxScore: 10, weightPercent: 0 }]);
+      expect(comparison[0].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Section One', score: 0, maxScore: 10, weightPercent: 0, requiredCount: null }]);
+      expect(comparison[1].sectionScores).toEqual([{ sectionId: 'sec-1', title: 'Section One', score: 5, maxScore: 10, weightPercent: 0, requiredCount: null }]);
+    });
+
+    it('scores only the best N for a section with a requiredCount', async () => {
+      examsService.getResults.mockResolvedValue([
+        row({ candidateId: 'cand-1', invitationId: 'inv-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted', score: 15, maxScore: 20, percentage: 75, passFail: 'pass' }),
+        // compareCandidates requires >= 2 invitationIds -- this second, attempt-less candidate
+        // only pads out that guard and is not itself under test.
+        row({ candidateId: 'cand-2', invitationId: 'inv-2', candidateName: 'Bob', attemptId: null, status: 'invited' }),
+      ]);
+      const tx = {
+        attempt: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'a1',
+              sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Coding', weightPercent: 100, requiredCount: 2, questionIds: ['q1', 'q2', 'q3'] }]),
+              answers: [
+                { questionId: 'q1', marksAwarded: 10 },
+                { questionId: 'q2', marksAwarded: 0 },
+                { questionId: 'q3', marksAwarded: 8 },
+              ],
+            },
+          ]),
+        },
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 10 }, { id: 'q2', marks: 10 }, { id: 'q3', marks: 10 }]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const comparison = await service.compareCandidates(context, 'exam-1', 'inv-1,inv-2');
+
+      // Best 2 of 3 = 10 + 8 = 18, out of 20 -- not 18 out of 30.
+      expect(comparison[0].sectionScores).toEqual([
+        { sectionId: 'sec-1', title: 'Coding', score: 18, maxScore: 20, weightPercent: 100, requiredCount: 2 },
+      ]);
     });
   });
 });

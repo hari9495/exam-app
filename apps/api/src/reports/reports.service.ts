@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { TenantPrismaService, TenantContext, BlobStorageService } from '@exam-platform/shared';
+import { TenantPrismaService, TenantContext, BlobStorageService, selectCountedAnswers } from '@exam-platform/shared';
 import { ExamsService, ExamResultRow, SETTLED_ATTEMPT_STATUSES } from '../exams/exams.service';
 import { signProctoringEvidence } from '../common/sign-proctoring-evidence';
 
@@ -42,6 +42,8 @@ export interface SectionScore {
   score: number;
   maxScore: number;
   weightPercent: number;
+  /** null = every question counted. Otherwise only the best N were scored, out of N. */
+  requiredCount: number | null;
 }
 
 interface SectionSnapshotEntryShape {
@@ -50,6 +52,7 @@ interface SectionSnapshotEntryShape {
   // Absent on attempts that started before section weighting shipped -- those are scored flat,
   // so they report 0 here rather than a weight that never applied to them.
   weightPercent?: number;
+  requiredCount?: number | null;
   questionIds: string[];
 }
 
@@ -64,6 +67,7 @@ interface CandidateDetailQuestion {
   correctOptionIds: string[];
   isCorrect: boolean | null;
   marksAwarded: number | null;
+  counted: boolean;
 }
 
 interface CandidateDetailSection extends SectionScore {
@@ -406,12 +410,23 @@ export class ReportsService {
 
       const sections: CandidateDetailSection[] = sectionSnapshot.map((section) => {
         const scoreEntry = sectionScoreById.get(section.sectionId)!;
+        const countedIds = new Set(
+          selectCountedAnswers(
+            section.questionIds.map((questionId) => ({
+              questionId,
+              marks: marksByQuestionId.get(questionId) ?? 0,
+              marksAwarded: marksAwardedByQuestionId.get(questionId) ?? 0,
+            })),
+            section.requiredCount,
+          ).countedQuestionIds,
+        );
         return {
           sectionId: section.sectionId,
           title: section.title,
           score: scoreEntry.score,
           maxScore: scoreEntry.maxScore,
           weightPercent: scoreEntry.weightPercent,
+          requiredCount: scoreEntry.requiredCount,
           questions: section.questionIds.map((questionId) => {
             const question = questionsById.get(questionId);
             const answer = answersByQuestionId.get(questionId);
@@ -426,6 +441,7 @@ export class ReportsService {
               correctOptionIds: question?.options.filter((option) => option.isCorrect).map((option) => option.id) ?? [],
               isCorrect: answer?.isCorrect ?? null,
               marksAwarded: answer?.marksAwarded ?? null,
+              counted: countedIds.has(questionId),
             };
           }),
         };
@@ -536,28 +552,30 @@ export class ReportsService {
     };
   }
 
-  // Floors each section's score at 0, matching computeResult()'s own floor for the overall
-  // score (apps/exam-runtime/src/grading/grading.ts) — a section can otherwise go negative
-  // under negative marking, which would read as a bug when displayed alongside the clamped
-  // headline total.
   private computeSectionScores(
     sectionSnapshot: SectionSnapshotEntryShape[],
     marksAwardedByQuestionId: Map<string, number>,
     marksByQuestionId: Map<string, number>,
   ): SectionScore[] {
     return sectionSnapshot.map((section) => {
-      let score = 0;
-      let maxScore = 0;
-      for (const questionId of section.questionIds) {
-        score += marksAwardedByQuestionId.get(questionId) ?? 0;
-        maxScore += marksByQuestionId.get(questionId) ?? 0;
-      }
+      // Same helper the exam-runtime settlement path uses. Two independent copies of the best-N
+      // rule would let a recruiter see a section score that contradicts the per-question marks
+      // listed directly underneath it.
+      const counted = selectCountedAnswers(
+        section.questionIds.map((questionId) => ({
+          questionId,
+          marks: marksByQuestionId.get(questionId) ?? 0,
+          marksAwarded: marksAwardedByQuestionId.get(questionId) ?? 0,
+        })),
+        section.requiredCount,
+      );
       return {
         sectionId: section.sectionId,
         title: section.title,
-        score: Math.max(0, score),
-        maxScore,
+        score: counted.score,
+        maxScore: counted.maxScore,
         weightPercent: section.weightPercent ?? 0,
+        requiredCount: section.requiredCount ?? null,
       };
     });
   }
