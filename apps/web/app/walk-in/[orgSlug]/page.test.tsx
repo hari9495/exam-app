@@ -93,6 +93,37 @@ describe('WalkInPage', () => {
     expect(mutate).not.toHaveBeenCalled();
   });
 
+  it('strips non-digit characters from Phone as they are typed, and caps it at 10 digits', async () => {
+    (useWalkInExams as jest.Mock).mockReturnValue({
+      data: [{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }],
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<WalkInPage />);
+    // 11 digits (one past the cap) interleaved with letters and punctuation.
+    await userEvent.type(screen.getByLabelText('Phone'), 'ab-9123456789xyz0');
+
+    expect(screen.getByLabelText('Phone')).toHaveValue('9123456789');
+  });
+
+  it('validates Email and Phone on blur, before the candidate ever reaches the submit button', async () => {
+    (useWalkInExams as jest.Mock).mockReturnValue({
+      data: [{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }],
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<WalkInPage />);
+    await userEvent.type(screen.getByLabelText('Email'), 'not-an-email');
+    await userEvent.tab();
+    expect(screen.getByText('Enter a valid email address.')).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText('Phone'), '12345');
+    await userEvent.tab();
+    expect(screen.getByText('Enter a valid 10-digit phone number.')).toBeInTheDocument();
+  });
+
   it('blocks submission and shows an inline error for a phone number that is not 10 digits', async () => {
     const mutate = jest.fn();
     (useWalkInRegister as jest.Mock).mockReturnValue({ mutate, isPending: false });

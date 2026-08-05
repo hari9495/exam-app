@@ -16,6 +16,23 @@ interface FormErrors {
   phone?: string;
 }
 
+// Live validation on blur, not just on submit -- lets a candidate fix a typo'd email
+// or phone before they ever reach the button, instead of only finding out after.
+function validateEmailField(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return 'Complete this field.';
+  if (!EMAIL_PATTERN.test(trimmed)) return 'Enter a valid email address.';
+  return undefined;
+}
+
+function validatePhoneField(value: string): string | undefined {
+  // Optional -- an empty phone is valid, only a wrong-length one (already
+  // impossible to type non-digits into, see the Phone input's onChange) is not.
+  if (!value) return undefined;
+  if (!PHONE_PATTERN.test(value)) return 'Enter a valid 10-digit phone number.';
+  return undefined;
+}
+
 const HIGHLIGHTS = [
   'No account to create — we email you a link to your exam',
   'Take it on a laptop or desktop: the exam needs a full browser and a webcam',
@@ -60,18 +77,13 @@ export default function WalkInPage() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const nextErrors: FormErrors = {};
-    if (!firstName.trim()) nextErrors.firstName = 'Complete this field.';
-    if (!lastName.trim()) nextErrors.lastName = 'Complete this field.';
-    if (!email.trim()) {
-      nextErrors.email = 'Complete this field.';
-    } else if (!EMAIL_PATTERN.test(email.trim())) {
-      nextErrors.email = 'Enter a valid email address.';
-    }
-    if (phone.trim() && !PHONE_PATTERN.test(phone.trim())) {
-      nextErrors.phone = 'Enter a valid 10-digit phone number.';
-    }
-    if (Object.keys(nextErrors).length > 0) {
+    const nextErrors: FormErrors = {
+      firstName: firstName.trim() ? undefined : 'Complete this field.',
+      lastName: lastName.trim() ? undefined : 'Complete this field.',
+      email: validateEmailField(email),
+      phone: validatePhoneField(phone),
+    };
+    if (Object.values(nextErrors).some(Boolean)) {
       setFieldErrors(nextErrors);
       return;
     }
@@ -180,17 +192,24 @@ export default function WalkInPage() {
                     setEmail(value);
                     if (fieldErrors.email) setFieldErrors((current) => ({ ...current, email: undefined }));
                   }}
+                  onBlur={() => setFieldErrors((current) => ({ ...current, email: validateEmailField(email) }))}
                   error={fieldErrors.email}
                   required
                 />
                 <Input
                   label="Phone"
                   value={phone}
+                  // Digits only, as typed -- a letter never lands in the field at all,
+                  // rather than being caught after the fact by the pattern check below.
                   onChange={(value) => {
-                    setPhone(value);
+                    const digitsOnly = value.replace(/\D/g, '').slice(0, 10);
+                    setPhone(digitsOnly);
                     if (fieldErrors.phone) setFieldErrors((current) => ({ ...current, phone: undefined }));
                   }}
+                  onBlur={() => setFieldErrors((current) => ({ ...current, phone: validatePhoneField(phone) }))}
                   error={fieldErrors.phone}
+                  inputMode="numeric"
+                  maxLength={10}
                 />
                 {listedExams.length > 1 && !preselectedExamId && (
                   <Select
