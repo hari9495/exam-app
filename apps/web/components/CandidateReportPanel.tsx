@@ -283,7 +283,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-base font-medium">{section.title}</h3>
                 <span className="text-sm text-gray-500">
-                  {section.score}/{section.maxScore}
+                  {section.score}/{section.maxScore} · {section.weightPercent}% weight
                 </span>
               </div>
               <div className="flex flex-col gap-3">

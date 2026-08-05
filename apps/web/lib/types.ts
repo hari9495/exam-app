@@ -523,6 +523,9 @@ export interface SectionScore {
   title: string;
   score: number;
   maxScore: number;
+  // The weight frozen into this attempt's snapshot at start time. 0 for attempts that predate
+  // section weighting, which were scored flat.
+  weightPercent: number;
 }
 
 export interface CandidateDetailQuestion {
