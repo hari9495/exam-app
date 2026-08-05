@@ -7,6 +7,7 @@ import { AlertCircle, MailCheck } from 'lucide-react';
 import { Button, Input, Select, RequiredFieldsNote } from '../../../components/ui';
 import { AuthPageLayout } from '../../../components/AuthPageLayout';
 import { useWalkInExams, useWalkInRegister } from '../../../lib/hooks/useWalkIn';
+import { composeName } from '../../../lib/candidateValidation';
 
 const HIGHLIGHTS = [
   'No account to create — we email you a link to your exam',
@@ -20,7 +21,9 @@ export default function WalkInPage() {
   const { data: exams, isLoading, isError } = useWalkInExams(orgSlug);
   const register = useWalkInRegister(orgSlug);
 
-  const [name, setName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [middleName, setMiddleName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [examId, setExamId] = useState('');
@@ -46,7 +49,7 @@ export default function WalkInPage() {
     e.preventDefault();
     setError(null);
     register.mutate(
-      { name, email, phone: phone || undefined, examId: resolvedExamId },
+      { name: composeName(firstName, middleName, lastName), email, phone: phone || undefined, examId: resolvedExamId },
       {
         onSuccess: () => setSubmitted(true),
         onError: (err) => setError(err instanceof Error ? err.message : 'Registration failed.'),
@@ -109,7 +112,9 @@ export default function WalkInPage() {
                   </p>
                 )}
                 <RequiredFieldsNote />
-                <Input label="Name" value={name} onChange={setName} required />
+                <Input label="First Name" value={firstName} onChange={setFirstName} required />
+                <Input label="Middle Name" value={middleName} onChange={setMiddleName} />
+                <Input label="Last Name" value={lastName} onChange={setLastName} required />
                 <Input label="Email" type="email" value={email} onChange={setEmail} required />
                 <Input label="Phone" value={phone} onChange={setPhone} />
                 {listedExams.length > 1 && !preselectedExamId && (

@@ -70,6 +70,28 @@ describe('CandidateEditModal', () => {
     expect(screen.getByLabelText('Last Name')).toHaveValue('');
   });
 
+  it('prefills First/Middle/Last for a three-word name and recomposes all three on save', async () => {
+    const fetchMock = mockFetch({ body: { id: 'cand-1' }, status: 200 });
+    renderModal(makeCandidate({ name: 'Nanji S Kumar' }));
+
+    expect(screen.getByLabelText('First Name')).toHaveValue('Nanji');
+    expect(screen.getByLabelText('Middle Name')).toHaveValue('S');
+    expect(screen.getByLabelText('Last Name')).toHaveValue('Kumar');
+
+    const middleNameInput = screen.getByLabelText('Middle Name');
+    await userEvent.clear(middleNameInput);
+    await userEvent.type(middleNameInput, 'Siva');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => {
+      const patchCall = fetchMock.mock.calls.find((call) => call[1]?.method === 'PATCH');
+      expect(patchCall).toBeDefined();
+      expect(JSON.parse(String(patchCall![1]?.body))).toEqual(
+        expect.objectContaining({ name: 'Nanji Siva Kumar' }),
+      );
+    });
+  });
+
   it('sends the edited first/last name and email as a PATCH, recombined into one name', async () => {
     const fetchMock = mockFetch({ body: { id: 'cand-1' }, status: 200 });
     renderModal();

@@ -23,7 +23,7 @@ describe('WalkInPage', () => {
     render(<WalkInPage />);
 
     expect(screen.getByText('No exams are currently open for walk-in registration.')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('First Name')).not.toBeInTheDocument();
   });
 
   it('shows an error message when the exam list fails to load', () => {
@@ -43,8 +43,35 @@ describe('WalkInPage', () => {
 
     render(<WalkInPage />);
 
-    expect(screen.getByLabelText('Name')).toBeInTheDocument();
+    expect(screen.getByLabelText('First Name')).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Exam' })).not.toBeInTheDocument();
+  });
+
+  it('collects First/Middle/Last Name (middle optional) and submits them composed into one name', async () => {
+    const mutate = jest.fn();
+    (useWalkInRegister as jest.Mock).mockReturnValue({ mutate, isPending: false });
+    (useWalkInExams as jest.Mock).mockReturnValue({
+      data: [{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }],
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<WalkInPage />);
+
+    expect(screen.getByLabelText('First Name')).toBeRequired();
+    expect(screen.getByLabelText('Middle Name')).not.toBeRequired();
+    expect(screen.getByLabelText('Last Name')).toBeRequired();
+
+    await userEvent.type(screen.getByLabelText('First Name'), 'Priya');
+    await userEvent.type(screen.getByLabelText('Middle Name'), 'K');
+    await userEvent.type(screen.getByLabelText('Last Name'), 'Sharma');
+    await userEvent.type(screen.getByLabelText('Email'), 'priya@example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Email me my exam link' }));
+
+    expect(mutate).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Priya K Sharma', email: 'priya@example.com', examId: 'exam-1' }),
+      expect.anything(),
+    );
   });
 
   it('shows the form with an exam picker listing every exam when two or more are open', async () => {
@@ -59,7 +86,7 @@ describe('WalkInPage', () => {
 
     render(<WalkInPage />);
 
-    expect(screen.getByLabelText('Name')).toBeInTheDocument();
+    expect(screen.getByLabelText('First Name')).toBeInTheDocument();
     const combobox = screen.getByRole('combobox', { name: 'Exam' });
     await userEvent.click(combobox);
 
@@ -80,7 +107,7 @@ describe('WalkInPage', () => {
 
     render(<WalkInPage />);
 
-    expect(screen.getByLabelText('Name')).toBeInTheDocument();
+    expect(screen.getByLabelText('First Name')).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Exam' })).not.toBeInTheDocument();
   });
 
@@ -134,7 +161,7 @@ describe('WalkInPage', () => {
 
     render(<WalkInPage />);
 
-    expect(screen.getByLabelText('Name')).toBeInTheDocument();
+    expect(screen.getByLabelText('First Name')).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Exam' })).not.toBeInTheDocument();
   });
 
@@ -150,7 +177,7 @@ describe('WalkInPage', () => {
 
     render(<WalkInPage />);
 
-    expect(screen.getByLabelText('Name')).toBeInTheDocument();
+    expect(screen.getByLabelText('First Name')).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Exam' })).not.toBeInTheDocument();
   });
 
@@ -164,6 +191,6 @@ describe('WalkInPage', () => {
     render(<WalkInPage />);
 
     expect(screen.getByText('No exams are currently open for walk-in registration.')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('First Name')).not.toBeInTheDocument();
   });
 });

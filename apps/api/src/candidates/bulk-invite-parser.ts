@@ -33,6 +33,8 @@ export function detectFileKind(filename: string): 'csv' | 'xlsx' | null {
 function extractRow(record: Record<string, string>, rowNumber: number): BulkInviteCandidateRow | BulkInviteRowError {
   const email = (record.Email ?? '').trim();
   const firstName = (record['First Name'] ?? '').trim();
+  // Optional -- files made from the pre-middle-name template simply have no such column.
+  const middleName = (record['Middle Name'] ?? '').trim();
   const lastName = (record['Last Name'] ?? '').trim();
   const phone = (record.Phone ?? '').trim() || undefined;
 
@@ -46,7 +48,7 @@ function extractRow(record: Record<string, string>, rowNumber: number): BulkInvi
     return { row: rowNumber, message: 'Missing last name' };
   }
 
-  return { rowNumber, email, name: `${firstName} ${lastName}`, phone };
+  return { rowNumber, email, name: [firstName, middleName, lastName].filter(Boolean).join(' '), phone };
 }
 
 function isRowError(value: BulkInviteCandidateRow | BulkInviteRowError): value is BulkInviteRowError {

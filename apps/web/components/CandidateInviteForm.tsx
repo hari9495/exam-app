@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Button, Input, Modal } from '../components/ui';
-import { EMAIL_PATTERN, PHONE_PATTERN } from '../lib/candidateValidation';
+import { composeName, EMAIL_PATTERN, PHONE_PATTERN } from '../lib/candidateValidation';
 
 interface CandidateInput {
   name: string;
@@ -20,6 +20,7 @@ interface FormErrors {
 export function CandidateInviteForm({ onSubmit }: { onSubmit: (input: CandidateInput) => void }) {
   const [open, setOpen] = useState(false);
   const [firstName, setFirstName] = useState('');
+  const [middleName, setMiddleName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -27,6 +28,7 @@ export function CandidateInviteForm({ onSubmit }: { onSubmit: (input: CandidateI
 
   function reset() {
     setFirstName('');
+    setMiddleName('');
     setLastName('');
     setEmail('');
     setPhone('');
@@ -55,7 +57,7 @@ export function CandidateInviteForm({ onSubmit }: { onSubmit: (input: CandidateI
       setErrors(nextErrors);
       return;
     }
-    onSubmit({ name: `${firstName.trim()} ${lastName.trim()}`, email: email.trim(), phone });
+    onSubmit({ name: composeName(firstName, middleName, lastName), email: email.trim(), phone });
     close();
   }
 
@@ -81,6 +83,7 @@ export function CandidateInviteForm({ onSubmit }: { onSubmit: (input: CandidateI
               error={errors.firstName}
               required
             />
+            <Input label="Middle Name" value={middleName} onChange={setMiddleName} />
             <Input
               label="Last Name"
               value={lastName}
