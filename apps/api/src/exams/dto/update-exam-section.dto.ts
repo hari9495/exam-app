@@ -1,7 +1,16 @@
-import { ArrayMinSize, IsArray, IsIn, IsInt, IsOptional, IsString, Max, Min, ValidateIf } from 'class-validator';
+import { ArrayMinSize, IsArray, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min, ValidateIf } from 'class-validator';
 import { CreateExamSectionDto } from './create-exam-section.dto';
 
 export class UpdateExamSectionDto extends CreateExamSectionDto {
+  // Overrides the REQUIRED title inherited from CreateExamSectionDto. This is a PATCH: a caller
+  // editing one field (the weight input sends only weightPercent) must not be forced to resend
+  // the title. Still rejected if present-but-blank -- clearing a section's name isn't a valid
+  // edit. The service passes it to Prisma untouched, which treats undefined as "leave unchanged".
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  title!: string;
+
   @IsOptional()
   @IsIn(['fixed', 'pool'])
   selectionMode?: string;
