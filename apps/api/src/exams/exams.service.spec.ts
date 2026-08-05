@@ -1917,6 +1917,36 @@ describe('ExamsService', () => {
     expect(result.status).toBe('published');
   });
 
+  it('publishes a section with unequal marks when requiredCount equals the question count, because there is no choice to make', async () => {
+    // requiredCount === total (e.g. after a question was deleted post-set) means the candidate
+    // must answer everything -- same as requiredCount: null -- so the equal-marks rule that
+    // exists only to keep best-N percentages comparable across candidates does not apply here.
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'exam-1',
+          status: 'draft',
+          sections: [{
+            id: 'section-1', title: 'Coding', selectionMode: 'fixed', weightPercent: 100,
+            requiredCount: 4, poolTags: [],
+            questions: [
+              { questionId: 'q1', question: { marks: 10 } },
+              { questionId: 'q2', question: { marks: 20 } },
+              { questionId: 'q3', question: { marks: 10 } },
+              { questionId: 'q4', question: { marks: 5 } },
+            ],
+          }],
+        }),
+        update: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    const result = await service.publish(context, 'user-1', 'exam-1');
+
+    expect(result.status).toBe('published');
+  });
+
   it('rejects publish when a pool section\'s eligible bank has unequal marks', async () => {
     const tx = {
       exam: {

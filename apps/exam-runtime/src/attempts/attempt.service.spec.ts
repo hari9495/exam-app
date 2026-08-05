@@ -784,6 +784,111 @@ describe('AttemptService', () => {
       });
     });
 
+    it('scores a breakdown section by its best-N answers when requiredCount is set, not a flat sum of all questions', async () => {
+      // 5 questions worth 10 marks each, requiredCount 3, 3 answered correctly. A flat sum
+      // (the pre-fix bug) would report 30/50 here, contradicting the 100% printed above it.
+      const attempt = {
+        id: 'attempt-1', status: 'submitted', startedAt: new Date(),
+        questionOrderJson: JSON.stringify(['q1', 'q2', 'q3', 'q4', 'q5']),
+        sectionSnapshotJson: JSON.stringify([{
+          sectionId: 's1', title: 'Section One', targetDurationMinutes: null, requiredCount: 3,
+          questionIds: ['q1', 'q2', 'q3', 'q4', 'q5'],
+        }]),
+        optionOrderJson: null,
+      };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        question: {
+          findMany: jest.fn()
+            .mockResolvedValueOnce([
+              { id: 'q1', text: 'Q1', type: 'single_mcq', marks: 10, options: [] },
+              { id: 'q2', text: 'Q2', type: 'single_mcq', marks: 10, options: [] },
+              { id: 'q3', text: 'Q3', type: 'single_mcq', marks: 10, options: [] },
+              { id: 'q4', text: 'Q4', type: 'single_mcq', marks: 10, options: [] },
+              { id: 'q5', text: 'Q5', type: 'single_mcq', marks: 10, options: [] },
+            ])
+            .mockResolvedValueOnce([
+              { id: 'q1', marks: 10 }, { id: 'q2', marks: 10 }, { id: 'q3', marks: 10 }, { id: 'q4', marks: 10 }, { id: 'q5', marks: 10 },
+            ]),
+        },
+        answer: {
+          findMany: jest.fn()
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([
+              { questionId: 'q1', marksAwarded: 10 },
+              { questionId: 'q2', marksAwarded: 10 },
+              { questionId: 'q3', marksAwarded: 10 },
+              { questionId: 'q4', marksAwarded: 0 },
+              { questionId: 'q5', marksAwarded: 0 },
+            ]),
+        },
+        candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+        result: { findUnique: jest.fn().mockResolvedValue({ score: 30, maxScore: 30, percentage: 100, passFail: 'pass' }) },
+      };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      settlement.remainingSeconds.mockReturnValue(0);
+      const examWithVisibility = { ...invitationRecord, exam: { ...exam, feedbackVisibility: 'breakdown' } };
+      tenantPrisma.forTenant.mockReset();
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve(examWithVisibility))
+        .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null }))
+        .mockImplementationOnce((_ctx, fn) => fn(tx));
+
+      const result = await service.getCurrent(session);
+
+      expect((result as any).feedback).toEqual({
+        status: 'settled', visibility: 'breakdown', passFail: 'pass', percentage: 100,
+        sections: [{ title: 'Section One', score: 30, maxScore: 30 }],
+      });
+    });
+
+    it('sums every question in a breakdown section when requiredCount is absent (legacy snapshot), matching pre-feature behaviour', async () => {
+      const attempt = {
+        id: 'attempt-1', status: 'submitted', startedAt: new Date(),
+        questionOrderJson: JSON.stringify(['q1', 'q2']),
+        // No requiredCount key at all -- this is what an attempt started before the feature
+        // shipped actually has stored, not `requiredCount: null`.
+        sectionSnapshotJson: JSON.stringify([{ sectionId: 's1', title: 'Section One', targetDurationMinutes: null, questionIds: ['q1', 'q2'] }]),
+        optionOrderJson: null,
+      };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        question: {
+          findMany: jest.fn()
+            .mockResolvedValueOnce([
+              { id: 'q1', text: 'Q1', type: 'single_mcq', marks: 5, options: [] },
+              { id: 'q2', text: 'Q2', type: 'single_mcq', marks: 5, options: [] },
+            ])
+            .mockResolvedValueOnce([{ id: 'q1', marks: 5 }, { id: 'q2', marks: 5 }]),
+        },
+        answer: {
+          findMany: jest.fn()
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([
+              { questionId: 'q1', marksAwarded: 5 },
+              { questionId: 'q2', marksAwarded: 0 },
+            ]),
+        },
+        candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+        result: { findUnique: jest.fn().mockResolvedValue({ score: 5, maxScore: 10, percentage: 50, passFail: 'fail' }) },
+      };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      settlement.remainingSeconds.mockReturnValue(0);
+      const examWithVisibility = { ...invitationRecord, exam: { ...exam, feedbackVisibility: 'breakdown' } };
+      tenantPrisma.forTenant.mockReset();
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve(examWithVisibility))
+        .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null }))
+        .mockImplementationOnce((_ctx, fn) => fn(tx));
+
+      const result = await service.getCurrent(session);
+
+      expect((result as any).feedback).toEqual({
+        status: 'settled', visibility: 'breakdown', passFail: 'fail', percentage: 50,
+        sections: [{ title: 'Section One', score: 5, maxScore: 10 }],
+      });
+    });
+
     it('includes the resolved proctoring config in the pre-start preview, because the welcome screen gates the camera prompt on it', async () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
       mockBootstrapWithLogoThenScoped(tx);

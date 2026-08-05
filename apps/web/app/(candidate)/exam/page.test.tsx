@@ -280,6 +280,25 @@ describe('CandidateExamPage', () => {
     expect(await screen.findByText('1/3 answered')).toBeInTheDocument();
   });
 
+  it('caps the progress chip at the requirement even when the candidate answers more than required', async () => {
+    // Best-N means extra answers are allowed, but the chip must never read "4/3" -- that reads
+    // as over 100% done and contradicts the "answer any 3 of 5" banner right above it.
+    renderExam({
+      sections: [
+        { title: 'Coding', targetDurationMinutes: null, requiredCount: 3, questions: [q('q1'), q('q2'), q('q3'), q('q4'), q('q5')] },
+      ],
+      answers: [
+        { questionId: 'q1', selectedOptionIds: ['opt-a'], answerText: null },
+        { questionId: 'q2', selectedOptionIds: ['opt-a'], answerText: null },
+        { questionId: 'q3', selectedOptionIds: ['opt-a'], answerText: null },
+        { questionId: 'q4', selectedOptionIds: ['opt-a'], answerText: null },
+      ],
+    });
+
+    expect(await screen.findByText('3/3 answered')).toBeInTheDocument();
+    expect(screen.queryByText('4/3 answered')).not.toBeInTheDocument();
+  });
+
   it('leaves progress on the total question count when no section has a requirement', async () => {
     renderExam({
       sections: [{ title: 'Coding', targetDurationMinutes: null, requiredCount: null, questions: [q('q1'), q('q2')] }],

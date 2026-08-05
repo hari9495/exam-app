@@ -519,25 +519,29 @@ export class ExamsService {
           }
           // Candidates choose which questions to answer, so unequal marks would make two
           // candidates' percentages incomparable -- one could pick the cheap questions and be
-          // capped below 100% through no fault of their own.
-          const marks = section.selectionMode === 'pool'
-            ? (
-                await tx.question.findMany({
-                  where: {
-                    organizationId: context.organizationId as string,
-                    status: 'active',
-                    ...(section.poolDifficulty ? { difficulty: section.poolDifficulty } : {}),
-                    AND: section.poolTags.map((poolTag) => ({ tags: { some: { tagId: poolTag.tagId } } })),
-                  },
-                  select: { marks: true },
-                  distinct: ['marks'],
-                })
-              ).map((question) => question.marks)
-            : [...new Set(section.questions.map((link) => link.question.marks))];
-          if (marks.length > 1) {
-            throw new BadRequestException(
-              `Section "${section.title}" lets candidates choose which questions to answer, so all its questions must carry the same marks`,
-            );
+          // capped below 100% through no fault of their own. Only applies when requiredCount is
+          // an actual choice (< total): at requiredCount === total there's nothing to choose, so
+          // e.g. deleting a question down to N === M must not suddenly block publish.
+          if (section.requiredCount < total) {
+            const marks = section.selectionMode === 'pool'
+              ? (
+                  await tx.question.findMany({
+                    where: {
+                      organizationId: context.organizationId as string,
+                      status: 'active',
+                      ...(section.poolDifficulty ? { difficulty: section.poolDifficulty } : {}),
+                      AND: section.poolTags.map((poolTag) => ({ tags: { some: { tagId: poolTag.tagId } } })),
+                    },
+                    select: { marks: true },
+                    distinct: ['marks'],
+                  })
+                ).map((question) => question.marks)
+              : [...new Set(section.questions.map((link) => link.question.marks))];
+            if (marks.length > 1) {
+              throw new BadRequestException(
+                `Section "${section.title}" lets candidates choose which questions to answer, so all its questions must carry the same marks`,
+              );
+            }
           }
         }
         if (section.selectionMode === 'pool') {

@@ -908,5 +908,35 @@ describe('ExamSectionsPanel', () => {
         expect(JSON.parse(String((patchCall![1] as RequestInit).body))).toEqual({ requiredCount: 2 });
       });
     });
+
+    it('clears the requirement to null when the field is emptied and blurred, not 0 or NaN', async () => {
+      // Number('') is 0 and parseInt('') is NaN -- either would silently corrupt the PATCH body
+      // unless the component special-cases the empty string before conversion. Assert at the
+      // fetch-body level (not just "a request was made") so a regression back to Number('')
+      // would actually fail this test: 0 is falsy so `toEqual({ requiredCount: 0 })` would still
+      // read as "set", but `Number.isInteger` / parsing gives a very different wire value than
+      // what the recruiter meant by clearing the box.
+      const fetchMock = mockWeightedExam([100], (url, options) =>
+        url.endsWith('/sections/section-1') && options?.method === 'PATCH'
+          ? new Response(JSON.stringify({ id: 'section-1', requiredCount: null }), { status: 200 })
+          : null,
+        { requiredCount: 3, questionCount: 5 },
+      );
+      renderPanel();
+      const input = await screen.findByLabelText('Required answers for Section One');
+
+      await userEvent.clear(input);
+      await userEvent.tab();
+
+      await waitFor(() => {
+        const patchCall = fetchMock.mock.calls.find(
+          (call) => String(call[0]).endsWith('/sections/section-1') && (call[1] as RequestInit | undefined)?.method === 'PATCH',
+        );
+        expect(patchCall).toBeDefined();
+        const body = JSON.parse(String((patchCall![1] as RequestInit).body));
+        expect(body).toEqual({ requiredCount: null });
+        expect(body.requiredCount).toBeNull();
+      });
+    });
   });
 });

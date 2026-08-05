@@ -36,10 +36,12 @@ export class UpdateExamSectionDto extends CreateExamSectionDto {
   @Max(100)
   weightPercent?: number;
 
-  // null clears the requirement (back to "every question must be answered"), so this is
-  // ValidateIf-guarded rather than @IsOptional -- @IsOptional() would skip validation for an
-  // explicit null too, but here null is a meaningful value we want to allow through untouched
-  // while still rejecting 0, negatives and fractions.
+  // null clears the requirement (back to "every question must be answered"). @ValidateIf runs
+  // @IsInt/@Min only when the value isn't null/undefined, so an explicit null sails through
+  // unrejected while 0, negatives and fractions still fail validation. Carrying a decorator here
+  // at all (rather than leaving the property bare) is also what keeps requiredCount inside the
+  // global `whitelist: true` + forbidNonWhitelisted ValidationPipe (main.ts) -- an undecorated
+  // property would be stripped, and a PATCH that includes it would then be rejected outright.
   @ValidateIf((o) => o.requiredCount !== null && o.requiredCount !== undefined)
   @IsInt()
   @Min(1)

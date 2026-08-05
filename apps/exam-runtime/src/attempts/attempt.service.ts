@@ -9,6 +9,7 @@ import {
   buildSebConfig,
   requestConfigKeyHash,
   SystemEventsService,
+  selectCountedAnswers,
 } from '@exam-platform/shared';
 import { AttemptSettlementService, PauseReason, SettlementExam } from '../grading/attempt-settlement.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
@@ -1456,11 +1457,23 @@ export class AttemptService {
       ]);
       const marksByQuestion = new Map(questions.map((question) => [question.id, question.marks]));
       const awardedByQuestion = new Map(answers.map((answer) => [answer.questionId, answer.marksAwarded ?? 0]));
-      sections = snapshot.map((section) => ({
-        title: section.title,
-        score: section.questionIds.reduce((sum, id) => sum + (awardedByQuestion.get(id) ?? 0), 0),
-        maxScore: section.questionIds.reduce((sum, id) => sum + (marksByQuestion.get(id) ?? 0), 0),
-      }));
+      // Route through the same best-N helper grading.ts and reports.service.ts already use --
+      // this is the candidate's own result screen, so a flat sum here would print a section line
+      // that contradicts the percentage shown right above it under best-N/negative marking.
+      sections = snapshot.map((section) => {
+        const counted = selectCountedAnswers(
+          section.questionIds.map((questionId) => ({
+            questionId,
+            marks: marksByQuestion.get(questionId) ?? 0,
+            marksAwarded: awardedByQuestion.get(questionId) ?? 0,
+          })),
+          // A legacy snapshot (written before this feature shipped) has no requiredCount key at
+          // all -- undefined, not null -- so it must resolve the same way toGradableSections()
+          // does, or a pre-feature attempt's breakdown would stop matching today's output.
+          section.requiredCount ?? null,
+        );
+        return { title: section.title, score: counted.score, maxScore: counted.maxScore };
+      });
     }
 
     return { status: 'settled', visibility, passFail, percentage, sections };
