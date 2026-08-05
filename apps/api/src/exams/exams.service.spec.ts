@@ -1595,7 +1595,7 @@ describe('ExamsService', () => {
         findFirst: jest.fn().mockResolvedValue({
           id: 'exam-1',
           status: 'draft',
-          sections: [{ id: 'section-1', title: 'Section One', questions: [{ questionId: 'q1' }] }],
+          sections: [{ id: 'section-1', title: 'Section One', weightPercent: 100, questions: [{ questionId: 'q1' }] }],
         }),
         update: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }),
       },
@@ -1644,8 +1644,10 @@ describe('ExamsService', () => {
           id: 'exam-1',
           status: 'draft',
           sections: [
-            { id: 'section-1', title: 'Section One', questions: [{ questionId: 'q1' }] },
-            { id: 'section-2', title: 'Section Two', questions: [] },
+            // Deliberately summing to 100 so this still fails for the reason under test (no
+            // questions), not a coincidental weight-sum failure.
+            { id: 'section-1', title: 'Section One', weightPercent: 100, questions: [{ questionId: 'q1' }] },
+            { id: 'section-2', title: 'Section Two', weightPercent: 0, questions: [] },
           ],
         }),
       },
@@ -1653,6 +1655,49 @@ describe('ExamsService', () => {
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
     await expect(service.publish(context, 'user-1', 'exam-1')).rejects.toThrow(BadRequestException);
+  });
+
+  it('throws BadRequestException when section weights do not sum to 100', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'exam-1',
+          status: 'draft',
+          sections: [
+            { id: 'section-1', title: 'Section One', weightPercent: 60, questions: [{ questionId: 'q1' }] },
+            { id: 'section-2', title: 'Section Two', weightPercent: 30, questions: [{ questionId: 'q2' }] },
+          ],
+        }),
+        update: jest.fn(),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await expect(service.publish(context, 'user-1', 'exam-1')).rejects.toThrow(
+      'Section weights must sum to 100% before publishing (currently 90%)',
+    );
+    expect(tx.exam.update).not.toHaveBeenCalled();
+  });
+
+  it('publishes successfully when section weights sum to exactly 100', async () => {
+    const tx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'exam-1',
+          status: 'draft',
+          sections: [
+            { id: 'section-1', title: 'Section One', weightPercent: 60, questions: [{ questionId: 'q1' }] },
+            { id: 'section-2', title: 'Section Two', weightPercent: 40, questions: [{ questionId: 'q2' }] },
+          ],
+        }),
+        update: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    const result = await service.publish(context, 'user-1', 'exam-1');
+
+    expect(result.status).toBe('published');
   });
 
   it('unpublishes a published exam that no candidate has started, reverting it to draft', async () => {
@@ -1707,7 +1752,7 @@ describe('ExamsService', () => {
           id: 'exam-1',
           status: 'draft',
           sections: [
-            { id: 'section-1', title: 'Pool Section', selectionMode: 'pool', poolSize: 3, poolDifficulty: 'hard', questions: [], poolTags: [{ tagId: 'tag-1' }] },
+            { id: 'section-1', title: 'Pool Section', selectionMode: 'pool', poolSize: 3, poolDifficulty: 'hard', weightPercent: 100, questions: [], poolTags: [{ tagId: 'tag-1' }] },
           ],
         }),
         update: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }),
@@ -1731,7 +1776,7 @@ describe('ExamsService', () => {
           id: 'exam-1',
           status: 'draft',
           sections: [
-            { id: 'section-1', title: 'Pool Section', selectionMode: 'pool', poolSize: 5, poolDifficulty: null, questions: [], poolTags: [{ tagId: 'tag-1' }] },
+            { id: 'section-1', title: 'Pool Section', selectionMode: 'pool', poolSize: 5, poolDifficulty: null, weightPercent: 100, questions: [], poolTags: [{ tagId: 'tag-1' }] },
           ],
         }),
       },

@@ -503,6 +503,12 @@ export class ExamsService {
       if (exam.sections.length === 0) {
         throw new BadRequestException('Exam must have at least one section before it can be published');
       }
+      // Weights drive the real scoring formula (see grading.ts's computeResult), so anything
+      // other than exactly 100 would silently under- or over-award the whole exam.
+      const weightSum = exam.sections.reduce((sum, section) => sum + section.weightPercent, 0);
+      if (weightSum !== 100) {
+        throw new BadRequestException(`Section weights must sum to 100% before publishing (currently ${weightSum}%)`);
+      }
       for (const section of exam.sections) {
         if (section.selectionMode === 'pool') {
           const tagIds = section.poolTags.map((poolTag) => poolTag.tagId);
