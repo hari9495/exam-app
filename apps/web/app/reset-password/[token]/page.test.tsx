@@ -29,7 +29,7 @@ describe('ResetPasswordPage', () => {
   });
 
   it('submits the token and new password, then shows a success message', async () => {
-    const fetchMock = jest.fn(async () => new Response(JSON.stringify({ success: true }), { status: 200 }));
+    const fetchMock = jest.fn(async (_url?: unknown, _options?: RequestInit) => new Response(JSON.stringify({ success: true }), { status: 200 }));
     global.fetch = fetchMock as unknown as typeof fetch;
 
     render(<ResetPasswordPage />);

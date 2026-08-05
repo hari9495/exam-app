@@ -180,7 +180,7 @@ describe('SectionQuestionPicker', () => {
   });
 
   it('shows an empty-bank message and blocks saving when there are no questions to pick from', async () => {
-    const fetchMock = jest.fn(async (url) => {
+    const fetchMock = jest.fn(async (url, options?: RequestInit) => {
       if (String(url).endsWith('/auth/refresh')) {
         return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
       }

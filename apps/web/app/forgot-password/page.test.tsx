@@ -10,7 +10,7 @@ describe('ForgotPasswordPage', () => {
   });
 
   it('submits organization slug and email, then shows the generic success message', async () => {
-    const fetchMock = jest.fn(async (url) => {
+    const fetchMock = jest.fn(async (url, options?: RequestInit) => {
       if (String(url).endsWith('/auth/forgot-password')) {
         return new Response(JSON.stringify({ message: 'If an account exists...' }), { status: 200 });
       }

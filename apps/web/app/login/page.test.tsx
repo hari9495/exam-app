@@ -18,7 +18,7 @@ describe('LoginPage', () => {
   });
 
   it('submits organization slug, email, and password to the login endpoint', async () => {
-    const fetchMock = jest.fn(async (url) => {
+    const fetchMock = jest.fn(async (url, options?: RequestInit) => {
       if (String(url).endsWith('/auth/refresh')) {
         return new Response(JSON.stringify({ message: 'no session' }), { status: 401 });
       }

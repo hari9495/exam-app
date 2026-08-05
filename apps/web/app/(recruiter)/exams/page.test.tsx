@@ -333,7 +333,7 @@ describe('ExamsPage', () => {
   });
 
   it('closes the delete dialog without calling the API when cancelled', async () => {
-    const fetchMock = jest.fn(async (url) => {
+    const fetchMock = jest.fn(async (url, options?: RequestInit) => {
       if (String(url).endsWith('/auth/refresh')) {
         return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
       }
