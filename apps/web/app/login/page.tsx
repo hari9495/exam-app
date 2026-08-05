@@ -105,7 +105,7 @@ export default function LoginPage() {
                 </div>
               ) : (
                 <div className="flex items-center gap-2.5">
-                  <PrudentMark className="h-9 w-[4.9rem] text-brand-navy" />
+                  <PrudentMark className="h-9 aspect-[100/148] text-brand-navy" />
                   <p className="text-2xl font-medium tracking-tight text-brand-navy">Prudent Hire</p>
                 </div>
               )}
@@ -185,7 +185,7 @@ export default function LoginPage() {
             style={{ background: 'radial-gradient(circle, rgba(0,83,226,0.3) 0%, transparent 70%)' }}
             aria-hidden="true"
           />
-          <PrudentMark className="pointer-events-none absolute -bottom-16 -left-16 h-64 w-[17.6rem] text-white/[0.05]" />
+          <PrudentMark className="pointer-events-none absolute bottom-6 right-6 h-48 aspect-[100/148] text-white/10" />
           <h2 className="relative max-w-md text-4xl font-medium leading-tight tracking-tight text-white">Automate Early Screens.</h2>
           <p className="relative max-w-md text-lg leading-relaxed text-white/60">
             Focus human judgment on what matters. Prudent Hire runs the first round end to end, so your panel only meets the

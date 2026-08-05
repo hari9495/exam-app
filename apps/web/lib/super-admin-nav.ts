@@ -15,7 +15,7 @@ export const SUPER_ADMIN_FULL_NAV = [
   { href: '/audit-log', label: 'Audit Log', icon: History },
   { href: '/system-logs', label: 'System Logs', icon: TerminalSquare },
   { href: '/data-rights', label: 'Candidate Data Rights', icon: ShieldCheck },
-  { href: '/settings/branding', label: 'Org Settings', icon: Settings },
+  { href: '/settings/branding', label: 'Brand Settings', icon: Settings },
   { href: '/settings/integrations', label: 'Integrations', icon: Plug },
   { href: '/settings/sso', label: 'Single Sign-On', icon: KeyRound },
   { href: '/walk-in-groups', label: 'Walk-in Groups', icon: QrCode },

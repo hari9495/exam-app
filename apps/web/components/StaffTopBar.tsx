@@ -1,13 +1,34 @@
+import Link from 'next/link';
 import { LogOut } from 'lucide-react';
 
+interface StaffTopBarProps {
+  displayName: string;
+  initials: string;
+  roleLabel: string;
+  onLogout: () => void;
+}
+
 /**
- * Thin bar above the page content for the recruiter/org-admin/panel shells.
- * Logout lives here (top right) rather than at the bottom of the sidebar, to
- * match the platform console's placement.
+ * Sticky bar above the page content for the recruiter/org-admin/panel shells.
+ * Holds the signed-in user's profile link and Logout, both top right, so they
+ * stay visible while the page content scrolls underneath. Fixed at h-16 to
+ * line up with StaffSidebar's header row across the seam.
  */
-export function StaffTopBar({ onLogout }: { onLogout: () => void }) {
+export function StaffTopBar({ displayName, initials, roleLabel, onLogout }: StaffTopBarProps) {
   return (
-    <div className="flex items-center justify-end border-b border-recruiter-border bg-white px-6 py-3 print:hidden">
+    <div className="sticky top-0 z-10 flex h-16 items-center justify-end gap-4 border-b border-recruiter-border bg-white px-6 print:hidden">
+      <Link
+        href="/profile"
+        className="flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 transition-colors duration-150 hover:bg-recruiter-bg-subtle"
+      >
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-white">
+          {initials}
+        </div>
+        <div className="min-w-0 text-left">
+          <p className="truncate text-xs font-semibold text-recruiter-text">{displayName}</p>
+          <p className="text-[10.5px] text-recruiter-text-tertiary">{roleLabel}</p>
+        </div>
+      </Link>
       <button
         type="button"
         aria-label="Log Out"

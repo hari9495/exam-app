@@ -15,9 +15,6 @@ interface StaffSidebarProps {
   orgName: string;
   orgLogoUrl?: string | null;
   orgInitial: string;
-  displayName: string;
-  initials: string;
-  roleLabel: string;
 }
 
 /**
@@ -25,20 +22,14 @@ interface StaffSidebarProps {
  * Chrome (background, active-state tint) is platform-branded navy regardless
  * of org theming; the org's own logo/name up top is the one thing that stays
  * tenant-specific, since this sidebar is shared across every organization.
+ *
+ * The header row is a fixed h-16 so its bottom border lines up exactly with
+ * StaffTopBar's border across the seam between sidebar and content.
  */
-export function StaffSidebar({
-  navItems,
-  pathname,
-  orgName,
-  orgLogoUrl,
-  orgInitial,
-  displayName,
-  initials,
-  roleLabel,
-}: StaffSidebarProps) {
+export function StaffSidebar({ navItems, pathname, orgName, orgLogoUrl, orgInitial }: StaffSidebarProps) {
   return (
     <nav className="sticky top-0 flex h-screen w-56 shrink-0 flex-col bg-brand-navy print:hidden">
-      <div className="flex items-center gap-2 border-b border-white/10 px-4 py-4">
+      <div className="flex h-16 items-center gap-2 border-b border-white/10 px-4">
         {orgLogoUrl ? (
           <img src={orgLogoUrl} alt="Organization logo" className="max-h-7 max-w-7 rounded" />
         ) : (
@@ -75,20 +66,8 @@ export function StaffSidebar({
           );
         })}
       </ul>
-      <div className="relative overflow-hidden border-t border-white/10 px-3.5 py-3">
-        <PrudentMark className="pointer-events-none absolute -bottom-6 -right-6 h-24 w-[6.6rem] text-white/[0.04]" />
-        <Link
-          href="/profile"
-          className="relative flex min-w-0 items-center gap-2 rounded-md px-1 py-0.5 transition-colors duration-150 hover:bg-white/5"
-        >
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-white">
-            {initials}
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-xs font-semibold text-white">{displayName}</p>
-            <p className="text-[10.5px] text-white/40">{roleLabel}</p>
-          </div>
-        </Link>
+      <div className="flex h-16 items-center justify-end px-4">
+        <PrudentMark className="h-8 aspect-[100/148] text-white/20" />
       </div>
     </nav>
   );

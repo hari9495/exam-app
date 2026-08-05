@@ -96,7 +96,7 @@ describe('Panel layout', () => {
     expect(screen.getByRole('link', { name: 'Staff Users' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Audit Log' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Candidate Data Rights' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Org Settings' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Brand Settings' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Single Sign-On' })).toBeInTheDocument();
   });
 

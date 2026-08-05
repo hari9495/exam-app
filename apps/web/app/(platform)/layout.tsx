@@ -45,7 +45,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
         <div className="flex items-center justify-between bg-brand-navy px-6 py-4">
           <div className="flex items-center gap-8">
             <div className="flex items-center gap-2.5">
-              <PrudentMark className="h-6 w-[4.15rem] text-white" />
+              <PrudentMark className="h-6 aspect-[100/148] text-white" />
               <span className="text-sm font-medium text-white">Platform Admin</span>
             </div>
             <nav className="flex items-center gap-5">

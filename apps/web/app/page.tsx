@@ -115,7 +115,7 @@ export default function Home() {
     <main>
       <header className="sticky top-0 z-20 flex items-center justify-between bg-brand-navy px-6 py-4 md:px-16">
         <div className="flex items-center gap-3">
-          <PrudentMark className="h-8 w-[5.5rem] text-white" />
+          <PrudentMark className="h-8 aspect-[100/148] text-white" />
           <span className="text-lg font-medium tracking-tight text-white">Prudent Hire</span>
         </div>
         <nav className="hidden items-center gap-7 text-sm font-medium text-white/70 md:flex">
@@ -374,7 +374,7 @@ export default function Home() {
       </Reveal>
 
       <footer className="flex items-center justify-center gap-2 bg-[#000D28] px-6 py-8 text-sm text-white/30 md:px-16">
-        <PrudentMark className="h-5 w-[3.4rem] text-white/30" />
+        <PrudentMark className="h-5 aspect-[100/148] text-white/30" />
         <span>&copy; 2026 Prudent Consulting</span>
       </footer>
     </main>
