@@ -68,4 +68,33 @@ describe('CandidateReportPanel', () => {
 
     expect(screen.getByText('45/60 · 0% weight')).toBeInTheDocument();
   });
+
+  it('says how many of a section\'s answers were counted', () => {
+    const q = (questionId: string, marksAwarded: number, counted: boolean) => ({
+      questionId, questionText: questionId, type: 'code', marks: 10, negativeMarks: 0,
+      options: [], selectedOptionIds: [], correctOptionIds: [], isCorrect: counted, marksAwarded, counted,
+    });
+    renderPanel([
+      {
+        sectionId: 's1', title: 'Coding', score: 18, maxScore: 20, weightPercent: 100, requiredCount: 2,
+        questions: [q('q1', 10, true), q('q2', 8, true), q('q3', 0, false)],
+      },
+    ]);
+
+    expect(screen.getByText('18/20 · 100% weight · best 2 of 3 counted')).toBeInTheDocument();
+  });
+
+  it('badges an answer that was dropped by the best-N rule', () => {
+    renderPanel([
+      {
+        sectionId: 's1', title: 'Coding', score: 18, maxScore: 20, weightPercent: 100, requiredCount: 2,
+        questions: [
+          { questionId: 'q1', questionText: 'A', type: 'code', marks: 10, negativeMarks: 0, options: [], selectedOptionIds: [], correctOptionIds: [], isCorrect: true, marksAwarded: 10, counted: true },
+          { questionId: 'q2', questionText: 'B', type: 'code', marks: 10, negativeMarks: 0, options: [], selectedOptionIds: [], correctOptionIds: [], isCorrect: false, marksAwarded: 0, counted: false },
+        ],
+      },
+    ]);
+
+    expect(screen.getByText('Not counted')).toBeInTheDocument();
+  });
 });

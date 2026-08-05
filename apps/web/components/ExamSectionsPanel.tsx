@@ -280,6 +280,57 @@ function SectionWeightInput({ examId, section, locked }: { examId: string; secti
   );
 }
 
+function SectionRequiredCountInput({ examId, section, locked }: { examId: string; section: ExamSection; locked: boolean }) {
+  const updateSection = useUpdateSection(examId, section.id);
+  const { toast } = useToast();
+  const total = section.selectionMode === 'pool' ? (section.poolSize ?? 0) : section.questions.length;
+  const [value, setValue] = useState(section.requiredCount == null ? '' : String(section.requiredCount));
+
+  if (locked) {
+    return section.requiredCount == null ? null : (
+      <span className="text-sm text-recruiter-text-secondary">answer any {section.requiredCount} of {total}</span>
+    );
+  }
+
+  // Blank clears the requirement back to "answer all", which is what null means server-side.
+  function handleBlur() {
+    const trimmed = value.trim();
+    const parsed = trimmed === '' ? null : Number(trimmed);
+    if (parsed !== null && (!Number.isInteger(parsed) || parsed < 1 || parsed > total)) {
+      setValue(section.requiredCount == null ? '' : String(section.requiredCount));
+      return;
+    }
+    if (parsed === section.requiredCount) return;
+    updateSection.mutate(
+      { requiredCount: parsed },
+      {
+        onError: (error) => {
+          toast(error instanceof Error ? error.message : 'Failed to update required answers.', 'error');
+          setValue(section.requiredCount == null ? '' : String(section.requiredCount));
+        },
+      },
+    );
+  }
+
+  return (
+    <label className="flex items-center gap-1 text-sm text-recruiter-text-secondary">
+      Required
+      <input
+        type="number"
+        min={1}
+        max={total}
+        value={value}
+        placeholder="all"
+        onChange={(event) => setValue(event.target.value)}
+        onBlur={handleBlur}
+        aria-label={`Required answers for ${section.title}`}
+        className="w-16 rounded border border-recruiter-border px-1.5 py-0.5 text-right"
+      />
+      of {total}
+    </label>
+  );
+}
+
 export function ExamSectionsPanel({ examId }: { examId: string }) {
   const { data: exam } = useExam(examId);
   const createSection = useCreateSection(examId);
@@ -357,6 +408,7 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
               <div className="flex items-center gap-2">
                 <p className="font-medium">{section.title}</p>
                 <SectionWeightInput examId={examId} section={section} locked={locked} />
+                <SectionRequiredCountInput examId={examId} section={section} locked={locked} />
               </div>
               <div className="flex items-center gap-1.5">
                 {!locked && section.selectionMode !== 'pool' && (

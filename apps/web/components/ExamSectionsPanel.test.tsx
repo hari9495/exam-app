@@ -735,6 +735,7 @@ describe('ExamSectionsPanel', () => {
     function mockWeightedExam(
       weights: number[],
       overrides: (url: string, options?: RequestInit) => Response | null = () => null,
+      sectionOverrides: { requiredCount?: number | null; questionCount?: number } = {},
     ) {
       const fetchMock = jest.fn(async (url: RequestInfo | URL, options?: RequestInit) => {
         const urlStr = String(url);
@@ -764,7 +765,10 @@ describe('ExamSectionsPanel', () => {
                 poolDifficulty: null,
                 targetDurationMinutes: null,
                 weightPercent,
-                questions: [{ questionId: `q${index + 1}` }],
+                requiredCount: sectionOverrides.requiredCount ?? null,
+                questions: Array.from({ length: sectionOverrides.questionCount ?? 1 }, (_, q) => ({
+                  questionId: `q${index + 1}-${q + 1}`,
+                })),
               })),
             }),
             { status: 200 },
@@ -872,6 +876,37 @@ describe('ExamSectionsPanel', () => {
       expect(screen.queryByLabelText('Weight % for Section One')).not.toBeInTheDocument();
       // The running total is an editing aid -- pointless once nothing can change.
       expect(screen.queryByText(/Weights total:/)).not.toBeInTheDocument();
+    });
+
+    it("shows a section's required-answer count against its question count", async () => {
+      mockWeightedExam([100], (url) => null, { requiredCount: 3, questionCount: 5 });
+      renderPanel();
+
+      expect(await screen.findByLabelText('Required answers for Section One')).toHaveValue(3);
+      expect(screen.getByText(/of 5/)).toBeInTheDocument();
+    });
+
+    it('saves a new required-answer count on blur', async () => {
+      const fetchMock = mockWeightedExam([100], (url, options) =>
+        url.endsWith('/sections/section-1') && options?.method === 'PATCH'
+          ? new Response(JSON.stringify({ id: 'section-1', requiredCount: 2 }), { status: 200 })
+          : null,
+        { requiredCount: 3, questionCount: 5 },
+      );
+      renderPanel();
+      const input = await screen.findByLabelText('Required answers for Section One');
+
+      await userEvent.clear(input);
+      await userEvent.type(input, '2');
+      await userEvent.tab();
+
+      await waitFor(() => {
+        const patchCall = fetchMock.mock.calls.find(
+          (call) => String(call[0]).endsWith('/sections/section-1') && (call[1] as RequestInit | undefined)?.method === 'PATCH',
+        );
+        expect(patchCall).toBeDefined();
+        expect(JSON.parse(String((patchCall![1] as RequestInit).body))).toEqual({ requiredCount: 2 });
+      });
     });
   });
 });

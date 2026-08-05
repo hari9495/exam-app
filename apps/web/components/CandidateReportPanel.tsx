@@ -284,12 +284,18 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
                 <h3 className="text-base font-medium">{section.title}</h3>
                 <span className="text-sm text-gray-500">
                   {section.score}/{section.maxScore} · {section.weightPercent}% weight
+                  {section.requiredCount != null ? ` · best ${section.requiredCount} of ${section.questions.length} counted` : ''}
                 </span>
               </div>
               <div className="flex flex-col gap-3">
                 {section.questions.map((question) => (
                   <div key={question.questionId} className="border-t border-gray-100 pt-3 first:border-0 first:pt-0">
-                    <p className="mb-2 text-sm text-gray-800">{question.questionText}</p>
+                    <p className="mb-2 text-sm text-gray-800">
+                      {question.questionText}
+                      {question.counted === false && (
+                        <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">Not counted</span>
+                      )}
+                    </p>
                     <div className="flex flex-col gap-1">
                       {question.options.map((option) => {
                         const wasSelected = question.selectedOptionIds.includes(option.id);

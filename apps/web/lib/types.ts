@@ -111,6 +111,8 @@ export interface ExamSection {
   // This section's share of the exam's grade, independent of its questions' raw marks. Must sum
   // to 100 across an exam's sections before it can be published.
   weightPercent: number;
+  /** null = every question must be answered. Otherwise the candidate answers any N. */
+  requiredCount: number | null;
   // The exam detail endpoint embeds the full question (options included), not
   // just a summary -- widened to match so callers like the exam preview page
   // don't need a second, separately-filtered fetch to render a question.
@@ -528,6 +530,7 @@ export interface SectionScore {
   // The weight frozen into this attempt's snapshot at start time. 0 for attempts that predate
   // section weighting, which were scored flat.
   weightPercent: number;
+  requiredCount: number | null;
 }
 
 export interface CandidateDetailQuestion {
@@ -541,6 +544,7 @@ export interface CandidateDetailQuestion {
   correctOptionIds: string[];
   isCorrect: boolean | null;
   marksAwarded: number | null;
+  counted: boolean;
 }
 
 export interface CandidateDetailSection extends SectionScore {

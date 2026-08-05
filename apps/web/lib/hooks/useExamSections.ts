@@ -22,7 +22,7 @@ export function useUpdateSection(examId: string, sectionId: string) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { weightPercent: number }) =>
+    mutationFn: (input: { weightPercent?: number; requiredCount?: number | null }) =>
       apiFetch(
         `/exams/${examId}/sections/${sectionId}`,
         { method: 'PATCH', body: JSON.stringify(input) },
