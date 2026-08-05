@@ -1471,11 +1471,18 @@ In `apps/web/components/CandidateReportPanel.test.tsx`, add:
 
 ```ts
   it('says how many of a section\'s answers were counted', () => {
+    const q = (questionId: string, marksAwarded: number, counted: boolean) => ({
+      questionId, questionText: questionId, type: 'code', marks: 10, negativeMarks: 0,
+      options: [], selectedOptionIds: [], correctOptionIds: [], isCorrect: counted, marksAwarded, counted,
+    });
     renderPanel([
-      { sectionId: 's1', title: 'Coding', score: 18, maxScore: 20, weightPercent: 100, requiredCount: 2, questions: [] },
+      {
+        sectionId: 's1', title: 'Coding', score: 18, maxScore: 20, weightPercent: 100, requiredCount: 2,
+        questions: [q('q1', 10, true), q('q2', 8, true), q('q3', 0, false)],
+      },
     ]);
 
-    expect(screen.getByText('18/20 · 100% weight · best 2 of 0 counted')).toBeInTheDocument();
+    expect(screen.getByText('18/20 · 100% weight · best 2 of 3 counted')).toBeInTheDocument();
   });
 
   it('badges an answer that was dropped by the best-N rule', () => {
@@ -1493,7 +1500,7 @@ In `apps/web/components/CandidateReportPanel.test.tsx`, add:
   });
 ```
 
-Fix the first test's expected string once you see the real section-question count in your fixture — it must read `best 2 of <questions.length> counted`.
+Both fixtures must carry a full `CandidateDetailQuestion` shape including the new `counted` flag — the header copy reads `best <requiredCount> of <questions.length> counted`, so a fixture with an empty `questions` array would render nonsense ("of 0") and assert it.
 
 - [ ] **Step 7: Implement the report display**
 
