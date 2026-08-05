@@ -20,3 +20,4 @@ export * from './seb/seb-config';
 export * from './system-events/system-events.module';
 export * from './system-events/system-events.service';
 export * from './system-events/system-events-exception.filter';
+export * from './grading/select-counted-answers';
