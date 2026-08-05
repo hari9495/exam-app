@@ -367,6 +367,12 @@ model ExamSection {
   // docs/superpowers/specs/2026-08-05-section-weightage-design.md. Every exam's sections must
   // sum to exactly 100 before it can be published (enforced in ExamsService#publish).
   weightPercent         Int                   @map("weight_percent")
+  // How many of this section's questions the candidate must actually answer. null = all of
+  // them (the default and today's behaviour). When set, the best `requiredCount` answers are
+  // scored, out of `requiredCount` questions -- see docs/superpowers/specs/
+  // 2026-08-05-answer-any-n-design.md. Publish enforces 1 <= requiredCount <= M and that all
+  // candidate questions carry equal marks.
+  requiredCount         Int?                  @map("required_count")
   exam                  Exam                  @relation(fields: [examId], references: [id], onDelete: Cascade)
   questions             ExamSectionQuestion[]
   poolTags              ExamSectionPoolTag[]
