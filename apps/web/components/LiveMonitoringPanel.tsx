@@ -422,6 +422,10 @@ export function LiveMonitoringPanel({
     rosterColumns,
   );
 
+  // Position in the currently sorted/visible roster, 1-based -- kept out of rosterColumns
+  // (and so out of useColumnVisibility) so it can't be hidden via the column chooser.
+  const indexColumn: Column<RosterRow> = { key: 'index', header: '#', render: (_row, index) => index + 1 };
+
   return (
     <div>
       <div className="mb-4 flex items-center justify-between gap-4">
@@ -514,7 +518,7 @@ export function LiveMonitoringPanel({
               {rosterColumnChooser}
             </div>
             <Table
-              columns={visibleRosterColumns}
+              columns={[indexColumn, ...visibleRosterColumns]}
               rows={visibleRoster}
               // invitationId, not candidateId -- a candidate can have more than one invitation
               // for the same exam (re-invite), and a duplicate React key across rows makes sort

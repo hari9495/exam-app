@@ -11,6 +11,7 @@ type ExportInvitation = CandidateDataExport['invitations'][number];
 type ExportAttempt = CandidateDataExport['attempts'][number];
 
 const INVITATION_COLUMNS: Column<ExportInvitation>[] = [
+  { key: 'index', header: '#', render: (_invitation, index) => index + 1 },
   { key: 'examTitle', header: 'Exam', render: (invitation) => invitation.examTitle, sortValue: (invitation) => invitation.examTitle },
   { key: 'status', header: 'Status', render: (invitation) => invitation.status, sortValue: (invitation) => invitation.status },
   {

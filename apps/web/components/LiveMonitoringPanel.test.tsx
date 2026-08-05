@@ -66,10 +66,10 @@ describe('LiveMonitoringPanel', () => {
     });
 
     expect(screen.getByText('Online now')).toBeInTheDocument();
-    // The four stat tiles (online, in-progress, submitted, recent alerts) plus the
-    // per-row integrity alert chip for a1 (one medium alert), Alice being the only
-    // row visible on the default Live sub-tab, all compute to 1.
-    expect(screen.getAllByText('1', { exact: true })).toHaveLength(5);
+    // The four stat tiles (online, in-progress, submitted, recent alerts), the row-index
+    // cell, and the per-row integrity alert chip for a1 (one medium alert) -- Alice being
+    // the only row visible on the default Live sub-tab -- all compute to 1.
+    expect(screen.getAllByText('1', { exact: true })).toHaveLength(6);
     expect(screen.getByText('In progress')).toBeInTheDocument();
     expect(screen.getByText('Alerts (last 5 min)')).toBeInTheDocument();
 

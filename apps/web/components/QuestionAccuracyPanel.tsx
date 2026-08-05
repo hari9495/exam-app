@@ -44,6 +44,7 @@ export function QuestionAccuracyPanel({ examId }: { examId: string }) {
   const filtersActive = filter !== 'all' || query !== '';
 
   const columns: Column<QuestionAccuracyRow>[] = [
+    { key: 'index', header: '#', render: (_row, index) => index + 1 },
     {
       key: 'question',
       header: 'Question',

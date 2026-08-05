@@ -21,6 +21,7 @@ function deliveryTone(status: string): StatusTone {
 }
 
 const DELIVERY_COLUMNS: Column<WebhookDeliveryRow>[] = [
+  { key: 'index', header: '#', render: (_row, index) => index + 1 },
   { key: 'eventType', header: 'Event', render: (row) => row.eventType, sortValue: (row) => row.eventType },
   {
     key: 'status',

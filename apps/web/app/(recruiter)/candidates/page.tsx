@@ -109,19 +109,23 @@ export default function CandidatesPage() {
     });
   }
 
+  // Kept out of `columns` (and so out of useColumnVisibility below) so neither can be
+  // hidden via the column chooser, same convention as ExamResultsPanel/CandidatesPanel.
+  const selectColumn: Column<Candidate> = {
+    key: 'select',
+    header: '',
+    render: (candidate) => (
+      <Checkbox
+        label={candidate.name}
+        hideLabel
+        checked={selectedIds.includes(candidate.id)}
+        onChange={(checked) => toggle(candidate.id, checked)}
+      />
+    ),
+  };
+  const indexColumn: Column<Candidate> = { key: 'index', header: '#', render: (_candidate, index) => index + 1 };
+
   const columns: Column<Candidate>[] = [
-    {
-      key: 'select',
-      header: '',
-      render: (candidate) => (
-        <Checkbox
-          label={candidate.name}
-          hideLabel
-          checked={selectedIds.includes(candidate.id)}
-          onChange={(checked) => toggle(candidate.id, checked)}
-        />
-      ),
-    },
     {
       key: 'name',
       header: 'Name',
@@ -267,7 +271,7 @@ export default function CandidatesPage() {
         {chooser}
       </div>
       <Table
-        columns={visibleColumns}
+        columns={[selectColumn, indexColumn, ...visibleColumns]}
         rows={candidatesResponse?.data ?? []}
         rowKey={(candidate) => candidate.id}
         emptyMessage="No candidates yet."

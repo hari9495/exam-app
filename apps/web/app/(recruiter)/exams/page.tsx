@@ -167,6 +167,9 @@ export default function ExamsPage() {
   ];
 
   const { visibleColumns, chooser } = useColumnVisibility('recruiter-exams', columns);
+  // Kept out of `columns` (and so out of useColumnVisibility) so it can't be hidden via
+  // the column chooser, same convention as ExamResultsPanel/CandidatesPanel.
+  const indexColumn: Column<ExamListItem> = { key: 'index', header: '#', render: (_exam, index) => index + 1 };
 
   if (isLoading) {
     return (
@@ -217,7 +220,7 @@ export default function ExamsPage() {
         {chooser}
       </div>
       <Table
-        columns={visibleColumns}
+        columns={[indexColumn, ...visibleColumns]}
         rows={examsResponse?.data ?? []}
         rowKey={(exam) => exam.id}
         emptyMessage="No exams yet."

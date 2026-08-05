@@ -70,6 +70,7 @@ export default function AuditLogPage() {
   // "Apply filters" is submitted; it does not instant-apply like the header filters
   // on other pages, so it stays consistent with the Entity Type filter beside it.
   const columns: Column<AuditLogEntry>[] = [
+    { key: 'index', header: '#', render: (_entry, index) => index + 1 },
     {
       key: 'createdAt',
       header: 'When',
