@@ -1,4 +1,4 @@
-import { ArrayMinSize, IsArray, IsIn, IsInt, IsOptional, IsString, Min, ValidateIf } from 'class-validator';
+import { ArrayMinSize, IsArray, IsIn, IsInt, IsOptional, IsString, Max, Min, ValidateIf } from 'class-validator';
 import { CreateExamSectionDto } from './create-exam-section.dto';
 
 export class UpdateExamSectionDto extends CreateExamSectionDto {
@@ -20,4 +20,10 @@ export class UpdateExamSectionDto extends CreateExamSectionDto {
   @ArrayMinSize(1)
   @IsString({ each: true })
   poolTagIds?: string[];
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  weightPercent?: number;
 }

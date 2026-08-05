@@ -604,6 +604,7 @@ export class ExamsService {
             poolSize: section.poolSize,
             poolDifficulty: section.poolDifficulty,
             targetDurationMinutes: section.targetDurationMinutes,
+            weightPercent: section.weightPercent,
             ...(section.poolTags.length > 0
               ? { poolTags: { create: section.poolTags.map((poolTag) => ({ tagId: poolTag.tagId })) } }
               : {}),
@@ -656,9 +657,13 @@ export class ExamsService {
         orderBy: { orderIndex: 'desc' },
       });
       const orderIndex = lastSection ? lastSection.orderIndex + 1 : 0;
+      // A lone section is trivially the whole grade -- no recruiter action needed for the common
+      // single-section exam. Any additional section starts unweighted; the running total (surfaced
+      // in the UI, enforced again at publish) makes it obvious it needs to be assigned.
+      const weightPercent = lastSection ? 0 : 100;
 
       return tx.examSection.create({
-        data: { examId, title, orderIndex, targetDurationMinutes: dto.targetDurationMinutes },
+        data: { examId, title, orderIndex, targetDurationMinutes: dto.targetDurationMinutes, weightPercent },
       });
     });
   }
@@ -718,6 +723,7 @@ export class ExamsService {
             ? { poolTags: { create: uniquePoolTagIds.map((tagId) => ({ tagId })) } }
             : {}),
           ...(dto.targetDurationMinutes !== undefined ? { targetDurationMinutes: dto.targetDurationMinutes } : {}),
+          ...(dto.weightPercent !== undefined ? { weightPercent: dto.weightPercent } : {}),
         },
         include: { poolTags: true },
       });
@@ -771,6 +777,7 @@ export class ExamsService {
           poolSize: section.poolSize,
           poolDifficulty: section.poolDifficulty,
           targetDurationMinutes: section.targetDurationMinutes,
+          weightPercent: section.weightPercent,
           ...(section.poolTags.length > 0
             ? { poolTags: { create: section.poolTags.map((poolTag) => ({ tagId: poolTag.tagId })) } }
             : {}),

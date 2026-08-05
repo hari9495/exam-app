@@ -777,7 +777,7 @@ describe('ExamsService', () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
-  it('creates a section appended after the current last orderIndex', async () => {
+  it('creates a section appended after the current last orderIndex, defaulting weight to 0 for a non-first section', async () => {
     const tx = {
       exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
       attempt: { count: jest.fn().mockResolvedValue(0) },
@@ -793,7 +793,25 @@ describe('ExamsService', () => {
 
     expect(result.orderIndex).toBe(3);
     expect(tx.examSection.create).toHaveBeenCalledWith({
-      data: { examId: 'exam-1', title: 'Section B', orderIndex: 3, targetDurationMinutes: undefined },
+      data: { examId: 'exam-1', title: 'Section B', orderIndex: 3, targetDurationMinutes: undefined, weightPercent: 0 },
+    });
+  });
+
+  it("defaults weight to 100 when this is the exam's first section", async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
+      attempt: { count: jest.fn().mockResolvedValue(0) },
+      examSection: {
+        findFirst: jest.fn().mockResolvedValue(null), // no duplicate, no prior last section
+        create: jest.fn().mockResolvedValue({ id: 'section-1', orderIndex: 0 }),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.createSection(context, 'exam-1', { title: 'Only Section' });
+
+    expect(tx.examSection.create).toHaveBeenCalledWith({
+      data: { examId: 'exam-1', title: 'Only Section', orderIndex: 0, targetDurationMinutes: undefined, weightPercent: 100 },
     });
   });
 
@@ -826,7 +844,7 @@ describe('ExamsService', () => {
     await service.createSection(context, 'exam-1', { title: 'Section A', targetDurationMinutes: 20 });
 
     expect(tx.examSection.create).toHaveBeenCalledWith({
-      data: { examId: 'exam-1', title: 'Section A', orderIndex: 0, targetDurationMinutes: 20 },
+      data: { examId: 'exam-1', title: 'Section A', orderIndex: 0, targetDurationMinutes: 20, weightPercent: 100 },
     });
   });
 
@@ -1239,6 +1257,38 @@ describe('ExamsService', () => {
       // one exam, which corrupts the candidate's per-question answer/mark state.
       expect(tx.examSectionQuestion.createMany).not.toHaveBeenCalled();
       expect(result).toEqual({ id: 'section-3', title: 'Aptitude (Copy)' });
+    });
+
+    it("copies the source section's weightPercent onto the duplicate", async () => {
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'draft' }) },
+        attempt: { count: jest.fn().mockResolvedValue(0) },
+        examSection: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValueOnce({
+              id: 'section-1',
+              title: 'Aptitude',
+              selectionMode: 'fixed',
+              poolSize: null,
+              poolDifficulty: null,
+              targetDurationMinutes: 10,
+              weightPercent: 40,
+              questions: [],
+              poolTags: [],
+            })
+            .mockResolvedValueOnce(null),
+          create: jest.fn().mockResolvedValue({ id: 'section-2', title: 'Aptitude (Copy)', weightPercent: 40 }),
+        },
+        examSectionQuestion: { createMany: jest.fn() },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.duplicateSection(context, 'exam-1', 'section-1');
+
+      expect(tx.examSection.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ weightPercent: 40 }) }),
+      );
     });
 
     it('clones a pool-mode section along with its pool tags', async () => {
@@ -1763,6 +1813,7 @@ describe('ExamsService', () => {
                 poolSize: null,
                 poolDifficulty: null,
                 targetDurationMinutes: 15,
+                weightPercent: 60,
                 questions: [
                   { questionId: 'q1', orderIndex: 0 },
                   { questionId: 'q2', orderIndex: 1 },
@@ -1777,6 +1828,7 @@ describe('ExamsService', () => {
                 poolSize: 3,
                 poolDifficulty: 'hard',
                 targetDurationMinutes: null,
+                weightPercent: 40,
                 questions: [],
                 poolTags: [{ tagId: 'tag-1' }, { tagId: 'tag-2' }],
               },
@@ -1807,6 +1859,7 @@ describe('ExamsService', () => {
           poolSize: null,
           poolDifficulty: null,
           targetDurationMinutes: 15,
+          weightPercent: 60,
         },
       });
       expect(tx.examSection.create).toHaveBeenNthCalledWith(2, {
@@ -1818,6 +1871,7 @@ describe('ExamsService', () => {
           poolSize: 3,
           poolDifficulty: 'hard',
           targetDurationMinutes: null,
+          weightPercent: 40,
           poolTags: { create: [{ tagId: 'tag-1' }, { tagId: 'tag-2' }] },
         },
       });
