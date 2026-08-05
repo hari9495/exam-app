@@ -32,6 +32,7 @@ const sections: AttemptSection[] = [
   {
     title: 'Section One',
     targetDurationMinutes: null,
+    requiredCount: null,
     questions: [question('q1'), question('q2')],
   },
 ];
@@ -46,11 +47,13 @@ const multiSections: AttemptSection[] = [
   {
     title: 'Reasoning',
     targetDurationMinutes: null,
+    requiredCount: null,
     questions: [question('r1'), question('r2')],
   },
   {
     title: 'Salesforce',
     targetDurationMinutes: null,
+    requiredCount: null,
     questions: [question('s1'), question('s2', { type: 'code', options: [] })],
   },
 ];

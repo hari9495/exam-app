@@ -23,7 +23,7 @@ import { useScreenCapture } from '../../../lib/hooks/useScreenCapture';
 import { usePeriodicScreenAnalysis } from '../../../lib/hooks/usePeriodicScreenAnalysis';
 import { useWebcamMonitor } from '../../../lib/hooks/useWebcamMonitor';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
-import { AttemptAnswerSummary, isAttemptStarted } from '../../../lib/types';
+import { AttemptAnswerSummary, AttemptQuestion, isAttemptStarted } from '../../../lib/types';
 
 function markButtonClasses(marked: boolean | undefined) {
   return clsx(
@@ -275,7 +275,9 @@ export default function CandidateExamPage() {
   const languageOptions = question?.type === 'code' ? (question.languageMode === 'fixed' ? question.allowedLanguages : (codeLanguagesQuery.data ?? []).map((entry) => entry.language)) : [];
   // Single source of truth for "is this answered": the submit dialog counts these AND jumps
   // to them, so a second copy of the rule would eventually disagree with the tally shown.
-  const isQuestionAnswered = (q: (typeof questions)[number]) => {
+  // Typed against the base AttemptQuestion (rather than the flattened-with-extras shape) so it
+  // can be filtered over both the flat `questions` list and a raw `section.questions` array.
+  const isQuestionAnswered = (q: AttemptQuestion) => {
     const a = answers.find((ans) => ans.questionId === q.id);
     if (q.type === 'code') return Boolean(a && a.answerText && a.answerText.trim() !== '');
     return Boolean(a && a.selectedOptionIds.length > 0);
@@ -286,6 +288,26 @@ export default function CandidateExamPage() {
   const answeredCount = questions.filter(isQuestionAnswered).length;
   const reviewCount = questions.filter(isQuestionMarkedForReview).length;
   const unansweredCount = questions.length - answeredCount;
+  // A section with a requiredCount contributes that many "needed" answers, not its full question
+  // count -- otherwise the chip tells a candidate they have 5 to do when 3 finishes the section.
+  // Answers beyond the requirement are free (best-N), so a section is capped at its requirement.
+  const requiredTotal = (attemptState?.sections ?? []).reduce(
+    (sum, section) => sum + (section.requiredCount ?? section.questions.length),
+    0,
+  );
+  const answeredTowardRequirement = (attemptState?.sections ?? []).reduce((sum, section) => {
+    const answeredInSection = section.questions.filter(isQuestionAnswered).length;
+    return sum + Math.min(answeredInSection, section.requiredCount ?? section.questions.length);
+  }, 0);
+  // Warn, never block: the timer auto-submits, so a hard gate is unenforceable and would only
+  // punish a candidate who ran out of time.
+  const shortSections = (attemptState?.sections ?? [])
+    .map((section) => ({
+      title: section.title,
+      required: section.requiredCount ?? section.questions.length,
+      answered: section.questions.filter(isQuestionAnswered).length,
+    }))
+    .filter((section) => section.answered < section.required);
   const markedIndices = questions.reduce<number[]>((acc, q, i) => (isQuestionMarkedForReview(q) ? [...acc, i] : acc), []);
   const unansweredIndices = questions.reduce<number[]>((acc, q, i) => (!isQuestionAnswered(q) ? [...acc, i] : acc), []);
   const activeFilterIndices = reviewFilter === 'marked' ? markedIndices : reviewFilter === 'unanswered' ? unansweredIndices : [];
@@ -441,7 +463,7 @@ export default function CandidateExamPage() {
         <TimerBar
           remainingSeconds={remainingSeconds}
           totalSeconds={totalSecondsRef.current ?? remainingSeconds}
-          progressLabel={`${answeredCount}/${questions.length} answered`}
+          progressLabel={`${answeredTowardRequirement}/${requiredTotal} answered`}
         />
       </div>
 
@@ -504,6 +526,9 @@ export default function CandidateExamPage() {
               <span className="w-fit max-w-full truncate rounded-md bg-candidate-primary-light px-2.5 py-1 text-xs font-semibold text-candidate-primary">
                 Section{attemptState.sections.length > 1 ? ` ${question.sectionIndex + 1} of ${attemptState.sections.length}` : ''}
                 {question.sectionTitle ? `: ${question.sectionTitle}` : ''}
+                {question.sectionRequiredCount != null
+                  ? ` — answer any ${question.sectionRequiredCount} of ${question.sectionQuestionCount}`
+                  : ''}
               </span>
               <span className="text-xs font-semibold uppercase tracking-wide text-candidate-text-tertiary">
                 Question {currentIndex + 1} of {questions.length} ·{' '}
@@ -686,6 +711,11 @@ export default function CandidateExamPage() {
 
       <Modal open={confirmOpen} title="Submit exam?" onClose={() => setConfirmOpen(false)}>
         <p className="mb-4 text-sm text-candidate-text-secondary">You won&apos;t be able to change your answers after this.</p>
+        {shortSections.length > 0 && (
+          <p className="mb-4 rounded-md bg-status-warning-bg px-3 py-2 text-sm text-status-warning">
+            {shortSections.map((s) => `${s.title}: ${s.answered} of ${s.required} answered`).join('; ')}
+          </p>
+        )}
         <div className="mb-4 grid grid-cols-3 gap-2">
           <div className="rounded-md bg-candidate-primary-light p-2 text-center">
             <div className="text-lg font-bold text-candidate-primary">{answeredCount}</div>

@@ -32,6 +32,35 @@ function renderExamPage() {
   return render(<CandidateExamPage />);
 }
 
+// Minimal single-choice question factory for the answer-any-N tests below -- only the fields
+// isQuestionAnswered/the renderer actually reads are worth spelling out per fixture.
+function q(id: string) {
+  return { id, text: `Question ${id}`, type: 'single_mcq', marks: 1, options: [{ id: 'opt-a', text: 'A' }] };
+}
+
+// Builds a full attempt-state payload from just the bits a given test cares about (sections,
+// answers), reusing the same shape as the other fixtures in this file, then renders the page.
+function renderExam({ sections, answers = [] }: { sections: any[]; answers?: any[] }) {
+  mockUseAttemptQuery.mockReturnValue({
+    data: {
+      candidateName: 'Ada Lovelace',
+      status: 'in_progress',
+      remainingSeconds: 590,
+      webcamViolationCount: 0,
+      browserActivityViolationCount: 0,
+      exam: { title: 'Test Exam', proctoring: { webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] } },
+      sections,
+      answers,
+      messages: [],
+      feedback: null,
+      organizationLogoUrl: null,
+      organizationPrimaryColor: null,
+    },
+    isError: false,
+  });
+  return render(<CandidateExamPage />);
+}
+
 function attemptStateWithQuestion(question: any) {
   return {
     candidateName: 'Ada Lovelace',
@@ -228,6 +257,35 @@ describe('CandidateExamPage', () => {
     render(<CandidateExamPage />);
 
     expect(screen.getByText('1/1 answered')).toBeInTheDocument();
+  });
+
+  it("tells the candidate how many of the section's questions they must answer", async () => {
+    renderExam({
+      sections: [
+        { title: 'Coding', targetDurationMinutes: null, requiredCount: 3, questions: [q('q1'), q('q2'), q('q3'), q('q4'), q('q5')] },
+      ],
+    });
+
+    expect(await screen.findByText(/answer any 3 of 5/i)).toBeInTheDocument();
+  });
+
+  it('counts progress against what is required, not the total question count', async () => {
+    renderExam({
+      sections: [
+        { title: 'Coding', targetDurationMinutes: null, requiredCount: 3, questions: [q('q1'), q('q2'), q('q3'), q('q4'), q('q5')] },
+      ],
+      answers: [{ questionId: 'q1', selectedOptionIds: ['opt-a'], answerText: null }],
+    });
+
+    expect(await screen.findByText('1/3 answered')).toBeInTheDocument();
+  });
+
+  it('leaves progress on the total question count when no section has a requirement', async () => {
+    renderExam({
+      sections: [{ title: 'Coding', targetDurationMinutes: null, requiredCount: null, questions: [q('q1'), q('q2')] }],
+    });
+
+    expect(await screen.findByText('0/2 answered')).toBeInTheDocument();
   });
 
   it('toggles mark-for-review', async () => {

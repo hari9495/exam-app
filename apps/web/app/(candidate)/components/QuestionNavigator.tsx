@@ -8,8 +8,17 @@ import { AttemptAnswerSummary, AttemptSection } from '../../../lib/types';
 export function flattenQuestions(sections: AttemptSection[]) {
   // sectionIndex rides along so the exam page can say "Section 2 of 3" -- a section's own
   // title is whatever the recruiter typed and may mean nothing to a first-time candidate.
+  // sectionRequiredCount/sectionQuestionCount ride along too: the exam page has no per-section
+  // index of its own (it only steps through this flat list), so the "answer any N of M" badge
+  // has to be read off the flattened question rather than off the section directly.
   return sections.flatMap((section, sectionIndex) =>
-    section.questions.map((question) => ({ ...question, sectionTitle: section.title, sectionIndex })),
+    section.questions.map((question) => ({
+      ...question,
+      sectionTitle: section.title,
+      sectionIndex,
+      sectionRequiredCount: section.requiredCount,
+      sectionQuestionCount: section.questions.length,
+    })),
   );
 }
 
@@ -38,7 +47,7 @@ export function QuestionNavigator({ sections, answers, currentIndex, onSelect }:
   const groups = sections.map((section) => {
     const startIndex = cursor;
     cursor += section.questions.length;
-    return { title: section.title, questions: section.questions, startIndex };
+    return { title: section.title, questions: section.questions, startIndex, requiredCount: section.requiredCount };
   });
   // With a single section the heading would just repeat "Questions" -- only worth the
   // vertical space when there is more than one section to tell apart.
@@ -88,7 +97,8 @@ export function QuestionNavigator({ sections, answers, currentIndex, onSelect }:
                     <span className="truncate">{group.title}</span>
                   </span>
                   <span className="shrink-0 text-[11px] tabular-nums text-candidate-text-tertiary">
-                    {answeredInGroup}/{group.questions.length}
+                    {answeredInGroup}/{group.requiredCount ?? group.questions.length}
+                    {group.requiredCount != null ? ' required' : ''}
                   </span>
                 </button>
               ) : null}

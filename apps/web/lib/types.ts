@@ -353,6 +353,8 @@ export interface AttemptQuestion {
 export interface AttemptSection {
   title: string;
   targetDurationMinutes: number | null;
+  /** null = every question must be answered. Otherwise the candidate may answer any N. */
+  requiredCount: number | null;
   questions: AttemptQuestion[];
 }
 
