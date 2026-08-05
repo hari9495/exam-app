@@ -1,6 +1,7 @@
 export interface ProctoringConfigSource {
   enableAntiCheating: boolean;
   webcamProctoringEnabled: boolean;
+  webcamRecordOnly: boolean;
   proctoringEnforcement: string;
   proctoringStrikeLimit: number;
   disabledProctoringSignalsJson: string | null;
@@ -11,6 +12,8 @@ export interface ProctoringConfigSource {
 export interface ExamProctoringConfig {
   enableAntiCheating: boolean;
   webcamEnabled: boolean;
+  // Overrides `enforcement` for webcam violations only -- see registerWebcamViolation.
+  webcamRecordOnly: boolean;
   enforcement: 'warn' | 'block';
   strikeLimit: number;
   disabledSignals: string[];
@@ -60,6 +63,7 @@ export function resolveProctoringConfig(
     return {
       enableAntiCheating: false,
       webcamEnabled: false,
+      webcamRecordOnly: false,
       enforcement: 'warn',
       strikeLimit: Math.max(1, exam.proctoringStrikeLimit),
       disabledSignals: parseDisabledSignals(exam.disabledProctoringSignalsJson),
@@ -70,6 +74,9 @@ export function resolveProctoringConfig(
   return {
     enableAntiCheating: true,
     webcamEnabled: exam.webcamProctoringEnabled,
+    // Never widened by a bypass -- a bypass already forces enforcement to 'warn' below,
+    // which covers webcam too; this only matters when NOT bypassed.
+    webcamRecordOnly: exam.webcamRecordOnly,
     // Anything other than an explicit 'warn' enforces, so a corrupt row fails safe.
     enforcement: (bypassed || exam.proctoringEnforcement === 'warn') ? 'warn' : 'block',
     strikeLimit: Math.max(1, exam.proctoringStrikeLimit),

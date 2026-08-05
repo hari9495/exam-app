@@ -150,6 +150,7 @@ export class ExamsService {
   private resolveProctoringFields(dto: {
     enableAntiCheating?: boolean;
     webcamProctoringEnabled?: boolean;
+    webcamRecordOnly?: boolean;
     proctoringEnforcement?: string;
     proctoringStrikeLimit?: number;
     disabledProctoringSignals?: string[];
@@ -158,6 +159,7 @@ export class ExamsService {
   }): {
     enableAntiCheating?: boolean;
     webcamProctoringEnabled?: boolean;
+    webcamRecordOnly?: boolean;
     proctoringEnforcement?: string;
     proctoringStrikeLimit?: number;
     disabledProctoringSignalsJson?: string | null;
@@ -168,6 +170,7 @@ export class ExamsService {
       return {
         enableAntiCheating: false,
         webcamProctoringEnabled: false,
+        webcamRecordOnly: false,
         disabledProctoringSignalsJson: JSON.stringify(TOGGLEABLE_PROCTORING_SIGNALS),
         screenCaptureEnabled: false,
         lockdownRequired: false,
@@ -176,6 +179,7 @@ export class ExamsService {
     return {
       ...(dto.enableAntiCheating !== undefined ? { enableAntiCheating: dto.enableAntiCheating } : {}),
       ...(dto.webcamProctoringEnabled !== undefined ? { webcamProctoringEnabled: dto.webcamProctoringEnabled } : {}),
+      ...(dto.webcamRecordOnly !== undefined ? { webcamRecordOnly: dto.webcamRecordOnly } : {}),
       ...(dto.proctoringEnforcement !== undefined ? { proctoringEnforcement: dto.proctoringEnforcement } : {}),
       ...(dto.proctoringStrikeLimit !== undefined ? { proctoringStrikeLimit: dto.proctoringStrikeLimit } : {}),
       ...(dto.disabledProctoringSignals !== undefined
@@ -577,6 +581,7 @@ export class ExamsService {
           feedbackVisibility: exam.feedbackVisibility,
           enableAntiCheating: exam.enableAntiCheating,
           webcamProctoringEnabled: exam.webcamProctoringEnabled,
+          webcamRecordOnly: exam.webcamRecordOnly,
           proctoringEnforcement: exam.proctoringEnforcement,
           proctoringStrikeLimit: exam.proctoringStrikeLimit,
           disabledProctoringSignalsJson: exam.disabledProctoringSignalsJson,

@@ -4,6 +4,7 @@ function source(overrides: Partial<Parameters<typeof resolveProctoringConfig>[0]
   return {
     enableAntiCheating: true,
     webcamProctoringEnabled: true,
+    webcamRecordOnly: false,
     proctoringEnforcement: 'block',
     proctoringStrikeLimit: 3,
     disabledProctoringSignalsJson: null,
@@ -18,6 +19,7 @@ describe('resolveProctoringConfig', () => {
     expect(resolveProctoringConfig(source())).toEqual({
       enableAntiCheating: true,
       webcamEnabled: true,
+      webcamRecordOnly: false,
       enforcement: 'block',
       strikeLimit: 3,
       disabledSignals: [],
@@ -34,12 +36,18 @@ describe('resolveProctoringConfig', () => {
     expect(config).toEqual({
       enableAntiCheating: false,
       webcamEnabled: false,
+      webcamRecordOnly: false,
       enforcement: 'warn',
       strikeLimit: 3,
       disabledSignals: [],
       screenCaptureEnabled: false,
       lockdownRequired: false,
     });
+  });
+
+  it('surfaces webcamRecordOnly on the resolved config, so registerWebcamViolation can downgrade enforcement for webcam only', () => {
+    expect(resolveProctoringConfig(source({ webcamRecordOnly: true })).webcamRecordOnly).toBe(true);
+    expect(resolveProctoringConfig(source({ webcamRecordOnly: false })).webcamRecordOnly).toBe(false);
   });
 
   it('surfaces screenCaptureEnabled on the resolved config', () => {
@@ -99,6 +107,7 @@ describe('proctoring bypass', () => {
   const blockingExam = {
     enableAntiCheating: true,
     webcamProctoringEnabled: true,
+    webcamRecordOnly: false,
     proctoringEnforcement: 'block',
     proctoringStrikeLimit: 5,
     disabledProctoringSignalsJson: JSON.stringify(['right_click']),

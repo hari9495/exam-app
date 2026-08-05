@@ -334,6 +334,12 @@ model Exam {
   // resolveProctoringFields), so a stale/duplicated row can't leave monitoring silently active.
   enableAntiCheating            Boolean       @default(true) @map("enable_anti_cheating")
   webcamProctoringEnabled       Boolean       @default(true) @map("webcam_proctoring_enabled")
+  // Overrides proctoringEnforcement for webcam violations only: when true, webcam events
+  // are still detected, recorded and counted, but never pause or block the exam --
+  // regardless of the enforcement mode below, which still governs the "Watch for" browser
+  // signals normally. Default false preserves today's behavior (webcam follows the same
+  // enforcement as everything else) for every existing exam.
+  webcamRecordOnly              Boolean       @default(false) @map("webcam_record_only")
   proctoringEnforcement         String        @default("block") @map("proctoring_enforcement")
   proctoringStrikeLimit         Int           @default(3) @map("proctoring_strike_limit")
   disabledProctoringSignalsJson String?       @map("disabled_proctoring_signals_json") @db.NVarChar(Max)

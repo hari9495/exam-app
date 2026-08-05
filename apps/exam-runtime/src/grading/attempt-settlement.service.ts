@@ -28,6 +28,7 @@ export interface SettlementExam {
   passCriteriaPercent: number;
   enableAntiCheating: boolean;
   webcamProctoringEnabled: boolean;
+  webcamRecordOnly: boolean;
   proctoringEnforcement: string;
   proctoringStrikeLimit: number;
   disabledProctoringSignalsJson: string | null;
@@ -265,7 +266,12 @@ export class AttemptSettlementService {
     // key to collide with in the first place.
     screenshotMetadata?: Record<string, unknown>,
   ): Promise<{ attempt: Attempt; strike: number }> {
-    const { enforcement, strikeLimit } = resolveProctoringConfig(exam, attempt);
+    const { enforcement, webcamRecordOnly, strikeLimit } = resolveProctoringConfig(exam, attempt);
+    // webcamRecordOnly downgrades this violation to warn-only regardless of the exam's
+    // enforcement mode -- still detected, recorded and counted (below), never punished.
+    // The "Watch for" browser signals are untouched and keep using `enforcement` as-is
+    // (see registerBrowserActivityViolation).
+    const webcamEnforcement = webcamRecordOnly ? 'warn' : enforcement;
     const strike = attempt.webcamViolationCount + 1;
     const atLimit = strike >= strikeLimit;
     const eventType =
@@ -299,7 +305,7 @@ export class AttemptSettlementService {
     // registerBrowserActivityViolation's own blocked-early-return both protect). Warn-only still
     // records and counts but never interrupts the candidate, live or not.
     const isLive = attempt.status === 'in_progress' || attempt.status === 'paused';
-    const status = enforcement === 'warn' || !isLive ? attempt.status : atLimit ? 'blocked' : 'paused';
+    const status = webcamEnforcement === 'warn' || !isLive ? attempt.status : atLimit ? 'blocked' : 'paused';
     const keepExistingPause = !isLive || attempt.status === 'paused';
     const updated = await tx.attempt.update({
       where: { id: attempt.id },
@@ -308,7 +314,7 @@ export class AttemptSettlementService {
         status,
         ...(keepExistingPause
           ? {}
-          : enforcement === 'warn'
+          : webcamEnforcement === 'warn'
             ? { pausedAt: null, pausedReason: null }
             : { pausedAt: new Date(), pausedReason: 'webcam' as const }),
       },

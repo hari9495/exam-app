@@ -88,7 +88,7 @@ describe('ExamDetailsForm', () => {
       availabilityWindowStart: '2026-07-20T09:00:00.000Z', availabilityWindowEnd: '2026-07-27T18:00:00.000Z',
       walkInEnabled: false, walkInListed: true, allowedIpRange: null, createdAt: '2026-07-01T00:00:00.000Z', sections: [], invitationCount: 0,
       hasStartedAttempts: false, requiresManualGrading: false,
-      enableAntiCheating: true, webcamProctoringEnabled: true, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
+      enableAntiCheating: true, webcamProctoringEnabled: true, webcamRecordOnly: false, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
       disabledProctoringSignalsJson: null, screenCaptureEnabled: false, lockdownRequired: false,
     };
     render(<ExamDetailsForm initialExam={scheduledExam} onSubmit={jest.fn()} submitLabel="Save" />);
@@ -202,7 +202,7 @@ describe('ExamDetailsForm', () => {
       availabilityWindowStart: null, availabilityWindowEnd: null, walkInEnabled: false, walkInListed: true,
       allowedIpRange: '203.0.113.0/24', createdAt: '2026-07-01T00:00:00.000Z', sections: [], invitationCount: 0,
       hasStartedAttempts: false, requiresManualGrading: false,
-      enableAntiCheating: true, webcamProctoringEnabled: true, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
+      enableAntiCheating: true, webcamProctoringEnabled: true, webcamRecordOnly: false, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
       disabledProctoringSignalsJson: null, screenCaptureEnabled: false, lockdownRequired: false,
     };
     render(<ExamDetailsForm initialExam={examWithIpRange} onSubmit={onSubmit} submitLabel="Save" />);
@@ -296,12 +296,58 @@ describe('ExamDetailsForm', () => {
       );
     });
 
+    it("submits webcamRecordOnly=false by default, so today's exams keep pausing/blocking on webcam violations", async () => {
+      const onSubmit = jest.fn();
+      render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Create" />);
+
+      await userEvent.type(screen.getByLabelText('Title'), 'Screen');
+      await userEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ webcamRecordOnly: false }));
+    });
+
+    it('lets webcam violations be recorded without pausing/blocking, independent of the "If a rule is broken" setting', async () => {
+      const onSubmit = jest.fn();
+      render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Create" />);
+
+      await userEvent.type(screen.getByLabelText('Title'), 'Screen');
+      await userEvent.click(screen.getByLabelText('Record Only — Never Pause For Webcam Violations'));
+      await userEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ webcamRecordOnly: true, proctoringEnforcement: 'block' }),
+      );
+    });
+
+    it('hides the webcam record-only option when webcam proctoring itself is off', async () => {
+      render(<ExamDetailsForm onSubmit={jest.fn()} submitLabel="Create" />);
+
+      await userEvent.click(screen.getByLabelText('Require Webcam Proctoring'));
+
+      expect(screen.queryByLabelText('Record Only — Never Pause For Webcam Violations')).not.toBeInTheDocument();
+    });
+
+    it('prefills webcamRecordOnly from an existing exam', () => {
+      const examWithRecordOnlyWebcam = {
+        id: 'exam-1', title: 'Existing', instructions: null, status: 'draft' as const, durationMinutes: 60,
+        passCriteriaPercent: 40, randomizeOrder: false, feedbackVisibility: 'pass_fail' as const, schedulingEnabled: false,
+        availabilityWindowStart: null, availabilityWindowEnd: null, walkInEnabled: false, walkInListed: true,
+        allowedIpRange: null, createdAt: '2026-07-01T00:00:00.000Z', sections: [], invitationCount: 0,
+        hasStartedAttempts: false, requiresManualGrading: false,
+        enableAntiCheating: true, webcamProctoringEnabled: true, webcamRecordOnly: true, proctoringEnforcement: 'block' as const,
+        proctoringStrikeLimit: 3, disabledProctoringSignalsJson: null, screenCaptureEnabled: false, lockdownRequired: false,
+      };
+      render(<ExamDetailsForm initialExam={examWithRecordOnlyWebcam} onSubmit={jest.fn()} submitLabel="Save" />);
+
+      expect(screen.getByLabelText('Record Only — Never Pause For Webcam Violations')).toBeChecked();
+    });
+
     it('hides the strike limit in record-only mode, because nothing is ever blocked', async () => {
       render(<ExamDetailsForm onSubmit={jest.fn()} submitLabel="Create" />);
 
       expect(screen.getByLabelText('Block After')).toBeInTheDocument();
 
-      await userEvent.click(screen.getByLabelText(/Record only/i));
+      await userEvent.click(screen.getByLabelText('Record Only — Never Pause The Exam'));
 
       expect(screen.queryByLabelText('Block After')).not.toBeInTheDocument();
     });
@@ -330,7 +376,7 @@ describe('ExamDetailsForm', () => {
       );
 
       expect(screen.getByLabelText('Require Webcam Proctoring')).not.toBeChecked();
-      expect(screen.getByLabelText(/Record only/i)).toBeChecked();
+      expect(screen.getByLabelText('Record Only — Never Pause The Exam')).toBeChecked();
     });
 
     it('disables every proctoring control once the exam is locked, and says why', () => {

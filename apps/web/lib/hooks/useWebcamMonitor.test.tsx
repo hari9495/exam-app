@@ -226,6 +226,7 @@ describe('useWebcamMonitor', () => {
       useWebcamMonitor(true, undefined, {
         enableAntiCheating: true,
         webcamEnabled: false,
+        webcamRecordOnly: false,
         enforcement: 'block',
         strikeLimit: 3,
         disabledSignals: [],

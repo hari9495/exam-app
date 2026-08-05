@@ -52,6 +52,7 @@ describe('AttemptSettlementService', () => {
     passCriteriaPercent: 50,
     enableAntiCheating: true,
     webcamProctoringEnabled: true,
+    webcamRecordOnly: false,
     proctoringEnforcement: 'block',
     proctoringStrikeLimit: 3,
     disabledProctoringSignalsJson: null,
@@ -830,6 +831,40 @@ describe('AttemptSettlementService', () => {
       expect(tx.attempt.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'blocked' }) }));
     });
 
+    it('with webcamRecordOnly=true, still counts the strike and logs a high-severity event at the limit, but never pauses or blocks', async () => {
+      const recordOnlyExam = { ...exam, webcamRecordOnly: true };
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', status: 'in_progress', webcamViolationCount: 2 } as any;
+      const tx = {
+        proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
+        attempt: { update: jest.fn().mockResolvedValue({ ...attempt, webcamViolationCount: 3 }) },
+      } as any;
+
+      const { attempt: updated, strike } = await service.registerWebcamViolation(tx, recordOnlyExam, attempt, 'head_turned', 'snap');
+
+      expect(strike).toBe(3);
+      expect(tx.proctoringEvent.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ eventType: 'webcam_head_turned', severity: 'high' }) }),
+      );
+      expect(tx.attempt.update).toHaveBeenCalledWith({
+        where: { id: 'attempt-1' },
+        data: { webcamViolationCount: 3, status: 'in_progress', pausedAt: null, pausedReason: null },
+      });
+      expect(updated.status).not.toBe('blocked');
+    });
+
+    it('with webcamRecordOnly=true, leaves the "Watch for" browser signals unaffected -- they still block via registerBrowserActivityViolation', async () => {
+      const recordOnlyExam = { ...exam, webcamRecordOnly: true };
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', status: 'in_progress', browserActivityViolationCount: 2 } as any;
+      const tx = {
+        proctoringEvent: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'e1', eventType: 'tab_switch', severity: 'medium' }) },
+        attempt: { update: jest.fn().mockResolvedValue({ ...attempt, status: 'blocked', browserActivityViolationCount: 3 }) },
+      } as any;
+
+      const { attempt: updated } = await service.registerBrowserActivityViolation(tx, recordOnlyExam, attempt, 'tab_switch');
+
+      expect(updated.status).toBe('blocked');
+    });
+
     it('merges the screenshot overlay into metadataJson directly, alongside snapshot/strike', async () => {
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', status: 'in_progress', webcamViolationCount: 0 } as any;
       const tx = {
@@ -1162,6 +1197,7 @@ describe('AttemptSettlementService', () => {
       passCriteriaPercent: 40,
       enableAntiCheating: true,
       webcamProctoringEnabled: true,
+      webcamRecordOnly: false,
       proctoringEnforcement: 'block',
       proctoringStrikeLimit: 2,
       disabledProctoringSignalsJson: null,

@@ -112,7 +112,10 @@ export class IntegrityAnalysisService {
       flags.push(
         ...deriveAttemptFlags({
           webcamViolationCount: attempt.webcamViolationCount,
-          blocked: proctoring.enforcement === 'block' && attempt.webcamViolationCount >= proctoring.strikeLimit,
+          blocked:
+            proctoring.enforcement === 'block' &&
+            !proctoring.webcamRecordOnly &&
+            attempt.webcamViolationCount >= proctoring.strikeLimit,
           events,
         }),
       );

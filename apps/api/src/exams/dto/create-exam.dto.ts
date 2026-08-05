@@ -81,6 +81,12 @@ export class CreateExamDto {
   @IsBoolean()
   webcamProctoringEnabled?: boolean;
 
+  // Overrides proctoringEnforcement for webcam violations only -- see the schema comment
+  // on Exam.webcamRecordOnly for the full semantics.
+  @IsOptional()
+  @IsBoolean()
+  webcamRecordOnly?: boolean;
+
   @IsOptional()
   @IsIn(PROCTORING_ENFORCEMENT_VALUES)
   proctoringEnforcement?: string;

@@ -21,6 +21,7 @@ export interface ExamDetailsValue {
   allowedIpRange?: string | null;
   enableAntiCheating: boolean;
   webcamProctoringEnabled: boolean;
+  webcamRecordOnly: boolean;
   proctoringEnforcement: 'warn' | 'block';
   proctoringStrikeLimit: number;
   disabledProctoringSignals: string[];
@@ -94,6 +95,7 @@ export function ExamDetailsForm({
   const [allowedIpRange, setAllowedIpRange] = useState(initialExam?.allowedIpRange ?? '');
   const [enableAntiCheating, setEnableAntiCheating] = useState(initialExam?.enableAntiCheating ?? true);
   const [webcamProctoringEnabled, setWebcamProctoringEnabled] = useState(initialExam?.webcamProctoringEnabled ?? true);
+  const [webcamRecordOnly, setWebcamRecordOnly] = useState(initialExam?.webcamRecordOnly ?? false);
   const [proctoringEnforcement, setProctoringEnforcement] = useState<'warn' | 'block'>(initialExam?.proctoringEnforcement ?? 'block');
   const [proctoringStrikeLimit, setProctoringStrikeLimit] = useState(String(initialExam?.proctoringStrikeLimit ?? 3));
   const [disabledSignals, setDisabledSignals] = useState<string[]>(() => {
@@ -138,6 +140,7 @@ export function ExamDetailsForm({
           : undefined,
       enableAntiCheating,
       webcamProctoringEnabled,
+      webcamRecordOnly,
       proctoringEnforcement,
       proctoringStrikeLimit: Number(proctoringStrikeLimit),
       disabledProctoringSignals: disabledSignals,
@@ -283,7 +286,22 @@ export function ExamDetailsForm({
             regardless, so nothing here can end up silently active while hidden. */}
         {enableAntiCheating && (
           <div className="flex flex-col gap-4 border-l-2 border-recruiter-border pl-4 sm:col-span-2">
-            <Checkbox label="Require Webcam Proctoring" checked={webcamProctoringEnabled} onChange={setWebcamProctoringEnabled} />
+            <div>
+              <Checkbox label="Require Webcam Proctoring" checked={webcamProctoringEnabled} onChange={setWebcamProctoringEnabled} />
+              {webcamProctoringEnabled && (
+                <div className="pl-6 pt-2">
+                  <Checkbox
+                    label="Record Only — Never Pause For Webcam Violations"
+                    checked={webcamRecordOnly}
+                    onChange={setWebcamRecordOnly}
+                  />
+                  <p className="pt-1 text-xs text-recruiter-text-secondary">
+                    Webcam violations (no face, multiple faces, head turned) are still detected and recorded as
+                    evidence, but never pause or block the exam. The rules below still pause/block as configured.
+                  </p>
+                </div>
+              )}
+            </div>
             {/* What counts as a rule violation has to be decided before what happens
                 when one fires -- reads as "watch for X; if a rule is broken, do Y;
                 after N strikes" instead of stating the consequence before the trigger. */}

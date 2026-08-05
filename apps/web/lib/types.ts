@@ -148,6 +148,7 @@ export interface Exam {
   allowedIpRange: string | null;
   enableAntiCheating: boolean;
   webcamProctoringEnabled: boolean;
+  webcamRecordOnly: boolean;
   proctoringEnforcement: 'warn' | 'block';
   proctoringStrikeLimit: number;
   disabledProctoringSignalsJson: string | null;
@@ -374,6 +375,7 @@ export interface AttemptSectionSummary {
 export interface ExamProctoringConfig {
   enableAntiCheating: boolean;
   webcamEnabled: boolean;
+  webcamRecordOnly: boolean;
   enforcement: 'warn' | 'block';
   strikeLimit: number;
   disabledSignals: string[];

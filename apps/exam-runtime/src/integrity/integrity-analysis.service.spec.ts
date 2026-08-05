@@ -20,6 +20,7 @@ describe('IntegrityAnalysisService', () => {
         // Schema defaults (apps/api/prisma/schema.prisma): anti-cheating on, webcam on, block enforcement, limit 3, no disabled signals.
         enableAntiCheating: true,
         webcamProctoringEnabled: true,
+        webcamRecordOnly: false,
         proctoringEnforcement: 'block',
         proctoringStrikeLimit: 3,
         disabledProctoringSignalsJson: null,
@@ -205,6 +206,31 @@ describe('IntegrityAnalysisService', () => {
       ...attemptWithExam,
       webcamViolationCount: 3,
       invitation: { exam: { ...attemptWithExam.invitation.exam, proctoringEnforcement: 'warn' } },
+    };
+    tenantPrisma.forTenant
+      .mockResolvedValueOnce(attempt)
+      .mockImplementationOnce((_ctx, fn) => fn(readTxWith([])))
+      .mockImplementationOnce((_ctx, fn) => fn(write));
+    integrityNarrativeClient.writeNarrative.mockResolvedValue('Some webcam violations were recorded.');
+
+    await service.analyze('attempt-1');
+
+    expect(integrityNarrativeClient.writeNarrative).toHaveBeenCalledWith(
+      [{ type: 'webcam_violations', severity: 'medium', detail: '3 webcam violation(s) recorded' }],
+      { examTitle: 'Backend Engineer Exam', level: 'review' },
+      fakeAiProvider,
+    );
+    expect(write.integrityAnalysis.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ create: expect.objectContaining({ level: 'review' }) }),
+    );
+  });
+
+  it('config-aware blocked flag: webcamRecordOnly exams are never blocked regardless of violation count, even on block enforcement -- medium severity, no "session blocked" wording', async () => {
+    const write = persistTx();
+    const attempt = {
+      ...attemptWithExam,
+      webcamViolationCount: 3,
+      invitation: { exam: { ...attemptWithExam.invitation.exam, webcamRecordOnly: true } },
     };
     tenantPrisma.forTenant
       .mockResolvedValueOnce(attempt)

@@ -2111,6 +2111,21 @@ describe('ExamsService', () => {
       );
     });
 
+    it('persists webcamRecordOnly independently of proctoringEnforcement, so webcam can record-only while browser signals still block', async () => {
+      const tx = { exam: { create: jest.fn().mockResolvedValue({ id: 'exam-1' }) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.create(context, 'user-1', {
+        title: 'Screen',
+        webcamRecordOnly: true,
+        proctoringEnforcement: 'block',
+      });
+
+      expect(tx.exam.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ webcamRecordOnly: true, proctoringEnforcement: 'block' }) }),
+      );
+    });
+
     it('leaves the proctoring columns to their schema defaults when the caller omits them', async () => {
       const tx = { exam: { create: jest.fn().mockResolvedValue({ id: 'exam-1' }) } };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
@@ -2258,6 +2273,7 @@ describe('ExamsService', () => {
       expect(data).toMatchObject({
         enableAntiCheating: false,
         webcamProctoringEnabled: false,
+        webcamRecordOnly: false,
         screenCaptureEnabled: false,
         lockdownRequired: false,
       });
