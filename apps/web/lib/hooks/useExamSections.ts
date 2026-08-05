@@ -18,6 +18,20 @@ export function useCreateSection(examId: string) {
   });
 }
 
+export function useUpdateSection(examId: string, sectionId: string) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { weightPercent: number }) =>
+      apiFetch(
+        `/exams/${examId}/sections/${sectionId}`,
+        { method: 'PATCH', body: JSON.stringify(input) },
+        accessToken ?? undefined,
+      ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['exams', examId] }),
+  });
+}
+
 export function useReplaceSectionQuestions(examId: string, sectionId: string) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();

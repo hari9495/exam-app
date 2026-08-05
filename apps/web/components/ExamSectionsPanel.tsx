@@ -8,6 +8,7 @@ import {
   useDeleteSection,
   useDuplicateSection,
   useReplaceSectionQuestions,
+  useUpdateSection,
   usePoolPreview,
 } from '../lib/hooks/useExamSections';
 import { SectionQuestionPicker } from './SectionQuestionPicker';
@@ -233,6 +234,52 @@ function SectionQuestionList({ examId, section, locked }: { examId: string; sect
   );
 }
 
+function SectionWeightInput({ examId, section, locked }: { examId: string; section: ExamSection; locked: boolean }) {
+  const updateSection = useUpdateSection(examId, section.id);
+  const { toast } = useToast();
+  const [value, setValue] = useState(String(section.weightPercent));
+
+  if (locked) {
+    return <span className="text-sm text-recruiter-text-secondary">{section.weightPercent}% weight</span>;
+  }
+
+  // Saved on blur rather than per-keystroke: typing "70" passes through "7", and a PATCH per
+  // character would both spam the API and briefly persist a weight the recruiter never meant.
+  function handleBlur() {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > 100 || parsed === section.weightPercent) {
+      setValue(String(section.weightPercent));
+      return;
+    }
+    updateSection.mutate(
+      { weightPercent: parsed },
+      {
+        onError: (error) => {
+          toast(error instanceof Error ? error.message : 'Failed to update weight.', 'error');
+          setValue(String(section.weightPercent));
+        },
+      },
+    );
+  }
+
+  return (
+    <label className="flex items-center gap-1 text-sm text-recruiter-text-secondary">
+      Weight
+      <input
+        type="number"
+        min={0}
+        max={100}
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        onBlur={handleBlur}
+        aria-label={`Weight % for ${section.title}`}
+        className="w-16 rounded border border-recruiter-border px-1.5 py-0.5 text-right"
+      />
+      %
+    </label>
+  );
+}
+
 export function ExamSectionsPanel({ examId }: { examId: string }) {
   const { data: exam } = useExam(examId);
   const createSection = useCreateSection(examId);
@@ -249,6 +296,10 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
   const lockedMessage = exam?.hasStartedAttempts
     ? 'Sections and questions are locked because a candidate has already started this exam.'
     : 'This exam is published, so its sections and questions are locked. Click Unpublish above to make changes.';
+  const sections = (exam?.sections ?? []).slice().sort((a, b) => a.orderIndex - b.orderIndex);
+  // Surfaced here so the recruiter sees the shortfall while editing, rather than only hitting
+  // publish()'s rejection later.
+  const weightTotal = sections.reduce((sum, section) => sum + section.weightPercent, 0);
 
   function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -292,13 +343,21 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
           <Button type="submit">Add section</Button>
         </form>
       )}
-      {(exam?.sections ?? [])
-        .slice()
-        .sort((a, b) => a.orderIndex - b.orderIndex)
+      {!locked && sections.length > 0 && (
+        <p className={`text-sm font-medium ${weightTotal === 100 ? 'text-status-success' : 'text-status-warning'}`}>
+          {weightTotal === 100
+            ? `Weights total: ${weightTotal}%`
+            : `Weights total: ${weightTotal}% — add ${100 - weightTotal}% more before publishing`}
+        </p>
+      )}
+      {sections
         .map((section) => (
           <Card key={section.id} className="flex flex-col gap-2">
             <div className="flex items-center justify-between gap-2">
-              <p className="font-medium">{section.title}</p>
+              <div className="flex items-center gap-2">
+                <p className="font-medium">{section.title}</p>
+                <SectionWeightInput examId={examId} section={section} locked={locked} />
+              </div>
               <div className="flex items-center gap-1.5">
                 {!locked && section.selectionMode !== 'pool' && (
                   <Button variant="secondary" onClick={() => setPickerSectionId(section.id)}>

@@ -730,4 +730,148 @@ describe('ExamSectionsPanel', () => {
     expect(screen.queryByRole('button', { name: 'More Actions' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('New Section Title')).not.toBeInTheDocument();
   });
+
+  describe('section weights', () => {
+    function mockWeightedExam(
+      weights: number[],
+      overrides: (url: string, options?: RequestInit) => Response | null = () => null,
+    ) {
+      const fetchMock = jest.fn(async (url: RequestInfo | URL, options?: RequestInit) => {
+        const urlStr = String(url);
+        if (urlStr.endsWith('/auth/refresh')) {
+          return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        }
+        const override = overrides(urlStr, options);
+        if (override) return override;
+        if (urlStr.includes('/exams/exam-1')) {
+          return new Response(
+            JSON.stringify({
+              id: 'exam-1',
+              title: 'Backend Round',
+              instructions: null,
+              status: 'draft',
+              durationMinutes: 60,
+              passCriteriaPercent: 40,
+              randomizeOrder: false,
+              createdAt: '2026-01-01T00:00:00.000Z',
+              sections: weights.map((weightPercent, index) => ({
+                id: `section-${index + 1}`,
+                examId: 'exam-1',
+                title: index === 0 ? 'Section One' : 'Section Two',
+                orderIndex: index,
+                selectionMode: 'fixed',
+                poolSize: null,
+                poolDifficulty: null,
+                targetDurationMinutes: null,
+                weightPercent,
+                questions: [{ questionId: `q${index + 1}` }],
+              })),
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+      return fetchMock;
+    }
+
+    function renderPanel() {
+      render(
+        <QueryProvider>
+          <ToastProvider>
+            <AuthProvider>
+              <ExamSectionsPanel examId="exam-1" />
+            </AuthProvider>
+          </ToastProvider>
+        </QueryProvider>,
+      );
+    }
+
+    it("shows each section's weight and a running total", async () => {
+      mockWeightedExam([60, 40]);
+      renderPanel();
+
+      expect(await screen.findByLabelText('Weight % for Section One')).toHaveValue(60);
+      expect(screen.getByLabelText('Weight % for Section Two')).toHaveValue(40);
+      expect(screen.getByText('Weights total: 100%')).toBeInTheDocument();
+    });
+
+    it('shows a shortfall warning when weights do not sum to 100', async () => {
+      mockWeightedExam([60, 20]);
+      renderPanel();
+
+      expect(await screen.findByText(/Weights total: 80% — add 20% more before publishing/)).toBeInTheDocument();
+    });
+
+    it("saves a section's new weight on blur", async () => {
+      const fetchMock = mockWeightedExam([60, 40], (url, options) =>
+        url.endsWith('/sections/section-1') && options?.method === 'PATCH'
+          ? new Response(JSON.stringify({ id: 'section-1', weightPercent: 70 }), { status: 200 })
+          : null,
+      );
+      renderPanel();
+      const input = await screen.findByLabelText('Weight % for Section One');
+
+      await userEvent.clear(input);
+      await userEvent.type(input, '70');
+      await userEvent.tab(); // triggers blur
+
+      await waitFor(() => {
+        const patchCall = fetchMock.mock.calls.find(
+          (call) => String(call[0]).endsWith('/sections/section-1') && (call[1] as RequestInit | undefined)?.method === 'PATCH',
+        );
+        expect(patchCall).toBeDefined();
+        expect(JSON.parse(String((patchCall![1] as RequestInit).body))).toEqual({ weightPercent: 70 });
+      });
+    });
+
+    it('does not PATCH when the value is unchanged or out of range', async () => {
+      const fetchMock = mockWeightedExam([60, 40]);
+      renderPanel();
+      const input = await screen.findByLabelText('Weight % for Section One');
+
+      await userEvent.clear(input);
+      await userEvent.type(input, '150'); // above the 0-100 range
+      await userEvent.tab();
+
+      await waitFor(() => expect(input).toHaveValue(60)); // reverted to the persisted value
+      const patchCall = fetchMock.mock.calls.find(
+        (call) => (call[1] as RequestInit | undefined)?.method === 'PATCH',
+      );
+      expect(patchCall).toBeUndefined();
+    });
+
+    it('renders the weight read-only, with no input, once the exam is locked', async () => {
+      const fetchMock = jest.fn(async (url: RequestInfo | URL) => {
+        const urlStr = String(url);
+        if (urlStr.endsWith('/auth/refresh')) {
+          return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        }
+        if (urlStr.includes('/exams/exam-1')) {
+          return new Response(
+            JSON.stringify({
+              id: 'exam-1', title: 'Backend Round', instructions: null, status: 'published',
+              durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false,
+              createdAt: '2026-01-01T00:00:00.000Z',
+              sections: [{
+                id: 'section-1', examId: 'exam-1', title: 'Section One', orderIndex: 0,
+                selectionMode: 'fixed', poolSize: null, poolDifficulty: null,
+                targetDurationMinutes: null, weightPercent: 100, questions: [{ questionId: 'q1' }],
+              }],
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+      renderPanel();
+
+      expect(await screen.findByText('100% weight')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Weight % for Section One')).not.toBeInTheDocument();
+      // The running total is an editing aid -- pointless once nothing can change.
+      expect(screen.queryByText(/Weights total:/)).not.toBeInTheDocument();
+    });
+  });
 });

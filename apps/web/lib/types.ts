@@ -108,6 +108,9 @@ export interface ExamSection {
   poolSize: number | null;
   poolDifficulty: Difficulty | null;
   targetDurationMinutes: number | null;
+  // This section's share of the exam's grade, independent of its questions' raw marks. Must sum
+  // to 100 across an exam's sections before it can be published.
+  weightPercent: number;
   // The exam detail endpoint embeds the full question (options included), not
   // just a summary -- widened to match so callers like the exam preview page
   // don't need a second, separately-filtered fetch to render a question.
