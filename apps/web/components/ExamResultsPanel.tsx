@@ -143,7 +143,7 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
   // is never optional.
   const selectColumn: Column<ExamResultRow> = {
     key: 'select',
-    header: <Checkbox checked={allVisibleSelected} onChange={toggleSelectAll} label="Select all" hideLabel />,
+    header: <Checkbox checked={allVisibleSelected} onChange={toggleSelectAll} label="Select All" hideLabel />,
     sortLabel: 'Select',
     render: (row) => (
       <Checkbox
@@ -256,7 +256,7 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-end justify-between gap-2">
             <div className="max-w-xs flex-1">
-              <Input label="Search candidates" hideLabel value={search} onChange={setSearch} placeholder="Search candidates…" icon={<Search size={14} />} />
+              <Input label="Search Candidates" hideLabel value={search} onChange={setSearch} placeholder="Search candidates…" icon={<Search size={14} />} />
             </div>
             <div className="flex items-end gap-2">
               <Button variant="secondary" onClick={() => handleExport('csv')} disabled={exportMutation.isPending}>

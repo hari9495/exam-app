@@ -53,7 +53,7 @@ export function AdvanceToNextRoundModal({ examId, candidateIds, open, onClose, o
   const noPublishedTargets = targetOptions.length === 1;
 
   return (
-    <Modal open={open} title={`Advance ${candidateIds.length} candidate${candidateIds.length === 1 ? '' : 's'}`} onClose={onClose}>
+    <Modal open={open} title={`Advance ${candidateIds.length} Candidate${candidateIds.length === 1 ? '' : 's'}`} onClose={onClose}>
       {noPublishedTargets ? (
         <p className="text-sm text-recruiter-text-secondary">No other published exams to advance candidates into — publish one first.</p>
       ) : (
@@ -62,7 +62,7 @@ export function AdvanceToNextRoundModal({ examId, candidateIds, open, onClose, o
             Invite the selected candidates to a different exam, e.g. the next interview round. This doesn&apos;t change
             anything about their result here.
           </p>
-          <Select label="Move to exam" value={targetExamId} onChange={setTargetExamId} options={targetOptions} required />
+          <Select label="Move To Exam" value={targetExamId} onChange={setTargetExamId} options={targetOptions} required />
         </>
       )}
       <div className="mt-4 flex justify-end gap-2">

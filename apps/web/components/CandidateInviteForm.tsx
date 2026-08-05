@@ -67,7 +67,7 @@ export function CandidateInviteForm({ onSubmit }: { onSubmit: (input: CandidateI
         Add candidate
       </Button>
       {open && (
-        <Modal open title="Add candidate" onClose={close}>
+        <Modal open title="Add Candidate" onClose={close}>
           {/* noValidate: this form has its own styled inline validation (error prop
               below), matching the Salesforce reference's red-bordered "Complete this
               field." message -- native browser validation would otherwise block the

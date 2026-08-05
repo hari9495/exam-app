@@ -162,7 +162,7 @@ export default function EditExamPage() {
                 detailsLocked && (
                   <>
                     <Checkbox
-                      label="Enable walk-in registration for this exam"
+                      label="Enable Walk-In Registration For This Exam"
                       checked={exam.walkInEnabled}
                       disabled={detailsLocked}
                       onChange={(checked) =>
@@ -177,7 +177,7 @@ export default function EditExamPage() {
                     {exam.walkInEnabled && (
                       <>
                         <Checkbox
-                          label="Show in the shared walk-in exam list"
+                          label="Show In The Shared Walk-In Exam List"
                           checked={exam.walkInListed}
                           disabled={detailsLocked}
                           onChange={(checked) =>

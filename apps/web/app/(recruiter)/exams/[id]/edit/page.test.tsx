@@ -141,13 +141,13 @@ describe('EditExamPage details lock', () => {
     currentExam = { ...mockExam, status: 'published', hasStartedAttempts: false, walkInEnabled: false };
     renderPage([], []);
 
-    const checkboxes = screen.getAllByLabelText('Enable walk-in registration for this exam');
+    const checkboxes = screen.getAllByLabelText('Enable Walk-In Registration For This Exam');
     expect(checkboxes).toHaveLength(1);
     expect(checkboxes[0]).toBeDisabled();
     // Regression: this control used to float in its own block above the tab bar
     // (visible on every tab, not just Details). It must live inside the Scheduling
     // & access section instead, alongside every other lock reason.
-    expect(screen.getByText('Scheduling & access').compareDocumentPosition(checkboxes[0])).toBe(
+    expect(screen.getByText('Scheduling & Access').compareDocumentPosition(checkboxes[0])).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
   });
@@ -156,21 +156,21 @@ describe('EditExamPage details lock', () => {
     currentExam = { ...mockExam, status: 'draft', hasStartedAttempts: false, walkInEnabled: false };
     renderPage([], []);
 
-    expect(screen.getAllByLabelText('Enable walk-in registration for this exam')).toHaveLength(1);
+    expect(screen.getAllByLabelText('Enable Walk-In Registration For This Exam')).toHaveLength(1);
   });
 
   it('keeps the walk-in toggle fully editable while the exam is still a draft (not yet locked)', () => {
     currentExam = { ...mockExam, status: 'draft', hasStartedAttempts: false, walkInEnabled: false };
     renderPage([], []);
 
-    expect(screen.getByLabelText('Enable walk-in registration for this exam')).not.toBeDisabled();
+    expect(screen.getByLabelText('Enable Walk-In Registration For This Exam')).not.toBeDisabled();
   });
 
   it('shows the "show in shared list" toggle alongside the walk-in toggle once published, also locked', () => {
     currentExam = { ...mockExam, status: 'published', hasStartedAttempts: false, walkInEnabled: true, walkInListed: true };
     renderPage([], []);
 
-    const checkboxes = screen.getAllByLabelText('Show in the shared walk-in exam list');
+    const checkboxes = screen.getAllByLabelText('Show In The Shared Walk-In Exam List');
     expect(checkboxes).toHaveLength(1);
     expect(checkboxes[0]).toBeDisabled();
     expect(checkboxes[0]).toBeChecked();

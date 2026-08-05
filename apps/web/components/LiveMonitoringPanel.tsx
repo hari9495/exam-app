@@ -175,7 +175,7 @@ function ProctoringLogModal({ attemptId, onClose }: { attemptId: string; onClose
   const [selectedScreenshot, setSelectedScreenshot] = useState<string | null>(null);
 
   return (
-    <Modal open title="Proctoring log" onClose={onClose}>
+    <Modal open title="Proctoring Log" onClose={onClose}>
       {isLoading ? (
         <p className="text-sm text-gray-500">Loading…</p>
       ) : !events || events.length === 0 ? (
@@ -213,11 +213,11 @@ function ProctoringLogModal({ attemptId, onClose }: { attemptId: string; onClose
         </ul>
       )}
 
-      <Modal open={selectedSnapshot !== null} title="Webcam snapshot" onClose={() => setSelectedSnapshot(null)}>
+      <Modal open={selectedSnapshot !== null} title="Webcam Snapshot" onClose={() => setSelectedSnapshot(null)}>
         {selectedSnapshot && <img src={selectedSnapshot} alt="Webcam snapshot" className="w-full rounded" />}
       </Modal>
 
-      <Modal open={selectedScreenshot !== null} title="Screen capture" onClose={() => setSelectedScreenshot(null)}>
+      <Modal open={selectedScreenshot !== null} title="Screen Capture" onClose={() => setSelectedScreenshot(null)}>
         {selectedScreenshot && <img src={selectedScreenshot} alt="Screen capture" className="w-full rounded" />}
       </Modal>
     </Modal>
@@ -539,7 +539,7 @@ export function LiveMonitoringPanel({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <ShieldAlert size={16} className="text-recruiter-text-tertiary" />
-                <h3 className="text-sm font-semibold text-recruiter-text">Proctoring alerts</h3>
+                <h3 className="text-sm font-semibold text-recruiter-text">Proctoring Alerts</h3>
               </div>
               {alerts.length > 0 && (
                 <span className="rounded-full bg-recruiter-bg-subtle px-2 py-0.5 text-xs font-medium text-recruiter-text-secondary">
@@ -586,7 +586,7 @@ export function LiveMonitoringPanel({
       {logAttemptId && <ProctoringLogModal attemptId={logAttemptId} onClose={() => setLogAttemptId(null)} />}
 
       {bypassAttemptId ? (
-        <Modal open title="Relax proctoring for this candidate" onClose={() => { setBypassAttemptId(null); setBypassReason(''); }}>
+        <Modal open title="Relax Proctoring For This Candidate" onClose={() => { setBypassAttemptId(null); setBypassReason(''); }}>
           <p className="mb-3 text-sm text-recruiter-text-secondary">
             Violations will still be recorded, but this candidate will no longer be paused or blocked. Only this candidate is
             affected.

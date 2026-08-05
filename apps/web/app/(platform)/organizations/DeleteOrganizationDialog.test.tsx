@@ -55,7 +55,7 @@ describe('DeleteOrganizationDialog', () => {
   it('keeps Delete disabled until the slug is typed exactly', async () => {
     renderDialog();
     const confirm = screen.getByRole('button', { name: 'Delete organization' });
-    const field = screen.getByLabelText(/Type acme to confirm/);
+    const field = screen.getByLabelText(/Type acme To Confirm/);
 
     expect(confirm).toBeDisabled();
 
@@ -69,7 +69,7 @@ describe('DeleteOrganizationDialog', () => {
   it('does not accept a near-miss such as different casing', async () => {
     renderDialog();
 
-    await userEvent.type(screen.getByLabelText(/Type acme to confirm/), 'ACME');
+    await userEvent.type(screen.getByLabelText(/Type acme To Confirm/), 'ACME');
 
     expect(screen.getByRole('button', { name: 'Delete organization' })).toBeDisabled();
   });
@@ -84,7 +84,7 @@ describe('DeleteOrganizationDialog', () => {
   it('sends the delete and closes', async () => {
     const onClose = renderDialog();
 
-    await userEvent.type(screen.getByLabelText(/Type acme to confirm/), 'acme');
+    await userEvent.type(screen.getByLabelText(/Type acme To Confirm/), 'acme');
     await userEvent.click(screen.getByRole('button', { name: 'Delete organization' }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalled());
@@ -102,7 +102,7 @@ describe('DeleteOrganizationDialog', () => {
       ),
     });
 
-    await userEvent.type(screen.getByLabelText(/Type acme to confirm/), 'acme');
+    await userEvent.type(screen.getByLabelText(/Type acme To Confirm/), 'acme');
     await userEvent.click(screen.getByRole('button', { name: 'Delete organization' }));
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('2 exams are in progress'));

@@ -85,7 +85,7 @@ export default function WalkInGroupsPage() {
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold text-recruiter-text">Walk-in Groups</h1>
+        <h1 className="text-2xl font-semibold text-recruiter-text">Walk-In Groups</h1>
         <p className="mt-1 text-sm text-recruiter-text-secondary">
           Bundle a subset of your walk-in-enabled exams behind their own shared link/QR code, separate from the
           default org-wide walk-in page. Each exam belongs to at most one group.
@@ -94,7 +94,7 @@ export default function WalkInGroupsPage() {
 
       <form onSubmit={handleCreate} className="flex items-end gap-2">
         <div className="max-w-sm flex-1">
-          <Input label="New group name" hideLabel value={newName} onChange={setNewName} placeholder="e.g. Fresher Drive Hackathon" />
+          <Input label="New Group Name" hideLabel value={newName} onChange={setNewName} placeholder="e.g. Fresher Drive Hackathon" />
         </div>
         <Button type="submit" loading={createGroup.isPending} className="inline-flex items-center gap-1.5">
           <Plus size={14} />

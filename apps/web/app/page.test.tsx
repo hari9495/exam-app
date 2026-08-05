@@ -32,11 +32,11 @@ describe('Home (landing page)', () => {
 
   it('shows the five-step walkthrough from building an exam to a hiring decision', () => {
     render(<Home />);
-    expect(screen.getByRole('heading', { name: 'Build the exam' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Invite candidates' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Candidate takes a proctored exam' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'AI-assisted scoring' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Review structured results' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Build The Exam' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Invite Candidates' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Candidate Takes A Proctored Exam' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'AI-Assisted Scoring' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Review Structured Results' })).toBeInTheDocument();
   });
 
   it('shows the four feature deep-dives', () => {
@@ -51,9 +51,9 @@ describe('Home (landing page)', () => {
     render(<Home />);
     expect(screen.getByRole('heading', { name: 'Candidate' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Recruiter' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Org admin' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Org Admin' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'SAML SSO' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Audit log' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Audit Log' })).toBeInTheDocument();
   });
 
   it('shows a closing CTA banner linking to the lead-capture form', () => {

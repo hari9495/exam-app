@@ -170,7 +170,7 @@ export default function PanelExamResultsPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-semibold">{exam?.title ?? 'Exam results'}</h1>
+      <h1 className="mb-6 text-2xl font-semibold">{exam?.title ?? 'Exam Results'}</h1>
 
       {summaryLoading ? (
         <p className="mb-6 text-sm text-gray-500">Loading summary…</p>

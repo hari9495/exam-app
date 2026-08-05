@@ -152,7 +152,7 @@ describe('ExamResultsPanel', () => {
     await user.keyboard('{Escape}');
 
     expect(screen.queryByRole('columnheader', { name: 'Integrity' })).not.toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: 'Select all' })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Select All' })).toBeInTheDocument();
   });
 
   it('shows status, score, result, and integrity for an attended candidate', () => {
@@ -361,11 +361,11 @@ describe('ExamResultsPanel', () => {
     });
     renderPanel();
 
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select All' }));
     expect(screen.getByRole('checkbox', { name: 'Select Alice' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: 'Select Bob' })).toBeChecked();
 
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select All' }));
     expect(screen.getByRole('checkbox', { name: 'Select Alice' })).not.toBeChecked();
     expect(screen.getByRole('checkbox', { name: 'Select Bob' })).not.toBeChecked();
   });

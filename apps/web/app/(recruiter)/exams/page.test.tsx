@@ -290,7 +290,7 @@ describe('ExamsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'More Actions' }));
     await userEvent.click(await screen.findByText('Delete'));
 
-    expect(screen.getByText('Delete exam')).toBeInTheDocument();
+    expect(screen.getByText('Delete Exam')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => expect(screen.getByText('Exam deleted.')).toBeInTheDocument());

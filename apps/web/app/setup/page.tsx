@@ -51,7 +51,7 @@ export default function SetupPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-white px-6 py-12">
       <div className="w-full max-w-sm">
-        <h1 className="mb-2 text-xl font-semibold text-gray-900">Platform setup</h1>
+        <h1 className="mb-2 text-xl font-semibold text-gray-900">Platform Setup</h1>
         <p className="mb-6 text-sm text-gray-600">
           Create the first platform administrator account. Use the one-time token printed to the server log at startup.
         </p>

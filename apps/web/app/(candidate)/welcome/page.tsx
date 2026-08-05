@@ -130,7 +130,7 @@ export default function CandidateWelcomePage() {
         <p className="mb-4 text-sm text-candidate-text-secondary">Duration: {current.exam.durationMinutes} minutes</p>
         {current.sections.length > 0 ? (
           <div className="mb-4 rounded-md border border-candidate-border p-3">
-            <h2 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-candidate-text-secondary">What&apos;s in this exam</h2>
+            <h2 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-candidate-text-secondary">What&apos;s In This Exam</h2>
             <ul className="text-sm text-candidate-text-secondary">
               {current.sections.map((section) => (
                 <li key={section.title} className="flex justify-between py-0.5">
@@ -171,7 +171,7 @@ export default function CandidateWelcomePage() {
             <div className="mb-4 rounded-md border border-candidate-border p-3">
               <h2 className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-candidate-text-secondary">
                 <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                Monitoring &amp; consent
+                Monitoring &amp; Consent
               </h2>
               <p className="mb-2 text-xs text-candidate-text-secondary">This exam is monitored. While you take it, we collect:</p>
               <ul className="mb-2 list-disc pl-4 text-xs text-candidate-text-secondary">
@@ -223,7 +223,7 @@ export default function CandidateWelcomePage() {
             {sebGateActive ? (
               <div className="mb-3 rounded-md border border-candidate-border p-3">
                 <h2 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-candidate-text-secondary">
-                  Safe Exam Browser required
+                  Safe Exam Browser Required
                 </h2>
                 <p className="mb-2 text-xs text-candidate-text-secondary">
                   This exam can only be taken inside Safe Exam Browser, which locks your computer to the exam and closes

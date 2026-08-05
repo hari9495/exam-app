@@ -130,8 +130,8 @@ describe('IntegrationsSettingsPage', () => {
     await screen.findByLabelText('AI API Key');
 
     expect(screen.queryByLabelText('Base URL')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Fast-tier Model/deployment Name')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Standard-tier Model/deployment Name')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Fast-Tier Model/Deployment Name')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Standard-Tier Model/Deployment Name')).not.toBeInTheDocument();
   });
 
   it('shows base URL and model fields when OpenAI-compatible is selected, and submits them together', async () => {
@@ -142,13 +142,13 @@ describe('IntegrationsSettingsPage', () => {
     await userEvent.click(await screen.findByRole('option', { name: 'OpenAI-compatible' }));
 
     expect(await screen.findByLabelText('Base URL')).toBeInTheDocument();
-    expect(screen.getByLabelText('Fast-tier Model/deployment Name')).toBeInTheDocument();
-    expect(screen.getByLabelText('Standard-tier Model/deployment Name')).toBeInTheDocument();
+    expect(screen.getByLabelText('Fast-Tier Model/Deployment Name')).toBeInTheDocument();
+    expect(screen.getByLabelText('Standard-Tier Model/Deployment Name')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('AI API Key'), { target: { value: 'azure-key' } });
     fireEvent.change(screen.getByLabelText('Base URL'), { target: { value: 'https://example.openai.azure.com/openai/v1' } });
-    fireEvent.change(screen.getByLabelText('Fast-tier Model/deployment Name'), { target: { value: 'gpt-fast' } });
-    fireEvent.change(screen.getByLabelText('Standard-tier Model/deployment Name'), { target: { value: 'gpt-standard' } });
+    fireEvent.change(screen.getByLabelText('Fast-Tier Model/Deployment Name'), { target: { value: 'gpt-fast' } });
+    fireEvent.change(screen.getByLabelText('Standard-Tier Model/Deployment Name'), { target: { value: 'gpt-standard' } });
     mockedApiFetch.mockResolvedValueOnce({ aiKeyConfigured: true });
     fireEvent.click(screen.getByRole('button', { name: 'Save AI API key' }));
 
@@ -208,8 +208,8 @@ describe('IntegrationsSettingsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Edit AI settings' }));
 
     expect(await screen.findByLabelText('Base URL')).toBeInTheDocument();
-    expect(screen.getByLabelText('Fast-tier Model/deployment Name')).toBeInTheDocument();
-    expect(screen.getByLabelText('Standard-tier Model/deployment Name')).toBeInTheDocument();
+    expect(screen.getByLabelText('Fast-Tier Model/Deployment Name')).toBeInTheDocument();
+    expect(screen.getByLabelText('Standard-Tier Model/Deployment Name')).toBeInTheDocument();
     expect(screen.getByLabelText('AI Provider')).toHaveTextContent('OpenAI-compatible');
   });
 

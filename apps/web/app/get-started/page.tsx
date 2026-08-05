@@ -51,7 +51,7 @@ export default function GetStartedPage() {
     <MotionConfig reducedMotion="user">
       <AuthPageLayout
         title="Get Started"
-        panelHeading="Automate early screens."
+        panelHeading="Automate Early Screens."
         panelCopy="Focus human judgment on what matters. Prudent Hire runs the first round end to end, so your panel only meets the candidates worth meeting."
         panelHighlights={HIGHLIGHTS}
       >
@@ -80,9 +80,9 @@ export default function GetStartedPage() {
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <Input label="Name" value={name} onChange={setName} required />
-                <Select label="Team size" value={teamSize} onChange={setTeamSize} options={TEAM_SIZE_OPTIONS} />
+                <Select label="Team Size" value={teamSize} onChange={setTeamSize} options={TEAM_SIZE_OPTIONS} />
               </div>
-              <Input label="Work email" type="email" value={workEmail} onChange={setWorkEmail} required />
+              <Input label="Work Email" type="email" value={workEmail} onChange={setWorkEmail} required />
               <Input label="Company" value={company} onChange={setCompany} required />
               <div className="flex flex-col gap-1">
                 <label htmlFor="get-started-message" className="text-sm font-medium text-gray-700">

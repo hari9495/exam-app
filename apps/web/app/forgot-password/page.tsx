@@ -66,7 +66,7 @@ export default function ForgotPasswordPage() {
 
         <div className="flex flex-1 items-center justify-center bg-white px-6 py-12">
           <div className="w-full max-w-sm">
-            <h1 className="mb-2 text-xl font-semibold text-recruiter-text">Forgot password</h1>
+            <h1 className="mb-2 text-xl font-semibold text-recruiter-text">Forgot Password</h1>
             {submitted ? (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}

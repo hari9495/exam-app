@@ -136,7 +136,7 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
                 {!sendLink && (
                   <Input label="Password" type="password" value={password} onChange={setPassword} required minLength={8} />
                 )}
-                <Checkbox label="Send Set-password Link Instead" checked={sendLink} onChange={setSendLink} />
+                <Checkbox label="Send Set-Password Link Instead" checked={sendLink} onChange={setSendLink} />
               </>
             )}
             {error && (

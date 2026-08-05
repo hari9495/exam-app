@@ -101,7 +101,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
 
       {integrity && (integrity.narrative || integrity.flags.length > 0) && (
         <div className="mb-6">
-          <h2 className="mb-2 text-lg font-medium">Integrity analysis</h2>
+          <h2 className="mb-2 text-lg font-medium">Integrity Analysis</h2>
           {integrity.narrative && <p className="mb-3 text-sm text-gray-700">{integrity.narrative}</p>}
           {integrity.flags.length > 0 && (
             <ul className="flex flex-col gap-2">
@@ -159,7 +159,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
 
       {technicalIssues.length > 0 && (
         <div className="mb-6">
-          <h2 className="mb-2 text-lg font-medium">Technical issues during exam</h2>
+          <h2 className="mb-2 text-lg font-medium">Technical Issues During Exam</h2>
           <ul className="flex flex-col gap-1.5">
             {technicalIssues.map((event) => (
               <li key={event.id} className="flex items-baseline gap-2 rounded border border-gray-200 p-2.5 text-sm">
@@ -172,7 +172,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
       )}
 
       <div className="mb-6">
-        <h2 className="mb-2 text-lg font-medium">Webcam timeline</h2>
+        <h2 className="mb-2 text-lg font-medium">Webcam Timeline</h2>
         {candidate.webcamTimeline.length === 0 ? (
           <p className="text-sm text-gray-500">No webcam snapshots recorded.</p>
         ) : (
@@ -235,7 +235,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
         )}
       </Modal>
 
-      <Modal open={selectedScreenshot !== null} title="Screen capture" onClose={() => setSelectedScreenshot(null)}>
+      <Modal open={selectedScreenshot !== null} title="Screen Capture" onClose={() => setSelectedScreenshot(null)}>
         {selectedScreenshot && <img src={selectedScreenshot} alt="Screen capture" className="w-full rounded" />}
       </Modal>
 

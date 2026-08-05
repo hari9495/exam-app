@@ -63,7 +63,7 @@ function PoolPreviewModal({ examId, sectionId, sectionTitle, onClose }: { examId
   const shortfall = data ? data.totalMatching < data.poolSize : false;
 
   return (
-    <Modal open title={`Preview pool — ${sectionTitle}`} onClose={onClose}>
+    <Modal open title={`Preview Pool — ${sectionTitle}`} onClose={onClose}>
       {isLoading ? (
         <p className="text-sm text-gray-500">Loading…</p>
       ) : isError || !data ? (
@@ -360,7 +360,7 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
         />
       )}
       {sectionPendingDelete && (
-        <Modal open title="Delete section" onClose={() => setSectionPendingDelete(null)}>
+        <Modal open title="Delete Section" onClose={() => setSectionPendingDelete(null)}>
           <p className="mb-4 text-sm text-recruiter-text-secondary">
             Delete &ldquo;{sectionPendingDelete.title}&rdquo; and remove its questions from this exam?
           </p>

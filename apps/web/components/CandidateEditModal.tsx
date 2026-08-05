@@ -62,7 +62,7 @@ export function CandidateEditModal({ candidate, onClose }: CandidateEditModalPro
   }
 
   return (
-    <Modal open title="Edit candidate" onClose={onClose}>
+    <Modal open title="Edit Candidate" onClose={onClose}>
       {/* noValidate: styled inline validation (error prop below) instead of native
           browser tooltips -- the required attribute would otherwise block the submit
           event before this runs. */}

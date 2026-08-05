@@ -154,7 +154,7 @@ export default function SystemLogsPage() {
     <div>
       <div className="mb-1 flex items-center gap-2">
         <TerminalSquare size={22} className="text-primary" aria-hidden="true" />
-        <h1 className="text-2xl font-semibold">System logs</h1>
+        <h1 className="text-2xl font-semibold">System Logs</h1>
       </div>
       <p className="mb-6 text-sm text-recruiter-text-secondary">
         Production errors from the servers and candidates&apos; browsers — what failed and why, without needing server access.

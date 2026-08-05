@@ -91,12 +91,12 @@ describe('PanelCandidateDetailPage', () => {
     });
     renderPage();
 
-    expect(screen.getByText('Technical issues during exam')).toBeInTheDocument();
+    expect(screen.getByText('Technical Issues During Exam')).toBeInTheDocument();
     expect(screen.getByText('answer_save_failed: network error')).toBeInTheDocument();
 
     (useSystemEvents as jest.Mock).mockReturnValue({ data: { data: [], total: 0 }, isLoading: false });
     renderPage();
-    expect(screen.getAllByText('Technical issues during exam')).toHaveLength(1);
+    expect(screen.getAllByText('Technical Issues During Exam')).toHaveLength(1);
   });
 
   it('renders the candidate score, pass/fail, and per-question breakdown', () => {
@@ -215,7 +215,7 @@ describe('PanelCandidateDetailPage', () => {
 
       renderPage();
 
-      expect(screen.getByText('Webcam timeline')).toBeInTheDocument();
+      expect(screen.getByText('Webcam Timeline')).toBeInTheDocument();
       expect(screen.getByText(/multiple_faces — strike 1/)).toBeInTheDocument();
       const tiles = screen.getAllByRole('button', { name: /webcam snapshot/i });
       expect(tiles).toHaveLength(2);

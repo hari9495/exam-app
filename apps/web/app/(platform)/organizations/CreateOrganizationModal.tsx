@@ -42,7 +42,7 @@ export function CreateOrganizationModal({ open, onClose }: { open: boolean; onCl
   }
 
   return (
-    <Modal open={open} title="New organization" onClose={onClose}>
+    <Modal open={open} title="New Organization" onClose={onClose}>
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <RequiredFieldsNote />
         <Input label="Name" value={name} onChange={setName} required />

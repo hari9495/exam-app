@@ -164,7 +164,7 @@ export function ExamDetailsForm({
       )}
       <RequiredFieldsNote />
 
-      <CollapsibleSection title="Basic details" locked={locked}>
+      <CollapsibleSection title="Basic Details" locked={locked}>
         <div className="sm:col-span-2">
           <Input label="Title" value={title} onChange={setTitle} required />
         </div>
@@ -190,7 +190,7 @@ export function ExamDetailsForm({
           onChange={setPassCriteriaPercent}
         />
         <div className="sm:col-span-2">
-          <Checkbox label="Randomize question order for candidates" checked={randomizeOrder} onChange={setRandomizeOrder} />
+          <Checkbox label="Randomize Question Order For Candidates" checked={randomizeOrder} onChange={setRandomizeOrder} />
         </div>
         <div className="sm:col-span-2">
           <Select
@@ -208,7 +208,7 @@ export function ExamDetailsForm({
       </CollapsibleSection>
 
       <CollapsibleSection
-        title="Scheduling & access"
+        title="Scheduling & Access"
         locked={locked}
         // Once published, the rest of this section is disabled -- the edit page's own
         // always-editable walk-in toggle (walkInSlot) renders here instead, via
@@ -219,7 +219,7 @@ export function ExamDetailsForm({
         }
       >
         <div className="sm:col-span-2">
-          <Checkbox label="Enable scheduling" checked={schedulingEnabled} onChange={setSchedulingEnabled} />
+          <Checkbox label="Enable Scheduling" checked={schedulingEnabled} onChange={setSchedulingEnabled} />
         </div>
         {schedulingEnabled && (
           <>
@@ -242,7 +242,7 @@ export function ExamDetailsForm({
         )}
         {!hideWalkInField && (
           <div className="flex flex-col gap-3 sm:col-span-2">
-            <Checkbox label="Enable walk-in registration for this exam" checked={walkInEnabled} onChange={setWalkInEnabled} />
+            <Checkbox label="Enable Walk-In Registration For This Exam" checked={walkInEnabled} onChange={setWalkInEnabled} />
             {walkInEnabled && (
               <>
                 {/* Only meaningful once walk-in itself is on -- controls whether this exam
@@ -250,7 +250,7 @@ export function ExamDetailsForm({
                     vs. being reachable only via its own link/QR below (which always works
                     regardless of this setting). */}
                 <Checkbox
-                  label="Show in the shared walk-in exam list"
+                  label="Show In The Shared Walk-In Exam List"
                   checked={walkInListed}
                   onChange={setWalkInListed}
                 />
@@ -269,10 +269,10 @@ export function ExamDetailsForm({
         </div>
       </CollapsibleSection>
 
-      <CollapsibleSection title="Proctoring & integrity" locked={locked}>
+      <CollapsibleSection title="Proctoring & Integrity" locked={locked}>
         <div className="sm:col-span-2">
           <Checkbox
-            label="Enable anti-cheating monitoring for this exam"
+            label="Enable Anti-Cheating Monitoring For This Exam"
             checked={enableAntiCheating}
             onChange={setEnableAntiCheating}
           />
@@ -283,7 +283,7 @@ export function ExamDetailsForm({
             regardless, so nothing here can end up silently active while hidden. */}
         {enableAntiCheating && (
           <div className="flex flex-col gap-4 border-l-2 border-recruiter-border pl-4 sm:col-span-2">
-            <Checkbox label="Require webcam proctoring" checked={webcamProctoringEnabled} onChange={setWebcamProctoringEnabled} />
+            <Checkbox label="Require Webcam Proctoring" checked={webcamProctoringEnabled} onChange={setWebcamProctoringEnabled} />
             {/* What counts as a rule violation has to be decided before what happens
                 when one fires -- reads as "watch for X; if a rule is broken, do Y;
                 after N strikes" instead of stating the consequence before the trigger. */}
@@ -307,8 +307,8 @@ export function ExamDetailsForm({
             <div className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-gray-700">If a rule is broken</span>
               <RadioGroup value={proctoringEnforcement} onChange={(value) => setProctoringEnforcement(value as 'warn' | 'block')}>
-                <RadioGroupItem value="block" label="Pause the exam, then block after repeated strikes" />
-                <RadioGroupItem value="warn" label="Record only — never pause the exam" />
+                <RadioGroupItem value="block" label="Pause The Exam, Then Block After Repeated Strikes" />
+                <RadioGroupItem value="warn" label="Record Only — Never Pause The Exam" />
               </RadioGroup>
             </div>
             {proctoringEnforcement === 'block' && (
@@ -325,7 +325,7 @@ export function ExamDetailsForm({
             )}
             <div>
               <Checkbox
-                label="Record the candidate's screen as evidence"
+                label="Record The Candidate's Screen As Evidence"
                 checked={screenCaptureEnabled}
                 onChange={setScreenCaptureEnabled}
               />
@@ -338,7 +338,7 @@ export function ExamDetailsForm({
             </div>
             <div>
               <Checkbox
-                label="Require Safe Exam Browser (lockdown)"
+                label="Require Safe Exam Browser (Lockdown)"
                 checked={lockdownRequired}
                 onChange={setLockdownRequired}
               />

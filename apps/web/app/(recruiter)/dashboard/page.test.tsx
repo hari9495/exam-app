@@ -189,7 +189,7 @@ describe('DashboardPage', () => {
     mockDashboardFetch(emptySummary);
     renderPage();
 
-    await waitFor(() => expect(screen.getByText('Score distribution')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Score Distribution')).toBeInTheDocument());
     expect(screen.getByText('Median')).toBeInTheDocument();
     expect(screen.getByText('65%')).toBeInTheDocument(); // median (unique to this panel)
     expect(screen.getByText('48–78')).toBeInTheDocument(); // middle-50% range p25-p75
@@ -199,7 +199,7 @@ describe('DashboardPage', () => {
     mockDashboardFetch(emptySummary);
     renderPage();
 
-    await waitFor(() => expect(screen.getByText('Proctoring integrity')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Proctoring Integrity')).toBeInTheDocument());
     expect(screen.getByText('21%')).toBeInTheDocument(); // flaggedRate
     expect(screen.getByText(/6 flagged/)).toBeInTheDocument();
   });
@@ -208,8 +208,8 @@ describe('DashboardPage', () => {
     mockDashboardFetch(emptySummary);
     renderPage();
 
-    await waitFor(() => expect(screen.getByText('Hiring funnel & throughput')).toBeInTheDocument());
-    expect(screen.getByText('Exam quality')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Hiring Funnel & Throughput')).toBeInTheDocument());
+    expect(screen.getByText('Exam Quality')).toBeInTheDocument();
     expect(screen.getByText('Backend Round')).toBeInTheDocument();
     expect(screen.getByText('Hardest question here')).toBeInTheDocument();
   });
@@ -246,7 +246,7 @@ describe('DashboardPage', () => {
     mockDashboardFetch(emptySummary);
     renderPage();
 
-    await waitFor(() => expect(screen.getByText('Score distribution')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Score Distribution')).toBeInTheDocument());
     expect(screen.queryByText('Upcoming exams')).not.toBeInTheDocument();
   });
 

@@ -231,7 +231,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
               {options.map((option, index) => (
                 <div key={index} className="flex flex-col gap-1">
                   <div className="flex items-center gap-2">
-                    <RadioGroupItem value={String(index)} label={`Option ${index + 1} correct`} />
+                    <RadioGroupItem value={String(index)} label={`Option ${index + 1} Correct`} />
                     <input
                       aria-label={`Option ${index + 1} text`}
                       value={option.text}
@@ -240,7 +240,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
                       readOnly={type === 'true_false'}
                     />
                   </div>
-                  <QuestionImageUpload label={`Option ${index + 1} image (optional)`} value={option.imageUrl ?? ''} onChange={(url) => updateOptionImage(index, url)} />
+                  <QuestionImageUpload label={`Option ${index + 1} Image (Optional)`} value={option.imageUrl ?? ''} onChange={(url) => updateOptionImage(index, url)} />
                 </div>
               ))}
             </RadioGroup>
@@ -248,7 +248,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
             options.map((option, index) => (
               <div key={index} className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
-                  <Checkbox label={`Option ${index + 1} correct`} checked={option.isCorrect} onChange={(checked) => toggleMultiCorrect(index, checked)} />
+                  <Checkbox label={`Option ${index + 1} Correct`} checked={option.isCorrect} onChange={(checked) => toggleMultiCorrect(index, checked)} />
                   <input
                     aria-label={`Option ${index + 1} text`}
                     value={option.text}
@@ -256,7 +256,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
                     className="rounded border border-gray-300 px-2 py-1 text-sm"
                   />
                 </div>
-                <QuestionImageUpload label={`Option ${index + 1} image (optional)`} value={option.imageUrl ?? ''} onChange={(url) => updateOptionImage(index, url)} />
+                <QuestionImageUpload label={`Option ${index + 1} Image (Optional)`} value={option.imageUrl ?? ''} onChange={(url) => updateOptionImage(index, url)} />
               </div>
             ))
           )}

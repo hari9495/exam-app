@@ -283,7 +283,7 @@ export default function CandidatesPage() {
       )}
 
       {candidatePendingDelete && (
-        <Modal open title="Delete candidate" onClose={() => setCandidatePendingDelete(null)}>
+        <Modal open title="Delete Candidate" onClose={() => setCandidatePendingDelete(null)}>
           <p className="mb-4 text-sm text-recruiter-text-secondary">
             Permanently delete &ldquo;{candidatePendingDelete.name}&rdquo;? They have never been invited to an exam, so nothing else
             is affected. This can&apos;t be undone.

@@ -314,7 +314,7 @@ export default function QuestionsPage() {
       )}
 
       {questionPendingDelete && (
-        <Modal open title="Delete question" onClose={() => setQuestionPendingDelete(null)}>
+        <Modal open title="Delete Question" onClose={() => setQuestionPendingDelete(null)}>
           <p className="mb-4 text-sm text-recruiter-text-secondary">
             Delete this question? It will be removed from the question bank. Exams that already use it keep their copy.
           </p>

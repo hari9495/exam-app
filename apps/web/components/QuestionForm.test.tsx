@@ -178,7 +178,7 @@ describe('QuestionForm', () => {
     const optionInputs = screen.getAllByLabelText(/Option \d text/);
     await userEvent.type(optionInputs[0], 'A');
     await userEvent.type(optionInputs[1], 'B');
-    await userEvent.click(screen.getByLabelText('Option 1 correct'));
+    await userEvent.click(screen.getByLabelText('Option 1 Correct'));
     await userEvent.click(screen.getByRole('button', { name: 'Create' }));
 
     expect(onSubmit).toHaveBeenCalledWith(

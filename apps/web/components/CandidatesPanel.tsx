@@ -194,7 +194,7 @@ export function CandidatesPanel({ examId }: { examId: string }) {
         <div className="flex flex-wrap items-end gap-2">
           <div className="min-w-[14rem]">
             <Input
-              label="Search candidates"
+              label="Search Candidates"
               hideLabel
               type="search"
               placeholder="Search by name or email…"

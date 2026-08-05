@@ -418,7 +418,7 @@ describe('ExamSectionsPanel', () => {
     await waitFor(() => expect(screen.getByText('Pool of 5 questions (medium)')).toBeInTheDocument());
     await userEvent.click(screen.getByRole('button', { name: 'Preview pool' }));
 
-    expect(await screen.findByText('Preview pool — Reasoning')).toBeInTheDocument();
+    expect(await screen.findByText('Preview Pool — Reasoning')).toBeInTheDocument();
     expect(screen.getByText('Arrays')).toBeInTheDocument();
     expect(screen.getByText('Reverse an array in place')).toBeInTheDocument();
     expect(screen.getByText('Find the missing number')).toBeInTheDocument();
@@ -612,11 +612,11 @@ describe('ExamSectionsPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: 'More Actions' }));
     await userEvent.click(await screen.findByText('Delete'));
 
-    expect(screen.getByText('Delete section')).toBeInTheDocument();
+    expect(screen.getByText('Delete Section')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => expect(screen.getByText('Section deleted.')).toBeInTheDocument());
-    expect(screen.queryByText('Delete section')).not.toBeInTheDocument();
+    expect(screen.queryByText('Delete Section')).not.toBeInTheDocument();
   });
 
   it('locks section/question editing once a candidate has started the exam', async () => {

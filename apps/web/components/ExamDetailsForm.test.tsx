@@ -24,7 +24,7 @@ describe('ExamDetailsForm', () => {
     render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Create" />);
 
     await userEvent.type(screen.getByLabelText('Title'), 'Scheduled Exam');
-    await userEvent.click(screen.getByLabelText('Enable scheduling'));
+    await userEvent.click(screen.getByLabelText('Enable Scheduling'));
     const startInput = screen.getByLabelText('Window Opens') as HTMLInputElement;
     const endInput = screen.getByLabelText('Window Closes') as HTMLInputElement;
     fireEvent.change(startInput, { target: { value: '2026-07-20T09:00' } });
@@ -45,7 +45,7 @@ describe('ExamDetailsForm', () => {
     render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Create" />);
 
     await userEvent.type(screen.getByLabelText('Title'), 'Bad Exam');
-    await userEvent.click(screen.getByLabelText('Enable scheduling'));
+    await userEvent.click(screen.getByLabelText('Enable Scheduling'));
     await userEvent.click(screen.getByRole('button', { name: 'Create' }));
 
     expect(screen.getByText('Both a window open and close time are required.')).toBeInTheDocument();
@@ -57,7 +57,7 @@ describe('ExamDetailsForm', () => {
     render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Create" />);
 
     await userEvent.type(screen.getByLabelText('Title'), 'Backwards Window Exam');
-    await userEvent.click(screen.getByLabelText('Enable scheduling'));
+    await userEvent.click(screen.getByLabelText('Enable Scheduling'));
     const startInput = screen.getByLabelText('Window Opens') as HTMLInputElement;
     const endInput = screen.getByLabelText('Window Closes') as HTMLInputElement;
     fireEvent.change(startInput, { target: { value: '2026-07-27T18:00' } });
@@ -99,7 +99,7 @@ describe('ExamDetailsForm', () => {
     const pad = (n: number) => String(n).padStart(2, '0');
     const expectedValue = `${expected.getFullYear()}-${pad(expected.getMonth() + 1)}-${pad(expected.getDate())}T${pad(expected.getHours())}:${pad(expected.getMinutes())}`;
 
-    expect(screen.getByLabelText('Enable scheduling')).toBeChecked();
+    expect(screen.getByLabelText('Enable Scheduling')).toBeChecked();
     expect(screen.getByLabelText('Window Opens')).toHaveValue(expectedValue);
   });
 
@@ -145,7 +145,7 @@ describe('ExamDetailsForm', () => {
     render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Save details" />);
 
     await userEvent.type(screen.getByLabelText('Title'), 'New Exam');
-    await userEvent.click(screen.getByLabelText('Enable walk-in registration for this exam'));
+    await userEvent.click(screen.getByLabelText('Enable Walk-In Registration For This Exam'));
     await userEvent.click(screen.getByRole('button', { name: 'Save details' }));
 
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ walkInEnabled: true }));
@@ -154,11 +154,11 @@ describe('ExamDetailsForm', () => {
   it('hides the "show in shared list" toggle until walk-in itself is enabled', async () => {
     render(<ExamDetailsForm onSubmit={jest.fn()} submitLabel="Save details" />);
 
-    expect(screen.queryByLabelText('Show in the shared walk-in exam list')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Show In The Shared Walk-In Exam List')).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByLabelText('Enable walk-in registration for this exam'));
+    await userEvent.click(screen.getByLabelText('Enable Walk-In Registration For This Exam'));
 
-    expect(screen.getByLabelText('Show in the shared walk-in exam list')).toBeInTheDocument();
+    expect(screen.getByLabelText('Show In The Shared Walk-In Exam List')).toBeInTheDocument();
   });
 
   it('defaults walkInListed to true and submits it alongside walkInEnabled', async () => {
@@ -166,8 +166,8 @@ describe('ExamDetailsForm', () => {
     render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Save details" />);
 
     await userEvent.type(screen.getByLabelText('Title'), 'New Exam');
-    await userEvent.click(screen.getByLabelText('Enable walk-in registration for this exam'));
-    expect(screen.getByLabelText('Show in the shared walk-in exam list')).toBeChecked();
+    await userEvent.click(screen.getByLabelText('Enable Walk-In Registration For This Exam'));
+    expect(screen.getByLabelText('Show In The Shared Walk-In Exam List')).toBeChecked();
     await userEvent.click(screen.getByRole('button', { name: 'Save details' }));
 
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ walkInEnabled: true, walkInListed: true }));
@@ -178,8 +178,8 @@ describe('ExamDetailsForm', () => {
     render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Save details" />);
 
     await userEvent.type(screen.getByLabelText('Title'), 'New Exam');
-    await userEvent.click(screen.getByLabelText('Enable walk-in registration for this exam'));
-    await userEvent.click(screen.getByLabelText('Show in the shared walk-in exam list'));
+    await userEvent.click(screen.getByLabelText('Enable Walk-In Registration For This Exam'));
+    await userEvent.click(screen.getByLabelText('Show In The Shared Walk-In Exam List'));
     await userEvent.click(screen.getByRole('button', { name: 'Save details' }));
 
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ walkInEnabled: true, walkInListed: false }));
@@ -220,31 +220,31 @@ describe('ExamDetailsForm', () => {
     it('defaults to on for a new exam, with every dependent control visible', () => {
       render(<ExamDetailsForm onSubmit={jest.fn()} submitLabel="Create" />);
 
-      expect(screen.getByLabelText('Enable anti-cheating monitoring for this exam')).toBeChecked();
-      expect(screen.getByLabelText('Require webcam proctoring')).toBeInTheDocument();
+      expect(screen.getByLabelText('Enable Anti-Cheating Monitoring For This Exam')).toBeChecked();
+      expect(screen.getByLabelText('Require Webcam Proctoring')).toBeInTheDocument();
       expect(screen.getByText('If a rule is broken')).toBeInTheDocument();
       expect(screen.getByLabelText('Switching browser tabs')).toBeInTheDocument();
-      expect(screen.getByLabelText("Record the candidate's screen as evidence")).toBeInTheDocument();
-      expect(screen.getByLabelText('Require Safe Exam Browser (lockdown)')).toBeInTheDocument();
+      expect(screen.getByLabelText("Record The Candidate's Screen As Evidence")).toBeInTheDocument();
+      expect(screen.getByLabelText('Require Safe Exam Browser (Lockdown)')).toBeInTheDocument();
     });
 
     it('hides every dependent control when the master switch is turned off', async () => {
       render(<ExamDetailsForm onSubmit={jest.fn()} submitLabel="Create" />);
 
-      await userEvent.click(screen.getByLabelText('Enable anti-cheating monitoring for this exam'));
+      await userEvent.click(screen.getByLabelText('Enable Anti-Cheating Monitoring For This Exam'));
 
-      expect(screen.queryByLabelText('Require webcam proctoring')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Require Webcam Proctoring')).not.toBeInTheDocument();
       expect(screen.queryByText('If a rule is broken')).not.toBeInTheDocument();
       expect(screen.queryByLabelText('Switching browser tabs')).not.toBeInTheDocument();
-      expect(screen.queryByLabelText("Record the candidate's screen as evidence")).not.toBeInTheDocument();
-      expect(screen.queryByLabelText('Require Safe Exam Browser (lockdown)')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Record The Candidate's Screen As Evidence")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Require Safe Exam Browser (Lockdown)')).not.toBeInTheDocument();
     });
 
     it('restores the dependent controls, with prior choices intact, when turned back on', async () => {
       render(<ExamDetailsForm onSubmit={jest.fn()} submitLabel="Create" />);
 
       await userEvent.click(screen.getByLabelText('Right-click / context menu'));
-      const masterSwitch = screen.getByLabelText('Enable anti-cheating monitoring for this exam');
+      const masterSwitch = screen.getByLabelText('Enable Anti-Cheating Monitoring For This Exam');
       await userEvent.click(masterSwitch);
       await userEvent.click(masterSwitch);
 
@@ -257,7 +257,7 @@ describe('ExamDetailsForm', () => {
       render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Create" />);
 
       await userEvent.type(screen.getByLabelText('Title'), 'Screen');
-      await userEvent.click(screen.getByLabelText('Enable anti-cheating monitoring for this exam'));
+      await userEvent.click(screen.getByLabelText('Enable Anti-Cheating Monitoring For This Exam'));
       await userEvent.click(screen.getByRole('button', { name: 'Create' }));
 
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ enableAntiCheating: false }));
@@ -287,7 +287,7 @@ describe('ExamDetailsForm', () => {
       render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Create" />);
 
       await userEvent.type(screen.getByLabelText('Title'), 'Screen');
-      await userEvent.click(screen.getByLabelText('Require webcam proctoring'));
+      await userEvent.click(screen.getByLabelText('Require Webcam Proctoring'));
       await userEvent.click(screen.getByLabelText('Right-click / context menu'));
       await userEvent.click(screen.getByRole('button', { name: 'Create' }));
 
@@ -329,17 +329,17 @@ describe('ExamDetailsForm', () => {
         />,
       );
 
-      expect(screen.getByLabelText('Require webcam proctoring')).not.toBeChecked();
+      expect(screen.getByLabelText('Require Webcam Proctoring')).not.toBeChecked();
       expect(screen.getByLabelText(/Record only/i)).toBeChecked();
     });
 
     it('disables every proctoring control once the exam is locked, and says why', () => {
       render(<ExamDetailsForm onSubmit={jest.fn()} submitLabel="Save" locked />);
 
-      expect(screen.getByLabelText('Require webcam proctoring')).toBeDisabled();
+      expect(screen.getByLabelText('Require Webcam Proctoring')).toBeDisabled();
       // Disabled via the enclosing <fieldset disabled>, same as every other proctoring
       // control -- asserted explicitly here rather than just assumed.
-      expect(screen.getByLabelText("Record the candidate's screen as evidence")).toBeDisabled();
+      expect(screen.getByLabelText("Record The Candidate's Screen As Evidence")).toBeDisabled();
       expect(screen.getByText(/locked because a candidate has already started it/i)).toBeInTheDocument();
     });
   });
@@ -360,7 +360,7 @@ describe('ExamDetailsForm', () => {
       render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Create" />);
 
       await userEvent.type(screen.getByLabelText('Title'), 'Screen');
-      await userEvent.click(screen.getByLabelText("Record the candidate's screen as evidence"));
+      await userEvent.click(screen.getByLabelText("Record The Candidate's Screen As Evidence"));
       await userEvent.click(screen.getByRole('button', { name: 'Create' }));
 
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ screenCaptureEnabled: true }));
@@ -371,7 +371,7 @@ describe('ExamDetailsForm', () => {
 
       expect(screen.queryByText(/must share their whole screen to start/i)).not.toBeInTheDocument();
 
-      await userEvent.click(screen.getByLabelText("Record the candidate's screen as evidence"));
+      await userEvent.click(screen.getByLabelText("Record The Candidate's Screen As Evidence"));
 
       expect(screen.getByText(/must share their whole screen to start/i)).toBeInTheDocument();
     });
@@ -383,7 +383,7 @@ describe('ExamDetailsForm', () => {
 
       expect(screen.getByLabelText('Title')).toBeDisabled();
       expect(screen.getByLabelText('Duration (Minutes)')).toBeDisabled();
-      expect(screen.getByLabelText('Enable walk-in registration for this exam')).toBeDisabled();
+      expect(screen.getByLabelText('Enable Walk-In Registration For This Exam')).toBeDisabled();
       expect(screen.getByLabelText(/allowed ip \/ cidr range/i)).toBeDisabled();
     });
 
@@ -397,7 +397,7 @@ describe('ExamDetailsForm', () => {
         />,
       );
 
-      expect(screen.getByLabelText('Show in the shared walk-in exam list')).toBeDisabled();
+      expect(screen.getByLabelText('Show In The Shared Walk-In Exam List')).toBeDisabled();
     });
 
     it('hides the submit button entirely once the exam is locked, since there is nothing left to save', () => {

@@ -13,7 +13,7 @@ export function PracticeStep({ onDone }: { onDone: () => void }) {
   return (
     <div className="rounded-lg border border-candidate-border bg-white p-6 shadow-sm">
       <p className="mb-1 text-xs font-bold uppercase tracking-wide text-candidate-primary">Practice</p>
-      <h1 className="mb-3 text-xl font-bold text-candidate-text">Try the interface before you start</h1>
+      <h1 className="mb-3 text-xl font-bold text-candidate-text">Try The Interface Before You Start</h1>
       <p className="mb-4 text-sm text-candidate-text-secondary">
         These two questions aren&apos;t scored or saved — they&apos;re just here so the interface feels familiar
         once the timed exam begins.

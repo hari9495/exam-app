@@ -461,7 +461,7 @@ describe('QuestionsPage', () => {
 
       // Each row exposes a Delete action; clicking it opens the confirmation dialog.
       await userEvent.click(screen.getAllByRole('button', { name: 'Delete' })[0]);
-      expect(screen.getByText('Delete question')).toBeInTheDocument();
+      expect(screen.getByText('Delete Question')).toBeInTheDocument();
     });
 
     it('shows a Restore action for archived questions and re-publishes on click', async () => {

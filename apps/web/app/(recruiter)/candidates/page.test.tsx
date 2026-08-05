@@ -367,7 +367,7 @@ describe('CandidatesPage', () => {
       await waitFor(() => expect(screen.getByText('Nanji')).toBeInTheDocument());
 
       await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
-      expect(screen.getByText('Delete candidate')).toBeInTheDocument();
+      expect(screen.getByText('Delete Candidate')).toBeInTheDocument();
 
       const dialogButtons = screen.getAllByRole('button', { name: 'Delete' });
       await userEvent.click(dialogButtons[dialogButtons.length - 1]);
@@ -386,7 +386,7 @@ describe('CandidatesPage', () => {
       // Scoped to the dialog: the page's own "Add candidate" popup has an Email
       // field too when open, so an unscoped query could match both.
       const dialog = within(screen.getByRole('dialog'));
-      expect(dialog.getByText('Edit candidate')).toBeInTheDocument();
+      expect(dialog.getByText('Edit Candidate')).toBeInTheDocument();
       expect(dialog.getByLabelText('Email')).toHaveValue('nanji.s@prudentconsulting.com');
       expect(dialog.getByLabelText('First Name')).toHaveValue('Nanji');
       expect(dialog.getByLabelText('Last Name')).toHaveValue('');

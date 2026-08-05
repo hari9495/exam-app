@@ -377,7 +377,7 @@ describe('LiveMonitoringPanel', () => {
       const user = userEvent.setup({ delay: null });
       await user.click(screen.getByRole('button', { name: 'View log' }));
 
-      expect(screen.getByText('Proctoring log')).toBeInTheDocument();
+      expect(screen.getByText('Proctoring Log')).toBeInTheDocument();
       expect(screen.getByText('dev_tools_detected')).toBeInTheDocument();
       expect(screen.getByText('tab_switch')).toBeInTheDocument();
       expect(useProctoringEventsModule.useProctoringEvents).toHaveBeenCalledWith('a1');
@@ -418,7 +418,7 @@ describe('LiveMonitoringPanel', () => {
 
       await user.click(thumbnail);
 
-      expect(screen.getByText('Webcam snapshot')).toBeInTheDocument();
+      expect(screen.getByText('Webcam Snapshot')).toBeInTheDocument();
       expect(screen.getByAltText('Webcam snapshot')).toHaveAttribute('src', 'blob:webcam-1');
     });
 
@@ -446,7 +446,7 @@ describe('LiveMonitoringPanel', () => {
 
       await user.click(thumbnail);
 
-      expect(screen.getByText('Screen capture')).toBeInTheDocument();
+      expect(screen.getByText('Screen Capture')).toBeInTheDocument();
       expect(screen.getByAltText('Screen capture')).toHaveAttribute('src', 'blob:screen-1');
     });
 

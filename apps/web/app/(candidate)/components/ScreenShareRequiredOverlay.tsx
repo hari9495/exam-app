@@ -14,7 +14,7 @@ export function ScreenShareRequiredOverlay({ error, onShare, pending }: ScreenSh
         <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-candidate-review-bg text-candidate-review">
           <ScreenShare className="h-5 w-5" aria-hidden="true" />
         </div>
-        <h1 className="mb-1 text-base font-bold text-candidate-text">Screen sharing required</h1>
+        <h1 className="mb-1 text-base font-bold text-candidate-text">Screen Sharing Required</h1>
         <p className="mb-3 text-sm text-candidate-text-secondary">
           This exam records your screen for integrity review. Please share your entire screen to continue.
         </p>

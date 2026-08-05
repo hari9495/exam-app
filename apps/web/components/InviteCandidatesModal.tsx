@@ -40,7 +40,7 @@ export function InviteCandidatesModal({ examId, open, onClose, existingCandidate
   }
 
   return (
-    <Modal open={open} title="Invite candidates" onClose={onClose}>
+    <Modal open={open} title="Invite Candidates" onClose={onClose}>
       <input
         type="search"
         value={search}

@@ -565,7 +565,7 @@ describe('CandidateExamPage', () => {
 
       render(<CandidateExamPage />);
 
-      expect(screen.getByText('Tab switch detected')).toBeInTheDocument();
+      expect(screen.getByText('Tab Switch Detected')).toBeInTheDocument();
       expect(screen.getByText('Warning 2/3')).toBeInTheDocument();
     });
 
@@ -583,7 +583,7 @@ describe('CandidateExamPage', () => {
 
       render(<CandidateExamPage />);
 
-      expect(screen.getByText('Face not visible')).toBeInTheDocument();
+      expect(screen.getByText('Face Not Visible')).toBeInTheDocument();
       expect(screen.getByText('Warning 1/3')).toBeInTheDocument();
     });
 
@@ -623,7 +623,7 @@ describe('CandidateExamPage', () => {
 
       render(<CandidateExamPage />);
 
-      expect(screen.getByText('Policy violation detected')).toBeInTheDocument();
+      expect(screen.getByText('Policy Violation Detected')).toBeInTheDocument();
       expect(screen.getByText('Warning 1/3')).toBeInTheDocument();
     });
 
@@ -641,7 +641,7 @@ describe('CandidateExamPage', () => {
 
       render(<CandidateExamPage />);
 
-      expect(screen.getByText('Face not visible')).toBeInTheDocument();
+      expect(screen.getByText('Face Not Visible')).toBeInTheDocument();
       expect(screen.getByText('Warning 1/3')).toBeInTheDocument();
     });
   });
@@ -861,7 +861,7 @@ describe('CandidateExamPage', () => {
 
       render(<CandidateExamPage />);
 
-      expect(screen.getByText('Screen sharing required')).toBeInTheDocument();
+      expect(screen.getByText('Screen Sharing Required')).toBeInTheDocument();
       expect(screen.queryByText('What is 2 + 2?')).not.toBeInTheDocument();
     });
 
@@ -921,7 +921,7 @@ describe('CandidateExamPage', () => {
 
       render(<CandidateExamPage />);
 
-      expect(screen.getByText('Screen sharing required')).toBeInTheDocument();
+      expect(screen.getByText('Screen Sharing Required')).toBeInTheDocument();
       expect(screen.getByText(/choose your entire screen, not a single tab or window/i)).toBeInTheDocument();
     });
 
@@ -934,7 +934,7 @@ describe('CandidateExamPage', () => {
 
       render(<CandidateExamPage />);
 
-      expect(screen.getByText('Screen sharing required')).toBeInTheDocument();
+      expect(screen.getByText('Screen Sharing Required')).toBeInTheDocument();
       expect(screen.getByText(/you dismissed the prompt.*click again/i)).toBeInTheDocument();
       expect(screen.getByText(/browser or organization may be blocking it.*contact your recruiter/i)).toBeInTheDocument();
     });
@@ -945,7 +945,7 @@ describe('CandidateExamPage', () => {
 
       render(<CandidateExamPage />);
 
-      expect(screen.getByText('Screen sharing required')).toBeInTheDocument();
+      expect(screen.getByText('Screen Sharing Required')).toBeInTheDocument();
       expect(screen.getByText(/blocking screen sharing.*contact your recruiter/i)).toBeInTheDocument();
     });
 

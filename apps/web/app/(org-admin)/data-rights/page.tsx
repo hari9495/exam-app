@@ -267,7 +267,7 @@ export default function DataRightsPage() {
           <div className="flex flex-col gap-4">
             <Card>
               <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-recruiter-text">Export data</h2>
+                <h2 className="text-lg font-semibold text-recruiter-text">Export Data</h2>
                 <Button variant="secondary" onClick={handleDownload} className="inline-flex items-center gap-1.5">
                   <Download size={14} />
                   Download JSON
@@ -302,7 +302,7 @@ export default function DataRightsPage() {
         </motion.div>
       )}
 
-      <Modal open={confirmOpen} title="Erase candidate data?" onClose={handleCloseConfirm}>
+      <Modal open={confirmOpen} title="Erase Candidate Data?" onClose={handleCloseConfirm}>
         <div className="mb-4 flex items-start gap-2 rounded-md bg-status-danger-bg p-3 text-sm text-status-danger">
           <ShieldAlert size={16} className="mt-0.5 shrink-0" />
           <p>

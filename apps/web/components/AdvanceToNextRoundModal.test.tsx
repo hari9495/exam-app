@@ -56,7 +56,7 @@ describe('AdvanceToNextRoundModal', () => {
 
     renderModal();
 
-    await userEvent.click(await screen.findByRole('combobox', { name: 'Move to exam' }));
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Move To Exam' }));
 
     expect(screen.getByRole('option', { name: 'Technical Round' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Screening Round (current)' })).not.toBeInTheDocument();
@@ -95,7 +95,7 @@ describe('AdvanceToNextRoundModal', () => {
 
     renderModal();
 
-    expect(await screen.findByRole('combobox', { name: 'Move to exam' })).toHaveTextContent('Choose an exam…');
+    expect(await screen.findByRole('combobox', { name: 'Move To Exam' })).toHaveTextContent('Choose an exam…');
   });
 
   it('disables Advance until a target exam is chosen', async () => {
@@ -114,7 +114,7 @@ describe('AdvanceToNextRoundModal', () => {
 
     expect(screen.getByRole('button', { name: 'Advance' })).toBeDisabled();
 
-    await userEvent.click(await screen.findByRole('combobox', { name: 'Move to exam' }));
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Move To Exam' }));
     await userEvent.click(await screen.findByRole('option', { name: 'Technical Round' }));
 
     expect(screen.getByRole('button', { name: 'Advance' })).toBeEnabled();
@@ -140,7 +140,7 @@ describe('AdvanceToNextRoundModal', () => {
 
     renderModal({ onAdvanced, onClose });
 
-    await userEvent.click(await screen.findByRole('combobox', { name: 'Move to exam' }));
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Move To Exam' }));
     await userEvent.click(await screen.findByRole('option', { name: 'Technical Round' }));
     await userEvent.click(screen.getByRole('button', { name: 'Advance' }));
 

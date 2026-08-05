@@ -78,7 +78,7 @@ describe('WalkInGroupsPage', () => {
     renderPage();
     await screen.findByText('Fresher Drive Hackathon');
 
-    await userEvent.type(screen.getByLabelText('New group name'), 'Backend Roles');
+    await userEvent.type(screen.getByLabelText('New Group Name'), 'Backend Roles');
     await userEvent.click(screen.getByRole('button', { name: /new group/i }));
 
     await waitFor(() => {
@@ -97,7 +97,7 @@ describe('WalkInGroupsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Manage' }));
 
     expect(screen.getByRole('heading', { name: 'Manage "Fresher Drive Hackathon"' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Group name')).toHaveValue('Fresher Drive Hackathon');
+    expect(screen.getByLabelText('Group Name')).toHaveValue('Fresher Drive Hackathon');
     await waitFor(() => {
       expect(screen.getByText(/\/walk-in\/demo-org\?group=group-1/)).toBeInTheDocument();
     });

@@ -25,15 +25,15 @@ const PROOF_STATS = [
 
 const PROBLEM_POINTS = [
   {
-    title: "Resumes don't test anything",
+    title: "Resumes Don't Test Anything",
     body: "A polished resume says nothing about whether someone can write the code or reason through the problem you'll actually hand them on day one.",
   },
   {
-    title: "Early-round calls don't scale",
+    title: "Early-Round Calls Don't Scale",
     body: "Every phone screen burns thirty minutes of a recruiter's time asking the same questions, before you even know if the candidate can do the job.",
   },
   {
-    title: 'Remote rounds are easy to game',
+    title: 'Remote Rounds Are Easy To Game',
     body: "An unmonitored video call can't tell you whether the person answering is the person who applied, or whether they're reading off a second screen.",
   },
 ];
@@ -41,27 +41,27 @@ const PROBLEM_POINTS = [
 const WALKTHROUGH_STEPS = [
   {
     number: '1',
-    title: 'Build the exam',
+    title: 'Build The Exam',
     body: 'Write sections and questions yourself, or describe a topic and difficulty and let AI draft them -- you review and publish.',
   },
   {
     number: '2',
-    title: 'Invite candidates',
+    title: 'Invite Candidates',
     body: 'Send a secure, single-use link. No account signup required on the candidate side.',
   },
   {
     number: '3',
-    title: 'Candidate takes a proctored exam',
+    title: 'Candidate Takes A Proctored Exam',
     body: 'Webcam monitoring, required screen share, tab and copy-paste detection, and an optional lockdown browser -- with a live leaderboard if you want candidates to see how they stack up in real time.',
   },
   {
     number: '4',
-    title: 'AI-assisted scoring',
+    title: 'AI-Assisted Scoring',
     body: 'Code runs in a real sandbox across 8 languages; written answers get an AI-drafted evaluation with a risk narrative attached to anything that looked off.',
   },
   {
     number: '5',
-    title: 'Review structured results',
+    title: 'Review Structured Results',
     body: 'Pass/fail breakdowns, topic-level performance, and trend charts -- so the decision is a five-minute review, not a fresh read of a resume.',
   },
 ];
@@ -70,25 +70,25 @@ const FEATURE_DEEP_DIVES = [
   {
     icon: Sparkles,
     kicker: 'QUESTIONS. Generated.',
-    title: 'AI drafts the questions, you keep the final say',
+    title: 'AI Drafts The Questions, You Keep The Final Say',
     body: 'Give it a topic and a difficulty level and it drafts MCQ or code questions in seconds -- nothing publishes without a human reviewing it first.',
   },
   {
     icon: ShieldCheck,
     kicker: 'INTEGRITY. Verified.',
-    title: 'A real proctoring stack, not a single webcam check',
+    title: 'A Real Proctoring Stack, Not A Single Webcam Check',
     body: 'On-device face detection catches no-face and multiple-faces violations, screen share is required for the whole session, tab-switching and copy-paste are logged, and AI reads periodic screenshots for remote-access tools running in the background. A lockdown browser mode is available for exams that need it.',
   },
   {
     icon: Code2,
     kicker: 'CODE. Executed.',
-    title: 'Code questions that actually run',
+    title: 'Code Questions That Actually Run',
     body: 'Candidates write and execute real code against a sandbox supporting 8 languages, with a limited number of runs so testing code output never becomes a crutch.',
   },
   {
     icon: BarChart3,
     kicker: 'RESULTS. Clear.',
-    title: 'Reports built for a hiring decision, not a data dump',
+    title: 'Reports Built For A Hiring Decision, Not A Data Dump',
     body: 'Pass/fail breakdowns, per-topic performance, and trend charts for every exam, plus a side-by-side candidate comparison once you are down to a shortlist.',
   },
 ];
@@ -96,14 +96,14 @@ const FEATURE_DEEP_DIVES = [
 const CONSOLES = [
   { icon: Users, title: 'Candidate', body: 'A focused, distraction-free exam flow with a practice run before the clock starts.' },
   { icon: Building2, title: 'Recruiter', body: 'Build exams, invite candidates, watch live sessions, and review results.' },
-  { icon: Lock, title: 'Org admin', body: 'Manage users and roles, branding, SSO, and integrations for the whole organization.' },
+  { icon: Lock, title: 'Org Admin', body: 'Manage users and roles, branding, SSO, and integrations for the whole organization.' },
 ];
 
 const ENTERPRISE_ITEMS = [
   { icon: KeyRound, title: 'SAML SSO', body: 'Org-scoped single sign-on, tested against real identity providers.' },
-  { icon: FileCheck2, title: 'GDPR data controls', body: 'Candidates and staff can export or erase their data on request.' },
-  { icon: MonitorX, title: 'Audit log', body: 'Every sensitive action is recorded, per organization.' },
-  { icon: Cpu, title: 'Bring your own AI provider', body: 'Anthropic, Azure OpenAI, or any OpenAI-compatible endpoint -- configurable per organization.' },
+  { icon: FileCheck2, title: 'GDPR Data Controls', body: 'Candidates and staff can export or erase their data on request.' },
+  { icon: MonitorX, title: 'Audit Log', body: 'Every sensitive action is recorded, per organization.' },
+  { icon: Cpu, title: 'Bring Your Own AI Provider', body: 'Anthropic, Azure OpenAI, or any OpenAI-compatible endpoint -- configurable per organization.' },
 ];
 
 export default function Home() {
@@ -136,7 +136,7 @@ export default function Home() {
           <div className="relative grid items-center gap-12 md:grid-cols-2">
             <div className="flex w-fit flex-col items-start gap-5 md:justify-self-end">
               <h1 className="max-w-md text-4xl font-bold leading-tight tracking-tight text-recruiter-text md:text-5xl">
-                Hiring exams that run themselves — and prove their results.
+                Hiring Exams That Run Themselves — And Prove Their Results.
               </h1>
               <p className="max-w-sm text-base text-recruiter-text-secondary md:text-lg">
                 AI-drafted questions, sandboxed code execution in 8 languages, live webcam proctoring, and
@@ -227,7 +227,7 @@ export default function Home() {
       <section className="px-6 py-16 md:px-16">
         <Reveal>
           <h2 className="mb-8 max-w-xl text-2xl font-bold tracking-tight text-recruiter-text md:text-3xl">
-            Screening still looks like it did ten years ago.
+            Screening Still Looks Like It Did Ten Years Ago.
           </h2>
         </Reveal>
         <div className="grid gap-6 md:grid-cols-3">
@@ -244,7 +244,7 @@ export default function Home() {
 
       <section id="how-it-works" className="border-t border-recruiter-border px-6 py-16 md:px-16">
         <Reveal>
-          <h2 className="mb-2 text-2xl font-bold tracking-tight text-recruiter-text md:text-3xl">From blank exam to hiring decision</h2>
+          <h2 className="mb-2 text-2xl font-bold tracking-tight text-recruiter-text md:text-3xl">From Blank Exam To Hiring Decision</h2>
           <p className="mb-10 max-w-xl text-sm text-recruiter-text-secondary">Five steps, most of which run themselves.</p>
         </Reveal>
         <div className="grid gap-8 md:grid-cols-5">
@@ -264,7 +264,7 @@ export default function Home() {
 
       <section id="features" className="border-t border-recruiter-border px-6 py-16 md:px-16">
         <Reveal>
-          <h2 className="mb-10 text-2xl font-bold tracking-tight text-recruiter-text md:text-3xl">What's actually under the hood</h2>
+          <h2 className="mb-10 text-2xl font-bold tracking-tight text-recruiter-text md:text-3xl">What's Actually Under The Hood</h2>
         </Reveal>
         <div className="flex flex-col gap-14">
           {FEATURE_DEEP_DIVES.map(({ icon: Icon, kicker, title, body }, i) => (
@@ -289,7 +289,7 @@ export default function Home() {
 
       <section className="border-t border-recruiter-border px-6 py-16 md:px-16">
         <Reveal>
-          <h2 className="mb-2 text-2xl font-bold tracking-tight text-recruiter-text md:text-3xl">Built for the whole hiring team</h2>
+          <h2 className="mb-2 text-2xl font-bold tracking-tight text-recruiter-text md:text-3xl">Built For The Whole Hiring Team</h2>
           <p className="mb-10 max-w-xl text-sm text-recruiter-text-secondary">
             Three separate consoles, each scoped to what that person actually needs to do.
           </p>
@@ -311,7 +311,7 @@ export default function Home() {
 
       <section className="border-t border-recruiter-border px-6 py-16 md:px-16">
         <Reveal>
-          <h2 className="mb-10 text-2xl font-bold tracking-tight text-recruiter-text md:text-3xl">Enterprise-ready from day one</h2>
+          <h2 className="mb-10 text-2xl font-bold tracking-tight text-recruiter-text md:text-3xl">Enterprise-Ready From Day One</h2>
         </Reveal>
         <div className="grid gap-6 md:grid-cols-2">
           {ENTERPRISE_ITEMS.map(({ icon: Icon, title, body }, i) => (
@@ -333,7 +333,7 @@ export default function Home() {
       <Reveal>
         <section className="border-t border-recruiter-border bg-recruiter-bg-subtle px-6 py-16 text-center md:px-16">
           <h2 className="mb-3 text-2xl font-bold tracking-tight text-recruiter-text md:text-3xl">
-            Ready to run an exam instead of another call?
+            Ready To Run An Exam Instead Of Another Call?
           </h2>
           <p className="mx-auto mb-6 max-w-md text-sm text-recruiter-text-secondary">
             Create an organization and build your first exam in a few minutes.

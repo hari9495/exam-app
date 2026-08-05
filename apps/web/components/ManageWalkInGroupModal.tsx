@@ -53,7 +53,7 @@ export function ManageWalkInGroupModal({ group, orgSlug, onClose }: ManageWalkIn
       <div className="flex flex-col gap-6">
         <div className="flex items-end gap-2">
           <div className="flex-1">
-            <Input label="Group name" value={name} onChange={setName} />
+            <Input label="Group Name" value={name} onChange={setName} />
           </div>
           <Button type="button" variant="secondary" loading={renameGroup.isPending} onClick={handleSaveName}>
             Save name

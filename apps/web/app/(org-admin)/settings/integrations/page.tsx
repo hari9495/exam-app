@@ -218,7 +218,7 @@ export default function IntegrationsSettingsPage() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.05, ease: 'easeOut' }}>
-        <CollapsibleSection title="AI API key">
+        <CollapsibleSection title="AI API Key">
           <p className="text-sm text-recruiter-text-secondary sm:col-span-2">
             {integrations?.aiKeyConfigured
               ? `Configured — AI features use this organization's ${integrations.aiProvider === 'openai-compatible' ? 'Azure OpenAI / OpenAI-compatible' : 'Anthropic'} endpoint.`
@@ -251,8 +251,8 @@ export default function IntegrationsSettingsPage() {
                   <div className="sm:col-span-2">
                     <Input label="Base URL" value={aiBaseUrl} onChange={setAiBaseUrl} required placeholder="https://your-resource.openai.azure.com/openai/v1" />
                   </div>
-                  <Input label="Fast-tier Model/deployment Name" value={aiModelFast} onChange={setAiModelFast} required />
-                  <Input label="Standard-tier Model/deployment Name" value={aiModelStandard} onChange={setAiModelStandard} required />
+                  <Input label="Fast-Tier Model/Deployment Name" value={aiModelFast} onChange={setAiModelFast} required />
+                  <Input label="Standard-Tier Model/Deployment Name" value={aiModelStandard} onChange={setAiModelStandard} required />
                 </>
               )}
               <div className="flex gap-2 sm:col-span-2">
@@ -357,7 +357,7 @@ export default function IntegrationsSettingsPage() {
           )}
 
           <div className="sm:col-span-2">
-            <h3 className="mb-2 mt-2 text-sm font-semibold text-recruiter-text">Recent deliveries</h3>
+            <h3 className="mb-2 mt-2 text-sm font-semibold text-recruiter-text">Recent Deliveries</h3>
             <Table columns={DELIVERY_COLUMNS} rows={deliveries ?? []} rowKey={(row) => row.id} emptyMessage="No deliveries yet." />
           </div>
         </CollapsibleSection>

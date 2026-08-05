@@ -72,7 +72,7 @@ function ScorePanel({ scores }: { scores: DashboardAnalytics['scores'] }) {
   const hasData = scores.count > 0;
   return (
     <Card>
-      <PanelHeader icon={Target} title="Score distribution" hint={hasData ? `${scores.count} graded` : undefined} />
+      <PanelHeader icon={Target} title="Score Distribution" hint={hasData ? `${scores.count} graded` : undefined} />
       {!hasData ? (
         <EmptyNote>No graded results in this range yet.</EmptyNote>
       ) : (
@@ -122,7 +122,7 @@ function IntegrityPanel({ integrity }: { integrity: DashboardAnalytics['integrit
     <Card className="flex flex-col">
       <PanelHeader
         icon={integrity.flaggedRate > 0 ? ShieldAlert : ShieldCheck}
-        title="Proctoring integrity"
+        title="Proctoring Integrity"
         hint={hasData ? `${integrity.submittedAttempts} attempts` : undefined}
       />
       {!hasData ? (
@@ -184,7 +184,7 @@ function ThroughputPanel({ funnel, timing }: { funnel: DashboardAnalytics['funne
   const max = Math.max(1, funnel.invited);
   return (
     <Card>
-      <PanelHeader icon={Users2} title="Hiring funnel & throughput" />
+      <PanelHeader icon={Users2} title="Hiring Funnel & Throughput" />
       <div className="grid grid-cols-3 gap-2">
         <Stat value={`${funnel.completionRate}%`} label="Completion" tone={funnel.completionRate >= 70 ? 'good' : 'warn'} />
         <Stat value={String(funnel.abandoned)} label="Abandoned" tone={funnel.abandoned > 0 ? 'warn' : undefined} />
@@ -232,7 +232,7 @@ function ThroughputPanel({ funnel, timing }: { funnel: DashboardAnalytics['funne
 function ExamQualityPanel({ examQuality, questionDifficulty }: Pick<DashboardAnalytics, 'examQuality' | 'questionDifficulty'>) {
   return (
     <Card>
-      <PanelHeader icon={TrendingDown} title="Exam quality" hint="hardest first" />
+      <PanelHeader icon={TrendingDown} title="Exam Quality" hint="hardest first" />
       {examQuality.length === 0 ? (
         <EmptyNote>No settled attempts to compare exams yet.</EmptyNote>
       ) : (

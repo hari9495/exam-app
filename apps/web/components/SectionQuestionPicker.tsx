@@ -126,7 +126,7 @@ export function SectionQuestionPicker({ examId, sectionId, open, onClose, existi
   return (
     <Modal
       open={open}
-      title="Add questions to section"
+      title="Add Questions To Section"
       onClose={onClose}
       size="lg"
       footer={
@@ -149,7 +149,7 @@ export function SectionQuestionPicker({ examId, sectionId, open, onClose, existi
           <div className="flex flex-wrap items-end gap-2">
             <div className="min-w-[16rem] flex-1">
               <Input
-                label="Search questions"
+                label="Search Questions"
                 hideLabel
                 type="search"
                 placeholder="Search by text, topic, category, or tag…"

@@ -50,7 +50,7 @@ export function EditOrganizationModal({
   }
 
   return (
-    <Modal open={organization !== null} title="Edit organization" onClose={onClose}>
+    <Modal open={organization !== null} title="Edit Organization" onClose={onClose}>
       {organization && (
         <>
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">

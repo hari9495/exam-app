@@ -96,7 +96,7 @@ export default function LoginPage() {
         title="Staff Login"
         logoUrl={branding?.logoUrl}
         logoLabel={branding?.name}
-        panelHeading="Automate early screens."
+        panelHeading="Automate Early Screens."
         panelCopy="Focus human judgment on what matters. Prudent Hire runs the first round end to end, so your panel only meets the candidates worth meeting."
         panelHighlights={HIGHLIGHTS}
       >

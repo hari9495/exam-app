@@ -11,26 +11,26 @@ interface ProctoringWarningOverlayProps {
 }
 
 const DEFAULT_MESSAGE = {
-  heading: 'Face not visible',
+  heading: 'Face Not Visible',
   body: "We couldn't see your face clearly. Make sure you're centered in the camera and facing forward, then continue.",
 };
 
 const MESSAGES_BY_REASON: Record<string, { heading: string; body: string }> = {
   multiple_faces: {
-    heading: 'More than one person detected',
+    heading: 'More Than One Person Detected',
     body: 'Only you may be in view during the exam. Make sure no one else is visible in the camera, then continue.',
   },
   no_face: DEFAULT_MESSAGE,
   head_turned: DEFAULT_MESSAGE,
-  tab_switch: { heading: 'Tab switch detected', body: 'We noticed you switched away from this exam tab.' },
-  window_blur: { heading: 'Switched application', body: 'We noticed you switched to another application.' },
-  fullscreen_exit: { heading: 'Exited fullscreen', body: 'We noticed you exited fullscreen mode.' },
-  copy_paste: { heading: 'Copy/paste detected', body: 'We noticed copy or paste activity.' },
-  right_click: { heading: 'Right-click detected', body: 'We noticed a right-click / context-menu action.' },
-  dev_tools_detected: { heading: 'Developer tools detected', body: 'We noticed browser developer tools were opened.' },
-  multi_monitor_detected: { heading: 'Additional display detected', body: 'We noticed an additional display was connected.' },
-  idle_timeout: { heading: 'Inactivity detected', body: 'We noticed no activity for several minutes.' },
-  browser_activity_unspecified: { heading: 'Policy violation detected', body: 'We noticed unusual activity during this exam.' },
+  tab_switch: { heading: 'Tab Switch Detected', body: 'We noticed you switched away from this exam tab.' },
+  window_blur: { heading: 'Switched Application', body: 'We noticed you switched to another application.' },
+  fullscreen_exit: { heading: 'Exited Fullscreen', body: 'We noticed you exited fullscreen mode.' },
+  copy_paste: { heading: 'Copy/Paste Detected', body: 'We noticed copy or paste activity.' },
+  right_click: { heading: 'Right-Click Detected', body: 'We noticed a right-click / context-menu action.' },
+  dev_tools_detected: { heading: 'Developer Tools Detected', body: 'We noticed browser developer tools were opened.' },
+  multi_monitor_detected: { heading: 'Additional Display Detected', body: 'We noticed an additional display was connected.' },
+  idle_timeout: { heading: 'Inactivity Detected', body: 'We noticed no activity for several minutes.' },
+  browser_activity_unspecified: { heading: 'Policy Violation Detected', body: 'We noticed unusual activity during this exam.' },
 };
 
 export function ProctoringWarningOverlay({ strike, strikeLimit, reason, onContinue, continuePending, continueError }: ProctoringWarningOverlayProps) {
@@ -60,7 +60,7 @@ export function ProctoringBlockOverlay() {
         <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-candidate-danger-bg text-candidate-danger">
           <ShieldAlert className="h-5 w-5" aria-hidden="true" />
         </div>
-        <h1 className="mb-1 text-base font-bold text-candidate-text">Exam paused</h1>
+        <h1 className="mb-1 text-base font-bold text-candidate-text">Exam Paused</h1>
         <p className="mb-3 text-sm text-candidate-text-secondary">
           Your exam has been paused after repeated policy violations. A recruiter needs to unblock your session before you
           can continue.

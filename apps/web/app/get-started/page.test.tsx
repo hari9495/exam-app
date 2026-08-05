@@ -15,7 +15,7 @@ describe('GetStartedPage', () => {
     render(<GetStartedPage />);
 
     await userEvent.type(screen.getByLabelText('Name'), 'Ada Lovelace');
-    await userEvent.type(screen.getByLabelText('Work email'), 'ada@acme.com');
+    await userEvent.type(screen.getByLabelText('Work Email'), 'ada@acme.com');
     await userEvent.type(screen.getByLabelText('Company'), 'Acme Corp');
     await userEvent.click(screen.getByRole('button', { name: 'Request access' }));
 
@@ -40,7 +40,7 @@ describe('GetStartedPage', () => {
     render(<GetStartedPage />);
 
     await userEvent.type(screen.getByLabelText('Name'), 'Ada Lovelace');
-    await userEvent.type(screen.getByLabelText('Work email'), 'ada@acme.com');
+    await userEvent.type(screen.getByLabelText('Work Email'), 'ada@acme.com');
     await userEvent.type(screen.getByLabelText('Company'), 'Acme Corp');
     await userEvent.click(screen.getByRole('button', { name: 'Request access' }));
 

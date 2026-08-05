@@ -55,7 +55,7 @@ export default function SsoSettingsPage() {
       <h1 className="text-center text-2xl font-semibold text-recruiter-text">Single Sign-On</h1>
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: 'easeOut' }}>
-        <CollapsibleSection title="SAML configuration">
+        <CollapsibleSection title="SAML Configuration">
           <p className="text-sm text-recruiter-text-secondary sm:col-span-2">
             {sso?.samlEnabled ? 'Configured and enabled — staff can log in via SSO.' : 'Not configured — staff use password login only.'}
           </p>

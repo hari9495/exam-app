@@ -61,7 +61,7 @@ function CodeQuestionGrader({ attemptId, question }: { attemptId: string; questi
 
       <div className="flex items-end gap-3">
         <Input
-          label={`Marks for ${question.questionText}`}
+          label={`Marks For ${question.questionText}`}
           type="number"
           min={0}
           max={question.marks}

@@ -63,7 +63,7 @@ describe('GradingQueuePanel', () => {
 
   it('grading a question calls useGradeCodeAnswer with the entered marks', async () => {
     renderPanel();
-    await userEvent.type(screen.getByLabelText('Marks for Reverse a string'), '8');
+    await userEvent.type(screen.getByLabelText('Marks For Reverse a string'), '8');
     await userEvent.click(screen.getByRole('button', { name: 'Save grade' }));
     expect(gradeMutateAsync).toHaveBeenCalledWith({ questionId: 'q1', marksAwarded: 8, feedback: undefined });
   });
@@ -77,7 +77,7 @@ describe('GradingQueuePanel', () => {
 
   it('explicitly entering 0 marks still saves', async () => {
     renderPanel();
-    await userEvent.type(screen.getByLabelText('Marks for Reverse a string'), '0');
+    await userEvent.type(screen.getByLabelText('Marks For Reverse a string'), '0');
     await userEvent.click(screen.getByRole('button', { name: 'Save grade' }));
     expect(gradeMutateAsync).toHaveBeenCalledWith({ questionId: 'q1', marksAwarded: 0, feedback: undefined });
   });

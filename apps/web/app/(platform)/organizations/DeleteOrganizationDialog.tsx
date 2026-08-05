@@ -39,7 +39,7 @@ export function DeleteOrganizationDialog({
   }
 
   return (
-    <Modal open={organization !== null} title="Delete organization" onClose={onClose}>
+    <Modal open={organization !== null} title="Delete Organization" onClose={onClose}>
       {organization && (
         <div className="flex flex-col gap-3">
           <p className="text-sm text-gray-700">
@@ -47,7 +47,7 @@ export function DeleteOrganizationDialog({
             sign in. Its {organization.userCount} users and {organization.examCount} exams are retained, not erased,
             so this can be reversed.
           </p>
-          <Input label={`Type ${organization.slug} to confirm`} value={typed} onChange={setTyped} />
+          <Input label={`Type ${organization.slug} To Confirm`} value={typed} onChange={setTyped} />
           <Button
             variant="danger"
             onClick={handleDelete}

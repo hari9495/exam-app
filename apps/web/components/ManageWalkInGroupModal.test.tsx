@@ -62,7 +62,7 @@ describe('ManageWalkInGroupModal', () => {
     mockFetch();
     renderModal();
 
-    expect(screen.getByLabelText('Group name')).toHaveValue('Fresher Drive Hackathon');
+    expect(screen.getByLabelText('Group Name')).toHaveValue('Fresher Drive Hackathon');
     await waitFor(() => {
       expect(screen.getByText(/\/walk-in\/demo-org\?group=group-1/)).toBeInTheDocument();
     });
@@ -92,7 +92,7 @@ describe('ManageWalkInGroupModal', () => {
     renderModal();
     await screen.findByLabelText('ServiceNow Fresher Drive Hackathon');
 
-    const nameInput = screen.getByLabelText('Group name');
+    const nameInput = screen.getByLabelText('Group Name');
     await userEvent.clear(nameInput);
     await userEvent.type(nameInput, 'Renamed Group');
     await userEvent.click(screen.getByRole('button', { name: 'Save name' }));

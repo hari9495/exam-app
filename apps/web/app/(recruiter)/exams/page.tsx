@@ -228,7 +228,7 @@ export default function ExamsPage() {
       <Pagination page={examsResponse?.page ?? 1} totalPages={examsResponse?.totalPages ?? 1} onPageChange={setPage} />
 
       {examPendingDelete && (
-        <Modal open title="Delete exam" onClose={() => setExamPendingDelete(null)}>
+        <Modal open title="Delete Exam" onClose={() => setExamPendingDelete(null)}>
           <p className="mb-4 text-sm text-recruiter-text-secondary">
             Delete &ldquo;{examPendingDelete.title}&rdquo;? Candidates and results already collected for this exam are kept, but it
             will no longer appear in your exam list.

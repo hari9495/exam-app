@@ -332,7 +332,7 @@ describe('CandidateWelcomePage', () => {
     render(<CandidateWelcomePage />);
     await skipPractice();
 
-    expect(await screen.findByText('Safe Exam Browser required')).toBeInTheDocument();
+    expect(await screen.findByText('Safe Exam Browser Required')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /download exam configuration/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Start exam' })).not.toBeInTheDocument();
   });

@@ -61,7 +61,7 @@ export default function ResetPasswordPage() {
 
         <div className="flex flex-1 items-center justify-center bg-white px-6 py-12">
           <div className="w-full max-w-sm">
-            <h1 className="mb-6 text-xl font-semibold text-recruiter-text">Reset password</h1>
+            <h1 className="mb-6 text-xl font-semibold text-recruiter-text">Reset Password</h1>
             {success ? (
               <motion.p
                 className="text-sm text-recruiter-text-secondary"
