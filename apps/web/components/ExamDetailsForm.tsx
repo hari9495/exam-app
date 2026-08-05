@@ -17,6 +17,7 @@ export interface ExamDetailsValue {
   availabilityWindowStart?: string;
   availabilityWindowEnd?: string;
   walkInEnabled: boolean;
+  walkInListed: boolean;
   allowedIpRange?: string | null;
   enableAntiCheating: boolean;
   webcamProctoringEnabled: boolean;
@@ -89,6 +90,7 @@ export function ExamDetailsForm({
   );
   const [schedulingError, setSchedulingError] = useState<string | undefined>(undefined);
   const [walkInEnabled, setWalkInEnabled] = useState(initialExam?.walkInEnabled ?? false);
+  const [walkInListed, setWalkInListed] = useState(initialExam?.walkInListed ?? true);
   const [allowedIpRange, setAllowedIpRange] = useState(initialExam?.allowedIpRange ?? '');
   const [enableAntiCheating, setEnableAntiCheating] = useState(initialExam?.enableAntiCheating ?? true);
   const [webcamProctoringEnabled, setWebcamProctoringEnabled] = useState(initialExam?.webcamProctoringEnabled ?? true);
@@ -128,6 +130,7 @@ export function ExamDetailsForm({
       availabilityWindowStart: schedulingEnabled ? new Date(availabilityWindowStart).toISOString() : undefined,
       availabilityWindowEnd: schedulingEnabled ? new Date(availabilityWindowEnd).toISOString() : undefined,
       walkInEnabled,
+      walkInListed,
       allowedIpRange: allowedIpRange.trim()
         ? allowedIpRange.trim()
         : initialExam?.allowedIpRange
@@ -240,8 +243,19 @@ export function ExamDetailsForm({
         {!hideWalkInField && (
           <div className="flex flex-col gap-3 sm:col-span-2">
             <Checkbox label="Enable walk-in registration for this exam" checked={walkInEnabled} onChange={setWalkInEnabled} />
-            {walkInEnabled && initialExam?.id && organizationSlug && (
-              <WalkInShareCard examId={initialExam.id} orgSlug={organizationSlug} />
+            {walkInEnabled && (
+              <>
+                {/* Only meaningful once walk-in itself is on -- controls whether this exam
+                    also shows up when a candidate visits the shared /walk-in/{orgSlug} link,
+                    vs. being reachable only via its own link/QR below (which always works
+                    regardless of this setting). */}
+                <Checkbox
+                  label="Show in the shared walk-in exam list"
+                  checked={walkInListed}
+                  onChange={setWalkInListed}
+                />
+                {initialExam?.id && organizationSlug && <WalkInShareCard examId={initialExam.id} orgSlug={organizationSlug} />}
+              </>
             )}
           </div>
         )}

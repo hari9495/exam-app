@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Modal, Input, Button, useToast } from './ui';
 import { useUpdateCandidate } from '../lib/hooks/useCandidates';
 import { Candidate } from '../lib/types';
-import { EMAIL_PATTERN, PHONE_PATTERN } from '../lib/candidateValidation';
+import { composeName, EMAIL_PATTERN, PHONE_PATTERN, splitName } from '../lib/candidateValidation';
 
 interface CandidateEditModalProps {
   candidate: Candidate;
@@ -18,17 +18,13 @@ interface FormErrors {
   phone?: string;
 }
 
-// Existing candidates only ever had a single "name" field -- split on the first space so a
-// two-word name round-trips cleanly, and a legacy single-word name (there are plenty in prod)
-// just starts with an empty Last Name rather than losing data.
-function splitName(name: string): { firstName: string; lastName: string } {
-  const [firstName = '', ...rest] = name.trim().split(/\s+/);
-  return { firstName, lastName: rest.join(' ') };
-}
-
 export function CandidateEditModal({ candidate, onClose }: CandidateEditModalProps) {
+  // The stored value is a single "name" string -- splitName gives first word /
+  // middle words / last word, and a legacy single-word name lands in First Name
+  // with the rest empty rather than losing data.
   const initial = splitName(candidate.name);
   const [firstName, setFirstName] = useState(initial.firstName);
+  const [middleName, setMiddleName] = useState(initial.middleName);
   const [lastName, setLastName] = useState(initial.lastName);
   const [email, setEmail] = useState(candidate.email);
   const [phone, setPhone] = useState(candidate.phone ?? '');
@@ -54,7 +50,7 @@ export function CandidateEditModal({ candidate, onClose }: CandidateEditModalPro
       return;
     }
     updateCandidate.mutate(
-      { id: candidate.id, name: `${firstName.trim()} ${lastName.trim()}`, email: email.trim(), phone },
+      { id: candidate.id, name: composeName(firstName, middleName, lastName), email: email.trim(), phone },
       {
         onSuccess: () => {
           toast('Candidate updated.');
@@ -81,6 +77,7 @@ export function CandidateEditModal({ candidate, onClose }: CandidateEditModalPro
           error={errors.firstName}
           required
         />
+        <Input label="Middle Name" value={middleName} onChange={setMiddleName} />
         <Input
           label="Last Name"
           value={lastName}

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { WalkInService } from './walk-in.service';
 import { RegisterWalkInDto } from './dto/register-walk-in.dto';
@@ -20,8 +20,8 @@ export class WalkInController {
   constructor(private readonly walkInService: WalkInService) {}
 
   @Get(':orgSlug/exams')
-  listExams(@Param('orgSlug') orgSlug: string) {
-    return this.walkInService.listExams(orgSlug);
+  listExams(@Param('orgSlug') orgSlug: string, @Query('group') groupId?: string) {
+    return this.walkInService.listExams(orgSlug, groupId);
   }
 
   @Post(':orgSlug/register')

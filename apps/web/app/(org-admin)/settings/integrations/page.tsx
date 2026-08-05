@@ -21,6 +21,7 @@ function deliveryTone(status: string): StatusTone {
 }
 
 const DELIVERY_COLUMNS: Column<WebhookDeliveryRow>[] = [
+  { key: 'index', header: '#', render: (_row, index) => index + 1 },
   { key: 'eventType', header: 'Event', render: (row) => row.eventType, sortValue: (row) => row.eventType },
   {
     key: 'status',
@@ -50,6 +51,10 @@ export default function IntegrationsSettingsPage() {
   const [smtpPassword, setSmtpPassword] = useState('');
   const [fromAddress, setFromAddress] = useState('');
   const [smtpError, setSmtpError] = useState<string | null>(null);
+  // Once configured, the form stays hidden behind an explicit Edit step so a stray
+  // click can't silently replace working credentials.
+  const [smtpEditing, setSmtpEditing] = useState(false);
+  const [aiEditing, setAiEditing] = useState(false);
 
   const [aiProvider, setAiProvider] = useState<'anthropic' | 'openai-compatible'>('anthropic');
   const [aiApiKey, setAiApiKey] = useState('');
@@ -93,6 +98,7 @@ export default function IntegrationsSettingsPage() {
           setSmtpUser('');
           setSmtpPassword('');
           setFromAddress('');
+          setSmtpEditing(false);
         },
         onError: (err) => setSmtpError(err instanceof Error ? err.message : 'Failed to save SMTP settings'),
       },
@@ -113,6 +119,7 @@ export default function IntegrationsSettingsPage() {
           setAiBaseUrl('');
           setAiModelFast('');
           setAiModelStandard('');
+          setAiEditing(false);
         },
         onError: (err) => setAiKeyError(err instanceof Error ? err.message : 'Failed to save AI API key'),
       },
@@ -163,20 +170,45 @@ export default function IntegrationsSettingsPage() {
               ? `Configured — ${integrations.smtpHost}:${integrations.smtpPort}${integrations.emailFromAddress ? `, from ${integrations.emailFromAddress}` : ''}`
               : 'Not configured — invites and password resets currently use the platform default.'}
           </p>
-          <form onSubmit={handleSmtpSubmit} className="contents">
-            <Input label="SMTP Host" value={smtpHost} onChange={setSmtpHost} required />
-            <Input label="SMTP Port" type="number" value={smtpPort} onChange={setSmtpPort} required />
-            <Input label="SMTP Username" value={smtpUser} onChange={setSmtpUser} required />
-            <Input label="SMTP Password" type="password" value={smtpPassword} onChange={setSmtpPassword} required />
+          {integrations?.smtpConfigured && !smtpEditing ? (
             <div className="sm:col-span-2">
-              <Input label="From Address (Optional)" type="email" value={fromAddress} onChange={setFromAddress} />
-            </div>
-            <div className="sm:col-span-2">
-              <Button type="submit" loading={updateSmtp.isPending}>
-                {integrations?.smtpConfigured ? 'Replace SMTP settings' : 'Save SMTP settings'}
+              <Button variant="secondary" onClick={() => setSmtpEditing(true)}>
+                Edit SMTP settings
               </Button>
             </div>
-          </form>
+          ) : (
+            <form onSubmit={handleSmtpSubmit} className="contents">
+              <Input label="SMTP Host" value={smtpHost} onChange={setSmtpHost} required />
+              <Input label="SMTP Port" type="number" value={smtpPort} onChange={setSmtpPort} required />
+              <Input label="SMTP Username" value={smtpUser} onChange={setSmtpUser} required />
+              <Input label="SMTP Password" type="password" value={smtpPassword} onChange={setSmtpPassword} required />
+              <div className="sm:col-span-2">
+                <Input label="From Address (Optional)" type="email" value={fromAddress} onChange={setFromAddress} />
+              </div>
+              <div className="flex gap-2 sm:col-span-2">
+                <Button type="submit" loading={updateSmtp.isPending}>
+                  {integrations?.smtpConfigured ? 'Replace SMTP settings' : 'Save SMTP settings'}
+                </Button>
+                {integrations?.smtpConfigured && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      setSmtpEditing(false);
+                      setSmtpError(null);
+                      setSmtpHost('');
+                      setSmtpPort('587');
+                      setSmtpUser('');
+                      setSmtpPassword('');
+                      setFromAddress('');
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </form>
+          )}
           {smtpError && (
             <p role="alert" className="text-sm text-status-danger sm:col-span-2">
               {smtpError}
@@ -192,24 +224,61 @@ export default function IntegrationsSettingsPage() {
               ? `Configured — AI features use this organization's ${integrations.aiProvider === 'openai-compatible' ? 'Azure OpenAI / OpenAI-compatible' : 'Anthropic'} endpoint.`
               : 'Not configured — AI features currently use the platform default key.'}
           </p>
-          <form onSubmit={handleAiKeySubmit} className="contents">
-            <Select label="AI Provider" value={aiProvider} onChange={(value) => setAiProvider(value as 'anthropic' | 'openai-compatible')} options={AI_PROVIDER_OPTIONS} required />
-            <Input label="AI API Key" type="password" value={aiApiKey} onChange={setAiApiKey} required />
-            {aiProvider === 'openai-compatible' && (
-              <>
-                <div className="sm:col-span-2">
-                  <Input label="Base URL" value={aiBaseUrl} onChange={setAiBaseUrl} required placeholder="https://your-resource.openai.azure.com/openai/v1" />
-                </div>
-                <Input label="Fast-tier Model/deployment Name" value={aiModelFast} onChange={setAiModelFast} required />
-                <Input label="Standard-tier Model/deployment Name" value={aiModelStandard} onChange={setAiModelStandard} required />
-              </>
-            )}
-            <div className="sm:col-span-2">
-              <Button type="submit" loading={updateAiKey.isPending}>
-                {integrations?.aiKeyConfigured ? 'Replace AI API key' : 'Save AI API key'}
-              </Button>
-            </div>
-          </form>
+          {integrations?.aiKeyConfigured && !aiEditing ? (
+            <>
+              {integrations.aiProvider === 'openai-compatible' && integrations.aiBaseUrl && (
+                <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm text-recruiter-text-secondary sm:col-span-2">
+                  <dt className="font-medium">Base URL</dt>
+                  <dd className="break-all">{integrations.aiBaseUrl}</dd>
+                  <dt className="font-medium">Fast-tier model</dt>
+                  <dd>{integrations.aiModelFast ?? '—'}</dd>
+                  <dt className="font-medium">Standard-tier model</dt>
+                  <dd>{integrations.aiModelStandard ?? '—'}</dd>
+                </dl>
+              )}
+              <div className="sm:col-span-2">
+                <Button variant="secondary" onClick={() => setAiEditing(true)}>
+                  Edit AI settings
+                </Button>
+              </div>
+            </>
+          ) : (
+            <form onSubmit={handleAiKeySubmit} className="contents">
+              <Select label="AI Provider" value={aiProvider} onChange={(value) => setAiProvider(value as 'anthropic' | 'openai-compatible')} options={AI_PROVIDER_OPTIONS} required />
+              <Input label="AI API Key" type="password" value={aiApiKey} onChange={setAiApiKey} required />
+              {aiProvider === 'openai-compatible' && (
+                <>
+                  <div className="sm:col-span-2">
+                    <Input label="Base URL" value={aiBaseUrl} onChange={setAiBaseUrl} required placeholder="https://your-resource.openai.azure.com/openai/v1" />
+                  </div>
+                  <Input label="Fast-tier Model/deployment Name" value={aiModelFast} onChange={setAiModelFast} required />
+                  <Input label="Standard-tier Model/deployment Name" value={aiModelStandard} onChange={setAiModelStandard} required />
+                </>
+              )}
+              <div className="flex gap-2 sm:col-span-2">
+                <Button type="submit" loading={updateAiKey.isPending}>
+                  {integrations?.aiKeyConfigured ? 'Replace AI API key' : 'Save AI API key'}
+                </Button>
+                {integrations?.aiKeyConfigured && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      setAiEditing(false);
+                      setAiKeyError(null);
+                      setAiApiKey('');
+                      setAiBaseUrl('');
+                      setAiModelFast('');
+                      setAiModelStandard('');
+                      if (integrations?.aiProvider) setAiProvider(integrations.aiProvider);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </form>
+          )}
           {aiKeyError && (
             <p role="alert" className="text-sm text-status-danger sm:col-span-2">
               {aiKeyError}

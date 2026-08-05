@@ -5,22 +5,23 @@ import QRCode from 'qrcode';
 import { Check, Copy, Share2 } from 'lucide-react';
 import { Button, useToast } from './ui';
 
-interface WalkInShareCardProps {
-  examId: string;
-  orgSlug: string;
-}
+// Exactly one of examId/groupId is expected -- an exam-specific card (on the exam's own
+// Details tab) vs. a group-specific card (on the Walk-in Groups page). examId wins if both
+// are somehow passed.
+type WalkInShareCardProps = { orgSlug: string } & ({ examId: string; groupId?: never } | { groupId: string; examId?: never });
 
 // Renders only once mounted -- window.location isn't available during SSR, and
 // computing it there would produce a server/client markup mismatch.
-export function WalkInShareCard({ examId, orgSlug }: WalkInShareCardProps) {
+export function WalkInShareCard({ examId, groupId, orgSlug }: WalkInShareCardProps) {
   const { toast } = useToast();
   const [url, setUrl] = useState('');
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    setUrl(`${window.location.origin}/walk-in/${orgSlug}?exam=${examId}`);
-  }, [orgSlug, examId]);
+    const query = examId ? `exam=${examId}` : `group=${groupId}`;
+    setUrl(`${window.location.origin}/walk-in/${orgSlug}?${query}`);
+  }, [orgSlug, examId, groupId]);
 
   useEffect(() => {
     if (!url) return;

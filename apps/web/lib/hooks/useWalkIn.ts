@@ -2,10 +2,10 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../api-client';
 import { WalkInExamOption } from '../types';
 
-export function useWalkInExams(orgSlug: string) {
+export function useWalkInExams(orgSlug: string, groupId?: string | null) {
   return useQuery<WalkInExamOption[]>({
-    queryKey: ['walk-in-exams', orgSlug],
-    queryFn: () => apiFetch(`/public/walk-in/${orgSlug}/exams`),
+    queryKey: ['walk-in-exams', orgSlug, groupId ?? null],
+    queryFn: () => apiFetch(`/public/walk-in/${orgSlug}/exams${groupId ? `?group=${groupId}` : ''}`),
   });
 }
 

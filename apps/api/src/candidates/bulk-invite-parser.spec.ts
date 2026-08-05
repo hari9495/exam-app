@@ -42,6 +42,22 @@ describe('parseBulkInviteFile (csv)', () => {
     ]);
   });
 
+  it('includes an optional Middle Name column in the combined name, and still accepts files without it', async () => {
+    const csv = [
+      'Email,First Name,Middle Name,Last Name,Phone',
+      'alice@test.com,Alice,Marie,Smith,',
+      'bob@test.com,Bob,,Jones,',
+    ].join('\n');
+
+    const { rows, errors } = await parseBulkInviteFile(Buffer.from(csv), 'csv');
+
+    expect(errors).toEqual([]);
+    expect(rows).toEqual([
+      { rowNumber: 1, email: 'alice@test.com', name: 'Alice Marie Smith', phone: undefined },
+      { rowNumber: 2, email: 'bob@test.com', name: 'Bob Jones', phone: undefined },
+    ]);
+  });
+
   it('flags a row with a missing email', async () => {
     const csv = ['Email,First Name,Last Name,Phone', ',Alice,Smith,555-1234'].join('\n');
 

@@ -17,6 +17,7 @@ jest.mock('../../../../../lib/hooks/useExams', () => ({
   usePublishExam: () => ({ mutate: jest.fn() }),
   useUnpublishExam: () => ({ mutate: jest.fn(), isPending: false }),
   useSetWalkInEnabled: () => ({ mutate: jest.fn() }),
+  useSetWalkInListed: () => ({ mutate: jest.fn() }),
 }));
 jest.mock('../../../../../lib/hooks/useExamMonitoring', () => ({ useExamMonitoring: jest.fn() }));
 jest.mock('../../../../../lib/auth-context', () => ({ useAuth: () => ({ accessToken: 'test-token', organizationSlug: 'acme' }) }));
@@ -24,7 +25,7 @@ jest.mock('../../../../../lib/auth-context', () => ({ useAuth: () => ({ accessTo
 const mockExam: Exam = {
   id: 'exam-1', title: 'Backend Round', instructions: null, status: 'published', durationMinutes: 60,
   passCriteriaPercent: 40, randomizeOrder: false, feedbackVisibility: 'none', schedulingEnabled: false,
-  availabilityWindowStart: null, availabilityWindowEnd: null, walkInEnabled: false, allowedIpRange: null,
+  availabilityWindowStart: null, availabilityWindowEnd: null, walkInEnabled: false, walkInListed: true, allowedIpRange: null,
   enableAntiCheating: true, webcamProctoringEnabled: false, proctoringEnforcement: 'block', proctoringStrikeLimit: 3,
   disabledProctoringSignalsJson: null, screenCaptureEnabled: false, lockdownRequired: false, createdAt: '2026-07-25T09:00:00.000Z', sections: [],
   invitationCount: 1, hasStartedAttempts: true, requiresManualGrading: false,
@@ -136,13 +137,13 @@ describe('EditExamPage details lock', () => {
     expect(screen.queryByText(/candidate has already started it/i)).not.toBeInTheDocument();
   });
 
-  it('shows an always-editable walk-in toggle inside Scheduling & access once published, since the rest of the details form is locked', () => {
+  it('shows the walk-in toggle inside Scheduling & access once published, locked like every other field', () => {
     currentExam = { ...mockExam, status: 'published', hasStartedAttempts: false, walkInEnabled: false };
     renderPage([], []);
 
     const checkboxes = screen.getAllByLabelText('Enable walk-in registration for this exam');
     expect(checkboxes).toHaveLength(1);
-    expect(checkboxes[0]).not.toBeDisabled();
+    expect(checkboxes[0]).toBeDisabled();
     // Regression: this control used to float in its own block above the tab bar
     // (visible on every tab, not just Details). It must live inside the Scheduling
     // & access section instead, alongside every other lock reason.
@@ -156,6 +157,30 @@ describe('EditExamPage details lock', () => {
     renderPage([], []);
 
     expect(screen.getAllByLabelText('Enable walk-in registration for this exam')).toHaveLength(1);
+  });
+
+  it('keeps the walk-in toggle fully editable while the exam is still a draft (not yet locked)', () => {
+    currentExam = { ...mockExam, status: 'draft', hasStartedAttempts: false, walkInEnabled: false };
+    renderPage([], []);
+
+    expect(screen.getByLabelText('Enable walk-in registration for this exam')).not.toBeDisabled();
+  });
+
+  it('shows the "show in shared list" toggle alongside the walk-in toggle once published, also locked', () => {
+    currentExam = { ...mockExam, status: 'published', hasStartedAttempts: false, walkInEnabled: true, walkInListed: true };
+    renderPage([], []);
+
+    const checkboxes = screen.getAllByLabelText('Show in the shared walk-in exam list');
+    expect(checkboxes).toHaveLength(1);
+    expect(checkboxes[0]).toBeDisabled();
+    expect(checkboxes[0]).toBeChecked();
+  });
+
+  it('hides the "show in shared list" toggle when walk-in itself is off, even while published', () => {
+    currentExam = { ...mockExam, status: 'published', hasStartedAttempts: false, walkInEnabled: false };
+    renderPage([], []);
+
+    expect(screen.queryByLabelText('Show in the shared walk-in exam list')).not.toBeInTheDocument();
   });
 });
 

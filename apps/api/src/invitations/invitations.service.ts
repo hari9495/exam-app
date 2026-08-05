@@ -33,6 +33,53 @@ export function resolveInvitationExpiry(exam: { schedulingEnabled: boolean; avai
   return addDays(new Date(), INVITATION_EXPIRY_DAYS);
 }
 
+export interface AssessmentEmailOptions {
+  candidateName: string;
+  examTitle: string;
+  durationMinutes: number;
+  /** Scheduled start shown as "Date & Time" -- pass null for unscheduled exams. */
+  availabilityWindowStart: Date | null;
+  startLink: string;
+  logoUrl: string | null;
+  organizationName: string | null;
+  /** First paragraph after the greeting. Invitations say "You have been invited...",
+   *  walk-in registrations say "Thanks for registering..." -- everything else
+   *  (Test Details, Start button, Before You Begin, rules, footer) is identical. */
+  introHtml: string;
+}
+
+/** The one branded assessment-email layout, shared by recruiter invitations and
+ *  walk-in registrations so candidates always get the same instructions. */
+export function buildAssessmentEmailHtml(options: AssessmentEmailOptions): string {
+  const logoHtml = options.logoUrl ? `<p><img src="${options.logoUrl}" alt="Organization logo" height="40" /></p>` : '';
+  const scheduleHtml = options.availabilityWindowStart
+    ? `<p><strong>Date &amp; Time:</strong> ${options.availabilityWindowStart.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</p>`
+    : '';
+  return (
+    `${logoHtml}<p>Dear ${options.candidateName},</p>` +
+    `<p>${options.introHtml}</p>` +
+    `<h3>Test Details</h3>${scheduleHtml}<p><strong>Duration:</strong> ${options.durationMinutes} minutes</p>` +
+    `<p><a href="${options.startLink}" style="display:inline-block;padding:10px 20px;background:#2955a3;color:#ffffff;text-decoration:none;border-radius:4px;">Start Assessment</a></p>` +
+    `<h3>Before You Begin</h3><ul>` +
+    `<li>Use a laptop or desktop with a working webcam - this assessment uses camera-based monitoring, so make sure your camera is enabled and unobstructed before starting.</li>` +
+    `<li>Use a stable internet connection and a supported browser (Chrome or Edge recommended).</li>` +
+    `<li>Find a quiet, well-lit space free of interruptions for the full duration of the test.</li></ul>` +
+    `<h3>Examination Rules &amp; Guidelines</h3><ul>` +
+    `<li>Stay on the test window. Switching tabs, minimizing the window, or exiting full-screen mode is detected and counted as a violation.</li>` +
+    `<li>Copy, paste, and right-click are disabled during the test and are also detected as violations.</li>` +
+    `<li>Extended periods of inactivity may also be flagged.</li>` +
+    `<li>On your first and second violation, your exam will pause and you can resume it yourself from an on-screen prompt - no need to contact anyone.</li>` +
+    `<li>On your third violation, your exam will be blocked and can only be reopened by your recruiter, so please treat the first two warnings seriously.</li>` +
+    `<li>If negative marking applies to this assessment, incorrect answers may be penalized - only answer when you are confident.</li></ul>` +
+    // Do NOT tell candidates to reply: this goes out from the org's configured
+    // emailFromAddress, which in production is a no-reply mailbox, so replies are
+    // silently discarded and a candidate in trouble gets no help.
+    `<p>If you run into any issues, please contact your recruiter or the person who arranged this assessment.</p>` +
+    `<p>Best regards,<br/>${options.organizationName ?? 'The Hiring Team'}</p>` +
+    `<p style="color:#666666;font-size:12px;">This message was sent from an unmonitored address - please do not reply to it.</p>`
+  );
+}
+
 export interface BulkInviteResult {
   created: Invitation[];
   skipped: { candidateId: string; reason: string }[];
@@ -238,6 +285,8 @@ export class InvitationsService {
           candidateId: true,
           status: true,
           source: true,
+          emailStatus: true,
+          resendCount: true,
           extraTimePercent: true,
           invitedAt: true,
           expiresAt: true,
@@ -265,7 +314,12 @@ export class InvitationsService {
       }
       const updated = await tx.invitation.update({
         where: { id: invitationId },
-        data: { token: generateToken(), expiresAt: resolveInvitationExpiry(existing.exam) },
+        data: {
+          token: generateToken(),
+          expiresAt: resolveInvitationExpiry(existing.exam),
+          emailStatus: 'pending',
+          resendCount: { increment: 1 },
+        },
       });
       return { invitation: updated, exam: existing.exam, candidate: existing.candidate };
     });
@@ -348,52 +402,40 @@ export class InvitationsService {
     const organization = await this.tenantPrisma.forTenant(context, (tx) =>
       tx.organization.findUnique({ where: { id: context.organizationId as string }, select: { logoPath: true, name: true } }),
     );
-    const logoUrl = organization?.logoPath ?? null;
-    const logoHtml = logoUrl ? `<p><img src="${logoUrl}" alt="Organization logo" height="40" /></p>` : '';
-    const scheduleHtml =
-      exam.schedulingEnabled && exam.availabilityWindowStart
-        ? `<p><strong>Date &amp; Time:</strong> ${exam.availabilityWindowStart.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</p>`
-        : '';
-    const html =
-      `${logoHtml}<p>Dear ${candidate.name},</p>` +
+    const html = buildAssessmentEmailHtml({
+      candidateName: candidate.name,
+      examTitle: exam.title,
+      durationMinutes: exam.durationMinutes,
+      availabilityWindowStart: exam.schedulingEnabled ? exam.availabilityWindowStart : null,
+      startLink: link,
+      logoUrl: organization?.logoPath ?? null,
+      organizationName: organization?.name ?? null,
       // This is an invitation to SIT the exam. The previous wording ("Congratulations! Your
       // registration ... has been successfully completed") read as if the assessment itself
       // was already done, so candidates had no idea they still had to take it.
-      `<p>You have been invited to take the <strong>${exam.title}</strong> assessment. Everything you need is below - ` +
-      `use the button to begin when you are ready.</p>` +
-      `<h3>Test Details</h3>${scheduleHtml}<p><strong>Duration:</strong> ${exam.durationMinutes} minutes</p>` +
-      `<p><a href="${link}" style="display:inline-block;padding:10px 20px;background:#2955a3;color:#ffffff;text-decoration:none;border-radius:4px;">Start Assessment</a></p>` +
-      `<h3>Before You Begin</h3><ul>` +
-      `<li>Use a laptop or desktop with a working webcam - this assessment uses camera-based monitoring, so make sure your camera is enabled and unobstructed before starting.</li>` +
-      `<li>Use a stable internet connection and a supported browser (Chrome or Edge recommended).</li>` +
-      `<li>Find a quiet, well-lit space free of interruptions for the full duration of the test.</li></ul>` +
-      `<h3>Examination Rules &amp; Guidelines</h3><ul>` +
-      `<li>Stay on the test window. Switching tabs, minimizing the window, or exiting full-screen mode is detected and counted as a violation.</li>` +
-      `<li>Copy, paste, and right-click are disabled during the test and are also detected as violations.</li>` +
-      `<li>Extended periods of inactivity may also be flagged.</li>` +
-      `<li>On your first and second violation, your exam will pause and you can resume it yourself from an on-screen prompt - no need to contact anyone.</li>` +
-      `<li>On your third violation, your exam will be blocked and can only be reopened by your recruiter, so please treat the first two warnings seriously.</li>` +
-      `<li>If negative marking applies to this assessment, incorrect answers may be penalized - only answer when you are confident.</li></ul>` +
-      // Do NOT tell candidates to reply: this goes out from the org's configured
-      // emailFromAddress, which in production is a no-reply mailbox, so replies are
-      // silently discarded and a candidate in trouble gets no help.
-      `<p>If you run into any issues, please contact your recruiter or the person who arranged this assessment.</p>` +
-      `<p>Best regards,<br/>${organization?.name ?? 'The Hiring Team'}</p>` +
-      `<p style="color:#666666;font-size:12px;">This message was sent from an unmonitored address - please do not reply to it.</p>`;
+      introHtml: `You have been invited to take the <strong>${exam.title}</strong> assessment. Everything you need is below - use the button to begin when you are ready.`,
+    });
     const result = await this.emailService.send({
       to: candidate.email,
       subject: `Your ${exam.title} assessment - invitation and instructions`,
       html,
       organizationId: context.organizationId ?? undefined,
     });
-    await this.tenantPrisma.forTenant(context, (tx) =>
-      tx.notification.create({
+    await this.tenantPrisma.forTenant(context, async (tx) => {
+      await tx.notification.create({
         data: {
           invitationId: invitation.id,
           status: result.success ? 'sent' : 'failed',
           sentAt: result.success ? new Date() : null,
         },
-      }),
-    );
+      });
+      // Settles the transient 'pending' set when the invite/resend was created -- this is
+      // the only place emailStatus moves off 'pending', so the recruiter UI's "In queue"
+      // badge clears once the send actually resolves, not before.
+      await tx.invitation.update({
+        where: { id: invitation.id },
+        data: { emailStatus: result.success ? 'sent' : 'failed' },
+      });
+    });
   }
 }

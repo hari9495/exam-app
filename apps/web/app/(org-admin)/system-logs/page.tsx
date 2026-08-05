@@ -85,6 +85,7 @@ export default function SystemLogsPage() {
   }
 
   const columns: Column<SystemEventEntry>[] = [
+    { key: 'index', header: '#', render: (_entry, index) => index + 1 },
     {
       key: 'occurredAt',
       header: 'When',

@@ -10,6 +10,8 @@ export type QuestionType = 'single_mcq' | 'multi_mcq' | 'true_false' | 'code';
 export type Difficulty = 'easy' | 'medium' | 'hard';
 export type ExamStatus = 'draft' | 'published' | 'archived';
 export type InvitationStatus = 'invited' | 'revoked';
+// 'none' = no invite email is part of this invitation's lifecycle (walk-in registration).
+export type InvitationEmailStatus = 'pending' | 'sent' | 'failed' | 'none';
 
 export const CODE_LANGUAGE_OPTIONS = ['javascript', 'typescript', 'python', 'java', 'csharp', 'cpp', 'go', 'ruby'] as const;
 export type CodeLanguage = (typeof CODE_LANGUAGE_OPTIONS)[number];
@@ -142,6 +144,7 @@ export interface Exam {
   availabilityWindowStart: string | null;
   availabilityWindowEnd: string | null;
   walkInEnabled: boolean;
+  walkInListed: boolean;
   allowedIpRange: string | null;
   enableAntiCheating: boolean;
   webcamProctoringEnabled: boolean;
@@ -184,6 +187,8 @@ export interface Invitation {
   examId: string;
   candidateId: string;
   status: InvitationStatus;
+  emailStatus: InvitationEmailStatus;
+  resendCount: number;
   extraTimePercent: number;
   attempt: { id: string; status: string } | null;
   invitedAt: string;
@@ -220,6 +225,27 @@ export interface WalkInExamOption {
   id: string;
   title: string;
   durationMinutes: number;
+  walkInListed: boolean;
+}
+
+export interface WalkInGroupExamSummary {
+  id: string;
+  title: string;
+}
+
+export interface WalkInGroup {
+  id: string;
+  name: string;
+  createdAt: string;
+  exams: WalkInGroupExamSummary[];
+}
+
+// Every walk-in-enabled exam in the org, whichever group it's currently in (or none) --
+// the pool a "manage members" picker offers, so an exam can be moved between groups.
+export interface EligibleWalkInExam {
+  id: string;
+  title: string;
+  walkInGroupId: string | null;
 }
 
 export interface SuperAdminSummary {

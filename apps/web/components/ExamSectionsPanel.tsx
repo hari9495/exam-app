@@ -30,6 +30,7 @@ import { TYPE_TONE, TYPE_LABEL, DIFFICULTY_LABEL, DIFFICULTY_LEVEL } from '../li
 import { ExamSection, QuestionType, Difficulty, PoolPreview } from '../lib/types';
 
 const POOL_PREVIEW_COLUMNS: Column<PoolPreview['questions'][number]>[] = [
+  { key: 'index', header: '#', render: (_question, index) => index + 1 },
   {
     key: 'text',
     header: 'Question',

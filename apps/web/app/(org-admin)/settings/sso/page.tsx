@@ -15,6 +15,9 @@ export default function SsoSettingsPage() {
   const [ssoUrl, setSsoUrl] = useState('');
   const [certificate, setCertificate] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Once IdP settings exist, the form stays hidden behind an explicit Edit step so a
+  // stray edit can't silently break a working SSO trust relationship.
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     if (sso?.samlIdpEntityId != null) setEntityId(sso.samlIdpEntityId);
@@ -25,12 +28,17 @@ export default function SsoSettingsPage() {
   const apiOrigin = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001/api/v1';
   const metadataUrl = `${apiOrigin}/auth/saml/${organizationSlug}/metadata`;
 
+  const idpConfigured = Boolean(sso?.samlIdpEntityId || sso?.samlIdpSsoUrl || sso?.samlIdpCertificate);
+
   function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     updateSso.mutate(
       { samlIdpEntityId: entityId, samlIdpSsoUrl: ssoUrl, samlIdpCertificate: certificate },
-      { onError: (err) => setError(err instanceof Error ? err.message : 'Failed to save SSO settings') },
+      {
+        onSuccess: () => setEditing(false),
+        onError: (err) => setError(err instanceof Error ? err.message : 'Failed to save SSO settings'),
+      },
     );
   }
 
@@ -57,29 +65,64 @@ export default function SsoSettingsPage() {
             <p className="break-all font-mono text-xs text-recruiter-text">{metadataUrl}</p>
           </div>
 
-          <div className="sm:col-span-2">
-            <RequiredFieldsNote />
-          </div>
-          <form onSubmit={handleSave} className="contents">
-            <Input label="Microsoft Entra Identifier" value={entityId} onChange={setEntityId} required />
-            <Input label="SSO Url" value={ssoUrl} onChange={setSsoUrl} required />
-            <label className="flex flex-col gap-1 text-sm font-medium text-recruiter-text after:ml-0.5 after:text-status-danger after:content-['*'] sm:col-span-2">
-              IdP Certificate
-              <textarea
-                value={certificate}
-                onChange={(e) => setCertificate(e.target.value)}
-                required
-                rows={6}
-                className="rounded border border-recruiter-border p-2 font-mono text-xs"
-                placeholder="-----BEGIN CERTIFICATE-----"
-              />
-            </label>
-            <div className="sm:col-span-2">
-              <Button type="submit" loading={updateSso.isPending}>
-                Save IdP settings
-              </Button>
-            </div>
-          </form>
+          {idpConfigured && !editing ? (
+            <>
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm text-recruiter-text-secondary sm:col-span-2">
+                <dt className="font-medium">Microsoft Entra Identifier</dt>
+                <dd className="break-all">{sso?.samlIdpEntityId ?? '—'}</dd>
+                <dt className="font-medium">SSO Url</dt>
+                <dd className="break-all">{sso?.samlIdpSsoUrl ?? '—'}</dd>
+                <dt className="font-medium">IdP Certificate</dt>
+                <dd>{sso?.samlIdpCertificate ? 'Provided' : '—'}</dd>
+              </dl>
+              <div className="sm:col-span-2">
+                <Button variant="secondary" onClick={() => setEditing(true)}>
+                  Edit IdP settings
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="sm:col-span-2">
+                <RequiredFieldsNote />
+              </div>
+              <form onSubmit={handleSave} className="contents">
+                <Input label="Microsoft Entra Identifier" value={entityId} onChange={setEntityId} required />
+                <Input label="SSO Url" value={ssoUrl} onChange={setSsoUrl} required />
+                <label className="flex flex-col gap-1 text-sm font-medium text-recruiter-text after:ml-0.5 after:text-status-danger after:content-['*'] sm:col-span-2">
+                  IdP Certificate
+                  <textarea
+                    value={certificate}
+                    onChange={(e) => setCertificate(e.target.value)}
+                    required
+                    rows={6}
+                    className="rounded border border-recruiter-border p-2 font-mono text-xs"
+                    placeholder="-----BEGIN CERTIFICATE-----"
+                  />
+                </label>
+                <div className="flex gap-2 sm:col-span-2">
+                  <Button type="submit" loading={updateSso.isPending}>
+                    Save IdP settings
+                  </Button>
+                  {idpConfigured && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => {
+                        setEditing(false);
+                        setError(null);
+                        setEntityId(sso?.samlIdpEntityId ?? '');
+                        setSsoUrl(sso?.samlIdpSsoUrl ?? '');
+                        setCertificate(sso?.samlIdpCertificate ?? '');
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                </div>
+              </form>
+            </>
+          )}
 
           <div className="sm:col-span-2">
             <Button

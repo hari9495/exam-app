@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { MotionConfig } from 'framer-motion';
-import { Users, History, ShieldCheck, Settings, Plug, KeyRound, TerminalSquare } from 'lucide-react';
+import { Users, History, ShieldCheck, Settings, Plug, KeyRound, TerminalSquare, QrCode } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
 import { staffLandingPath } from '../../lib/staff-landing';
 import { SUPER_ADMIN_FULL_NAV } from '../../lib/super-admin-nav';
@@ -21,6 +21,7 @@ const BASE_NAV_ITEMS = [
   { href: '/settings/branding', label: 'Org Settings', icon: Settings },
   { href: '/settings/integrations', label: 'Integrations', icon: Plug },
   { href: '/settings/sso', label: 'Single Sign-On', icon: KeyRound },
+  { href: '/walk-in-groups', label: 'Walk-in Groups', icon: QrCode },
 ];
 
 // A super_admin acting into an org sees the complete feature nav (SUPER_ADMIN_FULL_NAV), not this
@@ -67,9 +68,13 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
   // features included), the same union an acting super_admin sees.
   const navItems = actingSuperAdmin || role === 'org_admin' ? SUPER_ADMIN_FULL_NAV : BASE_NAV_ITEMS;
 
-  // Real name from useCurrentUser() once loaded; falls back to a per-role
-  // placeholder only while loading or if the user has never set one.
-  const displayName = currentUser?.name || 'Org Admin';
+  // This layout is only ever mounted for org_admin / acting super_admin (see the guard above),
+  // so this always resolves to 'Org Admin' -- kept as a real derivation rather than a hardcoded
+  // string so it stays correct if that guard is ever loosened, and matches the sibling layouts.
+  const roleLabel = role === 'super_admin' ? 'Super Admin' : 'Org Admin';
+  // Real name from useCurrentUser() once loaded; falls back to the role label while loading or if
+  // the user has never set one.
+  const displayName = currentUser?.name || roleLabel;
   const initials = displayName
     .split(' ')
     .map((part) => part[0])
@@ -91,7 +96,7 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
         orgInitial={orgInitial}
         displayName={displayName}
         initials={initials}
-        roleLabel="Org Admin"
+        roleLabel={roleLabel}
       />
       <div className="flex flex-1 flex-col">
         <StaffTopBar onLogout={handleLogout} />

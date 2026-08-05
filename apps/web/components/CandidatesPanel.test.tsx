@@ -28,6 +28,22 @@ describe('CandidatesPanel', () => {
     (useResendInvitation as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
   });
 
+  it('numbers rows 1-based in the current view', () => {
+    (useExamInvitations as jest.Mock).mockReturnValue({
+      data: [
+        { id: 'inv-1', extraTimePercent: 0, attempt: null, candidate: { id: 'cand-1', name: 'Alice', email: 'alice@example.com' } },
+        { id: 'inv-2', extraTimePercent: 0, attempt: null, candidate: { id: 'cand-2', name: 'Bob', email: 'bob@example.com' } },
+      ],
+      isLoading: false,
+    });
+    (useUpdateAccommodation as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
+
+    renderPanel();
+
+    expect(screen.getByRole('columnheader', { name: '#' })).toBeInTheDocument();
+    expect(screen.getAllByRole('cell', { name: /^[12]$/ }).map((cell) => cell.textContent)).toEqual(['1', '2']);
+  });
+
   it('shows an editable extra-time control for a candidate who has not started', async () => {
     const mutate = jest.fn();
     (useExamInvitations as jest.Mock).mockReturnValue({
@@ -163,6 +179,63 @@ describe('CandidatesPanel', () => {
     expect(screen.getByText('Paused')).toBeInTheDocument();
     expect(screen.getByText('Blocked')).toBeInTheDocument();
     expect(screen.queryAllByText('In Progress')).toHaveLength(1);
+  });
+
+  it('shows In queue while the invite email is still sending, before an attempt exists', () => {
+    (useExamInvitations as jest.Mock).mockReturnValue({
+      data: [
+        { id: 'inv-1', status: 'invited', emailStatus: 'pending', resendCount: 0, extraTimePercent: 0, attempt: null, candidate: { id: 'c1', name: 'Alice', email: 'a@example.com' } },
+      ],
+      isLoading: false,
+    });
+    (useUpdateAccommodation as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
+
+    renderPanel();
+
+    expect(screen.getByText('In queue')).toBeInTheDocument();
+  });
+
+  it('shows Invite failed when the email send did not go through', () => {
+    (useExamInvitations as jest.Mock).mockReturnValue({
+      data: [
+        { id: 'inv-1', status: 'invited', emailStatus: 'failed', resendCount: 0, extraTimePercent: 0, attempt: null, candidate: { id: 'c1', name: 'Alice', email: 'a@example.com' } },
+      ],
+      isLoading: false,
+    });
+    (useUpdateAccommodation as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
+
+    renderPanel();
+
+    expect(screen.getByText('Invite failed')).toBeInTheDocument();
+  });
+
+  it('shows Resent once the invite has been resent and the resend email has settled', () => {
+    (useExamInvitations as jest.Mock).mockReturnValue({
+      data: [
+        { id: 'inv-1', status: 'invited', emailStatus: 'sent', resendCount: 1, extraTimePercent: 0, attempt: null, candidate: { id: 'c1', name: 'Alice', email: 'a@example.com' } },
+      ],
+      isLoading: false,
+    });
+    (useUpdateAccommodation as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
+
+    renderPanel();
+
+    expect(screen.getByText('Resent')).toBeInTheDocument();
+  });
+
+  it('prefers In queue over Resent while a resend email is still in flight', () => {
+    (useExamInvitations as jest.Mock).mockReturnValue({
+      data: [
+        { id: 'inv-1', status: 'invited', emailStatus: 'pending', resendCount: 1, extraTimePercent: 0, attempt: null, candidate: { id: 'c1', name: 'Alice', email: 'a@example.com' } },
+      ],
+      isLoading: false,
+    });
+    (useUpdateAccommodation as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
+
+    renderPanel();
+
+    expect(screen.getByText('In queue')).toBeInTheDocument();
+    expect(screen.queryByText('Resent')).not.toBeInTheDocument();
   });
 
   it('filters candidates by name or email as the recruiter types', async () => {

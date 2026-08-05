@@ -1,13 +1,23 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useResultsList, useResultsExport } from '../lib/hooks/usePanelReports';
+import { useResultsList, useResultsExport, useQuestionAccuracy } from '../lib/hooks/usePanelReports';
 import { ToastProvider } from './ui';
 import { ExamResultsPanel } from './ExamResultsPanel';
 
-jest.mock('../lib/hooks/usePanelReports', () => ({ useResultsList: jest.fn(), useResultsExport: jest.fn() }));
+jest.mock('../lib/hooks/usePanelReports', () => ({ useResultsList: jest.fn(), useResultsExport: jest.fn(), useQuestionAccuracy: jest.fn() }));
 jest.mock('./AdvanceToNextRoundModal', () => ({
   AdvanceToNextRoundModal: ({ candidateIds }: { candidateIds: string[] }) => (
     <div data-testid="advance-modal">candidateIds:{JSON.stringify(candidateIds)}</div>
+  ),
+}));
+// The real report panel pulls in several more data hooks; its own rendering is
+// covered by the candidate detail page tests.
+jest.mock('./CandidateReportPanel', () => ({
+  CandidateReportPanel: ({ candidateId, attemptId, backSlot }: { candidateId: string; attemptId: string | null; backSlot?: React.ReactNode }) => (
+    <div data-testid="candidate-report">
+      {backSlot}
+      candidateId:{candidateId};attemptId:{String(attemptId)}
+    </div>
   ),
 }));
 
@@ -42,6 +52,7 @@ describe('ExamResultsPanel', () => {
   beforeEach(() => {
     localStorage.clear();
     (useResultsExport as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+    (useQuestionAccuracy as jest.Mock).mockReturnValue({ data: [], isLoading: false });
   });
 
   it('shows only candidates who attended, not those still invited or revoked', () => {
@@ -59,6 +70,71 @@ describe('ExamResultsPanel', () => {
     expect(screen.getByText('Alice')).toBeInTheDocument();
     expect(screen.queryByText('Bob')).not.toBeInTheDocument();
     expect(screen.queryByText('Cara')).not.toBeInTheDocument();
+  });
+
+  it('numbers rows 1-based by their position in the current view', () => {
+    (useResultsList as jest.Mock).mockReturnValue({
+      data: [
+        row({ candidateId: 'c1', candidateName: 'Alice' }),
+        row({ candidateId: 'c2', candidateName: 'Bob', invitationId: 'i2' }),
+        row({ candidateId: 'c3', candidateName: 'Cara', invitationId: 'i3' }),
+      ],
+      isLoading: false,
+    });
+
+    renderPanel();
+
+    expect(screen.getByRole('columnheader', { name: '#' })).toBeInTheDocument();
+    const cells = screen.getAllByRole('cell', { name: /^[123]$/ }).map((cell) => cell.textContent);
+    expect(cells).toEqual(['1', '2', '3']);
+  });
+
+  it('shows the raw score fraction in its own Score column, separate from Percentage', () => {
+    (useResultsList as jest.Mock).mockReturnValue({
+      data: [row({ candidateId: 'c1', candidateName: 'Alice', score: 5, maxScore: 6, percentage: 83.3 })],
+      isLoading: false,
+    });
+
+    renderPanel();
+
+    expect(screen.getByRole('button', { name: 'Score' })).toBeInTheDocument();
+    expect(screen.getByText('5/6')).toBeInTheDocument();
+    expect(screen.getByText('83.3%')).toBeInTheDocument();
+  });
+
+  it('shows a dash in the Score column when the attempt has no score yet', () => {
+    (useResultsList as jest.Mock).mockReturnValue({
+      data: [row({ candidateId: 'c1', candidateName: 'Alice', status: 'in_progress', score: null, maxScore: null, percentage: null, passFail: null })],
+      isLoading: false,
+    });
+
+    renderPanel();
+
+    const headerCell = screen.getByRole('button', { name: 'Score' });
+    const scoreColumnIndex = Array.from(headerCell.parentElement?.children ?? []).indexOf(headerCell);
+    const dataRow = screen.getAllByRole('row')[1];
+    const cellsInRow = within(dataRow).getAllByRole('cell');
+    expect(cellsInRow[scoreColumnIndex].textContent).toBe('—');
+  });
+
+  it('re-numbers rows after sorting, following the new order rather than the original one', async () => {
+    const user = userEvent.setup();
+    (useResultsList as jest.Mock).mockReturnValue({
+      data: [
+        row({ candidateId: 'c1', candidateName: 'Zed', percentage: 10 }),
+        row({ candidateId: 'c2', candidateName: 'Amy', invitationId: 'i2', percentage: 90 }),
+      ],
+      isLoading: false,
+    });
+
+    renderPanel();
+    await user.click(screen.getByRole('button', { name: 'Candidate' }));
+
+    const rows = screen.getAllByRole('row').slice(1); // drop the header row
+    expect(rows[0]).toHaveTextContent('Amy');
+    expect(rows[0]).toHaveTextContent('1');
+    expect(rows[1]).toHaveTextContent('Zed');
+    expect(rows[1]).toHaveTextContent('2');
   });
 
   it('offers a column chooser that can hide the Integrity column but never the select column', async () => {
@@ -115,12 +191,19 @@ describe('ExamResultsPanel', () => {
     expect(screen.getByText('No candidates have attended this exam yet.')).toBeInTheDocument();
   });
 
-  it('links a candidate to their results detail page with the attempt id', () => {
+  it('opens the candidate report inline (with the attempt id) instead of routing away, and Back returns to the table', async () => {
     (useResultsList as jest.Mock).mockReturnValue({ data: [row()], isLoading: false });
 
     renderPanel('exam-1');
+    await userEvent.click(screen.getByRole('button', { name: 'Alice' }));
 
-    expect(screen.getByRole('link', { name: 'Alice' })).toHaveAttribute('href', '/reports/exam-1/candidates/c1?attemptId=a1');
+    expect(screen.getByTestId('candidate-report')).toHaveTextContent('candidateId:c1;attemptId:a1');
+    expect(screen.queryByRole('button', { name: 'Advance to Next Round' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: '← Back To Results' }));
+
+    expect(screen.queryByTestId('candidate-report')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Alice' })).toBeInTheDocument();
   });
 
   it('filters rows by clicking the Status column header', async () => {
@@ -138,7 +221,8 @@ describe('ExamResultsPanel', () => {
     expect(screen.getByText('Bob')).toBeInTheDocument();
   });
 
-  it('filters rows by clicking the Score column header', async () => {
+  it('filters rows via a Percentage number-filter operator (Greater Than Or Equal To)', async () => {
+    const user = userEvent.setup();
     (useResultsList as jest.Mock).mockReturnValue({
       data: [row({ candidateId: 'c1', candidateName: 'Alice', percentage: 20 }), row({ candidateId: 'c2', candidateName: 'Bob', percentage: 90 })],
       isLoading: false,
@@ -146,10 +230,80 @@ describe('ExamResultsPanel', () => {
 
     renderPanel();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Filter by Score' }));
-    await userEvent.click(screen.getByRole('menuitem', { name: 'High (≥70%)' }));
+    await user.click(screen.getByRole('button', { name: 'Filter by Percentage' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Greater Than Or Equal To...' }));
+    await user.type(screen.getByLabelText('Value'), '70');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
 
     expect(screen.queryByText('Alice')).not.toBeInTheDocument();
+    expect(screen.getByText('Bob')).toBeInTheDocument();
+  });
+
+  it('filters rows via the Between operator, accepting the two values in either order', async () => {
+    const user = userEvent.setup();
+    (useResultsList as jest.Mock).mockReturnValue({
+      data: [
+        row({ candidateId: 'c1', candidateName: 'Alice', percentage: 20 }),
+        row({ candidateId: 'c2', candidateName: 'Bob', percentage: 50 }),
+        row({ candidateId: 'c3', candidateName: 'Cara', percentage: 90 }),
+      ],
+      isLoading: false,
+    });
+
+    renderPanel();
+
+    await user.click(screen.getByRole('button', { name: 'Filter by Percentage' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Between...' }));
+    // Entered backwards (To < From) -- the filter should still treat it as 30-60.
+    await user.type(screen.getByLabelText('From'), '60');
+    await user.type(screen.getByLabelText('To'), '30');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+
+    expect(screen.queryByText('Alice')).not.toBeInTheDocument();
+    expect(screen.getByText('Bob')).toBeInTheDocument();
+    expect(screen.queryByText('Cara')).not.toBeInTheDocument();
+  });
+
+  it('filters rows via Above Average without opening a value modal', async () => {
+    const user = userEvent.setup();
+    (useResultsList as jest.Mock).mockReturnValue({
+      data: [
+        row({ candidateId: 'c1', candidateName: 'Alice', percentage: 10 }),
+        row({ candidateId: 'c2', candidateName: 'Bob', percentage: 90 }),
+      ],
+      isLoading: false,
+    });
+
+    renderPanel();
+
+    await user.click(screen.getByRole('button', { name: 'Filter by Percentage' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Above Average' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByText('Alice')).not.toBeInTheDocument();
+    expect(screen.getByText('Bob')).toBeInTheDocument();
+  });
+
+  it('clears the Percentage filter via "Clear Filter", which only appears once a filter is active', async () => {
+    const user = userEvent.setup();
+    (useResultsList as jest.Mock).mockReturnValue({
+      data: [row({ candidateId: 'c1', candidateName: 'Alice', percentage: 20 }), row({ candidateId: 'c2', candidateName: 'Bob', percentage: 90 })],
+      isLoading: false,
+    });
+
+    renderPanel();
+
+    await user.click(screen.getByRole('button', { name: 'Filter by Percentage' }));
+    expect(screen.queryByRole('menuitem', { name: 'Clear Filter' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('menuitem', { name: 'Greater Than Or Equal To...' }));
+    await user.type(screen.getByLabelText('Value'), '70');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(screen.queryByText('Alice')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Filter by Percentage' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Clear Filter' }));
+
+    expect(screen.getByText('Alice')).toBeInTheDocument();
     expect(screen.getByText('Bob')).toBeInTheDocument();
   });
 
@@ -303,5 +457,36 @@ describe('ExamResultsPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Advance to Next Round' }));
 
     expect(screen.getByTestId('advance-modal')).toHaveTextContent('candidateIds:["c1"]');
+  });
+
+  describe('sub-tabs', () => {
+    const accuracyRows = [
+      { questionId: 'q1', questionText: 'Which collection is synchronized?', accuracyPercentage: 0, timesAttempted: 2, timesIncluded: 2 },
+      { questionId: 'q2', questionText: 'Choose the correct synonym for Enhance:', accuracyPercentage: 50, timesAttempted: 1, timesIncluded: 2 },
+    ];
+
+    it('opens on Candidates with both sub-tabs counted, accuracy list hidden', () => {
+      (useResultsList as jest.Mock).mockReturnValue({ data: [row()], isLoading: false });
+      (useQuestionAccuracy as jest.Mock).mockReturnValue({ data: accuracyRows, isLoading: false });
+
+      renderPanel();
+
+      expect(screen.getByRole('tab', { name: 'Candidates (1)' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Question accuracy (2)' })).toBeInTheDocument();
+      expect(screen.getByText('Alice')).toBeInTheDocument();
+      expect(screen.queryByText('Which collection is synchronized?')).not.toBeInTheDocument();
+    });
+
+    it('shows the question accuracy list for this exam once its sub-tab is selected, without leaving the page', async () => {
+      (useResultsList as jest.Mock).mockReturnValue({ data: [row()], isLoading: false });
+      (useQuestionAccuracy as jest.Mock).mockReturnValue({ data: accuracyRows, isLoading: false });
+
+      renderPanel();
+      await userEvent.click(screen.getByRole('tab', { name: /Question accuracy/ }));
+
+      expect(await screen.findByText('Which collection is synchronized?')).toBeInTheDocument();
+      expect(screen.getByText('0.0%')).toBeInTheDocument();
+      expect(screen.getByText('2 / 2')).toBeInTheDocument();
+    });
   });
 });

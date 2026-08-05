@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { motion, MotionConfig } from 'framer-motion';
 import { AlertCircle, MailCheck } from 'lucide-react';
 import { Button, Input, Select, RequiredFieldsNote } from '../../../components/ui';
 import { AuthPageLayout } from '../../../components/AuthPageLayout';
 import { useWalkInExams, useWalkInRegister } from '../../../lib/hooks/useWalkIn';
+import { composeName } from '../../../lib/candidateValidation';
 
 const HIGHLIGHTS = [
   'No account to create — we email you a link to your exam',
@@ -17,10 +18,13 @@ const HIGHLIGHTS = [
 export default function WalkInPage() {
   const { orgSlug } = useParams<{ orgSlug: string }>();
   const searchParams = useSearchParams();
-  const { data: exams, isLoading, isError } = useWalkInExams(orgSlug);
+  const groupParam = searchParams.get('group');
+  const { data: exams, isLoading, isError } = useWalkInExams(orgSlug, groupParam);
   const register = useWalkInRegister(orgSlug);
 
-  const [name, setName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [middleName, setMiddleName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [examId, setExamId] = useState('');
@@ -30,17 +34,26 @@ export default function WalkInPage() {
   // auto-starting on whatever device just submitted this form.
   const [submitted, setSubmitted] = useState(false);
 
-  // A recruiter's shared link/QR code carries ?exam=<id> so it jumps straight to the
-  // right exam instead of making the candidate pick from every walk-in-enabled exam.
+  // A recruiter's shared link/QR code carries ?exam=<id> so it jumps straight to the right
+  // exam instead of making the candidate pick from every walk-in-enabled exam -- this check
+  // (and resolvedExamId below) intentionally uses the FULL exams list, not listedExams, so a
+  // walkInListed=false exam's own dedicated link still works even though it's hidden from
+  // the shared picker.
   const examParam = searchParams.get('exam');
   const preselectedExamId = exams?.some((exam) => exam.id === examParam) ? examParam : null;
-  const resolvedExamId = exams && exams.length === 1 ? exams[0].id : (preselectedExamId ?? examId);
+  // Only exams opted into the shared picker -- an exam with walkInListed=false is reachable
+  // solely via its own link/QR (see WalkInShareCard), never via this generic org URL. A
+  // ?group= link already asked the server to scope to exactly that group's members, which
+  // is itself the recruiter's explicit curation -- skip the walkInListed filter entirely
+  // there, so every exam they put in the group actually shows.
+  const listedExams = useMemo(() => (groupParam ? (exams ?? []) : (exams ?? []).filter((exam) => exam.walkInListed)), [exams, groupParam]);
+  const resolvedExamId = preselectedExamId ?? (listedExams.length === 1 ? listedExams[0].id : examId);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     register.mutate(
-      { name, email, phone: phone || undefined, examId: resolvedExamId },
+      { name: composeName(firstName, middleName, lastName), email, phone: phone || undefined, examId: resolvedExamId },
       {
         onSuccess: () => setSubmitted(true),
         onError: (err) => setError(err instanceof Error ? err.message : 'Registration failed.'),
@@ -79,13 +92,13 @@ export default function WalkInPage() {
               </p>
             )}
 
-            {!isLoading && !isError && exams && exams.length === 0 && (
+            {!isLoading && !isError && exams && !preselectedExamId && listedExams.length === 0 && (
               <p className="text-sm text-recruiter-text-secondary">
                 No exams are currently open for walk-in registration.
               </p>
             )}
 
-            {!isLoading && !isError && exams && exams.length > 0 && (
+            {!isLoading && !isError && exams && (preselectedExamId || listedExams.length > 0) && (
               <motion.form
                 onSubmit={handleSubmit}
                 className="flex flex-col gap-4"
@@ -103,15 +116,24 @@ export default function WalkInPage() {
                   </p>
                 )}
                 <RequiredFieldsNote />
-                <Input label="Name" value={name} onChange={setName} required />
+                {/* One row, not stacked: three more fields than the old single Name
+                    field pushed the whole card past the fold (this page is mostly
+                    opened from a QR scan on a phone, where every extra scroll costs
+                    completions) -- First/Middle/Last sharing a row keeps the card the
+                    same height it was before the split. */}
+                <div className="grid grid-cols-3 gap-2">
+                  <Input label="First Name" value={firstName} onChange={setFirstName} required />
+                  <Input label="Middle Name" value={middleName} onChange={setMiddleName} />
+                  <Input label="Last Name" value={lastName} onChange={setLastName} required />
+                </div>
                 <Input label="Email" type="email" value={email} onChange={setEmail} required />
                 <Input label="Phone" value={phone} onChange={setPhone} />
-                {exams.length > 1 && !preselectedExamId && (
+                {listedExams.length > 1 && !preselectedExamId && (
                   <Select
                     label="Exam"
                     value={examId}
                     onChange={setExamId}
-                    options={exams.map((exam) => ({
+                    options={listedExams.map((exam) => ({
                       value: exam.id,
                       label: exam.title,
                     }))}

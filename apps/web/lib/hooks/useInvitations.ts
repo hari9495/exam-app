@@ -54,6 +54,11 @@ export function useExamInvitations(examId: string) {
     queryKey: ['invitations', examId],
     queryFn: () => apiFetch(`/exams/${examId}/invitations`, {}, accessToken ?? undefined),
     enabled: Boolean(examId),
+    // The invite email send is fire-and-forget on the backend, so a row can sit at
+    // emailStatus 'pending' for a moment after invite/resend -- poll until it settles
+    // to 'sent'/'failed' so the "In queue" badge clears on its own, not just on your next
+    // manual refresh.
+    refetchInterval: (query) => (query.state.data?.some((row) => row.emailStatus === 'pending') ? 2_000 : false),
   });
 }
 

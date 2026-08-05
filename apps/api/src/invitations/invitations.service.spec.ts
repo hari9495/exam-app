@@ -44,7 +44,7 @@ describe('InvitationsService', () => {
       },
     };
     const orgTx = { organization: { findUnique: jest.fn().mockResolvedValue({ logoPath: null, name: 'Acme Hiring' }) } };
-    const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) } };
+    const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) }, invitation: { update: jest.fn() } };
     tenantPrisma.forTenant
       .mockImplementationOnce((_ctx, fn) => fn(createTx))
       .mockImplementationOnce((_ctx, fn) => fn(orgTx))
@@ -85,6 +85,40 @@ describe('InvitationsService', () => {
     expect(notifTx.notification.create).toHaveBeenCalledWith({
       data: { invitationId: 'inv-1', status: 'sent', sentAt: expect.any(Date) },
     });
+    // Settles the transient 'pending' emailStatus set when the invitation was created.
+    expect(notifTx.invitation.update).toHaveBeenCalledWith({
+      where: { id: 'inv-1' },
+      data: { emailStatus: 'sent' },
+    });
+  });
+
+  it('marks emailStatus failed (not sent) when the invitation email does not go through', async () => {
+    emailService.send.mockResolvedValueOnce({ success: false });
+    const createTx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', title: 'Backend Round', status: 'published', durationMinutes: 60, schedulingEnabled: false, availabilityWindowStart: null }) },
+      candidate: { findMany: jest.fn().mockResolvedValue([{ id: 'cand-1', email: 'a@test.com', name: 'Alice', erasedAt: null }]) },
+      invitation: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited' }),
+      },
+    };
+    const orgTx = { organization: { findUnique: jest.fn().mockResolvedValue({ logoPath: null, name: 'Acme Hiring' }) } };
+    const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) }, invitation: { update: jest.fn() } };
+    tenantPrisma.forTenant
+      .mockImplementationOnce((_ctx, fn) => fn(createTx))
+      .mockImplementationOnce((_ctx, fn) => fn(orgTx))
+      .mockImplementationOnce((_ctx, fn) => fn(notifTx));
+
+    await service.bulkInvite(context, 'exam-1', ['cand-1']);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(notifTx.notification.create).toHaveBeenCalledWith({
+      data: { invitationId: 'inv-1', status: 'failed', sentAt: null },
+    });
+    expect(notifTx.invitation.update).toHaveBeenCalledWith({
+      where: { id: 'inv-1' },
+      data: { emailStatus: 'failed' },
+    });
   });
 
   it('includes the organization logo and scheduled date/time in the invitation email when applicable', async () => {
@@ -112,7 +146,7 @@ describe('InvitationsService', () => {
           .mockResolvedValue({ logoPath: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png', name: 'Acme Hiring' }),
       },
     };
-    const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) } };
+    const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) }, invitation: { update: jest.fn() } };
     tenantPrisma.forTenant
       .mockImplementationOnce((_ctx, fn) => fn(createTx))
       .mockImplementationOnce((_ctx, fn) => fn(orgTx))
@@ -257,7 +291,7 @@ describe('InvitationsService', () => {
         create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited' }),
       },
     };
-    const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) } };
+    const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) }, invitation: { update: jest.fn() } };
     tenantPrisma.forTenant
       .mockImplementationOnce((_ctx, fn) => fn(createTx))
       .mockImplementationOnce((_ctx, fn) => fn(notifTx));
@@ -297,7 +331,7 @@ describe('InvitationsService', () => {
         create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited' }),
       },
     };
-    const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) } };
+    const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) }, invitation: { update: jest.fn() } };
     tenantPrisma.forTenant
       .mockImplementationOnce((_ctx, fn) => fn(createTx))
       .mockImplementationOnce((_ctx, fn) => fn(notifTx));
@@ -349,7 +383,13 @@ describe('InvitationsService', () => {
     expect(result).toHaveLength(2);
     expect(tx.invitation.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        select: expect.objectContaining({ candidate: true, extraTimePercent: true, attempt: { select: { id: true, status: true } } }),
+        select: expect.objectContaining({
+          candidate: true,
+          extraTimePercent: true,
+          emailStatus: true,
+          resendCount: true,
+          attempt: { select: { id: true, status: true } },
+        }),
       }),
     );
     const selectArg = tx.invitation.findMany.mock.calls[0][0].select;
@@ -380,7 +420,7 @@ describe('InvitationsService', () => {
       },
     };
     const orgTx = { organization: { findUnique: jest.fn().mockResolvedValue({ logoPath: null }) } };
-    const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-2' }) } };
+    const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-2' }) }, invitation: { update: jest.fn() } };
     tenantPrisma.forTenant
       .mockImplementationOnce((_ctx, fn) => fn(resendTx))
       .mockImplementationOnce((_ctx, fn) => fn(orgTx))
@@ -391,7 +431,7 @@ describe('InvitationsService', () => {
     expect(result).toEqual(updated);
     expect(resendTx.invitation.update).toHaveBeenCalledWith({
       where: { id: 'inv-1' },
-      data: { token: expect.any(String), expiresAt: expect.any(Date) },
+      data: { token: expect.any(String), expiresAt: expect.any(Date), emailStatus: 'pending', resendCount: { increment: 1 } },
     });
 
     // Email dispatch is fire-and-forget -- flush the microtask queue before asserting.
@@ -420,7 +460,7 @@ describe('InvitationsService', () => {
 
     expect(tx.invitation.update).toHaveBeenCalledWith({
       where: { id: 'inv-1' },
-      data: { token: expect.any(String), expiresAt: new Date('2026-08-01T00:00:00.000Z') },
+      data: { token: expect.any(String), expiresAt: new Date('2026-08-01T00:00:00.000Z'), emailStatus: 'pending', resendCount: { increment: 1 } },
     });
   });
 

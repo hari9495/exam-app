@@ -394,6 +394,7 @@ export class ExamsService {
           ...(dto.randomizeOrder !== undefined ? { randomizeOrder: dto.randomizeOrder } : {}),
           ...(dto.feedbackVisibility !== undefined ? { feedbackVisibility: dto.feedbackVisibility } : {}),
           ...(dto.walkInEnabled !== undefined ? { walkInEnabled: dto.walkInEnabled } : {}),
+          ...(dto.walkInListed !== undefined ? { walkInListed: dto.walkInListed } : {}),
           ...(dto.allowedIpRange !== undefined ? { allowedIpRange: dto.allowedIpRange || null } : {}),
           ...proctoring,
           schedulingEnabled: scheduling.schedulingEnabled,
@@ -446,6 +447,27 @@ export class ExamsService {
       entityType: 'exam',
       entityId: id,
       metadata: { walkInEnabled },
+    });
+    return updated;
+  }
+
+  // Bypasses assertExamMutable for the same reason as setWalkInEnabled above: whether this
+  // exam shows up in the shared /walk-in/{orgSlug} picker isn't exam content and shouldn't
+  // require unpublishing to change.
+  async setWalkInListed(context: TenantContext, actorUserId: string, id: string, walkInListed: boolean): Promise<Exam> {
+    const updated = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const existing = await tx.exam.findFirst({ where: { id, organizationId: context.organizationId as string } });
+      if (!existing) {
+        throw new NotFoundException(`Exam ${id} not found`);
+      }
+      return tx.exam.update({ where: { id }, data: { walkInListed } });
+    });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'exam.updated',
+      entityType: 'exam',
+      entityId: id,
+      metadata: { walkInListed },
     });
     return updated;
   }

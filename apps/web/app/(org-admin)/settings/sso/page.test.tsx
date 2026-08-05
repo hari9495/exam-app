@@ -51,4 +51,29 @@ describe('SsoSettingsPage', () => {
       'test-token',
     );
   });
+
+  it('shows configured IdP settings read-only behind an Edit button, and Cancel restores the read-only view', async () => {
+    (apiFetch as jest.Mock).mockResolvedValue({
+      samlEnabled: true,
+      samlIdpEntityId: 'https://idp.test/entity',
+      samlIdpSsoUrl: 'https://idp.test/sso',
+      samlIdpCertificate: 'cert-data',
+    });
+
+    renderWithClient(<SsoSettingsPage />);
+
+    // Values render as text, the certificate only as "Provided" (never its contents),
+    // and no editable fields exist until Edit is clicked.
+    expect(await screen.findByText('https://idp.test/entity')).toBeInTheDocument();
+    expect(screen.getByText('https://idp.test/sso')).toBeInTheDocument();
+    expect(screen.getByText('Provided')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/microsoft entra identifier/i)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit IdP settings' }));
+    expect(screen.getByLabelText(/microsoft entra identifier/i)).toHaveValue('https://idp.test/entity');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByLabelText(/microsoft entra identifier/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit IdP settings' })).toBeInTheDocument();
+  });
 });

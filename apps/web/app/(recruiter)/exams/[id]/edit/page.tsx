@@ -12,7 +12,14 @@ import { LeaderboardPanel } from '../../../../../components/LeaderboardPanel';
 import { CandidatesPanel } from '../../../../../components/CandidatesPanel';
 import { ExamResultsPanel } from '../../../../../components/ExamResultsPanel';
 import { AuditHistoryLink } from '../../../../../components/AuditHistoryLink';
-import { useExam, useUpdateExam, usePublishExam, useUnpublishExam, useSetWalkInEnabled } from '../../../../../lib/hooks/useExams';
+import {
+  useExam,
+  useUpdateExam,
+  usePublishExam,
+  useUnpublishExam,
+  useSetWalkInEnabled,
+  useSetWalkInListed,
+} from '../../../../../lib/hooks/useExams';
 import { useAuth } from '../../../../../lib/auth-context';
 import { useExamMonitoring } from '../../../../../lib/hooks/useExamMonitoring';
 import { useAttentionNotifications } from '../../../../../lib/hooks/useAttentionNotifications';
@@ -29,6 +36,7 @@ export default function EditExamPage() {
   const publishExam = usePublishExam(params.id);
   const unpublishExam = useUnpublishExam(params.id);
   const setWalkInEnabled = useSetWalkInEnabled(params.id);
+  const setWalkInListed = useSetWalkInListed(params.id);
   const monitoring = useExamMonitoring(params.id);
 
   // The flag is derived from Date.now(), and a burst that stops produces no further
@@ -139,42 +147,64 @@ export default function EditExamPage() {
           {exam.requiresManualGrading && <TabsTrigger value="grading">Grading</TabsTrigger>}
         </TabsList>
         <TabsContent value="details">
-          <ExamDetailsForm
-            initialExam={exam}
-            submitLabel="Save details"
-            locked={detailsLocked}
-            lockedMessage={detailsLockedMessage}
-            hideWalkInField={detailsLocked}
-            walkInSlot={
-              // The details form (and its own walk-in checkbox) is locked while published --
-              // this stays editable regardless, since walk-in eligibility isn't exam content.
-              detailsLocked && (
-                <>
-                  <Checkbox
-                    label="Enable walk-in registration for this exam"
-                    checked={exam.walkInEnabled}
-                    onChange={(checked) =>
-                      setWalkInEnabled.mutate(checked, {
-                        onSuccess: () => toast(checked ? 'Walk-in registration enabled.' : 'Walk-in registration disabled.'),
-                        onError: (error) => {
-                          toast(error instanceof Error ? error.message : 'Failed to update walk-in registration.', 'error');
-                        },
-                      })
-                    }
-                  />
-                  {exam.walkInEnabled && organizationSlug && <WalkInShareCard examId={exam.id} orgSlug={organizationSlug} />}
-                </>
-              )
-            }
-            onSubmit={(input) =>
-              updateExam.mutate(input, {
-                onSuccess: () => toast('Exam updated.'),
-                onError: (error) => {
-                  toast(error instanceof Error ? error.message : 'Failed to update exam.', 'error');
-                },
-              })
-            }
-          />
+          <div className="mx-auto max-w-3xl">
+            <ExamDetailsForm
+              initialExam={exam}
+              submitLabel="Save details"
+              locked={detailsLocked}
+              lockedMessage={detailsLockedMessage}
+              hideWalkInField={detailsLocked}
+              walkInSlot={
+                // Rendered outside the Details form's own disabled fieldset (see
+                // hideWalkInField) purely so the share card's Copy/Share buttons keep
+                // working once published -- the checkboxes themselves are locked below,
+                // same as every other field: change walk-in settings via Unpublish.
+                detailsLocked && (
+                  <>
+                    <Checkbox
+                      label="Enable walk-in registration for this exam"
+                      checked={exam.walkInEnabled}
+                      disabled={detailsLocked}
+                      onChange={(checked) =>
+                        setWalkInEnabled.mutate(checked, {
+                          onSuccess: () => toast(checked ? 'Walk-in registration enabled.' : 'Walk-in registration disabled.'),
+                          onError: (error) => {
+                            toast(error instanceof Error ? error.message : 'Failed to update walk-in registration.', 'error');
+                          },
+                        })
+                      }
+                    />
+                    {exam.walkInEnabled && (
+                      <>
+                        <Checkbox
+                          label="Show in the shared walk-in exam list"
+                          checked={exam.walkInListed}
+                          disabled={detailsLocked}
+                          onChange={(checked) =>
+                            setWalkInListed.mutate(checked, {
+                              onSuccess: () => toast(checked ? 'Now shown in the shared walk-in list.' : 'Hidden from the shared walk-in list.'),
+                              onError: (error) => {
+                                toast(error instanceof Error ? error.message : 'Failed to update the walk-in list setting.', 'error');
+                              },
+                            })
+                          }
+                        />
+                        {organizationSlug && <WalkInShareCard examId={exam.id} orgSlug={organizationSlug} />}
+                      </>
+                    )}
+                  </>
+                )
+              }
+              onSubmit={(input) =>
+                updateExam.mutate(input, {
+                  onSuccess: () => toast('Exam updated.'),
+                  onError: (error) => {
+                    toast(error instanceof Error ? error.message : 'Failed to update exam.', 'error');
+                  },
+                })
+              }
+            />
+          </div>
         </TabsContent>
         <TabsContent value="sections">
           <ExamSectionsPanel examId={exam.id} />

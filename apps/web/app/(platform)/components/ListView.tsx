@@ -56,6 +56,11 @@ export function ListView<T>({
 
   const truncated = totalCount !== undefined && totalCount > rows.length;
 
+  // Position in the currently sorted/filtered view, 1-based -- defined here (not part of
+  // the caller's `columns`) so it can't be hidden via the column chooser, same convention
+  // as ExamResultsPanel/CandidatesPanel's own index column.
+  const indexColumn: Column<T> = { key: 'index', header: '#', render: (_row, index) => index + 1 };
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -103,7 +108,7 @@ export function ListView<T>({
       )}
       {!isLoading && !isError && (
         <Table
-          columns={visibleColumns}
+          columns={[indexColumn, ...visibleColumns]}
           rows={visibleRows}
           rowKey={rowKey}
           emptyMessage={query ? 'No matches.' : emptyMessage}

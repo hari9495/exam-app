@@ -67,6 +67,18 @@ describe('WalkInShareCard', () => {
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining('/walk-in/demo-org?exam=exam-1'));
   });
 
+  it('shows the walk-in URL for a group instead of an exam when groupId is passed', async () => {
+    render(
+      <ToastProvider>
+        <WalkInShareCard groupId="group-1" orgSlug="demo-org" />
+      </ToastProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/\/walk-in\/demo-org\?group=group-1/)).toBeInTheDocument();
+    });
+  });
+
   it('shows an error instead of silently failing when the clipboard write is rejected', async () => {
     // Real-world cause: clipboard permission denied, an unfocused document, or
     // browser policy -- navigator.clipboard.writeText can and does reject.

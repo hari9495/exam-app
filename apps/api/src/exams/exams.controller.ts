@@ -12,6 +12,7 @@ import { CreateExamSectionDto } from './dto/create-exam-section.dto';
 import { UpdateExamSectionDto } from './dto/update-exam-section.dto';
 import { ReplaceSectionQuestionsDto } from './dto/replace-section-questions.dto';
 import { SetWalkInEnabledDto } from './dto/set-walk-in-enabled.dto';
+import { SetWalkInListedDto } from './dto/set-walk-in-listed.dto';
 
 @Controller('exams')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -82,6 +83,19 @@ export class ExamsController {
     @Body() dto: SetWalkInEnabledDto,
   ) {
     return this.examsService.setWalkInEnabled(tenant, userId, id, dto.walkInEnabled);
+  }
+
+  // Same rationale as walk-in: whether this exam shows up in the shared /walk-in/{orgSlug}
+  // picker stays editable regardless of publish state.
+  @Patch(':id/walk-in-listed')
+  @RequirePermissions('exam:manage')
+  setWalkInListed(
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentUserId() userId: string,
+    @Param('id') id: string,
+    @Body() dto: SetWalkInListedDto,
+  ) {
+    return this.examsService.setWalkInListed(tenant, userId, id, dto.walkInListed);
   }
 
   @Post(':id/duplicate')

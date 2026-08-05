@@ -13,7 +13,9 @@ export interface Column<T> {
    *  Defaults to header if it's a string, else falls back to key so a non-text
    *  header (a filter dropdown, say) never renders as "[object Object]". */
   sortLabel?: string;
-  render: (row: T) => ReactNode;
+  /** index is the row's position in the currently sorted/visible list (0-based) --
+   *  handy for a display-only row-number column. Most callers ignore it. */
+  render: (row: T, index: number) => ReactNode;
   sortValue?: (row: T) => string | number;
   /** Opt-in, e.g. '28%' or '4rem'. Only meant for a caller that renders several
    *  independent <Table>s meant to line up as one (grouped views) -- browsers size
@@ -99,11 +101,11 @@ export function Table<T>({ columns, rows, rowKey, emptyMessage = 'No results.', 
           </tr>
         </thead>
         <tbody>
-          {sorted.map((row) => (
+          {sorted.map((row, index) => (
             <tr key={rowKey(row)} className="group border-b border-recruiter-border/60 last:border-0 hover:bg-recruiter-bg-subtle">
               {columns.map((column) => (
                 <td key={column.key} className="px-3 py-2.5 text-recruiter-text">
-                  {column.render(row)}
+                  {column.render(row, index)}
                 </td>
               ))}
             </tr>

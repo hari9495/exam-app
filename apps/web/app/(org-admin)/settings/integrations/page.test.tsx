@@ -198,10 +198,58 @@ describe('IntegrationsSettingsPage', () => {
 
     renderPage();
 
+    // Configured section opens read-only: endpoint details are text, not fields,
+    // until the admin explicitly clicks Edit.
+    expect(await screen.findByText('https://example.openai.azure.com/openai/v1')).toBeInTheDocument();
+    expect(screen.getByText('gpt-fast')).toBeInTheDocument();
+    expect(screen.getByText('gpt-standard')).toBeInTheDocument();
+    expect(screen.queryByLabelText('AI API Key')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit AI settings' }));
+
     expect(await screen.findByLabelText('Base URL')).toBeInTheDocument();
     expect(screen.getByLabelText('Fast-tier Model/deployment Name')).toBeInTheDocument();
     expect(screen.getByLabelText('Standard-tier Model/deployment Name')).toBeInTheDocument();
     expect(screen.getByLabelText('AI Provider')).toHaveTextContent('OpenAI-compatible');
+  });
+
+  it('hides the SMTP form behind an Edit button once configured, and Cancel restores the read-only view', async () => {
+    mockedApiFetch.mockImplementation((path: string) => {
+      if (path === '/organizations/integrations') {
+        return Promise.resolve({
+          smtpConfigured: true,
+          aiKeyConfigured: false,
+          aiProvider: 'anthropic',
+          aiBaseUrl: null,
+          aiModelFast: null,
+          aiModelStandard: null,
+          smtpHost: 'smtp.office365.com',
+          smtpPort: 587,
+          emailFromAddress: 'noreply@example.com',
+          apiKeyConfigured: false,
+          apiKeyPrefix: null,
+          apiKeyCreatedAt: null,
+          webhookConfigured: false,
+          webhookUrl: null,
+        });
+      }
+      if (path === '/organizations/integrations/webhook-deliveries') {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve({});
+    });
+
+    renderPage();
+
+    expect(await screen.findByText(/Configured — smtp\.office365\.com:587/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('SMTP Host')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit SMTP settings' }));
+    expect(screen.getByLabelText('SMTP Host')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByLabelText('SMTP Host')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit SMTP settings' })).toBeInTheDocument();
   });
 
   it('shows an inline error when generating the API key fails', async () => {

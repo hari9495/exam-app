@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 
-const HEADERS = ['Email', 'First Name', 'Last Name', 'Phone'];
-const EXAMPLE_ROW = { Email: 'alice@example.com', 'First Name': 'Alice', 'Last Name': 'Smith', Phone: '555-1234' };
+const HEADERS = ['Email', 'First Name', 'Middle Name', 'Last Name', 'Phone'];
+const EXAMPLE_ROW = { Email: 'alice@example.com', 'First Name': 'Alice', 'Middle Name': '', 'Last Name': 'Smith', Phone: '555-1234' };
 
 export async function generateBulkInviteTemplate(): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();

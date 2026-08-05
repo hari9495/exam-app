@@ -86,7 +86,7 @@ describe('ExamDetailsForm', () => {
       id: 'exam-1', title: 'Existing', instructions: null, status: 'draft' as const, durationMinutes: 60,
       passCriteriaPercent: 40, randomizeOrder: false, feedbackVisibility: 'pass_fail' as const, schedulingEnabled: true,
       availabilityWindowStart: '2026-07-20T09:00:00.000Z', availabilityWindowEnd: '2026-07-27T18:00:00.000Z',
-      walkInEnabled: false, allowedIpRange: null, createdAt: '2026-07-01T00:00:00.000Z', sections: [], invitationCount: 0,
+      walkInEnabled: false, walkInListed: true, allowedIpRange: null, createdAt: '2026-07-01T00:00:00.000Z', sections: [], invitationCount: 0,
       hasStartedAttempts: false, requiresManualGrading: false,
       enableAntiCheating: true, webcamProctoringEnabled: true, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
       disabledProctoringSignalsJson: null, screenCaptureEnabled: false, lockdownRequired: false,
@@ -151,6 +151,40 @@ describe('ExamDetailsForm', () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ walkInEnabled: true }));
   });
 
+  it('hides the "show in shared list" toggle until walk-in itself is enabled', async () => {
+    render(<ExamDetailsForm onSubmit={jest.fn()} submitLabel="Save details" />);
+
+    expect(screen.queryByLabelText('Show in the shared walk-in exam list')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByLabelText('Enable walk-in registration for this exam'));
+
+    expect(screen.getByLabelText('Show in the shared walk-in exam list')).toBeInTheDocument();
+  });
+
+  it('defaults walkInListed to true and submits it alongside walkInEnabled', async () => {
+    const onSubmit = jest.fn();
+    render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Save details" />);
+
+    await userEvent.type(screen.getByLabelText('Title'), 'New Exam');
+    await userEvent.click(screen.getByLabelText('Enable walk-in registration for this exam'));
+    expect(screen.getByLabelText('Show in the shared walk-in exam list')).toBeChecked();
+    await userEvent.click(screen.getByRole('button', { name: 'Save details' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ walkInEnabled: true, walkInListed: true }));
+  });
+
+  it('lets the recruiter hide this exam from the shared walk-in list while keeping walk-in enabled', async () => {
+    const onSubmit = jest.fn();
+    render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Save details" />);
+
+    await userEvent.type(screen.getByLabelText('Title'), 'New Exam');
+    await userEvent.click(screen.getByLabelText('Enable walk-in registration for this exam'));
+    await userEvent.click(screen.getByLabelText('Show in the shared walk-in exam list'));
+    await userEvent.click(screen.getByRole('button', { name: 'Save details' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ walkInEnabled: true, walkInListed: false }));
+  });
+
   it('submits a trimmed allowedIpRange and omits it when blank', async () => {
     const onSubmit = jest.fn();
     render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Save" />);
@@ -165,7 +199,7 @@ describe('ExamDetailsForm', () => {
     const examWithIpRange = {
       id: 'exam-1', title: 'Existing', instructions: null, status: 'draft' as const, durationMinutes: 60,
       passCriteriaPercent: 40, randomizeOrder: false, feedbackVisibility: 'pass_fail' as const, schedulingEnabled: false,
-      availabilityWindowStart: null, availabilityWindowEnd: null, walkInEnabled: false,
+      availabilityWindowStart: null, availabilityWindowEnd: null, walkInEnabled: false, walkInListed: true,
       allowedIpRange: '203.0.113.0/24', createdAt: '2026-07-01T00:00:00.000Z', sections: [], invitationCount: 0,
       hasStartedAttempts: false, requiresManualGrading: false,
       enableAntiCheating: true, webcamProctoringEnabled: true, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
@@ -351,6 +385,19 @@ describe('ExamDetailsForm', () => {
       expect(screen.getByLabelText('Duration (Minutes)')).toBeDisabled();
       expect(screen.getByLabelText('Enable walk-in registration for this exam')).toBeDisabled();
       expect(screen.getByLabelText(/allowed ip \/ cidr range/i)).toBeDisabled();
+    });
+
+    it('disables the "show in shared list" toggle too, when walk-in was already enabled', () => {
+      render(
+        <ExamDetailsForm
+          onSubmit={jest.fn()}
+          submitLabel="Save"
+          locked
+          initialExam={{ title: 'Exam', durationMinutes: 60, passCriteriaPercent: 40, walkInEnabled: true, walkInListed: true } as never}
+        />,
+      );
+
+      expect(screen.getByLabelText('Show in the shared walk-in exam list')).toBeDisabled();
     });
 
     it('hides the submit button entirely once the exam is locked, since there is nothing left to save', () => {

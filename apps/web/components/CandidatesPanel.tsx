@@ -13,6 +13,9 @@ import { Invitation } from '../lib/types';
 // column reads as three simple stages instead of raw backend status strings.
 const CANDIDATE_STATUS_LABEL: Record<string, string> = {
   invited: 'Invited',
+  invite_queued: 'In queue',
+  invite_failed: 'Invite failed',
+  invite_resent: 'Resent',
   revoked: 'Revoked',
   in_progress: 'In Progress',
   paused: 'Paused',
@@ -25,6 +28,9 @@ const CANDIDATE_STATUS_LABEL: Record<string, string> = {
 
 const CANDIDATE_STATUS_TONE: Record<string, StatusTone> = {
   invited: 'info',
+  invite_queued: 'warning',
+  invite_failed: 'danger',
+  invite_resent: 'purple',
   revoked: 'danger',
   in_progress: 'warning',
   paused: 'neutral',
@@ -35,8 +41,18 @@ const CANDIDATE_STATUS_TONE: Record<string, StatusTone> = {
   pending_manual_grade: 'success',
 };
 
+// Below the invitation's own status ('invited'/'revoked') and above the attempt's
+// (once one exists), the invite EMAIL has its own short-lived lifecycle: queued while
+// the fire-and-forget send is in flight, then settled to sent/failed. Only relevant
+// before an attempt exists and only while status is still 'invited' -- a revoked
+// invitation's email history doesn't matter anymore.
 function candidateStatus(row: Invitation): string {
-  return row.attempt?.status ?? row.status;
+  if (row.attempt) return row.attempt.status;
+  if (row.status !== 'invited') return row.status;
+  if (row.emailStatus === 'pending') return 'invite_queued';
+  if (row.emailStatus === 'failed') return 'invite_failed';
+  if (row.resendCount > 0) return 'invite_resent';
+  return 'invited';
 }
 
 // Built from CANDIDATE_STATUS_LABEL rather than duplicating its groupings: the
@@ -103,7 +119,10 @@ export function CandidatesPanel({ examId }: { examId: string }) {
   }, [invitations, search, statusFilter]);
 
   const columns: Column<Invitation>[] = [
-    { key: 'index', header: '#', render: (row) => visibleInvitations.indexOf(row) + 1 },
+    // index (Table's actual rendered-order position), not visibleInvitations.indexOf(row)
+    // -- the latter looks up the row's position in this unsorted array, so it stayed
+    // pinned to insertion order and didn't follow the table's own column-header sort.
+    { key: 'index', header: '#', render: (_row, index) => index + 1 },
     { key: 'name', header: 'Candidate', render: (row) => row.candidate.name },
     { key: 'email', header: 'Email', render: (row) => row.candidate.email },
     {
