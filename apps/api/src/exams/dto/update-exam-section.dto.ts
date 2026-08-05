@@ -35,4 +35,13 @@ export class UpdateExamSectionDto extends CreateExamSectionDto {
   @Min(0)
   @Max(100)
   weightPercent?: number;
+
+  // null clears the requirement (back to "every question must be answered"), so this is
+  // ValidateIf-guarded rather than @IsOptional -- @IsOptional() would skip validation for an
+  // explicit null too, but here null is a meaningful value we want to allow through untouched
+  // while still rejecting 0, negatives and fractions.
+  @ValidateIf((o) => o.requiredCount !== null && o.requiredCount !== undefined)
+  @IsInt()
+  @Min(1)
+  requiredCount?: number | null;
 }

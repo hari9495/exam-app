@@ -1177,6 +1177,28 @@ describe('ExamsService', () => {
     });
   });
 
+  it('normalises requiredCount equal to the section question count down to null', async () => {
+    const tx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'draft' }) },
+      attempt: { count: jest.fn().mockResolvedValue(0) },
+      examSection: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'section-1', examId: 'exam-1', title: 'Coding', selectionMode: 'fixed',
+          poolSize: null, poolDifficulty: null, poolTags: [],
+          questions: [{ questionId: 'q1' }, { questionId: 'q2' }, { questionId: 'q3' }],
+        }),
+        update: jest.fn().mockResolvedValue({ id: 'section-1' }),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.updateSection(context, 'exam-1', 'section-1', { title: 'Coding', requiredCount: 3 });
+
+    expect(tx.examSection.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ requiredCount: null }) }),
+    );
+  });
+
   it('deletes a section that belongs to the given exam', async () => {
     const tx = {
       exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
@@ -1288,6 +1310,39 @@ describe('ExamsService', () => {
 
       expect(tx.examSection.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ weightPercent: 40 }) }),
+      );
+    });
+
+    it("copies the source section's requiredCount onto the duplicate", async () => {
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'draft' }) },
+        attempt: { count: jest.fn().mockResolvedValue(0) },
+        examSection: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValueOnce({
+              id: 'section-1',
+              title: 'Coding',
+              selectionMode: 'fixed',
+              poolSize: null,
+              poolDifficulty: null,
+              targetDurationMinutes: null,
+              weightPercent: 100,
+              requiredCount: 3,
+              questions: [],
+              poolTags: [],
+            })
+            .mockResolvedValueOnce(null),
+          create: jest.fn().mockResolvedValue({ id: 'section-2', requiredCount: 3 }),
+        },
+        examSectionQuestion: { createMany: jest.fn() },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.duplicateSection(context, 'exam-1', 'section-1');
+
+      expect(tx.examSection.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ requiredCount: 3 }) }),
       );
     });
 

@@ -611,6 +611,7 @@ export class ExamsService {
             poolDifficulty: section.poolDifficulty,
             targetDurationMinutes: section.targetDurationMinutes,
             weightPercent: section.weightPercent,
+            requiredCount: section.requiredCount,
             ...(section.poolTags.length > 0
               ? { poolTags: { create: section.poolTags.map((poolTag) => ({ tagId: poolTag.tagId })) } }
               : {}),
@@ -686,7 +687,10 @@ export class ExamsService {
         throw new NotFoundException(`Exam ${examId} not found`);
       }
       await this.assertExamMutable(tx, examId, exam.status);
-      const section = await tx.examSection.findFirst({ where: { id: sectionId, examId }, include: { poolTags: true } });
+      const section = await tx.examSection.findFirst({
+        where: { id: sectionId, examId },
+        include: { poolTags: true, questions: true },
+      });
       if (!section) {
         throw new NotFoundException(`Section ${sectionId} not found`);
       }
@@ -730,10 +734,30 @@ export class ExamsService {
             : {}),
           ...(dto.targetDurationMinutes !== undefined ? { targetDurationMinutes: dto.targetDurationMinutes } : {}),
           ...(dto.weightPercent !== undefined ? { weightPercent: dto.weightPercent } : {}),
+          ...(dto.requiredCount !== undefined
+            ? { requiredCount: this.normaliseRequiredCount(dto.requiredCount, nextMode, dto.poolSize ?? section.poolSize, section.questions.length) }
+            : {}),
         },
         include: { poolTags: true },
       });
     });
+  }
+
+  // requiredCount === M means "answer all", which is exactly what null already means -- storing
+  // both would leave two representations of one state for every reader to handle. M is poolSize
+  // for a pool section (the candidate only ever sees the drawn subset) and the attached question
+  // count for a fixed one.
+  private normaliseRequiredCount(
+    requiredCount: number | null | undefined,
+    selectionMode: string,
+    poolSize: number | null,
+    fixedQuestionCount: number,
+  ): number | null {
+    if (requiredCount == null) {
+      return null;
+    }
+    const total = selectionMode === 'pool' ? (poolSize ?? 0) : fixedQuestionCount;
+    return requiredCount >= total ? null : requiredCount;
   }
 
   async deleteSection(context: TenantContext, examId: string, sectionId: string): Promise<{ success: true }> {
@@ -784,6 +808,7 @@ export class ExamsService {
           poolDifficulty: section.poolDifficulty,
           targetDurationMinutes: section.targetDurationMinutes,
           weightPercent: section.weightPercent,
+          requiredCount: section.requiredCount,
           ...(section.poolTags.length > 0
             ? { poolTags: { create: section.poolTags.map((poolTag) => ({ tagId: poolTag.tagId })) } }
             : {}),

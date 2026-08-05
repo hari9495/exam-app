@@ -31,4 +31,16 @@ describe('UpdateExamSectionDto', () => {
   it.each([0, 100])('accepts the weightPercent boundaries (%p)', (weightPercent) => {
     expect(errorsFor({ weightPercent })).toEqual([]);
   });
+
+  it('accepts a partial update carrying only requiredCount', () => {
+    expect(errorsFor({ requiredCount: 3 })).toEqual([]);
+  });
+
+  it('accepts null requiredCount, which clears the requirement back to "answer all"', () => {
+    expect(errorsFor({ requiredCount: null })).toEqual([]);
+  });
+
+  it.each([0, -1, 2.5])('rejects a requiredCount that is not a positive integer (%p)', (requiredCount) => {
+    expect(errorsFor({ requiredCount }).length).toBeGreaterThan(0);
+  });
 });
