@@ -40,9 +40,33 @@ re-litigating. A subdomain keeps the origin clean and the namespace at the root.
 
 ## Blocking dependency
 
-**A DNS A record must exist before anything else can be done.** Someone with DNS access for
-`prudentconsulting.com` must point the new name at `20.219.132.226` — the same thing that was
-done for `prudenthire`. Nothing below can start until `dig +short <name>` returns that IP.
+**A DNS A record must exist before anything else can be done.** It is an exact copy of the
+record that already exists for `prudenthire`, pointing at the same VM.
+
+**Where (verified 2026-08-06):** public DNS for `prudentconsulting.com` is hosted at
+**Hostinger** — authoritative nameservers `ns1.dns-parking.com` / `ns2.dns-parking.com`, SOA
+administrator `dns.hostinger.com`. The record is added in Hostinger's hPanel under
+Domains → prudentconsulting.com → DNS / Nameservers, by whoever holds that account.
+
+(A lookup from inside the corporate network answers from an internal AD server,
+`pidcvm-dc.pidc.prudent.site01`, which is *not* where the public record lives. Hostinger is
+the one that matters.)
+
+**The record:**
+
+| Field | Value |
+|---|---|
+| Type | `A` |
+| Name / Host | `exam` (Hostinger takes just the label; it becomes `exam.prudentconsulting.com`) |
+| Points to | `20.219.132.226` |
+| TTL | default is fine (the existing `prudenthire` record serves at 14400) |
+
+**Verify before step 2** — must return `20.219.132.226` from a public resolver, not just
+internally:
+
+```bash
+nslookup exam.prudentconsulting.com 8.8.8.8
+```
 
 Recommended name: **`exam.prudentconsulting.com`** — short, candidate-visible, and a sibling
 of the existing record rather than a deeper sub-subdomain. `runtime.prudenthire.prudentconsulting.com`
