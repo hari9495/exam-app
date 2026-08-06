@@ -555,10 +555,24 @@ export function LiveMonitoringPanel({
               {onRefresh && (
                 // The roster already refreshes itself every 15s; this is for a recruiter who
                 // wants to confirm right now rather than wait out the tick.
-                <Button variant="secondary" onClick={onRefresh} disabled={connectionStatus !== 'connected'}>
-                  <RefreshCw size={14} className="mr-1.5" />
+                //
+                // Deliberately NOT <Button>: it sits directly beside the column chooser, and
+                // Button's md size (px-4 py-2, filled grey) renders both taller and heavier
+                // than that outlined 34px trigger. Overriding via className is unreliable here
+                // -- Button composes with plain clsx, not tailwind-merge, so px-4 and any
+                // override would both survive into the class list and CSS order would pick the
+                // winner. Matching ColumnChooser's own trigger classes is what guarantees the
+                // two line up: p-2 + a 16px icon + 1px border on both, with leading-none so the
+                // label can't out-grow the icon and add height.
+                <button
+                  type="button"
+                  onClick={onRefresh}
+                  disabled={connectionStatus !== 'connected'}
+                  className="flex items-center gap-1.5 rounded border border-recruiter-border p-2 text-sm font-medium leading-none text-recruiter-text transition-colors hover:bg-recruiter-bg-subtle disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <RefreshCw size={16} />
                   Refresh
-                </Button>
+                </button>
               )}
             </div>
             <Table
