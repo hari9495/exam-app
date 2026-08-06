@@ -31,8 +31,12 @@ describe('CodeOutputPanel', () => {
     expect(screen.queryByText('ignored')).not.toBeInTheDocument();
   });
 
-  it('renders the timeout message', () => {
+  it('renders a timeout message naming the limit and the likely cause', () => {
     render(<CodeOutputPanel result={{ stdout: '', stderr: '', exitCode: 137, compileError: null, timedOut: true, runsRemaining: 30 }} error={null} />);
-    expect(screen.getByText('Your program was stopped for taking too long.')).toBeInTheDocument();
+    // The old copy just said the program "was stopped for taking too long", which told a
+    // candidate nothing actionable -- they would re-run the same non-terminating code and lose
+    // another attempt. Both halves matter: how long they got, and what to go looking for.
+    expect(screen.getByText(/ran for more than 5 seconds/)).toBeInTheDocument();
+    expect(screen.getByText(/loop never finishes/)).toBeInTheDocument();
   });
 });

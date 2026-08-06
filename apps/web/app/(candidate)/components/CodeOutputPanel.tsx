@@ -51,7 +51,14 @@ export function CodeOutputPanel({ result, error }: CodeOutputPanelProps) {
             {result.stdout ? <div className="whitespace-pre-wrap text-candidate-text">{result.stdout}</div> : null}
             {result.stderr ? <div className="whitespace-pre-wrap text-candidate-danger">{result.stderr}</div> : null}
             {result.timedOut ? (
-              <div className="text-candidate-review">Your program was stopped for taking too long.</div>
+              // Name the limit and the likely cause. "Stopped for taking too long" left candidates
+              // re-running the same non-terminating code, burning an attempt and 5s each time with
+              // no hint at what to look for. The number must match RUN_TIMEOUT_MS in
+              // apps/exam-runtime/src/code-execution/piston-client.ts.
+              <div className="text-candidate-review">
+                Your program ran for more than 5 seconds and was stopped. This usually means a loop
+                never finishes — check that its condition eventually becomes false.
+              </div>
             ) : null}
           </>
         )}
