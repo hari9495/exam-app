@@ -23,9 +23,15 @@ describe('monacoLanguageFor', () => {
     },
   );
 
-  // These execute fine; Monaco just has no grammar for them, and plaintext is the intended
-  // outcome rather than a crash or an undefined language id.
-  it.each(['basic', 'd', 'fortran', 'brainfuck'])('falls back to plaintext for %s', (language) => {
+  // Piston's `basic` runtime is Mono Visual Basic (aliases vb / visual-basic), so it gets a
+  // real grammar even though the two sides name it differently.
+  it('maps Piston\'s basic (Mono Visual Basic) onto the Monaco vb grammar', () => {
+    expect(monacoLanguageFor('basic')).toBe('vb');
+  });
+
+  // These execute fine; Monaco genuinely has no grammar for them (verified against the served
+  // build), and plaintext is the intended outcome rather than a crash or an undefined id.
+  it.each(['d', 'fortran', 'brainfuck'])('falls back to plaintext for %s', (language) => {
     expect(monacoLanguageFor(language)).toBe('plaintext');
   });
 

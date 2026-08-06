@@ -18,10 +18,13 @@ const PISTON_TO_MONACO_LANGUAGE: Record<string, string> = {
   ruby: 'ruby',
   // sqlite3 is Piston's SQL runtime; Monaco's generic `sql` grammar highlights it fine.
   sqlite3: 'sql',
+  // Piston's `basic` is Mono Visual Basic (runtime "mono", aliases vb / visual-basic), not a
+  // generic BASIC — so Monaco's `vb` grammar is the right one, despite the names differing.
+  basic: 'vb',
   // Piston exposes far more runtimes than Monaco has dedicated grammars for — anything not
   // listed here still executes correctly (this only controls syntax-highlighting), it just
-  // falls back to plaintext coloring. `basic`, `d` and `fortran` have no Monaco grammar and
-  // are deliberately left to that fallback.
+  // falls back to plaintext coloring. Verified against the served Monaco build: `d` (gdc) and
+  // `fortran` genuinely have no grammar, so they are deliberately left to that fallback.
 };
 
 export function monacoLanguageFor(pistonLanguage: string | undefined): string {
