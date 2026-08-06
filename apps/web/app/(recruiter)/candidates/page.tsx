@@ -231,12 +231,10 @@ export default function CandidatesPage() {
         <h1 className="text-2xl font-semibold text-recruiter-text">Candidates</h1>
         <div className="flex items-center gap-2">
           <CandidateInviteForm
-            onSubmit={(input) =>
-              createCandidate.mutate(input, {
-                onSuccess: () => toast('Candidate added.'),
-                onError: (error) => toast(error instanceof Error ? error.message : 'Failed to add candidate.', 'error'),
-              })
-            }
+            onSubmit={async (input) => {
+              await createCandidate.mutateAsync(input);
+              toast('Candidate added.');
+            }}
           />
           <Link href="/candidates/bulk-upload-invite">
             <Button variant="secondary">Upload &amp; invite</Button>

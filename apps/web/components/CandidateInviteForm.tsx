@@ -17,7 +17,7 @@ interface FormErrors {
   phone?: string;
 }
 
-export function CandidateInviteForm({ onSubmit }: { onSubmit: (input: CandidateInput) => void }) {
+export function CandidateInviteForm({ onSubmit }: { onSubmit: (input: CandidateInput) => Promise<void> }) {
   const [open, setOpen] = useState(false);
   const [firstName, setFirstName] = useState('');
   const [middleName, setMiddleName] = useState('');
@@ -25,6 +25,8 @@ export function CandidateInviteForm({ onSubmit }: { onSubmit: (input: CandidateI
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [errors, setErrors] = useState<FormErrors>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   function reset() {
     setFirstName('');
@@ -33,6 +35,7 @@ export function CandidateInviteForm({ onSubmit }: { onSubmit: (input: CandidateI
     setEmail('');
     setPhone('');
     setErrors({});
+    setSubmitError(null);
   }
 
   function close() {
@@ -40,7 +43,7 @@ export function CandidateInviteForm({ onSubmit }: { onSubmit: (input: CandidateI
     reset();
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const nextErrors: FormErrors = {};
     if (!firstName.trim()) nextErrors.firstName = 'Complete this field.';
@@ -57,8 +60,19 @@ export function CandidateInviteForm({ onSubmit }: { onSubmit: (input: CandidateI
       setErrors(nextErrors);
       return;
     }
-    onSubmit({ name: composeName(firstName, middleName, lastName), email: email.trim(), phone });
-    close();
+    setSubmitError(null);
+    setSubmitting(true);
+    try {
+      await onSubmit({ name: composeName(firstName, middleName, lastName), email: email.trim(), phone });
+      close();
+    } catch (err) {
+      // Stay open with the failure visible instead of the popup silently vanishing
+      // (e.g. a duplicate-email 409) while nothing was actually created -- same fix
+      // class as NewUserModal/ADO #6845.
+      setSubmitError(err instanceof Error ? err.message : 'Failed to add candidate.');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -114,11 +128,18 @@ export function CandidateInviteForm({ onSubmit }: { onSubmit: (input: CandidateI
               }}
               error={errors.phone}
             />
+            {submitError && (
+              <p role="alert" className="text-sm text-status-danger">
+                {submitError}
+              </p>
+            )}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="secondary" onClick={close}>
                 Cancel
               </Button>
-              <Button type="submit">Add candidate</Button>
+              <Button type="submit" loading={submitting}>
+                Add candidate
+              </Button>
             </div>
           </form>
         </Modal>

@@ -36,7 +36,7 @@ describe('CandidateInviteForm', () => {
   });
 
   it('closes the popup and resets its fields after a successful submit', async () => {
-    const onSubmit = jest.fn();
+    const onSubmit = jest.fn().mockResolvedValue(undefined);
     render(<CandidateInviteForm onSubmit={onSubmit} />);
     const dialog = await openModal();
 
@@ -50,6 +50,26 @@ describe('CandidateInviteForm', () => {
     const reopened = await openModal();
     expect(reopened.getByLabelText('First Name')).toHaveValue('');
     expect(reopened.getByLabelText('Email')).toHaveValue('');
+  });
+
+  // Reproduces the reported bug: a duplicate-email 409 (or any other backend rejection)
+  // used to be invisible because the popup closed immediately regardless of outcome --
+  // the candidate was never created, but nothing on screen said so. Same fix class as
+  // NewUserModal/ADO #6845.
+  it('keeps the popup open and shows an inline error when the submit fails, without losing the entered fields', async () => {
+    const onSubmit = jest.fn().mockRejectedValue(new Error('A candidate with email priya@example.com already exists'));
+    render(<CandidateInviteForm onSubmit={onSubmit} />);
+    const dialog = await openModal();
+
+    await userEvent.type(dialog.getByLabelText('First Name'), 'Priya');
+    await userEvent.type(dialog.getByLabelText('Last Name'), 'Shah');
+    await userEvent.type(dialog.getByLabelText('Email'), 'priya@example.com');
+    await userEvent.click(dialog.getByRole('button', { name: 'Add candidate' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('A candidate with email priya@example.com already exists');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(dialog.getByLabelText('First Name')).toHaveValue('Priya');
+    expect(dialog.getByLabelText('Email')).toHaveValue('priya@example.com');
   });
 
   it('blocks submission and shows inline errors when First Name, Last Name, or Email is left empty', async () => {
