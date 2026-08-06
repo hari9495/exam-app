@@ -22,7 +22,9 @@ interface StaffSocketUser {
   actingSuperAdmin?: boolean;
 }
 
-export const PRESENCE_TICK_MS = 15_000;
+// Every tick rebroadcasts the full roster, so this is also how often a recruiter's
+// "Time remaining" and "Progress" columns advance.
+export const ROSTER_TICK_MS = 15_000;
 const EXAM_ROOM_PREFIX = 'exam:';
 
 @WebSocketGateway({ namespace: '/monitoring', cors: { origin: process.env.WEB_ORIGIN } })
@@ -31,8 +33,7 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
   server!: Namespace;
 
   private readonly logger = new Logger(MonitoringGateway.name);
-  private readonly lastPresence = new Map<string, boolean>();
-  private presenceInterval?: NodeJS.Timeout;
+  private rosterInterval?: NodeJS.Timeout;
 
   constructor(
     private readonly jwt: JwtService,
@@ -43,14 +44,14 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
   ) {}
 
   afterInit(): void {
-    this.presenceInterval = setInterval(() => {
-      this.tickPresence().catch((error) => this.logger.error('Presence tick failed', error as Error));
-    }, PRESENCE_TICK_MS);
+    this.rosterInterval = setInterval(() => {
+      this.tickRoster().catch((error) => this.logger.error('Roster tick failed', error as Error));
+    }, ROSTER_TICK_MS);
   }
 
   onModuleDestroy(): void {
-    if (this.presenceInterval) {
-      clearInterval(this.presenceInterval);
+    if (this.rosterInterval) {
+      clearInterval(this.rosterInterval);
     }
   }
 
@@ -152,7 +153,7 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
     return !!grant;
   }
 
-  private async tickPresence(): Promise<void> {
+  private async tickRoster(): Promise<void> {
     const rooms = this.server.adapter.rooms;
     for (const roomName of rooms.keys()) {
       if (!roomName.startsWith(EXAM_ROOM_PREFIX)) {
@@ -173,20 +174,15 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
           examId,
         );
 
-        for (const row of roster) {
-          if (!row.attemptId) {
-            continue;
-          }
-          const previous = this.lastPresence.get(row.attemptId);
-          if (previous !== row.online) {
-            this.lastPresence.set(row.attemptId, row.online);
-            this.server.to(roomName).emit('roster:presence', {
-              attemptId: row.attemptId,
-              candidateId: row.candidateId,
-              online: row.online,
-            });
-          }
-        }
+        // Broadcast the WHOLE row, not just the online flag. This snapshot already carries
+        // fresh remainingSeconds / answeredCount / totalQuestions -- it was being computed
+        // every tick and thrown away, so a recruiter who opened the Live tab BEFORE a
+        // candidate started saw "—" in those columns for the rest of the exam: the only other
+        // emitter of a full roster is the one-shot on join, and `attempt:status` carries just
+        // the status and attemptId. It also means the clock actually advances (and, for a
+        // paused or blocked attempt, correctly stops advancing) instead of being frozen at
+        // whatever it read when the page loaded.
+        this.server.to(roomName).emit('roster:snapshot', roster);
       } catch (error) {
         this.logger.error(`Roster snapshot failed for exam ${examId}`, error as Error);
       }

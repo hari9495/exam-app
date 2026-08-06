@@ -96,24 +96,52 @@ describe('useExamMonitoring', () => {
     expect(result.current.connectionStatus).toBe('connected');
   });
 
-  it('applies a roster:presence update to the matching attempt only', async () => {
+  // Replaces an older test for the narrow `roster:presence` event. That event is gone: the
+  // gateway now rebroadcasts the whole roster on every tick, which carries online AND the
+  // live clock and progress. Regression guarded here: a recruiter who opened the tab before
+  // a candidate started used to be stuck with null remainingSeconds/answeredCount forever,
+  // because nothing after the join snapshot ever refreshed them.
+  it('replaces the roster on a rebroadcast snapshot, refreshing the clock and progress', async () => {
     const socket = createMockSocket();
     (io as jest.Mock).mockReturnValue(socket);
 
     const { result } = renderHook(() => useExamMonitoring('exam-1'));
     await waitFor(() => expect(io).toHaveBeenCalled());
     act(() => socket.trigger('connect'));
+    // Join-time snapshot: nobody has started, so these fields are legitimately null.
     act(() =>
       socket.trigger('roster:snapshot', [
-        { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'in_progress', online: false, remainingSeconds: 100, answeredCount: 0, totalQuestions: 5 },
-        { candidateId: 'c2', candidateName: 'Bob', invitationId: 'i2', attemptId: 'a2', status: 'in_progress', online: false, remainingSeconds: 100, answeredCount: 0, totalQuestions: 5 },
+        { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: null, status: 'invited', online: false, remainingSeconds: null, answeredCount: null, totalQuestions: null },
+      ]),
+    );
+    expect(result.current.roster[0].remainingSeconds).toBeNull();
+
+    act(() =>
+      socket.trigger('roster:snapshot', [
+        { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'in_progress', online: true, remainingSeconds: 1500, answeredCount: 3, totalQuestions: 10 },
       ]),
     );
 
-    act(() => socket.trigger('roster:presence', { attemptId: 'a1', candidateId: 'c1', online: true }));
+    expect(result.current.roster[0]).toMatchObject({ online: true, remainingSeconds: 1500, answeredCount: 3, totalQuestions: 10 });
+  });
 
-    expect(result.current.roster.find((r) => r.attemptId === 'a1')?.online).toBe(true);
-    expect(result.current.roster.find((r) => r.attemptId === 'a2')?.online).toBe(false);
+  it('stamps when each snapshot arrived so the UI can advance the clock between ticks', async () => {
+    const socket = createMockSocket();
+    (io as jest.Mock).mockReturnValue(socket);
+
+    const { result } = renderHook(() => useExamMonitoring('exam-1'));
+    await waitFor(() => expect(io).toHaveBeenCalled());
+    act(() => socket.trigger('connect'));
+    expect(result.current.rosterUpdatedAt).toBeNull();
+
+    const before = Date.now();
+    act(() =>
+      socket.trigger('roster:snapshot', [
+        { candidateId: 'c1', candidateName: 'Alice', invitationId: 'i1', attemptId: 'a1', status: 'in_progress', online: true, remainingSeconds: 1500, answeredCount: 0, totalQuestions: 5 },
+      ]),
+    );
+
+    expect(result.current.rosterUpdatedAt).toBeGreaterThanOrEqual(before);
   });
 
   it('applies an attempt:status update to the matching attempt', async () => {

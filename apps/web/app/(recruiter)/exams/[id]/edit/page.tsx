@@ -216,6 +216,7 @@ export default function EditExamPage() {
           <LiveMonitoringPanel
             flagged={flagged}
             roster={monitoring.roster}
+            rosterUpdatedAt={monitoring.rosterUpdatedAt}
             alerts={monitoring.alerts}
             connectionStatus={monitoring.connectionStatus}
             joinError={monitoring.joinError}

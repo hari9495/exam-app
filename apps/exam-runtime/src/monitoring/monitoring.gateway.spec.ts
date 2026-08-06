@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
-import { MonitoringGateway, PRESENCE_TICK_MS } from './monitoring.gateway';
+import { MonitoringGateway, ROSTER_TICK_MS } from './monitoring.gateway';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { MonitoringService } from './monitoring.service';
@@ -240,7 +240,7 @@ describe('MonitoringGateway', () => {
       expect(jest.getTimerCount()).toBe(0);
 
       // Advancing time after destroy must not trigger another tick.
-      jest.advanceTimersByTime(PRESENCE_TICK_MS * 2);
+      jest.advanceTimersByTime(ROSTER_TICK_MS * 2);
       expect(monitoring.getRosterSnapshot).not.toHaveBeenCalled();
     });
 
@@ -249,7 +249,7 @@ describe('MonitoringGateway', () => {
     });
   });
 
-  describe('tickPresence via the interval (realistic Server shape)', () => {
+  describe('tickRoster via the interval (realistic Server shape)', () => {
     afterEach(() => {
       jest.useRealTimers();
     });
@@ -265,22 +265,55 @@ describe('MonitoringGateway', () => {
       tenantPrisma.forTenant.mockImplementation((_context: unknown, fn: (tx: unknown) => unknown) =>
         Promise.resolve(fn({ exam: { findUnique: () => Promise.resolve({ id: 'exam-1', organizationId: 'org-1' }) } })),
       );
-      monitoring.getRosterSnapshot.mockResolvedValue([
-        { attemptId: 'attempt-1', candidateId: 'cand-1', online: true },
-      ]);
+      // A row as the roster snapshot really shapes it -- the tick used to reduce this to just
+      // the online flag, which is why Time remaining and Progress stayed "—" all exam.
+      const row = {
+        attemptId: 'attempt-1',
+        candidateId: 'cand-1',
+        online: true,
+        status: 'in_progress',
+        remainingSeconds: 1500,
+        answeredCount: 3,
+        totalQuestions: 10,
+      };
+      monitoring.getRosterSnapshot.mockResolvedValue([row]);
 
       gateway.afterInit();
-      await jest.advanceTimersByTimeAsync(PRESENCE_TICK_MS);
+      await jest.advanceTimersByTimeAsync(ROSTER_TICK_MS);
 
       expect(monitoring.getRosterSnapshot).toHaveBeenCalledWith(
         { organizationId: 'org-1', isSuperAdmin: false },
         'exam-1',
       );
-      expect(emit).toHaveBeenCalledWith('roster:presence', {
-        attemptId: 'attempt-1',
-        candidateId: 'cand-1',
-        online: true,
-      });
+      // Regression: the whole row must go out, carrying the fresh clock and progress -- not a
+      // narrow presence payload, and not only when `online` happens to have changed.
+      expect(emit).toHaveBeenCalledWith('roster:snapshot', [row]);
+      expect(emit).not.toHaveBeenCalledWith('roster:presence', expect.anything());
+    });
+
+    it('rebroadcasts on every tick even when nothing about presence changed', async () => {
+      jest.useFakeTimers();
+      const emit = jest.fn();
+      const rooms = new Map([['exam:exam-1', new Set(['socket-1'])]]);
+      (gateway as any).server = {
+        adapter: { rooms },
+        to: jest.fn().mockReturnValue({ emit }),
+      };
+      tenantPrisma.forTenant.mockImplementation((_context: unknown, fn: (tx: unknown) => unknown) =>
+        Promise.resolve(fn({ exam: { findUnique: () => Promise.resolve({ id: 'exam-1', organizationId: 'org-1' }) } })),
+      );
+      // Same online flag both ticks: the old change-detection would have emitted once and then
+      // gone silent, freezing the recruiter's clock for the rest of the exam.
+      monitoring.getRosterSnapshot.mockResolvedValue([
+        { attemptId: 'attempt-1', candidateId: 'cand-1', online: true, status: 'in_progress', remainingSeconds: 1500 },
+      ]);
+
+      gateway.afterInit();
+      await jest.advanceTimersByTimeAsync(ROSTER_TICK_MS);
+      await jest.advanceTimersByTimeAsync(ROSTER_TICK_MS);
+
+      const snapshots = emit.mock.calls.filter((call) => call[0] === 'roster:snapshot');
+      expect(snapshots).toHaveLength(2);
     });
   });
 });

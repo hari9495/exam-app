@@ -11,6 +11,8 @@ const EXAM_RUNTIME_ORIGIN = EXAM_RUNTIME_API_BASE.replace(/\/api\/v1\/?$/, '');
 
 interface UseExamMonitoringResult {
   roster: RosterRow[];
+  /** When the last roster:snapshot landed, so the UI can advance the clock between ticks. */
+  rosterUpdatedAt: number | null;
   alerts: ProctoringFlag[];
   leaderboard: RecruiterLeaderboardRow[];
   connectionStatus: ConnectionStatus;
@@ -22,6 +24,7 @@ export function useExamMonitoring(examId: string): UseExamMonitoringResult {
   const tokenRef = useRef(accessToken);
   tokenRef.current = accessToken;
   const [roster, setRoster] = useState<RosterRow[]>([]);
+  const [rosterUpdatedAt, setRosterUpdatedAt] = useState<number | null>(null);
   const [alerts, setAlerts] = useState<ProctoringFlag[]>([]);
   const [leaderboard, setLeaderboard] = useState<RecruiterLeaderboardRow[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
@@ -33,6 +36,7 @@ export function useExamMonitoring(examId: string): UseExamMonitoringResult {
     }
 
     setRoster([]);
+    setRosterUpdatedAt(null);
     setAlerts([]);
     setLeaderboard([]);
     setJoinError(null);
@@ -70,12 +74,12 @@ export function useExamMonitoring(examId: string): UseExamMonitoringResult {
       setJoinError(payload.message);
     });
 
+    // Sent on join AND rebroadcast every ROSTER_TICK_MS, so this is the only thing that keeps
+    // remainingSeconds / answeredCount / online current. The old narrow `roster:presence`
+    // event carried just the online flag and is gone -- the full row supersedes it.
     socket.on('roster:snapshot', (rows: RosterRow[]) => {
       setRoster(rows);
-    });
-
-    socket.on('roster:presence', (payload: { attemptId: string; candidateId: string; online: boolean }) => {
-      setRoster((current) => current.map((row) => (row.attemptId === payload.attemptId ? { ...row, online: payload.online } : row)));
+      setRosterUpdatedAt(Date.now());
     });
 
     socket.on('attempt:status', (payload: { attemptId: string; candidateId: string; status: string }) => {
@@ -125,5 +129,5 @@ export function useExamMonitoring(examId: string): UseExamMonitoringResult {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [Boolean(accessToken), examId]);
 
-  return { roster, alerts, leaderboard, connectionStatus, joinError };
+  return { roster, rosterUpdatedAt, alerts, leaderboard, connectionStatus, joinError };
 }

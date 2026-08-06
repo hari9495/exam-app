@@ -81,6 +81,26 @@ function isLiveRow(row: RosterRow): boolean {
   return row.online || row.status === 'in_progress' || row.status === 'paused' || row.status === 'blocked';
 }
 
+/**
+ * The server sends remainingSeconds every ROSTER_TICK_MS (15s). Showing it raw makes the clock
+ * jump in 15-second steps, so advance it locally in between.
+ *
+ * Only `in_progress` advances. A paused or blocked attempt's clock is frozen server-side at
+ * pausedAt, and counting it down here would show a recruiter time draining away while the
+ * candidate is stopped -- then jump back up on the next snapshot. On resume the server banks
+ * the paused duration, so the next snapshot brings the clock back to the right place on its own.
+ */
+export function displayedRemainingSeconds(row: RosterRow, rosterUpdatedAt: number | null, now: number): number | null {
+  if (row.remainingSeconds === null) {
+    return null;
+  }
+  if (row.status !== 'in_progress' || rosterUpdatedAt === null) {
+    return row.remainingSeconds;
+  }
+  const elapsed = Math.floor((now - rosterUpdatedAt) / 1000);
+  return Math.max(0, row.remainingSeconds - Math.max(0, elapsed));
+}
+
 function formatRemaining(seconds: number | null): string {
   if (seconds === null) {
     return '—';
@@ -226,6 +246,7 @@ function ProctoringLogModal({ attemptId, onClose }: { attemptId: string; onClose
 
 export function LiveMonitoringPanel({
   roster,
+  rosterUpdatedAt,
   alerts,
   flagged,
   connectionStatus,
@@ -234,6 +255,8 @@ export function LiveMonitoringPanel({
   onEnableNotifications,
 }: {
   roster: RosterRow[];
+  /** When the current roster arrived, so the clock can advance between 15s snapshots. */
+  rosterUpdatedAt?: number | null;
   alerts: ProctoringFlag[];
   flagged: Set<string>;
   connectionStatus: ConnectionStatus;
@@ -246,6 +269,12 @@ export function LiveMonitoringPanel({
   onEnableNotifications?: () => void;
 }) {
   const { toast } = useToast();
+  // Drives the between-snapshot countdown. One timer for the table, not one per row.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
   const unblockAttempt = useUnblockAttempt();
   const bypassProctoring = useBypassProctoring();
   const revokeProctoringBypass = useRevokeProctoringBypass();
@@ -342,7 +371,11 @@ export function LiveMonitoringPanel({
       ),
     },
     { key: 'online', header: 'Online', render: (row) => <Badge variant={row.online ? 'success' : 'default'}>{row.online ? 'Online' : 'Offline'}</Badge> },
-    { key: 'remaining', header: 'Time remaining', render: (row) => formatRemaining(row.remainingSeconds) },
+    {
+      key: 'remaining',
+      header: 'Time remaining',
+      render: (row) => formatRemaining(displayedRemainingSeconds(row, rosterUpdatedAt ?? null, nowMs)),
+    },
     {
       key: 'progress',
       header: 'Progress',
