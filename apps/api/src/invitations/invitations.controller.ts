@@ -23,7 +23,7 @@ export class InvitationsController {
   @Post('exams/:examId/invitations')
   @RequirePermissions('candidate:manage')
   bulkInvite(@CurrentTenant() tenant: TenantContext, @Param('examId') examId: string, @Body() dto: CreateInvitationsDto) {
-    return this.invitationsService.bulkInvite(tenant, examId, dto.candidateIds);
+    return this.invitationsService.bulkInvite(tenant, examId, dto.candidateIds, dto.advancedFromExamId);
   }
 
   @Post('candidates/bulk-upload-invite')

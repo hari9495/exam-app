@@ -2149,6 +2149,17 @@ describe('ExamsService', () => {
   });
 
   describe('getResults', () => {
+  // getResults issues TWO invitation.findMany calls in one transaction: the exam's own roster,
+  // and (where advancedFromExamId is set) invites created by advancing candidates out of this
+  // exam. A single mockResolvedValue would feed the roster rows to both, so the advanced
+  // branch would read `.exam.title` off a roster row and blow up.
+  function invitationFindMany(rosterRows: unknown[], advancedRows: unknown[] = []) {
+    return jest.fn((args?: { where?: { advancedFromExamId?: string } }) =>
+      Promise.resolve(args?.where?.advancedFromExamId ? advancedRows : rosterRows),
+    );
+  }
+
+
     it('throws NotFoundException when the exam does not exist', async () => {
       const tx = { exam: { findFirst: jest.fn().mockResolvedValue(null) } };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
@@ -2161,7 +2172,7 @@ describe('ExamsService', () => {
       const tx = {
         exam: { findFirst: jest.fn().mockResolvedValue(exam) },
         invitation: {
-          findMany: jest.fn().mockResolvedValue([
+          findMany: invitationFindMany([
             { id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' }, attempt: null },
           ]),
         },
@@ -2174,9 +2185,76 @@ describe('ExamsService', () => {
         {
           candidateId: 'cand-1', candidateName: 'Alice', invitationId: 'inv-1', attemptId: null,
           status: 'invited', score: null, maxScore: null, percentage: null, passFail: null, submittedAt: null,
-          proctoringAnalysis: null, integrityAnalysis: null, integrityLevel: null, integrityFlagCount: 0,
+          proctoringAnalysis: null, integrityAnalysis: null, integrityLevel: null, integrityFlagCount: 0, nextRound: null,
         },
       ]);
+    });
+
+    it('reports the advance invite and whether its email reached the candidate', async () => {
+      const exam = { id: 'exam-1', passCriteriaPercent: 40 };
+      const invitedAt = new Date('2026-08-06T10:00:00.000Z');
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue(exam) },
+        invitation: {
+          findMany: invitationFindMany(
+            [{ id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' }, attempt: null }],
+            [{ candidateId: 'cand-1', emailStatus: 'failed', invitedAt, exam: { title: 'Round 2' } }],
+          ),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getResults(context, 'exam-1');
+
+      // 'failed' is the whole point of the column -- a recruiter must be able to see the
+      // invite never went out, rather than assume it did.
+      expect(result[0].nextRound).toEqual({ examTitle: 'Round 2', emailStatus: 'failed', invitedAt });
+    });
+
+    it('leaves nextRound null for a candidate who was never advanced', async () => {
+      const exam = { id: 'exam-1', passCriteriaPercent: 40 };
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue(exam) },
+        invitation: {
+          findMany: invitationFindMany(
+            [
+              { id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' }, attempt: null },
+              { id: 'inv-2', candidateId: 'cand-2', status: 'invited', candidate: { name: 'Bob' }, attempt: null },
+            ],
+            [{ candidateId: 'cand-1', emailStatus: 'sent', invitedAt: new Date(), exam: { title: 'Round 2' } }],
+          ),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getResults(context, 'exam-1');
+
+      expect(result.find((row) => row.candidateId === 'cand-1')?.nextRound?.emailStatus).toBe('sent');
+      expect(result.find((row) => row.candidateId === 'cand-2')?.nextRound).toBeNull();
+    });
+
+    it('reports the most recent advance when a candidate was advanced more than once', async () => {
+      const exam = { id: 'exam-1', passCriteriaPercent: 40 };
+      const newer = new Date('2026-08-06T12:00:00.000Z');
+      const older = new Date('2026-08-01T09:00:00.000Z');
+      const tx = {
+        exam: { findFirst: jest.fn().mockResolvedValue(exam) },
+        invitation: {
+          findMany: invitationFindMany(
+            [{ id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' }, attempt: null }],
+            // The query orders newest-first, so the mock returns them that way too.
+            [
+              { candidateId: 'cand-1', emailStatus: 'pending', invitedAt: newer, exam: { title: 'Round 3' } },
+              { candidateId: 'cand-1', emailStatus: 'sent', invitedAt: older, exam: { title: 'Round 2' } },
+            ],
+          ),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getResults(context, 'exam-1');
+
+      expect(result[0].nextRound).toEqual({ examTitle: 'Round 3', emailStatus: 'pending', invitedAt: newer });
     });
 
     it('returns the graded result for a submitted attempt', async () => {
@@ -2185,7 +2263,7 @@ describe('ExamsService', () => {
       const tx = {
         exam: { findFirst: jest.fn().mockResolvedValue(exam) },
         invitation: {
-          findMany: jest.fn().mockResolvedValue([
+          findMany: invitationFindMany([
             {
               id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' },
               attempt: {
@@ -2205,7 +2283,7 @@ describe('ExamsService', () => {
         {
           candidateId: 'cand-1', candidateName: 'Alice', invitationId: 'inv-1', attemptId: 'attempt-1',
           status: 'submitted', score: 8, maxScore: 10, percentage: 80, passFail: 'pass', submittedAt,
-          proctoringAnalysis: null, integrityAnalysis: null, integrityLevel: null, integrityFlagCount: 0,
+          proctoringAnalysis: null, integrityAnalysis: null, integrityLevel: null, integrityFlagCount: 0, nextRound: null,
         },
       ]);
       expect(examRuntime.settleIfExpiredBatch).not.toHaveBeenCalled();
@@ -2218,7 +2296,7 @@ describe('ExamsService', () => {
       const tx = {
         exam: { findFirst: jest.fn().mockResolvedValue(exam) },
         invitation: {
-          findMany: jest.fn().mockResolvedValue([
+          findMany: invitationFindMany([
             { id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' }, attempt: inProgressAttempt },
           ]),
         },
@@ -2256,7 +2334,7 @@ describe('ExamsService', () => {
       const tx = {
         exam: { findFirst: jest.fn().mockResolvedValue(exam) },
         invitation: {
-          findMany: jest.fn().mockResolvedValue([
+          findMany: invitationFindMany([
             { id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' }, attempt: attempt1 },
             { id: 'inv-2', candidateId: 'cand-2', status: 'invited', candidate: { name: 'Bob' }, attempt: attempt2 },
           ]),
@@ -2282,7 +2360,7 @@ describe('ExamsService', () => {
       const tx = {
         exam: { findFirst: jest.fn().mockResolvedValue(exam) },
         invitation: {
-          findMany: jest.fn().mockResolvedValue([
+          findMany: invitationFindMany([
             {
               id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' },
               attempt: { id: 'attempt-1', status: 'submitted', submittedAt: new Date(), result: null, proctoringAnalysis: null },
@@ -2303,7 +2381,7 @@ describe('ExamsService', () => {
       const tx = {
         exam: { findFirst: jest.fn().mockResolvedValue(exam) },
         invitation: {
-          findMany: jest.fn().mockResolvedValue([
+          findMany: invitationFindMany([
             {
               id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' },
               attempt: {
@@ -2332,7 +2410,7 @@ describe('ExamsService', () => {
       const tx = {
         exam: { findFirst: jest.fn().mockResolvedValue(exam) },
         invitation: {
-          findMany: jest.fn().mockResolvedValue([
+          findMany: invitationFindMany([
             {
               id: 'inv-1', candidateId: 'cand-1', status: 'invited', candidate: { name: 'Alice' },
               attempt: {

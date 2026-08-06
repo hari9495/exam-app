@@ -31,7 +31,9 @@ export function AdvanceToNextRoundModal({ examId, candidateIds, open, onClose, o
     { value: NO_TARGET_SENTINEL, label: 'Choose an exam…' },
     ...(examsResponse?.data ?? []).filter((exam) => exam.id !== examId).map((exam) => ({ value: exam.id, label: exam.title })),
   ];
-  const bulkInvite = useBulkInvite(targetExamId);
+  // Second arg records where they came from, which is what powers the source exam's
+  // "Next round" column.
+  const bulkInvite = useBulkInvite(targetExamId, examId);
   const { toast } = useToast();
 
   function handleAdvance() {

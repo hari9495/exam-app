@@ -54,6 +54,13 @@ export interface ExamResultRow {
   integrityAnalysis: { status: string; level: string | null; flagsJson: string | null; narrative: string | null } | null;
   integrityLevel: string | null;
   integrityFlagCount: number;
+  /**
+   * The invite created by advancing this candidate to another exam FROM this one, so the
+   * recruiter can see whether it actually reached them. Null when they were never advanced.
+   * Only invitations stamped with advancedFromExamId count -- an unrelated hand-made invite
+   * to another exam must not read as "advanced from here".
+   */
+  nextRound?: { examTitle: string; emailStatus: string; invitedAt: Date } | null;
 }
 
 // ponytail: flagsJson is LLM-produced, unlike the app's own JSON blobs — guard against malformed content.
@@ -980,25 +987,50 @@ export class ExamsService {
   }
 
   async getResults(context: TenantContext, examId: string): Promise<ExamResultRow[]> {
-    const invitations = await this.tenantPrisma.forTenant(context, async (tx) => {
+    const { invitations, advancedInvitations } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({ where: { id: examId, organizationId: context.organizationId as string } });
       if (!exam) {
         throw new NotFoundException(`Exam ${examId} not found`);
       }
 
-      return tx.invitation.findMany({
+      const invitations = await tx.invitation.findMany({
         where: { examId },
         include: { candidate: true, attempt: { include: { result: true, proctoringAnalysis: true, integrityAnalysis: true } } },
         orderBy: [{ invitedAt: 'desc' }, { id: 'desc' }],
       });
+
+      // Invitations to OTHER exams created by advancing someone out of THIS one. Fetched in
+      // the same transaction rather than its own: every tenant-scoped query holds a pooled
+      // connection for the whole transaction, so an extra round-trip here costs a connection
+      // on every results page load.
+      const advancedInvitations = await tx.invitation.findMany({
+        where: { advancedFromExamId: examId },
+        select: { candidateId: true, emailStatus: true, invitedAt: true, exam: { select: { title: true } } },
+        orderBy: [{ invitedAt: 'desc' }, { id: 'desc' }],
+      });
+
+      return { invitations, advancedInvitations };
     });
+
+    // Newest-first above, so the first entry per candidate is the latest advance -- the one a
+    // recruiter just triggered and is asking about.
+    const nextRoundByCandidate = new Map<string, { examTitle: string; emailStatus: string; invitedAt: Date }>();
+    for (const advanced of advancedInvitations) {
+      if (!nextRoundByCandidate.has(advanced.candidateId)) {
+        nextRoundByCandidate.set(advanced.candidateId, {
+          examTitle: advanced.exam.title,
+          emailStatus: advanced.emailStatus,
+          invitedAt: advanced.invitedAt,
+        });
+      }
+    }
 
     const attemptIdsToSettle = invitations
       .filter((invitation) => invitation.attempt && invitation.attempt.status === 'in_progress')
       .map((invitation) => invitation.attempt!.id);
 
     if (attemptIdsToSettle.length === 0) {
-      return invitations.map((invitation) => this.toResultRow(invitation, invitation.attempt));
+      return invitations.map((invitation) => this.toResultRow(nextRoundByCandidate, invitation, invitation.attempt));
     }
 
     await this.examRuntime.settleIfExpiredBatch(attemptIdsToSettle);
@@ -1016,7 +1048,7 @@ export class ExamsService {
       const attempt = originalAttempt && settledAttempts.has(originalAttempt.id)
         ? settledAttempts.get(originalAttempt.id)!
         : originalAttempt;
-      return this.toResultRow(invitation, attempt);
+      return this.toResultRow(nextRoundByCandidate, invitation, attempt);
     });
   }
 
@@ -1053,6 +1085,7 @@ export class ExamsService {
   }
 
   private toResultRow(
+    nextRoundByCandidate: Map<string, { examTitle: string; emailStatus: string; invitedAt: Date }>,
     invitation: { id: string; candidateId: string; status: string; candidate: { name: string } },
     attempt:
       | {
@@ -1090,6 +1123,7 @@ export class ExamsService {
         : null,
       integrityLevel: attempt?.integrityAnalysis?.level ?? null,
       integrityFlagCount: countIntegrityFlags(attempt?.integrityAnalysis?.flagsJson ?? null),
+      nextRound: nextRoundByCandidate.get(invitation.candidateId) ?? null,
     };
   }
 }

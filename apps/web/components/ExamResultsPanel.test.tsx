@@ -44,6 +44,7 @@ function row(overrides: Record<string, unknown> = {}) {
     proctoringAnalysis: null,
     integrityLevel: 'clear',
     integrityFlagCount: 0,
+    nextRound: null,
     ...overrides,
   };
 }
@@ -53,6 +54,44 @@ describe('ExamResultsPanel', () => {
     localStorage.clear();
     (useResultsExport as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
     (useQuestionAccuracy as jest.Mock).mockReturnValue({ data: [], isLoading: false });
+  });
+
+  describe('next round column', () => {
+    it('shows a dash for a candidate who was never advanced', () => {
+      (useResultsList as jest.Mock).mockReturnValue({ data: [row({ nextRound: null })], isLoading: false });
+      renderPanel();
+      expect(screen.getByText('Next round')).toBeInTheDocument();
+    });
+
+    it('names the target exam and reports the invite as sent', () => {
+      (useResultsList as jest.Mock).mockReturnValue({
+        data: [row({ nextRound: { examTitle: 'Round 2', emailStatus: 'sent', invitedAt: '2026-08-06T10:00:00.000Z' } })],
+        isLoading: false,
+      });
+      renderPanel();
+      expect(screen.getByText('Round 2')).toBeInTheDocument();
+      expect(screen.getByText('Sent')).toBeInTheDocument();
+    });
+
+    // The case the column exists for: the recruiter must be able to see the invite never left.
+    it('reports a failed invite distinctly rather than silently', () => {
+      (useResultsList as jest.Mock).mockReturnValue({
+        data: [row({ nextRound: { examTitle: 'Round 2', emailStatus: 'failed', invitedAt: '2026-08-06T10:00:00.000Z' } })],
+        isLoading: false,
+      });
+      renderPanel();
+      expect(screen.getByText('Failed')).toBeInTheDocument();
+      expect(screen.queryByText('Sent')).not.toBeInTheDocument();
+    });
+
+    it('shows the queued state while the send is still in flight', () => {
+      (useResultsList as jest.Mock).mockReturnValue({
+        data: [row({ nextRound: { examTitle: 'Round 2', emailStatus: 'pending', invitedAt: '2026-08-06T10:00:00.000Z' } })],
+        isLoading: false,
+      });
+      renderPanel();
+      expect(screen.getByText('In queue')).toBeInTheDocument();
+    });
   });
 
   it('shows only candidates who attended, not those still invited or revoked', () => {

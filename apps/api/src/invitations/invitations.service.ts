@@ -111,7 +111,17 @@ export class InvitationsService {
     private readonly blobStorage: BlobStorageService,
   ) {}
 
-  async bulkInvite(context: TenantContext, examId: string, candidateIds: string[]): Promise<BulkInviteResult> {
+  /**
+   * @param advancedFromExamId set only by "Advance to Next Round", naming the exam the
+   * candidates were advanced FROM, so that exam's results table can report whether the
+   * invite it triggered actually reached them. Undefined for an ordinary bulk invite.
+   */
+  async bulkInvite(
+    context: TenantContext,
+    examId: string,
+    candidateIds: string[],
+    advancedFromExamId?: string,
+  ): Promise<BulkInviteResult> {
     const uniqueCandidateIds = [...new Set(candidateIds)];
 
     const { exam, createdWithCandidate, skipped } = await this.tenantPrisma.forTenant(context, async (tx) => {
@@ -157,6 +167,7 @@ export class InvitationsService {
             candidateId: candidate.id,
             token: generateToken(),
             expiresAt: resolveInvitationExpiry(exam),
+            ...(advancedFromExamId ? { advancedFromExamId } : {}),
           },
         });
         createdWithCandidate.push({ invitation, candidate });
@@ -295,6 +306,7 @@ export class InvitationsService {
           status: true,
           source: true,
           emailStatus: true,
+          advancedFromExamId: true,
           resendCount: true,
           extraTimePercent: true,
           invitedAt: true,

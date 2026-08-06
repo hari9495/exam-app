@@ -131,7 +131,13 @@ describe('AdvanceToNextRoundModal', () => {
         return new Response(JSON.stringify({ data: [{ id: 'exam-2', title: 'Technical Round' }], total: 1, page: 1, pageSize: 100, totalPages: 1 }), { status: 200 });
       }
       if (String(url).endsWith('/exams/exam-2/invitations') && options?.method === 'POST') {
-        expect(JSON.parse(options.body as string)).toEqual({ candidateIds: ['cand-1', 'cand-2'] });
+        // advancedFromExamId is the exam being advanced FROM. It is what lets that exam's
+        // results table report whether this invite actually reached the candidate, so it
+        // must be on the wire -- not just held in the component.
+        expect(JSON.parse(options.body as string)).toEqual({
+          candidateIds: ['cand-1', 'cand-2'],
+          advancedFromExamId: 'exam-1',
+        });
         return new Response(JSON.stringify({ created: [{ id: 'inv-1' }], skipped: [{ candidateId: 'cand-2', reason: 'already invited' }] }), { status: 201 });
       }
       return new Response(JSON.stringify({}), { status: 200 });

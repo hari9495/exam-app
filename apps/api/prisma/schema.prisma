@@ -432,6 +432,12 @@ model Invitation {
   // and-forget send resolves, then 'sent' or 'failed' -- lets the recruiter UI show
   // "In queue" for the brief window before the email actually goes out.
   emailStatus            String                  @default("pending") @map("email_status")
+  // Set when this invitation was created by "Advance to Next Round" from another exam, so
+  // that exam's results table can report whether the invite it triggered actually went out.
+  // Deliberately NOT a relation: it is provenance for a UI column, and a FK would make
+  // deleting the source exam either fail or cascade-delete a live invitation to a different
+  // exam. Null for every hand-made invite, and for everything created before this shipped.
+  advancedFromExamId     String?                 @map("advanced_from_exam_id") @db.UniqueIdentifier
   resendCount            Int                     @default(0) @map("resend_count")
   extraTimePercent       Int                     @default(0) @map("extra_time_percent")
   invitedAt              DateTime                @default(now()) @map("invited_at")

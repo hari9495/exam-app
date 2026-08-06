@@ -36,6 +36,52 @@ describe('InvitationsService', () => {
     service = moduleRef.get(InvitationsService);
   });
 
+  it('stamps advancedFromExamId when the invite comes from Advance to Next Round', async () => {
+    const create = jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-2', candidateId: 'cand-1', status: 'invited' });
+    const createTx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'exam-2', title: 'Round 2', status: 'published', durationMinutes: 60, schedulingEnabled: false, availabilityWindowStart: null }),
+      },
+      candidate: { findMany: jest.fn().mockResolvedValue([{ id: 'cand-1', email: 'a@test.com', name: 'Alice', erasedAt: null }]) },
+      invitation: { findMany: jest.fn().mockResolvedValue([]), create },
+    };
+    const orgTx = { organization: { findUnique: jest.fn().mockResolvedValue({ logoPath: null, name: 'Acme Hiring' }) } };
+    const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) }, invitation: { update: jest.fn() } };
+    tenantPrisma.forTenant
+      .mockImplementationOnce((_ctx, fn) => fn(createTx))
+      .mockImplementationOnce((_ctx, fn) => fn(orgTx))
+      .mockImplementationOnce((_ctx, fn) => fn(notifTx));
+
+    await service.bulkInvite(context, 'exam-2', ['cand-1'], 'exam-1');
+
+    // Provenance is what lets exam-1's results table report whether THIS invite went out;
+    // without it the column cannot tell an advance apart from an unrelated hand-made invite.
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ advancedFromExamId: 'exam-1' }) }));
+    await new Promise((resolve) => setImmediate(resolve));
+  });
+
+  it('leaves advancedFromExamId unset for an ordinary bulk invite', async () => {
+    const create = jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited' });
+    const createTx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', title: 'Backend Round', status: 'published', durationMinutes: 60, schedulingEnabled: false, availabilityWindowStart: null }),
+      },
+      candidate: { findMany: jest.fn().mockResolvedValue([{ id: 'cand-1', email: 'a@test.com', name: 'Alice', erasedAt: null }]) },
+      invitation: { findMany: jest.fn().mockResolvedValue([]), create },
+    };
+    const orgTx = { organization: { findUnique: jest.fn().mockResolvedValue({ logoPath: null, name: 'Acme Hiring' }) } };
+    const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) }, invitation: { update: jest.fn() } };
+    tenantPrisma.forTenant
+      .mockImplementationOnce((_ctx, fn) => fn(createTx))
+      .mockImplementationOnce((_ctx, fn) => fn(orgTx))
+      .mockImplementationOnce((_ctx, fn) => fn(notifTx));
+
+    await service.bulkInvite(context, 'exam-1', ['cand-1']);
+
+    expect(create.mock.calls[0][0].data).not.toHaveProperty('advancedFromExamId');
+    await new Promise((resolve) => setImmediate(resolve));
+  });
+
   it('invites every requested candidate to a published exam and sends an email for each', async () => {
     const createTx = {
       exam: {

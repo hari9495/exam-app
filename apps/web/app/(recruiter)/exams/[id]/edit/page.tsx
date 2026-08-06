@@ -217,6 +217,7 @@ export default function EditExamPage() {
             flagged={flagged}
             roster={monitoring.roster}
             rosterUpdatedAt={monitoring.rosterUpdatedAt}
+            onRefresh={monitoring.refresh}
             alerts={monitoring.alerts}
             connectionStatus={monitoring.connectionStatus}
             joinError={monitoring.joinError}

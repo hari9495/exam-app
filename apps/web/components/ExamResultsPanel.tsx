@@ -54,6 +54,30 @@ const INTEGRITY_FILTER_OPTIONS = [
   { value: 'high_concern', label: 'High concern' },
 ];
 
+// Tones deliberately match CandidatesPanel's invite states so "In queue" / "Invite failed"
+// mean the same thing wherever a recruiter sees them.
+const NEXT_ROUND_EMAIL: Record<string, { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' }> = {
+  sent: { label: 'Sent', tone: 'success' },
+  pending: { label: 'In queue', tone: 'warning' },
+  failed: { label: 'Failed', tone: 'danger' },
+  // Walk-in invitations carry no email at all; advancing never produces one, but the column
+  // must not render a blank badge if it ever does.
+  none: { label: 'No email', tone: 'neutral' },
+};
+
+function NextRoundCell({ nextRound }: { nextRound: ExamResultRow['nextRound'] }) {
+  if (!nextRound) {
+    return <span className="text-gray-400">—</span>;
+  }
+  const email = NEXT_ROUND_EMAIL[nextRound.emailStatus] ?? { label: nextRound.emailStatus, tone: 'neutral' as const };
+  return (
+    <span className="flex min-w-0 items-center gap-1.5" title={`Advanced to ${nextRound.examTitle}`}>
+      <span className="max-w-[10rem] truncate text-recruiter-text-secondary">{nextRound.examTitle}</span>
+      <StatusBadge tone={email.tone}>{email.label}</StatusBadge>
+    </span>
+  );
+}
+
 export function ExamResultsPanel({ examId }: { examId: string }) {
   const { data: results, isLoading } = useResultsList(examId);
   // Only for the sub-tab trigger count -- QuestionAccuracyPanel fetches the same
@@ -214,6 +238,15 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
       header: <FilterableHeader label="Integrity" value={integrityFilter} onChange={setIntegrityFilter} options={INTEGRITY_FILTER_OPTIONS} />,
       sortLabel: 'Integrity',
       render: (row) => <IntegrityBadge level={row.integrityLevel} />,
+    },
+    {
+      key: 'nextRound',
+      header: 'Next round',
+      sortLabel: 'Next round',
+      // Answers "did the advance invite actually reach them?". The email send is
+      // fire-and-forget, so a just-advanced candidate reads "In queue" for a moment before
+      // settling on Sent or Failed.
+      render: (row) => <NextRoundCell nextRound={row.nextRound} />,
     },
   ];
 

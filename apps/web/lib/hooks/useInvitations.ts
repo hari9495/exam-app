@@ -3,15 +3,28 @@ import { apiFetch, apiFetchBlob } from '../api-client';
 import { BulkInviteResult, Invitation } from '../types';
 import { useAuth } from '../auth-context';
 
-export function useBulkInvite(examId: string) {
+/**
+ * @param advancedFromExamId set by "Advance to Next Round" only -- the exam candidates are
+ * being advanced FROM. Stamped on the new invitation so that exam's results table can report
+ * whether the invite it triggered actually went out.
+ */
+export function useBulkInvite(examId: string, advancedFromExamId?: string) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (candidateIds: string[]): Promise<BulkInviteResult> =>
-      apiFetch(`/exams/${examId}/invitations`, { method: 'POST', body: JSON.stringify({ candidateIds }) }, accessToken ?? undefined),
+      apiFetch(
+        `/exams/${examId}/invitations`,
+        { method: 'POST', body: JSON.stringify({ candidateIds, ...(advancedFromExamId ? { advancedFromExamId } : {}) }) },
+        accessToken ?? undefined,
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
       queryClient.invalidateQueries({ queryKey: ['invitations', examId] });
+      // The source exam's results table gains a "Next round" value for everyone just advanced.
+      if (advancedFromExamId) {
+        queryClient.invalidateQueries({ queryKey: ['exam-results', advancedFromExamId] });
+      }
     },
   });
 }

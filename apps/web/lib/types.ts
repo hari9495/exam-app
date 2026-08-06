@@ -523,6 +523,8 @@ export interface ExamResultRow {
   proctoringAnalysis: ProctoringAnalysisSummary | null;
   integrityLevel: string | null;
   integrityFlagCount: number;
+  /** The invite created by advancing this candidate out of this exam, or null if never advanced. */
+  nextRound: { examTitle: string; emailStatus: InvitationEmailStatus; invitedAt: string } | null;
 }
 
 export interface SectionScore {
