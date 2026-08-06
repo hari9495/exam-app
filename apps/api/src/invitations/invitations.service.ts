@@ -56,6 +56,25 @@ export interface AssessmentEmailOptions {
   introHtml: string;
 }
 
+/**
+ * Greets a candidate by first name only. `candidate.name` holds whatever was typed at
+ * invite or walk-in time -- often the full legal name -- so "Dear Narendra Bhaskar Gudapati,"
+ * reads like a form letter rather than a message to a person.
+ *
+ * Deliberately does NOT try to interpret "Surname, First": that convention shows up in bulk
+ * CSV uploads, but guessing wrong greets someone by the wrong name entirely, which is worse
+ * than being slightly formal. The trailing comma is stripped so such a name still renders
+ * cleanly rather than as "Dear Gudapati,,".
+ *
+ * Falls back to the whole trimmed string if there is no usable first token, so the greeting
+ * can never come out as "Dear ,".
+ */
+export function firstNameOf(fullName: string): string {
+  const trimmed = (fullName ?? '').trim();
+  const first = trimmed.split(/\s+/)[0]?.replace(/,+$/, '') ?? '';
+  return first || trimmed;
+}
+
 /** The one branded assessment-email layout, shared by recruiter invitations and
  *  walk-in registrations so candidates always get the same instructions. */
 export function buildAssessmentEmailHtml(options: AssessmentEmailOptions): string {
@@ -64,7 +83,7 @@ export function buildAssessmentEmailHtml(options: AssessmentEmailOptions): strin
     ? `<p><strong>Date &amp; Time:</strong> ${options.availabilityWindowStart.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</p>`
     : '';
   return (
-    `${logoHtml}<p>Dear ${options.candidateName},</p>` +
+    `${logoHtml}<p>Dear ${firstNameOf(options.candidateName)},</p>` +
     `<p>${options.introHtml}</p>` +
     `<h3>Test Details</h3>${scheduleHtml}<p><strong>Duration:</strong> ${options.durationMinutes} minutes</p>` +
     `<p><a href="${options.startLink}" style="display:inline-block;padding:10px 20px;background:#2955a3;color:#ffffff;text-decoration:none;border-radius:4px;">Start Assessment</a></p>` +
