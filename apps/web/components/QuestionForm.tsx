@@ -5,6 +5,7 @@ import { Button, Input, Select, Checkbox, RadioGroup, RadioGroupItem, RequiredFi
 import { CodeEditor } from '../components/ui/CodeEditor';
 import { Question, QuestionType, Difficulty, Tag, CodeLanguage, CODE_LANGUAGE_OPTIONS } from '../lib/types';
 import { QuestionInput, useUploadQuestionImage, useCodeLanguages } from '../lib/hooks/useQuestions';
+import { monacoLanguageFor } from '../lib/monaco-language';
 
 const TYPE_OPTIONS = [
   { value: 'single_mcq', label: 'Single-correct MCQ' },
@@ -192,7 +193,11 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel }: Q
           {languageMode === 'fixed' && allowedLanguages.length === 1 && (
             <div className="flex flex-col gap-1">
               <span className="text-sm font-medium text-gray-700">Starter code</span>
-              <CodeEditor ariaLabel="Starter Code" language={allowedLanguages[0]} value={starterCode} onChange={setStarterCode} height="220px" />
+              {/* allowedLanguages holds raw PISTON language strings from /code-languages, so it
+                  has to be mapped before Monaco sees it -- passing `c++` or `sqlite3` straight
+                  through silently loses syntax highlighting. (snippetLanguage below is a
+                  different, already-Monaco-valid list, so it needs no mapping.) */}
+              <CodeEditor ariaLabel="Starter Code" language={monacoLanguageFor(allowedLanguages[0])} value={starterCode} onChange={setStarterCode} height="220px" />
             </div>
           )}
           <label className="flex items-center gap-2 text-sm text-gray-700">

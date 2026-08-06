@@ -24,6 +24,7 @@ import { usePeriodicScreenAnalysis } from '../../../lib/hooks/usePeriodicScreenA
 import { useWebcamMonitor } from '../../../lib/hooks/useWebcamMonitor';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
 import { AttemptAnswerSummary, AttemptQuestion, isAttemptStarted } from '../../../lib/types';
+import { monacoLanguageFor } from '../../../lib/monaco-language';
 
 function markButtonClasses(marked: boolean | undefined) {
   return clsx(
@@ -46,24 +47,6 @@ function optionClasses(selected: boolean) {
       // An unselected option had no hover feedback at all despite being a clickable button.
       : 'border-candidate-border text-candidate-text-secondary hover:border-candidate-primary/40 hover:bg-candidate-bg',
   );
-}
-
-const PISTON_TO_MONACO_LANGUAGE: Record<string, string> = {
-  javascript: 'javascript',
-  typescript: 'typescript',
-  python: 'python',
-  java: 'java',
-  csharp: 'csharp',
-  cpp: 'cpp',
-  go: 'go',
-  ruby: 'ruby',
-  // Piston exposes far more runtimes than Monaco has dedicated grammars for — anything not
-  // listed here still executes correctly (this only controls syntax-highlighting), it just
-  // falls back to plaintext coloring.
-};
-
-function monacoLanguageFor(pistonLanguage: string): string {
-  return PISTON_TO_MONACO_LANGUAGE[pistonLanguage] ?? 'plaintext';
 }
 
 export default function CandidateExamPage() {
