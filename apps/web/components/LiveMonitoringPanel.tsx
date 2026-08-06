@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ShieldAlert, ShieldCheck, AlertTriangle, AlertCircle, Info, Search, Users, Activity, CheckCircle2, BellRing } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, AlertTriangle, AlertCircle, Info, Search, Users, Activity, CheckCircle2, BellRing, RefreshCw } from 'lucide-react';
 import { useUnblockAttempt, useBypassProctoring, useRevokeProctoringBypass } from '../lib/hooks/useAttemptModeration';
 import { useProctoringEvents } from '../lib/hooks/useProctoringEvents';
 import { Table, Badge, Button, Card, Modal, Tabs, TabsList, TabsTrigger, useToast, useColumnVisibility, FilterableHeader, type Column } from './ui';
@@ -253,6 +253,7 @@ export function LiveMonitoringPanel({
   joinError,
   notificationPermission,
   onEnableNotifications,
+  onRefresh,
 }: {
   roster: RosterRow[];
   /** When the current roster arrived, so the clock can advance between 15s snapshots. */
@@ -267,6 +268,8 @@ export function LiveMonitoringPanel({
   // error. Make required once this panel's test file is updated to pass them.
   notificationPermission?: NotificationPermission | 'unsupported';
   onEnableNotifications?: () => void;
+  /** Re-fetch the live data now. Omit to hide the Refresh button. */
+  onRefresh?: () => void;
 }) {
   const { toast } = useToast();
   // Drives the between-snapshot countdown. One timer for the table, not one per row.
@@ -549,6 +552,14 @@ export function LiveMonitoringPanel({
                 />
               </div>
               {rosterColumnChooser}
+              {onRefresh && (
+                // The roster already refreshes itself every 15s; this is for a recruiter who
+                // wants to confirm right now rather than wait out the tick.
+                <Button variant="secondary" onClick={onRefresh} disabled={connectionStatus !== 'connected'}>
+                  <RefreshCw size={14} className="mr-1.5" />
+                  Refresh
+                </Button>
+              )}
             </div>
             <Table
               columns={[indexColumn, ...visibleRosterColumns]}

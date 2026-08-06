@@ -30,6 +30,8 @@ function flag(attemptId: string, candidateId: string, secondsAgo: number) {
 function createMockSocket() {
   const handlers: Record<string, Handler> = {};
   return {
+    // refresh() only re-emits on a live socket, so the mock has to model connectedness.
+    connected: true,
     on: jest.fn((event: string, handler: Handler) => {
       handlers[event] = handler;
     }),
@@ -123,6 +125,37 @@ describe('useExamMonitoring', () => {
     );
 
     expect(result.current.roster[0]).toMatchObject({ online: true, remainingSeconds: 1500, answeredCount: 3, totalQuestions: 10 });
+  });
+
+  it('refresh() re-requests the roster without tearing the socket down', async () => {
+    const socket = createMockSocket();
+    (io as jest.Mock).mockReturnValue(socket);
+
+    const { result } = renderHook(() => useExamMonitoring('exam-1'));
+    await waitFor(() => expect(io).toHaveBeenCalled());
+    act(() => socket.trigger('connect'));
+    const joinsAfterConnect = socket.emit.mock.calls.filter((call) => call[0] === 'join-exam').length;
+
+    act(() => result.current.refresh());
+
+    // Re-joining a room the socket is already in is a no-op server-side, and the gateway
+    // answers join-exam with a fresh roster/alerts/leaderboard to this client -- so this is
+    // the whole refresh, with no reconnect and no blanked view.
+    const joinsAfterRefresh = socket.emit.mock.calls.filter((call) => call[0] === 'join-exam').length;
+    expect(joinsAfterRefresh).toBe(joinsAfterConnect + 1);
+    expect(socket.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('refresh() is a no-op while the socket is down, rather than throwing', async () => {
+    const socket = createMockSocket();
+    socket.connected = false;
+    (io as jest.Mock).mockReturnValue(socket);
+
+    const { result } = renderHook(() => useExamMonitoring('exam-1'));
+    await waitFor(() => expect(io).toHaveBeenCalled());
+
+    expect(() => act(() => result.current.refresh())).not.toThrow();
+    expect(socket.emit.mock.calls.filter((call) => call[0] === 'join-exam')).toHaveLength(0);
   });
 
   it('stamps when each snapshot arrived so the UI can advance the clock between ticks', async () => {

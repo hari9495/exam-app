@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { io } from 'socket.io-client';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { io, type Socket } from 'socket.io-client';
 import { useAuth } from '../auth-context';
 import { RosterRow, ProctoringFlag, ConnectionStatus, RecruiterLeaderboardRow } from '../types';
 import { retainAlerts } from '../attention-alert';
@@ -17,6 +17,8 @@ interface UseExamMonitoringResult {
   leaderboard: RecruiterLeaderboardRow[];
   connectionStatus: ConnectionStatus;
   joinError: string | null;
+  /** Re-request the roster, alert history and leaderboard now instead of waiting for the tick. */
+  refresh: () => void;
 }
 
 export function useExamMonitoring(examId: string): UseExamMonitoringResult {
@@ -29,6 +31,16 @@ export function useExamMonitoring(examId: string): UseExamMonitoringResult {
   const [leaderboard, setLeaderboard] = useState<RecruiterLeaderboardRow[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const [joinError, setJoinError] = useState<string | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+
+  // Re-emitting join-exam is the whole implementation: the gateway answers it with a fresh
+  // roster:snapshot, proctoring:recent and leaderboard:snapshot to THIS client, and re-joining
+  // a room it is already in is a no-op. No extra server message type to keep in sync.
+  const refresh = useCallback(() => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('join-exam', { examId });
+    }
+  }, [examId]);
 
   useEffect(() => {
     if (!accessToken || !examId) {
@@ -53,6 +65,7 @@ export function useExamMonitoring(examId: string): UseExamMonitoringResult {
       auth: (cb: (data: { token: string | null }) => void) => cb({ token: tokenRef.current }),
       transports: ['websocket'],
     });
+    socketRef.current = socket;
 
     socket.on('connect', () => {
       setConnectionStatus('connected');
@@ -120,6 +133,7 @@ export function useExamMonitoring(examId: string): UseExamMonitoringResult {
     });
 
     return () => {
+      socketRef.current = null;
       socket.disconnect();
     };
     // accessToken is intentionally omitted: reconnecting on every refreshed token would
@@ -129,5 +143,5 @@ export function useExamMonitoring(examId: string): UseExamMonitoringResult {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [Boolean(accessToken), examId]);
 
-  return { roster, rosterUpdatedAt, alerts, leaderboard, connectionStatus, joinError };
+  return { roster, rosterUpdatedAt, alerts, leaderboard, connectionStatus, joinError, refresh };
 }
