@@ -51,6 +51,11 @@ export function useCodeReview(attemptId: string, questionId: string) {
       }
     },
     enabled: Boolean(accessToken) && Boolean(attemptId) && Boolean(questionId),
+    // Generation is detached server-side (the AI call far outruns the 5s internal timeout that
+    // used to 503 it), so the row lands as 'processing' first and flips to completed/failed
+    // whenever the model returns. Poll until it settles -- same shape as the invite-email
+    // status in useInvitations. Stops as soon as it is no longer processing.
+    refetchInterval: (query) => (query.state.data?.status === 'processing' ? 2_000 : false),
   });
 }
 

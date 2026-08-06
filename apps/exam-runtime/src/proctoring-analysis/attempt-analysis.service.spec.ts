@@ -47,6 +47,9 @@ describe('AttemptAnalysisService', () => {
     const persistTx = { proctoringAnalysis: { upsert: jest.fn() } };
     tenantPrisma.forTenant
       .mockResolvedValueOnce(attemptWithExam)
+      // analyze() now claims the row as 'processing' before the slow AI call -- an extra
+      // forTenant round-trip these ordered mocks must account for.
+      .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn({ proctoringAnalysis: { upsert: jest.fn() } }))
       .mockImplementationOnce((_ctx, fn) => fn(readTx))
       .mockImplementationOnce((_ctx, fn) => fn(persistTx));
 
@@ -66,6 +69,9 @@ describe('AttemptAnalysisService', () => {
     const persistTx = { proctoringAnalysis: { upsert: jest.fn() } };
     tenantPrisma.forTenant
       .mockResolvedValueOnce(attemptWithExam)
+      // analyze() now claims the row as 'processing' before the slow AI call -- an extra
+      // forTenant round-trip these ordered mocks must account for.
+      .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn({ proctoringAnalysis: { upsert: jest.fn() } }))
       .mockImplementationOnce((_ctx, fn) => fn(readTx))
       .mockImplementationOnce((_ctx, fn) => fn(persistTx));
     proctoringRiskClient.assessRisk.mockResolvedValue({ riskLevel: 'medium', summary: 'One tab switch.' });
@@ -86,6 +92,9 @@ describe('AttemptAnalysisService', () => {
     const persistTx = { proctoringAnalysis: { upsert: jest.fn() } };
     tenantPrisma.forTenant
       .mockResolvedValueOnce(attemptWithExam)
+      // analyze() now claims the row as 'processing' before the slow AI call -- an extra
+      // forTenant round-trip these ordered mocks must account for.
+      .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn({ proctoringAnalysis: { upsert: jest.fn() } }))
       .mockImplementationOnce((_ctx, fn) => fn(readTx))
       .mockImplementationOnce((_ctx, fn) => fn(persistTx));
     proctoringRiskClient.assessRisk.mockRejectedValue(new Error('rate limited'));

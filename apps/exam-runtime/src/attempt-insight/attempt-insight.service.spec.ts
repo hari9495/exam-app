@@ -62,6 +62,9 @@ describe('AttemptInsightService', () => {
     const persistTx = { attemptInsight: { upsert: jest.fn() }, aiCreditUsage: { create: jest.fn() } };
     tenantPrisma.forTenant
       .mockResolvedValueOnce(attemptWithResult)
+      // analyze() now claims the row as 'processing' before the slow AI call -- an extra
+      // forTenant round-trip these ordered mocks must account for.
+      .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn({ attemptInsight: { upsert: jest.fn() } }))
       .mockImplementationOnce((_ctx, fn) => fn(readTx))
       .mockImplementationOnce((_ctx, fn) => fn(persistTx));
     insightClient.generate.mockResolvedValue('Solid SQL performance.');
@@ -92,6 +95,9 @@ describe('AttemptInsightService', () => {
     const persistTx = { attemptInsight: { upsert: jest.fn() }, aiCreditUsage: { create: jest.fn() } };
     tenantPrisma.forTenant
       .mockResolvedValueOnce(attemptWithResult)
+      // analyze() now claims the row as 'processing' before the slow AI call -- an extra
+      // forTenant round-trip these ordered mocks must account for.
+      .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn({ attemptInsight: { upsert: jest.fn() } }))
       .mockImplementationOnce((_ctx, fn) => fn(readTx))
       .mockImplementationOnce((_ctx, fn) => fn(persistTx));
     insightClient.generate.mockResolvedValue('Solid performance.');
@@ -111,6 +117,9 @@ describe('AttemptInsightService', () => {
     const persistTx = { attemptInsight: { upsert: jest.fn() }, aiCreditUsage: { create: jest.fn() } };
     tenantPrisma.forTenant
       .mockResolvedValueOnce(attemptWithResult)
+      // analyze() now claims the row as 'processing' before the slow AI call -- an extra
+      // forTenant round-trip these ordered mocks must account for.
+      .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn({ attemptInsight: { upsert: jest.fn() } }))
       .mockImplementationOnce((_ctx, fn) => fn(readTx))
       .mockImplementationOnce((_ctx, fn) => fn(persistTx));
     insightClient.generate.mockRejectedValue(new Error('rate limited'));
@@ -130,6 +139,9 @@ describe('AttemptInsightService', () => {
     const persistTx = { attemptInsight: { upsert: jest.fn() }, aiCreditUsage: { create: jest.fn() } };
     tenantPrisma.forTenant
       .mockResolvedValueOnce(attemptWithResult)
+      // analyze() now claims the row as 'processing' before the slow AI call -- an extra
+      // forTenant round-trip these ordered mocks must account for.
+      .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn({ attemptInsight: { upsert: jest.fn() } }))
       .mockImplementationOnce((_ctx, fn) => fn(readTx))
       .mockImplementationOnce((_ctx, fn) => fn(persistTx));
     insightClient.generate.mockResolvedValue('Solid, one flag.');
@@ -150,6 +162,9 @@ describe('AttemptInsightService', () => {
     const persistTx = { attemptInsight: { upsert: jest.fn() } };
     tenantPrisma.forTenant
       .mockResolvedValueOnce(attemptWithResult)
+      // analyze() now claims the row as 'processing' before the slow AI call -- an extra
+      // forTenant round-trip these ordered mocks must account for.
+      .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn({ attemptInsight: { upsert: jest.fn() } }))
       .mockImplementationOnce((_ctx, fn) => fn(readTx))
       .mockImplementationOnce((_ctx, fn) => fn(persistTx));
     insightClient.generate.mockRejectedValue(new Error('rate limited'));

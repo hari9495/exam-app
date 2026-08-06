@@ -110,4 +110,32 @@ describe('CodeReviewService', () => {
       aiProvider,
     );
   });
+
+  // The internal endpoint that triggers this no longer waits for the AI (it used to 503 at 5s),
+  // so the recruiter's UI polls the row instead. That only works if the row is claimed as
+  // 'processing' BEFORE the slow call -- otherwise the panel keeps showing the previous review
+  // and the Generate button, inviting a second click on work already running.
+  it('marks the review processing before calling the AI, then overwrites it with the result', async () => {
+    const { service, tx, codeReviewClient } = buildService({ suggestedMarks: 7, summary: 'Solid.' });
+
+    await service.analyze('answer-1');
+
+    const statuses = tx.codeAnswerReview.upsert.mock.calls.map((call: [{ update: { status: string } }]) => call[0].update.status);
+    expect(statuses).toEqual(['processing', 'completed']);
+    // And the claim really did land first -- before the model was ever asked.
+    const firstUpsertOrder = tx.codeAnswerReview.upsert.mock.invocationCallOrder[0];
+    expect(firstUpsertOrder).toBeLessThan(codeReviewClient.review.mock.invocationCallOrder[0]);
+  });
+
+  it('clears the stale summary while regenerating, rather than leaving it under a spinner', async () => {
+    const { service, tx } = buildService({ suggestedMarks: 7, summary: 'Solid.' });
+
+    await service.analyze('answer-1');
+
+    expect(tx.codeAnswerReview.upsert.mock.calls[0][0].update).toMatchObject({
+      status: 'processing',
+      suggestedMarks: null,
+      summary: null,
+    });
+  });
 });

@@ -184,22 +184,59 @@ export class InternalController {
     return { status: finalized.status };
   }
 
+  // The three AI endpoints below ACCEPT the work and return immediately rather than awaiting
+  // it. They call a real LLM, which routinely takes far longer than the caller's 5s internal
+  // timeout (EXAM_RUNTIME_INTERNAL_TIMEOUT_MS, default 5000) -- so awaiting them surfaced to a
+  // recruiter as "ServiceUnavailableException ... timed out after 5000ms" even though the
+  // analysis was running fine and usually completed moments later.
+  //
+  // That 5s guard is right for every OTHER internal call here (force-submit, unblock, grade):
+  // those are quick DB writes, and a long wait there really would mean a hung runtime.
+  //
+  // Detaching matches what attempt-settlement already does for these same three services --
+  // it runs them inside `void (async () => …)` with logged catches. Each service now marks its
+  // row 'processing' before the slow part, so the recruiter's UI has something to poll rather
+  // than staring at the previous result.
   @Post('attempts/:id/reanalyze')
-  @HttpCode(204)
-  async reanalyze(@Param('id') id: string): Promise<void> {
-    await this.attemptAnalysis.analyze(id);
+  @HttpCode(202)
+  reanalyze(@Param('id') id: string): void {
+    // async IIFE + try/catch, exactly as attempt-settlement does: it also swallows a
+    // SYNCHRONOUS throw from analyze(), which a bare .catch() on the returned value would not.
+    void (async () => {
+      try {
+        await this.attemptAnalysis.analyze(id);
+      } catch (error) {
+        this.logger.error(`Proctoring re-analysis failed for attempt ${id}`, error as Error);
+      }
+    })();
   }
 
   @Post('attempts/:id/regenerate-insight')
-  @HttpCode(204)
-  async regenerateInsight(@Param('id') id: string): Promise<void> {
-    await this.attemptInsight.analyze(id);
+  @HttpCode(202)
+  regenerateInsight(@Param('id') id: string): void {
+    // async IIFE + try/catch, exactly as attempt-settlement does: it also swallows a
+    // SYNCHRONOUS throw from analyze(), which a bare .catch() on the returned value would not.
+    void (async () => {
+      try {
+        await this.attemptInsight.analyze(id);
+      } catch (error) {
+        this.logger.error(`Insight regeneration failed for attempt ${id}`, error as Error);
+      }
+    })();
   }
 
   @Post('attempts/answers/:answerId/generate-code-review')
-  @HttpCode(204)
-  async generateCodeReview(@Param('answerId') answerId: string): Promise<void> {
-    await this.codeReviewService.analyze(answerId);
+  @HttpCode(202)
+  generateCodeReview(@Param('answerId') answerId: string): void {
+    // async IIFE + try/catch, exactly as attempt-settlement does: it also swallows a
+    // SYNCHRONOUS throw from analyze(), which a bare .catch() on the returned value would not.
+    void (async () => {
+      try {
+        await this.codeReviewService.analyze(answerId);
+      } catch (error) {
+        this.logger.error(`Code review generation failed for answer ${answerId}`, error as Error);
+      }
+    })();
   }
 
   @Post('attempts/settle-if-expired-batch')

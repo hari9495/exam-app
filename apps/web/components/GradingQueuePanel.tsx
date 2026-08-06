@@ -43,19 +43,34 @@ function CodeQuestionGrader({ attemptId, question }: { attemptId: string; questi
       <div className="mb-3">
         {reviewLoading ? (
           <p className="text-xs text-gray-500">Loading AI review…</p>
+        ) : review?.status === 'processing' ? (
+          // Generation is detached server-side and can take a while; useCodeReview polls until
+          // it settles. Without this branch the row fell through to the button below and invited
+          // a second click on work that was already running.
+          <p className="text-xs text-gray-500">Generating AI review… this can take up to a minute.</p>
         ) : review?.status === 'completed' ? (
           <p className="rounded border border-gray-200 p-2 text-xs text-gray-700">
             AI suggested {review.suggestedMarks} / {question.marks} — {review.summary}
           </p>
         ) : (
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={regenerateReview.isPending}
-            onClick={handleGenerateReview}
-          >
-            Generate AI Review
-          </Button>
+          <div className="flex flex-col gap-1.5">
+            {review?.status === 'failed' && (
+              // Say so rather than silently offering the button again, which read as if the
+              // click had never registered.
+              <p className="text-xs text-status-danger">
+                The AI review didn&apos;t complete. You can try again, or grade this answer yourself.
+              </p>
+            )}
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={regenerateReview.isPending}
+              onClick={handleGenerateReview}
+              className="self-start"
+            >
+              {review?.status === 'failed' ? 'Try Again' : 'Generate AI Review'}
+            </Button>
+          </div>
         )}
       </div>
 

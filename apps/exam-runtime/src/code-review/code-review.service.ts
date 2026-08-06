@@ -21,6 +21,19 @@ export class CodeReviewService {
     );
     const organizationId = answer.attempt.invitation.exam.organizationId;
 
+    // Claim the row as in-flight BEFORE the slow AI call. The internal endpoint that triggers
+    // this now returns immediately (it used to time out at 5s), so without this the recruiter
+    // would keep seeing the PREVIOUS review -- or nothing -- with no sign anything is happening.
+    // Regenerating deliberately clears the old summary and marks rather than leaving stale text
+    // sitting under a spinner.
+    await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
+      tx.codeAnswerReview.upsert({
+        where: { answerId },
+        create: { answerId, status: 'processing', suggestedMarks: null, summary: null },
+        update: { status: 'processing', suggestedMarks: null, summary: null, generatedAt: new Date() },
+      }),
+    );
+
     let result: { status: string; suggestedMarks: number | null; summary: string | null };
     let chargeCredit = false;
     if (!answer.answerText || answer.answerText.trim() === '') {

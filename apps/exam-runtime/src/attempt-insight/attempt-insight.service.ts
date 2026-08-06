@@ -26,6 +26,18 @@ export class AttemptInsightService {
       }
 
       const organizationId = attempt.invitation.exam.organizationId;
+
+      // Claim the row as in-flight BEFORE the slow AI call. The internal endpoint that triggers
+      // this returns immediately now (it used to time out at 5s), so without this a recruiter
+      // who regenerates keeps seeing the PREVIOUS result with no sign anything is happening.
+      await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
+        tx.attemptInsight.upsert({
+          where: { attemptId },
+          create: { attemptId, status: 'processing', summary: null },
+          update: { status: 'processing', summary: null },
+        }),
+      );
+
       const { answer, proctoringAnalysis } = await this.tenantPrisma.forTenant(
         { organizationId, isSuperAdmin: false },
         async (tx) => ({
