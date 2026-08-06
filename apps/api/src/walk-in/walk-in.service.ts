@@ -6,6 +6,40 @@ import { EmailService } from '../email/email.service';
 import { buildAssessmentEmailHtml, generateToken, resolveInvitationExpiry, EMAIL_LOGO_SAS_TTL_MS } from '../invitations/invitations.service';
 import { RegisterWalkInDto } from './dto/register-walk-in.dto';
 
+/**
+ * Decides whether a walk-in registration may replace a stored candidate name, returning the new
+ * name or null to leave it alone.
+ *
+ * This is a hole in the "a public endpoint must not overwrite a known candidate's details" rule,
+ * so it is kept as small as it can usefully be. All three conditions must hold:
+ *   1. the STORED name is a single word -- a fuller stored name is someone's real record and is
+ *      never touched, so this can't be used to rewrite "Nanji Reddy" into anything;
+ *   2. the SUBMITTED name has more words than the stored one -- expansion only, never a swap of
+ *      one single word for a different single word;
+ *   3. the submitted name still CONTAINS the stored word. Without this, anyone who knew the
+ *      email could turn "Siva" into an unrelated full name, which is exactly the tampering the
+ *      surrounding rule exists to prevent. With it, the worst case is adding words around a name
+ *      the caller already knew.
+ * A stored blank name is treated as expandable -- there is nothing to protect.
+ */
+export function expandedName(storedName: string, submittedName: string): string | null {
+  const stored = (storedName ?? '').trim();
+  // Collapse runs of whitespace: this value is stored and rendered, so "Hari   Mada" would
+  // show up verbatim in the candidate list and every email.
+  const submitted = (submittedName ?? '').trim().replace(/\s+/g, ' ');
+  if (!submitted) return null;
+
+  const storedTokens = stored ? stored.split(/\s+/) : [];
+  const submittedTokens = submitted.split(/\s+/);
+  if (storedTokens.length > 1) return null;
+  if (submittedTokens.length <= storedTokens.length) return null;
+  if (storedTokens.length === 0) return submitted;
+
+  const storedWord = storedTokens[0].toLowerCase();
+  const contained = submittedTokens.some((token) => token.toLowerCase() === storedWord);
+  return contained ? submitted : null;
+}
+
 export interface WalkInExamOption {
   id: string;
   title: string;
@@ -69,11 +103,25 @@ export class WalkInService {
       // an existing candidate match must NOT be overwritten with request-body name/phone --
       // anyone who knows a candidate's email could tamper with their stored details.
       const existingCandidate = await tx.candidate.findFirst({ where: { organizationId: org.id, email: dto.email } });
-      const candidate =
+      let candidate =
         existingCandidate ??
         (await tx.candidate.create({
           data: { organizationId: org.id, email: dto.email, name: dto.name, phone: dto.phone },
         }));
+
+      // ...with one narrow exception: a stored ONE-WORD name is almost always a placeholder from
+      // a hand-created record ("Siva"), and the candidate has just typed their full name into the
+      // registration form. Leaving it alone means their own invite email greets them by a
+      // fragment. See expandedName for why this cannot be used to replace a name outright.
+      if (existingCandidate) {
+        const expanded = expandedName(existingCandidate.name, dto.name);
+        if (expanded) {
+          await tx.candidate.update({ where: { id: existingCandidate.id }, data: { name: expanded } });
+          // Built locally rather than from the update's return value: the only field that can
+          // have changed is the one just written, and the greeting below reads candidate.name.
+          candidate = { ...existingCandidate, name: expanded };
+        }
+      }
 
       const liveInvitation = await tx.invitation.findFirst({
         where: { examId: exam.id, candidateId: candidate.id, status: 'invited', expiresAt: { gt: new Date() } },

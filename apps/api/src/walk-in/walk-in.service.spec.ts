@@ -198,7 +198,9 @@ describe('WalkInService', () => {
           }),
         },
         candidate: {
-          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com' }),
+          // A real candidate row always has a name. A stored FULL name is never rewritten by a
+          // walk-in registration (see expandedName), which is what the assertion below pins.
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice Anderson' }),
           update: jest.fn(),
         },
         invitation: {
@@ -215,6 +217,61 @@ describe('WalkInService', () => {
       expect(result).toEqual({ token: 'existing-token' });
     });
 
+    it('expands a stored one-word name with the fuller one the candidate just typed', async () => {
+      // The registration form collects First/Middle/Last and sends them composed. A candidate
+      // whose record was hand-created as just "Alice" would otherwise be greeted "Dear Alice"
+      // in their own invite email forever, because a public endpoint never overwrites details.
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1', status: 'published', walkInEnabled: true, schedulingEnabled: false, availabilityWindowEnd: null,
+          }),
+        },
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
+          update: jest.fn(),
+        },
+        invitation: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'existing-token' }),
+          create: jest.fn(),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.register('demo-org', { ...dto, name: 'Alice Jane Anderson' });
+
+      expect(tx.candidate.update).toHaveBeenCalledWith({
+        where: { id: 'cand-1' },
+        data: { name: 'Alice Jane Anderson' },
+      });
+    });
+
+    it('refuses to replace a stored one-word name with an unrelated one', async () => {
+      // Anyone can learn an email address, so expansion must keep the word it started from.
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1', status: 'published', walkInEnabled: true, schedulingEnabled: false, availabilityWindowEnd: null,
+          }),
+        },
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
+          update: jest.fn(),
+        },
+        invitation: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'existing-token' }),
+          create: jest.fn(),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.register('demo-org', { ...dto, name: 'Mallory Smith' });
+
+      expect(tx.candidate.update).not.toHaveBeenCalled();
+    });
+
     it('issues a new token for an existing candidate whose prior invitation has expired', async () => {
       // The live-invitation query filters on `expiresAt: { gt: now }`, so an expired invitation
       // never matches it -- findFirst resolving null here is exactly what "expired" looks like
@@ -227,7 +284,9 @@ describe('WalkInService', () => {
           }),
         },
         candidate: {
-          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com' }),
+          // A real candidate row always has a name. A stored FULL name is never rewritten by a
+          // walk-in registration (see expandedName), which is what the assertion below pins.
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice Anderson' }),
           update: jest.fn(),
         },
         invitation: {
