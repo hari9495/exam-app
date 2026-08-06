@@ -7,10 +7,12 @@ import { useOrgBranding, useUpdateBranding, useUpdateBrandingLogo } from '../../
 import { Button, Input, CollapsibleSection, useToast } from '../../../../components/ui';
 import { motion } from 'framer-motion';
 
-// Prudent's own brand colors (Science Blue / Lightning Yellow) -- what an org gets by
-// default when it hasn't picked its own, and what "Use Prudent defaults" resets to.
+// Prudent's own brand colors (Science Blue / Lightning Yellow / white text) -- what an
+// org gets by default when it hasn't picked its own, and what "Use Prudent defaults"
+// resets to.
 const PRUDENT_PRIMARY_COLOR = '#0053e2';
 const PRUDENT_ACCENT_COLOR = '#ffc220';
+const PRUDENT_TEXT_COLOR = '#ffffff';
 
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 
@@ -68,28 +70,31 @@ export default function BrandingSettingsPage() {
   const { toast } = useToast();
   const [primaryColor, setPrimaryColor] = useState(PRUDENT_PRIMARY_COLOR);
   const [accentColor, setAccentColor] = useState(PRUDENT_ACCENT_COLOR);
+  const [textColor, setTextColor] = useState(PRUDENT_TEXT_COLOR);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [colorsError, setColorsError] = useState<string | null>(null);
   const [logoError, setLogoError] = useState<string | null>(null);
 
-  // An org that has never picked its own colors comes back with primaryColor/accentColor
-  // both null -- the state above already defaults to Prudent's colors, so there's nothing
-  // to overwrite here for that case, and this effect only fires once real values exist.
+  // An org that has never picked its own colors comes back with primaryColor/accentColor/
+  // textColor all null -- the state above already defaults to Prudent's colors, so there's
+  // nothing to overwrite here for that case, and this effect only fires once real values exist.
   useEffect(() => {
     if (branding?.primaryColor) setPrimaryColor(branding.primaryColor);
     if (branding?.accentColor) setAccentColor(branding.accentColor);
+    if (branding?.textColor) setTextColor(branding.textColor);
   }, [branding]);
 
   function handleUsePrudentDefaults() {
     setPrimaryColor(PRUDENT_PRIMARY_COLOR);
     setAccentColor(PRUDENT_ACCENT_COLOR);
+    setTextColor(PRUDENT_TEXT_COLOR);
   }
 
   function handleColorsSubmit(e: React.FormEvent) {
     e.preventDefault();
     setColorsError(null);
     updateBranding.mutate(
-      { primaryColor, accentColor },
+      { primaryColor, accentColor, textColor },
       {
         onSuccess: () => toast('Colors updated.'),
         onError: (err) => setColorsError(err instanceof Error ? err.message : 'Failed to update colors'),
@@ -124,11 +129,14 @@ export default function BrandingSettingsPage() {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0, ease: 'easeOut' }}>
         <CollapsibleSection title="Colors">
           <p className="text-sm text-recruiter-text-secondary sm:col-span-2">
-            Used to theme the candidate exam experience and staff console for your organization.
+            Used to theme the candidate exam experience and staff console for your organization. Font Color is the
+            text/label color shown on top of buttons and highlights that use your Primary Color -- pick one that
+            stays readable against it.
           </p>
           <form onSubmit={handleColorsSubmit} className="contents">
             <ColorSwatch label="Primary Color" value={primaryColor} onChange={setPrimaryColor} />
             <ColorSwatch label="Accent Color" value={accentColor} onChange={setAccentColor} />
+            <ColorSwatch label="Font Color" value={textColor} onChange={setTextColor} />
             {/* Colours stay gated until the current values load, so a save can't overwrite
                 the org's real colours with this component's Prudent-default state. */}
             <div className="flex items-center gap-3 sm:col-span-2">
@@ -178,7 +186,7 @@ export default function BrandingSettingsPage() {
                 type="file"
                 accept="image/png,image/jpeg,image/svg+xml"
                 onChange={(e) => setLogoFile(e.target.files?.[0] ?? null)}
-                className="mt-1 block w-full rounded-md border border-recruiter-border p-1.5 text-sm text-recruiter-text-secondary file:mr-3 file:rounded file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:opacity-90"
+                className="mt-1 block w-full rounded-md border border-recruiter-border p-1.5 text-sm text-recruiter-text-secondary file:mr-3 file:rounded file:border file:border-recruiter-border file:bg-primary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-on-primary hover:file:opacity-90"
               />
             </label>
             {/* Gated on the FILE, not on the branding fetch: uploading a logo does not

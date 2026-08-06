@@ -33,7 +33,7 @@ export function StaffSidebar({ navItems, pathname, orgName, orgLogoUrl, orgIniti
         {orgLogoUrl ? (
           <img src={orgLogoUrl} alt="Organization logo" className="max-h-7 max-w-7 rounded" />
         ) : (
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-xs font-bold text-white">
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-xs font-bold text-on-primary">
             {orgInitial}
           </div>
         )}

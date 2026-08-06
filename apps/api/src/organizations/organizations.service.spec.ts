@@ -700,6 +700,21 @@ describe('OrganizationsService', () => {
       expect(result).toEqual({ name: 'Acme Corp', logoUrl: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png', primaryColor: '#1a73e8', accentColor: '#fbbc04' });
     });
 
+    it('returns the stored textColor alongside the other colors', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        id: 'org-1',
+        name: 'Acme Corp',
+        logoPath: null,
+        primaryColor: '#1a73e8',
+        accentColor: '#fbbc04',
+        textColor: '#ffffff',
+      });
+
+      const result = await service.getBranding({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result).toEqual({ name: 'Acme Corp', logoUrl: null, primaryColor: '#1a73e8', accentColor: '#fbbc04', textColor: '#ffffff' });
+    });
+
     it('throws BadRequestException when the caller has no organization context', async () => {
       await expect(service.getBranding({ organizationId: null, isSuperAdmin: true })).rejects.toThrow(BadRequestException);
       expect(prisma.organization.findUnique).not.toHaveBeenCalled();
@@ -749,6 +764,29 @@ describe('OrganizationsService', () => {
         service.updateBrandingColors({ organizationId: null, isSuperAdmin: true }, 'user-1', { primaryColor: '#1a73e8' }),
       ).rejects.toThrow(BadRequestException);
       expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+
+    it('updates textColor alongside the other colors', async () => {
+      prisma.organization.update.mockResolvedValue({
+        id: 'org-1',
+        name: 'Acme Corp',
+        logoPath: null,
+        primaryColor: '#1a73e8',
+        accentColor: '#fbbc04',
+        textColor: '#000000',
+      });
+
+      const result = await service.updateBrandingColors(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        'user-1',
+        { primaryColor: '#1a73e8', accentColor: '#fbbc04', textColor: '#000000' },
+      );
+
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { primaryColor: '#1a73e8', accentColor: '#fbbc04', textColor: '#000000' },
+      });
+      expect(result.textColor).toBe('#000000');
     });
   });
 

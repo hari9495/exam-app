@@ -28,6 +28,7 @@ model Organization {
   logoPath               String?           @map("logo_path")
   primaryColor           String?           @map("primary_color")
   accentColor            String?           @map("accent_color")
+  textColor              String?           @map("text_color")
   smtpHost               String?           @map("smtp_host")
   smtpPort               Int?              @map("smtp_port")
   smtpUser               String?           @map("smtp_user")

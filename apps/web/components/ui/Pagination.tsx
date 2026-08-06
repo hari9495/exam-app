@@ -31,7 +31,7 @@ export function Pagination({ page, totalPages, onPageChange }: PaginationProps) 
           aria-current={p === page ? 'page' : undefined}
           className={clsx(
             'min-w-[2rem] rounded-md px-2.5 py-1.5 text-sm',
-            p === page ? 'bg-primary text-white' : 'text-recruiter-text hover:bg-recruiter-bg-subtle',
+            p === page ? 'border border-recruiter-border bg-primary text-on-primary' : 'text-recruiter-text hover:bg-recruiter-bg-subtle',
           )}
         >
           {p}

@@ -92,24 +92,33 @@ export default function LoginPage() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <main className="grid min-h-screen md:grid-cols-2">
+      <div className="flex min-h-screen flex-col">
+        <header className="flex items-center justify-between bg-brand-navy px-6 py-4 md:px-16">
+          <Link href="/" className="flex items-center gap-3">
+            <PrudentMark className="h-8 aspect-[100/148] text-white" />
+            <span className="text-lg font-medium tracking-tight text-white">Prudent Hire</span>
+          </Link>
+          <Link
+            href="/get-started"
+            className="rounded-lg bg-white px-5 py-2.5 text-sm font-medium text-brand-navy transition hover:bg-brand-sail/40"
+          >
+            Get Started
+          </Link>
+        </header>
+
+        <main className="grid flex-1 md:grid-cols-2">
         <div className="flex flex-col items-center justify-center bg-white px-6 py-8">
           <div className="w-full max-w-sm">
-            <div className="mb-8 flex justify-center">
-              {branding?.logoUrl ? (
+            {branding?.logoUrl && (
+              <div className="mb-8 flex justify-center">
                 <div className="flex items-center gap-0">
                   <img src={branding.logoUrl} alt="Organization logo" className="max-h-20 object-contain" />
                   {branding?.name && (
                     <p className="-ml-6 text-center text-2xl font-medium tracking-tight text-brand-navy">{branding.name}</p>
                   )}
                 </div>
-              ) : (
-                <div className="flex items-center gap-2.5">
-                  <PrudentMark className="h-9 aspect-[100/148] text-brand-navy" />
-                  <p className="text-2xl font-medium tracking-tight text-brand-navy">Prudent Hire</p>
-                </div>
-              )}
-            </div>
+              </div>
+            )}
 
             <div className="rounded-2xl border border-[#CDD8F0] bg-white p-7 shadow-[0_24px_72px_rgba(0,30,96,0.12)]">
               <h1 className="mb-6 text-center text-lg font-medium text-brand-navy">Staff Login</h1>
@@ -200,7 +209,8 @@ export default function LoginPage() {
             ))}
           </ul>
         </aside>
-      </main>
+        </main>
+      </div>
     </MotionConfig>
   );
 }

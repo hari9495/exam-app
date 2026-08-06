@@ -179,6 +179,109 @@ describe('SectionQuestionPicker', () => {
     expect(screen.getByText('Prime numbers')).toBeInTheDocument();
   });
 
+  it('filters the list by category and by tag', async () => {
+    const question = (overrides: Partial<{ id: string; text: string; category: string | null; tags: { id: string; name: string }[] }>) => ({
+      id: 'q', type: 'single_mcq', text: 'text', topic: null, category: null, difficulty: 'easy',
+      marks: 5, negativeMarks: 0, status: 'active', aiGenerated: false, createdAt: '2026-01-01T00:00:00.000Z', options: [], tags: [],
+      ...overrides,
+    });
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      if (String(url).endsWith('/tags')) {
+        return new Response(JSON.stringify([{ id: 't-1', name: 'javascript' }, { id: 't-2', name: 'sql' }]), { status: 200 });
+      }
+      if (String(url).includes('/questions')) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              question({ id: 'q-1', text: 'Aptitude puzzle', category: 'Aptitude', tags: [{ id: 't-2', name: 'sql' }] }),
+              question({ id: 'q-2', text: 'JS closures', category: 'Technical', tags: [{ id: 't-1', name: 'javascript' }] }),
+            ],
+            total: 2, page: 1, pageSize: 100, totalPages: 1,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <SectionQuestionPicker examId="exam-1" sectionId="s-1" open onClose={() => {}} existingQuestionIds={[]} />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Aptitude puzzle')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Category' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Aptitude' }));
+    expect(screen.getByText('Aptitude puzzle')).toBeInTheDocument();
+    expect(screen.queryByText('JS closures')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Category' }));
+    await userEvent.click(screen.getByRole('option', { name: 'All categories' }));
+    await userEvent.click(screen.getByRole('combobox', { name: 'Tag' }));
+    await userEvent.click(screen.getByRole('option', { name: 'javascript' }));
+    expect(screen.queryByText('Aptitude puzzle')).not.toBeInTheDocument();
+    expect(screen.getByText('JS closures')).toBeInTheDocument();
+  });
+
+  it('selects and deselects every currently filtered question via "Select all"', async () => {
+    const question = (id: string, text: string, category: string) => ({
+      id, type: 'single_mcq', text, topic: null, category, difficulty: 'easy',
+      marks: 5, negativeMarks: 0, status: 'active', aiGenerated: false, createdAt: '2026-01-01T00:00:00.000Z', options: [], tags: [],
+    });
+    const fetchMock = jest.fn(async (url, options?: RequestInit) => {
+      if (String(url).endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      if (String(url).includes('/exams/exam-1/sections/s-1/questions') && options?.method === 'PUT') {
+        return new Response(JSON.stringify({ success: true }), { status: 200 });
+      }
+      if (String(url).includes('/questions')) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              question('q-1', 'Aptitude one', 'Aptitude'),
+              question('q-2', 'Aptitude two', 'Aptitude'),
+              question('q-3', 'Technical one', 'Technical'),
+            ],
+            total: 3, page: 1, pageSize: 100, totalPages: 1,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <SectionQuestionPicker examId="exam-1" sectionId="s-1" open onClose={() => {}} existingQuestionIds={[]} />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Aptitude one')).toBeInTheDocument());
+
+    // Narrow to just the Aptitude questions, then select all of them in one click.
+    await userEvent.click(screen.getByRole('combobox', { name: 'Category' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Aptitude' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select all (2)' }));
+
+    await userEvent.click(screen.getByRole('button', { name: /save questions/i }));
+    const putCall = fetchMock.mock.calls.find(
+      (call) => String(call[0]).includes('/exams/exam-1/sections/s-1/questions') && call[1]?.method === 'PUT',
+    );
+    await waitFor(() => expect(putCall).toBeDefined());
+    expect(JSON.parse((putCall![1] as RequestInit).body as string).questionIds.sort()).toEqual(['q-1', 'q-2']);
+  });
+
   it('shows an empty-bank message and blocks saving when there are no questions to pick from', async () => {
     const fetchMock = jest.fn(async (url, options?: RequestInit) => {
       if (String(url).endsWith('/auth/refresh')) {

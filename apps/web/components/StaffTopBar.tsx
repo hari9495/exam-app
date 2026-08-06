@@ -28,7 +28,7 @@ export function StaffTopBar({ displayName, initials, roleLabel, avatarUrl, onLog
           // eslint-disable-next-line @next/next/no-img-element
           <img src={avatarUrl} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" />
         ) : (
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-white">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-recruiter-border bg-primary text-[11px] font-semibold text-on-primary">
             {initials}
           </div>
         )}

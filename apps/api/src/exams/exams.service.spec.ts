@@ -327,6 +327,23 @@ describe('ExamsService', () => {
     expect(tx.attempt.count).toHaveBeenCalledWith({ where: { examId: 'exam-1' } });
   });
 
+  describe('getSectionTitles', () => {
+    it('returns distinct section titles scoped to the org, sorted alphabetically', async () => {
+      const tx = { examSection: { findMany: jest.fn().mockResolvedValue([{ title: 'Aptitude' }, { title: 'Technical' }]) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getSectionTitles(context);
+
+      expect(tx.examSection.findMany).toHaveBeenCalledWith({
+        where: { exam: { organizationId: 'org-1' } },
+        select: { title: true },
+        distinct: ['title'],
+        orderBy: { title: 'asc' },
+      });
+      expect(result).toEqual(['Aptitude', 'Technical']);
+    });
+  });
+
   describe('findOne requiresManualGrading', () => {
     const fixedQuestion = (type: string) => ({ orderIndex: 0, question: { type, options: [] } });
 

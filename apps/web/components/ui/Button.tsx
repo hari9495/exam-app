@@ -11,7 +11,11 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANT_CLASSES: Record<Variant, string> = {
-  primary: 'bg-primary text-white hover:opacity-90',
+  // border-recruiter-border (a fixed neutral, not org-branded) keeps the button's
+  // outline visible even if an org picks a Primary Color close to the page
+  // background; text-on-primary is org-configurable (Brand Settings > Font Color)
+  // so the label stays readable against whatever Primary Color they choose.
+  primary: 'border border-recruiter-border bg-primary text-on-primary hover:opacity-90',
   secondary: 'bg-gray-100 text-gray-900 hover:bg-gray-200',
   danger: 'bg-red-600 text-white hover:bg-red-700',
 };

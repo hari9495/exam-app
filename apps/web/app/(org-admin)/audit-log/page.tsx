@@ -226,7 +226,7 @@ export default function AuditLogPage() {
               onClick={() => applyFilters({ ...formFilters, category: option.value })}
               className={`px-3 py-1 text-xs font-medium ${
                 (formFilters.category ?? 'all') === option.value
-                  ? 'bg-primary text-white'
+                  ? 'bg-primary text-on-primary'
                   : 'bg-white text-recruiter-text hover:bg-recruiter-bg-subtle'
               }`}
             >
