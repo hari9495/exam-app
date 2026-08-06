@@ -40,6 +40,7 @@ export function useOrgBranding() {
 interface UpdateBrandingInput {
   primaryColor?: string;
   accentColor?: string;
+  textColor?: string;
 }
 
 export function useUpdateBranding() {

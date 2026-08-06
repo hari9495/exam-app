@@ -28,6 +28,7 @@ export interface BrandingResponse {
   logoUrl: string | null;
   primaryColor: string | null;
   accentColor: string | null;
+  textColor: string | null;
 }
 
 // The platform-admin list is the ONLY consumer of the organizations table that
@@ -373,7 +374,11 @@ export class OrganizationsService {
     const organizationId = this.requireOrganizationId(context);
     const org = await this.prisma.organization.update({
       where: { id: organizationId },
-      data: { ...(dto.primaryColor !== undefined && { primaryColor: dto.primaryColor }), ...(dto.accentColor !== undefined && { accentColor: dto.accentColor }) },
+      data: {
+        ...(dto.primaryColor !== undefined && { primaryColor: dto.primaryColor }),
+        ...(dto.accentColor !== undefined && { accentColor: dto.accentColor }),
+        ...(dto.textColor !== undefined && { textColor: dto.textColor }),
+      },
     });
     await this.audit.record(context, {
       actorUserId,
@@ -713,13 +718,14 @@ export class OrganizationsService {
   // Signing on the PUBLIC by-slug endpoint is intended: a login page has to show
   // the organisation's logo before anyone has authenticated.
   private async toBrandingResponse(
-    org: Pick<Organization, 'name' | 'logoPath' | 'primaryColor' | 'accentColor'>,
+    org: Pick<Organization, 'name' | 'logoPath' | 'primaryColor' | 'accentColor' | 'textColor'>,
   ): Promise<BrandingResponse> {
     return {
       name: org.name,
       logoUrl: ((await this.blobStorage.signIfOurs(org.logoPath ?? null)) as string | null) ?? null,
       primaryColor: org.primaryColor,
       accentColor: org.accentColor,
+      textColor: org.textColor,
     };
   }
 }

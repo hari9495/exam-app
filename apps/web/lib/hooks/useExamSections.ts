@@ -8,13 +8,30 @@ interface SectionInput {
   targetDurationMinutes?: number;
 }
 
+// Distinct section titles already used across the org's exams, so "New Section Title" can
+// offer a dropdown of names the recruiter has typed before ("Aptitude", "Technical") without
+// forcing a pick -- free text is always still accepted.
+export function useSectionTitles() {
+  const { accessToken } = useAuth();
+  return useQuery<string[]>({
+    queryKey: ['exams', 'section-titles'],
+    queryFn: () => apiFetch('/exams/section-titles', {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken),
+  });
+}
+
 export function useCreateSection(examId: string) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: SectionInput) =>
       apiFetch(`/exams/${examId}/sections`, { method: 'POST', body: JSON.stringify(input) }, accessToken ?? undefined),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['exams', examId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['exams', examId] });
+      // A newly typed title becomes an option for next time -- refetch so the dropdown
+      // offers it without waiting for an unrelated remount.
+      queryClient.invalidateQueries({ queryKey: ['exams', 'section-titles'] });
+    },
   });
 }
 

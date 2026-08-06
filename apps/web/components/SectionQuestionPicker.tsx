@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { Search } from 'lucide-react';
-import { useQuestions } from '../lib/hooks/useQuestions';
+import { useQuestions, useTags } from '../lib/hooks/useQuestions';
 import { useReplaceSectionQuestions } from '../lib/hooks/useExamSections';
 import { Modal, Checkbox, Button, Badge, Input, Select, useToast } from '../components/ui';
 import { DIFFICULTY_LABEL } from '../lib/question-display';
@@ -54,9 +54,17 @@ function matchesQuery(question: Question, query: string): boolean {
   return haystack.includes(query.toLowerCase());
 }
 
-function matchesFilters(question: Question, typeFilter: string, difficultyFilter: string): boolean {
+function matchesFilters(
+  question: Question,
+  typeFilter: string,
+  difficultyFilter: string,
+  categoryFilter: string,
+  tagFilter: string,
+): boolean {
   if (typeFilter !== 'all' && question.type !== typeFilter) return false;
   if (difficultyFilter !== 'all' && question.difficulty !== difficultyFilter) return false;
+  if (categoryFilter !== 'all' && (question.category ?? '') !== categoryFilter) return false;
+  if (tagFilter !== 'all' && !(question.tags ?? []).some((tag) => tag.id === tagFilter)) return false;
   return true;
 }
 
@@ -66,6 +74,8 @@ export function SectionQuestionPicker({ examId, sectionId, open, onClose, existi
   // real paginated/typeahead picker if this becomes a real constraint.
   const { data: questionsResponse } = useQuestions({ pageSize: 100 });
   const allQuestions = questionsResponse?.data;
+  const { data: tagsData } = useTags();
+  const allTags = Array.isArray(tagsData) ? tagsData : [];
   const replaceQuestions = useReplaceSectionQuestions(examId, sectionId);
   // Holds only the NEW picks. Questions already in the section are hidden below,
   // and merged back in at save time, so this list never carries them.
@@ -73,6 +83,8 @@ export function SectionQuestionPicker({ examId, sectionId, open, onClose, existi
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [difficultyFilter, setDifficultyFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [tagFilter, setTagFilter] = useState('all');
   const { toast } = useToast();
 
   // Reset picks, search, and filters only when the picker opens or targets a
@@ -85,6 +97,8 @@ export function SectionQuestionPicker({ examId, sectionId, open, onClose, existi
       setQuery('');
       setTypeFilter('all');
       setDifficultyFilter('all');
+      setCategoryFilter('all');
+      setTagFilter('all');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, sectionId]);
@@ -96,14 +110,39 @@ export function SectionQuestionPicker({ examId, sectionId, open, onClose, existi
     () => (allQuestions ?? []).filter((q) => !existingSet.has(q.id)),
     [allQuestions, existingSet],
   );
-  const visible = useMemo(
-    () => addable.filter((q) => matchesQuery(q, query) && matchesFilters(q, typeFilter, difficultyFilter)),
-    [addable, query, typeFilter, difficultyFilter],
+  // Categories come from the question bank itself (no dedicated lookup exists), sorted for a
+  // stable dropdown order.
+  const categoryOptions = useMemo(() => {
+    const categories = Array.from(new Set(addable.map((q) => q.category).filter((c): c is string => Boolean(c)))).sort();
+    return [{ value: 'all', label: 'All categories' }, ...categories.map((c) => ({ value: c, label: c }))];
+  }, [addable]);
+  const tagOptions = useMemo(
+    () => [{ value: 'all', label: 'All tags' }, ...allTags.map((tag) => ({ value: tag.id, label: tag.name }))],
+    [allTags],
   );
-  const filtersActive = query.trim() !== '' || typeFilter !== 'all' || difficultyFilter !== 'all';
+  const visible = useMemo(
+    () => addable.filter((q) => matchesQuery(q, query) && matchesFilters(q, typeFilter, difficultyFilter, categoryFilter, tagFilter)),
+    [addable, query, typeFilter, difficultyFilter, categoryFilter, tagFilter],
+  );
+  const filtersActive =
+    query.trim() !== '' || typeFilter !== 'all' || difficultyFilter !== 'all' || categoryFilter !== 'all' || tagFilter !== 'all';
 
   function toggle(id: string, checked: boolean) {
     setSelectedIds((current) => (checked ? [...current, id] : current.filter((existing) => existing !== id)));
+  }
+
+  const visibleIds = useMemo(() => visible.map((q) => q.id), [visible]);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
+
+  // Selects/deselects every currently-filtered question in one click, so narrowing to a
+  // category or tag first ("just the Aptitude section's questions") makes bulk-adding
+  // fast without hand-picking each row.
+  function handleSelectAllToggle(checked: boolean) {
+    setSelectedIds((current) => {
+      if (checked) return Array.from(new Set([...current, ...visibleIds]));
+      const visibleSet = new Set(visibleIds);
+      return current.filter((id) => !visibleSet.has(id));
+    });
   }
 
   function handleSave() {
@@ -160,7 +199,17 @@ export function SectionQuestionPicker({ examId, sectionId, open, onClose, existi
             </div>
             <Select label="Type" value={typeFilter} onChange={setTypeFilter} options={TYPE_OPTIONS} />
             <Select label="Difficulty" value={difficultyFilter} onChange={setDifficultyFilter} options={DIFFICULTY_OPTIONS} />
+            <Select label="Category" value={categoryFilter} onChange={setCategoryFilter} options={categoryOptions} />
+            <Select label="Tag" value={tagFilter} onChange={setTagFilter} options={tagOptions} />
           </div>
+
+          {!allAlreadyAdded && visible.length > 0 && (
+            <Checkbox
+              label={`Select all (${visible.length})`}
+              checked={allVisibleSelected}
+              onChange={handleSelectAllToggle}
+            />
+          )}
 
           {allAlreadyAdded ? (
             <p className="py-6 text-center text-sm text-recruiter-text-secondary">

@@ -299,7 +299,7 @@ function QuestionImageUpload({ label, value, onChange }: { label: string; value:
           type="file"
           accept="image/png,image/jpeg,image/svg+xml"
           aria-label={label}
-          className="text-sm text-gray-600 file:mr-2 file:rounded file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:opacity-90"
+          className="text-sm text-gray-600 file:mr-2 file:rounded file:border file:border-recruiter-border file:bg-primary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-on-primary hover:file:opacity-90"
           onChange={(e) => {
             const file = e.target.files?.[0];
             if (!file) return;

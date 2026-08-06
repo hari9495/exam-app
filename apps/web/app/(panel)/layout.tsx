@@ -57,6 +57,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
   const themeStyle = {
     ...(branding?.primaryColor ? { '--color-primary': branding.primaryColor } : {}),
     ...(branding?.accentColor ? { '--color-accent': branding.accentColor } : {}),
+    ...(branding?.textColor ? { '--color-primary-text': branding.textColor } : {}),
   } as React.CSSProperties;
 
   async function handleLogout() {

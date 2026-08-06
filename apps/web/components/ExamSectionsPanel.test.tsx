@@ -79,6 +79,62 @@ describe('ExamSectionsPanel', () => {
     );
   });
 
+  it('offers existing section titles as a dropdown, but still accepts a manually typed title', async () => {
+    const fetchMock = jest.fn(async (url, options) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).endsWith('/exams/section-titles')) {
+        return new Response(JSON.stringify(['Aptitude', 'Technical']), { status: 200 });
+      }
+      if (String(url).endsWith('/exams/exam-1/sections') && options?.method === 'POST') {
+        return new Response(
+          JSON.stringify({ id: 's-2', examId: 'exam-1', title: 'Culture Fit', orderIndex: 1, selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: null }),
+          { status: 201 },
+        );
+      }
+      if (String(url).includes('/exams/exam-1')) {
+        return new Response(
+          JSON.stringify({
+            id: 'exam-1', title: 'Backend Round', instructions: null, status: 'draft', durationMinutes: 60,
+            passCriteriaPercent: 40, randomizeOrder: false, createdAt: '2026-01-01T00:00:00.000Z', sections: [],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ExamSectionsPanel examId="exam-1" />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    const input = await screen.findByLabelText('New Section Title');
+    expect(input).toHaveAttribute('list', 'section-titles');
+    // The datalist's options are the dropdown source -- confirms existing titles are offered.
+    await waitFor(() => expect(document.querySelector('datalist#section-titles')).toContainHTML('<option value="Aptitude">'));
+    expect(document.querySelector('datalist#section-titles')).toContainHTML('<option value="Technical">');
+
+    // Manual entry still works: type a title that isn't in the dropdown at all.
+    await userEvent.type(input, 'Culture Fit');
+    await userEvent.click(screen.getByRole('button', { name: 'Add section' }));
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some((call) => String(call[0]).endsWith('/exams/exam-1/sections') && call[1]?.method === 'POST')).toBe(true),
+    );
+    const postCall = fetchMock.mock.calls.find(
+      (call) => String(call[0]).endsWith('/exams/exam-1/sections') && call[1]?.method === 'POST',
+    );
+    expect(JSON.parse((postCall![1] as RequestInit).body as string)).toEqual({ title: 'Culture Fit' });
+  });
+
   it('does not submit when the new section title is empty', async () => {
     const fetchMock = jest.fn(async (url, options?: RequestInit) => {
       if (String(url).endsWith('/auth/refresh')) {

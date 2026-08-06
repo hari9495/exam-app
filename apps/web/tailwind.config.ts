@@ -7,6 +7,7 @@ const config: Config = {
       colors: {
         primary: 'var(--color-primary, #0053e2)',
         accent: 'var(--color-accent, #ffc220)',
+        'on-primary': 'var(--color-primary-text, #ffffff)',
         brand: {
           navy: '#001E60',
           blue: '#0053E2',

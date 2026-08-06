@@ -53,6 +53,7 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
   const themeStyle = {
     ...(branding?.primaryColor ? { '--color-primary': branding.primaryColor } : {}),
     ...(branding?.accentColor ? { '--color-accent': branding.accentColor } : {}),
+    ...(branding?.textColor ? { '--color-primary-text': branding.textColor } : {}),
   } as React.CSSProperties;
 
   async function handleLogout() {

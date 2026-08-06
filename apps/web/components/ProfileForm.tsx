@@ -90,7 +90,7 @@ function AvatarField() {
       ) : (
         <div
           aria-hidden="true"
-          className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-primary text-lg font-semibold text-white"
+          className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-recruiter-border bg-primary text-lg font-semibold text-on-primary"
         >
           {user ? initialsFor(user) : ''}
         </div>

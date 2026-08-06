@@ -37,6 +37,14 @@ export class ExamsController {
     return this.examsService.list(tenant, { status, page, pageSize, search });
   }
 
+  // Registered before ':id' -- Nest matches routes in declaration order, so this static
+  // segment would otherwise be swallowed by the ':id' wildcard below.
+  @Get('section-titles')
+  @RequireAnyPermission('exam:manage', 'results:view')
+  getSectionTitles(@CurrentTenant() tenant: TenantContext) {
+    return this.examsService.getSectionTitles(tenant);
+  }
+
   @Get(':id')
   @RequireAnyPermission('exam:manage', 'results:view')
   findOne(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {

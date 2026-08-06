@@ -268,6 +268,7 @@ export interface BrandingResponse {
   logoUrl: string | null;
   primaryColor: string | null;
   accentColor: string | null;
+  textColor: string | null;
 }
 
 export interface IntegrationsResponse {

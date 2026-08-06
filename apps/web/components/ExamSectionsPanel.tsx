@@ -10,6 +10,7 @@ import {
   useReplaceSectionQuestions,
   useUpdateSection,
   usePoolPreview,
+  useSectionTitles,
 } from '../lib/hooks/useExamSections';
 import { SectionQuestionPicker } from './SectionQuestionPicker';
 import {
@@ -333,6 +334,8 @@ function SectionRequiredCountInput({ examId, section, locked }: { examId: string
 
 export function ExamSectionsPanel({ examId }: { examId: string }) {
   const { data: exam } = useExam(examId);
+  const { data: sectionTitlesData } = useSectionTitles();
+  const sectionTitles = Array.isArray(sectionTitlesData) ? sectionTitlesData : [];
   const createSection = useCreateSection(examId);
   const deleteSection = useDeleteSection(examId);
   const duplicateSection = useDuplicateSection(examId);
@@ -390,7 +393,14 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
       {locked && <p className="text-sm text-recruiter-text-secondary">{lockedMessage}</p>}
       {!locked && (
         <form onSubmit={handleAdd} className="flex items-end gap-2">
-          <Input label="New Section Title" value={newTitle} onChange={setNewTitle} required />
+          {/* list + <datalist>: a native combobox -- pick an existing title from the
+              dropdown, or just keep typing to enter a new one manually. */}
+          <Input label="New Section Title" value={newTitle} onChange={setNewTitle} required list="section-titles" />
+          <datalist id="section-titles">
+            {sectionTitles.map((title) => (
+              <option key={title} value={title} />
+            ))}
+          </datalist>
           <Button type="submit">Add section</Button>
         </form>
       )}

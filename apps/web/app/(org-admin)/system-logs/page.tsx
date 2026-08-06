@@ -173,7 +173,7 @@ export default function SystemLogsPage() {
               onClick={() => selectRange(preset.days, preset.label)}
               className={
                 range.label === preset.label
-                  ? 'rounded-md bg-primary px-3 py-2 text-sm font-medium text-white'
+                  ? 'rounded-md border border-recruiter-border bg-primary px-3 py-2 text-sm font-medium text-on-primary'
                   : 'rounded-md border border-gray-300 px-3 py-2 text-sm text-recruiter-text-secondary hover:bg-gray-50'
               }
             >

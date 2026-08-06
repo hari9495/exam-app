@@ -264,6 +264,21 @@ export class ExamsService {
     });
   }
 
+  // Distinct section titles already used across this org's exams (e.g. "Aptitude",
+  // "Technical"), so the section-title field can offer a dropdown of names the recruiter
+  // has used before instead of retyping/mistyping them -- free text is still accepted.
+  async getSectionTitles(context: TenantContext): Promise<string[]> {
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const rows = await tx.examSection.findMany({
+        where: { exam: { organizationId: context.organizationId as string } },
+        select: { title: true },
+        distinct: ['title'],
+        orderBy: { title: 'asc' },
+      });
+      return rows.map((row) => row.title);
+    });
+  }
+
   async findOne(
     context: TenantContext,
     id: string,
