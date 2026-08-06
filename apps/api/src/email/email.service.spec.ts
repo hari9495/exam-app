@@ -17,6 +17,29 @@ describe('EmailService', () => {
   let prisma: { organization: { findUnique: jest.Mock } };
   let cryptoService: { decrypt: jest.Mock };
 
+  // resolvePlatformFrom() reads SMTP_FROM_ADDRESS || SMTP_USER || the .test fallback, and
+  // ConfigModule loads apps/api/.env into process.env before the suite runs. A developer with
+  // real SMTP credentials in their .env therefore had SMTP_USER shadow the fallback, failing
+  // the platform-From assertions on their machine but not in CI. Clearing all three per test
+  // makes every case state the environment it is actually asserting about.
+  const savedEnv = {
+    host: process.env.SMTP_HOST,
+    user: process.env.SMTP_USER,
+    from: process.env.SMTP_FROM_ADDRESS,
+  };
+  function restoreEnvVar(name: 'SMTP_HOST' | 'SMTP_USER' | 'SMTP_FROM_ADDRESS', value: string | undefined) {
+    if (value === undefined) {
+      delete process.env[name];
+    } else {
+      process.env[name] = value;
+    }
+  }
+  afterAll(() => {
+    restoreEnvVar('SMTP_HOST', savedEnv.host);
+    restoreEnvVar('SMTP_USER', savedEnv.user);
+    restoreEnvVar('SMTP_FROM_ADDRESS', savedEnv.from);
+  });
+
   beforeEach(() => {
     mockCreateTransport.mockClear();
     mockSendMail.mockReset().mockResolvedValue({});
@@ -30,6 +53,8 @@ describe('EmailService', () => {
     cryptoService = { decrypt: jest.fn() };
     service = new EmailService(prisma as never, cryptoService as never);
     delete process.env.SMTP_HOST;
+    delete process.env.SMTP_USER;
+    delete process.env.SMTP_FROM_ADDRESS;
   });
 
   it('uses the org-specific SMTP transporter and from-address when the org has one configured', async () => {
@@ -119,22 +144,15 @@ describe('EmailService', () => {
     expect(prisma.organization.findUnique).toHaveBeenCalledTimes(2);
   });
 
+  // The outer beforeEach clears SMTP_HOST/SMTP_USER/SMTP_FROM_ADDRESS and afterAll restores
+  // the developer's real values, so these cases only set what they assert on.
   describe('platform From address', () => {
-    const saved = { user: process.env.SMTP_USER, from: process.env.SMTP_FROM_ADDRESS };
-    afterEach(() => {
-      process.env.SMTP_USER = saved.user;
-      process.env.SMTP_FROM_ADDRESS = saved.from;
-      if (saved.user === undefined) delete process.env.SMTP_USER;
-      if (saved.from === undefined) delete process.env.SMTP_FROM_ADDRESS;
-    });
-
     it('sends as the authenticated mailbox rather than the unroutable .test fallback', async () => {
       // Office365 rejects a From that is not the authenticated mailbox with
       // 550 5.7.60 SendAsDenied, so the hardcoded no-reply@exam-platform.test
       // would have failed every send once real SMTP credentials were set.
       process.env.SMTP_HOST = 'smtp.office365.com';
       process.env.SMTP_USER = 'prudenthire-noreply@prudentconsulting.com';
-      delete process.env.SMTP_FROM_ADDRESS;
       prisma.organization.findUnique.mockResolvedValue(null);
 
       await service.send({ to: 'a@b.com', subject: 's', html: '<p>h</p>' });
