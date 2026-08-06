@@ -11,15 +11,39 @@ jest.mock('../lib/hooks/useSso', () => ({
   useSsoStatus: () => ({ data: mockSsoStatus }),
 }));
 
-function renderProfileForm() {
+function renderProfileForm({ avatarUrl = null }: { avatarUrl?: string | null } = {}) {
   const token = fakeJwt({ sub: 'u1', organizationId: 'org1', role: 'recruiter' });
-  global.fetch = jest.fn(async (url, options) => {
+  // Stateful on purpose: uploading and removing both invalidate ['currentUser'], so the
+  // component re-reads GET /users/me afterwards. A fixed response would replay the ORIGINAL
+  // avatar and hide whether the mutation actually changed anything.
+  let storedAvatarUrl = avatarUrl;
+  const fetchMock = jest.fn(async (url, options?: RequestInit) => {
     if (String(url).endsWith('/auth/refresh')) {
       return new Response(JSON.stringify({ accessToken: token }), { status: 200 });
     }
+    if (String(url).endsWith('/users/me/avatar')) {
+      // Both POST (upload) and DELETE (remove) return the refreshed profile.
+      storedAvatarUrl = options?.method === 'DELETE' ? null : 'https://blob.test/avatars/u1.png?sig=abc';
+      return new Response(
+        JSON.stringify({
+          id: 'u1',
+          email: 'jane@demo-org.test',
+          name: 'Jane Recruiter',
+          role: 'recruiter',
+          avatarUrl: storedAvatarUrl,
+        }),
+        { status: 200 },
+      );
+    }
     if (String(url).endsWith('/users/me') && (!options || options.method === undefined)) {
       return new Response(
-        JSON.stringify({ id: 'u1', email: 'jane@demo-org.test', name: 'Jane Recruiter', role: 'recruiter' }),
+        JSON.stringify({
+          id: 'u1',
+          email: 'jane@demo-org.test',
+          name: 'Jane Recruiter',
+          role: 'recruiter',
+          avatarUrl: storedAvatarUrl,
+        }),
         { status: 200 },
       );
     }
@@ -33,17 +57,21 @@ function renderProfileForm() {
       return new Response(JSON.stringify({ success: true }), { status: 200 });
     }
     return new Response(JSON.stringify({}), { status: 200 });
-  }) as unknown as typeof fetch;
+  });
+  global.fetch = fetchMock as unknown as typeof fetch;
 
-  return render(
-    <QueryProvider>
-      <ToastProvider>
-        <AuthProvider>
-          <ProfileForm />
-        </AuthProvider>
-      </ToastProvider>
-    </QueryProvider>,
-  );
+  return {
+    fetchMock,
+    ...render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ProfileForm />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    ),
+  };
 }
 
 describe('ProfileForm', () => {
@@ -126,6 +154,64 @@ describe('ProfileForm', () => {
       expect(screen.queryByLabelText('Current Password')).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Change password' })).not.toBeInTheDocument();
       expect(screen.getByText(/single sign-on is enabled/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('profile picture', () => {
+    it('falls back to initials when the user has no picture', async () => {
+      renderProfileForm({ avatarUrl: null });
+      await screen.findByDisplayValue('Jane Recruiter');
+      expect(screen.getByText('JR')).toBeInTheDocument();
+      expect(screen.queryByAltText('Your profile picture')).not.toBeInTheDocument();
+      // Nothing to remove yet, so the destructive action stays hidden.
+      expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Upload photo' })).toBeInTheDocument();
+    });
+
+    it('renders the stored picture instead of initials once one is set', async () => {
+      renderProfileForm({ avatarUrl: 'https://blob.test/avatars/u1.png?sig=abc' });
+      const image = await screen.findByAltText('Your profile picture');
+      expect(image).toHaveAttribute('src', 'https://blob.test/avatars/u1.png?sig=abc');
+      expect(screen.queryByText('JR')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Change photo' })).toBeInTheDocument();
+    });
+
+    it('uploads as soon as a file is chosen, with no second button to press', async () => {
+      const { fetchMock } = renderProfileForm({ avatarUrl: null });
+      await screen.findByDisplayValue('Jane Recruiter');
+
+      const file = new File(['x'], 'me.png', { type: 'image/png' });
+      await userEvent.upload(screen.getByLabelText('Profile picture file'), file);
+
+      await waitFor(() =>
+        expect(
+          fetchMock.mock.calls.some(
+            (call) => String(call[0]).endsWith('/users/me/avatar') && call[1]?.method === 'POST',
+          ),
+        ).toBe(true),
+      );
+      // Sent as multipart, not JSON -- the API reads it with FileInterceptor('file').
+      const uploadCall = fetchMock.mock.calls.find((call) => String(call[0]).endsWith('/users/me/avatar'));
+      expect(uploadCall?.[1]?.body).toBeInstanceOf(FormData);
+      expect((uploadCall?.[1]?.body as FormData).get('file')).toBe(file);
+      // The new picture replaces the initials once the refetch lands.
+      expect(await screen.findByAltText('Your profile picture')).toBeInTheDocument();
+    });
+
+    it('clears the picture back to initials when removed', async () => {
+      const { fetchMock } = renderProfileForm({ avatarUrl: 'https://blob.test/avatars/u1.png?sig=abc' });
+      await screen.findByAltText('Your profile picture');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
+
+      await waitFor(() =>
+        expect(
+          fetchMock.mock.calls.some(
+            (call) => String(call[0]).endsWith('/users/me/avatar') && call[1]?.method === 'DELETE',
+          ),
+        ).toBe(true),
+      );
+      expect(await screen.findByText('JR')).toBeInTheDocument();
     });
   });
 });

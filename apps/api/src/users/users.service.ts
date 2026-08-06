@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { User } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { TenantPrismaService } from '@exam-platform/shared';
+import { BlobStorageService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -20,7 +21,10 @@ import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } fr
  * This is the only shape UsersService should ever return to callers, since
  * UsersController serializes the return value directly into the HTTP response.
  */
-export type SafeUser = Omit<User, 'passwordHash'>;
+// avatarPath is excluded alongside passwordHash, not because it is secret, but because it is a
+// raw path into a PRIVATE blob container: useless to a browser and not ours to hand out. The
+// "me" endpoints select it separately and return a signed avatarUrl instead (see ProfileUser).
+export type SafeUser = Omit<User, 'passwordHash' | 'avatarPath'>;
 
 const SAFE_USER_SELECT = {
   id: true,
@@ -32,6 +36,22 @@ const SAFE_USER_SELECT = {
   lastLoginAt: true,
   createdAt: true,
 } as const;
+
+// Only the "me" endpoints select avatarPath, and they map it to a signed avatarUrl before
+// returning. Deliberately NOT in SAFE_USER_SELECT: the user-list endpoints would then leak raw
+// private-container blob paths, which are useless to a browser and are not ours to hand out.
+const PROFILE_USER_SELECT = { ...SAFE_USER_SELECT, avatarPath: true } as const;
+
+/** What the "me" endpoints return: the safe user plus a ready-to-render avatar URL. */
+export type ProfileUser = SafeUser & { avatarUrl: string | null };
+
+const ALLOWED_AVATAR_MIME_TYPES: Record<string, string> = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+};
+// Smaller than the 2MB org-logo cap: a logo is rendered large on a login page, an avatar is a
+// 28px circle. Anything bigger is a photo straight off a phone that we would only downscale.
+const MAX_AVATAR_SIZE_BYTES = 1 * 1024 * 1024;
 
 const SUPER_ADMIN_SELECT = { id: true, email: true, createdAt: true } as const;
 
@@ -51,6 +71,7 @@ export class UsersService {
     private readonly audit: AuditService,
     private readonly jwt: JwtService,
     private readonly emailService: EmailService,
+    private readonly blobStorage: BlobStorageService,
   ) {}
 
   async create(context: TenantContext, dto: CreateUserDto): Promise<SafeUser> {
@@ -140,16 +161,72 @@ export class UsersService {
     });
   }
 
-  async getMe(context: TenantContext, userId: string): Promise<SafeUser> {
-    return this.tenantPrisma.forTenant(context, (tx) =>
-      tx.user.findUniqueOrThrow({ where: { id: userId }, select: SAFE_USER_SELECT }),
+  async getMe(context: TenantContext, userId: string): Promise<ProfileUser> {
+    const user = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.user.findUniqueOrThrow({ where: { id: userId }, select: PROFILE_USER_SELECT }),
     );
+    return this.toProfileResponse(user);
   }
 
-  async updateMe(context: TenantContext, userId: string, dto: UpdateProfileDto): Promise<SafeUser> {
-    return this.tenantPrisma.forTenant(context, (tx) =>
-      tx.user.update({ where: { id: userId }, data: { name: dto.name }, select: SAFE_USER_SELECT }),
+  async updateMe(context: TenantContext, userId: string, dto: UpdateProfileDto): Promise<ProfileUser> {
+    const user = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.user.update({ where: { id: userId }, data: { name: dto.name }, select: PROFILE_USER_SELECT }),
     );
+    return this.toProfileResponse(user);
+  }
+
+  /**
+   * The blob container is private, so a stored avatarPath renders as a broken image if handed
+   * to a browser as-is -- the same way org logos silently broke in invitation emails until they
+   * were signed. signIfOurs passes a non-blob value (local dev, where storage is unconfigured)
+   * through untouched. The path comes from our own row, never from client input.
+   */
+  private async toProfileResponse(user: SafeUser & { avatarPath: string | null }): Promise<ProfileUser> {
+    const { avatarPath, ...safe } = user;
+    return { ...safe, avatarUrl: ((await this.blobStorage.signIfOurs(avatarPath ?? null)) as string | null) ?? null };
+  }
+
+  async uploadAvatar(context: TenantContext, userId: string, file: Express.Multer.File): Promise<ProfileUser> {
+    if (!file) {
+      throw new BadRequestException('Choose an image to upload');
+    }
+    const extension = ALLOWED_AVATAR_MIME_TYPES[file.mimetype];
+    if (!extension) {
+      throw new BadRequestException('Profile picture must be a PNG or JPEG image');
+    }
+    if (file.size > MAX_AVATAR_SIZE_BYTES) {
+      throw new BadRequestException('Profile picture must be 1MB or smaller');
+    }
+
+    // Uploaded BEFORE the tenant transaction opens: every tenant-scoped query holds a pooled
+    // connection for the whole transaction, and a multi-second blob PUT inside one starves the
+    // pool (ADO #6810).
+    const blobPath = `avatars/${userId}-${Date.now()}${extension}`;
+    const avatarPath = await this.blobStorage.upload(blobPath, file.buffer, file.mimetype);
+
+    const user = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.user.update({ where: { id: userId }, data: { avatarPath }, select: PROFILE_USER_SELECT }),
+    );
+    await this.audit.record(context, {
+      actorUserId: userId,
+      action: 'user.avatar_updated',
+      entityType: 'user',
+      entityId: userId,
+    });
+    return this.toProfileResponse(user);
+  }
+
+  async removeAvatar(context: TenantContext, userId: string): Promise<ProfileUser> {
+    const user = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.user.update({ where: { id: userId }, data: { avatarPath: null }, select: PROFILE_USER_SELECT }),
+    );
+    await this.audit.record(context, {
+      actorUserId: userId,
+      action: 'user.avatar_removed',
+      entityType: 'user',
+      entityId: userId,
+    });
+    return this.toProfileResponse(user);
   }
 
   async update(context: TenantContext, targetUserId: string, dto: UpdateUserDto, actorUserId: string): Promise<SafeUser> {

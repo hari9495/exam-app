@@ -1,4 +1,19 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
@@ -84,6 +99,23 @@ export class UsersController {
   @Patch('me')
   updateMe(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateProfileDto) {
     return this.usersService.updateMe(tenant, userId, dto);
+  }
+
+  // No @RequirePermissions: every signed-in staff user owns their own profile picture, and the
+  // userId comes from the token rather than the path, so this can only ever touch the caller.
+  @Post('me/avatar')
+  @UseInterceptors(FileInterceptor('file'))
+  uploadAvatar(
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentUserId() userId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.usersService.uploadAvatar(tenant, userId, file);
+  }
+
+  @Delete('me/avatar')
+  removeAvatar(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
+    return this.usersService.removeAvatar(tenant, userId);
   }
 
   @Patch(':id')

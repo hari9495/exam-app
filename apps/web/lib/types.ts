@@ -30,6 +30,9 @@ export interface StaffUser {
   status: string;
   lastLoginAt: string | null;
   createdAt: string;
+  // Only the /users/me endpoints return this -- the list endpoints deliberately omit it rather
+  // than hand out raw private-container blob paths, so it is absent (not null) there.
+  avatarUrl?: string | null;
 }
 
 export interface DirectoryUser extends StaffUser {

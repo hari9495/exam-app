@@ -5,6 +5,7 @@ import * as argon2 from 'argon2';
 import { UsersService } from './users.service';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
+import { BlobStorageService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 
 describe('UsersService', () => {
@@ -13,12 +14,18 @@ describe('UsersService', () => {
   let audit: { record: jest.Mock };
   let jwt: { verify: jest.Mock };
   let emailService: { send: jest.Mock };
+  let blobStorage: { upload: jest.Mock; signIfOurs: jest.Mock };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
     jwt = { verify: jest.fn() };
     emailService = { send: jest.fn().mockResolvedValue({ success: true }) };
+    blobStorage = {
+      upload: jest.fn().mockResolvedValue('https://blob.test/container/avatars/user-1-123.png'),
+      // Stands in for the real SAS signing: returns the path with a token appended.
+      signIfOurs: jest.fn(async (value: unknown) => (value == null ? null : `${value as string}?sig=abc`)),
+    };
     const moduleRef = await Test.createTestingModule({
       providers: [
         UsersService,
@@ -26,6 +33,7 @@ describe('UsersService', () => {
         { provide: AuditService, useValue: audit },
         { provide: JwtService, useValue: jwt },
         { provide: EmailService, useValue: emailService },
+        { provide: BlobStorageService, useValue: blobStorage },
       ],
     }).compile();
     service = moduleRef.get(UsersService);
@@ -165,6 +173,120 @@ describe('UsersService', () => {
     expect(tenantPrisma.forTenant).toHaveBeenCalledWith(
       { organizationId: 'org-1', isSuperAdmin: false },
       expect.any(Function),
+    );
+  });
+
+  it('getMe signs the stored avatar path and never returns the raw path', async () => {
+    tenantPrisma.forTenant.mockResolvedValue({
+      id: 'user-1',
+      email: 'a@b.com',
+      name: 'Jane Recruiter',
+      organizationId: 'org-1',
+      role: 'recruiter',
+      status: 'active',
+      avatarPath: 'https://blob.test/container/avatars/user-1-123.png',
+      lastLoginAt: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    const result = await service.getMe({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1');
+
+    // The container is private -- an unsigned path renders as a broken image in the browser.
+    expect(result.avatarUrl).toBe('https://blob.test/container/avatars/user-1-123.png?sig=abc');
+    expect(result).not.toHaveProperty('avatarPath');
+  });
+
+  it('getMe reports no avatar as null rather than omitting it', async () => {
+    tenantPrisma.forTenant.mockResolvedValue({
+      id: 'user-1',
+      email: 'a@b.com',
+      name: 'Jane Recruiter',
+      organizationId: 'org-1',
+      role: 'recruiter',
+      status: 'active',
+      avatarPath: null,
+      lastLoginAt: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    const result = await service.getMe({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1');
+
+    expect(result.avatarUrl).toBeNull();
+  });
+
+  it('uploadAvatar stores the blob and saves its path against the caller', async () => {
+    tenantPrisma.forTenant.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) => {
+      const tx = { user: { update: jest.fn().mockResolvedValue({ id: 'user-1', email: 'a@b.com', name: null, organizationId: 'org-1', role: 'recruiter', status: 'active', avatarPath: 'https://blob.test/container/avatars/user-1-123.png', lastLoginAt: null, createdAt: new Date('2026-01-01T00:00:00.000Z') }) } };
+      const result = await fn(tx);
+      expect(tx.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'user-1' },
+          data: { avatarPath: 'https://blob.test/container/avatars/user-1-123.png' },
+        }),
+      );
+      return result;
+    });
+
+    const result = await service.uploadAvatar({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', {
+      mimetype: 'image/png',
+      size: 1000,
+      buffer: Buffer.from('png'),
+    } as Express.Multer.File);
+
+    expect(blobStorage.upload).toHaveBeenCalledWith(
+      expect.stringMatching(/^avatars\/user-1-\d+\.png$/),
+      expect.any(Buffer),
+      'image/png',
+    );
+    expect(result.avatarUrl).toBe('https://blob.test/container/avatars/user-1-123.png?sig=abc');
+    expect(audit.record).toHaveBeenCalledWith(
+      { organizationId: 'org-1', isSuperAdmin: false },
+      expect.objectContaining({ action: 'user.avatar_updated', entityId: 'user-1' }),
+    );
+  });
+
+  it('uploadAvatar rejects a file type that is not PNG or JPEG', async () => {
+    await expect(
+      service.uploadAvatar({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', {
+        mimetype: 'image/svg+xml',
+        size: 1000,
+        buffer: Buffer.from('svg'),
+      } as Express.Multer.File),
+    ).rejects.toThrow(BadRequestException);
+    // Rejected before anything reached storage.
+    expect(blobStorage.upload).not.toHaveBeenCalled();
+  });
+
+  it('uploadAvatar rejects a file over 1MB', async () => {
+    await expect(
+      service.uploadAvatar({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', {
+        mimetype: 'image/png',
+        size: 1024 * 1024 + 1,
+        buffer: Buffer.from('png'),
+      } as Express.Multer.File),
+    ).rejects.toThrow(BadRequestException);
+    expect(blobStorage.upload).not.toHaveBeenCalled();
+  });
+
+  it('removeAvatar clears the path back to null', async () => {
+    tenantPrisma.forTenant.mockResolvedValue({
+      id: 'user-1',
+      email: 'a@b.com',
+      name: null,
+      organizationId: 'org-1',
+      role: 'recruiter',
+      status: 'active',
+      avatarPath: null,
+      lastLoginAt: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    const result = await service.removeAvatar({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1');
+
+    expect(result.avatarUrl).toBeNull();
+    expect(audit.record).toHaveBeenCalledWith(
+      { organizationId: 'org-1', isSuperAdmin: false },
+      expect.objectContaining({ action: 'user.avatar_removed' }),
     );
   });
 

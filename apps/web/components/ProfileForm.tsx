@@ -1,9 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Eye, EyeOff } from 'lucide-react';
-import { useCurrentUser, useUpdateProfile, useChangePassword } from '../lib/hooks/useCurrentUser';
+import {
+  useCurrentUser,
+  useUpdateProfile,
+  useChangePassword,
+  useUploadAvatar,
+  useRemoveAvatar,
+} from '../lib/hooks/useCurrentUser';
 import { useSsoStatus } from '../lib/hooks/useSso';
 import { useAuth } from '../lib/auth-context';
 import { Button, Input, CollapsibleSection, RequiredFieldsNote, useToast } from './ui';
@@ -21,6 +27,101 @@ function PasswordVisibilityToggle({ visible, onToggle }: { visible: boolean; onT
     >
       {visible ? <EyeOff size={16} /> : <Eye size={16} />}
     </button>
+  );
+}
+
+// Matches the initials the staff shells build for the top bar, so the placeholder a user sees
+// here is the same one their colleagues see beside their name.
+function initialsFor(user: { name: string | null; email: string }): string {
+  const source = user.name?.trim() || user.email;
+  return source
+    .split(/[\s@.]+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+}
+
+function AvatarField() {
+  const { data: user } = useCurrentUser();
+  const uploadAvatar = useUploadAvatar();
+  const removeAvatar = useRemoveAvatar();
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Uploads straight from the file picker rather than parking the File in state behind a
+  // separate "Upload" button -- that two-step shape is what left the branding logo button
+  // looking disabled after a file was chosen (ADO #6846).
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    // Reset immediately so picking the SAME file again still fires a change event.
+    event.target.value = '';
+    if (!file) return;
+    setError(null);
+    uploadAvatar.mutate(file, {
+      onSuccess: () => toast('Profile picture updated.'),
+      onError: (err) => setError(err instanceof Error ? err.message : 'Failed to upload profile picture'),
+    });
+  }
+
+  function handleRemove() {
+    setError(null);
+    removeAvatar.mutate(undefined, {
+      onSuccess: () => toast('Profile picture removed.'),
+      onError: (err) => setError(err instanceof Error ? err.message : 'Failed to remove profile picture'),
+    });
+  }
+
+  const busy = uploadAvatar.isPending || removeAvatar.isPending;
+
+  return (
+    <div className="flex items-center gap-4 sm:col-span-2">
+      {user?.avatarUrl ? (
+        // Plain <img>, not next/image: the URL is a time-limited SAS link on a storage host that
+        // is not in next.config's remotePatterns, and the optimizer would reject it.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={user.avatarUrl}
+          alt="Your profile picture"
+          className="h-16 w-16 shrink-0 rounded-full object-cover"
+        />
+      ) : (
+        <div
+          aria-hidden="true"
+          className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-primary text-lg font-semibold text-white"
+        >
+          {user ? initialsFor(user) : ''}
+        </div>
+      )}
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg"
+            onChange={handleFileChange}
+            className="hidden"
+            aria-label="Profile picture file"
+          />
+          <Button variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={!user || busy}>
+            {uploadAvatar.isPending ? 'Uploading…' : user?.avatarUrl ? 'Change photo' : 'Upload photo'}
+          </Button>
+          {user?.avatarUrl && (
+            <Button variant="secondary" onClick={handleRemove} disabled={busy}>
+              Remove
+            </Button>
+          )}
+        </div>
+        <p className="text-xs text-recruiter-text-tertiary">PNG or JPEG, up to 1MB.</p>
+      </div>
+      {error && (
+        <p role="alert" className="text-sm text-status-danger">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -91,6 +192,7 @@ export function ProfileForm() {
         transition={{ duration: 0.3, delay: 0, ease: 'easeOut' }}
       >
         <CollapsibleSection title="Profile">
+          <AvatarField />
           <div className="sm:col-span-2">
             <RequiredFieldsNote />
           </div>
