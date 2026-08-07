@@ -46,6 +46,23 @@ const ALLOWED_QUESTION_IMAGE_MIME_TYPES: Record<string, string> = {
 };
 const MAX_QUESTION_IMAGE_SIZE_BYTES = 2 * 1024 * 1024;
 
+/**
+ * Reduce an image URL to the bare blob URL before it is STORED.
+ *
+ * Reads hand back a SAS-signed URL (see toResponse), and the edit form posts back whatever it
+ * was given -- so without this the ~20-minute read token gets persisted into image_url. Once it
+ * expires the picture is dead for good: signIfOurs cannot re-sign a URL that already carries a
+ * token, so editing a question would silently destroy its own image 20 minutes later. Signing
+ * belongs on the way out; the column holds the unsigned URL, always.
+ */
+export function toStoredImageUrl(url: string | null | undefined): string | null {
+  if (!url) {
+    return null;
+  }
+  const query = url.indexOf('?');
+  return query === -1 ? url : url.slice(0, query);
+}
+
 @Injectable()
 export class QuestionsService {
   constructor(
@@ -97,10 +114,10 @@ export class QuestionsService {
           allowStdin: dto.allowStdin ?? false,
           snippetCode: dto.type === 'code' ? null : dto.snippetCode ?? null,
           snippetLanguage: dto.type === 'code' ? null : dto.snippetLanguage ?? null,
-          imageUrl: dto.type === 'code' ? null : dto.imageUrl ?? null,
+          imageUrl: dto.type === 'code' ? null : toStoredImageUrl(dto.imageUrl),
           createdBy: userId,
           options: {
-            create: dto.options.map((o, index) => ({ text: o.text, isCorrect: o.isCorrect, orderIndex: index, imageUrl: o.imageUrl })),
+            create: dto.options.map((o, index) => ({ text: o.text, isCorrect: o.isCorrect, orderIndex: index, imageUrl: toStoredImageUrl(o.imageUrl) })),
           },
           tags: {
             create: tagIds.map((tagId) => ({ tagId })),
@@ -220,9 +237,9 @@ export class QuestionsService {
           allowStdin: dto.allowStdin ?? false,
           snippetCode: dto.type === 'code' ? null : dto.snippetCode ?? null,
           snippetLanguage: dto.type === 'code' ? null : dto.snippetLanguage ?? null,
-          imageUrl: dto.type === 'code' ? null : dto.imageUrl ?? null,
+          imageUrl: dto.type === 'code' ? null : toStoredImageUrl(dto.imageUrl),
           options: {
-            create: dto.options.map((o, index) => ({ text: o.text, isCorrect: o.isCorrect, orderIndex: index, imageUrl: o.imageUrl })),
+            create: dto.options.map((o, index) => ({ text: o.text, isCorrect: o.isCorrect, orderIndex: index, imageUrl: toStoredImageUrl(o.imageUrl) })),
           },
           tags: {
             create: tagIds.map((tagId) => ({ tagId })),

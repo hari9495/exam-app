@@ -165,12 +165,40 @@ describe('QuestionsService', () => {
           options: {
             create: [
               { text: '[3, 2, 1]', isCorrect: true, orderIndex: 0, imageUrl: 'question-images/opt-a.png' },
-              { text: '[1, 2, 3]', isCorrect: false, orderIndex: 1, imageUrl: undefined },
+              // null rather than undefined: toStoredImageUrl normalises "no image" so the column
+              // is written explicitly. Both land as NULL on a create, so nothing changes on disk.
+              { text: '[1, 2, 3]', isCorrect: false, orderIndex: 1, imageUrl: null },
             ],
           },
         }),
       }),
     );
+  });
+
+  it('stores the bare blob URL when the edit form posts back a SAS-signed one', async () => {
+    // Reads sign image URLs, and the edit form returns whatever it was given. Persisting that
+    // verbatim baked a ~20-minute token into image_url, so editing a question's text silently
+    // killed its picture 20 minutes later -- unrecoverable, since a URL that already carries a
+    // token cannot be re-signed.
+    const signed = 'https://a.blob.core.windows.net/c/question-images/stem.png?sv=2026-06-06&se=2026-08-07T20%3A01%3A07Z&sig=abc%3D';
+    const dto = {
+      text: 'Q', type: 'single_mcq', difficulty: 'easy', marks: 1,
+      imageUrl: signed,
+      options: [
+        { text: 'a', isCorrect: true, imageUrl: signed },
+        { text: 'b', isCorrect: false },
+      ],
+    } as any;
+    const questionCreate = jest.fn().mockResolvedValue({ id: 'q-1', organizationId: 'org-1', ...dto, tags: [] });
+    tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn({ question: { create: questionCreate }, tag: { findMany: jest.fn().mockResolvedValue([]), create: jest.fn() } }));
+
+    await service.create(context, 'user-1', dto);
+
+    const bare = 'https://a.blob.core.windows.net/c/question-images/stem.png';
+    const data = questionCreate.mock.calls[0][0].data;
+    expect(data.imageUrl).toBe(bare);
+    expect(data.options.create[0].imageUrl).toBe(bare);
   });
 
   it('does not persist snippetCode/snippetLanguage/imageUrl for a code question even if sent', async () => {
