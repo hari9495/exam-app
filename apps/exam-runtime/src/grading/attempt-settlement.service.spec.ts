@@ -945,6 +945,87 @@ describe('AttemptSettlementService', () => {
     });
   });
 
+  describe('recomputeSettledResults', () => {
+    // Mirrors 'finalize section weighting' above: q1/q2 worth 5 marks each, q1 answered
+    // correctly, q2 left blank -- a flat 50% vs. whatever the current section weights make it.
+    const attempt = {
+      id: 'attempt-1',
+      examId: 'exam-1',
+      questionOrderJson: JSON.stringify(['q1', 'q2']),
+      sectionSnapshotJson: JSON.stringify([
+        { sectionId: 's1', title: 'Light', targetDurationMinutes: null, weightPercent: 20, questionIds: ['q1'] },
+        { sectionId: 's2', title: 'Heavy', targetDurationMinutes: null, weightPercent: 80, questionIds: ['q2'] },
+      ]),
+    };
+    const existingResult = { attemptId: 'attempt-1', score: 5, maxScore: 10, percentage: 20, passFail: 'fail' };
+
+    function recomputeTx(sectionWeights: { id: string; weightPercent: number }[], attemptStatus = 'submitted') {
+      return {
+        exam: { findUniqueOrThrow: jest.fn().mockResolvedValue({ passCriteriaPercent: 50 }) },
+        examSection: { findMany: jest.fn().mockResolvedValue(sectionWeights) },
+        result: {
+          findMany: jest.fn().mockResolvedValue([{ ...existingResult, attempt: { ...attempt, status: attemptStatus } }]),
+          update: jest.fn(),
+        },
+        question: {
+          findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5 }, { id: 'q2', marks: 5 }]),
+        },
+        answer: {
+          findMany: jest.fn().mockResolvedValue([
+            { questionId: 'q1', marksAwarded: 5 },
+            { questionId: 'q2', marksAwarded: 0 },
+          ]),
+        },
+      };
+    }
+
+    it("re-scores a settled attempt using the exam's CURRENT section weights, not the frozen snapshot", async () => {
+      // Flip the weighting since settlement: the light section (only q1, already correct) is now
+      // worth 80%, so the recomputed percentage should flip from 20% to 80%, not stay at 20%.
+      const tx = recomputeTx([{ id: 's1', weightPercent: 80 }, { id: 's2', weightPercent: 20 }]);
+
+      const result = await service.recomputeSettledResults(tx as unknown as Prisma.TransactionClient, 'exam-1');
+
+      expect(result).toEqual({ updated: 1 });
+      expect(tx.result.update).toHaveBeenCalledWith({
+        where: { attemptId: 'attempt-1' },
+        data: { score: 5, maxScore: 10, percentage: 80, passFail: 'pass' },
+      });
+    });
+
+    it('is a no-op (no update, reports 0) when the recomputed result is identical to what is stored', async () => {
+      // Same weights as the frozen snapshot -- recomputing should land on the exact existing values.
+      const tx = recomputeTx([{ id: 's1', weightPercent: 20 }, { id: 's2', weightPercent: 80 }]);
+
+      const result = await service.recomputeSettledResults(tx as unknown as Prisma.TransactionClient, 'exam-1');
+
+      expect(result).toEqual({ updated: 0 });
+      expect(tx.result.update).not.toHaveBeenCalled();
+    });
+
+    it('excludes attempts still pending manual grading, so an incomplete code score never gets a real passFail', async () => {
+      const tx = recomputeTx([{ id: 's1', weightPercent: 80 }, { id: 's2', weightPercent: 20 }], 'pending_manual_grade');
+
+      await service.recomputeSettledResults(tx as unknown as Prisma.TransactionClient, 'exam-1');
+
+      expect(tx.result.findMany).toHaveBeenCalledWith({
+        where: { attempt: { examId: 'exam-1', status: { not: 'pending_manual_grade' } } },
+        include: { attempt: true },
+      });
+    });
+
+    it('falls back to a section\'s own frozen weight when that section no longer exists on the exam', async () => {
+      // s2 was deleted since this attempt settled -- weightOverrides has no entry for it, so its
+      // original 80% snapshot weight must still apply rather than being silently dropped to 0.
+      const tx = recomputeTx([{ id: 's1', weightPercent: 20 }]);
+
+      await service.recomputeSettledResults(tx as unknown as Prisma.TransactionClient, 'exam-1');
+
+      // Same weights effectively as the original snapshot (20/80) -> identical result -> no update.
+      expect(tx.result.update).not.toHaveBeenCalled();
+    });
+  });
+
   describe('registerWebcamViolation', () => {
     it('pauses the attempt and logs a medium-severity event on strike 1', async () => {
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', status: 'in_progress', webcamViolationCount: 0 } as any;

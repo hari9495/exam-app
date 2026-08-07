@@ -8,14 +8,14 @@ import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-i
 describe('ExamsService', () => {
   let service: ExamsService;
   let tenantPrisma: { forTenant: jest.Mock };
-  let examRuntime: { settleIfExpiredBatch: jest.Mock };
+  let examRuntime: { settleIfExpiredBatch: jest.Mock; recomputeResults: jest.Mock };
   let audit: { record: jest.Mock };
   let blobStorage: { signIfOurs: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
-    examRuntime = { settleIfExpiredBatch: jest.fn() };
+    examRuntime = { settleIfExpiredBatch: jest.fn(), recomputeResults: jest.fn().mockResolvedValue({ updated: 0 }) };
     audit = { record: jest.fn() };
     // Identity pass-through by default -- signing behaviour itself is covered end
     // to end in blob-storage.service.spec.ts, same convention as ReportsService.
@@ -929,7 +929,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await expect(service.updateSection(context, 'exam-1', 'wrong-section', { title: 'x' })).rejects.toThrow(NotFoundException);
+    await expect(service.updateSection(context, 'user-1', 'exam-1', 'wrong-section', { title: 'x' })).rejects.toThrow(NotFoundException);
   });
 
   it('rejects updateSection once a candidate has started an attempt', async () => {
@@ -939,7 +939,94 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await expect(service.updateSection(context, 'exam-1', 'section-1', { title: 'x' })).rejects.toThrow(ConflictException);
+    await expect(service.updateSection(context, 'user-1', 'exam-1', 'section-1', { title: 'x' })).rejects.toThrow(ConflictException);
+  });
+
+  describe('updateSection weight-only edits after submission', () => {
+    function weightOnlyTx(overrides: { examStatus?: string; startedAttemptCount?: number } = {}) {
+      return {
+        exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: overrides.examStatus ?? 'draft' }) },
+        attempt: { count: jest.fn().mockResolvedValue(overrides.startedAttemptCount ?? 1) },
+        examSection: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'section-1', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, poolTags: [], questions: [],
+          }),
+          update: jest.fn().mockResolvedValue({ id: 'section-1', weightPercent: 30 }),
+        },
+      };
+    }
+
+    it('allows a weight-only PATCH even once a candidate has started/submitted the exam', async () => {
+      const tx = weightOnlyTx();
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.updateSection(context, 'user-1', 'exam-1', 'section-1', { weightPercent: 30 } as any)).resolves.toBeDefined();
+      expect(tx.examSection.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'section-1' }, data: expect.objectContaining({ weightPercent: 30 } as any) }),
+      );
+    });
+
+    it('still rejects a weight-only PATCH while the exam is published, same as any other edit', async () => {
+      const tx = weightOnlyTx({ examStatus: 'published' });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.updateSection(context, 'user-1', 'exam-1', 'section-1', { weightPercent: 30 } as any)).rejects.toThrow(ConflictException);
+    });
+
+    it('does NOT bypass the started-attempts lock when the PATCH also touches another field', async () => {
+      const tx = weightOnlyTx();
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(
+        service.updateSection(context, 'user-1', 'exam-1', 'section-1', { title: 'Renamed', weightPercent: 30 }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it("triggers a recompute of settled results and audits it when attempts were actually rescored", async () => {
+      const tx = weightOnlyTx();
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      examRuntime.recomputeResults.mockResolvedValue({ updated: 3 });
+
+      await service.updateSection(context, 'user-1', 'exam-1', 'section-1', { weightPercent: 30 } as any);
+
+      expect(examRuntime.recomputeResults).toHaveBeenCalledWith('exam-1');
+      expect(audit.record).toHaveBeenCalledWith(context, {
+        actorUserId: 'user-1',
+        action: 'exam.section_weight_recomputed',
+        entityType: 'exam',
+        entityId: 'exam-1',
+        metadata: { sectionId: 'section-1', weightPercent: 30, rescoredAttemptCount: 3 },
+      });
+    });
+
+    it('does not audit a recompute when no settled attempt actually changed', async () => {
+      const tx = weightOnlyTx();
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      examRuntime.recomputeResults.mockResolvedValue({ updated: 0 });
+
+      await service.updateSection(context, 'user-1', 'exam-1', 'section-1', { weightPercent: 30 } as any);
+
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('still returns the updated section even if the recompute call fails', async () => {
+      const tx = weightOnlyTx();
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      examRuntime.recomputeResults.mockRejectedValue(new Error('exam-runtime unreachable'));
+
+      await expect(service.updateSection(context, 'user-1', 'exam-1', 'section-1', { weightPercent: 30 } as any)).resolves.toEqual(
+        expect.objectContaining({ weightPercent: 30 } as any),
+      );
+    });
+
+    it('does not call recompute for an edit that does not touch weightPercent at all', async () => {
+      const tx = weightOnlyTx({ startedAttemptCount: 0 });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.updateSection(context, 'user-1', 'exam-1', 'section-1', { title: 'Renamed' });
+
+      expect(examRuntime.recomputeResults).not.toHaveBeenCalled();
+    });
   });
 
   it('rejects updateSection while the exam is published, even with no candidate started yet', async () => {
@@ -949,7 +1036,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await expect(service.updateSection(context, 'exam-1', 'section-1', { title: 'x' })).rejects.toThrow(ConflictException);
+    await expect(service.updateSection(context, 'user-1', 'exam-1', 'section-1', { title: 'x' })).rejects.toThrow(ConflictException);
   });
 
   it('allows updateSection when candidates are invited but none has started an attempt yet', async () => {
@@ -966,7 +1053,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await expect(service.updateSection(context, 'exam-1', 'section-1', { title: 'Renamed' })).resolves.toBeDefined();
+    await expect(service.updateSection(context, 'user-1', 'exam-1', 'section-1', { title: 'Renamed' })).resolves.toBeDefined();
   });
 
   it('updates a section\'s title without touching pool data when staying fixed', async () => {
@@ -982,7 +1069,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await service.updateSection(context, 'exam-1', 'section-1', { title: 'Renamed' });
+    await service.updateSection(context, 'user-1', 'exam-1', 'section-1', { title: 'Renamed' });
 
     expect(tx.examSectionQuestion.deleteMany).not.toHaveBeenCalled();
     expect(tx.examSectionPoolTag.deleteMany).not.toHaveBeenCalled();
@@ -1006,7 +1093,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await service.updateSection(context, 'exam-1', 'section-1', { title: 'Section', targetDurationMinutes: 15 });
+    await service.updateSection(context, 'user-1', 'exam-1', 'section-1', { title: 'Section', targetDurationMinutes: 15 });
 
     expect(tx.examSection.update).toHaveBeenCalledWith({
       where: { id: 'section-1' },
@@ -1028,7 +1115,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await service.updateSection(context, 'exam-1', 'section-1', { title: 'Renamed' });
+    await service.updateSection(context, 'user-1', 'exam-1', 'section-1', { title: 'Renamed' });
 
     expect(tx.examSection.update).toHaveBeenCalledWith({
       where: { id: 'section-1' },
@@ -1050,7 +1137,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await service.updateSection(context, 'exam-1', 'section-1', {
+    await service.updateSection(context, 'user-1', 'exam-1', 'section-1', {
       title: 'Pool Section', selectionMode: 'pool', poolSize: 5, poolDifficulty: 'hard', poolTagIds: ['tag-1', 'tag-2'],
     });
 
@@ -1082,7 +1169,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await service.updateSection(context, 'exam-1', 'section-1', { title: 'Section', selectionMode: 'fixed' });
+    await service.updateSection(context, 'user-1', 'exam-1', 'section-1', { title: 'Section', selectionMode: 'fixed' });
 
     expect(tx.examSectionPoolTag.deleteMany).toHaveBeenCalledWith({ where: { sectionId: 'section-1' } });
     expect(tx.examSectionQuestion.deleteMany).not.toHaveBeenCalled();
@@ -1106,7 +1193,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await service.updateSection(context, 'exam-1', 'section-1', {
+    await service.updateSection(context, 'user-1', 'exam-1', 'section-1', {
       title: 'Pool Section', selectionMode: 'pool', poolSize: 5, poolDifficulty: 'hard', poolTagIds: ['tag-1', 'tag-1', 'tag-2'],
     });
 
@@ -1140,7 +1227,7 @@ describe('ExamsService', () => {
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
     await expect(
-      service.updateSection(context, 'exam-1', 'section-1', { title: 'X', poolTagIds: [] }),
+      service.updateSection(context, 'user-1', 'exam-1', 'section-1', { title: 'X', poolTagIds: [] }),
     ).rejects.toThrow(BadRequestException);
 
     expect(tx.examSectionPoolTag.deleteMany).not.toHaveBeenCalled();
@@ -1163,7 +1250,7 @@ describe('ExamsService', () => {
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
     await expect(
-      service.updateSection(context, 'exam-1', 'section-1', { title: 'X', poolSize: 0 }),
+      service.updateSection(context, 'user-1', 'exam-1', 'section-1', { title: 'X', poolSize: 0 }),
     ).rejects.toThrow(BadRequestException);
 
     expect(tx.examSectionPoolTag.deleteMany).not.toHaveBeenCalled();
@@ -1185,7 +1272,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await service.updateSection(context, 'exam-1', 'section-1', { title: 'Renamed' });
+    await service.updateSection(context, 'user-1', 'exam-1', 'section-1', { title: 'Renamed' });
 
     expect(tx.examSection.update).toHaveBeenCalledWith({
       where: { id: 'section-1' },
@@ -1209,7 +1296,7 @@ describe('ExamsService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    await service.updateSection(context, 'exam-1', 'section-1', { title: 'Coding', requiredCount: 3 });
+    await service.updateSection(context, 'user-1', 'exam-1', 'section-1', { title: 'Coding', requiredCount: 3 });
 
     expect(tx.examSection.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ requiredCount: null }) }),

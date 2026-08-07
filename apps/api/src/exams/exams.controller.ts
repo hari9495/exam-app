@@ -122,11 +122,12 @@ export class ExamsController {
   @RequirePermissions('exam:manage')
   updateSection(
     @CurrentTenant() tenant: TenantContext,
+    @CurrentUserId() userId: string,
     @Param('id') examId: string,
     @Param('sectionId') sectionId: string,
     @Body() dto: UpdateExamSectionDto,
   ) {
-    return this.examsService.updateSection(tenant, examId, sectionId, dto);
+    return this.examsService.updateSection(tenant, userId, examId, sectionId, dto);
   }
 
   @Delete(':id/sections/:sectionId')

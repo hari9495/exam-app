@@ -14,7 +14,13 @@ import { ApplyProctoringBypassDto } from './dto/proctoring-bypass.dto';
 describe('InternalController', () => {
   let controller: InternalController;
   let tenantPrisma: { forTenant: jest.Mock };
-  let attemptSettlement: { finalize: jest.Mock; settleIfExpired: jest.Mock; finalizeManualGrade: jest.Mock; resumeFromPause: jest.Mock };
+  let attemptSettlement: {
+    finalize: jest.Mock;
+    settleIfExpired: jest.Mock;
+    finalizeManualGrade: jest.Mock;
+    resumeFromPause: jest.Mock;
+    recomputeSettledResults: jest.Mock;
+  };
   let attemptAnalysis: { analyze: jest.Mock };
   let attemptInsight: { analyze: jest.Mock };
   let codeReviewService: { analyze: jest.Mock };
@@ -23,7 +29,13 @@ describe('InternalController', () => {
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
-    attemptSettlement = { finalize: jest.fn(), settleIfExpired: jest.fn(), finalizeManualGrade: jest.fn(), resumeFromPause: jest.fn() };
+    attemptSettlement = {
+      finalize: jest.fn(),
+      settleIfExpired: jest.fn(),
+      finalizeManualGrade: jest.fn(),
+      resumeFromPause: jest.fn(),
+      recomputeSettledResults: jest.fn(),
+    };
     attemptAnalysis = { analyze: jest.fn() };
     attemptInsight = { analyze: jest.fn() };
     codeReviewService = { analyze: jest.fn() };
@@ -525,6 +537,20 @@ describe('InternalController', () => {
       await controller.settleIfExpiredBatch({ attemptIds: ['missing-1'] });
 
       expect(attemptSettlement.settleIfExpired).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('recomputeResults', () => {
+    it("delegates to AttemptSettlementService.recomputeSettledResults within a super-admin tenant context", async () => {
+      const tx = {};
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      attemptSettlement.recomputeSettledResults.mockResolvedValue({ updated: 2 });
+
+      const result = await controller.recomputeResults('exam-1');
+
+      expect(tenantPrisma.forTenant).toHaveBeenCalledWith({ organizationId: null, isSuperAdmin: true }, expect.any(Function));
+      expect(attemptSettlement.recomputeSettledResults).toHaveBeenCalledWith(tx, 'exam-1');
+      expect(result).toEqual({ updated: 2 });
     });
   });
 

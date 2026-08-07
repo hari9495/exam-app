@@ -119,6 +119,15 @@ export class ExamRuntimeInternalClient {
     await this.throwIfNotOk(response);
   }
 
+  async recomputeResults(examId: string): Promise<{ updated: number }> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/exams/${examId}/recompute-results`, {
+      method: 'POST',
+      headers: this.headers(),
+    });
+    await this.throwIfNotOk(response);
+    return response.json();
+  }
+
   async settleIfExpiredBatch(attemptIds: string[]): Promise<void> {
     const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/attempts/settle-if-expired-batch`, {
       method: 'POST',
