@@ -1056,7 +1056,12 @@ describe('ExamSectionsPanel', () => {
       expect(patchCall).toBeUndefined();
     });
 
-    it('renders the weight read-only, with no input, once the exam is locked', async () => {
+    // Rewritten, not deleted: this asserted the OPPOSITE (weight read-only once locked), which
+    // was correct before section weights could be rebalanced after submission. That is now the
+    // whole point of the feature -- an exam with results to rescore is permanently published,
+    // so locking the weight input on `published` would disable it in exactly the case it exists
+    // for. Everything else on a locked exam stays read-only; only weight is exempt.
+    it('keeps the weight editable on a published exam, since rebalancing rescores settled results', async () => {
       const fetchMock = jest.fn(async (url: RequestInfo | URL) => {
         const urlStr = String(url);
         if (urlStr.endsWith('/auth/refresh')) {
@@ -1066,6 +1071,9 @@ describe('ExamSectionsPanel', () => {
           return new Response(
             JSON.stringify({
               id: 'exam-1', title: 'Backend Round', instructions: null, status: 'published',
+              // Published AND started: the only shape an exam with results to rescore can have,
+              // since Unpublish is refused once anyone has begun.
+              hasStartedAttempts: true,
               durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false,
               createdAt: '2026-01-01T00:00:00.000Z',
               sections: [{
@@ -1082,10 +1090,13 @@ describe('ExamSectionsPanel', () => {
       global.fetch = fetchMock as unknown as typeof fetch;
       renderPanel();
 
-      expect(await screen.findByText('100% weight')).toBeInTheDocument();
-      expect(screen.queryByLabelText('Weight % for Section One')).not.toBeInTheDocument();
-      // The running total is an editing aid -- pointless once nothing can change.
-      expect(screen.queryByText(/Weights total:/)).not.toBeInTheDocument();
+      expect(await screen.findByLabelText('Weight % for Section One')).toHaveValue(100);
+      // The running total is an editing aid, so it belongs wherever weight is still editable.
+      expect(screen.getByText(/Weights total:/)).toBeInTheDocument();
+      // Questions stay frozen -- only weight is exempt from the lock.
+      expect(screen.queryByRole('button', { name: 'Manage questions' })).not.toBeInTheDocument();
+      // And the recruiter is warned that saving will rescore people who already submitted.
+      expect(screen.getByText(/re-scores every candidate who has already submitted/i)).toBeInTheDocument();
     });
 
     it("shows a section's required-answer count against its question count", async () => {

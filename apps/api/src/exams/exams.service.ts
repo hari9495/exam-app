@@ -382,16 +382,23 @@ export class ExamsService {
     examId: string,
     status: string,
     resource: string = 'sections or questions',
-    options: { allowStartedAttempts?: boolean } = {},
+    options: { allowWeightRebalance?: boolean } = {},
   ): Promise<void> {
-    // allowStartedAttempts exists for exactly one caller: updateSection's weight-only path (see
+    // allowWeightRebalance exists for exactly one caller: updateSection's weight-only path (see
     // its own comment). Everything else -- questions, pool config, section structure -- stays
     // permanently frozen the moment a candidate starts, same as always.
-    if (!options.allowStartedAttempts) {
-      const startedAttemptCount = await tx.attempt.count({ where: { examId } });
-      if (startedAttemptCount > 0) {
-        throw new ConflictException('Cannot modify this exam once a candidate has started it');
-      }
+    //
+    // It must bypass BOTH guards, not just the started-attempts one. An exam can only be taken
+    // while published, and unpublish() refuses once any attempt exists -- so an exam with
+    // settled results is permanently 'published', and gating on status alone would reject every
+    // rebalance the feature exists to allow. "Draft with settled attempts" is not a reachable
+    // state, so leaving the publish check in place made this dead code.
+    if (options.allowWeightRebalance) {
+      return;
+    }
+    const startedAttemptCount = await tx.attempt.count({ where: { examId } });
+    if (startedAttemptCount > 0) {
+      throw new ConflictException('Cannot modify this exam once a candidate has started it');
     }
     if (status === 'published') {
       throw new ConflictException(`Exam ${examId} is published -- unpublish it before editing its ${resource}`);
@@ -740,7 +747,7 @@ export class ExamsService {
   }
 
   // A weight-only PATCH (nothing else in the DTO set) is the sole exception to the
-  // started-attempts lock: see assertExamMutable's allowStartedAttempts and
+  // started-attempts AND published locks: see assertExamMutable's allowWeightRebalance and
   // recomputeSettledResults' own comment for why rebalancing weight after submission is safe
   // and useful, while every other section edit stays frozen.
   private isWeightOnlySectionUpdate(dto: UpdateExamSectionDto): boolean {
@@ -769,7 +776,7 @@ export class ExamsService {
       if (!exam) {
         throw new NotFoundException(`Exam ${examId} not found`);
       }
-      await this.assertExamMutable(tx, examId, exam.status, 'sections or questions', { allowStartedAttempts: isWeightOnlyUpdate });
+      await this.assertExamMutable(tx, examId, exam.status, 'sections or questions', { allowWeightRebalance: isWeightOnlyUpdate });
       const section = await tx.examSection.findFirst({
         where: { id: sectionId, examId },
         include: { poolTags: true, questions: true },

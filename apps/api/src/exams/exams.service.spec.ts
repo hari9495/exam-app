@@ -966,11 +966,28 @@ describe('ExamsService', () => {
       );
     });
 
-    it('still rejects a weight-only PATCH while the exam is published, same as any other edit', async () => {
+    // This is THE case the feature exists for, and it used to be rejected. An exam is only
+    // takeable while published, and unpublish() refuses once any attempt exists, so an exam with
+    // settled results to rescore is permanently 'published'. Gating the weight-only path on
+    // status as well as started-attempts made it unreachable: the earlier happy-path tests all
+    // construct 'draft' WITH started attempts, which production can never produce.
+    it('allows a weight-only PATCH on a published exam that already has settled attempts', async () => {
+      const tx = weightOnlyTx({ examStatus: 'published', startedAttemptCount: 3 });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(
+        service.updateSection(context, 'user-1', 'exam-1', 'section-1', { weightPercent: 30 } as any),
+      ).resolves.toBeDefined();
+      expect(examRuntime.recomputeResults).toHaveBeenCalledWith('exam-1');
+    });
+
+    it('still rejects a NON-weight edit on a published exam', async () => {
       const tx = weightOnlyTx({ examStatus: 'published' });
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      await expect(service.updateSection(context, 'user-1', 'exam-1', 'section-1', { weightPercent: 30 } as any)).rejects.toThrow(ConflictException);
+      await expect(
+        service.updateSection(context, 'user-1', 'exam-1', 'section-1', { title: 'Renamed' } as any),
+      ).rejects.toThrow(ConflictException);
     });
 
     it('does NOT bypass the started-attempts lock when the PATCH also touches another field', async () => {

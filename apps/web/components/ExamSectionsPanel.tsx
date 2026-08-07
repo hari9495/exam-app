@@ -353,13 +353,16 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
   const lockedMessage = exam?.hasStartedAttempts
     ? 'Sections and questions are locked because a candidate has already started this exam.'
     : 'This exam is published, so its sections and questions are locked. Click Unpublish above to make changes.';
-  // Weight is the one deliberate exception to the started-attempts lock (see
-  // ExamsService.updateSection's isWeightOnlySectionUpdate): a recruiter can still rebalance
-  // which section counts more toward pass/fail after candidates have submitted, which
-  // re-scores their already-settled results. Publishing still locks it, same as everything
-  // else -- unpublish first, exactly like the general lock above.
-  const weightLocked = exam?.status === 'published';
-  const showRescoreNotice = !weightLocked && (exam?.hasStartedAttempts ?? false);
+  // Weight is the one deliberate exception to BOTH locks above (see ExamsService.updateSection's
+  // isWeightOnlySectionUpdate and assertExamMutable's allowWeightRebalance): a recruiter can
+  // rebalance which section counts more toward pass/fail after candidates have submitted, which
+  // re-scores their already-settled results.
+  //
+  // It cannot also lock on `published`. An exam is only takeable while published, and Unpublish
+  // is refused once anyone has started -- so an exam with results to rescore is permanently
+  // published, and locking on that would disable the control in exactly the case it exists for.
+  const weightLocked = false;
+  const showRescoreNotice = exam?.hasStartedAttempts ?? false;
   const sections = (exam?.sections ?? []).slice().sort((a, b) => a.orderIndex - b.orderIndex);
   // Surfaced here so the recruiter sees the shortfall while editing, rather than only hitting
   // publish()'s rejection later.
