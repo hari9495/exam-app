@@ -39,7 +39,17 @@ interface SectionSnapshotEntry {
 // share, scoring every such in-flight candidate at 0% and failing them -- so a legacy snapshot
 // instead degrades to one synthetic 100%-weighted section spanning every question, which is
 // arithmetically the exact flat formula those attempts were started under.
-function toGradableSections(sectionSnapshotJson: string, allQuestionIds: string[]): GradableSection[] {
+//
+// weightOverrides is the one deliberate exception to "the snapshot is frozen" (see the comment
+// on SectionSnapshotEntry above): recomputeSettledResults (below) passes the exam's CURRENT
+// per-section weights here, on purpose, because a recruiter editing weights after submission is
+// asking for exactly that -- see that method's own comment for why this is opt-in and audited
+// rather than automatic.
+function toGradableSections(
+  sectionSnapshotJson: string,
+  allQuestionIds: string[],
+  weightOverrides?: Map<string, number>,
+): GradableSection[] {
   let snapshot: SectionSnapshotEntry[];
   try {
     snapshot = JSON.parse(sectionSnapshotJson);
@@ -53,7 +63,7 @@ function toGradableSections(sectionSnapshotJson: string, allQuestionIds: string[
   }
   return snapshot.map((section) => ({
     sectionId: section.sectionId,
-    weightPercent: section.weightPercent,
+    weightPercent: weightOverrides?.get(section.sectionId) ?? section.weightPercent,
     // A snapshot written before this feature has no key at all -- undefined must read as
     // "all required", never as 0, which would score every section out of nothing.
     requiredCount: section.requiredCount ?? null,
@@ -236,6 +246,68 @@ export class AttemptSettlementService {
       }
     })();
     return finalized;
+  }
+
+  // A recruiter's escape hatch: section weights are normally frozen per-attempt at start
+  // (toGradableSections' comment above explains why) specifically so a later weight edit
+  // can't silently rescore someone mid-exam. But once candidates have SUBMITTED, a recruiter
+  // may legitimately want to rebalance which section counts more toward the pass/fail decision
+  // -- that's the whole point of weighting -- without re-running the exam. This is the one
+  // place that intentionally re-derives percentage/passFail from a stored Result's own attempt
+  // using the exam's CURRENT weights instead of the frozen snapshot, gated on the caller (see
+  // ExamsService.updateSection) only invoking it after an explicit weight change.
+  //
+  // Every other input is untouched: which questions counted (questionIds/requiredCount) and
+  // each answer's marksAwarded are exactly what was already graded -- only the weighting of
+  // already-graded sections against each other changes. score/maxScore can shift too when a
+  // section has a requiredCount (selectCountedAnswers picks the best N, and weight doesn't
+  // affect which N -- but they're recomputed here anyway so the headline numbers keep agreeing
+  // with percentage, matching finalize()'s own invariant).
+  async recomputeSettledResults(tx: Prisma.TransactionClient, examId: string): Promise<{ updated: number }> {
+    const exam = await tx.exam.findUniqueOrThrow({ where: { id: examId }, select: { passCriteriaPercent: true } });
+    const sections = await tx.examSection.findMany({ where: { examId }, select: { id: true, weightPercent: true } });
+    const weightOverrides = new Map(sections.map((section) => [section.id, section.weightPercent]));
+
+    // Only attempts that already have a Result have been graded at all -- querying from Result
+    // (rather than filtering Attempt by a hardcoded status list) is the correct membership test
+    // regardless of which terminal status ended up on the attempt. pending_manual_grade is
+    // excluded on purpose: finalize() already created its Result row with passFail left null
+    // (see finalize()'s own comment) because a code question is still ungraded -- recomputing
+    // now would assign a real pass/fail off an incomplete score. finalizeManualGrade() derives
+    // the real one once grading finishes and is unaffected by this method either way.
+    const results = await tx.result.findMany({
+      where: { attempt: { examId, status: { not: 'pending_manual_grade' } } },
+      include: { attempt: true },
+    });
+
+    let updated = 0;
+    for (const result of results) {
+      const attempt = result.attempt;
+      const questionIds: string[] = JSON.parse(attempt.questionOrderJson);
+      const questions = await tx.question.findMany({ where: { id: { in: questionIds } }, select: { id: true, marks: true } });
+      const answers = await tx.answer.findMany({ where: { attemptId: attempt.id }, select: { questionId: true, marksAwarded: true } });
+      const gradedAnswers = answers
+        .filter((answer): answer is { questionId: string; marksAwarded: number } => answer.marksAwarded !== null)
+        .map((answer) => ({ questionId: answer.questionId, marksAwarded: answer.marksAwarded }));
+
+      const sectionsForAttempt = toGradableSections(attempt.sectionSnapshotJson, questionIds, weightOverrides);
+      const summary = computeResult(gradedAnswers, questions, exam.passCriteriaPercent, sectionsForAttempt);
+
+      if (
+        summary.score === result.score
+        && summary.maxScore === result.maxScore
+        && summary.percentage === result.percentage
+        && summary.passFail === result.passFail
+      ) {
+        continue;
+      }
+      await tx.result.update({
+        where: { attemptId: attempt.id },
+        data: { score: summary.score, maxScore: summary.maxScore, percentage: summary.percentage, passFail: summary.passFail },
+      });
+      updated += 1;
+    }
+    return { updated };
   }
 
   async finalizeManualGrade(tx: Prisma.TransactionClient, exam: SettlementExam, attempt: Attempt): Promise<Attempt> {

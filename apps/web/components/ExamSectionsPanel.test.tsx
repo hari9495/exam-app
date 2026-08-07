@@ -79,6 +79,91 @@ describe('ExamSectionsPanel', () => {
     );
   });
 
+  it('is an accordion: sections start collapsed, and adding a section collapses the rest to auto-expand the new one', async () => {
+    let sectionsCreated = false;
+    const fetchMock = jest.fn(async (url, options) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).endsWith('/exams/exam-1/sections') && options?.method === 'POST') {
+        sectionsCreated = true;
+        return new Response(
+          JSON.stringify({ id: 's-2', examId: 'exam-1', title: 'Section Two', orderIndex: 1, selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: null }),
+          { status: 201 },
+        );
+      }
+      if (String(url).includes('/exams/exam-1')) {
+        return new Response(
+          JSON.stringify({
+            id: 'exam-1',
+            title: 'Backend Round',
+            instructions: null,
+            status: 'draft',
+            durationMinutes: 60,
+            passCriteriaPercent: 40,
+            randomizeOrder: false,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            sections: [
+              {
+                id: 's-1',
+                examId: 'exam-1',
+                title: 'Section One',
+                orderIndex: 0,
+                selectionMode: 'fixed',
+                poolSize: null,
+                poolDifficulty: null,
+                targetDurationMinutes: null,
+                questions: [{ questionId: 'q1', question: { text: 'Section One question body', marks: 5, type: 'single_mcq', difficulty: 'easy' } }],
+              },
+              ...(sectionsCreated
+                ? [
+                    {
+                      id: 's-2',
+                      examId: 'exam-1',
+                      title: 'Section Two',
+                      orderIndex: 1,
+                      selectionMode: 'fixed',
+                      poolSize: null,
+                      poolDifficulty: null,
+                      targetDurationMinutes: null,
+                      questions: [{ questionId: 'q2', question: { text: 'Section Two question body', marks: 5, type: 'single_mcq', difficulty: 'easy' } }],
+                    },
+                  ]
+                : []),
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ExamSectionsPanel examId="exam-1" />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Section One')).toBeInTheDocument());
+    // Collapsed by default -- no section body is shown until its header is clicked.
+    expect(screen.queryByText('Section One question body')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Expand Section One' }));
+    expect(await screen.findByText('Section One question body')).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText('New Section Title'), 'Section Two');
+    await userEvent.click(screen.getByRole('button', { name: 'Add section' }));
+
+    // The new section auto-expands, and Section One collapses back.
+    expect(await screen.findByText('Section Two question body')).toBeInTheDocument();
+    expect(screen.queryByText('Section One question body')).not.toBeInTheDocument();
+  });
+
   it('offers existing section titles as a dropdown, but still accepts a manually typed title', async () => {
     const fetchMock = jest.fn(async (url, options) => {
       if (String(url).endsWith('/auth/refresh')) {
@@ -279,6 +364,9 @@ describe('ExamSectionsPanel', () => {
       </QueryProvider>,
     );
 
+    await waitFor(() => expect(screen.getByText('Section One')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'Expand Section One' }));
+
     await waitFor(() => expect(screen.getByText('What is 2+2?')).toBeInTheDocument());
     expect(screen.getByText('Reverse a string')).toBeInTheDocument();
     // Marks render in their own table column as plain numbers now.
@@ -339,6 +427,8 @@ describe('ExamSectionsPanel', () => {
       </QueryProvider>,
     );
 
+    await waitFor(() => expect(screen.getByText('Section One')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'Expand Section One' }));
     await waitFor(() => expect(screen.getByText('What is 2+2?')).toBeInTheDocument());
 
     await userEvent.type(screen.getByLabelText("Search this section's questions"), 'reverse');
@@ -401,6 +491,8 @@ describe('ExamSectionsPanel', () => {
       </QueryProvider>,
     );
 
+    await waitFor(() => expect(screen.getByText('Reasoning')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'Expand Reasoning' }));
     await waitFor(() => expect(screen.getByText('Pool of 5 questions (medium)')).toBeInTheDocument());
     // "Manage questions" writes fixed question links that attempt-generation never reads for
     // a pool section (it re-derives candidates from poolTags/poolDifficulty every time) --
@@ -471,7 +563,7 @@ describe('ExamSectionsPanel', () => {
       </QueryProvider>,
     );
 
-    await waitFor(() => expect(screen.getByText('Pool of 5 questions (medium)')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Reasoning')).toBeInTheDocument());
     await userEvent.click(screen.getByRole('button', { name: 'Preview pool' }));
 
     expect(await screen.findByText('Preview Pool — Reasoning')).toBeInTheDocument();
@@ -729,6 +821,68 @@ describe('ExamSectionsPanel', () => {
     expect(screen.queryByRole('button', { name: 'Manage questions' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'More Actions' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('New Section Title')).not.toBeInTheDocument();
+  });
+
+  it('keeps section weight editable (with a rescore warning) once a candidate has started, unlike everything else', async () => {
+    const fetchMock = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).includes('/exams/exam-1')) {
+        return new Response(
+          JSON.stringify({
+            id: 'exam-1',
+            title: 'Backend Round',
+            instructions: null,
+            status: 'draft',
+            durationMinutes: 60,
+            passCriteriaPercent: 40,
+            randomizeOrder: false,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            invitationCount: 2,
+            hasStartedAttempts: true,
+            sections: [
+              {
+                id: 's-1',
+                examId: 'exam-1',
+                title: 'Section One',
+                orderIndex: 0,
+                selectionMode: 'fixed',
+                poolSize: null,
+                poolDifficulty: null,
+                targetDurationMinutes: null,
+                weightPercent: 60,
+                questions: [{ questionId: 'q1' }],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ExamSectionsPanel examId="exam-1" />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Section One')).toBeInTheDocument());
+    // Everything else stays locked, same as always.
+    expect(screen.getByText(/locked because a candidate has already started this exam/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Manage questions' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('New Section Title')).not.toBeInTheDocument();
+    // Weight is the one exception: a real editable input, not the locked read-only span.
+    expect(screen.getByText(/section weight can still be changed/i)).toBeInTheDocument();
+    const weightInput = screen.getByLabelText('Weight % for Section One');
+    expect(weightInput).toHaveValue(60);
+    expect(screen.queryByText('60% weight')).not.toBeInTheDocument();
   });
 
   it('locks section/question editing while published, even with no candidate started yet', async () => {

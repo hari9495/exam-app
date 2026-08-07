@@ -257,6 +257,16 @@ export class InternalController {
     });
   }
 
+  // Called by ExamsService.updateSection right after a weight-only PATCH succeeds -- see
+  // AttemptSettlementService.recomputeSettledResults for why this is safe to run after
+  // candidates have already submitted.
+  @Post('exams/:id/recompute-results')
+  async recomputeResults(@Param('id') id: string) {
+    return this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
+      this.attemptSettlement.recomputeSettledResults(tx, id),
+    );
+  }
+
   @Get('code-execution/languages')
   async listCodeLanguages() {
     const languages = await this.pistonRuntimes.getAvailableLanguages();

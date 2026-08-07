@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { MoreHorizontal, Search } from 'lucide-react';
+import { ChevronDown, MoreHorizontal, Search } from 'lucide-react';
 import { useExam } from '../lib/hooks/useExams';
 import {
   useCreateSection,
@@ -343,6 +343,9 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
   const [pickerSectionId, setPickerSectionId] = useState<string | null>(null);
   const [poolPreviewSectionId, setPoolPreviewSectionId] = useState<string | null>(null);
   const [sectionPendingDelete, setSectionPendingDelete] = useState<ExamSection | null>(null);
+  // Accordion: only one section's body is open at a time. Adding a section collapses the
+  // rest and opens the one just created, so it's immediately visible without scrolling.
+  const [expandedSectionId, setExpandedSectionId] = useState<string | null>(null);
   const { toast } = useToast();
   // Same two lock reasons as the Details tab: a started candidate is permanent, while
   // being published with nobody started yet is reversible via Unpublish.
@@ -350,6 +353,13 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
   const lockedMessage = exam?.hasStartedAttempts
     ? 'Sections and questions are locked because a candidate has already started this exam.'
     : 'This exam is published, so its sections and questions are locked. Click Unpublish above to make changes.';
+  // Weight is the one deliberate exception to the started-attempts lock (see
+  // ExamsService.updateSection's isWeightOnlySectionUpdate): a recruiter can still rebalance
+  // which section counts more toward pass/fail after candidates have submitted, which
+  // re-scores their already-settled results. Publishing still locks it, same as everything
+  // else -- unpublish first, exactly like the general lock above.
+  const weightLocked = exam?.status === 'published';
+  const showRescoreNotice = !weightLocked && (exam?.hasStartedAttempts ?? false);
   const sections = (exam?.sections ?? []).slice().sort((a, b) => a.orderIndex - b.orderIndex);
   // Surfaced here so the recruiter sees the shortfall while editing, rather than only hitting
   // publish()'s rejection later.
@@ -361,7 +371,10 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
     createSection.mutate(
       { title: newTitle },
       {
-        onSuccess: () => setNewTitle(''),
+        onSuccess: (created: ExamSection) => {
+          setNewTitle('');
+          setExpandedSectionId(created.id);
+        },
         onError: (error) => toast(error instanceof Error ? error.message : 'Failed to add section.', 'error'),
       },
     );
@@ -391,6 +404,12 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
   return (
     <div className="flex flex-col gap-3">
       {locked && <p className="text-sm text-recruiter-text-secondary">{lockedMessage}</p>}
+      {showRescoreNotice && (
+        <p className="text-sm font-medium text-status-warning">
+          Candidates have already started this exam, but section weight can still be changed to adjust the pass/fail
+          criteria -- saving a new weight re-scores every candidate who has already submitted.
+        </p>
+      )}
       {!locked && (
         <form onSubmit={handleAdd} className="flex items-end gap-2">
           {/* list + <datalist>: a native combobox -- pick an existing title from the
@@ -404,7 +423,7 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
           <Button type="submit">Add section</Button>
         </form>
       )}
-      {!locked && sections.length > 0 && (
+      {!weightLocked && sections.length > 0 && (
         <p className={`text-sm font-medium ${weightTotal === 100 ? 'text-status-success' : 'text-status-warning'}`}>
           {weightTotal === 100
             ? `Weights total: ${weightTotal}%`
@@ -412,12 +431,23 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
         </p>
       )}
       {sections
-        .map((section) => (
+        .map((section) => {
+          const isOpen = expandedSectionId === section.id;
+          return (
           <Card key={section.id} className="flex flex-col gap-2">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setExpandedSectionId(isOpen ? null : section.id)}
+                  aria-expanded={isOpen}
+                  aria-label={isOpen ? `Collapse ${section.title}` : `Expand ${section.title}`}
+                  className="rounded p-0.5 text-recruiter-text-tertiary hover:bg-recruiter-bg-subtle"
+                >
+                  <ChevronDown size={16} className={isOpen ? '' : '-rotate-90'} />
+                </button>
                 <p className="font-medium">{section.title}</p>
-                <SectionWeightInput examId={examId} section={section} locked={locked} />
+                <SectionWeightInput examId={examId} section={section} locked={weightLocked} />
                 <SectionRequiredCountInput examId={examId} section={section} locked={locked} />
               </div>
               <div className="flex items-center gap-1.5">
@@ -451,18 +481,20 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
                 )}
               </div>
             </div>
-            {section.selectionMode === 'pool' ? (
-              <p className="text-sm text-recruiter-text-secondary">
-                Pool of {section.poolSize ?? 0} question{section.poolSize === 1 ? '' : 's'}
-                {section.poolDifficulty ? ` (${section.poolDifficulty})` : ''}
-              </p>
-            ) : section.questions.length === 0 ? (
-              <p className="text-sm text-recruiter-text-tertiary">No questions added yet.</p>
-            ) : (
-              <SectionQuestionList examId={examId} section={section} locked={locked} />
-            )}
+            {isOpen &&
+              (section.selectionMode === 'pool' ? (
+                <p className="text-sm text-recruiter-text-secondary">
+                  Pool of {section.poolSize ?? 0} question{section.poolSize === 1 ? '' : 's'}
+                  {section.poolDifficulty ? ` (${section.poolDifficulty})` : ''}
+                </p>
+              ) : section.questions.length === 0 ? (
+                <p className="text-sm text-recruiter-text-tertiary">No questions added yet.</p>
+              ) : (
+                <SectionQuestionList examId={examId} section={section} locked={locked} />
+              ))}
           </Card>
-        ))}
+          );
+        })}
       {pickerSectionId && (
         <SectionQuestionPicker
           examId={examId}

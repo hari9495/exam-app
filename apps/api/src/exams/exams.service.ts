@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Exam, ExamSection, ExamSectionPoolTag, ExamSectionQuestion, Prisma, Question, QuestionOption } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
@@ -96,6 +96,8 @@ export interface PendingGradingRow {
 
 @Injectable()
 export class ExamsService {
+  private readonly logger = new Logger(ExamsService.name);
+
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly examRuntime: ExamRuntimeInternalClient,
@@ -380,10 +382,16 @@ export class ExamsService {
     examId: string,
     status: string,
     resource: string = 'sections or questions',
+    options: { allowStartedAttempts?: boolean } = {},
   ): Promise<void> {
-    const startedAttemptCount = await tx.attempt.count({ where: { examId } });
-    if (startedAttemptCount > 0) {
-      throw new ConflictException('Cannot modify this exam once a candidate has started it');
+    // allowStartedAttempts exists for exactly one caller: updateSection's weight-only path (see
+    // its own comment). Everything else -- questions, pool config, section structure -- stays
+    // permanently frozen the moment a candidate starts, same as always.
+    if (!options.allowStartedAttempts) {
+      const startedAttemptCount = await tx.attempt.count({ where: { examId } });
+      if (startedAttemptCount > 0) {
+        throw new ConflictException('Cannot modify this exam once a candidate has started it');
+      }
     }
     if (status === 'published') {
       throw new ConflictException(`Exam ${examId} is published -- unpublish it before editing its ${resource}`);
@@ -731,18 +739,37 @@ export class ExamsService {
     });
   }
 
+  // A weight-only PATCH (nothing else in the DTO set) is the sole exception to the
+  // started-attempts lock: see assertExamMutable's allowStartedAttempts and
+  // recomputeSettledResults' own comment for why rebalancing weight after submission is safe
+  // and useful, while every other section edit stays frozen.
+  private isWeightOnlySectionUpdate(dto: UpdateExamSectionDto): boolean {
+    return (
+      dto.weightPercent !== undefined
+      && dto.title === undefined
+      && dto.selectionMode === undefined
+      && dto.poolSize === undefined
+      && dto.poolDifficulty === undefined
+      && dto.poolTagIds === undefined
+      && dto.targetDurationMinutes === undefined
+      && dto.requiredCount === undefined
+    );
+  }
+
   async updateSection(
     context: TenantContext,
+    actorUserId: string,
     examId: string,
     sectionId: string,
     dto: UpdateExamSectionDto,
   ): Promise<ExamSection> {
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+    const isWeightOnlyUpdate = this.isWeightOnlySectionUpdate(dto);
+    const updated = await this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({ where: { id: examId, organizationId: context.organizationId as string } });
       if (!exam) {
         throw new NotFoundException(`Exam ${examId} not found`);
       }
-      await this.assertExamMutable(tx, examId, exam.status);
+      await this.assertExamMutable(tx, examId, exam.status, 'sections or questions', { allowStartedAttempts: isWeightOnlyUpdate });
       const section = await tx.examSection.findFirst({
         where: { id: sectionId, examId },
         include: { poolTags: true, questions: true },
@@ -797,6 +824,30 @@ export class ExamsService {
         include: { poolTags: true },
       });
     });
+
+    // Outside the transaction above on purpose: this is a separate call to exam-runtime, and a
+    // recompute hiccup must not roll back a weight edit that already saved successfully -- the
+    // recruiter's change is real either way; recompute just may need a retry. Awaited (not
+    // fire-and-forget like finalize()'s side effects) so the Results tab reflects the new
+    // weighting the moment this PATCH resolves, since that's the entire point of the edit.
+    if (isWeightOnlyUpdate) {
+      try {
+        const { updated: rescoredCount } = await this.examRuntime.recomputeResults(examId);
+        if (rescoredCount > 0) {
+          await this.audit.record(context, {
+            actorUserId,
+            action: 'exam.section_weight_recomputed',
+            entityType: 'exam',
+            entityId: examId,
+            metadata: { sectionId, weightPercent: dto.weightPercent, rescoredAttemptCount: rescoredCount },
+          });
+        }
+      } catch (error) {
+        this.logger.error(`Failed to recompute results for exam ${examId} after a weight change`, error as Error);
+      }
+    }
+
+    return updated;
   }
 
   // requiredCount === M means "answer all", which is exactly what null already means -- storing
