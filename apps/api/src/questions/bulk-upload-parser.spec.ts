@@ -46,6 +46,7 @@ describe('parseBulkQuestionFile (csv)', () => {
         topic: undefined,
         category: undefined,
         tags: ['math', 'basics'],
+        languageMode: 'fixed',
         codeLanguage: undefined,
         starterCode: undefined,
         options: [
@@ -143,5 +144,46 @@ describe('parseBulkQuestionFile (xlsx)', () => {
       { text: 'True', isCorrect: true },
       { text: 'False', isCorrect: false },
     ]);
+  });
+});
+
+describe('LanguageMode column', () => {
+  const CODE = { Type: 'code', Text: 'Write a trigger', Difficulty: 'medium', Marks: 10, NegativeMarks: 0 };
+
+  it('defaults to fixed, so spreadsheets written before this column existed keep working', async () => {
+    const buf = await buildXlsxBuffer([{ ...CODE, LanguageMode: '', CodeLanguage: 'java' }]);
+    const { rows, errors } = await parseBulkQuestionFile(buf, 'xlsx');
+    expect(errors).toHaveLength(0);
+    expect(rows[0].languageMode).toBe('fixed');
+    expect(rows[0].codeLanguage).toBe('java');
+  });
+
+  it('accepts "any", which is what lets a candidate pick their own language', async () => {
+    const buf = await buildXlsxBuffer([{ ...CODE, LanguageMode: 'any', CodeLanguage: '' }]);
+    const { rows, errors } = await parseBulkQuestionFile(buf, 'xlsx');
+    expect(errors).toHaveLength(0);
+    expect(rows[0].languageMode).toBe('any');
+  });
+
+  it('is case- and space-insensitive, since a human types this cell', async () => {
+    const buf = await buildXlsxBuffer([{ ...CODE, LanguageMode: '  ANY ', CodeLanguage: '' }]);
+    const { rows } = await parseBulkQuestionFile(buf, 'xlsx');
+    expect(rows[0].languageMode).toBe('any');
+  });
+
+  it('names the offending cell rather than failing generically', async () => {
+    const buf = await buildXlsxBuffer([{ ...CODE, LanguageMode: 'whatever', CodeLanguage: '' }]);
+    const { errors } = await parseBulkQuestionFile(buf, 'xlsx');
+    expect(errors[0].message).toContain('LanguageMode must be "fixed" or "any"');
+  });
+
+  it('ignores the column on a non-code row', async () => {
+    const buf = await buildXlsxBuffer([{
+      Type: 'single_mcq', Text: 'Q', Difficulty: 'easy', Marks: 1, NegativeMarks: 0, LanguageMode: 'nonsense',
+      Option1Text: 'a', Option1Correct: 'TRUE', Option2Text: 'b', Option2Correct: 'FALSE',
+    }]);
+    const { rows, errors } = await parseBulkQuestionFile(buf, 'xlsx');
+    expect(errors).toHaveLength(0);
+    expect(rows).toHaveLength(1);
   });
 });

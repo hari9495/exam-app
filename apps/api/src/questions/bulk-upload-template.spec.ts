@@ -13,7 +13,7 @@ describe('generateBulkUploadTemplate', () => {
     const headers = headerRow.slice(1).map((v) => String(v));
     expect(headers).toEqual([
       'Type', 'Text', 'Difficulty', 'Marks', 'NegativeMarks', 'Topic', 'Category', 'Tags',
-      'CodeLanguage', 'StarterCode',
+      'LanguageMode', 'CodeLanguage', 'StarterCode',
       'Option1Text', 'Option1Correct', 'Option2Text', 'Option2Correct',
       'Option3Text', 'Option3Correct', 'Option4Text', 'Option4Correct',
       'Option5Text', 'Option5Correct', 'Option6Text', 'Option6Correct',

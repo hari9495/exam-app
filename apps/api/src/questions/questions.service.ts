@@ -345,7 +345,8 @@ export class QuestionsService {
     // ponytail: brief's snippet checked `validRows` here, which is always empty at this point
     // (it's populated by the loop below) — checking the parsed `rows` instead so a fixed-mode
     // code row actually gets a non-empty availableLanguages list to validate against.
-    const availableLanguages = rows.some((row) => row.type === 'code')
+    // Only FIXED-mode code rows need the runtime list; an all-'any' upload skips the call.
+    const availableLanguages = rows.some((row) => row.type === 'code' && row.languageMode !== 'any')
       ? (await this.examRuntime.listAvailableLanguages()).languages.map((entry) => entry.language)
       : [];
     for (const row of rows) {
@@ -357,8 +358,9 @@ export class QuestionsService {
             marks: row.marks,
             negativeMarks: row.negativeMarks,
             options: row.options,
-            languageMode: row.type === 'code' ? 'fixed' : undefined,
-            allowedLanguages: row.type === 'code' && row.codeLanguage ? [row.codeLanguage] : undefined,
+            languageMode: row.type === 'code' ? row.languageMode ?? 'fixed' : undefined,
+            allowedLanguages:
+              row.type === 'code' && row.languageMode !== 'any' && row.codeLanguage ? [row.codeLanguage] : undefined,
           },
           availableLanguages,
         );

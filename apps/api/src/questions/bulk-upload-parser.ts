@@ -11,6 +11,7 @@ export interface BulkQuestionRow {
   topic?: string;
   category?: string;
   tags: string[];
+  languageMode?: string;
   codeLanguage?: string;
   starterCode?: string;
   options: { text: string; isCorrect: boolean }[];
@@ -76,6 +77,13 @@ function extractRow(record: Record<string, string>, rowNumber: number): BulkQues
     options.push({ text: optionText, isCorrect: optionCorrect });
   }
 
+  // Blank means 'fixed': every spreadsheet written before this column existed sets CodeLanguage
+  // and expects a single fixed language, so the default has to preserve that.
+  const languageMode = (record.LanguageMode ?? '').trim().toLowerCase() || 'fixed';
+  if (type === 'code' && languageMode !== 'fixed' && languageMode !== 'any') {
+    return { row: rowNumber, message: `LanguageMode must be "fixed" or "any", got "${languageMode}"` };
+  }
+
   return {
     rowNumber,
     type,
@@ -86,6 +94,7 @@ function extractRow(record: Record<string, string>, rowNumber: number): BulkQues
     topic: (record.Topic ?? '').trim() || undefined,
     category: (record.Category ?? '').trim() || undefined,
     tags,
+    languageMode,
     codeLanguage: (record.CodeLanguage ?? '').trim() || undefined,
     starterCode: (record.StarterCode ?? '').trim() || undefined,
     options,
