@@ -3,28 +3,16 @@
 import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { MotionConfig } from 'framer-motion';
-import { LayoutDashboard, FileText, BookOpen, Users, BarChart3 } from 'lucide-react';
+import { BarChart3 } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
 import { staffLandingPath } from '../../lib/staff-landing';
 import { SUPER_ADMIN_FULL_NAV } from '../../lib/super-admin-nav';
+import { RECRUITER_NAV_ITEMS } from '../../lib/recruiter-nav';
 import { useOrgBranding } from '../../lib/hooks/useBranding';
 import { useDocumentBranding } from '../../lib/hooks/useDocumentBranding';
 import { useCurrentUser } from '../../lib/hooks/useCurrentUser';
 import { StaffSidebar } from '../../components/StaffSidebar';
 import { StaffTopBar } from '../../components/StaffTopBar';
-
-// This route group serves /reports (Results). It shares the same left-sidebar shell as the
-// recruiter/org-admin consoles so navigating to Results never jumps to a different chrome.
-
-// A recruiter admitted here sees their own recruiter console nav (results:view lives on /reports,
-// which is served by this group). Mirrors the recruiter shell's BASE_NAV_ITEMS.
-const RECRUITER_NAV = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/exams', label: 'Exams', icon: FileText },
-  { href: '/questions', label: 'Question Bank', icon: BookOpen },
-  { href: '/candidates', label: 'Candidates', icon: Users },
-  { href: '/reports', label: 'Results', icon: BarChart3 },
-];
 
 // A plain panel member can only reach /reports; a one-item sidebar keeps the chrome consistent.
 const PANEL_NAV = [{ href: '/reports', label: 'Results', icon: BarChart3 }];
@@ -72,7 +60,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
   // org_admin / acting super_admin see the complete feature union; a recruiter sees the recruiter
   // console; a panel member sees just Results.
   const navItems =
-    actingSuperAdmin || role === 'org_admin' ? SUPER_ADMIN_FULL_NAV : role === 'recruiter' ? RECRUITER_NAV : PANEL_NAV;
+    actingSuperAdmin || role === 'org_admin' ? SUPER_ADMIN_FULL_NAV : role === 'recruiter' ? RECRUITER_NAV_ITEMS : PANEL_NAV;
 
   const roleLabel =
     role === 'super_admin'

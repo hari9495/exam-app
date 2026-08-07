@@ -3,27 +3,16 @@
 import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { MotionConfig } from 'framer-motion';
-import { LayoutDashboard, FileText, BookOpen, Users, BarChart3, QrCode } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
 import { staffLandingPath } from '../../lib/staff-landing';
 import { SUPER_ADMIN_FULL_NAV } from '../../lib/super-admin-nav';
+import { RECRUITER_NAV_ITEMS } from '../../lib/recruiter-nav';
 import { useOrgBranding } from '../../lib/hooks/useBranding';
 import { useDocumentBranding } from '../../lib/hooks/useDocumentBranding';
 import { useCurrentUser } from '../../lib/hooks/useCurrentUser';
 import { StaffSidebar } from '../../components/StaffSidebar';
 import { StaffTopBar } from '../../components/StaffTopBar';
 
-const BASE_NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/exams', label: 'Exams', icon: FileText },
-  { href: '/questions', label: 'Question Bank', icon: BookOpen },
-  { href: '/candidates', label: 'Candidates', icon: Users },
-  // Results (scores, pass/fail, CSV/XLSX/PDF export) previously only appeared for a
-  // super-admin impersonating an org, so a plain recruiter had no way to reach the
-  // reports console at all -- despite the recruiter role already holding results:view.
-  { href: '/reports', label: 'Results', icon: BarChart3 },
-  { href: '/walk-in-groups', label: 'Walk-in Groups', icon: QrCode },
-];
 
 // A super_admin acting into an org sees the complete feature nav (SUPER_ADMIN_FULL_NAV), not this
 // shell's scoped subset, so nothing is hidden by which console they're on.
@@ -67,7 +56,7 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
 
   // org_admin is a full org-scoped superuser, so it sees the complete feature nav everywhere,
   // just like an acting super_admin.
-  const navItems = actingSuperAdmin || role === 'org_admin' ? SUPER_ADMIN_FULL_NAV : BASE_NAV_ITEMS;
+  const navItems = actingSuperAdmin || role === 'org_admin' ? SUPER_ADMIN_FULL_NAV : RECRUITER_NAV_ITEMS;
 
   // This layout also mounts for org_admin (and an acting super_admin) -- see navItems above --
   // so the profile label has to reflect the real role instead of hardcoding "Recruiter".

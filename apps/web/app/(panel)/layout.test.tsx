@@ -53,6 +53,11 @@ describe('Panel layout', () => {
     expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Exams' })).toHaveAttribute('href', '/exams');
     expect(screen.getByRole('link', { name: 'Candidates' })).toBeInTheDocument();
+    // Regression: this shell kept its own hand-copied clone of the recruiter nav, so adding
+    // Walk-in Groups to the (recruiter) layout alone made the item DISAPPEAR the moment a
+    // recruiter clicked Results and landed here. Both shells now render the one shared
+    // RECRUITER_NAV_ITEMS; this fails if anyone reintroduces a local copy.
+    expect(screen.getByRole('link', { name: 'Walk-in Groups' })).toHaveAttribute('href', '/walk-in-groups');
   });
 
   it('admits an org_admin (full org superuser) into the panel/reports console with the full feature nav', async () => {
