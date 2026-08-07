@@ -93,20 +93,24 @@ export default function LoginPage() {
   return (
     <MotionConfig reducedMotion="user">
       <div className="flex min-h-screen flex-col">
-        <header className="flex items-center justify-between bg-brand-navy px-6 py-4 md:px-16">
+        <header className="flex items-center bg-brand-navy px-6 py-4 md:px-16">
           <Link href="/" className="flex items-center gap-3">
             <PrudentMark className="h-8 aspect-[100/148] text-white" />
             <span className="text-lg font-medium tracking-tight text-white">Prudent Hire</span>
           </Link>
-          <Link
-            href="/get-started"
-            className="rounded-lg bg-white px-5 py-2.5 text-sm font-medium text-brand-navy transition hover:bg-brand-sail/40"
-          >
-            Get Started
-          </Link>
         </header>
 
-        <main className="grid flex-1 md:grid-cols-2">
+        <main className="relative grid flex-1 md:grid-cols-2">
+        {/* The navy panel juts a triangle into the white one at the top of the seam.
+            Anchored with right-1/2 so its vertical edge sits exactly on the column divide. */}
+        <svg
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+          className="pointer-events-none absolute right-1/2 top-0 z-10 hidden h-24 w-24 text-brand-navy md:block"
+        >
+          <polygon points="0,0 100,0 100,100" fill="currentColor" />
+        </svg>
         <div className="flex flex-col items-center justify-center bg-white px-6 py-8">
           <div className="w-full max-w-sm">
             {branding?.logoUrl && (
