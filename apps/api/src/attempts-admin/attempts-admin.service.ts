@@ -250,6 +250,29 @@ export class AttemptsAdminService {
       throw new NotFoundException(`No answer found for attempt ${attemptId}, question ${questionId}`);
     }
 
+    // Claim the row as processing BEFORE triggering generation, and return that.
+    //
+    // generateCodeReview() is fire-and-forget -- exam-runtime answers as soon as it has accepted
+    // the job, because the AI call far outruns the internal 5s timeout. The row it writes is
+    // therefore written LATER, on its own schedule. Reading it back here with findFirstOrThrow
+    // lost that race almost every time: Prisma raised "No CodeAnswerReview found", Nest turned it
+    // into a 500, and the browser saw the regenerate call fail. Two things then went wrong at
+    // once -- the recruiter got "Failed to generate AI review", and because the mutation rejected,
+    // its onSuccess never invalidated the query, so the card never refetched and never showed the
+    // review that was, in fact, being generated perfectly well in the background. Only a page
+    // reload revealed it.
+    //
+    // Upserting here is safe and idempotent: CodeReviewService re-stamps the same row 'processing'
+    // when it starts, then overwrites it with the verdict. Doing it first means the GET that
+    // follows always finds a row, so the poll starts immediately instead of never.
+    const review = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.codeAnswerReview.upsert({
+        where: { answerId: answer.id },
+        create: { answerId: answer.id, status: 'processing', suggestedMarks: null, summary: null },
+        update: { status: 'processing', suggestedMarks: null, summary: null, generatedAt: new Date() },
+      }),
+    );
+
     await this.examRuntime.generateCodeReview(answer.id);
 
     await this.audit.record(context, {
@@ -260,7 +283,7 @@ export class AttemptsAdminService {
       metadata: { questionId },
     });
 
-    return this.tenantPrisma.forTenant(context, (tx) => tx.codeAnswerReview.findFirstOrThrow({ where: { answerId: answer.id } }));
+    return review;
   }
 
   private async requireOwnedAttempt(context: TenantContext, attemptId: string): Promise<void> {

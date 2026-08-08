@@ -417,19 +417,40 @@ describe('AttemptsAdminService', () => {
       expect(examRuntime.generateCodeReview).not.toHaveBeenCalled();
     });
 
-    it('triggers generation via the internal client, then reads back the fresh CodeAnswerReview row', async () => {
-      const review = { answerId: 'answer-1', status: 'completed', suggestedMarks: 7, summary: 'Correct logic.' };
+    // The bug this pins: generateCodeReview() is fire-and-forget, so the review row is written
+    // LATER by exam-runtime. Reading it back straight afterwards (findFirstOrThrow) lost the race
+    // and 500'd -- the recruiter saw "Failed to generate AI review" while the review generated
+    // fine in the background, and the rejected mutation never invalidated the query, so the card
+    // never refetched. Claiming the row here first is what makes the poll start.
+    it('claims the row as processing BEFORE triggering generation, so the read-back cannot race', async () => {
+      const processing = { answerId: 'answer-1', status: 'processing', suggestedMarks: null, summary: null };
+      const upsert = jest.fn().mockResolvedValue(processing);
+      const order: string[] = [];
+      upsert.mockImplementation(async () => {
+        order.push('upsert');
+        return processing;
+      });
+      (examRuntime.generateCodeReview as jest.Mock).mockImplementation(async () => {
+        order.push('generate');
+      });
       let call = 0;
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => {
         call += 1;
         if (call === 1) {
           return fn({ answer: { findFirst: jest.fn().mockResolvedValue({ id: 'answer-1' }) } });
         }
-        return fn({ codeAnswerReview: { findFirstOrThrow: jest.fn().mockResolvedValue(review) } });
+        return fn({ codeAnswerReview: { upsert } });
       });
 
       const result = await service.regenerateCodeReview(context, 'user-1', 'attempt-1', 'question-1');
 
+      expect(upsert).toHaveBeenCalledWith({
+        where: { answerId: 'answer-1' },
+        create: { answerId: 'answer-1', status: 'processing', suggestedMarks: null, summary: null },
+        update: { status: 'processing', suggestedMarks: null, summary: null, generatedAt: expect.any(Date) },
+      });
+      // Ordering is the whole fix -- claiming after triggering would race exactly as before.
+      expect(order).toEqual(['upsert', 'generate']);
       expect(examRuntime.generateCodeReview).toHaveBeenCalledWith('answer-1');
       expect(audit.record).toHaveBeenCalledWith(context, {
         actorUserId: 'user-1',
@@ -438,7 +459,8 @@ describe('AttemptsAdminService', () => {
         entityId: 'attempt-1',
         metadata: { questionId: 'question-1' },
       });
-      expect(result).toBe(review);
+      // Returns the processing row, so the caller's poll has something to poll from.
+      expect(result).toBe(processing);
     });
   });
 
