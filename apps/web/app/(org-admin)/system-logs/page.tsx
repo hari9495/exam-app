@@ -5,6 +5,7 @@ import { TerminalSquare } from 'lucide-react';
 import { useSystemEvents, type SystemEventEntry, type SystemEventFilters } from '../../../lib/hooks/useSystemEvents';
 import { Button, Modal, Table, StatusBadge, FilterableHeader, type StatusTone, type Column } from '../../../components/ui';
 import { formatAuditTimestamp, formatRelativeTime } from '../../../lib/audit-display';
+import { plainEnglish } from '../../../lib/system-event-message';
 
 const SERVICE_OPTIONS = [
   { value: 'all', label: 'All services' },
@@ -122,9 +123,15 @@ export default function SystemLogsPage() {
     },
     {
       key: 'message',
-      header: 'Message',
-      render: (entry) => <span className="break-all text-recruiter-text">{entry.message}</span>,
-      sortValue: (entry) => entry.message,
+      header: 'What happened',
+      // The stored message is engineering shorthand; org admins read this page. The raw
+      // form stays on hover and in full in the detail modal.
+      render: (entry) => (
+        <span className="text-recruiter-text" title={entry.message}>
+          {plainEnglish(entry).summary}
+        </span>
+      ),
+      sortValue: (entry) => plainEnglish(entry).summary,
     },
     {
       key: 'context',
@@ -206,13 +213,22 @@ export default function SystemLogsPage() {
       <Modal open={selected !== null} title={selected ? `${SERVICE_LABELS[selected.service] ?? selected.service} — ${selected.severity}` : ''} onClose={() => setSelected(null)}>
         {selected && (
           <div className="flex flex-col gap-3 text-sm">
-            <p className="text-recruiter-text">{selected.message}</p>
+            <p className="font-medium text-recruiter-text">{plainEnglish(selected).summary}</p>
+            <p className="text-recruiter-text-secondary">{plainEnglish(selected).meaning}</p>
+            <div className="rounded-md bg-gray-50 p-3">
+              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-recruiter-text-tertiary">What to do</p>
+              <p className="text-recruiter-text">{plainEnglish(selected).whatToDo}</p>
+            </div>
             <p className="text-xs text-recruiter-text-secondary">{formatAuditTimestamp(selected.occurredAt)}</p>
-            {selected.context && (
-              <pre className="max-h-80 overflow-auto rounded bg-gray-50 p-3 text-xs text-recruiter-text-secondary">
-                {JSON.stringify(selected.context, null, 2)}
-              </pre>
-            )}
+            <details className="text-xs text-recruiter-text-secondary">
+              <summary className="cursor-pointer select-none">Technical details</summary>
+              <p className="mt-2 break-all font-mono">{selected.message}</p>
+              {selected.context && (
+                <pre className="mt-2 max-h-80 overflow-auto rounded bg-gray-50 p-3">
+                  {JSON.stringify(selected.context, null, 2)}
+                </pre>
+              )}
+            </details>
           </div>
         )}
       </Modal>

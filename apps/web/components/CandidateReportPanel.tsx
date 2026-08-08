@@ -11,6 +11,7 @@ import {
   useResultsList,
 } from '../lib/hooks/usePanelReports';
 import { useSystemEvents } from '../lib/hooks/useSystemEvents';
+import { plainEnglish } from '../lib/system-event-message';
 import type { WebcamTimelineEntry } from '../lib/types';
 import { Badge, Button, Card, Modal, StatusBadge, IntegrityBadge, useToast, type StatusTone } from './ui';
 import { AuditHistoryLink } from './AuditHistoryLink';
@@ -164,7 +165,11 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
             {technicalIssues.map((event) => (
               <li key={event.id} className="flex items-baseline gap-2 rounded border border-gray-200 p-2.5 text-sm">
                 <span className="whitespace-nowrap text-xs text-gray-500">{new Date(event.occurredAt).toLocaleString()}</span>
-                <span className="text-gray-800">{event.message}</span>
+                {/* Recruiters read this section, so it gets the same plain-English
+                    translation as System Logs; the raw message stays on hover. */}
+                <span className="text-gray-800" title={event.message}>
+                  {plainEnglish(event).summary}
+                </span>
               </li>
             ))}
           </ul>
