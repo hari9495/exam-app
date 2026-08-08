@@ -51,7 +51,12 @@ function CodeQuestionGrader({ attemptId, question }: { attemptId: string; questi
         {/* How hard the question is meant to be, straight from the question bank. A 3-mark hard
             question and a 3-mark easy one warrant different strictness, and the grader had no way
             to tell them apart here. */}
-        <span className="shrink-0">
+        <span className="flex shrink-0 items-center gap-2">
+          {/* What this question is worth. It was previously only discoverable by typing an
+              out-of-range value and reading the error toast. */}
+          <span className="whitespace-nowrap text-xs font-medium text-gray-600">
+            {question.marks} {question.marks === 1 ? 'mark' : 'marks'}
+          </span>
           <StatusBadge tone={DIFFICULTY_TONE[question.difficulty] ?? 'neutral'}>{question.difficulty}</StatusBadge>
         </span>
       </div>
@@ -91,7 +96,7 @@ function CodeQuestionGrader({ attemptId, question }: { attemptId: string; questi
         )}
       </div>
 
-      <div className="flex items-end gap-3">
+      <div className="flex items-end gap-2">
         <Input
           label={`Marks For ${question.questionText}`}
           type="number"
@@ -101,7 +106,10 @@ function CodeQuestionGrader({ attemptId, question }: { attemptId: string; questi
           onChange={setMarks}
           required
         />
-        <Button type="button" disabled={gradeAnswer.isPending} onClick={handleSaveGrade}>
+        {/* The ceiling, right where the number is typed -- so an out-of-range value is obvious
+            before the Save that rejects it. */}
+        <span className="pb-2 text-sm text-gray-500">/ {question.marks}</span>
+        <Button type="button" disabled={gradeAnswer.isPending} onClick={handleSaveGrade} className="ml-1">
           Save grade
         </Button>
       </div>
@@ -119,7 +127,9 @@ function CodeQuestionGrader({ attemptId, question }: { attemptId: string; questi
 
 function AttemptGrader({ row, defaultOpen }: { row: PendingGradingRow; defaultOpen: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
+  const [reviewingAll, setReviewingAll] = useState(false);
   const finalizeManualGrade = useFinalizeManualGrade();
+  const regenerateReview = useRegenerateCodeReview();
   const { toast } = useToast();
   const gradedCount = row.codeQuestions.filter((question) => question.marksAwarded !== null).length;
   const allGraded = gradedCount === row.codeQuestions.length;
@@ -130,6 +140,27 @@ function AttemptGrader({ row, defaultOpen }: { row: PendingGradingRow; defaultOp
       toast('Attempt finalized.');
     } catch (error) {
       toast(error instanceof Error ? error.message : 'Failed to finalize attempt.', 'error');
+    }
+  }
+
+  // Kick off every question's review in one click. No batch endpoint is needed: generation is
+  // already detached server-side, so each call returns immediately and each card's own poll
+  // (useCodeReview) shows "Generating…" and then the result. allSettled, not all -- one question
+  // failing to start must not cancel the rest.
+  async function handleReviewAll() {
+    setReviewingAll(true);
+    try {
+      const results = await Promise.allSettled(
+        row.codeQuestions.map((question) => regenerateReview.mutateAsync({ attemptId: row.attemptId, questionId: question.questionId })),
+      );
+      const failed = results.filter((result) => result.status === 'rejected').length;
+      if (failed === 0) {
+        toast(`Generating AI reviews for ${results.length} question${results.length === 1 ? '' : 's'}…`);
+      } else {
+        toast(`${results.length - failed} of ${results.length} started — ${failed} failed.`, 'error');
+      }
+    } finally {
+      setReviewingAll(false);
     }
   }
 
@@ -153,9 +184,16 @@ function AttemptGrader({ row, defaultOpen }: { row: PendingGradingRow; defaultOp
               : `${gradedCount} of ${row.codeQuestions.length} graded`}
           </span>
         </button>
-        <Button disabled={!allGraded || finalizeManualGrade.isPending} onClick={handleFinalize}>
-          Finalize grade
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          {row.codeQuestions.length > 0 && (
+            <Button variant="secondary" disabled={reviewingAll} onClick={handleReviewAll}>
+              {reviewingAll ? 'Starting…' : `AI review all (${row.codeQuestions.length})`}
+            </Button>
+          )}
+          <Button disabled={!allGraded || finalizeManualGrade.isPending} onClick={handleFinalize}>
+            Finalize grade
+          </Button>
+        </div>
       </div>
       {!open ? null : (
       <div className="border-t border-gray-200 p-3">

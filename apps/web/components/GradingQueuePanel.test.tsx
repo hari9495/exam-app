@@ -37,6 +37,10 @@ describe('GradingQueuePanel', () => {
   beforeEach(() => {
     gradeMutateAsync.mockClear();
     finalizeMutateAsync.mockClear();
+    // mockReset, not mockClear: the partial-failure test queues one-shot implementations with
+    // mockRejectedValueOnce, and a leftover queued rejection would surface in a later test.
+    regenerateMutateAsync.mockReset();
+    regenerateMutateAsync.mockResolvedValue({});
     (usePendingGrading as jest.Mock).mockReturnValue({ data: [pendingRow], isLoading: false });
     (useGradeCodeAnswer as jest.Mock).mockReturnValue({ mutateAsync: gradeMutateAsync, isPending: false });
     (useFinalizeManualGrade as jest.Mock).mockReturnValue({ mutateAsync: finalizeMutateAsync, isPending: false });
@@ -159,5 +163,61 @@ describe('GradingQueuePanel', () => {
     renderPanel();
     await userEvent.click(screen.getByRole('button', { name: 'Generate AI Review' }));
     expect(regenerateMutateAsync).toHaveBeenCalledWith({ attemptId: 'a1', questionId: 'q1' });
+  });
+
+  // The per-question button stays -- this is an extra, not a replacement. No batch endpoint is
+  // involved: generation is already detached server-side, so this just fires the existing
+  // mutation once per question and each card polls its own result.
+  describe('AI review all', () => {
+    const threeQuestionRow = {
+      ...pendingRow,
+      codeQuestions: [
+        { ...pendingRow.codeQuestions[0], questionId: 'q1' },
+        { ...pendingRow.codeQuestions[0], questionId: 'q2', questionText: 'Sort a list' },
+        { ...pendingRow.codeQuestions[0], questionId: 'q3', questionText: 'Sum a list' },
+      ],
+    };
+
+    it('fires one review per code question, and says how many it will run', async () => {
+      (usePendingGrading as jest.Mock).mockReturnValue({ data: [threeQuestionRow], isLoading: false });
+      renderPanel();
+
+      await userEvent.click(screen.getByRole('button', { name: 'AI review all (3)' }));
+
+      expect(regenerateMutateAsync).toHaveBeenCalledTimes(3);
+      expect(regenerateMutateAsync).toHaveBeenCalledWith({ attemptId: 'a1', questionId: 'q1' });
+      expect(regenerateMutateAsync).toHaveBeenCalledWith({ attemptId: 'a1', questionId: 'q2' });
+      expect(regenerateMutateAsync).toHaveBeenCalledWith({ attemptId: 'a1', questionId: 'q3' });
+      expect(await screen.findByText('Generating AI reviews for 3 questions…')).toBeInTheDocument();
+    });
+
+    it('reports partial failure instead of one bad question silently cancelling the rest', async () => {
+      (usePendingGrading as jest.Mock).mockReturnValue({ data: [threeQuestionRow], isLoading: false });
+      regenerateMutateAsync
+        .mockResolvedValueOnce({})
+        .mockRejectedValueOnce(new Error('boom'))
+        .mockResolvedValueOnce({});
+      renderPanel();
+
+      await userEvent.click(screen.getByRole('button', { name: 'AI review all (3)' }));
+
+      expect(regenerateMutateAsync).toHaveBeenCalledTimes(3);
+      expect(await screen.findByText('2 of 3 started — 1 failed.')).toBeInTheDocument();
+    });
+
+    it('is reachable without expanding the candidate, so a queue can be kicked off in one pass', () => {
+      (usePendingGrading as jest.Mock).mockReturnValue({ data: [threeQuestionRow, { ...threeQuestionRow, attemptId: 'a2', candidateName: 'Bob' }], isLoading: false });
+      renderPanel();
+
+      // Both collapsed (two rows), yet both buttons are present.
+      expect(screen.queryByText('def reverse(s): return s[::-1]')).not.toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: 'AI review all (3)' })).toHaveLength(2);
+    });
+  });
+
+  it("shows how many marks the question is worth, without needing to trigger the range error", () => {
+    renderPanel();
+    expect(screen.getByText('10 marks')).toBeInTheDocument();
+    expect(screen.getByText('/ 10')).toBeInTheDocument();
   });
 });
