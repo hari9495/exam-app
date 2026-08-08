@@ -92,7 +92,9 @@ describe('PanelCandidateDetailPage', () => {
     renderPage();
 
     expect(screen.getByText('Technical Issues During Exam')).toBeInTheDocument();
-    expect(screen.getByText('answer_save_failed: network error')).toBeInTheDocument();
+    // Rendered in plain English (see lib/system-event-message.ts); the stored engineering
+    // message stays on the title attribute.
+    expect(screen.getByText("The candidate's answer failed to save")).toBeInTheDocument();
 
     (useSystemEvents as jest.Mock).mockReturnValue({ data: { data: [], total: 0 }, isLoading: false });
     renderPage();
