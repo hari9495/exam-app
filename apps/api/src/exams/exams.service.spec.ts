@@ -2255,7 +2255,7 @@ describe('ExamsService', () => {
             codeLanguage: 'python',
             marksAwarded: null,
             gradingFeedback: null,
-            question: { type: 'code', text: 'x', starterCode: null, marks: 10 },
+            question: { type: 'code', text: 'x', difficulty: 'medium', starterCode: null, marks: 10 },
           },
         ],
       };
@@ -2278,7 +2278,7 @@ describe('ExamsService', () => {
         codeLanguage: 'python',
         marksAwarded,
         gradingFeedback: null,
-        question: { type: 'code', text: questionId, starterCode: null, marks: 10 },
+        question: { type: 'code', text: questionId, difficulty: 'hard', starterCode: null, marks: 10 },
       });
       const attempt = {
         id: 'attempt-1',

@@ -666,6 +666,8 @@ export interface CandidateLeaderboardResponse {
 export interface PendingGradingCodeQuestion {
   questionId: string;
   questionText: string;
+  /** easy | medium | hard, from the question bank. */
+  difficulty: string;
   starterCode: string | null;
   codeLanguage: CodeLanguage | null;
   answerText: string | null;

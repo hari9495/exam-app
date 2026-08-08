@@ -25,7 +25,7 @@ const pendingRow = {
   candidateId: 'c1',
   candidateName: 'Alice',
   codeQuestions: [
-    { questionId: 'q1', questionText: 'Reverse a string', starterCode: null, codeLanguage: 'python', answerText: 'def reverse(s): return s[::-1]', marks: 10, marksAwarded: null, gradingFeedback: null },
+    { questionId: 'q1', questionText: 'Reverse a string', difficulty: 'hard', starterCode: null, codeLanguage: 'python', answerText: 'def reverse(s): return s[::-1]', marks: 10, marksAwarded: null, gradingFeedback: null },
   ],
 };
 
@@ -58,8 +58,8 @@ describe('GradingQueuePanel', () => {
       candidateId: 'c2',
       candidateName: 'Bob',
       codeQuestions: [
-        { questionId: 'q2', questionText: 'Sort a list', starterCode: null, codeLanguage: 'python', answerText: 'sorted(xs)', marks: 10, marksAwarded: 7, gradingFeedback: null },
-        { questionId: 'q3', questionText: 'Sum a list', starterCode: null, codeLanguage: 'python', answerText: 'sum(xs)', marks: 10, marksAwarded: null, gradingFeedback: null },
+        { questionId: 'q2', questionText: 'Sort a list', difficulty: 'easy', starterCode: null, codeLanguage: 'python', answerText: 'sorted(xs)', marks: 10, marksAwarded: 7, gradingFeedback: null },
+        { questionId: 'q3', questionText: 'Sum a list', difficulty: 'medium', starterCode: null, codeLanguage: 'python', answerText: 'sum(xs)', marks: 10, marksAwarded: null, gradingFeedback: null },
       ],
     };
 
@@ -98,6 +98,22 @@ describe('GradingQueuePanel', () => {
     renderPanel();
     expect(screen.getByText('Alice')).toBeInTheDocument();
     expect(screen.getByText('def reverse(s): return s[::-1]')).toBeInTheDocument();
+  });
+
+  // A 3-mark hard question and a 3-mark easy one deserve different strictness, and the grader
+  // had no way to tell them apart from inside the queue.
+  it("shows the question's difficulty from the question bank", () => {
+    renderPanel();
+    expect(screen.getByText('hard')).toBeInTheDocument();
+  });
+
+  it('falls back to a neutral badge for a difficulty it does not recognise, rather than crashing', () => {
+    (usePendingGrading as jest.Mock).mockReturnValue({
+      data: [{ ...pendingRow, codeQuestions: [{ ...pendingRow.codeQuestions[0], difficulty: 'expert' }] }],
+      isLoading: false,
+    });
+    renderPanel();
+    expect(screen.getByText('expert')).toBeInTheDocument();
   });
 
   it('the Finalize grade button is disabled until every code question has a saved marksAwarded', () => {

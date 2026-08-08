@@ -2,9 +2,17 @@
 
 import { useState } from 'react';
 import { ChevronRight } from 'lucide-react';
-import { Button, Card, Input, useToast } from './ui';
+import { Button, Card, Input, StatusBadge, useToast, type StatusTone } from './ui';
 import { usePendingGrading, useGradeCodeAnswer, useFinalizeManualGrade, useCodeReview, useRegenerateCodeReview } from '../lib/hooks/useCodeGrading';
 import { PendingGradingRow, PendingGradingCodeQuestion } from '../lib/types';
+
+// The question bank's three levels. Unknown values fall back to neutral rather than crashing --
+// difficulty is a plain string column, not an enum, so a future level must not break grading.
+const DIFFICULTY_TONE: Record<string, StatusTone> = {
+  easy: 'success',
+  medium: 'warning',
+  hard: 'danger',
+};
 
 function CodeQuestionGrader({ attemptId, question }: { attemptId: string; question: PendingGradingCodeQuestion }) {
   const [marks, setMarks] = useState(question.marksAwarded !== null ? String(question.marksAwarded) : '');
@@ -38,7 +46,15 @@ function CodeQuestionGrader({ attemptId, question }: { attemptId: string; questi
 
   return (
     <Card className="mb-3">
-      <p className="mb-2 text-sm font-medium text-gray-800">{question.questionText}</p>
+      <div className="mb-2 flex items-start justify-between gap-3">
+        <p className="text-sm font-medium text-gray-800">{question.questionText}</p>
+        {/* How hard the question is meant to be, straight from the question bank. A 3-mark hard
+            question and a 3-mark easy one warrant different strictness, and the grader had no way
+            to tell them apart here. */}
+        <span className="shrink-0">
+          <StatusBadge tone={DIFFICULTY_TONE[question.difficulty] ?? 'neutral'}>{question.difficulty}</StatusBadge>
+        </span>
+      </div>
       <pre className="mb-3 overflow-x-auto rounded bg-gray-50 p-3 text-xs">{question.answerText ?? '(no submission)'}</pre>
 
       <div className="mb-3">

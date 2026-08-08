@@ -79,6 +79,8 @@ function countIntegrityFlags(flagsJson: string | null): number {
 export interface PendingGradingCodeQuestion {
   questionId: string;
   questionText: string;
+  /** easy | medium | hard, from the question bank -- context for how strictly to mark. */
+  difficulty: string;
   starterCode: string | null;
   codeLanguage: string | null;
   answerText: string | null;
@@ -1152,6 +1154,7 @@ export class ExamsService {
           .map((answer) => ({
             questionId: answer.questionId,
             questionText: answer.question.text,
+            difficulty: answer.question.difficulty,
             starterCode: answer.question.starterCode,
             codeLanguage: answer.codeLanguage,
             answerText: answer.answerText,
