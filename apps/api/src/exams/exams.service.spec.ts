@@ -2267,6 +2267,39 @@ describe('ExamsService', () => {
 
       expect(result[0].codeQuestions[0].codeLanguage).toBe('python');
     });
+
+    // The queue exists for work a human has to judge. An untouched code question is auto-zeroed
+    // at settlement, so listing it only made the recruiter click "Save grade: 0" through a run of
+    // empty editors -- 15 of 19 on one real attempt -- before Finalize unlocked.
+    it('omits code questions the candidate never wrote anything for', async () => {
+      const codeAnswer = (questionId: string, answerText: string | null, marksAwarded: number | null = null) => ({
+        questionId,
+        answerText,
+        codeLanguage: 'python',
+        marksAwarded,
+        gradingFeedback: null,
+        question: { type: 'code', text: questionId, starterCode: null, marks: 10 },
+      });
+      const attempt = {
+        id: 'attempt-1',
+        invitation: { candidateId: 'cand-1', candidate: { name: 'Ada' } },
+        answers: [
+          codeAnswer('written', 'print(1)'),
+          codeAnswer('never-opened', null),
+          codeAnswer('whitespace-only', '  \n\t '),
+          // Already graded 0 by a human -- must STAY visible so they can revise it. This is why
+          // the filter tests answerText and not marksAwarded.
+          codeAnswer('graded-zero', 'x = 1', 0),
+        ],
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
+        fn({ exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) }, attempt: { findMany: jest.fn().mockResolvedValue([attempt]) } }),
+      );
+
+      const result = await service.getPendingGrading(context, 'exam-1');
+
+      expect(result[0].codeQuestions.map((question) => question.questionId)).toEqual(['written', 'graded-zero']);
+    });
   });
 
   describe('getResults', () => {

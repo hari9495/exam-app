@@ -1142,7 +1142,13 @@ export class ExamsService {
         candidateId: attempt.invitation.candidateId,
         candidateName: attempt.invitation.candidate.name,
         codeQuestions: attempt.answers
-          .filter((answer) => answer.question.type === 'code')
+          // Code questions the candidate never wrote in are auto-zeroed at settlement and are
+          // deliberately NOT listed here -- there is nothing for a human to judge, and showing
+          // them meant clicking "Save grade: 0" through a run of empty editors before the
+          // Finalize button unlocked. Filtering on answerText rather than marksAwarded matters:
+          // a question the recruiter has already graded 0 must stay visible so they can revise it.
+          // Predicate mirrors isAttemptedCode() in exam-runtime's attempt-settlement.service.ts.
+          .filter((answer) => answer.question.type === 'code' && Boolean(answer.answerText?.trim()))
           .map((answer) => ({
             questionId: answer.questionId,
             questionText: answer.question.text,

@@ -13,6 +13,19 @@ import { sanitizeMetadataOrDrop } from '../attempts/sanitize-metadata';
 
 const BROWSER_ACTIVITY_COOLDOWN_MS = 60_000;
 
+// Stamped on a code answer the candidate never wrote in, so a 0 in the report is explained
+// rather than looking like a human's verdict on submitted work.
+export const NOT_ATTEMPTED_FEEDBACK = 'Not attempted.';
+
+// "Did the candidate write any code here?" -- the single test that decides whether a code
+// question needs a human. Whitespace only counts as nothing; so does starter code the candidate
+// never touched being absent entirely. Mirrored in apps/api's getPendingGrading, which hides the
+// same answers from the grading queue -- one predicate, duplicated rather than shared, because
+// it is one line and the two apps have no common runtime module for it.
+function isAttemptedCode(answer: { answerText: string | null } | undefined): boolean {
+  return Boolean(answer?.answerText && answer.answerText.trim().length > 0);
+}
+
 // The three owners a pause can be attributed to. browser_activity is a bucket shared by all
 // nine event types registerBrowserActivityViolation handles (including screen_share_stopped,
 // a strike distinct from screen_share's own precondition pause below). webcam and
@@ -138,24 +151,35 @@ export class AttemptSettlementService {
     const existingAnswers = await tx.answer.findMany({ where: { attemptId: attempt.id } });
     const answersByQuestionId = new Map(existingAnswers.map((answer) => [answer.questionId, answer]));
 
-    const hasCodeQuestions = questions.some((question) => question.type === 'code');
+    // Only code questions the candidate actually WROTE something for need a human. An untouched
+    // one has exactly one defensible mark -- zero -- so awarding it here spares the recruiter
+    // clicking through a queue of empty editors. On one real attempt that was 15 of 19 questions.
+    const attemptedCodeQuestions = questions.filter(
+      (question) => question.type === 'code' && isAttemptedCode(answersByQuestionId.get(question.id)),
+    );
+    const hasCodeQuestions = attemptedCodeQuestions.length > 0;
     const gradedAnswers: { questionId: string; marksAwarded: number }[] = [];
     for (const question of questions) {
       if (question.type === 'code') {
-        // Manual grading only — never auto-graded, never contributes to gradedAnswers until a
-        // recruiter enters marks via finalizeManualGrade(). If the candidate never submitted
-        // anything for this question, create a blank Answer row so it still surfaces in the
-        // recruiter's grading queue instead of silently vanishing (no row = invisible question).
-        if (!answersByQuestionId.has(question.id)) {
-          await tx.answer.create({
-            data: {
-              attemptId: attempt.id,
-              questionId: question.id,
-              selectedOptionIdsJson: '[]',
-              answerText: null,
-            },
-          });
+        const existing = answersByQuestionId.get(question.id);
+        if (!isAttemptedCode(existing)) {
+          // Auto-zero, and record WHY, so the report reads "Not attempted." rather than a bare 0
+          // that looks like a human judged the work. The row is still created when absent: the
+          // candidate report and finalizeManualGrade() both walk answers, and no row would make
+          // the question invisible rather than visibly unanswered.
+          const scored = { marksAwarded: 0, isCorrect: false, gradingFeedback: NOT_ATTEMPTED_FEEDBACK };
+          if (existing) {
+            await tx.answer.update({ where: { id: existing.id }, data: scored });
+          } else {
+            await tx.answer.create({
+              data: { attemptId: attempt.id, questionId: question.id, selectedOptionIdsJson: '[]', answerText: null, ...scored },
+            });
+          }
+          gradedAnswers.push({ questionId: question.id, marksAwarded: 0 });
+          continue;
         }
+        // Attempted: manual grading only — never auto-graded, never contributes to gradedAnswers
+        // until a recruiter enters marks via finalizeManualGrade().
         continue;
       }
       const answer = answersByQuestionId.get(question.id);
@@ -321,6 +345,22 @@ export class AttemptSettlementService {
     const answersByQuestionId = new Map(answers.map((answer) => [answer.questionId, answer]));
 
     const codeQuestions = questions.filter((question) => question.type === 'code');
+
+    // Attempts that were already sitting in the queue when auto-zeroing shipped still carry
+    // blank code answers with marksAwarded === null. The queue no longer shows those, so without
+    // this they would be unfinalizable -- invisible to the recruiter yet still blocking the
+    // check below. Settle them here on the same rule settlement uses.
+    for (const question of codeQuestions) {
+      const answer = answersByQuestionId.get(question.id);
+      if (answer && answer.marksAwarded === null && !isAttemptedCode(answer)) {
+        await tx.answer.update({
+          where: { id: answer.id },
+          data: { marksAwarded: 0, isCorrect: false, gradingFeedback: NOT_ATTEMPTED_FEEDBACK },
+        });
+        answersByQuestionId.set(question.id, { ...answer, marksAwarded: 0 });
+      }
+    }
+
     const ungraded = codeQuestions.filter((question) => {
       const answer = answersByQuestionId.get(question.id);
       return !answer || answer.marksAwarded === null;

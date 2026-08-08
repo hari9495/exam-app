@@ -122,9 +122,19 @@ function AttemptGrader({ row }: { row: PendingGradingRow }) {
           Finalize grade
         </Button>
       </div>
-      {row.codeQuestions.map((question) => (
-        <CodeQuestionGrader key={question.questionId} attemptId={row.attemptId} question={question} />
-      ))}
+      {row.codeQuestions.length === 0 ? (
+        // Unattempted code questions are auto-zeroed and hidden, so a queued attempt can have
+        // nothing left to judge. Say that, rather than showing a name above empty space.
+        <Card className="mb-3">
+          <p className="text-sm text-gray-600">
+            This candidate didn&apos;t attempt any code questions. They score 0 — finalize to record it.
+          </p>
+        </Card>
+      ) : (
+        row.codeQuestions.map((question) => (
+          <CodeQuestionGrader key={question.questionId} attemptId={row.attemptId} question={question} />
+        ))
+      )}
     </div>
   );
 }
