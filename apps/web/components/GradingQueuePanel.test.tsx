@@ -50,6 +50,50 @@ describe('GradingQueuePanel', () => {
     expect(screen.getByText('No attempts pending manual grading.')).toBeInTheDocument();
   });
 
+  // With a whole drive queued, every candidate's every code answer used to stack into one column,
+  // so you could not see who was left without scrolling past everyone's submissions.
+  describe('candidate accordion', () => {
+    const secondRow = {
+      attemptId: 'a2',
+      candidateId: 'c2',
+      candidateName: 'Bob',
+      codeQuestions: [
+        { questionId: 'q2', questionText: 'Sort a list', starterCode: null, codeLanguage: 'python', answerText: 'sorted(xs)', marks: 10, marksAwarded: 7, gradingFeedback: null },
+        { questionId: 'q3', questionText: 'Sum a list', starterCode: null, codeLanguage: 'python', answerText: 'sum(xs)', marks: 10, marksAwarded: null, gradingFeedback: null },
+      ],
+    };
+
+    it('collapses every candidate when more than one is queued, and expands the one you click', async () => {
+      (usePendingGrading as jest.Mock).mockReturnValue({ data: [pendingRow, secondRow], isLoading: false });
+      renderPanel();
+
+      // Names are visible; the code behind them is not.
+      expect(screen.getByText('Alice')).toBeInTheDocument();
+      expect(screen.getByText('Bob')).toBeInTheDocument();
+      expect(screen.queryByText('def reverse(s): return s[::-1]')).not.toBeInTheDocument();
+      expect(screen.queryByText('sorted(xs)')).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: /Alice/ }));
+
+      expect(screen.getByText('def reverse(s): return s[::-1]')).toBeInTheDocument();
+      // Opening one candidate must not open the rest.
+      expect(screen.queryByText('sorted(xs)')).not.toBeInTheDocument();
+    });
+
+    it('shows grading progress on the collapsed header so you can see who is left without opening them', () => {
+      (usePendingGrading as jest.Mock).mockReturnValue({ data: [pendingRow, secondRow], isLoading: false });
+      renderPanel();
+
+      expect(screen.getByText('0 of 1 graded')).toBeInTheDocument();
+      expect(screen.getByText('1 of 2 graded')).toBeInTheDocument();
+    });
+
+    it('opens a lone pending candidate, since collapsing the only row is just an extra click', () => {
+      renderPanel();
+      expect(screen.getByText('def reverse(s): return s[::-1]')).toBeInTheDocument();
+    });
+  });
+
   it('lists the candidate and their submitted code', () => {
     renderPanel();
     expect(screen.getByText('Alice')).toBeInTheDocument();

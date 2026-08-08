@@ -551,6 +551,10 @@ export interface CandidateDetailQuestion {
   isCorrect: boolean | null;
   marksAwarded: number | null;
   counted: boolean;
+  /** Code questions only -- null for every other type. See reports.service.ts. */
+  answerText: string | null;
+  codeLanguage: string | null;
+  gradingFeedback: string | null;
 }
 
 export interface CandidateDetailSection extends SectionScore {

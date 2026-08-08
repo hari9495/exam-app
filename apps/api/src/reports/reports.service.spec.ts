@@ -267,6 +267,47 @@ describe('ReportsService', () => {
   });
 
   describe('getCandidateDetail', () => {
+    // Finalizing grading moves the attempt out of pending_manual_grade, so the grading queue stops
+    // listing it. Without the code on the report, a finalized submission became unreadable --
+    // exactly when someone wants to re-check a mark.
+    it('carries the submitted code, language and feedback on a code question', async () => {
+      examsService.getResults.mockResolvedValue([
+        row({ candidateId: 'cand-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted', score: 7, maxScore: 10 }),
+      ]);
+      const tx = {
+        attempt: {
+          findFirst: jest.fn().mockResolvedValue({
+            sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Coding', questionIds: ['qc'] }]),
+            answers: [
+              {
+                questionId: 'qc', selectedOptionIdsJson: '[]', isCorrect: null, marksAwarded: 7,
+                answerText: 'def reverse(s):\n    return s[::-1]', codeLanguage: 'python',
+                gradingFeedback: 'Correct, but O(n) extra space.',
+              },
+            ],
+          }),
+        },
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'qc', text: 'Reverse a string', type: 'code', marks: 10, negativeMarks: 0, options: [] },
+          ]),
+        },
+        proctoringEvent: { findMany: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const detail = await service.getCandidateDetail(context, 'exam-1', 'cand-1');
+
+      expect(detail.sections[0].questions[0]).toMatchObject({
+        questionId: 'qc',
+        type: 'code',
+        answerText: 'def reverse(s):\n    return s[::-1]',
+        codeLanguage: 'python',
+        gradingFeedback: 'Correct, but O(n) extra space.',
+        marksAwarded: 7,
+      });
+    });
+
     it("groups a candidate's questions by section, including a section aggregate score and full per-question detail", async () => {
       examsService.getResults.mockResolvedValue([
         row({
@@ -306,17 +347,21 @@ describe('ReportsService', () => {
       expect(detail.sections).toHaveLength(2);
       expect(detail.sections[0]).toMatchObject({ sectionId: 'sec-1', title: 'Section One', score: 5, maxScore: 11 });
       expect(detail.sections[0].questions).toHaveLength(2);
+      // The three code-only fields are null on an MCQ row -- they are gated on question type so
+      // an MCQ never carries an unused answerText.
       expect(detail.sections[0].questions[0]).toEqual({
         questionId: 'q1', questionText: 'Q1 text', type: 'single_mcq', marks: 5, negativeMarks: 0,
         options: [{ id: 'opt-a', text: 'A' }, { id: 'opt-b', text: 'B' }],
         selectedOptionIds: ['opt-a'], correctOptionIds: ['opt-a'],
         isCorrect: true, marksAwarded: 5, counted: true,
+        answerText: null, codeLanguage: null, gradingFeedback: null,
       });
       expect(detail.sections[0].questions[1]).toEqual({
         questionId: 'q2', questionText: 'Q2 text', type: 'single_mcq', marks: 6, negativeMarks: 0,
         options: [{ id: 'opt-c2', text: 'C' }],
         selectedOptionIds: [], correctOptionIds: ['opt-c2'],
         isCorrect: null, marksAwarded: null, counted: true,
+        answerText: null, codeLanguage: null, gradingFeedback: null,
       });
       expect(detail.sections[1]).toMatchObject({ sectionId: 'sec-2', title: 'Section Two', score: 0, maxScore: 3 });
     });

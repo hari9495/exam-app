@@ -301,27 +301,51 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
                         <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">Not counted</span>
                       )}
                     </p>
-                    <div className="flex flex-col gap-1">
-                      {question.options.map((option) => {
-                        const wasSelected = question.selectedOptionIds.includes(option.id);
-                        const isCorrectOption = question.correctOptionIds.includes(option.id);
-                        return (
-                          <p
-                            key={option.id}
-                            className={
-                              isCorrectOption
-                                ? 'text-sm font-medium text-green-700'
-                                : wasSelected
-                                  ? 'text-sm font-medium text-red-700'
-                                  : 'text-sm text-gray-600'
-                            }
-                          >
-                            {wasSelected ? '◉' : '○'} {option.text}
-                            {isCorrectOption ? ' (correct)' : ''}
+                    {question.type === 'code' ? (
+                      // A code question has no options, so the loop below would render nothing and
+                      // the submission would be invisible here -- the only place it can still be
+                      // read once grading has finalized the attempt.
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                          <span>{question.codeLanguage ?? 'code'}</span>
+                          <span>·</span>
+                          <span>
+                            {question.marksAwarded ?? 0}/{question.marks}
+                          </span>
+                        </div>
+                        <pre className="overflow-x-auto rounded bg-gray-50 p-3 text-xs text-gray-800">
+                          {question.answerText?.trim() ? question.answerText : 'Not attempted.'}
+                        </pre>
+                        {question.gradingFeedback && (
+                          <p className="rounded border border-gray-200 p-2 text-xs text-gray-700">
+                            <span className="font-medium">Feedback: </span>
+                            {question.gradingFeedback}
                           </p>
-                        );
-                      })}
-                    </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-1">
+                        {question.options.map((option) => {
+                          const wasSelected = question.selectedOptionIds.includes(option.id);
+                          const isCorrectOption = question.correctOptionIds.includes(option.id);
+                          return (
+                            <p
+                              key={option.id}
+                              className={
+                                isCorrectOption
+                                  ? 'text-sm font-medium text-green-700'
+                                  : wasSelected
+                                    ? 'text-sm font-medium text-red-700'
+                                    : 'text-sm text-gray-600'
+                              }
+                            >
+                              {wasSelected ? '◉' : '○'} {option.text}
+                              {isCorrectOption ? ' (correct)' : ''}
+                            </p>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

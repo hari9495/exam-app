@@ -68,6 +68,13 @@ interface CandidateDetailQuestion {
   isCorrect: boolean | null;
   marksAwarded: number | null;
   counted: boolean;
+  // Code questions only. Once an attempt is finalized its status leaves pending_manual_grade,
+  // so the grading queue stops listing it and the submitted code had nowhere left to be read.
+  // Carrying it on the report keeps the work reviewable after grading, which is when a second
+  // opinion is actually wanted. Null for every other question type.
+  answerText: string | null;
+  codeLanguage: string | null;
+  gradingFeedback: string | null;
 }
 
 interface CandidateDetailSection extends SectionScore {
@@ -442,6 +449,11 @@ export class ReportsService {
               isCorrect: answer?.isCorrect ?? null,
               marksAwarded: answer?.marksAwarded ?? null,
               counted: countedIds.has(questionId),
+              // Only for code: an MCQ's "answer" is already fully described by selectedOptionIds,
+              // and answerText is unused there, so sending it would be noise on every row.
+              answerText: question?.type === 'code' ? (answer?.answerText ?? null) : null,
+              codeLanguage: question?.type === 'code' ? (answer?.codeLanguage ?? null) : null,
+              gradingFeedback: question?.type === 'code' ? (answer?.gradingFeedback ?? null) : null,
             };
           }),
         };

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { ChevronRight } from 'lucide-react';
 import { Button, Card, Input, useToast } from './ui';
 import { usePendingGrading, useGradeCodeAnswer, useFinalizeManualGrade, useCodeReview, useRegenerateCodeReview } from '../lib/hooks/useCodeGrading';
 import { PendingGradingRow, PendingGradingCodeQuestion } from '../lib/types';
@@ -100,10 +101,12 @@ function CodeQuestionGrader({ attemptId, question }: { attemptId: string; questi
   );
 }
 
-function AttemptGrader({ row }: { row: PendingGradingRow }) {
+function AttemptGrader({ row, defaultOpen }: { row: PendingGradingRow; defaultOpen: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   const finalizeManualGrade = useFinalizeManualGrade();
   const { toast } = useToast();
-  const allGraded = row.codeQuestions.every((question) => question.marksAwarded !== null);
+  const gradedCount = row.codeQuestions.filter((question) => question.marksAwarded !== null).length;
+  const allGraded = gradedCount === row.codeQuestions.length;
 
   async function handleFinalize() {
     try {
@@ -115,13 +118,31 @@ function AttemptGrader({ row }: { row: PendingGradingRow }) {
   }
 
   return (
-    <div className="mb-6">
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-base font-medium">{row.candidateName}</h3>
+    <div className="mb-4 rounded-lg border border-gray-200">
+      {/* One row per candidate, collapsed. With a full drive queued, the old layout stacked every
+          candidate's every code answer into one unscannable column -- you could not see who was
+          left without scrolling past everyone's submissions. */}
+      <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+        <button
+          type="button"
+          onClick={() => setOpen((wasOpen) => !wasOpen)}
+          aria-expanded={open}
+          className="flex flex-1 items-center gap-2 text-left"
+        >
+          <ChevronRight size={16} className={open ? 'rotate-90 text-gray-500 transition-transform' : 'text-gray-500 transition-transform'} aria-hidden="true" />
+          <span className="text-base font-medium">{row.candidateName}</span>
+          <span className={allGraded ? 'text-xs text-green-700' : 'text-xs text-gray-500'}>
+            {row.codeQuestions.length === 0
+              ? 'nothing attempted'
+              : `${gradedCount} of ${row.codeQuestions.length} graded`}
+          </span>
+        </button>
         <Button disabled={!allGraded || finalizeManualGrade.isPending} onClick={handleFinalize}>
           Finalize grade
         </Button>
       </div>
+      {!open ? null : (
+      <div className="border-t border-gray-200 p-3">
       {row.codeQuestions.length === 0 ? (
         // Unattempted code questions are auto-zeroed and hidden, so a queued attempt can have
         // nothing left to judge. Say that, rather than showing a name above empty space.
@@ -134,6 +155,8 @@ function AttemptGrader({ row }: { row: PendingGradingRow }) {
         row.codeQuestions.map((question) => (
           <CodeQuestionGrader key={question.questionId} attemptId={row.attemptId} question={question} />
         ))
+      )}
+      </div>
       )}
     </div>
   );
@@ -153,7 +176,9 @@ export function GradingQueuePanel({ examId }: { examId: string }) {
   return (
     <div>
       {rows.map((row) => (
-        <AttemptGrader key={row.attemptId} row={row} />
+        // A single pending candidate is opened for you -- collapsing the only row would just be
+        // one click before any work could start. Past that, everything starts closed.
+        <AttemptGrader key={row.attemptId} row={row} defaultOpen={rows.length === 1} />
       ))}
     </div>
   );

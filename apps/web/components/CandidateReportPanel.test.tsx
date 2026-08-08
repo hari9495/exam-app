@@ -97,4 +97,66 @@ describe('CandidateReportPanel', () => {
 
     expect(screen.getByText('Not counted')).toBeInTheDocument();
   });
+
+  // Finalizing an attempt moves it out of pending_manual_grade, so the grading queue stops
+  // listing it and this report becomes the only place the submitted code can still be read.
+  describe('code answers', () => {
+    const codeQuestion = (overrides: Record<string, unknown> = {}) => ({
+      questionId: 'q1', questionText: 'Reverse a string', type: 'code', marks: 10, negativeMarks: 0,
+      options: [], selectedOptionIds: [], correctOptionIds: [], isCorrect: null, marksAwarded: 7, counted: true,
+      answerText: 'def reverse(s):\n    return s[::-1]', codeLanguage: 'python', gradingFeedback: null,
+      ...overrides,
+    });
+
+    it('shows the submitted code, its language and the marks awarded', () => {
+      renderPanel([
+        { sectionId: 's1', title: 'Coding', score: 7, maxScore: 10, weightPercent: 100, questions: [codeQuestion()] },
+      ]);
+
+      expect(screen.getByText(/def reverse\(s\):/)).toBeInTheDocument();
+      expect(screen.getByText('python')).toBeInTheDocument();
+      expect(screen.getByText('7/10')).toBeInTheDocument();
+    });
+
+    it("shows the grader's feedback alongside the code when there is any", () => {
+      renderPanel([
+        {
+          sectionId: 's1', title: 'Coding', score: 7, maxScore: 10, weightPercent: 100,
+          questions: [codeQuestion({ gradingFeedback: 'Correct, but O(n) extra space.' })],
+        },
+      ]);
+
+      expect(screen.getByText('Correct, but O(n) extra space.')).toBeInTheDocument();
+    });
+
+    it('says so plainly when nothing was submitted, rather than rendering an empty block', () => {
+      renderPanel([
+        {
+          sectionId: 's1', title: 'Coding', score: 0, maxScore: 10, weightPercent: 100,
+          questions: [codeQuestion({ answerText: null, marksAwarded: 0, gradingFeedback: 'Not attempted.' })],
+        },
+      ]);
+
+      // Both the placeholder and the stored feedback say it -- the block is never blank.
+      expect(screen.getAllByText(/Not attempted\./).length).toBeGreaterThan(0);
+      expect(screen.getByText('0/10')).toBeInTheDocument();
+    });
+
+    it('still renders MCQ options as options, not as a code block', () => {
+      renderPanel([
+        {
+          sectionId: 's1', title: 'Aptitude', score: 1, maxScore: 1, weightPercent: 100,
+          questions: [{
+            questionId: 'q9', questionText: '2 + 2', type: 'single_mcq', marks: 1, negativeMarks: 0,
+            options: [{ id: 'o1', text: '4' }, { id: 'o2', text: '5' }],
+            selectedOptionIds: ['o1'], correctOptionIds: ['o1'], isCorrect: true, marksAwarded: 1, counted: true,
+            answerText: null, codeLanguage: null, gradingFeedback: null,
+          }],
+        },
+      ]);
+
+      expect(screen.getByText(/◉ 4/)).toBeInTheDocument();
+      expect(screen.getByText(/○ 5/)).toBeInTheDocument();
+    });
+  });
 });
