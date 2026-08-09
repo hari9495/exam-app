@@ -9,5 +9,18 @@ import { loader } from '@monaco-editor/react';
 //
 // Importing this module for its side effect must happen before the first
 // <Editor> renders; the exam page imports it at module top for that reason.
-// loader.config only records config (no DOM/network), so it is safe under SSR.
-loader.config({ paths: { vs: '/monaco/vs' } });
+//
+// The path MUST be absolute, not root-relative. Monaco passes this base URL into its language
+// web worker, and a worker's base is a `blob:` URL -- an opaque path that nothing relative can
+// be resolved against. With '/monaco/vs' the worker threw before it ever hit the network:
+// "Failed to parse URL from /monaco/vs/language/typescript/tsWorker.js" in Chrome, "... is not a
+// valid URL" in Firefox. The file itself was always there and served 200; only the resolution
+// failed. That cost 13 candidates their editor diagnostics across the 2026-08-08 drives, and the
+// knock-on mis-resolution also produced "Can only have one anonymous define call per script file".
+//
+// Guarded on `window` because origin only exists in the browser. Monaco loads client-side only,
+// so skipping this during SSR costs nothing -- and the guard keeps the module import SSR-safe,
+// which the exam page's module-top import depends on.
+if (typeof window !== 'undefined') {
+  loader.config({ paths: { vs: `${window.location.origin}/monaco/vs` } });
+}
