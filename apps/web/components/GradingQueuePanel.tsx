@@ -5,6 +5,7 @@ import { ChevronRight } from 'lucide-react';
 import { Button, Card, Input, StatusBadge, useToast, type StatusTone } from './ui';
 import { usePendingGrading, useGradeCodeAnswer, useFinalizeManualGrade, useCodeReview, useRegenerateCodeReview } from '../lib/hooks/useCodeGrading';
 import { PendingGradingRow, PendingGradingCodeQuestion } from '../lib/types';
+import { TabActivitySummaryCard, TabActivityBanner, hasTabActivityContent } from './TabActivity';
 
 // The question bank's three levels. Unknown values fall back to neutral rather than crashing --
 // difficulty is a plain string column, not an enum, so a future level must not break grading.
@@ -46,6 +47,7 @@ function CodeQuestionGrader({ attemptId, question }: { attemptId: string; questi
 
   return (
     <Card className="mb-3">
+      <TabActivityBanner entries={question.tabActivity} />
       <div className="mb-2 flex items-start justify-between gap-3">
         <p className="text-sm font-medium text-gray-800">{question.questionText}</p>
         {/* How hard the question is meant to be, straight from the question bank. A 3-mark hard
@@ -195,6 +197,11 @@ function AttemptGrader({ row, defaultOpen }: { row: PendingGradingRow; defaultOp
           </Button>
         </div>
       </div>
+      {hasTabActivityContent(row.tabActivitySummary, row.proctoringAnalysis) && (
+        <div className="border-t border-gray-200 px-3 py-2">
+          <TabActivitySummaryCard summary={row.tabActivitySummary} proctoringAnalysis={row.proctoringAnalysis} />
+        </div>
+      )}
       {!open ? null : (
       <div className="border-t border-gray-200 p-3">
       {row.codeQuestions.length === 0 ? (

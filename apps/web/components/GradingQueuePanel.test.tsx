@@ -24,8 +24,10 @@ const pendingRow = {
   attemptId: 'a1',
   candidateId: 'c1',
   candidateName: 'Alice',
+  proctoringAnalysis: null,
+  tabActivitySummary: [],
   codeQuestions: [
-    { questionId: 'q1', questionText: 'Reverse a string', difficulty: 'hard', starterCode: null, codeLanguage: 'python', answerText: 'def reverse(s): return s[::-1]', marks: 10, marksAwarded: null, gradingFeedback: null },
+    { questionId: 'q1', questionText: 'Reverse a string', difficulty: 'hard', starterCode: null, codeLanguage: 'python', answerText: 'def reverse(s): return s[::-1]', marks: 10, marksAwarded: null, gradingFeedback: null, tabActivity: [] },
   ],
 };
 
@@ -61,9 +63,11 @@ describe('GradingQueuePanel', () => {
       attemptId: 'a2',
       candidateId: 'c2',
       candidateName: 'Bob',
+      proctoringAnalysis: null,
+      tabActivitySummary: [],
       codeQuestions: [
-        { questionId: 'q2', questionText: 'Sort a list', difficulty: 'easy', starterCode: null, codeLanguage: 'python', answerText: 'sorted(xs)', marks: 10, marksAwarded: 7, gradingFeedback: null },
-        { questionId: 'q3', questionText: 'Sum a list', difficulty: 'medium', starterCode: null, codeLanguage: 'python', answerText: 'sum(xs)', marks: 10, marksAwarded: null, gradingFeedback: null },
+        { questionId: 'q2', questionText: 'Sort a list', difficulty: 'easy', starterCode: null, codeLanguage: 'python', answerText: 'sorted(xs)', marks: 10, marksAwarded: 7, gradingFeedback: null, tabActivity: [] },
+        { questionId: 'q3', questionText: 'Sum a list', difficulty: 'medium', starterCode: null, codeLanguage: 'python', answerText: 'sum(xs)', marks: 10, marksAwarded: null, gradingFeedback: null, tabActivity: [] },
       ],
     };
 
@@ -219,5 +223,26 @@ describe('GradingQueuePanel', () => {
     renderPanel();
     expect(screen.getByText('10 marks')).toBeInTheDocument();
     expect(screen.getByText('/ 10')).toBeInTheDocument();
+  });
+
+  it('shows a background-app banner above the question it was attributed to, and expands it on click', async () => {
+    const rowWithActivity = {
+      ...pendingRow,
+      tabActivitySummary: [{ eventType: 'background_app_detected', count: 1, toolCounts: { WhatsApp: 1 } }],
+      codeQuestions: [
+        {
+          ...pendingRow.codeQuestions[0],
+          tabActivity: [{ eventType: 'background_app_detected', occurredAt: '2026-01-01T00:07:00.000Z', toolName: 'WhatsApp', reasoning: 'Taskbar icon visible.', screenshot: 'https://example.com/shot.jpg' }],
+        },
+      ],
+    };
+    (usePendingGrading as jest.Mock).mockReturnValue({ data: [rowWithActivity], isLoading: false });
+    renderPanel();
+
+    expect(screen.getByText('WhatsApp × 1')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /WhatsApp/ }));
+
+    expect(screen.getByText('Taskbar icon visible.')).toBeInTheDocument();
   });
 });
