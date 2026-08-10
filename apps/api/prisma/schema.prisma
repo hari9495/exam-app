@@ -583,17 +583,17 @@ model ProctoringEvent {
 }
 
 model FaceEnrolment {
-  id                 String   @id @default(uuid()) @db.UniqueIdentifier
-  attemptId          String   @unique @map("attempt_id") @db.UniqueIdentifier
+  id                 String    @id @default(uuid()) @db.UniqueIdentifier
+  attemptId          String    @unique @map("attempt_id") @db.UniqueIdentifier
   status             String
   // Populated in stage 2 from referenceImagePath; encrypted with OrgSecretsCryptoService.
-  embedding          String?  @db.NVarChar(Max)
-  referenceImagePath String?  @map("reference_image_path")
-  qualityJson        String?  @map("quality_json") @db.NVarChar(Max)
-  consentAt          DateTime @map("consent_at")
+  embedding          String?   @db.NVarChar(Max)
+  referenceImagePath String?   @map("reference_image_path")
+  qualityJson        String?   @map("quality_json") @db.NVarChar(Max)
+  consentAt          DateTime  @map("consent_at")
   capturedAt         DateTime? @map("captured_at")
-  createdAt          DateTime @default(now()) @map("created_at")
-  attempt            Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  createdAt          DateTime  @default(now()) @map("created_at")
+  attempt            Attempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
   @@map("face_enrolments")
 }

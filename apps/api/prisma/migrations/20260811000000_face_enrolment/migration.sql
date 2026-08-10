@@ -7,7 +7,7 @@ CREATE TABLE [dbo].[face_enrolments] (
     [quality_json] NVARCHAR(MAX),
     [consent_at] DATETIME2 NOT NULL,
     [captured_at] DATETIME2,
-    [created_at] DATETIME2 NOT NULL CONSTRAINT [face_enrolments_created_at_df] DEFAULT CURRENT_TIMESTAMP,
+    [created_at] DATETIME2 NOT NULL CONSTRAINT [face_enrolments_created_at_df] DEFAULT GETUTCDATE(),
     CONSTRAINT [face_enrolments_pkey] PRIMARY KEY CLUSTERED ([id]),
     CONSTRAINT [face_enrolments_attempt_id_key] UNIQUE NONCLUSTERED ([attempt_id])
 );
