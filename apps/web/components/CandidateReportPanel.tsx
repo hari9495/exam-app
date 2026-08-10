@@ -15,6 +15,7 @@ import { plainEnglish } from '../lib/system-event-message';
 import type { WebcamTimelineEntry } from '../lib/types';
 import { Badge, Button, Card, Modal, StatusBadge, IntegrityBadge, useToast, type StatusTone } from './ui';
 import { AuditHistoryLink } from './AuditHistoryLink';
+import { TabActivitySummaryCard, TabActivityBanner, hasTabActivityContent } from './TabActivity';
 
 const PASS_FAIL_VARIANT: Record<string, 'success' | 'danger'> = { pass: 'success', fail: 'danger' };
 const SEVERITY_TONE: Record<string, StatusTone> = { high: 'danger', medium: 'warning', low: 'neutral' };
@@ -230,6 +231,13 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
         )}
       </div>
 
+      {hasTabActivityContent(candidate.tabActivitySummary ?? [], candidate.proctoringAnalysis) && (
+        <div className="mb-6">
+          <h2 className="mb-2 text-lg font-medium">Tabs &amp; Background Apps</h2>
+          <TabActivitySummaryCard summary={candidate.tabActivitySummary ?? []} proctoringAnalysis={candidate.proctoringAnalysis} />
+        </div>
+      )}
+
       <Modal
         open={selectedSnapshot !== null}
         title={selectedSnapshot ? formatSnapshotModalTitle(selectedSnapshot) : ''}
@@ -295,6 +303,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
               <div className="flex flex-col gap-3">
                 {section.questions.map((question) => (
                   <div key={question.questionId} className="border-t border-gray-100 pt-3 first:border-0 first:pt-0">
+                    <TabActivityBanner entries={question.tabActivity ?? []} />
                     <p className="mb-2 text-sm text-gray-800">
                       {question.questionText}
                       {question.counted === false && (
