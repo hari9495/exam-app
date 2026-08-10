@@ -10,6 +10,7 @@ import { useWebcamMonitor } from '../../../lib/hooks/useWebcamMonitor';
 import { useScreenCapture } from '../../../lib/hooks/useScreenCapture';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
 import CandidateExamPage from './page';
+import { reportClientError } from '../../../lib/client-error-reporter';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn() }));
 jest.mock('../../../lib/hooks/useAttempt', () => ({
@@ -25,6 +26,7 @@ jest.mock('../../../lib/hooks/useAttempt', () => ({
   useScreenAnalysis: jest.fn(() => ({ mutate: jest.fn() })),
 }));
 jest.mock('../../../lib/hooks/useScreenCapture', () => ({ useScreenCapture: jest.fn() }));
+jest.mock('../../../lib/client-error-reporter', () => ({ reportClientError: jest.fn() }));
 
 const mockUseAttemptQuery = useAttemptQuery as jest.Mock;
 
@@ -536,6 +538,43 @@ describe('CandidateExamPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Run' }));
 
     expect(await screen.findByText('27 runs left')).toBeInTheDocument();
+  });
+
+  // Run failures were the one candidate-facing failure with no server-side trace, so when
+  // candidates reported "error 0" there was nothing to look at. The HTTP status is the whole
+  // diagnostic: 0 means no HTTP exchange completed (points at :3002 being filtered), whereas a
+  // real status means something else entirely.
+  it('reports a failed run to the server, carrying the HTTP status that identifies the cause', async () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({ data: codeAttemptState, isError: false });
+    const failure = Object.assign(new Error('Something unexpected went wrong (error 0). Please try again.'), { status: 0 });
+    runCodeMutate.mockImplementation((_payload, { onError }) => onError(failure));
+    render(<CandidateExamPage />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
+
+    expect(reportClientError).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        kind: 'code_run_failed',
+        message: 'Something unexpected went wrong (error 0). Please try again.',
+        detail: expect.stringContaining('status=0'),
+      }),
+    );
+    // The candidate still sees the message; reporting is additive, never a replacement.
+    expect(await screen.findByText(/error 0/)).toBeInTheDocument();
+  });
+
+  it('records status=none when the failure carried no HTTP status at all', async () => {
+    (useAttemptQuery as jest.Mock).mockReturnValue({ data: codeAttemptState, isError: false });
+    runCodeMutate.mockImplementation((_payload, { onError }) => onError(new Error("Can't reach the server.")));
+    render(<CandidateExamPage />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
+
+    expect(reportClientError).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ detail: expect.stringContaining('status=none') }),
+    );
   });
 
   it('shows the stdin box only when the question allows it', () => {

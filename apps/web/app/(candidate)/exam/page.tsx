@@ -23,6 +23,7 @@ import { useScreenCapture } from '../../../lib/hooks/useScreenCapture';
 import { usePeriodicScreenAnalysis } from '../../../lib/hooks/usePeriodicScreenAnalysis';
 import { useWebcamMonitor } from '../../../lib/hooks/useWebcamMonitor';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
+import { reportClientError } from '../../../lib/client-error-reporter';
 import { AttemptAnswerSummary, AttemptQuestion, isAttemptStarted } from '../../../lib/types';
 import { monacoLanguageFor } from '../../../lib/monaco-language';
 
@@ -363,11 +364,32 @@ export default function CandidateExamPage() {
         // error.message carries the server's real message (e.g. the run-cap or
         // sandbox_unavailable text set in apps/exam-runtime's runCode()) rather than a
         // hardcoded string here, matching this codebase's established onError convention.
-        onError: (error) =>
+        onError: (error) => {
           setRunErrors((prev) => ({
             ...prev,
             [questionId]: error instanceof Error ? error.message : "Couldn't run your code right now, try again.",
-          })),
+          }));
+          // Run failures were the one candidate-facing failure with NO server-side trace: JS
+          // crashes, unhandled rejections and failed answer-saves all report, this did not. So
+          // when candidates reported "error 0" on 2026-08-08 there was nothing to look at, and
+          // the cause had to be reasoned about rather than read.
+          //
+          // The HTTP status is the diagnostic that matters. status 0 means the browser never
+          // completed an HTTP exchange at all, which for this app points at exam-runtime's
+          // non-standard :3002 port being filtered by the candidate's network -- everything else
+          // goes over 443. A real status (429 run-cap, 503 sandbox down) means something else.
+          //
+          // Caveat, deliberately accepted: this report also posts to :3002, so in the very case
+          // it most wants to catch it will not arrive either. Its ABSENCE alongside a candidate
+          // reporting "error 0" is then itself the evidence, and every non-network run failure
+          // still lands. See docs/superpowers/plans/2026-08-06-exam-runtime-subdomain.md.
+          const status = (error as { status?: number } | null)?.status;
+          reportClientError(accessToken, {
+            kind: 'code_run_failed',
+            message: error instanceof Error ? error.message : String(error),
+            detail: `questionId=${questionId} language=${currentCodeLanguage} status=${status ?? 'none'}`,
+          });
+        },
       },
     );
   }

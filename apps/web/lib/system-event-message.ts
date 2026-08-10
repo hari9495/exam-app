@@ -93,6 +93,28 @@ const RULES: { match: RegExp; plain: (groups: RegExpMatchArray) => PlainEvent }[
     }),
   },
   {
+    // status=0 means the browser completed no HTTP exchange at all. Everything else in the app
+    // goes over 443, but code runs go to exam-runtime on :3002 -- so a candidate whose network
+    // filters that port sees the whole exam work and only Run fail.
+    match: /^code_run_failed:.*\(error 0\)/,
+    plain: () => ({
+      summary: "The candidate's network blocked the code runner",
+      meaning:
+        "Running code goes to a different port (3002) than the rest of the exam, and their network let everything else through but blocked that one. The candidate saw \"Something unexpected went wrong (error 0)\" and could not run their code — though they could still type it and submit it.",
+      whatToDo:
+        'Nothing you can fix mid-exam. If it happens repeatedly, moving the code runner onto the standard port is the permanent fix — the plan is written up as the exam-runtime subdomain change.',
+    }),
+  },
+  {
+    match: /^code_run_failed: (.+)$/,
+    plain: (m) => ({
+      summary: "The candidate couldn't run their code",
+      meaning: `The exam told them: "${m[1]}". Their answer is unaffected — running is a check, not a submission.`,
+      whatToDo:
+        'Check the detail for the HTTP status. A run limit or a sandbox outage will say so; "status=0" means their network blocked the code runner.',
+    }),
+  },
+  {
     match: /^unhandled_rejection: (.+)$/,
     plain: (m) => ({
       summary: "A background task in the candidate's browser failed",

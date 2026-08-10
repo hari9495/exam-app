@@ -55,6 +55,20 @@ describe('plainEnglish', () => {
     expect(plain.meaning).toMatch(/5 seconds/);
   });
 
+  it('names the blocked-port cause for a run failure with no HTTP status', () => {
+    const plain = plainEnglish(event('code_run_failed: Something unexpected went wrong (error 0). Please try again.'));
+    expect(plain.summary).toBe("The candidate's network blocked the code runner");
+    expect(plain.meaning).toMatch(/port \(3002\)/);
+    expect(plain.meaning).toMatch(/could still type it and submit it/);
+  });
+
+  it('falls back to quoting the message for a run failure that DID get a real status', () => {
+    const plain = plainEnglish(event('code_run_failed: You have used all 30 runs for this question.'));
+    expect(plain.summary).toBe("The candidate couldn't run their code");
+    expect(plain.meaning).toMatch(/all 30 runs/);
+    expect(plain.whatToDo).toMatch(/HTTP status/);
+  });
+
   it('quotes the browser text for a js_error that does carry a real message', () => {
     const plain = plainEnglish(event('js_error: Cannot read properties of undefined'));
     expect(plain.summary).toBe("An error occurred on the candidate's exam page");
