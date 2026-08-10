@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { TenantPrismaService, TenantContext, BlobStorageService, selectCountedAnswers } from '@exam-platform/shared';
 import { ExamsService, ExamResultRow, SETTLED_ATTEMPT_STATUSES } from '../exams/exams.service';
 import { signProctoringEvidence } from '../common/sign-proctoring-evidence';
+import { computeTabActivity, TAB_ACTIVITY_EVENT_TYPES, TabActivityEvent, TabActivityEventTypeSummary, QuestionTabActivityEntry } from './tab-activity';
 
 const SCORE_DISTRIBUTION_BUCKETS = [
   { rangeLabel: '0-20', min: 0, max: 20 },
@@ -75,6 +76,7 @@ interface CandidateDetailQuestion {
   answerText: string | null;
   codeLanguage: string | null;
   gradingFeedback: string | null;
+  tabActivity: QuestionTabActivityEntry[];
 }
 
 interface CandidateDetailSection extends SectionScore {
@@ -120,6 +122,7 @@ export interface CandidateDetail {
   integrityAnalysis: IntegritySummary;
   sections: CandidateDetailSection[];
   webcamTimeline: WebcamTimelineEntry[];
+  tabActivitySummary: TabActivityEventTypeSummary[];
 }
 
 export interface CandidateComparisonRow {
@@ -340,7 +343,7 @@ export class ReportsService {
     };
 
     if (!row.attemptId) {
-      return { ...base, sections: [], webcamTimeline: [] };
+      return { ...base, sections: [], webcamTimeline: [], tabActivitySummary: [] };
     }
 
     return this.tenantPrisma.forTenant(context, async (tx) => {
@@ -349,7 +352,7 @@ export class ReportsService {
         select: { sectionSnapshotJson: true, answers: true },
       });
       if (!attempt) {
-        return { ...base, sections: [], webcamTimeline: [] };
+        return { ...base, sections: [], webcamTimeline: [], tabActivitySummary: [] };
       }
 
       const webcamEvents = await tx.proctoringEvent.findMany({
@@ -397,6 +400,29 @@ export class ReportsService {
             screenshotCapReached: meta.screenshotCapReached === true ? true : undefined,
           };
         }),
+      );
+
+      const tabActivityEvents = await tx.proctoringEvent.findMany({
+        where: { attemptId: row.attemptId as string, eventType: { in: [...TAB_ACTIVITY_EVENT_TYPES] } },
+        orderBy: { occurredAt: 'asc' },
+      });
+      const signedTabActivityEvents: TabActivityEvent[] = await Promise.all(
+        tabActivityEvents.map(async (e) => {
+          let parsed: unknown = {};
+          if (e.metadataJson) {
+            try {
+              parsed = JSON.parse(e.metadataJson);
+            } catch {
+              parsed = {};
+            }
+          }
+          const signed = ((await signProctoringEvidence(this.blobStorage, parsed)) ?? {}) as Record<string, unknown>;
+          return { eventType: e.eventType, occurredAt: e.occurredAt, metadata: signed };
+        }),
+      );
+      const tabActivity = computeTabActivity(
+        signedTabActivityEvents,
+        attempt.answers.map((answer) => ({ questionId: answer.questionId, answeredAt: answer.answeredAt })),
       );
 
       const sectionSnapshot: SectionSnapshotEntryShape[] = JSON.parse(attempt.sectionSnapshotJson);
@@ -454,12 +480,13 @@ export class ReportsService {
               answerText: question?.type === 'code' ? (answer?.answerText ?? null) : null,
               codeLanguage: question?.type === 'code' ? (answer?.codeLanguage ?? null) : null,
               gradingFeedback: question?.type === 'code' ? (answer?.gradingFeedback ?? null) : null,
+              tabActivity: tabActivity.byQuestionId.get(questionId) ?? [],
             };
           }),
         };
       });
 
-      return { ...base, sections, webcamTimeline };
+      return { ...base, sections, webcamTimeline, tabActivitySummary: tabActivity.summary };
     });
   }
 
