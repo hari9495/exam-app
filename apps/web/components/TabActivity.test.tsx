@@ -63,4 +63,30 @@ describe('TabActivityBanner', () => {
 
     expect(screen.getByRole('button', { name: /Tab switch/ })).toBeDisabled();
   });
+
+  it('collapses repeated entries of the same event type and tool into one badge with a count', () => {
+    render(
+      <TabActivityBanner
+        entries={[
+          { eventType: 'background_app_detected', occurredAt: '2026-01-01T00:07:00.000Z', toolName: 'WhatsApp' },
+          { eventType: 'background_app_detected', occurredAt: '2026-01-01T00:08:00.000Z', toolName: 'WhatsApp' },
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(screen.getByText(/× 2/)).toBeInTheDocument();
+  });
+
+  it('keeps the event-type label alongside the tool name instead of dropping it', () => {
+    render(
+      <TabActivityBanner
+        entries={[{ eventType: 'remote_access_suspected', occurredAt: '2026-01-01T00:07:00.000Z', toolName: 'AnyDesk' }]}
+      />,
+    );
+
+    const button = screen.getByRole('button');
+    expect(button).toHaveTextContent('Possible remote access');
+    expect(button).toHaveTextContent('AnyDesk');
+  });
 });

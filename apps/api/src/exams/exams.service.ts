@@ -96,7 +96,7 @@ export interface PendingGradingRow {
   attemptId: string;
   candidateId: string;
   candidateName: string;
-  proctoringAnalysis: { riskLevel: string | null; summary: string | null } | null;
+  proctoringAnalysis: { status: string; riskLevel: string | null; summary: string | null } | null;
   tabActivitySummary: TabActivityEventTypeSummary[];
   codeQuestions: PendingGradingCodeQuestion[];
 }
@@ -1183,7 +1183,7 @@ export class ExamsService {
             candidateId: attempt.invitation.candidateId,
             candidateName: attempt.invitation.candidate.name,
             proctoringAnalysis: attempt.proctoringAnalysis
-              ? { riskLevel: attempt.proctoringAnalysis.riskLevel, summary: attempt.proctoringAnalysis.summary }
+              ? { status: attempt.proctoringAnalysis.status, riskLevel: attempt.proctoringAnalysis.riskLevel, summary: attempt.proctoringAnalysis.summary }
               : null,
             tabActivitySummary: tabActivity.summary,
             codeQuestions: attempt.answers

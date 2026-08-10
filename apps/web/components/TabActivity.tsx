@@ -66,10 +66,43 @@ interface TabActivityBannerProps {
   entries: QuestionTabActivityEntry[];
 }
 
-/** Compact banner above a question, one line per attributed event -- collapsed by default, click
- *  to see the AI's reasoning/screenshot when there is one. Placement is inferred from answer-save
- *  timing, not an exact link (see docs/superpowers/specs/2026-08-11-grading-tab-activity-insights-
- *  design.md), so every instance says so. */
+interface GroupedBannerEntry {
+  key: string;
+  label: string;
+  count: number;
+  representative: QuestionTabActivityEntry;
+}
+
+function labelFor(eventType: string, toolName?: string): string {
+  const typeLabel = EVENT_TYPE_LABEL[eventType] ?? eventType;
+  return toolName ? `${typeLabel}: ${toolName}` : typeLabel;
+}
+
+// ponytail: groups on eventType+toolName only, no time-window bucketing -- add if recruiters
+// need to distinguish e.g. two separate WhatsApp detections minutes apart.
+function groupBannerEntries(entries: QuestionTabActivityEntry[]): GroupedBannerEntry[] {
+  const groups = new Map<string, GroupedBannerEntry>();
+  for (const entry of entries) {
+    const key = `${entry.eventType}::${entry.toolName ?? ''}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.count += 1;
+      // Keep whichever occurrence in the group actually has expandable detail, so a click on a
+      // grouped badge always surfaces something if any occurrence in the group had it.
+      if (!existing.representative.reasoning && !existing.representative.screenshot && (entry.reasoning || entry.screenshot)) {
+        existing.representative = entry;
+      }
+    } else {
+      groups.set(key, { key, label: labelFor(entry.eventType, entry.toolName), count: 1, representative: entry });
+    }
+  }
+  return [...groups.values()];
+}
+
+/** Compact banner above a question, one row per distinct event type/tool -- collapsed by default,
+ *  click to see the AI's reasoning/screenshot when there is one. Placement is inferred from
+ *  answer-save timing, not an exact link (see docs/superpowers/specs/2026-08-11-grading-tab-
+ *  activity-insights-design.md), so every instance says so. */
 export function TabActivityBanner({ entries }: TabActivityBannerProps) {
   const [expanded, setExpanded] = useState<QuestionTabActivityEntry | null>(null);
   if (entries.length === 0) {
@@ -78,24 +111,23 @@ export function TabActivityBanner({ entries }: TabActivityBannerProps) {
   return (
     <>
       <div className="mb-2 flex flex-col gap-1">
-        {entries.map((entry, index) => {
-          const label = entry.toolName ?? EVENT_TYPE_LABEL[entry.eventType] ?? entry.eventType;
-          const canExpand = Boolean(entry.reasoning || entry.screenshot);
+        {groupBannerEntries(entries).map((group) => {
+          const canExpand = Boolean(group.representative.reasoning || group.representative.screenshot);
           return (
             <button
-              key={index}
+              key={group.key}
               type="button"
               disabled={!canExpand}
-              onClick={() => setExpanded(entry)}
+              onClick={() => setExpanded(group.representative)}
               className="flex items-center gap-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-left text-xs text-amber-800 disabled:cursor-default"
             >
-              <StatusBadge tone="warning">{label}</StatusBadge>
+              <StatusBadge tone="warning">{group.label}{group.count > 1 ? ` × ${group.count}` : ''}</StatusBadge>
               <span>detected around this question — estimated timing{canExpand ? ', click for detail' : ''}</span>
             </button>
           );
         })}
       </div>
-      <Modal open={expanded !== null} title={expanded?.toolName ?? expanded?.eventType ?? ''} onClose={() => setExpanded(null)}>
+      <Modal open={expanded !== null} title={expanded ? labelFor(expanded.eventType, expanded.toolName) : ''} onClose={() => setExpanded(null)}>
         {expanded?.reasoning && <p className="mb-3 text-sm text-gray-700">{expanded.reasoning}</p>}
         {expanded?.screenshot && <img src={expanded.screenshot} alt="Screen capture" className="w-full rounded" />}
       </Modal>
