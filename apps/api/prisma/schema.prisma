@@ -349,6 +349,8 @@ model Exam {
   disabledProctoringSignalsJson String?       @map("disabled_proctoring_signals_json") @db.NVarChar(Max)
   screenCaptureEnabled          Boolean       @default(false) @map("screen_capture_enabled")
   lockdownRequired              Boolean       @default(false) @map("lockdown_required")
+  faceVerificationEnabled       Boolean       @default(false) @map("face_verification_enabled")
+  faceEnrolmentPolicy           String        @default("retry_then_allow") @map("face_enrolment_policy")
   createdBy                     String        @map("created_by") @db.UniqueIdentifier
   createdAt                     DateTime      @default(now()) @map("created_at")
   sections                      ExamSection[]
@@ -501,6 +503,7 @@ model Attempt {
   proctoringAnalysis            ProctoringAnalysis?
   insight                       AttemptInsight?
   integrityAnalysis             IntegrityAnalysis?
+  faceEnrolment                 FaceEnrolment?
 
   @@index([examId, status])
   @@map("attempts")
@@ -577,6 +580,22 @@ model ProctoringEvent {
 
   @@index([attemptId, occurredAt])
   @@map("proctoring_events")
+}
+
+model FaceEnrolment {
+  id                 String   @id @default(uuid()) @db.UniqueIdentifier
+  attemptId          String   @unique @map("attempt_id") @db.UniqueIdentifier
+  status             String
+  // Populated in stage 2 from referenceImagePath; encrypted with OrgSecretsCryptoService.
+  embedding          String?  @db.NVarChar(Max)
+  referenceImagePath String?  @map("reference_image_path")
+  qualityJson        String?  @map("quality_json") @db.NVarChar(Max)
+  consentAt          DateTime @map("consent_at")
+  capturedAt         DateTime? @map("captured_at")
+  createdAt          DateTime @default(now()) @map("created_at")
+  attempt            Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@map("face_enrolments")
 }
 
 model CandidateMessage {
