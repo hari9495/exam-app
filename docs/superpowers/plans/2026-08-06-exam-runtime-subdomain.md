@@ -167,3 +167,58 @@ rollback is a rebuild, not a scramble.
 Moving the api (`:3001`) or web (`:3000`) — both already sit behind 443 and are unaffected.
 The `127.0.0.1:3003` internal port is localhost-only, never reached by a browser, and does not
 move.
+
+---
+
+## Status check 2026-08-10 (re-verified, not assumed)
+
+| Thing | State |
+|---|---|
+| `exam.prudentconsulting.com` | **NXDOMAIN** from 8.8.8.8 and 1.1.1.1 — the record still does not exist |
+| `prudenthire.prudentconsulting.com` | resolves `20.219.132.226` (unchanged) |
+| Certificate | still covers **one** domain, expires 2026-10-20 |
+| `:3002` from an unrestricted network | healthy — 401 on an unauthenticated POST, TLS verifies |
+
+**Step 1 remains the sole blocker.** Steps 2-6 are mechanical once DNS resolves publicly;
+nothing else has drifted, so the plan above still applies verbatim.
+
+### The `:443` block to add in step 3
+
+Copied from the live `:3002` block on 2026-08-10, so it is a true clone rather than a
+reconstruction. Only `listen` and `server_name` differ:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name exam.prudentconsulting.com;
+    ssl_certificate /etc/letsencrypt/live/prudenthire.prudentconsulting.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/prudenthire.prudentconsulting.com/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+    client_max_body_size 10m;
+
+    location / {
+        proxy_pass http://127.0.0.1:3102;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+Note the cert paths stay under the existing `live/prudenthire...` directory even after
+`--expand` — certbot expands the existing lineage rather than creating a second one.
+
+### Diagnosis is now instrumented (commit e841d6ce)
+
+A failed code run reports `kind=code_run_failed` with the HTTP status in its detail, and System
+Logs renders it in plain English. **`status=0` is the fingerprint of this exact problem** — no
+HTTP exchange completed, which for this app means the candidate's network filtered `:3002`.
+
+Caveat: that report also posts to `:3002`, so in the blocked case it will not arrive either.
+Its absence alongside a candidate reporting "error 0" is itself the evidence. This measures the
+problem; it does not fix it. Only the subdomain does.
