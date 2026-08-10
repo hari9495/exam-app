@@ -11,6 +11,8 @@ import { CreateExamSectionDto } from './dto/create-exam-section.dto';
 import { UpdateExamSectionDto } from './dto/update-exam-section.dto';
 import { validateSectionQuestionsReplace } from './exam-section-question-validation';
 import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
+import { signProctoringEvidence } from '../common/sign-proctoring-evidence';
+import { computeTabActivity, TAB_ACTIVITY_EVENT_TYPES, TabActivityEvent, TabActivityEventTypeSummary, QuestionTabActivityEntry } from '../reports/tab-activity';
 
 type ExamSectionWithQuestions = ExamSection & {
   questions: (ExamSectionQuestion & { question: Question & { options: QuestionOption[] } })[];
@@ -87,12 +89,15 @@ export interface PendingGradingCodeQuestion {
   marks: number;
   marksAwarded: number | null;
   gradingFeedback: string | null;
+  tabActivity: QuestionTabActivityEntry[];
 }
 
 export interface PendingGradingRow {
   attemptId: string;
   candidateId: string;
   candidateName: string;
+  proctoringAnalysis: { riskLevel: string | null; summary: string | null } | null;
+  tabActivitySummary: TabActivityEventTypeSummary[];
   codeQuestions: PendingGradingCodeQuestion[];
 }
 
@@ -1136,33 +1141,74 @@ export class ExamsService {
 
       const attempts = await tx.attempt.findMany({
         where: { examId, status: 'pending_manual_grade' },
-        include: { invitation: { include: { candidate: true } }, answers: { include: { question: true } } },
+        include: { invitation: { include: { candidate: true } }, answers: { include: { question: true } }, proctoringAnalysis: true },
       });
 
-      return attempts.map((attempt) => ({
-        attemptId: attempt.id,
-        candidateId: attempt.invitation.candidateId,
-        candidateName: attempt.invitation.candidate.name,
-        codeQuestions: attempt.answers
-          // Code questions the candidate never wrote in are auto-zeroed at settlement and are
-          // deliberately NOT listed here -- there is nothing for a human to judge, and showing
-          // them meant clicking "Save grade: 0" through a run of empty editors before the
-          // Finalize button unlocked. Filtering on answerText rather than marksAwarded matters:
-          // a question the recruiter has already graded 0 must stay visible so they can revise it.
-          // Predicate mirrors isAttemptedCode() in exam-runtime's attempt-settlement.service.ts.
-          .filter((answer) => answer.question.type === 'code' && Boolean(answer.answerText?.trim()))
-          .map((answer) => ({
-            questionId: answer.questionId,
-            questionText: answer.question.text,
-            difficulty: answer.question.difficulty,
-            starterCode: answer.question.starterCode,
-            codeLanguage: answer.codeLanguage,
-            answerText: answer.answerText,
-            marks: answer.question.marks,
-            marksAwarded: answer.marksAwarded,
-            gradingFeedback: answer.gradingFeedback,
-          })),
-      }));
+      const tabActivityRows = await tx.proctoringEvent.findMany({
+        where: { attemptId: { in: attempts.map((attempt) => attempt.id) }, eventType: { in: [...TAB_ACTIVITY_EVENT_TYPES] } },
+        orderBy: { occurredAt: 'asc' },
+      });
+      const eventsByAttemptId = new Map<string, typeof tabActivityRows>();
+      for (const eventRow of tabActivityRows) {
+        const list = eventsByAttemptId.get(eventRow.attemptId) ?? [];
+        list.push(eventRow);
+        eventsByAttemptId.set(eventRow.attemptId, list);
+      }
+
+      return Promise.all(
+        attempts.map(async (attempt) => {
+          const signedEvents: TabActivityEvent[] = await Promise.all(
+            (eventsByAttemptId.get(attempt.id) ?? []).map(async (eventRow) => {
+              let parsed: unknown = {};
+              if (eventRow.metadataJson) {
+                try {
+                  parsed = JSON.parse(eventRow.metadataJson);
+                } catch {
+                  parsed = {};
+                }
+              }
+              const signed = ((await signProctoringEvidence(this.blobStorage, parsed)) ?? {}) as Record<string, unknown>;
+              return { eventType: eventRow.eventType, occurredAt: eventRow.occurredAt, metadata: signed };
+            }),
+          );
+          // Every answer, MCQ included -- the attribution timeline needs every save in order,
+          // even though codeQuestions below only ever lists the code ones (see Global Constraints).
+          const tabActivity = computeTabActivity(
+            signedEvents,
+            attempt.answers.map((answer) => ({ questionId: answer.questionId, answeredAt: answer.answeredAt })),
+          );
+
+          return {
+            attemptId: attempt.id,
+            candidateId: attempt.invitation.candidateId,
+            candidateName: attempt.invitation.candidate.name,
+            proctoringAnalysis: attempt.proctoringAnalysis
+              ? { riskLevel: attempt.proctoringAnalysis.riskLevel, summary: attempt.proctoringAnalysis.summary }
+              : null,
+            tabActivitySummary: tabActivity.summary,
+            codeQuestions: attempt.answers
+              // Code questions the candidate never wrote in are auto-zeroed at settlement and are
+              // deliberately NOT listed here -- there is nothing for a human to judge, and showing
+              // them meant clicking "Save grade: 0" through a run of empty editors before the
+              // Finalize button unlocked. Filtering on answerText rather than marksAwarded matters:
+              // a question the recruiter has already graded 0 must stay visible so they can revise it.
+              // Predicate mirrors isAttemptedCode() in exam-runtime's attempt-settlement.service.ts.
+              .filter((answer) => answer.question.type === 'code' && Boolean(answer.answerText?.trim()))
+              .map((answer) => ({
+                questionId: answer.questionId,
+                questionText: answer.question.text,
+                difficulty: answer.question.difficulty,
+                starterCode: answer.question.starterCode,
+                codeLanguage: answer.codeLanguage,
+                answerText: answer.answerText,
+                marks: answer.question.marks,
+                marksAwarded: answer.marksAwarded,
+                gradingFeedback: answer.gradingFeedback,
+                tabActivity: tabActivity.byQuestionId.get(answer.questionId) ?? [],
+              })),
+          };
+        }),
+      );
     });
   }
 
