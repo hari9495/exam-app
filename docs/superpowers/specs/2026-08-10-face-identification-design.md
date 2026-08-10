@@ -269,7 +269,9 @@ and embedding automatically once the attempt is finalised plus a review window, 
 retaining only events and their evidence snapshots after that. `system-events-retention.service.ts`
 already implements scheduled cleanup and is the pattern to copy.
 
-The 90-day figure is a starting proposal, not a legal opinion. See Open decisions.
+**Decided 2026-08-10: 90 days**, confirmed by the product owner. Recorded here as a product
+decision rather than a legal opinion — if Prudent's data protection lead later sets a different
+number, it is a single constant in the retention job, not a redesign.
 
 ## Recruiter surfaces
 
@@ -354,7 +356,7 @@ These need owners before implementation, not during.
 | # | Decision | Why it blocks | Owner |
 |---|---|---|---|
 | 1 | **Model weights licence.** Must be Apache-2.0 / MIT / BSD. `uniface`'s weights include GPL-3.0. | Could invalidate a model choice late and force rework | Whoever owns licensing at Prudent |
-| 2 | **Retention window** for reference image + embedding (proposed 90 days) | Determines the retention job's behaviour | DPO / data protection accountable person |
+| 2 | ~~**Retention window** for reference image + embedding~~ **DECIDED 2026-08-10: 90 days** | — | Product owner (confirmed) |
 | 3 | **Similarity thresholds** (high / low bands) **and `N`**, the number of consecutive server-confirmed mismatches required to escalate | Cannot be guessed; both need the fixture set. `N` trades detection speed against false accusations | Implementation, gated on fixtures (stage 3) |
 | 4 | **Server cadence under load** — measured on 2 vCPUs at realistic concurrency | Determines whether per-snapshot checking is viable | Implementation, before enabling beyond `flag` |
 
