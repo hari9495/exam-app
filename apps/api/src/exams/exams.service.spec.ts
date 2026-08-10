@@ -2315,7 +2315,7 @@ describe('ExamsService', () => {
       const attempt = {
         id: 'attempt-1',
         invitation: { candidateId: 'cand-1', candidate: { name: 'Ada' } },
-        proctoringAnalysis: { riskLevel: 'high', summary: 'Multiple background apps detected.' },
+        proctoringAnalysis: { status: 'completed', riskLevel: 'high', summary: 'Multiple background apps detected.' },
         answers: [
           {
             questionId: 'q-1', answeredAt: new Date('2026-01-01T00:10:00Z'), answerText: 'print(1)',
@@ -2345,7 +2345,7 @@ describe('ExamsService', () => {
       expect(result[0].tabActivitySummary).toEqual([
         { eventType: 'background_app_detected', count: 1, toolCounts: { WhatsApp: 1 } },
       ]);
-      expect(result[0].proctoringAnalysis).toEqual({ riskLevel: 'high', summary: 'Multiple background apps detected.' });
+      expect(result[0].proctoringAnalysis).toEqual({ status: 'completed', riskLevel: 'high', summary: 'Multiple background apps detected.' });
       expect(result[0].codeQuestions[0].tabActivity).toEqual([
         { eventType: 'background_app_detected', occurredAt: '2026-01-01T00:01:00.000Z', toolName: 'WhatsApp', reasoning: undefined, screenshot: undefined },
       ]);
