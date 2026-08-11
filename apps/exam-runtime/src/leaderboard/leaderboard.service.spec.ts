@@ -152,6 +152,45 @@ describe('LeaderboardService', () => {
       expect(result[1].correctCount).toBe(0);
     });
 
+    it('gives attempts the same rank when correctCount ties at zero with no correct answer to break the tie', async () => {
+      // A pure-coding exam: q1 is auto-gradable but nobody answers it, so every attempt
+      // has correctCount 0 and tieBreakAt null -- there is no signal to rank them by.
+      const q1 = mcqQuestion('q1', 'q1-correct');
+      const attempts = ['attempt-a', 'attempt-b', 'attempt-c'].map((id, i) =>
+        baseAttempt({ id, invitationId: `inv-${i}`, candidateId: `cand-${i}`, questionOrderJson: JSON.stringify(['q1']), answers: [] }),
+      );
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(mockTx([q1], attempts)));
+
+      const result = await service.compute(context, 'exam-1');
+
+      expect(result.map((r) => r.rank)).toEqual([1, 1, 1]);
+    });
+
+    it('still breaks the tie by answer recency when correctCount ties above zero', async () => {
+      const q1 = mcqQuestion('q1', 'q1-correct');
+      const q2 = mcqQuestion('q2', 'q2-correct');
+      const attempts = [
+        baseAttempt({
+          id: 'attempt-slow', invitationId: 'inv-slow', candidateId: 'cand-slow',
+          questionOrderJson: JSON.stringify(['q1', 'q2']),
+          answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['q1-correct']), answeredAt: new Date('2026-01-01T00:00:10Z') }],
+        }),
+        baseAttempt({
+          id: 'attempt-fast', invitationId: 'inv-fast', candidateId: 'cand-fast',
+          questionOrderJson: JSON.stringify(['q1', 'q2']),
+          answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['q1-correct']), answeredAt: new Date('2026-01-01T00:00:01Z') }],
+        }),
+      ];
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(mockTx([q1, q2], attempts)));
+
+      const result = await service.compute(context, 'exam-1');
+
+      expect(result.map((r) => ({ attemptId: r.attemptId, rank: r.rank }))).toEqual([
+        { attemptId: 'attempt-fast', rank: 1 },
+        { attemptId: 'attempt-slow', rank: 2 },
+      ]);
+    });
+
     it('returns an empty array when no attempts have started', async () => {
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(mockTx([], [])));
 
@@ -325,6 +364,28 @@ describe('LeaderboardService', () => {
       const byCandidate = new Map(result.map((r) => [r.candidateId, r]));
       expect(byCandidate.get('cand-0')).toMatchObject({ rank: 1, percentile: 75 });
       expect(byCandidate.get('cand-3')).toMatchObject({ rank: 4, percentile: 0 });
+    });
+
+    it('gives every candidate the same rank and percentile on a pure-coding exam (no auto-gradable questions answered)', async () => {
+      const q1 = mcqQuestion('q1', 'q1-correct');
+      const attempts = ['a', 'b', 'c'].map((id, i) =>
+        baseAttempt({ id: `attempt-${id}`, invitationId: `inv-${i}`, candidateId: `cand-${id}`, questionOrderJson: JSON.stringify(['q1']), answers: [] }),
+      );
+      const candidates = [
+        { id: 'cand-a', name: 'A' }, { id: 'cand-b', name: 'B' }, { id: 'cand-c', name: 'C' },
+      ];
+      const tx = mockTx([q1], attempts, candidates);
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.computeRecruiterView(context, 'exam-1');
+
+      // All three tie at rank 1 -- none of them "beat" any of the others, so all get
+      // the same honest percentile instead of an arbitrary distinct one each.
+      expect(result.map((r) => ({ rank: r.rank, percentile: r.percentile }))).toEqual([
+        { rank: 1, percentile: 67 },
+        { rank: 1, percentile: 67 },
+        { rank: 1, percentile: 67 },
+      ]);
     });
   });
 
