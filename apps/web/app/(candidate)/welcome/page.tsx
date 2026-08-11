@@ -6,6 +6,7 @@ import { Info, ShieldCheck } from 'lucide-react';
 import { CandidateButton } from '../components/CandidateButton';
 import { CameraPreview } from '../components/CameraPreview';
 import { PracticeStep } from '../components/PracticeStep';
+import { FaceEnrolmentStep, EnrolmentPolicy } from '../components/FaceEnrolmentStep';
 import { useAttemptQuery, useStartAttempt } from '../../../lib/hooks/useAttempt';
 import { isAttemptStarted } from '../../../lib/types';
 import { useToast } from '../../../components/ui';
@@ -26,6 +27,7 @@ export default function CandidateWelcomePage() {
   const [step, setStep] = useState<'practice' | 'consent'>('practice');
   const [multiMonitorBlocked, setMultiMonitorBlocked] = useState(false);
   const [screenShareUnsupported, setScreenShareUnsupported] = useState(false);
+  const [faceStatus, setFaceStatus] = useState<'pending' | 'enrolled' | 'not_verified'>('pending');
 
   useEffect(() => {
     if (!authLoading && !accessToken) {
@@ -49,6 +51,8 @@ export default function CandidateWelcomePage() {
   // candidate as far as a rejected start.
   const inSeb = typeof navigator !== 'undefined' && navigator.userAgent.includes('SEB');
   const sebGateActive = proctoring?.lockdownRequired === true && !inSeb;
+  const faceVerificationRequired = proctoring?.faceVerificationEnabled === true;
+  const faceGateActive = faceVerificationRequired && faceStatus === 'pending';
 
   if (step === 'practice') {
     return (
@@ -243,6 +247,11 @@ export default function CandidateWelcomePage() {
                   Download exam configuration (.seb)
                 </CandidateButton>
               </div>
+            ) : faceGateActive ? (
+              <FaceEnrolmentStep
+                policy={(proctoring?.faceEnrolmentPolicy as EnrolmentPolicy | undefined) ?? 'retry_then_allow'}
+                onSettled={setFaceStatus}
+              />
             ) : proctoring?.webcamEnabled === false || cameraStatus === 'granted' ? (
               <CandidateButton onClick={handleStart} disabled={startAttempt.isPending || !consentChecked || !appsClosedChecked} className="w-full">
                 {startAttempt.isPending ? 'Starting…' : 'Start exam'}

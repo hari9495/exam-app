@@ -263,6 +263,14 @@ export function useWebcamResume() {
   });
 }
 
+export function useFaceEnrolment() {
+  const { accessToken } = useCandidateAuth();
+  return useMutation({
+    mutationFn: (body: { status: 'enrolled' | 'not_verified'; snapshot?: string; qualityJson?: string; consentGiven: boolean }) =>
+      candidateApiFetch('/attempt/face-enrolment', { method: 'POST', body: JSON.stringify(body) }, accessToken ?? undefined),
+  });
+}
+
 export function useLeaderboard(enabled: boolean) {
   const { accessToken } = useCandidateAuth();
   return useQuery<CandidateLeaderboardResponse>({
