@@ -4,8 +4,12 @@ import { useState } from 'react';
 import { Modal, StatusBadge } from './ui';
 import type { ProctoringAnalysisSummary, QuestionTabActivityEntry, TabActivityEventTypeSummary } from '../lib/types';
 
+// background_app_detected/remote_access_suspected are the only two event types the AI names from
+// a screenshot with no verification step -- confirmed in production to sometimes be wrong (a
+// bookmarks-bar shortcut read as an open tab). Their labels are worded as a possibility, not a
+// finding; the other six are plain client-observed browser events and stay factual.
 const EVENT_TYPE_LABEL: Record<string, string> = {
-  background_app_detected: 'Background app detected',
+  background_app_detected: 'Possible background app',
   remote_access_suspected: 'Possible remote access',
   tab_switch: 'Tab switch',
   window_blur: 'Window lost focus',
@@ -16,12 +20,13 @@ const EVENT_TYPE_LABEL: Record<string, string> = {
 };
 
 function describeSummaryEntry(entry: TabActivityEventTypeSummary): string {
+  const label = EVENT_TYPE_LABEL[entry.eventType] ?? entry.eventType;
   if (entry.toolCounts) {
-    return Object.entries(entry.toolCounts)
+    const names = Object.entries(entry.toolCounts)
       .map(([tool, count]) => `${tool} × ${count}`)
       .join(', ');
+    return `${label}: ${names}`;
   }
-  const label = EVENT_TYPE_LABEL[entry.eventType] ?? entry.eventType;
   return `${label} × ${entry.count}`;
 }
 
@@ -46,6 +51,7 @@ interface TabActivitySummaryCardProps {
  *  component. Always renders its content once mounted; call hasTabActivityContent first to decide
  *  whether to render this (and any surrounding heading) at all. */
 export function TabActivitySummaryCard({ summary, proctoringAnalysis }: TabActivitySummaryCardProps) {
+  const hasAiGuesses = summary.some((entry) => Boolean(entry.toolCounts));
   return (
     <div className="flex flex-col gap-2 text-sm">
       {summary.length > 0 && (
@@ -56,6 +62,9 @@ export function TabActivitySummaryCard({ summary, proctoringAnalysis }: TabActiv
             </li>
           ))}
         </ul>
+      )}
+      {hasAiGuesses && (
+        <p className="text-[11px] text-gray-400">App names are the AI's best guess from screen captures and may not always be exact.</p>
       )}
       {proctoringAnalysis?.summary && <p className="text-xs text-gray-600">{proctoringAnalysis.summary}</p>}
     </div>
@@ -75,6 +84,8 @@ interface GroupedBannerEntry {
 
 function labelFor(eventType: string, toolName?: string): string {
   const typeLabel = EVENT_TYPE_LABEL[eventType] ?? eventType;
+  // typeLabel already reads as a possibility for the two AI-named event types (see
+  // EVENT_TYPE_LABEL), so the tool name itself is stated plainly rather than hedged twice.
   return toolName ? `${typeLabel}: ${toolName}` : typeLabel;
 }
 
@@ -128,7 +139,12 @@ export function TabActivityBanner({ entries }: TabActivityBannerProps) {
         })}
       </div>
       <Modal open={expanded !== null} title={expanded ? labelFor(expanded.eventType, expanded.toolName) : ''} onClose={() => setExpanded(null)}>
-        {expanded?.reasoning && <p className="mb-3 text-sm text-gray-700">{expanded.reasoning}</p>}
+        {expanded?.reasoning && (
+          <>
+            <p className="mb-1 text-[11px] uppercase tracking-wide text-gray-400">AI-generated observation — may not be fully accurate</p>
+            <p className="mb-3 text-sm text-gray-700">{expanded.reasoning}</p>
+          </>
+        )}
         {expanded?.screenshot && <img src={expanded.screenshot} alt="Screen capture" className="w-full rounded" />}
       </Modal>
     </>

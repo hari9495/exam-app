@@ -239,7 +239,7 @@ describe('GradingQueuePanel', () => {
     (usePendingGrading as jest.Mock).mockReturnValue({ data: [rowWithActivity], isLoading: false });
     renderPanel();
 
-    expect(screen.getByText('WhatsApp × 1')).toBeInTheDocument();
+    expect(screen.getByText('Possible background app: WhatsApp × 1')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: /WhatsApp/ }));
 

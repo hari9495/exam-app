@@ -195,7 +195,13 @@ const SCREEN_ANALYSIS_PROMPT =
   'The exam page itself asks the candidate to share their screen with the exam platform -- the ' +
   'browser\'s own "sharing this screen" bar for the exam tab alone is expected and must NOT be ' +
   'flagged, and merely-pinned (inactive) taskbar icons must NOT be flagged. Only flag what is ' +
-  'genuinely visible and running.';
+  'genuinely visible and running. A browser\'s bookmarks/favorites bar -- the row of saved shortcuts ' +
+  'just below the address bar, each showing a small icon and label -- is NOT an open tab: a bookmark ' +
+  'for a site or app does not mean it is currently open, and must NOT be flagged. Only flag a tab that ' +
+  'is genuinely part of the open tab strip at the very top of the window, alongside the active exam ' +
+  'tab. If a tab\'s icon or title is too small or unclear to identify with confidence, describe it ' +
+  'generically (e.g. "an unidentified browser tab") in toolName rather than guessing a specific site ' +
+  'or app name.';
 
 const SCREEN_ANALYSIS_TOOL = {
   name: 'report_screen_analysis',
