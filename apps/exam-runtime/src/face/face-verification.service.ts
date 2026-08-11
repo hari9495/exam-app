@@ -93,7 +93,7 @@ export class FaceVerificationService {
     }
 
     const verdict = classifySimilarity(score);
-    const confirmed = this.voterFor(attemptId).push(verdict);
+    let confirmed = this.voterFor(attemptId).push(verdict);
 
     if (confirmed) {
       try {
@@ -110,6 +110,10 @@ export class FaceVerificationService {
         // could re-confirm it. Reset so the next mismatch starts a fresh, re-confirmable run.
         this.logger.warn(`Failed to record confirmed face mismatch for attempt ${attemptId}: ${String(error)}`);
         this.voterFor(attemptId).reset();
+        // Nothing was persisted, so callers must not act on this. Pausing or blocking a candidate
+        // on an episode with no stored event would leave a recruiter reviewing an accusation with
+        // no evidence behind it. The reset above means a real mismatch re-confirms on a later frame.
+        confirmed = false;
       }
     }
 

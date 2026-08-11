@@ -262,7 +262,11 @@ describe('FaceVerificationService', () => {
     const third = await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
     expect(first.confirmed).toBe(false);
     expect(second.confirmed).toBe(false);
-    expect(third.confirmed).toBe(true); // the voter fired even though the write behind it failed
+    // The voter fired, but nothing was persisted -- so the caller must NOT be told it was
+    // confirmed. Acting on this would pause or block a candidate over an episode a recruiter
+    // could never review, because no event exists to review.
+    expect(third.confirmed).toBe(false);
+    expect(tx.proctoringEvent.create).toHaveBeenCalledTimes(1);
 
     // Without a reset, the voter would still be latched (fired=true) and neither of these two
     // further mismatches could ever confirm again -- the episode would be lost for good.
@@ -270,8 +274,24 @@ describe('FaceVerificationService', () => {
     const fifth = await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
     expect(fourth.confirmed).toBe(false);
     expect(fifth.confirmed).toBe(false);
-    const sixth = await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
-    expect(sixth.confirmed).toBe(true);
+    await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+    // A second write ATTEMPT is the observable proof the voter re-armed. It reports unconfirmed
+    // again only because this write fails too; against a healthy database it would confirm.
+    expect(tx.proctoringEvent.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports confirmed once the persisting write succeeds', async () => {
+    const tx = {
+      faceEnrolment: { findUnique: jest.fn().mockResolvedValue({ embedding: `enc:${encodeEmbedding(SAME)}` }) },
+      proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
+      attempt: { update: jest.fn() },
+    };
+    const { service } = buildWith({ tx, embedder: { embed: jest.fn().mockResolvedValue(OTHER) } });
+
+    await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+    await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+    const third = await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+    expect(third.confirmed).toBe(true);
   });
 
   // --- Finding 2: an 'uncertain' verdict must reach the caller as-is, never as 'mismatch' ---
