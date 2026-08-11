@@ -539,6 +539,20 @@ export interface SectionScore {
   requiredCount: number | null;
 }
 
+export interface TabActivityEventTypeSummary {
+  eventType: string;
+  count: number;
+  toolCounts?: Record<string, number>;
+}
+
+export interface QuestionTabActivityEntry {
+  eventType: string;
+  occurredAt: string;
+  toolName?: string;
+  reasoning?: string;
+  screenshot?: string;
+}
+
 export interface CandidateDetailQuestion {
   questionId: string;
   questionText: string;
@@ -555,6 +569,8 @@ export interface CandidateDetailQuestion {
   answerText: string | null;
   codeLanguage: string | null;
   gradingFeedback: string | null;
+  /** Estimated from answer-save timing, not an exact link -- see tab-activity.ts. */
+  tabActivity: QuestionTabActivityEntry[];
 }
 
 export interface CandidateDetailSection extends SectionScore {
@@ -584,6 +600,7 @@ export interface CandidateDetail {
   integrityAnalysis: IntegritySummary | null;
   sections: CandidateDetailSection[];
   webcamTimeline: WebcamTimelineEntry[];
+  tabActivitySummary: TabActivityEventTypeSummary[];
 }
 
 export interface CandidateComparisonRow {
@@ -674,12 +691,16 @@ export interface PendingGradingCodeQuestion {
   marks: number;
   marksAwarded: number | null;
   gradingFeedback: string | null;
+  /** Estimated from answer-save timing, not an exact link -- see tab-activity.ts. */
+  tabActivity: QuestionTabActivityEntry[];
 }
 
 export interface PendingGradingRow {
   attemptId: string;
   candidateId: string;
   candidateName: string;
+  proctoringAnalysis: ProctoringAnalysisSummary | null;
+  tabActivitySummary: TabActivityEventTypeSummary[];
   codeQuestions: PendingGradingCodeQuestion[];
 }
 

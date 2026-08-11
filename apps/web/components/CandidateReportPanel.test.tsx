@@ -159,4 +159,42 @@ describe('CandidateReportPanel', () => {
       expect(screen.getByText(/○ 5/)).toBeInTheDocument();
     });
   });
+
+  it('shows a tab-activity summary and a per-question banner when the report has activity', async () => {
+    (useCandidateReport as jest.Mock).mockReturnValue({
+      data: {
+        candidateName: 'Ada Lovelace',
+        score: 10, maxScore: 10, percentage: 100, passFail: 'pass',
+        integrityAnalysis: null,
+        webcamTimeline: [],
+        tabActivitySummary: [{ eventType: 'background_app_detected', count: 1, toolCounts: { WhatsApp: 1 } }],
+        proctoringAnalysis: { status: 'completed', riskLevel: 'high', summary: 'Suspicious pattern noted.' },
+        sections: [
+          {
+            sectionId: 's1', title: 'Coding', score: 10, maxScore: 10, weightPercent: 100, requiredCount: null,
+            questions: [
+              {
+                questionId: 'q1', questionText: 'Reverse a string', type: 'code', marks: 10, negativeMarks: 0,
+                options: [], selectedOptionIds: [], correctOptionIds: [], isCorrect: true, marksAwarded: 10, counted: true,
+                answerText: 'def reverse(s): return s[::-1]', codeLanguage: 'python', gradingFeedback: null,
+                tabActivity: [{ eventType: 'background_app_detected', occurredAt: '2026-01-01T00:07:00.000Z', toolName: 'WhatsApp', reasoning: 'Taskbar icon visible.', screenshot: undefined }],
+              },
+            ],
+          },
+        ],
+      },
+      isLoading: false,
+    });
+
+    render(
+      <ToastProvider>
+        <CandidateReportPanel examId="exam-1" candidateId="cand-1" attemptId="attempt-1" />
+      </ToastProvider>,
+    );
+
+    expect(screen.getByText('Tabs & Background Apps')).toBeInTheDocument();
+    expect(screen.getByText('WhatsApp × 1')).toBeInTheDocument();
+    expect(screen.getByText('Suspicious pattern noted.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /WhatsApp/ })).toBeInTheDocument();
+  });
 });

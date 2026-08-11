@@ -323,8 +323,8 @@ describe('ReportsService', () => {
               { sectionId: 'sec-2', title: 'Section Two', questionIds: ['q3'] },
             ]),
             answers: [
-              { questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5 },
-              { questionId: 'q3', selectedOptionIdsJson: JSON.stringify(['opt-c']), isCorrect: false, marksAwarded: 0 },
+              { questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5, answeredAt: new Date('2026-01-01T00:05:00Z') },
+              { questionId: 'q3', selectedOptionIdsJson: JSON.stringify(['opt-c']), isCorrect: false, marksAwarded: 0, answeredAt: new Date('2026-01-01T00:15:00Z') },
             ],
           }),
         },
@@ -355,6 +355,7 @@ describe('ReportsService', () => {
         selectedOptionIds: ['opt-a'], correctOptionIds: ['opt-a'],
         isCorrect: true, marksAwarded: 5, counted: true,
         answerText: null, codeLanguage: null, gradingFeedback: null,
+        tabActivity: [],
       });
       expect(detail.sections[0].questions[1]).toEqual({
         questionId: 'q2', questionText: 'Q2 text', type: 'single_mcq', marks: 6, negativeMarks: 0,
@@ -362,6 +363,7 @@ describe('ReportsService', () => {
         selectedOptionIds: [], correctOptionIds: ['opt-c2'],
         isCorrect: null, marksAwarded: null, counted: true,
         answerText: null, codeLanguage: null, gradingFeedback: null,
+        tabActivity: [],
       });
       expect(detail.sections[1]).toMatchObject({ sectionId: 'sec-2', title: 'Section Two', score: 0, maxScore: 3 });
     });
@@ -377,6 +379,7 @@ describe('ReportsService', () => {
         candidateId: 'cand-2', candidateName: 'Bob', status: 'invited',
         score: null, maxScore: null, percentage: null, passFail: null, submittedAt: null,
         proctoringAnalysis: null, integrityAnalysis: null, sections: [], webcamTimeline: [],
+        tabActivitySummary: [],
       });
       expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
     });
@@ -487,8 +490,8 @@ describe('ReportsService', () => {
               { sectionId: 'sec-1', title: 'Section One', questionIds: ['q1', 'q2'] },
             ]),
             answers: [
-              { questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-b']), isCorrect: false, marksAwarded: -2 },
-              { questionId: 'q2', selectedOptionIdsJson: JSON.stringify(['opt-d']), isCorrect: false, marksAwarded: -1 },
+              { questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-b']), isCorrect: false, marksAwarded: -2, answeredAt: new Date('2026-01-01T00:05:00Z') },
+              { questionId: 'q2', selectedOptionIdsJson: JSON.stringify(['opt-d']), isCorrect: false, marksAwarded: -1, answeredAt: new Date('2026-01-01T00:15:00Z') },
             ],
           }),
         },
@@ -518,7 +521,7 @@ describe('ReportsService', () => {
         attempt: {
           findFirst: jest.fn().mockResolvedValue({
             sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
-            answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5 }],
+            answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5, answeredAt: new Date('2026-01-01T00:05:00Z') }],
           }),
         },
         question: {
@@ -566,7 +569,7 @@ describe('ReportsService', () => {
         attempt: {
           findFirst: jest.fn().mockResolvedValue({
             sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
-            answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5 }],
+            answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5, answeredAt: new Date('2026-01-01T00:05:00Z') }],
           }),
         },
         question: {
@@ -613,7 +616,7 @@ describe('ReportsService', () => {
         attempt: {
           findFirst: jest.fn().mockResolvedValue({
             sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
-            answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5 }],
+            answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5, answeredAt: new Date('2026-01-01T00:05:00Z') }],
           }),
         },
         question: {
@@ -663,7 +666,7 @@ describe('ReportsService', () => {
         attempt: {
           findFirst: jest.fn().mockResolvedValue({
             sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
-            answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5 }],
+            answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5, answeredAt: new Date('2026-01-01T00:05:00Z') }],
           }),
         },
         question: {
@@ -707,7 +710,7 @@ describe('ReportsService', () => {
         attempt: {
           findFirst: jest.fn().mockResolvedValue({
             sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
-            answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5 }],
+            answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5, answeredAt: new Date('2026-01-01T00:05:00Z') }],
           }),
         },
         question: {
@@ -745,7 +748,7 @@ describe('ReportsService', () => {
         attempt: {
           findFirst: jest.fn().mockResolvedValue({
             sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
-            answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5 }],
+            answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5, answeredAt: new Date('2026-01-01T00:05:00Z') }],
           }),
         },
         question: {
@@ -804,7 +807,7 @@ describe('ReportsService', () => {
           attempt: {
             findFirst: jest.fn().mockResolvedValue({
               sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
-              answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5 }],
+              answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5, answeredAt: new Date('2026-01-01T00:05:00Z') }],
             }),
           },
           question: {
@@ -841,7 +844,7 @@ describe('ReportsService', () => {
           attempt: {
             findFirst: jest.fn().mockResolvedValue({
               sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
-              answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5 }],
+              answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5, answeredAt: new Date('2026-01-01T00:05:00Z') }],
             }),
           },
           question: {
@@ -885,7 +888,7 @@ describe('ReportsService', () => {
           attempt: {
             findFirst: jest.fn().mockResolvedValue({
               sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Section One', questionIds: ['q1'] }]),
-              answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5 }],
+              answers: [{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isCorrect: true, marksAwarded: 5, answeredAt: new Date('2026-01-01T00:05:00Z') }],
             }),
           },
           question: {
@@ -910,6 +913,91 @@ describe('ReportsService', () => {
         expect(detail.webcamTimeline[0].snapshot).toBe('data:image/jpeg;base64,AAAA');
         expect(detail.webcamTimeline[0].screenshot).toBe('data:image/jpeg;base64,BBBB');
       });
+    });
+
+    it('builds an attempt-level tabActivitySummary from background-app and tab-switch ProctoringEvents', async () => {
+      examsService.getResults.mockResolvedValue([
+        row({ candidateId: 'cand-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted' }),
+      ]);
+      const tx = {
+        attempt: {
+          findFirst: jest.fn().mockResolvedValue({
+            sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Coding', questionIds: ['q1'] }]),
+            answers: [{ questionId: 'q1', selectedOptionIdsJson: '[]', isCorrect: null, marksAwarded: null, answeredAt: new Date('2026-01-01T00:10:00Z') }],
+          }),
+        },
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q1', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [] }]) },
+        proctoringEvent: {
+          findMany: jest.fn((args: { where: { eventType: { startsWith?: string; in?: string[] } } }) =>
+            args.where.eventType.startsWith === 'webcam_'
+              ? Promise.resolve([])
+              : Promise.resolve([
+                  { eventType: 'background_app_detected', occurredAt: new Date('2026-01-01T00:01:00Z'), metadataJson: JSON.stringify({ toolName: 'WhatsApp' }) },
+                  { eventType: 'background_app_detected', occurredAt: new Date('2026-01-01T00:02:00Z'), metadataJson: JSON.stringify({ toolName: 'WhatsApp' }) },
+                  { eventType: 'tab_switch', occurredAt: new Date('2026-01-01T00:03:00Z'), metadataJson: null },
+                ]),
+          ),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const detail = await service.getCandidateDetail(context, 'exam-1', 'cand-1');
+
+      expect(detail.tabActivitySummary).toEqual([
+        { eventType: 'background_app_detected', count: 2, toolCounts: { WhatsApp: 2 } },
+        { eventType: 'tab_switch', count: 1 },
+      ]);
+    });
+
+    it('places a background-app event above the question the candidate saved next, with a signed screenshot', async () => {
+      examsService.getResults.mockResolvedValue([
+        row({ candidateId: 'cand-1', candidateName: 'Alice', attemptId: 'a1', status: 'submitted' }),
+      ]);
+      const tx = {
+        attempt: {
+          findFirst: jest.fn().mockResolvedValue({
+            sectionSnapshotJson: JSON.stringify([{ sectionId: 'sec-1', title: 'Coding', questionIds: ['q1', 'q2'] }]),
+            answers: [
+              { questionId: 'q1', selectedOptionIdsJson: '[]', isCorrect: null, marksAwarded: null, answeredAt: new Date('2026-01-01T00:05:00Z') },
+              { questionId: 'q2', selectedOptionIdsJson: '[]', isCorrect: null, marksAwarded: null, answeredAt: new Date('2026-01-01T00:10:00Z') },
+            ],
+          }),
+        },
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'q1', text: 'Q1', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [] },
+            { id: 'q2', text: 'Q2', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [] },
+          ]),
+        },
+        proctoringEvent: {
+          findMany: jest.fn((args: { where: { eventType: { startsWith?: string; in?: string[] } } }) =>
+            args.where.eventType.startsWith === 'webcam_'
+              ? Promise.resolve([])
+              : Promise.resolve([
+                  {
+                    eventType: 'background_app_detected',
+                    occurredAt: new Date('2026-01-01T00:07:00Z'),
+                    metadataJson: JSON.stringify({ toolName: 'WhatsApp', reasoning: 'Taskbar icon visible', screenshot: 'https://blob.example/raw.jpg' }),
+                  },
+                ]),
+          ),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      blobStorage.signIfOurs.mockImplementation(async (value: string) => `${value}?signed=1`);
+
+      const detail = await service.getCandidateDetail(context, 'exam-1', 'cand-1');
+
+      expect(detail.sections[0].questions[0].tabActivity).toEqual([]);
+      expect(detail.sections[0].questions[1].tabActivity).toEqual([
+        {
+          eventType: 'background_app_detected',
+          occurredAt: '2026-01-01T00:07:00.000Z',
+          toolName: 'WhatsApp',
+          reasoning: 'Taskbar icon visible',
+          screenshot: 'https://blob.example/raw.jpg?signed=1',
+        },
+      ]);
     });
   });
 

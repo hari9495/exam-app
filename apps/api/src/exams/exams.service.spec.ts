@@ -2251,6 +2251,7 @@ describe('ExamsService', () => {
         answers: [
           {
             questionId: 'q-1',
+            answeredAt: new Date('2026-01-01T00:05:00Z'),
             answerText: 'print(1)',
             codeLanguage: 'python',
             marksAwarded: null,
@@ -2260,7 +2261,11 @@ describe('ExamsService', () => {
         ],
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
-        fn({ exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) }, attempt: { findMany: jest.fn().mockResolvedValue([attempt]) } }),
+        fn({
+          exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
+          attempt: { findMany: jest.fn().mockResolvedValue([attempt]) },
+          proctoringEvent: { findMany: jest.fn().mockResolvedValue([]) },
+        }),
       );
 
       const result = await service.getPendingGrading(context, 'exam-1');
@@ -2274,6 +2279,7 @@ describe('ExamsService', () => {
     it('omits code questions the candidate never wrote anything for', async () => {
       const codeAnswer = (questionId: string, answerText: string | null, marksAwarded: number | null = null) => ({
         questionId,
+        answeredAt: new Date('2026-01-01T00:05:00Z'),
         answerText,
         codeLanguage: 'python',
         marksAwarded,
@@ -2293,12 +2299,89 @@ describe('ExamsService', () => {
         ],
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
-        fn({ exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) }, attempt: { findMany: jest.fn().mockResolvedValue([attempt]) } }),
+        fn({
+          exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
+          attempt: { findMany: jest.fn().mockResolvedValue([attempt]) },
+          proctoringEvent: { findMany: jest.fn().mockResolvedValue([]) },
+        }),
       );
 
       const result = await service.getPendingGrading(context, 'exam-1');
 
       expect(result[0].codeQuestions.map((question) => question.questionId)).toEqual(['written', 'graded-zero']);
+    });
+
+    it('groups background-app detections into tabActivitySummary and carries the AI proctoring narrative', async () => {
+      const attempt = {
+        id: 'attempt-1',
+        invitation: { candidateId: 'cand-1', candidate: { name: 'Ada' } },
+        proctoringAnalysis: { status: 'completed', riskLevel: 'high', summary: 'Multiple background apps detected.' },
+        answers: [
+          {
+            questionId: 'q-1', answeredAt: new Date('2026-01-01T00:10:00Z'), answerText: 'print(1)',
+            codeLanguage: 'python', marksAwarded: null, gradingFeedback: null,
+            question: { type: 'code', text: 'x', difficulty: 'medium', starterCode: null, marks: 10 },
+          },
+        ],
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
+        fn({
+          exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
+          attempt: { findMany: jest.fn().mockResolvedValue([attempt]) },
+          proctoringEvent: {
+            findMany: jest.fn().mockResolvedValue([
+              {
+                attemptId: 'attempt-1', eventType: 'background_app_detected',
+                occurredAt: new Date('2026-01-01T00:01:00Z'),
+                metadataJson: JSON.stringify({ toolName: 'WhatsApp' }),
+              },
+            ]),
+          },
+        }),
+      );
+
+      const result = await service.getPendingGrading(context, 'exam-1');
+
+      expect(result[0].tabActivitySummary).toEqual([
+        { eventType: 'background_app_detected', count: 1, toolCounts: { WhatsApp: 1 } },
+      ]);
+      expect(result[0].proctoringAnalysis).toEqual({ status: 'completed', riskLevel: 'high', summary: 'Multiple background apps detected.' });
+      expect(result[0].codeQuestions[0].tabActivity).toEqual([
+        { eventType: 'background_app_detected', occurredAt: '2026-01-01T00:01:00.000Z', toolName: 'WhatsApp', reasoning: undefined, screenshot: undefined },
+      ]);
+    });
+
+    it('attributes tab activity using every answer on the attempt, including MCQs that never appear in codeQuestions', async () => {
+      const attempt = {
+        id: 'attempt-1',
+        invitation: { candidateId: 'cand-1', candidate: { name: 'Ada' } },
+        proctoringAnalysis: null,
+        answers: [
+          { questionId: 'mcq-1', answeredAt: new Date('2026-01-01T00:05:00Z'), answerText: null, codeLanguage: null, marksAwarded: null, gradingFeedback: null, question: { type: 'single_mcq', text: 'm', difficulty: 'easy', starterCode: null, marks: 1 } },
+          { questionId: 'code-1', answeredAt: new Date('2026-01-01T00:10:00Z'), answerText: 'print(1)', codeLanguage: 'python', marksAwarded: null, gradingFeedback: null, question: { type: 'code', text: 'x', difficulty: 'medium', starterCode: null, marks: 10 } },
+        ],
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
+        fn({
+          exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }) },
+          attempt: { findMany: jest.fn().mockResolvedValue([attempt]) },
+          proctoringEvent: {
+            findMany: jest.fn().mockResolvedValue([
+              // Occurs before the MCQ was ever saved. computeTabActivity attributes an event to
+              // the first answer saved at or after it occurred (see tab-activity.ts), so with
+              // mcq-1 correctly included this attaches to mcq-1 (never shown). If mcq-1 were
+              // wrongly filtered out before calling computeTabActivity, code-1 -- saved later --
+              // would become the earliest eligible answer and the event would misattach there.
+              { attemptId: 'attempt-1', eventType: 'tab_switch', occurredAt: new Date('2026-01-01T00:00:00Z'), metadataJson: null },
+            ]),
+          },
+        }),
+      );
+
+      const result = await service.getPendingGrading(context, 'exam-1');
+
+      expect(result[0].codeQuestions[0].tabActivity).toEqual([]);
+      expect(result[0].tabActivitySummary).toEqual([{ eventType: 'tab_switch', count: 1 }]);
     });
   });
 
