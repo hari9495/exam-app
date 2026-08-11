@@ -8,9 +8,9 @@ import { BlobServiceClient, BlockBlobClient, ContainerClient, BlobSASPermissions
 // browsers can produce either from a canvas depending on support.
 const ALLOWED_DATA_URI_CONTENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
-// Shared with any caller that needs the raw bytes (e.g. AttemptService's face-embedding path)
-// so there is exactly one regex for "what counts as a base64 data URI" -- a second, near-duplicate
-// regex elsewhere in the codebase can silently drift from this one.
+// Shared with any caller that needs the raw bytes (e.g. AttemptService's face-embedding path) so
+// the upload path and its callers cannot drift apart on what counts as a base64 data URI.
+// ai-provider.ts keeps its own, deliberately stricter regex for a different purpose.
 export function extractBase64FromDataUri(dataUri: string): { contentType: string; base64: string } | null {
   const match = /^data:(.+);base64,(.*)$/.exec(dataUri);
   if (!match) return null;

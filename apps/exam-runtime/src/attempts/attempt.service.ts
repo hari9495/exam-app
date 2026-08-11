@@ -1162,7 +1162,10 @@ export class AttemptService {
         create: { attemptId: attempt.id, ...rowBase, embedding },
         // A retry that produces no embedding (model briefly unavailable) must not overwrite a
         // previously-stored good vector with null -- only touch the column when there's a new
-        // value to write.
+        // value to write. Note the consequence: the reference image path is deterministic, so a
+        // retry overwrites the photo while keeping the earlier vector. Keeping the first vector
+        // is the safer side to err on -- it is the one enrolled under the original capture, so a
+        // later substituted photo cannot quietly become the thing every snapshot is matched to.
         update: { ...rowBase, ...(embedding ? { embedding } : {}) },
       }),
     );
