@@ -32,6 +32,12 @@ import { ExamResultRow } from '../lib/types';
 
 const PASS_FAIL_TONE: Record<string, StatusTone> = { pass: 'success', fail: 'danger' };
 
+// Stage 1 only shows enrolment status, fixed at attempt start -- see the face-id stage 1 plan.
+// 'not_verified' means the candidate never captured a usable reference photo, not that a
+// comparison failed (there is no comparison yet).
+const FACE_ENROLMENT_TONE: Record<string, StatusTone> = { enrolled: 'success', not_verified: 'warning' };
+const FACE_ENROLMENT_LABEL: Record<string, string> = { enrolled: 'Verified', not_verified: 'Not verified' };
+
 // This tab only ever shows attended candidates, so the invited/revoked statuses
 // that RESULT_STATUS_LABEL also knows about would never match a row here.
 const ATTENDED_STATUSES = ['in_progress', 'paused', 'blocked', 'pending_manual_grade', 'submitted', 'auto_submitted', 'force_submitted'];
@@ -238,6 +244,20 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
       header: <FilterableHeader label="Integrity" value={integrityFilter} onChange={setIntegrityFilter} options={INTEGRITY_FILTER_OPTIONS} />,
       sortLabel: 'Integrity',
       render: (row) => <IntegrityBadge level={row.integrityLevel} />,
+    },
+    {
+      key: 'faceEnrolment',
+      header: 'Face',
+      sortLabel: 'Face',
+      // null covers an attempt from before this feature existed -- no enrolment row to read.
+      render: (row) =>
+        row.faceEnrolmentStatus ? (
+          <StatusBadge tone={FACE_ENROLMENT_TONE[row.faceEnrolmentStatus] ?? 'neutral'}>
+            {FACE_ENROLMENT_LABEL[row.faceEnrolmentStatus] ?? row.faceEnrolmentStatus}
+          </StatusBadge>
+        ) : (
+          <span className="text-gray-400">—</span>
+        ),
     },
     {
       key: 'nextRound',

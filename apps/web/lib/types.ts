@@ -530,6 +530,7 @@ export interface ExamResultRow {
   proctoringAnalysis: ProctoringAnalysisSummary | null;
   integrityLevel: string | null;
   integrityFlagCount: number;
+  faceEnrolmentStatus: string | null;
   /** The invite created by advancing this candidate out of this exam, or null if never advanced. */
   nextRound: { examTitle: string; emailStatus: InvitationEmailStatus; invitedAt: string } | null;
 }
@@ -593,6 +594,12 @@ export interface WebcamTimelineEntry {
   screenshotCapReached?: boolean;
 }
 
+export interface CandidateFaceEnrolment {
+  status: string;
+  referenceImageUrl: string | null;
+  capturedAt: string | null;
+}
+
 export interface CandidateDetail {
   candidateId: string;
   candidateName: string;
@@ -607,6 +614,7 @@ export interface CandidateDetail {
   sections: CandidateDetailSection[];
   webcamTimeline: WebcamTimelineEntry[];
   tabActivitySummary: TabActivityEventTypeSummary[];
+  faceEnrolment: CandidateFaceEnrolment | null;
 }
 
 export interface CandidateComparisonRow {

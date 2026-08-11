@@ -18,7 +18,7 @@ jest.mock('./AuditHistoryLink', () => ({ AuditHistoryLink: () => null }));
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { useCandidateReport } = require('../lib/hooks/usePanelReports');
 
-function renderPanel(sections: unknown[]) {
+function renderPanel(sections: unknown[], overrides: Record<string, unknown> = {}) {
   (useCandidateReport as jest.Mock).mockReturnValue({
     data: {
       candidateName: 'Ada Lovelace',
@@ -29,6 +29,7 @@ function renderPanel(sections: unknown[]) {
       integrityAnalysis: null,
       webcamTimeline: [],
       sections,
+      ...overrides,
     },
     isLoading: false,
   });
@@ -196,5 +197,22 @@ describe('CandidateReportPanel', () => {
     expect(screen.getByText('WhatsApp × 1')).toBeInTheDocument();
     expect(screen.getByText('Suspicious pattern noted.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /WhatsApp/ })).toBeInTheDocument();
+  });
+
+  describe('face verification', () => {
+    it('shows the reference photo when the candidate enrolled', () => {
+      renderPanel([], { faceEnrolment: { status: 'enrolled', referenceImageUrl: 'https://blob/face.jpg?sig=x', capturedAt: '2026-08-11T09:00:00.000Z' } });
+      expect(screen.getByAltText(/reference photo/i)).toHaveAttribute('src', 'https://blob/face.jpg?sig=x');
+    });
+
+    it('says so plainly when no reference was captured', () => {
+      renderPanel([], { faceEnrolment: { status: 'not_verified', referenceImageUrl: null, capturedAt: null } });
+      expect(screen.getByText(/not verified/i)).toBeInTheDocument();
+    });
+
+    it('renders nothing for an attempt from before the feature existed', () => {
+      renderPanel([], { faceEnrolment: null });
+      expect(screen.queryByText(/face verification/i)).not.toBeInTheDocument();
+    });
   });
 });

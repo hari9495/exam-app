@@ -44,6 +44,7 @@ function row(overrides: Record<string, unknown> = {}) {
     proctoringAnalysis: null,
     integrityLevel: 'clear',
     integrityFlagCount: 0,
+    faceEnrolmentStatus: null,
     nextRound: null,
     ...overrides,
   };
@@ -54,6 +55,32 @@ describe('ExamResultsPanel', () => {
     localStorage.clear();
     (useResultsExport as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
     (useQuestionAccuracy as jest.Mock).mockReturnValue({ data: [], isLoading: false });
+  });
+
+  describe('face column', () => {
+    it('shows Verified for an enrolled candidate', () => {
+      (useResultsList as jest.Mock).mockReturnValue({ data: [row({ faceEnrolmentStatus: 'enrolled' })], isLoading: false });
+      renderPanel();
+      expect(screen.getByText('Verified')).toBeInTheDocument();
+    });
+
+    it('shows Not verified when no reference photo was captured', () => {
+      (useResultsList as jest.Mock).mockReturnValue({ data: [row({ faceEnrolmentStatus: 'not_verified' })], isLoading: false });
+      renderPanel();
+      expect(screen.getByText('Not verified')).toBeInTheDocument();
+    });
+
+    // Attempts from before this feature existed have no enrolment row -- must render an
+    // em-dash cleanly, not an empty badge or a crash. nextRound is given a non-null value here
+    // so its own (unrelated) dash doesn't collide with the one under test.
+    it('shows a dash for an attempt that predates the feature', () => {
+      (useResultsList as jest.Mock).mockReturnValue({
+        data: [row({ faceEnrolmentStatus: null, nextRound: { examTitle: 'Round 2', emailStatus: 'sent', invitedAt: '2026-08-06T10:00:00.000Z' } })],
+        isLoading: false,
+      });
+      renderPanel();
+      expect(screen.getByText('—')).toBeInTheDocument();
+    });
   });
 
   describe('next round column', () => {

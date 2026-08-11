@@ -9,7 +9,7 @@ describe('exportResultsToXlsx', () => {
         candidateId: 'cand-1', candidateName: 'Alice', invitationId: 'inv-1', attemptId: 'a1',
         status: 'submitted', score: 10, maxScore: 10, percentage: 100, passFail: 'pass',
         submittedAt: new Date('2026-01-01T00:20:00Z'), proctoringAnalysis: null, durationMinutes: 20,
-        integrityAnalysis: null, integrityLevel: 'high_risk', integrityFlagCount: 3,
+        integrityAnalysis: null, integrityLevel: 'high_risk', integrityFlagCount: 3, faceEnrolmentStatus: null,
       },
     ];
 

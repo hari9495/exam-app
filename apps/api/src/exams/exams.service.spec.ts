@@ -2422,7 +2422,8 @@ describe('ExamsService', () => {
         {
           candidateId: 'cand-1', candidateName: 'Alice', invitationId: 'inv-1', attemptId: null,
           status: 'invited', score: null, maxScore: null, percentage: null, passFail: null, submittedAt: null,
-          proctoringAnalysis: null, integrityAnalysis: null, integrityLevel: null, integrityFlagCount: 0, nextRound: null,
+          proctoringAnalysis: null, integrityAnalysis: null, integrityLevel: null, integrityFlagCount: 0,
+          faceEnrolmentStatus: null, nextRound: null,
         },
       ]);
     });
@@ -2520,7 +2521,8 @@ describe('ExamsService', () => {
         {
           candidateId: 'cand-1', candidateName: 'Alice', invitationId: 'inv-1', attemptId: 'attempt-1',
           status: 'submitted', score: 8, maxScore: 10, percentage: 80, passFail: 'pass', submittedAt,
-          proctoringAnalysis: null, integrityAnalysis: null, integrityLevel: null, integrityFlagCount: 0, nextRound: null,
+          proctoringAnalysis: null, integrityAnalysis: null, integrityLevel: null, integrityFlagCount: 0,
+          faceEnrolmentStatus: null, nextRound: null,
         },
       ]);
       expect(examRuntime.settleIfExpiredBatch).not.toHaveBeenCalled();
@@ -2557,7 +2559,7 @@ describe('ExamsService', () => {
       expect(examRuntime.settleIfExpiredBatch).toHaveBeenCalledWith([inProgressAttempt.id]);
       expect(tx.attempt.findMany).toHaveBeenCalledWith({
         where: { id: { in: [inProgressAttempt.id] } },
-        include: { result: true, proctoringAnalysis: true, integrityAnalysis: true },
+        include: { result: true, proctoringAnalysis: true, integrityAnalysis: true, faceEnrolment: true },
       });
       expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(2);
       expect(result[0].status).toBe('auto_submitted');

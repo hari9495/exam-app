@@ -53,6 +53,7 @@ describe('ReportsService', () => {
       integrityAnalysis: null,
       integrityLevel: null,
       integrityFlagCount: 0,
+      faceEnrolmentStatus: null,
       ...overrides,
     };
   }
@@ -379,7 +380,7 @@ describe('ReportsService', () => {
         candidateId: 'cand-2', candidateName: 'Bob', status: 'invited',
         score: null, maxScore: null, percentage: null, passFail: null, submittedAt: null,
         proctoringAnalysis: null, integrityAnalysis: null, sections: [], webcamTimeline: [],
-        tabActivitySummary: [],
+        tabActivitySummary: [], faceEnrolment: null,
       });
       expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
     });
@@ -998,6 +999,39 @@ describe('ReportsService', () => {
           screenshot: 'https://blob.example/raw.jpg?signed=1',
         },
       ]);
+    });
+
+    it('returns the enrolment with a SIGNED reference image url, since the container is private', async () => {
+      examsService.getResults.mockResolvedValue([row({ candidateId: 'cand-1', attemptId: 'a1', status: 'submitted' })]);
+      blobStorage.signIfOurs = jest.fn().mockResolvedValue('https://acct.blob.core.windows.net/c/face/a1.jpg?sig=x');
+      const tx = {
+        attempt: { findFirst: jest.fn().mockResolvedValue({
+          sectionSnapshotJson: '[]', answers: [],
+          faceEnrolment: { status: 'enrolled', referenceImagePath: 'https://acct.blob.core.windows.net/c/face/a1.jpg', capturedAt: new Date('2026-08-11T09:00:00Z') },
+        }) },
+        question: { findMany: jest.fn().mockResolvedValue([]) },
+        proctoringEvent: { findMany: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const detail = await service.getCandidateDetail(context, 'exam-1', 'cand-1');
+
+      expect(detail.faceEnrolment).toMatchObject({ status: 'enrolled' });
+      expect(detail.faceEnrolment?.referenceImageUrl).toContain('sig=');
+    });
+
+    it('returns null enrolment for an attempt that predates the feature', async () => {
+      examsService.getResults.mockResolvedValue([row({ candidateId: 'cand-1', attemptId: 'a1', status: 'submitted' })]);
+      const tx = {
+        attempt: { findFirst: jest.fn().mockResolvedValue({ sectionSnapshotJson: '[]', answers: [], faceEnrolment: null }) },
+        question: { findMany: jest.fn().mockResolvedValue([]) },
+        proctoringEvent: { findMany: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const detail = await service.getCandidateDetail(context, 'exam-1', 'cand-1');
+
+      expect(detail.faceEnrolment).toBeNull();
     });
   });
 
