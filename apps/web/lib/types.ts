@@ -162,6 +162,9 @@ export interface Exam {
   disabledProctoringSignalsJson: string | null;
   screenCaptureEnabled: boolean;
   lockdownRequired: boolean;
+  faceVerificationEnabled: boolean;
+  /** allow_unenrolled | retry_then_allow | require_enrolment */
+  faceEnrolmentPolicy: string;
   createdAt: string;
   sections: ExamSection[];
   invitationCount: number;

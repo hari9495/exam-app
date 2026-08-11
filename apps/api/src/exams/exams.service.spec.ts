@@ -2843,6 +2843,31 @@ describe('ExamsService', () => {
     });
   });
 
+  describe('face verification config', () => {
+    it('accepts the face verification settings', async () => {
+      const update = jest.fn().mockResolvedValue({ id: 'exam-1' });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
+        fn({ exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'draft' }), update }, attempt: { count: jest.fn().mockResolvedValue(0) } }),
+      );
+
+      await service.update(context, 'user-1', 'exam-1', { faceVerificationEnabled: true, faceEnrolmentPolicy: 'require_enrolment' } as never);
+
+      expect(update).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ faceVerificationEnabled: true, faceEnrolmentPolicy: 'require_enrolment' }),
+      }));
+    });
+
+    it('rejects an unknown enrolment policy rather than storing it', async () => {
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
+        fn({ exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'draft' }), update: jest.fn() }, attempt: { count: jest.fn().mockResolvedValue(0) } }),
+      );
+
+      await expect(
+        service.update(context, 'user-1', 'exam-1', { faceEnrolmentPolicy: 'whatever' } as never),
+      ).rejects.toThrow(/enrolment policy/i);
+    });
+  });
+
   describe('anti-cheating master switch', () => {
     it('persists enableAntiCheating alongside the individual fields when on', async () => {
       const tx = { exam: { create: jest.fn().mockResolvedValue({ id: 'exam-1' }) } };
