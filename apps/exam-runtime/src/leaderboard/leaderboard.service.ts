@@ -186,7 +186,23 @@ export class LeaderboardService {
         return aTime - bTime;
       });
 
-      return unranked.map(({ tieBreakAt: _tieBreakAt, ...entry }, index) => ({ ...entry, rank: index + 1 }));
+      // Two attempts with equal correctCount and no correct auto-gradable answer to order
+      // them by (tieBreakAt null for both -- guaranteed on a pure-coding exam, where every
+      // attempt has zero auto-gradable questions) are genuinely indistinguishable. Giving
+      // them different ranks fabricates a distinction the data doesn't support and produces
+      // a misleading, sort-order-dependent percentile; sharing a rank keeps both honest.
+      let rank = 0;
+      return unranked.map((entry, index) => {
+        const previous = unranked[index - 1];
+        const tiesWithPrevious =
+          previous !== undefined &&
+          entry.correctCount === previous.correctCount &&
+          entry.tieBreakAt === null &&
+          previous.tieBreakAt === null;
+        if (!tiesWithPrevious) rank = index + 1;
+        const { tieBreakAt: _tieBreakAt, ...rest } = entry;
+        return { ...rest, rank };
+      });
     });
   }
 
