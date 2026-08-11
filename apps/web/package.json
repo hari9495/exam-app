@@ -28,6 +28,7 @@
     "lucide-react": "^1.24.0",
     "monaco-editor": "0.52.2",
     "next": "^16.2.10",
+    "onnxruntime-web": "^1.27.0",
     "postcss": "^8.4.31",
     "qrcode": "^1.5.4",
     "react": "^18.2.0",

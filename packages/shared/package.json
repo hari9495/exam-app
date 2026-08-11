@@ -2,6 +2,17 @@
   "name": "@exam-platform/shared",
   "version": "0.0.1",
   "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./face/similarity": {
+      "types": "./dist/face/similarity.d.ts",
+      "default": "./dist/face/similarity.js"
+    },
+    "./face/embedding-codec": {
+      "types": "./dist/face/embedding-codec.d.ts",
+      "default": "./dist/face/embedding-codec.js"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "prepare": "prisma generate --schema ../../apps/api/prisma/schema.prisma && npm run build",

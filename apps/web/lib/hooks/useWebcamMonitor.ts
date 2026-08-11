@@ -1,14 +1,34 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+// The `./face/similarity` subpath, not the package root: `@exam-platform/shared`'s barrel
+// (dist/index.js) also re-exports server-only modules (Prisma, the Anthropic/OpenAI SDKs,
+// Nest's CryptoModule) that don't run in a browser and pull in Node-only shims -- importing the
+// root here broke the Next.js client bundle. cosineSimilarity/classifySimilarity have no such
+// dependency, so packages/shared/package.json exposes them on their own "exports" subpath.
+import { cosineSimilarity, classifySimilarity, FaceVerdict } from '@exam-platform/shared/face/similarity';
 import { detectViolationReason, detectLookingDown, ViolationReason } from '../webcam-detection';
 import { createViolationVoter } from '../webcam-voting';
+import { createBrowserEmbedder } from '../face-embedder';
 import { useReportProctoringEvent, useReportWebcamSnapshot, useReportWebcamViolation } from './useAttempt';
 import { ExamProctoringConfig } from '../types';
 
 const SAMPLE_INTERVAL_MS = 500;
 const PERIODIC_SNAPSHOT_MIN_MS = 120_000;
 const PERIODIC_SNAPSHOT_MAX_MS = 180_000;
+// Far more expensive than the 500ms landmark loop above (a full model forward pass, not
+// landmark geometry), so the browser advisory tier runs on its own, much slower interval.
+const IDENTITY_HINT_INTERVAL_MS = 4_000;
+
+// The browser tier is advisory only: `onHint` may update a candidate-facing hint and nothing
+// else. It must never be wired to report an event, set a flag, or otherwise touch exam state --
+// only the server tier decides those. `referenceEmbedding` is whatever the page currently holds
+// (e.g. decoded from an enrolment embedding); pass null while none is available yet, which the
+// hook treats as "nothing to compare against" rather than as a failure.
+export interface IdentityHintConfig {
+  referenceEmbedding: Float32Array | null;
+  onHint: (verdict: FaceVerdict | null) => void;
+}
 // Self-hosted from the app's own origin, NOT jsdelivr / storage.googleapis.com.
 // Candidates take proctored exams on locked-down office networks that block
 // third-party CDNs; loading the MediaPipe runtime or model cross-origin left
@@ -31,6 +51,7 @@ export function useWebcamMonitor(
   onViolationReason?: (reason: string) => void,
   config?: ExamProctoringConfig,
   capture?: () => string | null,
+  identity?: IdentityHintConfig,
 ): void {
   const reportViolation = useReportWebcamViolation();
   const reportViolationRef = useRef(reportViolation.mutate);
@@ -57,6 +78,12 @@ export function useWebcamMonitor(
   const configRef = useRef(config);
   configRef.current = config;
 
+  // `identity` (its reference embedding especially) can change identity every render -- same
+  // ref-mirror reasoning as `capture` above, so a fresh object here never tears down and
+  // restarts the camera/model.
+  const identityRef = useRef(identity);
+  identityRef.current = identity;
+
   useEffect(() => {
     // webcamEnabled === false must bail before setup() -- see the fail-safe below,
     // which reports a real no_face violation if the camera cannot be acquired.
@@ -81,6 +108,15 @@ export function useWebcamMonitor(
     let stream: MediaStream | null = null;
     let intervalId: ReturnType<typeof setInterval> | undefined;
     let snapshotTimer: ReturnType<typeof setTimeout> | undefined;
+    let identityIntervalId: ReturnType<typeof setInterval> | undefined;
+    // Self-hosted, like MEDIAPIPE_WASM_URL below -- but unlike that model, this one (see
+    // face-embedder.ts) is gated on a licensing review and does not exist yet. Unset in every
+    // environment today, which is exactly what keeps this tier off: no env var, no embedder, no
+    // difference to the candidate. Read here (not hoisted to module scope) so Next.js's
+    // build-time inlining of NEXT_PUBLIC_* still applies -- it replaces the expression textually,
+    // not just at module top level.
+    const modelUrl = process.env.NEXT_PUBLIC_FACE_EMBEDDING_MODEL_URL;
+    const embedder = modelUrl ? createBrowserEmbedder(modelUrl) : null;
 
     // Two independent voters debounce raw per-sample detections into confirmed episodes:
     // strike-worthy violations (8-sample window, 5 to confirm) and report-only looking_down
@@ -147,6 +183,28 @@ export function useWebcamMonitor(
         }
       }, SAMPLE_INTERVAL_MS);
 
+      // Separate, much slower interval -- never on the SAMPLE_INTERVAL_MS landmark tick above.
+      // Advisory only: the result only ever reaches `identity.onHint`, never reportViolationRef,
+      // reportEventRef, or anything else that could flag the candidate.
+      if (embedder) {
+        identityIntervalId = setInterval(() => {
+          const currentIdentity = identityRef.current;
+          if (!currentIdentity || !currentIdentity.referenceEmbedding || video.readyState < 2) return;
+          const referenceEmbedding = currentIdentity.referenceEmbedding;
+          embedder
+            .embed(video)
+            .then((liveEmbedding) => {
+              if (cancelled || !liveEmbedding) return;
+              const score = cosineSimilarity(liveEmbedding, referenceEmbedding);
+              identityRef.current?.onHint(classifySimilarity(score));
+            })
+            .catch(() => {
+              // Belt and braces: embed() already never rejects, but this loop must never be the
+              // thing that turns a model hiccup into an unhandled rejection on the exam page.
+            });
+        }, IDENTITY_HINT_INTERVAL_MS);
+      }
+
       scheduleSnapshot();
     }
 
@@ -161,8 +219,13 @@ export function useWebcamMonitor(
     return () => {
       cancelled = true;
       if (intervalId) clearInterval(intervalId);
+      if (identityIntervalId) clearInterval(identityIntervalId);
       if (snapshotTimer) clearTimeout(snapshotTimer);
       stream?.getTracks().forEach((track) => track.stop());
+      // Actually releases the ONNX session -- see face-embedder.ts. Without this, every
+      // mount/unmount of the exam page (or every attempt re-render that tears the effect down)
+      // would leak a session for the life of the tab.
+      embedder?.close();
     };
   }, [enabled]);
 }
