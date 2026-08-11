@@ -37,6 +37,20 @@ describe('FaceRetentionService', () => {
     }));
   });
 
+  // A blocked or abandoned attempt never gets a submittedAt, so a query keyed only on that
+  // column kept those reference images forever -- for exactly the candidates most likely to
+  // have been flagged. Asserted on the query rather than on rows because the row set here is a
+  // mock: the where clause IS the behaviour under test.
+  it('also purges an attempt that never finalised, once it is old enough', async () => {
+    await service.prune(NOW);
+
+    const cutoff = new Date(NOW.getTime() - 90 * 24 * 60 * 60 * 1000);
+    const { OR } = findMany.mock.calls[0][0].where.attempt;
+    expect(OR).toContainEqual({ submittedAt: null, startedAt: { lt: cutoff } });
+    // ...without losing the finalised case it already handled.
+    expect(OR).toContainEqual({ submittedAt: { lt: cutoff } });
+  });
+
   it('leaves a recent enrolment alone', async () => {
     findMany.mockResolvedValue([]);
 

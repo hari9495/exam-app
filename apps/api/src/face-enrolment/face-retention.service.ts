@@ -37,7 +37,19 @@ export class FaceRetentionService implements OnModuleInit, OnModuleDestroy {
     try {
       const expired = await this.tenantPrisma.forTenant(superAdmin, (tx) =>
         tx.faceEnrolment.findMany({
-          where: { referenceImagePath: { not: null }, attempt: { submittedAt: { lt: cutoff } } },
+          where: {
+            referenceImagePath: { not: null },
+            attempt: {
+              OR: [
+                { submittedAt: { lt: cutoff } },
+                // An attempt that never finalised -- blocked, or simply abandoned -- never gets a
+                // submittedAt, so keying purely off it retained those reference images forever,
+                // and precisely for the candidates most likely to have been flagged. Age such an
+                // attempt from when it started instead.
+                { submittedAt: null, startedAt: { lt: cutoff } },
+              ],
+            },
+          },
           select: { id: true, referenceImagePath: true },
         }),
       );
