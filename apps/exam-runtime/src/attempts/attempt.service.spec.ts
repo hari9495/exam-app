@@ -7,6 +7,7 @@ import {
   BlobStorageService,
   AiApiKeyResolverService,
   SystemEventsService,
+  OrgSecretsCryptoService,
   POOL_EXHAUSTED_RESPONSE,
   buildSebConfig,
   requestConfigKeyHash,
@@ -18,6 +19,7 @@ import { getProctoringEventSeverity } from './proctoring-severity';
 import { PistonClient } from '../code-execution/piston-client';
 import { PistonRuntimesService } from '../code-execution/piston-runtimes.service';
 import { RunLimiter } from '../code-execution/run-limiter';
+import { FaceEmbedderService } from '../face/face-embedder.service';
 
 // The cap-count query folds case AND width (see sanitize-metadata.ts / scc-task-5-report.md),
 // so a plain `.toContain('"screenshot":')` assertion is case- and width-sensitive in JS and
@@ -48,6 +50,8 @@ describe('AttemptService', () => {
   let aiApiKeyResolver: { resolve: jest.Mock };
   let generateStructured: jest.Mock;
   let systemEvents: { record: jest.Mock };
+  let faceEmbedder: { embed: jest.Mock; isAvailable: jest.Mock };
+  let crypto: { encrypt: jest.Mock; decrypt: jest.Mock };
   const session = { invitationId: 'inv-1' };
   const exam = {
     id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false,
@@ -84,6 +88,8 @@ describe('AttemptService', () => {
     generateStructured = jest.fn();
     aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue({ generateStructured, ping: jest.fn() }) };
     systemEvents = { record: jest.fn().mockResolvedValue(undefined) };
+    faceEmbedder = { embed: jest.fn().mockResolvedValue(null), isAvailable: jest.fn().mockReturnValue(false) };
+    crypto = { encrypt: jest.fn((plain: string) => `enc(${plain})`), decrypt: jest.fn() };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -99,6 +105,8 @@ describe('AttemptService', () => {
         { provide: BlobStorageService, useValue: blobStorage },
         { provide: AiApiKeyResolverService, useValue: aiApiKeyResolver },
         { provide: SystemEventsService, useValue: systemEvents },
+        { provide: FaceEmbedderService, useValue: faceEmbedder },
+        { provide: OrgSecretsCryptoService, useValue: crypto },
       ],
     }).compile();
     service = moduleRef.get(AttemptService);
@@ -2865,6 +2873,45 @@ describe('AttemptService', () => {
       await service.recordFaceEnrolment(session, { status: 'enrolled', snapshot: 'data:image/jpeg;base64,AAA', consentGiven: true });
 
       expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { attemptId: 'attempt-1' } }));
+    });
+  });
+
+  describe('recordFaceEnrolment — reference embedding', () => {
+    it('stores the embedding ENCRYPTED, never as a bare vector', async () => {
+      const upsert = jest.fn().mockResolvedValue({});
+      faceEmbedder.embed = jest.fn().mockResolvedValue(Float32Array.from([0.1, 0.2, 0.3]));
+      crypto.encrypt = jest.fn((plain: string) => `enc(${plain})`);
+      blobStorage.uploadDataUri = jest.fn().mockResolvedValue('https://acct.blob/face/a1.jpg');
+      mockBootstrapThenTwoScopedCalls({ attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, faceEnrolment: { upsert } });
+
+      await service.recordFaceEnrolment(session, { status: 'enrolled', snapshot: 'data:image/jpeg;base64,AAA', consentGiven: true });
+
+      expect(crypto.encrypt).toHaveBeenCalled();
+      expect(upsert.mock.calls[0][0].create.embedding).toMatch(/^enc\(/);
+    });
+
+    // The photo is the evidence a human reviews. If embedding fails, we must still keep it --
+    // losing the reference over a model problem would make the attempt unverifiable forever.
+    it('still enrols with a null embedding when the model is unavailable', async () => {
+      const upsert = jest.fn().mockResolvedValue({});
+      faceEmbedder.embed = jest.fn().mockResolvedValue(null);
+      blobStorage.uploadDataUri = jest.fn().mockResolvedValue('https://acct.blob/face/a1.jpg');
+      mockBootstrapThenTwoScopedCalls({ attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, faceEnrolment: { upsert } });
+
+      await service.recordFaceEnrolment(session, { status: 'enrolled', snapshot: 'data:image/jpeg;base64,AAA', consentGiven: true });
+
+      expect(upsert.mock.calls[0][0].create.embedding).toBeNull();
+      expect(upsert.mock.calls[0][0].create.status).toBe('enrolled');
+    });
+
+    it('does not attempt to embed a declined enrolment', async () => {
+      const upsert = jest.fn().mockResolvedValue({});
+      faceEmbedder.embed = jest.fn();
+      mockBootstrapThenTwoScopedCalls({ attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, faceEnrolment: { upsert } });
+
+      await service.recordFaceEnrolment(session, { status: 'not_verified', consentGiven: false });
+
+      expect(faceEmbedder.embed).not.toHaveBeenCalled();
     });
   });
 

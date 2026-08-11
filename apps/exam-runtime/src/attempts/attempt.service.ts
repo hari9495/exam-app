@@ -10,7 +10,10 @@ import {
   requestConfigKeyHash,
   SystemEventsService,
   selectCountedAnswers,
+  OrgSecretsCryptoService,
+  encodeEmbedding,
 } from '@exam-platform/shared';
+import { FaceEmbedderService } from '../face/face-embedder.service';
 import { AttemptSettlementService, PauseReason, SettlementExam } from '../grading/attempt-settlement.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { LeaderboardService, AUTO_GRADABLE_QUESTION_TYPES, CandidateLeaderboardResponse } from '../leaderboard/leaderboard.service';
@@ -239,6 +242,8 @@ export class AttemptService {
     private readonly blobStorage: BlobStorageService,
     private readonly aiApiKeyResolver: AiApiKeyResolverService,
     private readonly systemEvents: SystemEventsService,
+    private readonly faceEmbedder: FaceEmbedderService,
+    private readonly crypto: OrgSecretsCryptoService,
   ) {}
 
   // ponytail: in-memory per-attempt floor between AI screen analyses -- single pm2 process, so a
@@ -1121,9 +1126,26 @@ export class AttemptService {
     // than an honest "Not verified" -- so an enrolment that stored no image is not one.
     const status = dto.status === 'enrolled' && !referenceImagePath ? 'not_verified' : dto.status;
 
+    // Best-effort, same as the upload above: still outside any transaction, and never allowed to
+    // block enrolment. The model weights are an optional file gated on a separate licensing
+    // review -- FaceEmbedderService.embed degrades to null (never throws) whenever they're
+    // missing, the image can't be decoded, or anything else goes wrong, and that's fine: the
+    // reference image just recorded is what actually matters for a candidate to sit their exam.
+    let embedding: string | null = null;
+    if (referenceImagePath && dto.snapshot) {
+      const base64 = /^data:.+;base64,(.*)$/.exec(dto.snapshot)?.[1];
+      const vector = base64 ? await this.faceEmbedder.embed(Buffer.from(base64, 'base64')) : null;
+      // Biometric data under GDPR -- never persisted as a bare vector, even transiently in this
+      // row object.
+      if (vector) {
+        embedding = this.crypto.encrypt(encodeEmbedding(vector));
+      }
+    }
+
     const row = {
       status,
       referenceImagePath,
+      embedding,
       qualityJson: dto.qualityJson ?? null,
       consentAt: dto.consentGiven ? new Date() : null,
       capturedAt: referenceImagePath ? new Date() : null,
