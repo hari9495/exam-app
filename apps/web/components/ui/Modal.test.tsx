@@ -22,4 +22,20 @@ describe('Modal', () => {
     );
     expect(screen.queryByText('Modal body')).not.toBeInTheDocument();
   });
+
+  it('applies wider/taller classes for the xl and full sizes than the default', () => {
+    const { rerender } = render(
+      <Modal open title="Screen Capture" onClose={() => {}} size="xl">
+        <p>Modal body</p>
+      </Modal>,
+    );
+    expect(screen.getByRole('dialog')).toHaveClass('max-w-5xl');
+
+    rerender(
+      <Modal open title="Screen Capture" onClose={() => {}} size="full">
+        <p>Modal body</p>
+      </Modal>,
+    );
+    expect(screen.getByRole('dialog')).toHaveClass('max-w-[96vw]', 'max-h-[96vh]');
+  });
 });

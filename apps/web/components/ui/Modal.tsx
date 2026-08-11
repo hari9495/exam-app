@@ -5,7 +5,7 @@ import { X } from 'lucide-react';
 import { ReactNode } from 'react';
 import clsx from 'clsx';
 
-type ModalSize = 'md' | 'lg';
+type ModalSize = 'md' | 'lg' | 'xl' | 'full';
 
 interface ModalProps {
   open: boolean;
@@ -19,9 +19,14 @@ interface ModalProps {
   size?: ModalSize;
 }
 
+// Height is bundled into the same map (rather than left as a shared base class)
+// so 'full' can grow past the other sizes' 85vh cap without fighting it on
+// Tailwind class order, which isn't guaranteed to match source order.
 const SIZE_CLASSES: Record<ModalSize, string> = {
-  md: 'max-w-lg',
-  lg: 'max-w-2xl',
+  md: 'max-w-lg max-h-[85vh]',
+  lg: 'max-w-2xl max-h-[85vh]',
+  xl: 'max-w-5xl max-h-[85vh]',
+  full: 'max-w-[96vw] max-h-[96vh]',
 };
 
 export function Modal({ open, title, onClose, children, footer, size = 'md' }: ModalProps) {
@@ -31,7 +36,7 @@ export function Modal({ open, title, onClose, children, footer, size = 'md' }: M
         <Dialog.Overlay className="fixed inset-0 bg-black/40" />
         <Dialog.Content
           className={clsx(
-            'fixed left-1/2 top-1/2 flex max-h-[85vh] w-full -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg bg-white shadow-xl',
+            'fixed left-1/2 top-1/2 flex w-full -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg bg-white shadow-xl',
             SIZE_CLASSES[size],
           )}
         >
