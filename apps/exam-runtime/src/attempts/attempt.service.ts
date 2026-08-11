@@ -31,6 +31,7 @@ import { WebcamSnapshotDto } from './dto/webcam-snapshot.dto';
 import { ScreenShareStateDto } from './dto/screen-share-state.dto';
 import { ScreenAnalysisDto } from './dto/screen-analysis.dto';
 import { ClientErrorDto } from './dto/client-error.dto';
+import { FaceEnrolmentDto } from './dto/face-enrolment.dto';
 import { sanitizeMetadataOrDrop } from './sanitize-metadata';
 
 interface AttemptQuestionOption {
@@ -1088,6 +1089,44 @@ export class AttemptService {
       });
     });
     return { ok: true };
+  }
+
+  async recordFaceEnrolment(session: CandidateSession, dto: FaceEnrolmentDto): Promise<{ status: string }> {
+    if (!dto.consentGiven) {
+      throw new BadRequestException('Face enrolment requires the candidate’s consent');
+    }
+    const { organizationId, invitation } = await this.resolveContext(session.invitationId);
+    const attempt = await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
+      tx.attempt.findUnique({ where: { invitationId: invitation.id }, select: { id: true } }),
+    );
+    if (!attempt) {
+      throw new BadRequestException('Cannot enrol before the attempt has started');
+    }
+
+    // Upload OUTSIDE the transaction: a slow blob write inside forTenant holds a pooled
+    // connection for its whole duration and starves concurrent candidates.
+    let referenceImagePath: string | null = null;
+    if (dto.status === 'enrolled' && dto.snapshot) {
+      const url = await this.blobStorage.uploadDataUri(`face/${attempt.id}.jpg`, dto.snapshot);
+      // Store the PATH, never a signed URL -- a stored SAS expires and cannot be re-signed.
+      referenceImagePath = url.split('?')[0];
+    }
+
+    const row = {
+      status: dto.status,
+      referenceImagePath,
+      qualityJson: dto.qualityJson ?? null,
+      consentAt: new Date(),
+      capturedAt: referenceImagePath ? new Date() : null,
+    };
+    await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
+      tx.faceEnrolment.upsert({
+        where: { attemptId: attempt.id },
+        create: { attemptId: attempt.id, ...row },
+        update: row,
+      }),
+    );
+    return { status: dto.status };
   }
 
   async getLeaderboard(session: CandidateSession): Promise<CandidateLeaderboardResponse> {

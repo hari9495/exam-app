@@ -13,6 +13,7 @@ import { ClientErrorDto } from './dto/client-error.dto';
 import { RunCodeDto } from './dto/run-code.dto';
 import { WebcamViolationDto } from './dto/webcam-violation.dto';
 import { WebcamSnapshotDto } from './dto/webcam-snapshot.dto';
+import { FaceEnrolmentDto } from './dto/face-enrolment.dto';
 import { ScreenShareStateDto } from './dto/screen-share-state.dto';
 import { ScreenAnalysisDto } from './dto/screen-analysis.dto';
 import { MODERATE_ATTEMPT_THROTTLE, STRICT_CODE_RUN_THROTTLE } from '../rate-limit-tiers';
@@ -82,6 +83,12 @@ export class AttemptController {
   @Throttle(MODERATE_ATTEMPT_THROTTLE)
   webcamSnapshot(@CurrentCandidate() candidate: CandidateSession, @Body() dto: WebcamSnapshotDto) {
     return this.attemptService.webcamSnapshot(candidate, dto);
+  }
+
+  @Post('face-enrolment')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  faceEnrolment(@CurrentCandidate() candidate: CandidateSession, @Body() dto: FaceEnrolmentDto) {
+    return this.attemptService.recordFaceEnrolment(candidate, dto);
   }
 
   @Post('webcam-resume')
