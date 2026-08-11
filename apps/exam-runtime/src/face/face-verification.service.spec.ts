@@ -153,6 +153,9 @@ describe('FaceVerificationService', () => {
     const call = create.mock.calls[0][0];
     expect(call.data.attemptId).toBe('a1');
     expect(call.data.eventType).toBe('face_mismatch');
+    // Pins the map->row wiring, not just the map: a recruiter triaging by severity must not see
+    // the strongest signal in the system ranked alongside a right-click.
+    expect(call.data.severity).toBe('high');
     expect(JSON.parse(call.data.metadataJson)).toEqual({
       score: outcome.score,
       referenceImagePath: '/ref.jpg',
@@ -190,6 +193,11 @@ describe('FaceVerificationService', () => {
   // forTenant resolves both produce "decrypt ran after forTenant was called" -- see
   // task-7-report.md for the mutation that proves it. A re-entrancy flag catches both shapes:
   // it's true only while a forTenant callback is actually executing.
+  //
+  // Note WHICH assertion fails when nesting is introduced: verifySnapshot catches everything
+  // decrypt and embed throw, so the insideTx expectations below get swallowed and turned into a
+  // skip. The call COUNTS are the actual failure channel -- do not trim them as redundant, they
+  // are what makes this test bite.
   it('runs decrypt and embed strictly outside every forTenant transaction', async () => {
     const tx = {
       faceEnrolment: { findUnique: jest.fn().mockResolvedValue({ embedding: `enc:${encodeEmbedding(SAME)}`, referenceImagePath: '/ref.jpg' }) },
