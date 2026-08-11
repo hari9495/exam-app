@@ -37,6 +37,17 @@ describe('FaceEmbedderService', () => {
     await expect(service.embed(Buffer.from([0, 1, 2, 3]))).resolves.toBeNull();
   });
 
+  // The test above passes at the `no session` guard, so it never reaches the decoder. This one
+  // installs a session first, which is the only way the decode failure path is actually run.
+  it('returns null when the decoder rejects the bytes, without calling the model', async () => {
+    const service = makeService();
+    const run = jest.fn();
+    installFakeSession(service, { inputNames: ['x'], outputNames: ['out'], run });
+
+    await expect(service.embed(Buffer.from([0, 1, 2, 3]))).resolves.toBeNull();
+    expect(run).not.toHaveBeenCalled();
+  });
+
   describe('preprocessing', () => {
     const PLANE = 112 * 112;
 
@@ -70,13 +81,13 @@ describe('FaceEmbedderService', () => {
       // Sample across each plane distinctly. A channel transposition (e.g. NHWC) or a
       // constant-normalisation mutation on one channel would fail these.
       for (const i of [0, 50, PLANE - 1]) {
-        expect(tensor.data[i]).toBeCloseTo(expectedR, 1);
+        expect(tensor.data[i]).toBeCloseTo(expectedR, 5);
       }
       for (const i of [PLANE, PLANE + 50, PLANE * 2 - 1]) {
-        expect(tensor.data[i]).toBeCloseTo(expectedG, 1);
+        expect(tensor.data[i]).toBeCloseTo(expectedG, 5);
       }
       for (const i of [PLANE * 2, PLANE * 2 + 50, PLANE * 3 - 1]) {
-        expect(tensor.data[i]).toBeCloseTo(expectedB, 1);
+        expect(tensor.data[i]).toBeCloseTo(expectedB, 5);
       }
     });
 
