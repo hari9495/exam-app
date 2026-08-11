@@ -2957,30 +2957,50 @@ describe('AttemptService', () => {
       expect(upsert.mock.calls[0][0].create).toHaveProperty('embedding', null);
     });
 
-    // Finding 2 / ADO #6810 regression guard: embed()+encrypt() must run strictly between the
-    // upload and the upsert, never inside the pooled `forTenant` connection the upsert holds --
-    // ONNX inference under a held connection is exactly the pool-starvation shape #6810 fixed.
-    // Call-count assertions alone don't catch a regression here: a reviewer moved the whole
-    // embed+encrypt block inside the upsert's forTenant callback and every other test in this
-    // file still passed, because none of them look at *when* embed() ran relative to the
-    // transaction, only whether it ran. tenantPrisma.forTenant fires 3 times for this method --
-    // [0] resolveContext's bootstrap, [1] the attempt read, [2] the upsert -- and embed() must be
-    // *called* before forTenant is invoked for [2]. (Verified locally: temporarily moving the
-    // embed+encrypt block inside the upsert's forTenant callback makes this assertion fail; see
-    // task-6-report.md.)
-    it('runs embedding strictly outside the upsert transaction (ADO #6810)', async () => {
+    // Finding 2 / ADO #6810 regression guard: embed()+encrypt() must run strictly outside every
+    // forTenant transaction, never inside the pooled connection any of them hold -- ONNX
+    // inference under a held connection is exactly the pool-starvation shape #6810 fixed.
+    //
+    // A call-order assertion (comparing jest.fn().mock.invocationCallOrder for forTenant against
+    // embed()) looks right but is vacuous: invocationCallOrder records when forTenant is
+    // *called*, before its callback body runs, so work done inside the callback and work done
+    // after forTenant resolves both satisfy "embed ran before forTenant[2] was called". This
+    // particular assertion happened to still fail under the reviewer's mutation (it compares
+    // against a *later* forTenant call, [2], so nesting embed inside an *earlier* one still
+    // trips it) -- see task-6-report.md -- but that's incidental to this ordering, not a property
+    // of the idiom, and the re-entrancy check below is strictly stronger: it directly measures
+    // "is a forTenant callback executing right now", so it can't be fooled by call order at all.
+    it('runs embedding strictly outside every forTenant transaction (ADO #6810)', async () => {
       const upsert = jest.fn().mockResolvedValue({});
-      faceEmbedder.embed = jest.fn().mockResolvedValue(Float32Array.from([0.1, 0.2, 0.3]));
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, faceEnrolment: { upsert } };
+      let insideTx = false;
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve(invitationRecord))
+        .mockImplementation(async (_ctx: unknown, fn: (t: unknown) => unknown) => {
+          insideTx = true;
+          try {
+            return await fn(tx);
+          } finally {
+            insideTx = false;
+          }
+        });
+      faceEmbedder.embed = jest.fn(async () => {
+        expect(insideTx).toBe(false);
+        return Float32Array.from([0.1, 0.2, 0.3]);
+      });
+      crypto.encrypt = jest.fn((v: string) => {
+        expect(insideTx).toBe(false);
+        return `enc(${v})`;
+      });
       blobStorage.uploadDataUri = jest.fn().mockResolvedValue('https://acct.blob/face/a1.jpg');
-      mockBootstrapThenTwoScopedCalls({ attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, faceEnrolment: { upsert } });
 
       await service.recordFaceEnrolment(session, {
         status: 'enrolled', snapshot: 'data:image/jpeg;base64,AAA', consentGiven: true,
       });
 
       expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(3);
-      expect(faceEmbedder.embed.mock.invocationCallOrder[0])
-        .toBeLessThan(tenantPrisma.forTenant.mock.invocationCallOrder[2]);
+      expect(faceEmbedder.embed).toHaveBeenCalledTimes(1);
+      expect(crypto.encrypt).toHaveBeenCalledTimes(1);
     });
   });
 

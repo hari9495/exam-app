@@ -83,6 +83,17 @@ describe('getProctoringEventSeverity', () => {
     expect(CLIENT_REPORTABLE_EVENT_TYPES).toContain('screen_share_stopped');
     expect(getProctoringEventSeverity('screen_share_stopped')).toBe('high');
   });
+
+  // Finding 7: face_mismatch was missing from SEVERITY_BY_EVENT_TYPE, so it silently fell back
+  // to 'low' -- the same band as right_click -- instead of matching remote_access_suspected,
+  // the comparable server-generated signal.
+  it('maps face_mismatch to high severity, same band as remote_access_suspected', () => {
+    expect(getProctoringEventSeverity('face_mismatch')).toBe('high');
+  });
+
+  it('does not treat face_mismatch as client-reportable (server-generated only)', () => {
+    expect(CLIENT_REPORTABLE_EVENT_TYPES).not.toContain('face_mismatch');
+  });
 });
 
 describe('isStrikeWorthy', () => {
@@ -100,7 +111,7 @@ describe('isStrikeWorthy', () => {
     expect(isStrikeWorthy(eventType)).toBe(true);
   });
 
-  it.each(['refresh_warning', 'editor_paste', 'looking_down', 'webcam_snapshot', 'screen_share_started', 'something_unmapped'])(
+  it.each(['refresh_warning', 'editor_paste', 'looking_down', 'webcam_snapshot', 'screen_share_started', 'face_mismatch', 'something_unmapped'])(
     'returns false for %s',
     (eventType) => {
       expect(isStrikeWorthy(eventType)).toBe(false);

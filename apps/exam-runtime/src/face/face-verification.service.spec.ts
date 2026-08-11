@@ -70,12 +70,26 @@ describe('FaceVerificationService', () => {
     expect((await service.verifySnapshot('a1', 'org-1', Buffer.from('i'))).confirmed).toBe(true);
   });
 
+  // A single shared voter (instead of one per attempt) would still pass a weaker version of this
+  // test: pushing a1,a2,a1,a2 confirms on the 3rd push regardless of which attempt it belongs to,
+  // and the 4th push returns false either way -- the latch masks the bug. Interleaving a1,a2,a1,
+  // a2,a1 and asserting on every intermediate result forces a1's confirmation to land exactly on
+  // its own 3rd mismatch, which a global voter gets wrong (see task-7-report.md for the mutation
+  // that proves it).
   it('keeps a separate run per attempt, so two candidates cannot combine into one accusation', async () => {
     const service = build({ embedder: { embed: jest.fn().mockResolvedValue(OTHER) } });
-    await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
-    await service.verifySnapshot('a2', 'org-1', Buffer.from('i'));
-    await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
-    expect((await service.verifySnapshot('a2', 'org-1', Buffer.from('i'))).confirmed).toBe(false);
+    const a1First = await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+    const a2First = await service.verifySnapshot('a2', 'org-1', Buffer.from('i'));
+    const a1Second = await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+    const a2Second = await service.verifySnapshot('a2', 'org-1', Buffer.from('i'));
+    const a1Third = await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+
+    expect(a1First.confirmed).toBe(false);
+    expect(a2First.confirmed).toBe(false);
+    expect(a1Second.confirmed).toBe(false);
+    expect(a2Second.confirmed).toBe(false);
+    expect(a1Third.confirmed).toBe(true);
+    expect(a2Second.confirmed).toBe(false);
   });
 
   // --- Additional skip-path coverage (constraint #1: uncertainty is never an accusation). ---
@@ -166,36 +180,172 @@ describe('FaceVerificationService', () => {
   });
 
   // --- Connection-pool-starvation ordering (ADO #6810) ---
-  // Decrypt and embed must run strictly between the read transaction and the (confirmed-only)
-  // write transaction -- never nested inside either -- or a slow inference call holds a pooled
-  // connection open for its whole duration. Mirrors the idiom in
-  // attempt.service.spec.ts's "runs embedding strictly outside the upsert transaction" test.
+  // Decrypt and embed must run strictly outside every forTenant transaction -- never nested
+  // inside the read OR the write callback -- or a slow inference call holds a pooled connection
+  // open for its whole duration.
+  //
+  // A call-order assertion (comparing jest.fn().mock.invocationCallOrder for forTenant against
+  // decrypt/embed) looks right but is vacuous: invocationCallOrder records when forTenant is
+  // *called*, before its callback body runs. Work done inside the callback and work done after
+  // forTenant resolves both produce "decrypt ran after forTenant was called" -- see
+  // task-7-report.md for the mutation that proves it. A re-entrancy flag catches both shapes:
+  // it's true only while a forTenant callback is actually executing.
   it('runs decrypt and embed strictly outside every forTenant transaction', async () => {
     const tx = {
       faceEnrolment: { findUnique: jest.fn().mockResolvedValue({ embedding: `enc:${encodeEmbedding(SAME)}`, referenceImagePath: '/ref.jpg' }) },
       proctoringEvent: { create: jest.fn() },
       attempt: { update: jest.fn() },
     };
-    const tenantPrismaSpy = { forTenant: jest.fn((_c: unknown, fn: (t: unknown) => unknown) => fn(tx)) };
-    const decrypt = jest.fn((v: string) => v.replace(/^enc:/, ''));
-    const embed = jest.fn().mockResolvedValue(OTHER);
+    let insideTx = false;
+    const forTenant = jest.fn(async (_c: unknown, fn: (t: unknown) => unknown) => {
+      insideTx = true;
+      try {
+        return await fn(tx);
+      } finally {
+        insideTx = false;
+      }
+    });
+    const tenantPrismaSpy = { forTenant };
+    const decrypt = jest.fn((v: string) => {
+      expect(insideTx).toBe(false);
+      return v.replace(/^enc:/, '');
+    });
+    const embed = jest.fn(async () => {
+      expect(insideTx).toBe(false);
+      return OTHER;
+    });
     const { service } = buildWith({ tx, tenantPrismaSpy, decrypt, embedder: { embed } });
 
     // Three consecutive mismatches so a confirmed write transaction actually happens --
-    // otherwise forTenant is only ever called for the read and there's nothing to order against.
+    // otherwise forTenant is only ever called for the read.
     await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
     await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
     await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
 
-    expect(tenantPrismaSpy.forTenant).toHaveBeenCalledTimes(4); // 3 reads + 1 confirmed write
-    const thirdReadOrder = tenantPrismaSpy.forTenant.mock.invocationCallOrder[2];
-    const writeOrder = tenantPrismaSpy.forTenant.mock.invocationCallOrder[3];
-    const lastDecryptOrder = decrypt.mock.invocationCallOrder[decrypt.mock.invocationCallOrder.length - 1];
-    const lastEmbedOrder = embed.mock.invocationCallOrder[embed.mock.invocationCallOrder.length - 1];
+    expect(forTenant).toHaveBeenCalledTimes(4); // 3 reads + 1 confirmed write
+    expect(decrypt).toHaveBeenCalledTimes(3);
+    expect(embed).toHaveBeenCalledTimes(3);
+  });
 
-    expect(lastDecryptOrder).toBeGreaterThan(thirdReadOrder);
-    expect(lastDecryptOrder).toBeLessThan(writeOrder);
-    expect(lastEmbedOrder).toBeGreaterThan(thirdReadOrder);
-    expect(lastEmbedOrder).toBeLessThan(writeOrder);
+  // --- verifySnapshot never rejects (constraint #1: a broken feature is not evidence) ---
+
+  it('resolves to the skipped outcome, never rejects, when the read transaction fails', async () => {
+    const tenantPrismaSpy = { forTenant: jest.fn().mockRejectedValue(new Error('pool timeout')) };
+    const { service } = buildWith({ tenantPrismaSpy });
+
+    await expect(service.verifySnapshot('a1', 'org-1', Buffer.from('img'))).resolves.toEqual({
+      verdict: 'skipped',
+      score: null,
+      confirmed: false,
+    });
+  });
+
+  // --- Finding 4: the voter must not latch when the confirming write fails ---
+
+  it('resolves without rejecting, and resets the voter so a later mismatch can re-confirm, when persisting a confirmed mismatch fails', async () => {
+    const tx = {
+      faceEnrolment: { findUnique: jest.fn().mockResolvedValue({ embedding: `enc:${encodeEmbedding(SAME)}` }) },
+      proctoringEvent: {
+        create: jest.fn(() => {
+          throw new Error('write failed');
+        }),
+      },
+      attempt: { update: jest.fn() },
+    };
+    const { service } = buildWith({
+      tx,
+      embedder: { embed: jest.fn().mockResolvedValue(OTHER) },
+    });
+
+    const first = await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+    const second = await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+    const third = await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+    expect(first.confirmed).toBe(false);
+    expect(second.confirmed).toBe(false);
+    expect(third.confirmed).toBe(true); // the voter fired even though the write behind it failed
+
+    // Without a reset, the voter would still be latched (fired=true) and neither of these two
+    // further mismatches could ever confirm again -- the episode would be lost for good.
+    const fourth = await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+    const fifth = await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+    expect(fourth.confirmed).toBe(false);
+    expect(fifth.confirmed).toBe(false);
+    const sixth = await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+    expect(sixth.confirmed).toBe(true);
+  });
+
+  // --- Finding 2: an 'uncertain' verdict must reach the caller as-is, never as 'mismatch' ---
+
+  it('classifies an ambiguous frame as uncertain end-to-end, and an uncertain frame breaks a mismatch run rather than confirming it', async () => {
+    // reference (1,0,0) vs live (1,1.73,0): cosine = 1/sqrt(1+1.73^2) ~= 0.5003, inside the
+    // provisional [0.4, 0.6) band -- neither a confident match nor a confident mismatch.
+    const AMBIGUOUS = Float32Array.from([1, 1.73, 0]);
+    const { service } = buildWith({
+      enrolment: { embedding: `enc:${encodeEmbedding(SAME)}` },
+      embedder: {
+        embed: jest
+          .fn()
+          .mockResolvedValueOnce(OTHER) // mismatch
+          .mockResolvedValueOnce(AMBIGUOUS) // uncertain -- breaks the run
+          .mockResolvedValueOnce(OTHER) // mismatch (run restarts at 1)
+          .mockResolvedValueOnce(OTHER), // mismatch (run=2, still short of 3)
+      },
+    });
+
+    const first = await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+    expect(first.verdict).toBe('mismatch');
+    const second = await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+    expect(second.verdict).toBe('uncertain');
+    expect(second.confirmed).toBe(false);
+    const third = await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+    expect(third.verdict).toBe('mismatch');
+    expect(third.confirmed).toBe(false);
+    const fourth = await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+    expect(fourth.verdict).toBe('mismatch');
+    expect(fourth.confirmed).toBe(false);
+  });
+
+  // --- Finding 8: a skip must break a mismatch run the same way 'uncertain' does ---
+
+  it('breaks a mismatch run when an intervening frame is skipped, so an unrelated outage cannot bridge two mismatches into a false confirmation', async () => {
+    const { service } = buildWith({
+      enrolment: { embedding: `enc:${encodeEmbedding(SAME)}` },
+      embedder: {
+        embed: jest
+          .fn()
+          .mockResolvedValueOnce(OTHER) // mismatch (run=1)
+          .mockResolvedValueOnce(null) // skipped -- model briefly unavailable for this frame
+          .mockResolvedValueOnce(OTHER) // mismatch (run should restart at 1)
+          .mockResolvedValueOnce(OTHER), // mismatch (run=2, still short of 3)
+      },
+    });
+
+    const first = await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+    expect(first.verdict).toBe('mismatch');
+    const second = await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+    expect(second.verdict).toBe('skipped');
+    const third = await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+    expect(third.confirmed).toBe(false);
+    const fourth = await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+    expect(fourth.confirmed).toBe(false); // only 2 consecutive mismatches -- the skip broke the run
+  });
+
+  // --- Finding 6: the caller-supplied snapshotPath must reach metadataJson ---
+
+  it('threads a supplied snapshotPath into the recorded event metadata', async () => {
+    const { service, tx } = buildWith({
+      enrolment: { embedding: `enc:${encodeEmbedding(SAME)}` },
+      embedder: { embed: jest.fn().mockResolvedValue(OTHER) },
+    });
+
+    await service.verifySnapshot('a1', 'org-1', Buffer.from('i'), '/snapshots/a1-3.jpg');
+    await service.verifySnapshot('a1', 'org-1', Buffer.from('i'), '/snapshots/a1-3.jpg');
+    const outcome = await service.verifySnapshot('a1', 'org-1', Buffer.from('i'), '/snapshots/a1-3.jpg');
+
+    expect(outcome.confirmed).toBe(true);
+    const create = (tx.proctoringEvent as { create: jest.Mock }).create;
+    expect(JSON.parse(create.mock.calls[0][0].data.metadataJson)).toMatchObject({
+      snapshotPath: '/snapshots/a1-3.jpg',
+    });
   });
 });
