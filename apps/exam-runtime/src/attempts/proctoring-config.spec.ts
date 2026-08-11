@@ -10,6 +10,8 @@ function source(overrides: Partial<Parameters<typeof resolveProctoringConfig>[0]
     disabledProctoringSignalsJson: null,
     screenCaptureEnabled: false,
     lockdownRequired: false,
+    faceVerificationEnabled: false,
+    faceEnrolmentPolicy: 'retry_then_allow',
     ...overrides,
   };
 }
@@ -25,6 +27,8 @@ describe('resolveProctoringConfig', () => {
       disabledSignals: [],
       screenCaptureEnabled: false,
       lockdownRequired: false,
+      faceVerificationEnabled: false,
+      faceEnrolmentPolicy: 'retry_then_allow',
     });
   });
 
@@ -42,7 +46,18 @@ describe('resolveProctoringConfig', () => {
       disabledSignals: [],
       screenCaptureEnabled: false,
       lockdownRequired: false,
+      faceVerificationEnabled: false,
+      faceEnrolmentPolicy: 'retry_then_allow',
     });
+  });
+
+  it('surfaces face verification settings unchanged, independent of the anti-cheating master switch', () => {
+    expect(resolveProctoringConfig(source({ faceVerificationEnabled: true, faceEnrolmentPolicy: 'require_enrolment' })).faceVerificationEnabled).toBe(true);
+    expect(resolveProctoringConfig(source({ faceVerificationEnabled: true, faceEnrolmentPolicy: 'require_enrolment' })).faceEnrolmentPolicy).toBe('require_enrolment');
+    expect(
+      resolveProctoringConfig(source({ enableAntiCheating: false, faceVerificationEnabled: true, faceEnrolmentPolicy: 'require_enrolment' }))
+        .faceVerificationEnabled,
+    ).toBe(true);
   });
 
   it('surfaces webcamRecordOnly on the resolved config, so registerWebcamViolation can downgrade enforcement for webcam only', () => {
@@ -113,6 +128,8 @@ describe('proctoring bypass', () => {
     disabledProctoringSignalsJson: JSON.stringify(['right_click']),
     screenCaptureEnabled: true,
     lockdownRequired: true,
+    faceVerificationEnabled: false,
+    faceEnrolmentPolicy: 'retry_then_allow',
   };
 
   it('forces warn enforcement when the attempt is bypassed', () => {

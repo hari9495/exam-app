@@ -395,6 +395,9 @@ export interface ExamProctoringConfig {
   disabledSignals: string[];
   screenCaptureEnabled: boolean;
   lockdownRequired: boolean;
+  faceVerificationEnabled: boolean;
+  /** allow_unenrolled | retry_then_allow | require_enrolment */
+  faceEnrolmentPolicy: string;
 }
 
 export interface AttemptPreview {

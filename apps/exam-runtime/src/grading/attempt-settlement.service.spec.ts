@@ -58,6 +58,8 @@ describe('AttemptSettlementService', () => {
     disabledProctoringSignalsJson: null,
     screenCaptureEnabled: false,
     lockdownRequired: false,
+    faceVerificationEnabled: false,
+    faceEnrolmentPolicy: 'retry_then_allow',
   };
 
   beforeEach(() => {
@@ -1518,6 +1520,8 @@ describe('AttemptSettlementService', () => {
       disabledProctoringSignalsJson: null,
       screenCaptureEnabled: false,
       lockdownRequired: false,
+      faceVerificationEnabled: false,
+      faceEnrolmentPolicy: 'retry_then_allow',
     };
     const warnExam = { ...strictExam, proctoringEnforcement: 'warn', proctoringStrikeLimit: 3 };
 

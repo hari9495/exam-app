@@ -7,6 +7,9 @@ export interface ProctoringConfigSource {
   disabledProctoringSignalsJson: string | null;
   screenCaptureEnabled: boolean;
   lockdownRequired: boolean;
+  faceVerificationEnabled: boolean;
+  /** allow_unenrolled | retry_then_allow | require_enrolment */
+  faceEnrolmentPolicy: string;
 }
 
 export interface ExamProctoringConfig {
@@ -19,6 +22,11 @@ export interface ExamProctoringConfig {
   disabledSignals: string[];
   screenCaptureEnabled: boolean;
   lockdownRequired: boolean;
+  // Independent of enableAntiCheating -- face enrolment is a separate, consent-gated feature,
+  // not part of the anti-cheating master switch, so it is never forced off in the branch below.
+  faceVerificationEnabled: boolean;
+  /** allow_unenrolled | retry_then_allow | require_enrolment */
+  faceEnrolmentPolicy: string;
 }
 
 export interface ProctoringBypassSource {
@@ -69,6 +77,8 @@ export function resolveProctoringConfig(
       disabledSignals: parseDisabledSignals(exam.disabledProctoringSignalsJson),
       screenCaptureEnabled: false,
       lockdownRequired: false,
+      faceVerificationEnabled: exam.faceVerificationEnabled,
+      faceEnrolmentPolicy: exam.faceEnrolmentPolicy,
     };
   }
   return {
@@ -85,6 +95,8 @@ export function resolveProctoringConfig(
     screenCaptureEnabled: exam.screenCaptureEnabled,
     // Same rule: a bypass never relaxes the Safe Exam Browser requirement.
     lockdownRequired: exam.lockdownRequired,
+    faceVerificationEnabled: exam.faceVerificationEnabled,
+    faceEnrolmentPolicy: exam.faceEnrolmentPolicy,
   };
 }
 

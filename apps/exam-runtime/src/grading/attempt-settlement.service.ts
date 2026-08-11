@@ -97,6 +97,8 @@ export interface SettlementExam {
   disabledProctoringSignalsJson: string | null;
   screenCaptureEnabled: boolean;
   lockdownRequired: boolean;
+  faceVerificationEnabled: boolean;
+  faceEnrolmentPolicy: string;
 }
 
 @Injectable()

@@ -232,6 +232,8 @@ describe('useWebcamMonitor', () => {
         disabledSignals: [],
         screenCaptureEnabled: false,
         lockdownRequired: false,
+        faceVerificationEnabled: false,
+        faceEnrolmentPolicy: 'retry_then_allow',
       });
       return null;
     }
