@@ -1130,7 +1130,10 @@ export class AttemptService {
     // `async` method, so it can never throw synchronously either -- a bare .catch() on its returned
     // promise is sufficient (contrast the void-IIFE idiom in internal.controller.ts, needed there
     // because those callees are not themselves guaranteed to be async).
-    if (exam.faceVerificationEnabled && snapshotBuffer) {
+    // length > 0, not just truthiness: `data:image/jpeg;base64,` decodes to a zero-length Buffer,
+    // which is truthy. Without the length check an empty payload would cost a pointless enrolment
+    // read and a sharp() decode per snapshot before skipping anyway.
+    if (exam.faceVerificationEnabled && snapshotBuffer && snapshotBuffer.length > 0) {
       void this.checkFaceMismatch(attemptId, organizationId, snapshotBuffer, snapshotUrl || null, exam.faceMismatchAction).catch(
         (error) => this.logger.warn(`Face mismatch check failed for attempt ${attemptId}: ${String(error)}`),
       );

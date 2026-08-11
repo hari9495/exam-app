@@ -2916,8 +2916,14 @@ describe('AttemptService', () => {
         }
       });
       tenantPrisma.withoutTenantScope.mockImplementation((fn: (client: unknown) => unknown) => fn(client));
+      // CAPTURE the flag here, ASSERT in the test body. An `expect()` inside this mock would be
+      // swallowed: the call is fire-and-forget and its .catch (required, see the call site) turns
+      // any throw into a logger.warn, so the test would stay green under the exact mutation it
+      // exists to catch. Anything reachable from `void this.checkFaceMismatch(...)` has this
+      // property -- never assert inside it.
+      let sawInsideTx: boolean | null = null;
       faceVerification.verifySnapshot = jest.fn(async () => {
-        expect(insideTx).toBe(false);
+        sawInsideTx = insideTx;
         return { verdict: 'skipped', score: null, confirmed: false };
       });
 
@@ -2926,6 +2932,24 @@ describe('AttemptService', () => {
       await new Promise((resolve) => setImmediate(resolve));
 
       expect(faceVerification.verifySnapshot).toHaveBeenCalledTimes(1);
+      expect(sawInsideTx).toBe(false);
+    });
+
+    // The fast path added for finding 7 hands the decoded buffer straight to blobStorage.upload,
+    // which enforces NO content-type allowlist. A candidate-supplied data:text/html reaching it
+    // would be hosted from the storage origin, so the allowlist check in front of it is load
+    // bearing -- this pins it to uploadDataUri, which rejects the type as it always has.
+    it('routes a disallowed data-uri content type through uploadDataUri rather than the raw upload fast path', async () => {
+      const client = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
+      tenantPrisma.forTenant.mockImplementationOnce(() => Promise.resolve(invitationRecord));
+      tenantPrisma.withoutTenantScope.mockImplementation((fn: (c: unknown) => unknown) => fn(client));
+      blobStorage.upload = jest.fn();
+      blobStorage.uploadDataUri = jest.fn().mockRejectedValue(new Error('Unsupported data URI content type: text/html'));
+
+      await service.webcamSnapshot(session, { snapshot: 'data:text/html;base64,PGh0bWw+' });
+
+      expect(blobStorage.upload).not.toHaveBeenCalled();
+      expect(blobStorage.uploadDataUri).toHaveBeenCalledTimes(1);
     });
   });
 
