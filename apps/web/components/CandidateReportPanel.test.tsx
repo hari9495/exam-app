@@ -112,25 +112,13 @@ describe('CandidateReportPanel', () => {
       fireEvent.click(screen.getByRole('button', { name: /screen capture at/i }));
     }
 
-    it('opens larger than the default modal size, and can be expanded further and collapsed back', () => {
+    it('opens larger than the default modal size, and links the raw screenshot open in a new tab', () => {
       renderWithScreenshot();
 
-      expect(screen.getByRole('button', { name: 'Expand screen capture' })).toBeInTheDocument();
-
-      fireEvent.click(screen.getByRole('button', { name: 'Expand screen capture' }));
-      expect(screen.getByRole('button', { name: 'Collapse screen capture' })).toBeInTheDocument();
-
-      fireEvent.click(screen.getByRole('button', { name: 'Collapse screen capture' }));
-      expect(screen.getByRole('button', { name: 'Expand screen capture' })).toBeInTheDocument();
-    });
-
-    it('resets back to collapsed after closing and reopening', () => {
-      renderWithScreenshot();
-      fireEvent.click(screen.getByRole('button', { name: 'Expand screen capture' }));
-      fireEvent.click(screen.getByRole('button', { name: /close/i }));
-
-      fireEvent.click(screen.getByRole('button', { name: /screen capture at/i }));
-      expect(screen.getByRole('button', { name: 'Expand screen capture' })).toBeInTheDocument();
+      const link = screen.getByRole('link', { name: 'Open screen capture in a new tab' });
+      expect(link).toHaveAttribute('href', 'data:image/png;base64,abc');
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
     });
   });
 

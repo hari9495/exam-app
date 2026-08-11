@@ -3,7 +3,7 @@
 import { ReactNode, useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Download, Maximize2, Minimize2 } from 'lucide-react';
+import { Download, ExternalLink } from 'lucide-react';
 import {
   useCandidateReport,
   useAttemptInsight,
@@ -61,7 +61,6 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
   const { toast } = useToast();
   const [selectedSnapshot, setSelectedSnapshot] = useState<WebcamTimelineEntry | null>(null);
   const [selectedScreenshot, setSelectedScreenshot] = useState<string | null>(null);
-  const [screenshotExpanded, setScreenshotExpanded] = useState(false);
 
   const handleRegenerate = () => {
     if (!attemptId) return;
@@ -233,10 +232,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
                   {screenshot && (
                     <button
                       type="button"
-                      onClick={() => {
-                        setSelectedScreenshot(screenshot);
-                        setScreenshotExpanded(false);
-                      }}
+                      onClick={() => setSelectedScreenshot(screenshot)}
                       aria-label={`Screen capture at ${formatSnapshotTime(entry.occurredAt)}`}
                       className="block w-full"
                     >
@@ -277,25 +273,18 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
         )}
       </Modal>
 
-      <Modal
-        open={selectedScreenshot !== null}
-        title="Screen Capture"
-        onClose={() => {
-          setSelectedScreenshot(null);
-          setScreenshotExpanded(false);
-        }}
-        size={screenshotExpanded ? 'full' : 'xl'}
-      >
+      <Modal open={selectedScreenshot !== null} title="Screen Capture" onClose={() => setSelectedScreenshot(null)} size="xl">
         {selectedScreenshot && (
           <div className="relative">
-            <button
-              type="button"
-              onClick={() => setScreenshotExpanded((expanded) => !expanded)}
-              aria-label={screenshotExpanded ? 'Collapse screen capture' : 'Expand screen capture'}
+            <a
+              href={selectedScreenshot}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Open screen capture in a new tab"
               className="absolute right-2 top-2 rounded bg-black/60 p-1.5 text-white transition-colors hover:bg-black/80"
             >
-              {screenshotExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-            </button>
+              <ExternalLink size={16} />
+            </a>
             <img src={selectedScreenshot} alt="Screen capture" className="w-full rounded" />
           </div>
         )}
