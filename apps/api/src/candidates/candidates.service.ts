@@ -108,6 +108,15 @@ export interface CandidateDataExport {
     proctoringAnalysis: { status: string; riskLevel: string | null; summary: string | null } | null;
     insight: { status: string; summary: string | null } | null;
     messages: { body: string; sentAt: Date; readAt: Date | null }[];
+    // Special-category biometric data. Erase already reaches it, so the subject-access path
+    // must too -- a face reference image the subject cannot see in their own export is data
+    // held about them that they were never told about.
+    faceEnrolment: {
+      status: string;
+      capturedAt: Date | null;
+      consentAt: Date | null;
+      referenceImageUrl: string | null;
+    } | null;
   }[];
 }
 
@@ -311,6 +320,7 @@ export class CandidatesService {
               proctoringEvents: { orderBy: { occurredAt: 'asc' } },
               proctoringAnalysis: true,
               insight: true,
+              faceEnrolment: true,
               messages: { orderBy: { sentAt: 'asc' } },
             },
           },
@@ -363,6 +373,19 @@ export class CandidatesService {
                   : null,
                 insight: attempt.insight ? { status: attempt.insight.status, summary: attempt.insight.summary } : null,
                 messages: attempt.messages.map((message) => ({ body: message.body, sentAt: message.sentAt, readAt: message.readAt })),
+                // The face container is private and the stored column is a bare path: sign on
+                // read, exactly like the proctoring evidence above, and never persist the signed
+                // value. Same 15-minute SAS caveat applies to this retained JSON artifact.
+                faceEnrolment: attempt.faceEnrolment
+                  ? {
+                      status: attempt.faceEnrolment.status,
+                      capturedAt: attempt.faceEnrolment.capturedAt,
+                      consentAt: attempt.faceEnrolment.consentAt,
+                      referenceImageUrl: (await this.blobStorage.signIfOurs(
+                        attempt.faceEnrolment.referenceImagePath,
+                      )) as string | null,
+                    }
+                  : null,
               };
             }),
         ),
