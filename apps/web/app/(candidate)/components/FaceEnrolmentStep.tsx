@@ -10,6 +10,10 @@ export type EnrolmentPolicy = 'allow_unenrolled' | 'retry_then_allow' | 'require
 type Phase = 'consent' | 'capture' | 'blocked';
 
 const MAX_ATTEMPTS = 3;
+// Wall clock for a whole attempt: model load, camera permission, and the blink itself. Generous
+// enough for a cold model fetch on a slow office network, short enough that three attempts still
+// resolve in about a minute. Exported so the test asserts against the same budget.
+export const ATTEMPT_TIMEOUT_MS = 20_000;
 
 interface Props {
   policy: EnrolmentPolicy;
@@ -58,26 +62,27 @@ export function FaceEnrolmentStep({ policy, onSettled }: Props) {
     [settle],
   );
 
+  // Side effects stay OUT of the setAttempts updater: StrictMode double-invokes updaters in
+  // development, which double-fired the settle POST.
   const handleAttemptFailed = useCallback(
     (why: string) => {
+      const next = attempts + 1;
       setHint(why);
-      setAttempts((previous) => {
-        const next = previous + 1;
-        if (next >= MAX_ATTEMPTS) {
-          if (policy === 'require_enrolment') {
-            setPhase('blocked');
-          } else {
-            void settle('not_verified', { status: 'not_verified', consentGiven: true });
-          }
+      setAttempts(next);
+      if (next >= MAX_ATTEMPTS) {
+        if (policy === 'require_enrolment') {
+          setPhase('blocked');
+        } else {
+          void settle('not_verified', { status: 'not_verified', consentGiven: true });
         }
-        return next;
-      });
+      }
     },
-    [policy, settle],
+    [attempts, policy, settle],
   );
 
   useEnrolmentCapture({
     active: phase === 'capture' && attempts < MAX_ATTEMPTS,
+    attempt: attempts,
     videoRef,
     onCaptured: handleCaptured,
     onFailed: handleAttemptFailed,
@@ -140,43 +145,86 @@ export function FaceEnrolmentStep({ policy, onSettled }: Props) {
 
 function useEnrolmentCapture({
   active,
+  attempt,
   videoRef,
   onCaptured,
   onFailed,
 }: {
   active: boolean;
+  attempt: number;
   videoRef: React.MutableRefObject<HTMLVideoElement | null>;
   onCaptured: (snapshot: string, metrics: unknown) => void;
   onFailed: (why: string) => void;
 }) {
+  // Same ref-mirror pattern useWebcamMonitor uses: both callbacks close over the react-query
+  // mutation object, which is a fresh identity on every render, so depending on them directly made
+  // the effect tear down and re-acquire the camera constantly -- including while the success POST
+  // was in flight, which leaked the stream and could POST twice.
+  const onCapturedRef = useRef(onCaptured);
+  onCapturedRef.current = onCaptured;
+  const onFailedRef = useRef(onFailed);
+  onFailedRef.current = onFailed;
+
   useEffect(() => {
     if (!active) return undefined;
     let cancelled = false;
     let stream: MediaStream | undefined;
+    let landmarker: { close: () => void } | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const challenge = createBlinkChallenge();
+
+    // Exactly one terminal outcome per attempt -- capture, failure, or teardown, whichever comes
+    // first -- and it stops the tick loop and the deadline below.
+    const finish = (report: () => void) => {
+      if (cancelled) return;
+      cancelled = true;
+      report();
+    };
+
+    // A blink may simply never be seen: no face in frame, glasses glare, poor light. The challenge
+    // deliberately holds its state on a faceless frame, so without a wall clock the tick loop spins
+    // forever, onFailed never fires, attempts never increments, and the candidate is stuck on this
+    // step under every policy. This ends the attempt wherever it stalled -- model load, permission
+    // prompt, or the blink itself -- because a candidate must never be stuck.
+    const deadline = setTimeout(() => {
+      finish(() =>
+        onFailedRef.current(
+          'We could not get a clear photo in time. Face the camera in good light, then blink.',
+        ),
+      );
+    }, ATTEMPT_TIMEOUT_MS);
 
     async function run() {
       try {
         // Same self-hosted model source as useWebcamMonitor -- never a CDN.
         const { FaceLandmarker, FilesetResolver } = await import('@mediapipe/tasks-vision');
         const fileset = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_URL);
-        const landmarker = await FaceLandmarker.createFromOptions(fileset, {
+        const marker = await FaceLandmarker.createFromOptions(fileset, {
           baseOptions: { modelAssetPath: FACE_LANDMARKER_MODEL_URL },
           outputFaceBlendshapes: true,
           runningMode: 'VIDEO',
           numFaces: 2,
         });
+        landmarker = marker;
+        if (cancelled) {
+          marker.close();
+          return;
+        }
         stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        if (cancelled) return;
+        // Cleanup may have run while either await was in flight: stop the tracks here too, or the
+        // candidate's camera light stays on after the step is gone.
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
         const video = videoRef.current;
-        if (!video) return;
+        if (!video) throw new Error('enrolment video element is gone');
         video.srcObject = stream;
         await video.play();
 
         const tick = () => {
           if (cancelled) return;
-          const result = landmarker.detectForVideo(video, performance.now());
+          const result = marker.detectForVideo(video, performance.now());
           if (challenge.push(result) === 'satisfied') {
             const verdict = assessFaceQuality(result);
             if (verdict.ok) {
@@ -184,13 +232,14 @@ function useEnrolmentCapture({
               canvas.width = video.videoWidth;
               canvas.height = video.videoHeight;
               canvas.getContext('2d')?.drawImage(video, 0, 0);
-              onCaptured(canvas.toDataURL('image/jpeg', 0.8), verdict.metrics);
+              const snapshot = canvas.toDataURL('image/jpeg', 0.8);
+              finish(() => onCapturedRef.current(snapshot, verdict.metrics));
               return;
             }
             // Quality failed after a genuine blink: that is one spent attempt, and the next
             // attempt needs a fresh blink rather than inheriting this one.
             challenge.reset();
-            onFailed(verdict.hint);
+            finish(() => onFailedRef.current(verdict.hint));
             return;
           }
           timer = setTimeout(tick, 200);
@@ -199,17 +248,22 @@ function useEnrolmentCapture({
       } catch {
         // No camera, permission refused, or the model failed to load: one failed attempt,
         // never a stall. The candidate must always be able to move forward.
-        if (!cancelled) {
-          onFailed('We could not use your camera. Check it is not in use by another app.');
-        }
+        finish(() =>
+          onFailedRef.current('We could not use your camera. Check it is not in use by another app.'),
+        );
       }
     }
     void run();
 
     return () => {
       cancelled = true;
+      clearTimeout(deadline);
       if (timer) clearTimeout(timer);
       stream?.getTracks().forEach((track) => track.stop());
+      landmarker?.close();
     };
-  }, [active, videoRef, onCaptured, onFailed]);
+    // `attempt` is a dependency on purpose: each retry must be a deliberately fresh session
+    // (new stream, new model, new blink challenge, new deadline). It used to restart only as a
+    // side effect of the callback identities churning above.
+  }, [active, attempt, videoRef]);
 }
