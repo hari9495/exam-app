@@ -15,6 +15,7 @@ import {
   extractBase64FromDataUri,
 } from '@exam-platform/shared';
 import { FaceEmbedderService } from '../face/face-embedder.service';
+import { FaceVerificationService } from '../face/face-verification.service';
 import { AttemptSettlementService, PauseReason, SettlementExam } from '../grading/attempt-settlement.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { LeaderboardService, AUTO_GRADABLE_QUESTION_TYPES, CandidateLeaderboardResponse } from '../leaderboard/leaderboard.service';
@@ -245,6 +246,7 @@ export class AttemptService {
     private readonly systemEvents: SystemEventsService,
     private readonly faceEmbedder: FaceEmbedderService,
     private readonly crypto: OrgSecretsCryptoService,
+    private readonly faceVerification: FaceVerificationService,
   ) {}
 
   // ponytail: in-memory per-attempt floor between AI screen analyses -- single pm2 process, so a
@@ -1070,7 +1072,7 @@ export class AttemptService {
   }
 
   async webcamSnapshot(session: CandidateSession, dto: WebcamSnapshotDto): Promise<{ ok: true }> {
-    const { invitation } = await this.resolveContext(session.invitationId);
+    const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
 
     // Unlike webcamViolation/reportProctoringEvent, this touches only Attempt (a single read) and
     // ProctoringEvent (a single create) -- neither RLS-protected -- and needs no multi-statement
@@ -1094,7 +1096,40 @@ export class AttemptService {
         data: { attemptId, eventType: 'webcam_snapshot', severity: 'low', metadataJson: JSON.stringify({ snapshot: snapshotUrl }) },
       });
     });
+
+    // Fire-and-forget, relative to THIS response -- deliberately not awaited. verifySnapshot()'s
+    // embed call is exactly the kind of slow I/O that must never sit in the candidate's hot path
+    // (this endpoint fires every 120-180s for the whole exam; see the comment above). verifySnapshot()
+    // itself never rejects, so there is nothing here that needs a .catch either.
+    if (exam.faceVerificationEnabled) {
+      void this.checkFaceMismatch(attemptId, organizationId, dto.snapshot, snapshotUrl || null, exam.faceMismatchAction);
+    }
+
     return { ok: true };
+  }
+
+  // Stage-2 gate (task-8 brief): on a confirmed mismatch, only 'flag' may affect the candidate --
+  // and verifySnapshot() already applied it unconditionally by recording the event and
+  // incrementing Attempt.faceMismatchCount, so there is nothing left to do for it here.
+  // warn/pause/block are accepted and stored (resolveFaceIdFields on the API side,
+  // ExamDetailsForm's recruiter control) so recruiters can select them today, but enforcement
+  // beyond flag is deliberately deferred to stage 3 pending threshold calibration and a fairness
+  // check. Pinned by attempt.service.spec.ts: a confirmed mismatch on an exam set to 'block' must
+  // not pause or block anyone yet. Extend this switch, not the gate itself, once stage 3 lands.
+  private async checkFaceMismatch(
+    attemptId: string,
+    organizationId: string,
+    snapshotDataUri: string,
+    snapshotPath: string | null,
+    faceMismatchAction: string,
+  ): Promise<void> {
+    const base64 = extractBase64FromDataUri(snapshotDataUri)?.base64;
+    if (!base64) return;
+    const outcome = await this.faceVerification.verifySnapshot(attemptId, organizationId, Buffer.from(base64, 'base64'), snapshotPath);
+    if (!outcome.confirmed || faceMismatchAction === 'flag') return;
+    this.logger.debug(
+      `Confirmed face mismatch on attempt ${attemptId}: action '${faceMismatchAction}' is stored but not yet enforced (stage 3)`,
+    );
   }
 
   async recordFaceEnrolment(session: CandidateSession, dto: FaceEnrolmentDto): Promise<{ status: string }> {

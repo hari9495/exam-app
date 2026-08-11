@@ -10,6 +10,7 @@ import { ApiInternalClient } from '../api-internal-client/api-internal.client';
 import { getProctoringEventSeverity } from '../attempts/proctoring-severity';
 import { resolveProctoringConfig } from '../attempts/proctoring-config';
 import { sanitizeMetadataOrDrop } from '../attempts/sanitize-metadata';
+import { FaceVerificationService } from '../face/face-verification.service';
 
 const BROWSER_ACTIVITY_COOLDOWN_MS = 60_000;
 
@@ -111,6 +112,7 @@ export class AttemptSettlementService {
     private readonly attemptInsight: AttemptInsightService,
     private readonly integrityAnalysis: IntegrityAnalysisService,
     private readonly apiInternalClient: ApiInternalClient,
+    private readonly faceVerification: FaceVerificationService,
   ) {}
 
   remainingSeconds(
@@ -215,6 +217,10 @@ export class AttemptSettlementService {
 
     const finalStatus = hasCodeQuestions ? 'pending_manual_grade' : status;
     const finalized = await tx.attempt.update({ where: { id: attempt.id }, data: { status: finalStatus, submittedAt: new Date() } });
+    // The attempt is no longer live -- no further webcam snapshot for it is expected, so its
+    // per-attempt mismatch-run state (and one-time "model unavailable" warning) can be dropped.
+    // In-memory only, no I/O, so this is safe to call from inside the transaction.
+    this.faceVerification.forgetAttempt(finalized.id);
     await tx.auditLog.create({
       data: {
         organizationId: exam.organizationId,

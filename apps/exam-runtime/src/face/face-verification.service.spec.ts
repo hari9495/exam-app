@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { FaceVerificationService } from './face-verification.service';
 import { encodeEmbedding } from '@exam-platform/shared';
 
@@ -56,6 +57,44 @@ describe('FaceVerificationService', () => {
     const outcome = await service.verifySnapshot('a1', 'org-1', Buffer.from('img'));
     expect(outcome.verdict).toBe('skipped');
     expect(outcome.score).toBeNull();
+  });
+
+  // Item 4 (task-8): a model missing in production must not be silently indistinguishable from
+  // "no mismatches ever occurred" -- but must also not spam a log line every 120-180s per
+  // candidate for the whole exam, which is what a per-snapshot log would do.
+  it('warns once per attempt, not once per snapshot, when the embedding model is unavailable', async () => {
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const service = build({ embedder: { isAvailable: () => false } });
+
+    await service.verifySnapshot('a1', 'org-1', Buffer.from('img'));
+    await service.verifySnapshot('a1', 'org-1', Buffer.from('img'));
+    await service.verifySnapshot('a1', 'org-1', Buffer.from('img'));
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    warnSpy.mockRestore();
+  });
+
+  it('warns again for a different attempt, since each attempt gets its own one-time warning', async () => {
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const service = build({ embedder: { isAvailable: () => false } });
+
+    await service.verifySnapshot('a1', 'org-1', Buffer.from('img'));
+    await service.verifySnapshot('a2', 'org-1', Buffer.from('img'));
+
+    expect(warnSpy).toHaveBeenCalledTimes(2);
+    warnSpy.mockRestore();
+  });
+
+  it('warns again after forgetAttempt, since the one-time warning is cleared along with the voter', async () => {
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const service = build({ embedder: { isAvailable: () => false } });
+
+    await service.verifySnapshot('a1', 'org-1', Buffer.from('img'));
+    service.forgetAttempt('a1');
+    await service.verifySnapshot('a1', 'org-1', Buffer.from('img'));
+
+    expect(warnSpy).toHaveBeenCalledTimes(2);
+    warnSpy.mockRestore();
   });
 
   it('skips when the live frame could not be embedded', async () => {

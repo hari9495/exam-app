@@ -20,6 +20,7 @@ import { PistonClient } from '../code-execution/piston-client';
 import { PistonRuntimesService } from '../code-execution/piston-runtimes.service';
 import { RunLimiter } from '../code-execution/run-limiter';
 import { FaceEmbedderService } from '../face/face-embedder.service';
+import { FaceVerificationService } from '../face/face-verification.service';
 
 // The cap-count query folds case AND width (see sanitize-metadata.ts / scc-task-5-report.md),
 // so a plain `.toContain('"screenshot":')` assertion is case- and width-sensitive in JS and
@@ -52,6 +53,7 @@ describe('AttemptService', () => {
   let systemEvents: { record: jest.Mock };
   let faceEmbedder: { embed: jest.Mock; isAvailable: jest.Mock };
   let crypto: { encrypt: jest.Mock; decrypt: jest.Mock };
+  let faceVerification: { verifySnapshot: jest.Mock; forgetAttempt: jest.Mock };
   const session = { invitationId: 'inv-1' };
   const exam = {
     id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false,
@@ -90,6 +92,10 @@ describe('AttemptService', () => {
     systemEvents = { record: jest.fn().mockResolvedValue(undefined) };
     faceEmbedder = { embed: jest.fn().mockResolvedValue(null), isAvailable: jest.fn().mockReturnValue(false) };
     crypto = { encrypt: jest.fn((plain: string) => `enc(${plain})`), decrypt: jest.fn() };
+    faceVerification = {
+      verifySnapshot: jest.fn().mockResolvedValue({ verdict: 'skipped', score: null, confirmed: false }),
+      forgetAttempt: jest.fn(),
+    };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -107,6 +113,7 @@ describe('AttemptService', () => {
         { provide: SystemEventsService, useValue: systemEvents },
         { provide: FaceEmbedderService, useValue: faceEmbedder },
         { provide: OrgSecretsCryptoService, useValue: crypto },
+        { provide: FaceVerificationService, useValue: faceVerification },
       ],
     }).compile();
     service = moduleRef.get(AttemptService);
@@ -2726,6 +2733,45 @@ describe('AttemptService', () => {
       // on this path. This is the assertion that would fail if someone reverted the fix.
       expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(1);
       expect(tenantPrisma.withoutTenantScope).toHaveBeenCalledTimes(2);
+      // faceVerificationEnabled is false on the shared `exam` fixture -- verification must not
+      // run (let alone cost a model call) for every exam that hasn't opted in.
+      expect(faceVerification.verifySnapshot).not.toHaveBeenCalled();
+    });
+
+    // Item 3 (task-8): the stored blob path must reach FaceVerificationService, or the
+    // recruiter's side-by-side evidence view (a later task) shows no evidence for a mismatch.
+    it('calls faceVerification.verifySnapshot with the decoded frame and the stored snapshot path when face verification is enabled', async () => {
+      const client = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
+      mockBootstrapThenPlainClient(client, { ...invitationRecord, exam: { ...exam, faceVerificationEnabled: true } });
+
+      await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,YWJj' });
+      // Fire-and-forget relative to the response (see webcamSnapshot's own comment) -- let its
+      // microtasks settle before asserting on the call it queued.
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(faceVerification.verifySnapshot).toHaveBeenCalledWith(
+        'attempt-1',
+        'org-1',
+        Buffer.from('YWJj', 'base64'),
+        expect.stringMatching(/^https:\/\/blob\.test\/webcam-snapshots\/attempt-1-/),
+      );
+    });
+
+    // Stage-2 gate (task-8 brief): flag is the only action allowed to affect the candidate right
+    // now. This is the test the brief explicitly calls for: a confirmed mismatch on an exam set
+    // to 'block' must not block (or pause) anyone yet -- enforcement beyond flag is deferred to
+    // stage 3. Mutating checkFaceMismatch to route 'pause'/'block' through registerWebcamViolation
+    // must make this fail.
+    it('does not pause or block the candidate on a confirmed mismatch even when faceMismatchAction is "block"', async () => {
+      const client = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
+      mockBootstrapThenPlainClient(client, { ...invitationRecord, exam: { ...exam, faceVerificationEnabled: true, faceMismatchAction: 'block' } });
+      faceVerification.verifySnapshot.mockResolvedValue({ verdict: 'mismatch', score: 0.1, confirmed: true });
+
+      const result = await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,YWJj' });
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(result).toEqual({ ok: true });
+      expect(settlement.registerWebcamViolation).not.toHaveBeenCalled();
     });
 
     it('still records the (informational) event with an empty snapshot when the upload throws, rather than 500ing', async () => {

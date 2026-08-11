@@ -7,6 +7,11 @@ export const PROCTORING_ENFORCEMENT_VALUES = ['warn', 'block'] as const;
 
 export const FACE_ENROLMENT_POLICY_VALUES = ['allow_unenrolled', 'retry_then_allow', 'require_enrolment'] as const;
 
+// Stage 2 ships flag-only: every value here is accepted, stored and surfaced to recruiters, but
+// only 'flag' has any candidate-facing effect right now -- see AttemptService.checkFaceMismatch
+// and the task-8 brief. warn/pause/block enforcement is deferred to stage 3.
+export const FACE_MISMATCH_ACTION_VALUES = ['flag', 'warn', 'pause', 'block'] as const;
+
 // Exactly the strike-worthy browser signals. Webcam signals are governed by
 // webcamProctoringEnabled; editor_paste/refresh_warning are telemetry, not strikes.
 export const TOGGLEABLE_PROCTORING_SIGNALS = [
@@ -128,4 +133,12 @@ export class CreateExamDto {
     message: 'Enrolment policy must be allow_unenrolled, retry_then_allow or require_enrolment',
   })
   faceEnrolmentPolicy?: string;
+
+  // What happens when FaceVerificationService confirms a mismatch mid-exam. Stage 2 ships
+  // flag-only -- see FACE_MISMATCH_ACTION_VALUES above -- but every value is validated and
+  // stored now so recruiters can pick ahead of stage 3's enforcement.
+  @IsOptional() @IsIn(FACE_MISMATCH_ACTION_VALUES, {
+    message: 'Face mismatch action must be flag, warn, pause or block',
+  })
+  faceMismatchAction?: string;
 }

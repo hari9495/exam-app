@@ -29,6 +29,7 @@ export interface ExamDetailsValue {
   lockdownRequired: boolean;
   faceVerificationEnabled: boolean;
   faceEnrolmentPolicy: 'allow_unenrolled' | 'retry_then_allow' | 'require_enrolment';
+  faceMismatchAction: 'flag' | 'warn' | 'pause' | 'block';
 }
 
 interface ExamDetailsFormProps {
@@ -115,6 +116,9 @@ export function ExamDetailsForm({
   const [faceEnrolmentPolicy, setFaceEnrolmentPolicy] = useState<ExamDetailsValue['faceEnrolmentPolicy']>(
     (initialExam?.faceEnrolmentPolicy as ExamDetailsValue['faceEnrolmentPolicy']) ?? 'retry_then_allow',
   );
+  const [faceMismatchAction, setFaceMismatchAction] = useState<ExamDetailsValue['faceMismatchAction']>(
+    (initialExam?.faceMismatchAction as ExamDetailsValue['faceMismatchAction']) ?? 'flag',
+  );
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -154,6 +158,7 @@ export function ExamDetailsForm({
       lockdownRequired,
       faceVerificationEnabled,
       faceEnrolmentPolicy,
+      faceMismatchAction,
     });
   }
 
@@ -396,6 +401,23 @@ export function ExamDetailsForm({
                   { value: 'require_enrolment', label: "Don't let them start" },
                 ]}
               />
+              <div className="pt-2">
+                <Select
+                  label="If the face doesn't match"
+                  value={faceMismatchAction}
+                  onChange={(value) => setFaceMismatchAction(value as ExamDetailsValue['faceMismatchAction'])}
+                  options={[
+                    { value: 'flag', label: 'Record only (recommended)' },
+                    { value: 'warn', label: 'Record and warn the candidate' },
+                    { value: 'pause', label: 'Record and pause the exam' },
+                    { value: 'block', label: 'Record and block the exam' },
+                  ]}
+                />
+                <p className="pt-1 text-xs text-recruiter-text-secondary">
+                  Thresholds are not yet calibrated. Leave this on &quot;Record only&quot; until calibration and the
+                  fairness check are complete.
+                </p>
+              </div>
             </div>
           )}
         </div>

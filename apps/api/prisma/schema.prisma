@@ -351,6 +351,12 @@ model Exam {
   lockdownRequired              Boolean       @default(false) @map("lockdown_required")
   faceVerificationEnabled       Boolean       @default(false) @map("face_verification_enabled")
   faceEnrolmentPolicy           String        @default("retry_then_allow") @map("face_enrolment_policy")
+  // What happens when a confirmed face mismatch fires mid-exam. Stage 2 ships flag-only: every
+  // value is accepted, stored and surfaced to recruiters, but only 'flag' has any candidate-
+  // facing effect right now -- see AttemptService's applyFaceMismatchAction and the stage-2
+  // brief. warn/pause/block enforcement is deferred to stage 3 pending threshold calibration
+  // and a fairness check.
+  faceMismatchAction            String        @default("flag") @map("face_mismatch_action")
   createdBy                     String        @map("created_by") @db.UniqueIdentifier
   createdAt                     DateTime      @default(now()) @map("created_at")
   sections                      ExamSection[]
@@ -495,6 +501,7 @@ model Attempt {
   proctoringBypassedBy          String?             @map("proctoring_bypassed_by") @db.UniqueIdentifier
   proctoringBypassReason        String?             @map("proctoring_bypass_reason")
   proctoringBypassRevokedAt     DateTime?           @map("proctoring_bypass_revoked_at")
+  faceMismatchCount             Int                 @default(0) @map("face_mismatch_count")
   invitation                    Invitation          @relation(fields: [invitationId], references: [id], onDelete: Cascade)
   answers                       Answer[]
   result                        Result?

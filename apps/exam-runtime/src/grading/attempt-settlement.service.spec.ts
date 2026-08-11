@@ -5,6 +5,7 @@ import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.
 import { AttemptInsightService } from '../attempt-insight/attempt-insight.service';
 import { IntegrityAnalysisService } from '../integrity/integrity-analysis.service';
 import { ApiInternalClient } from '../api-internal-client/api-internal.client';
+import { FaceVerificationService } from '../face/face-verification.service';
 import { getProctoringEventSeverity } from '../attempts/proctoring-severity';
 
 // Faithfully emulates SQL Server's NULL semantics for the cooldown `where` clause, not just
@@ -45,6 +46,7 @@ describe('AttemptSettlementService', () => {
   let attemptInsight: { analyze: jest.Mock };
   let integrityAnalysis: { analyze: jest.Mock };
   let apiInternalClient: { dispatchWebhook: jest.Mock };
+  let faceVerification: { forgetAttempt: jest.Mock };
   const exam = {
     id: 'exam-1',
     organizationId: 'org-1',
@@ -68,12 +70,14 @@ describe('AttemptSettlementService', () => {
     attemptInsight = { analyze: jest.fn().mockResolvedValue(undefined) };
     integrityAnalysis = { analyze: jest.fn().mockResolvedValue(undefined) };
     apiInternalClient = { dispatchWebhook: jest.fn().mockResolvedValue(undefined) };
+    faceVerification = { forgetAttempt: jest.fn() };
     service = new AttemptSettlementService(
       broadcaster as unknown as AttemptStatusBroadcaster,
       attemptAnalysis as unknown as AttemptAnalysisService,
       attemptInsight as unknown as AttemptInsightService,
       integrityAnalysis as unknown as IntegrityAnalysisService,
       apiInternalClient as unknown as ApiInternalClient,
+      faceVerification as unknown as FaceVerificationService,
     );
   });
 
@@ -349,6 +353,24 @@ describe('AttemptSettlementService', () => {
       expect(tx.result.create).toHaveBeenCalledWith({
         data: { attemptId: 'attempt-1', score: 0, maxScore: 5, percentage: 0, passFail: 'fail' },
       });
+    });
+
+    // Item 2 (task-8): forgetAttempt was dead code before this task -- nothing called it, so
+    // FaceVerificationService's per-attempt voter map grew one entry per attempt for the whole
+    // process lifetime. finalize() is the one place every settle/submit path funnels through.
+    it('forgets the attempt in FaceVerificationService once it settles, so its voter map does not leak', async () => {
+      const attempt = { id: 'attempt-1', questionOrderJson: JSON.stringify(['q1']) };
+      const tx = {
+        question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
+        answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
+        result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+        attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+        auditLog: { create: jest.fn() },
+      };
+
+      await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
+
+      expect(faceVerification.forgetAttempt).toHaveBeenCalledWith('attempt-1');
     });
 
     it('emits attempt:status to the monitoring gateway after finalizing', async () => {

@@ -90,7 +90,7 @@ describe('ExamDetailsForm', () => {
       hasStartedAttempts: false, requiresManualGrading: false,
       enableAntiCheating: true, webcamProctoringEnabled: true, webcamRecordOnly: false, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
       disabledProctoringSignalsJson: null, screenCaptureEnabled: false, lockdownRequired: false,
-      faceVerificationEnabled: false, faceEnrolmentPolicy: 'retry_then_allow' as const,
+      faceVerificationEnabled: false, faceEnrolmentPolicy: 'retry_then_allow' as const, faceMismatchAction: 'flag' as const,
     };
     render(<ExamDetailsForm initialExam={scheduledExam} onSubmit={jest.fn()} submitLabel="Save" />);
 
@@ -205,7 +205,7 @@ describe('ExamDetailsForm', () => {
       hasStartedAttempts: false, requiresManualGrading: false,
       enableAntiCheating: true, webcamProctoringEnabled: true, webcamRecordOnly: false, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
       disabledProctoringSignalsJson: null, screenCaptureEnabled: false, lockdownRequired: false,
-      faceVerificationEnabled: false, faceEnrolmentPolicy: 'retry_then_allow' as const,
+      faceVerificationEnabled: false, faceEnrolmentPolicy: 'retry_then_allow' as const, faceMismatchAction: 'flag' as const,
     };
     render(<ExamDetailsForm initialExam={examWithIpRange} onSubmit={onSubmit} submitLabel="Save" />);
 
@@ -338,7 +338,7 @@ describe('ExamDetailsForm', () => {
         hasStartedAttempts: false, requiresManualGrading: false,
         enableAntiCheating: true, webcamProctoringEnabled: true, webcamRecordOnly: true, proctoringEnforcement: 'block' as const,
         proctoringStrikeLimit: 3, disabledProctoringSignalsJson: null, screenCaptureEnabled: false, lockdownRequired: false,
-        faceVerificationEnabled: false, faceEnrolmentPolicy: 'retry_then_allow' as const,
+        faceVerificationEnabled: false, faceEnrolmentPolicy: 'retry_then_allow' as const, faceMismatchAction: 'flag' as const,
       };
       render(<ExamDetailsForm initialExam={examWithRecordOnlyWebcam} onSubmit={jest.fn()} submitLabel="Save" />);
 
@@ -390,6 +390,65 @@ describe('ExamDetailsForm', () => {
       // control -- asserted explicitly here rather than just assumed.
       expect(screen.getByLabelText("Record The Candidate's Screen As Evidence")).toBeDisabled();
       expect(screen.getByText(/locked because a candidate has already started it/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('face mismatch action', () => {
+    it('is hidden until face verification itself is enabled', () => {
+      render(<ExamDetailsForm onSubmit={jest.fn()} submitLabel="Create" />);
+
+      expect(screen.queryByRole('combobox', { name: /if the face doesn't match/i })).not.toBeInTheDocument();
+    });
+
+    it('defaults to flag and submits it once face verification is enabled', async () => {
+      const onSubmit = jest.fn();
+      render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Create" />);
+
+      await userEvent.click(screen.getByLabelText('Require a face photo before starting'));
+      await userEvent.type(screen.getByLabelText('Title'), 'New Exam');
+      await userEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ faceMismatchAction: 'flag' }));
+    });
+
+    it('lets the recruiter pick a different action, but stage 2 still ships it inert (calibration note stays visible)', async () => {
+      const onSubmit = jest.fn();
+      render(<ExamDetailsForm onSubmit={onSubmit} submitLabel="Create" />);
+
+      await userEvent.click(screen.getByLabelText('Require a face photo before starting'));
+      expect(screen.getByText(/thresholds are not yet calibrated/i)).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('combobox', { name: /if the face doesn't match/i }));
+      await userEvent.click(screen.getByRole('option', { name: /record and block the exam/i }));
+      await userEvent.type(screen.getByLabelText('Title'), 'New Exam');
+      await userEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ faceMismatchAction: 'block' }));
+    });
+
+    it('prefills faceMismatchAction from an existing exam', () => {
+      render(
+        <ExamDetailsForm
+          onSubmit={jest.fn()}
+          submitLabel="Save"
+          initialExam={
+            {
+              title: 'Screen',
+              durationMinutes: 60,
+              passCriteriaPercent: 40,
+              randomizeOrder: false,
+              feedbackVisibility: 'pass_fail',
+              schedulingEnabled: false,
+              walkInEnabled: false,
+              faceVerificationEnabled: true,
+              faceEnrolmentPolicy: 'retry_then_allow',
+              faceMismatchAction: 'pause',
+            } as never
+          }
+        />,
+      );
+
+      expect(screen.getByRole('combobox', { name: /if the face doesn't match/i })).toHaveTextContent('Record and pause the exam');
     });
   });
 

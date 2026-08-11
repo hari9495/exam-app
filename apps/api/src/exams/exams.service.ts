@@ -5,7 +5,7 @@ import { TenantContext } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
 import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
-import { CreateExamDto, TOGGLEABLE_PROCTORING_SIGNALS, FACE_ENROLMENT_POLICY_VALUES } from './dto/create-exam.dto';
+import { CreateExamDto, TOGGLEABLE_PROCTORING_SIGNALS, FACE_ENROLMENT_POLICY_VALUES, FACE_MISMATCH_ACTION_VALUES } from './dto/create-exam.dto';
 import { UpdateExamDto } from './dto/update-exam.dto';
 import { CreateExamSectionDto } from './dto/create-exam-section.dto';
 import { UpdateExamSectionDto } from './dto/update-exam-section.dto';
@@ -210,18 +210,25 @@ export class ExamsService {
   // Validated here too (not just via the DTO's @IsIn) because ValidationPipe only runs in
   // front of the controller -- service.update() is also called directly in tests, and an
   // unknown policy must never reach the database either way.
-  private resolveFaceIdFields(dto: { faceVerificationEnabled?: boolean; faceEnrolmentPolicy?: string }): {
+  private resolveFaceIdFields(dto: { faceVerificationEnabled?: boolean; faceEnrolmentPolicy?: string; faceMismatchAction?: string }): {
     faceVerificationEnabled?: boolean;
     faceEnrolmentPolicy?: string;
+    faceMismatchAction?: string;
   } {
     if (dto.faceEnrolmentPolicy !== undefined && !(FACE_ENROLMENT_POLICY_VALUES as readonly string[]).includes(dto.faceEnrolmentPolicy)) {
       throw new BadRequestException(
         `Enrolment policy must be one of: ${FACE_ENROLMENT_POLICY_VALUES.join(', ')}`,
       );
     }
+    if (dto.faceMismatchAction !== undefined && !(FACE_MISMATCH_ACTION_VALUES as readonly string[]).includes(dto.faceMismatchAction)) {
+      throw new BadRequestException(
+        `Face mismatch action must be one of: ${FACE_MISMATCH_ACTION_VALUES.join(', ')}`,
+      );
+    }
     return {
       ...(dto.faceVerificationEnabled !== undefined ? { faceVerificationEnabled: dto.faceVerificationEnabled } : {}),
       ...(dto.faceEnrolmentPolicy !== undefined ? { faceEnrolmentPolicy: dto.faceEnrolmentPolicy } : {}),
+      ...(dto.faceMismatchAction !== undefined ? { faceMismatchAction: dto.faceMismatchAction } : {}),
     };
   }
 
@@ -696,6 +703,7 @@ export class ExamsService {
           lockdownRequired: exam.lockdownRequired,
           faceVerificationEnabled: exam.faceVerificationEnabled,
           faceEnrolmentPolicy: exam.faceEnrolmentPolicy,
+          faceMismatchAction: exam.faceMismatchAction,
           schedulingEnabled: false,
           availabilityWindowStart: null,
           availabilityWindowEnd: null,

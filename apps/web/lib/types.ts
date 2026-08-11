@@ -165,6 +165,8 @@ export interface Exam {
   faceVerificationEnabled: boolean;
   /** allow_unenrolled | retry_then_allow | require_enrolment */
   faceEnrolmentPolicy: string;
+  /** flag | warn | pause | block -- stage 2 ships flag-only, see ExamDetailsForm's note */
+  faceMismatchAction: string;
   createdAt: string;
   sections: ExamSection[];
   invitationCount: number;

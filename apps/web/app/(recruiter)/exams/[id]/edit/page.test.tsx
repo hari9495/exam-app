@@ -29,7 +29,7 @@ const mockExam: Exam = {
   enableAntiCheating: true, webcamProctoringEnabled: false, webcamRecordOnly: false, proctoringEnforcement: 'block', proctoringStrikeLimit: 3,
   disabledProctoringSignalsJson: null, screenCaptureEnabled: false, lockdownRequired: false, createdAt: '2026-07-25T09:00:00.000Z', sections: [],
   invitationCount: 1, hasStartedAttempts: true, requiresManualGrading: false,
-  faceVerificationEnabled: false, faceEnrolmentPolicy: 'retry_then_allow',
+  faceVerificationEnabled: false, faceEnrolmentPolicy: 'retry_then_allow', faceMismatchAction: 'flag',
 };
 
 let currentExam: Exam = mockExam;

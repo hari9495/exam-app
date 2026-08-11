@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import {
   TenantPrismaService,
   OrgSecretsCryptoService,
@@ -35,6 +34,15 @@ export class FaceVerificationService {
   // combine into one accusation -- see forgetAttempt().
   private readonly voters = new Map<string, MismatchVoter>();
 
+  // Attempts already warned about a missing/broken embedding model. A production deployment
+  // with no model file (or an org with no enrolment embeddings for any other reason) makes
+  // verifySnapshot() skip forever -- correctly, per this file's own never-accuse-on-doubt rule
+  // -- but silently: same outcome, same log volume, as an org that simply has the feature off.
+  // Warning once per attempt (not once per snapshot, which fires every 120-180s for the whole
+  // exam) is a cheap enough signal to make that distinguishable in the logs without adding a
+  // metrics dependency.
+  private readonly warnedModelUnavailableFor = new Set<string>();
+
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly faceEmbedder: FaceEmbedderService,
@@ -47,7 +55,15 @@ export class FaceVerificationService {
     snapshot: Buffer,
     snapshotPath?: string | null,
   ): Promise<FaceCheckOutcome> {
-    if (!this.faceEmbedder.isAvailable()) return this.skip(attemptId);
+    if (!this.faceEmbedder.isAvailable()) {
+      if (!this.warnedModelUnavailableFor.has(attemptId)) {
+        this.warnedModelUnavailableFor.add(attemptId);
+        this.logger.warn(
+          `Face verification is enabled but the embedding model is unavailable -- attempt ${attemptId} will skip verification for its whole run`,
+        );
+      }
+      return this.skip(attemptId);
+    }
 
     // Read-only, inside the transaction (RLS needs the session context set -- see
     // TenantPrismaService.forTenant). Everything that actually does work -- decrypt, decode,
@@ -121,13 +137,14 @@ export class FaceVerificationService {
   }
 
   /**
-   * Drop an attempt's voter once it settles, so the map does not grow without bound.
-   * ponytail: not wired up yet -- that belongs to the next task, which must call this on
-   * attempt settle/submit. Until then `voters` gains one entry per attempt for the process
-   * lifetime.
+   * Drop an attempt's voter (and its one-time skip warning) once it settles, so neither map
+   * grows without bound. Called by AttemptSettlementService.finalize() -- the one place every
+   * settle/submit path (submitted, auto_submitted, force_submitted, pending_manual_grade) funnels
+   * through -- once the attempt is no longer live and no further snapshot for it is expected.
    */
   forgetAttempt(attemptId: string): void {
     this.voters.delete(attemptId);
+    this.warnedModelUnavailableFor.delete(attemptId);
   }
 
   // A run interrupted by ignorance is not a run -- mismatch-voter.ts's own rule for 'uncertain'
@@ -167,10 +184,7 @@ export class FaceVerificationService {
         }),
         tx.attempt.update({
           where: { id: attemptId },
-          // ponytail: Attempt.faceMismatchCount lands in stage-2's schema/migration task, not
-          // yet applied to this generated Prisma client. Cast through unknown until `npx prisma
-          // generate` picks up the new column, then drop the cast.
-          data: { faceMismatchCount: { increment: 1 } } as unknown as Prisma.AttemptUpdateInput,
+          data: { faceMismatchCount: { increment: 1 } },
         }),
       ]),
     );
