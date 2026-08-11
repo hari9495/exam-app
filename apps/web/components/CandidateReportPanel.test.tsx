@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { CandidateReportPanel } from './CandidateReportPanel';
 import { ToastProvider } from './ui';
 
@@ -97,6 +97,41 @@ describe('CandidateReportPanel', () => {
     ]);
 
     expect(screen.getByText('Not counted')).toBeInTheDocument();
+  });
+
+  describe('screen capture modal', () => {
+    function renderWithScreenshot() {
+      renderPanel([], {
+        webcamTimeline: [
+          {
+            occurredAt: '2026-01-01T00:00:00.000Z', kind: 'periodic', snapshot: '',
+            screenshot: 'data:image/png;base64,abc',
+          },
+        ],
+      });
+      fireEvent.click(screen.getByRole('button', { name: /screen capture at/i }));
+    }
+
+    it('opens larger than the default modal size, and can be expanded further and collapsed back', () => {
+      renderWithScreenshot();
+
+      expect(screen.getByRole('button', { name: 'Expand screen capture' })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Expand screen capture' }));
+      expect(screen.getByRole('button', { name: 'Collapse screen capture' })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse screen capture' }));
+      expect(screen.getByRole('button', { name: 'Expand screen capture' })).toBeInTheDocument();
+    });
+
+    it('resets back to collapsed after closing and reopening', () => {
+      renderWithScreenshot();
+      fireEvent.click(screen.getByRole('button', { name: 'Expand screen capture' }));
+      fireEvent.click(screen.getByRole('button', { name: /close/i }));
+
+      fireEvent.click(screen.getByRole('button', { name: /screen capture at/i }));
+      expect(screen.getByRole('button', { name: 'Expand screen capture' })).toBeInTheDocument();
+    });
   });
 
   // Finalizing an attempt moves it out of pending_manual_grade, so the grading queue stops
