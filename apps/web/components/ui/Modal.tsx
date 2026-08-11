@@ -5,7 +5,7 @@ import { X } from 'lucide-react';
 import { ReactNode } from 'react';
 import clsx from 'clsx';
 
-type ModalSize = 'md' | 'lg' | 'xl' | 'full';
+type ModalSize = 'md' | 'lg' | 'xl';
 
 interface ModalProps {
   open: boolean;
@@ -19,43 +19,45 @@ interface ModalProps {
   size?: ModalSize;
 }
 
-// Height is bundled into the same map (rather than left as a shared base class)
-// so 'full' can grow past the other sizes' 85vh cap without fighting it on
-// Tailwind class order, which isn't guaranteed to match source order.
 const SIZE_CLASSES: Record<ModalSize, string> = {
-  md: 'max-w-lg max-h-[85vh]',
-  lg: 'max-w-2xl max-h-[85vh]',
-  xl: 'max-w-5xl max-h-[85vh]',
-  full: 'max-w-[96vw] max-h-[96vh]',
+  md: 'max-w-lg',
+  lg: 'max-w-2xl',
+  xl: 'max-w-5xl',
 };
 
 export function Modal({ open, title, onClose, children, footer, size = 'md' }: ModalProps) {
   return (
     <Dialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/40" />
-        <Dialog.Content
-          className={clsx(
-            'fixed left-1/2 top-1/2 flex w-full -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg bg-white shadow-xl',
-            SIZE_CLASSES[size],
-          )}
-        >
-          <div className="flex items-center justify-between gap-4 border-b border-recruiter-border px-6 py-4">
-            <Dialog.Title className="text-lg font-bold text-recruiter-text">{title}</Dialog.Title>
-            <Dialog.Close
-              aria-label="Close"
-              className="rounded p-1 text-recruiter-text-tertiary transition-colors hover:bg-recruiter-bg-subtle hover:text-recruiter-text"
-            >
-              <X size={18} />
-            </Dialog.Close>
-          </div>
-          <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
-          {footer && (
-            <div className="flex justify-end gap-2 border-t border-recruiter-border bg-recruiter-bg-subtle px-6 py-3">
-              {footer}
+        {/* Content lives INSIDE Overlay so flex centering + padding guarantees a gap on
+         *  every side -- including below the staff shells' sticky 64px StaffTopBar --
+         *  at any modal size, instead of a percentage-of-viewport max-height that only
+         *  left a gap by accident. pt-24 clears that header with room to spare; px-6/pb-6
+         *  cover the other sides without colliding with pt on the same property (Tailwind
+         *  class order in JSX doesn't control which utility wins in the generated CSS).
+         *  Radix's outside-click dismissal is ref-based on Content itself, not
+         *  DOM-sibling-based on Overlay, so this nesting doesn't change it. */}
+        <Dialog.Overlay className="fixed inset-0 flex items-center justify-center overflow-y-auto bg-black/40 px-6 pb-6 pt-24">
+          <Dialog.Content
+            className={clsx('flex max-h-full w-full flex-col overflow-hidden rounded-lg bg-white shadow-xl', SIZE_CLASSES[size])}
+          >
+            <div className="flex items-center justify-between gap-4 border-b border-recruiter-border px-6 py-4">
+              <Dialog.Title className="text-lg font-bold text-recruiter-text">{title}</Dialog.Title>
+              <Dialog.Close
+                aria-label="Close"
+                className="rounded p-1 text-recruiter-text-tertiary transition-colors hover:bg-recruiter-bg-subtle hover:text-recruiter-text"
+              >
+                <X size={18} />
+              </Dialog.Close>
             </div>
-          )}
-        </Dialog.Content>
+            <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
+            {footer && (
+              <div className="flex justify-end gap-2 border-t border-recruiter-border bg-recruiter-bg-subtle px-6 py-3">
+                {footer}
+              </div>
+            )}
+          </Dialog.Content>
+        </Dialog.Overlay>
       </Dialog.Portal>
     </Dialog.Root>
   );
