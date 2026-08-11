@@ -1092,7 +1092,12 @@ export class AttemptService {
   }
 
   async recordFaceEnrolment(session: CandidateSession, dto: FaceEnrolmentDto): Promise<{ status: string }> {
-    if (!dto.consentGiven) {
+    // Consent is the lawful basis for holding an IMAGE of the candidate's face, so no consent
+    // means no image -- ever. It is NOT a reason to record nothing at all: a candidate who
+    // declines must leave a flag with their name on it rather than silence, otherwise they are
+    // indistinguishable from an exam that never had the feature switched on. That row carries
+    // no image and no consentAt.
+    if (!dto.consentGiven && (dto.status === 'enrolled' || dto.snapshot)) {
       throw new BadRequestException('Face enrolment requires the candidate’s consent');
     }
     const { organizationId, invitation } = await this.resolveContext(session.invitationId);
@@ -1112,11 +1117,15 @@ export class AttemptService {
       referenceImagePath = url.split('?')[0];
     }
 
+    // "enrolled" with nothing behind it renders as "Verified" to a recruiter, which is worse
+    // than an honest "Not verified" -- so an enrolment that stored no image is not one.
+    const status = dto.status === 'enrolled' && !referenceImagePath ? 'not_verified' : dto.status;
+
     const row = {
-      status: dto.status,
+      status,
       referenceImagePath,
       qualityJson: dto.qualityJson ?? null,
-      consentAt: new Date(),
+      consentAt: dto.consentGiven ? new Date() : null,
       capturedAt: referenceImagePath ? new Date() : null,
     };
     await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
@@ -1126,7 +1135,7 @@ export class AttemptService {
         update: row,
       }),
     );
-    return { status: dto.status };
+    return { status };
   }
 
   async getLeaderboard(session: CandidateSession): Promise<CandidateLeaderboardResponse> {

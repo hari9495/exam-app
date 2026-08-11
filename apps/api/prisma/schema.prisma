@@ -590,7 +590,10 @@ model FaceEnrolment {
   embedding          String?   @db.NVarChar(Max)
   referenceImagePath String?   @map("reference_image_path")
   qualityJson        String?   @map("quality_json") @db.NVarChar(Max)
-  consentAt          DateTime  @map("consent_at")
+  // Nullable on purpose: a candidate who DECLINES still gets a not_verified row (so a refusal is
+  // a flag with their name on it, not silence), and that row must not claim a consent moment
+  // that never happened.
+  consentAt          DateTime? @map("consent_at")
   capturedAt         DateTime? @map("captured_at")
   createdAt          DateTime  @default(now()) @map("created_at")
   attempt            Attempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
