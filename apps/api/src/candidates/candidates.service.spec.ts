@@ -508,7 +508,12 @@ describe('CandidatesService', () => {
 
   describe('erase', () => {
     function makeEraseTx(
-      overrides: { candidate?: Record<string, unknown>; proctoringEvents?: { metadataJson: string | null }[] } = {},
+      overrides: {
+        candidate?: Record<string, unknown>;
+        proctoringEvents?: { metadataJson: string | null }[];
+        faceEnrolments?: { referenceImagePath: string | null }[];
+        faceEnrolment?: { deleteMany?: jest.Mock };
+      } = {},
     ) {
       return {
         candidate: {
@@ -533,8 +538,18 @@ describe('CandidatesService', () => {
         proctoringAnalysis: { updateMany: jest.fn() },
         attemptInsight: { updateMany: jest.fn() },
         candidateRefreshToken: { deleteMany: jest.fn() },
+        faceEnrolment: {
+          findMany: jest.fn().mockResolvedValue(overrides.faceEnrolments ?? []),
+          deleteMany: overrides.faceEnrolment?.deleteMany ?? jest.fn(),
+        },
       };
     }
+    // Alias matching the brief's naming -- same helper, used by the face-data tests below.
+    const mockEraseTx = (overrides: Parameters<typeof makeEraseTx>[0] = {}) => {
+      const tx = makeEraseTx(overrides);
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
+      return tx;
+    };
 
     it('scrubs every PII-bearing field, deletes session tokens, and revokes live invitations atomically', async () => {
       const tx = makeEraseTx();
@@ -878,6 +893,47 @@ describe('CandidatesService', () => {
       expect(blobStorage.deleteByUrl).toHaveBeenCalledTimes(1);
       expect(blobStorage.deleteByUrl).toHaveBeenCalledWith('https://blob.test/container/webcam-snapshots/c.jpg');
       expect(audit.record).toHaveBeenCalled();
+    });
+
+    it('deletes the face reference image blob and the enrolment row', async () => {
+      const deleteMany = jest.fn().mockResolvedValue({ count: 1 });
+      blobStorage.deleteByUrl = jest.fn().mockResolvedValue('deleted');
+      mockEraseTx({
+        faceEnrolments: [{ referenceImagePath: 'https://acct.blob.core.windows.net/c/face/a1.jpg' }],
+        faceEnrolment: { deleteMany },
+      });
+
+      await service.erase(context, 'user-1', 'cand-1');
+
+      expect(blobStorage.deleteByUrl).toHaveBeenCalledWith('https://acct.blob.core.windows.net/c/face/a1.jpg');
+      expect(deleteMany).toHaveBeenCalled();
+    });
+
+    // This is the assertion that makes the GDPR position defensible rather than nominal.
+    it('leaves NO face data behind for the erased candidate', async () => {
+      const deleteMany = jest.fn().mockResolvedValue({ count: 2 });
+      blobStorage.deleteByUrl = jest.fn().mockResolvedValue('deleted');
+      mockEraseTx({
+        faceEnrolments: [
+          { referenceImagePath: 'https://acct.blob.core.windows.net/c/face/a1.jpg' },
+          { referenceImagePath: 'https://acct.blob.core.windows.net/c/face/a2.jpg' },
+        ],
+        faceEnrolment: { deleteMany },
+      });
+
+      await service.erase(context, 'user-1', 'cand-1');
+
+      expect(blobStorage.deleteByUrl).toHaveBeenCalledTimes(2);
+      expect(deleteMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.anything() }));
+    });
+
+    it('still deletes the row when the blob is already gone', async () => {
+      const deleteMany = jest.fn().mockResolvedValue({ count: 1 });
+      blobStorage.deleteByUrl = jest.fn().mockRejectedValue(new Error('404'));
+      mockEraseTx({ faceEnrolments: [{ referenceImagePath: 'https://acct.blob.core.windows.net/c/face/a1.jpg' }], faceEnrolment: { deleteMany } });
+
+      await expect(service.erase(context, 'user-1', 'cand-1')).resolves.toBeDefined();
+      expect(deleteMany).toHaveBeenCalled();
     });
   });
 });

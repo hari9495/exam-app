@@ -414,6 +414,18 @@ export class CandidatesService {
         }
       }
 
+      // Same "collect the URL before the row goes away" rule as proctoring evidence above --
+      // and the reference image feeds the same best-effort delete loop below, so a failed blob
+      // delete gets the same batching/timeout/tally treatment instead of a bespoke path.
+      const faceEnrolments = await tx.faceEnrolment.findMany({
+        where: { attemptId: { in: attemptIds } },
+        select: { referenceImagePath: true },
+      });
+      for (const enrolment of faceEnrolments) {
+        if (enrolment.referenceImagePath) evidenceUrls.push(enrolment.referenceImagePath);
+      }
+      await tx.faceEnrolment.deleteMany({ where: { attemptId: { in: attemptIds } } });
+
       const now = new Date();
       await tx.candidate.update({
         where: { id: candidateId },
