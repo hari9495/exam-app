@@ -26,7 +26,7 @@ export class FaceEmbedderService implements OnModuleInit {
       this.session = await ort.InferenceSession.create(path);
       this.logger.log(`Face embedding model loaded from ${path}`);
     } catch (error) {
-      this.logger.error(`Failed to load face embedding model: ${(error as Error).message}`);
+      this.logger.error(`Failed to load face embedding model: ${String(error)}`);
       this.session = null;
     }
   }
@@ -41,14 +41,24 @@ export class FaceEmbedderService implements OnModuleInit {
       const ort = await import('onnxruntime-node');
       const tensor = await this.toInputTensor(ort, image);
       if (!tensor) return null;
-      const session = this.session as { inputNames: string[]; run(feeds: Record<string, unknown>): Promise<Record<string, { data: Float32Array }>> };
+      const session = this.session as {
+        inputNames: string[];
+        outputNames?: string[];
+        run(feeds: Record<string, unknown>): Promise<Record<string, { type: string; data: unknown }>>;
+      };
       const output = await session.run({ [session.inputNames[0]]: tensor });
-      const first = Object.values(output)[0];
-      return first ? Float32Array.from(first.data) : null;
+      const outputKey = session.outputNames?.[0] ?? Object.keys(output)[0];
+      const first = outputKey ? output[outputKey] : undefined;
+      if (!first) return null;
+      if (first.type !== 'float32') {
+        this.logger.warn(`Face embedding model returned unexpected output type "${first.type}"; expected float32`);
+        return null;
+      }
+      return Float32Array.from(first.data as ArrayLike<number>);
     } catch (error) {
       // Every failure here degrades to "no verdict". Never an accusation, never a throw into
       // the snapshot pipeline.
-      this.logger.warn(`Face embedding failed: ${(error as Error).message}`);
+      this.logger.warn(`Face embedding failed: ${String(error)}`);
       return null;
     }
   }
@@ -58,7 +68,7 @@ export class FaceEmbedderService implements OnModuleInit {
   private async toInputTensor(ort: typeof import('onnxruntime-node'), image: Buffer): Promise<unknown | null> {
     try {
       const sharp = (await import('sharp')).default;
-      const { data } = await sharp(image).removeAlpha().resize(112, 112, { fit: 'cover' }).raw().toBuffer({ resolveWithObject: true });
+      const { data } = await sharp(image).rotate().removeAlpha().resize(112, 112, { fit: 'cover' }).raw().toBuffer({ resolveWithObject: true });
       const floats = new Float32Array(3 * 112 * 112);
       const plane = 112 * 112;
       for (let i = 0; i < plane; i += 1) {
@@ -70,7 +80,7 @@ export class FaceEmbedderService implements OnModuleInit {
     } catch (error) {
       // Silence here would be the worst outcome: a missing decoder makes verification
       // permanently inert with nothing in the logs to say why.
-      this.logger.warn(`Face image decode failed: ${(error as Error).message}`);
+      this.logger.warn(`Face image decode failed: ${String(error)}`);
       return null;
     }
   }
