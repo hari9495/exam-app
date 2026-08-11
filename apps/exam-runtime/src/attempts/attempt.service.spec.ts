@@ -2913,6 +2913,75 @@ describe('AttemptService', () => {
 
       expect(faceEmbedder.embed).not.toHaveBeenCalled();
     });
+
+    // Finding 1: crypto.encrypt throws for real (missing/invalid ORG_SECRETS_ENCRYPTION_KEY),
+    // unlike embed() which never throws. Nothing caught that before -- recordFaceEnrolment would
+    // reject after the blob upload had already run, leaving a photo in storage with no row
+    // behind it and blocking the candidate from enrolling at all. It must degrade exactly like a
+    // failed embed(): keep the reference image, null out the embedding, resolve normally.
+    it('still enrols with a null embedding, and still upserts the row, when crypto.encrypt throws', async () => {
+      const upsert = jest.fn().mockResolvedValue({});
+      faceEmbedder.embed = jest.fn().mockResolvedValue(Float32Array.from([0.1, 0.2, 0.3]));
+      crypto.encrypt = jest.fn(() => {
+        throw new Error('ORG_SECRETS_ENCRYPTION_KEY is not set');
+      });
+      blobStorage.uploadDataUri = jest.fn().mockResolvedValue('https://acct.blob/face/a1.jpg');
+      mockBootstrapThenTwoScopedCalls({ attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, faceEnrolment: { upsert } });
+
+      const result = await service.recordFaceEnrolment(session, {
+        status: 'enrolled', snapshot: 'data:image/jpeg;base64,AAA', consentGiven: true,
+      });
+
+      expect(result).toEqual({ status: 'enrolled' });
+      expect(upsert).toHaveBeenCalled();
+      expect(upsert.mock.calls[0][0].create.embedding).toBeNull();
+      expect(upsert.mock.calls[0][0].create.referenceImagePath).toBe('https://acct.blob/face/a1.jpg');
+    });
+
+    // Finding 3: a retry POST while the model is briefly unavailable produces no new embedding.
+    // The update payload must leave the `embedding` column untouched rather than carrying an
+    // explicit null that overwrites a previously-stored good vector.
+    it('does not clear a previously-stored embedding when a retry produces no new one', async () => {
+      const upsert = jest.fn().mockResolvedValue({});
+      faceEmbedder.embed = jest.fn().mockResolvedValue(null);
+      blobStorage.uploadDataUri = jest.fn().mockResolvedValue('https://acct.blob/face/a1.jpg');
+      mockBootstrapThenTwoScopedCalls({ attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, faceEnrolment: { upsert } });
+
+      await service.recordFaceEnrolment(session, {
+        status: 'enrolled', snapshot: 'data:image/jpeg;base64,AAA', consentGiven: true,
+      });
+
+      const updatePayload = upsert.mock.calls[0][0].update;
+      expect(updatePayload).not.toHaveProperty('embedding');
+      // create: is unaffected -- a brand-new row still records the (null) outcome explicitly.
+      expect(upsert.mock.calls[0][0].create).toHaveProperty('embedding', null);
+    });
+
+    // Finding 2 / ADO #6810 regression guard: embed()+encrypt() must run strictly between the
+    // upload and the upsert, never inside the pooled `forTenant` connection the upsert holds --
+    // ONNX inference under a held connection is exactly the pool-starvation shape #6810 fixed.
+    // Call-count assertions alone don't catch a regression here: a reviewer moved the whole
+    // embed+encrypt block inside the upsert's forTenant callback and every other test in this
+    // file still passed, because none of them look at *when* embed() ran relative to the
+    // transaction, only whether it ran. tenantPrisma.forTenant fires 3 times for this method --
+    // [0] resolveContext's bootstrap, [1] the attempt read, [2] the upsert -- and embed() must be
+    // *called* before forTenant is invoked for [2]. (Verified locally: temporarily moving the
+    // embed+encrypt block inside the upsert's forTenant callback makes this assertion fail; see
+    // task-6-report.md.)
+    it('runs embedding strictly outside the upsert transaction (ADO #6810)', async () => {
+      const upsert = jest.fn().mockResolvedValue({});
+      faceEmbedder.embed = jest.fn().mockResolvedValue(Float32Array.from([0.1, 0.2, 0.3]));
+      blobStorage.uploadDataUri = jest.fn().mockResolvedValue('https://acct.blob/face/a1.jpg');
+      mockBootstrapThenTwoScopedCalls({ attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, faceEnrolment: { upsert } });
+
+      await service.recordFaceEnrolment(session, {
+        status: 'enrolled', snapshot: 'data:image/jpeg;base64,AAA', consentGiven: true,
+      });
+
+      expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(3);
+      expect(faceEmbedder.embed.mock.invocationCallOrder[0])
+        .toBeLessThan(tenantPrisma.forTenant.mock.invocationCallOrder[2]);
+    });
   });
 
   describe('getLeaderboard', () => {

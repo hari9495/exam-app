@@ -12,6 +12,7 @@ import {
   selectCountedAnswers,
   OrgSecretsCryptoService,
   encodeEmbedding,
+  extractBase64FromDataUri,
 } from '@exam-platform/shared';
 import { FaceEmbedderService } from '../face/face-embedder.service';
 import { AttemptSettlementService, PauseReason, SettlementExam } from '../grading/attempt-settlement.service';
@@ -1127,25 +1128,30 @@ export class AttemptService {
     const status = dto.status === 'enrolled' && !referenceImagePath ? 'not_verified' : dto.status;
 
     // Best-effort, same as the upload above: still outside any transaction, and never allowed to
-    // block enrolment. The model weights are an optional file gated on a separate licensing
-    // review -- FaceEmbedderService.embed degrades to null (never throws) whenever they're
-    // missing, the image can't be decoded, or anything else goes wrong, and that's fine: the
-    // reference image just recorded is what actually matters for a candidate to sit their exam.
+    // block enrolment. Neither failure mode here can cost a candidate their exam: embed()
+    // degrades to null (never throws) whenever the model weights are missing, the image can't
+    // be decoded, or anything else goes wrong; encrypt() DOES throw (missing/invalid
+    // ORG_SECRETS_ENCRYPTION_KEY), so it's wrapped the same way -- either failure just leaves
+    // embedding null. The reference image already recorded above is what actually matters for a
+    // candidate to sit their exam.
     let embedding: string | null = null;
     if (referenceImagePath && dto.snapshot) {
-      const base64 = /^data:.+;base64,(.*)$/.exec(dto.snapshot)?.[1];
+      const base64 = extractBase64FromDataUri(dto.snapshot)?.base64;
       const vector = base64 ? await this.faceEmbedder.embed(Buffer.from(base64, 'base64')) : null;
       // Biometric data under GDPR -- never persisted as a bare vector, even transiently in this
       // row object.
       if (vector) {
-        embedding = this.crypto.encrypt(encodeEmbedding(vector));
+        try {
+          embedding = this.crypto.encrypt(encodeEmbedding(vector));
+        } catch (error) {
+          this.logger.warn(`Face embedding encryption failed: ${String(error)}`);
+        }
       }
     }
 
-    const row = {
+    const rowBase = {
       status,
       referenceImagePath,
-      embedding,
       qualityJson: dto.qualityJson ?? null,
       consentAt: dto.consentGiven ? new Date() : null,
       capturedAt: referenceImagePath ? new Date() : null,
@@ -1153,8 +1159,11 @@ export class AttemptService {
     await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
       tx.faceEnrolment.upsert({
         where: { attemptId: attempt.id },
-        create: { attemptId: attempt.id, ...row },
-        update: row,
+        create: { attemptId: attempt.id, ...rowBase, embedding },
+        // A retry that produces no embedding (model briefly unavailable) must not overwrite a
+        // previously-stored good vector with null -- only touch the column when there's a new
+        // value to write.
+        update: { ...rowBase, ...(embedding ? { embedding } : {}) },
       }),
     );
     return { status };
