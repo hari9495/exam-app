@@ -24,6 +24,7 @@ import { JobsModule } from './jobs/jobs.module';
 import { AuditQueryModule } from './audit/audit-query.module';
 import { SystemEventsQueryModule } from './system-events/system-events.module';
 import { PublicApiModule } from './public-api/public-api.module';
+import { FaceEnrolmentModule } from './face-enrolment/face-enrolment.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
 import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
 
@@ -65,6 +66,7 @@ import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
     DashboardModule,
     JobsModule,
     PublicApiModule,
+    FaceEnrolmentModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: FailOpenThrottlerGuard },
