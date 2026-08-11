@@ -194,7 +194,7 @@ describe('CandidateReportPanel', () => {
     );
 
     expect(screen.getByText('Tabs & Background Apps')).toBeInTheDocument();
-    expect(screen.getByText('WhatsApp × 1')).toBeInTheDocument();
+    expect(screen.getByText('Possible background app: WhatsApp × 1')).toBeInTheDocument();
     expect(screen.getByText('Suspicious pattern noted.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /WhatsApp/ })).toBeInTheDocument();
   });
