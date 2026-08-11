@@ -6,7 +6,8 @@ import { Info, ShieldCheck } from 'lucide-react';
 import { CandidateButton } from '../components/CandidateButton';
 import { CameraPreview } from '../components/CameraPreview';
 import { PracticeStep } from '../components/PracticeStep';
-import { useAttemptQuery, useStartAttempt } from '../../../lib/hooks/useAttempt';
+import { FaceEnrolmentStep, EnrolmentPolicy, FaceEnrolmentPayload } from '../components/FaceEnrolmentStep';
+import { useAttemptQuery, useFaceEnrolment, useStartAttempt } from '../../../lib/hooks/useAttempt';
 import { isAttemptStarted } from '../../../lib/types';
 import { useToast } from '../../../components/ui';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
@@ -17,6 +18,7 @@ export default function CandidateWelcomePage() {
   const { accessToken, isLoading: authLoading } = useCandidateAuth();
   const { data: current, isLoading, isError } = useAttemptQuery();
   const startAttempt = useStartAttempt();
+  const faceEnrolment = useFaceEnrolment();
   const { toast } = useToast();
   const [cameraStatus, setCameraStatus] = useState<'idle' | 'checking' | 'granted' | 'denied'>('idle');
   const [consentChecked, setConsentChecked] = useState(false);
@@ -26,6 +28,11 @@ export default function CandidateWelcomePage() {
   const [step, setStep] = useState<'practice' | 'consent'>('practice');
   const [multiMonitorBlocked, setMultiMonitorBlocked] = useState(false);
   const [screenShareUnsupported, setScreenShareUnsupported] = useState(false);
+  const [faceStatus, setFaceStatus] = useState<'pending' | 'enrolled' | 'not_verified'>('pending');
+  // FaceEnrolment rows are keyed on the attempt, and the enrolment step renders here IN PLACE OF
+  // the Start button -- so while it is on screen there is no attempt to key a row to. The payload
+  // waits here and is POSTed the moment /attempt/start returns.
+  const [facePayload, setFacePayload] = useState<FaceEnrolmentPayload | null>(null);
 
   useEffect(() => {
     if (!authLoading && !accessToken) {
@@ -49,6 +56,8 @@ export default function CandidateWelcomePage() {
   // candidate as far as a rejected start.
   const inSeb = typeof navigator !== 'undefined' && navigator.userAgent.includes('SEB');
   const sebGateActive = proctoring?.lockdownRequired === true && !inSeb;
+  const faceVerificationRequired = proctoring?.faceVerificationEnabled === true;
+  const faceGateActive = faceVerificationRequired && faceStatus === 'pending';
 
   if (step === 'practice') {
     return (
@@ -110,6 +119,21 @@ export default function CandidateWelcomePage() {
 
     try {
       await startAttempt.mutateAsync();
+      // Only now does an attempt exist to hang the enrolment row off. Best-effort on purpose:
+      // if this POST fails the candidate is already in the exam and stays in it, unenrolled --
+      // a candidate must never be stuck. (Under require_enrolment they never reached this
+      // button without a settled enrolment in the first place.)
+      if (facePayload) {
+        try {
+          await faceEnrolment.mutateAsync(facePayload);
+        } catch (error) {
+          reportClientError(accessToken, {
+            kind: 'face_enrolment_failed',
+            message: error instanceof Error ? error.message : 'Face enrolment record failed',
+            severity: 'warn',
+          });
+        }
+      }
       router.push('/exam');
     } catch (error) {
       toast(error instanceof Error ? error.message : "Couldn't start the exam — please try again.", 'error');
@@ -243,9 +267,24 @@ export default function CandidateWelcomePage() {
                   Download exam configuration (.seb)
                 </CandidateButton>
               </div>
+            ) : faceGateActive ? (
+              <FaceEnrolmentStep
+                policy={(proctoring?.faceEnrolmentPolicy as EnrolmentPolicy | undefined) ?? 'retry_then_allow'}
+                onSettled={(payload) => {
+                  setFacePayload(payload);
+                  setFaceStatus(payload.status);
+                }}
+              />
             ) : proctoring?.webcamEnabled === false || cameraStatus === 'granted' ? (
-              <CandidateButton onClick={handleStart} disabled={startAttempt.isPending || !consentChecked || !appsClosedChecked} className="w-full">
-                {startAttempt.isPending ? 'Starting…' : 'Start exam'}
+              <CandidateButton
+                onClick={handleStart}
+                // faceEnrolment.isPending matters because the enrolment POST now runs AFTER
+                // start resolves: without it the button re-enables mid-flight and a second
+                // click would try to start the attempt all over again.
+                disabled={startAttempt.isPending || faceEnrolment.isPending || !consentChecked || !appsClosedChecked}
+                className="w-full"
+              >
+                {startAttempt.isPending || faceEnrolment.isPending ? 'Starting…' : 'Start exam'}
               </CandidateButton>
             ) : null}
           </>

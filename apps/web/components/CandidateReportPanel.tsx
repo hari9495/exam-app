@@ -159,6 +159,31 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
         </Card>
       </motion.div>
 
+      {candidate.faceEnrolment && (
+        <div className="mb-6">
+          <h2 className="mb-2 text-lg font-medium">Face Verification</h2>
+          <Card>
+            {candidate.faceEnrolment.referenceImageUrl ? (
+              <div className="flex items-center gap-3">
+                <img
+                  src={candidate.faceEnrolment.referenceImageUrl}
+                  alt="Reference photo"
+                  className="h-20 w-20 rounded object-cover"
+                />
+                <div className="text-sm text-gray-700">
+                  <p className="font-medium capitalize">{candidate.faceEnrolment.status.replace(/_/g, ' ')}</p>
+                  {candidate.faceEnrolment.capturedAt && (
+                    <p className="text-xs text-gray-500">Captured {new Date(candidate.faceEnrolment.capturedAt).toLocaleString()}</p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">Not verified — no reference photo was captured</p>
+            )}
+          </Card>
+        </div>
+      )}
+
       {technicalIssues.length > 0 && (
         <div className="mb-6">
           <h2 className="mb-2 text-lg font-medium">Technical Issues During Exam</h2>

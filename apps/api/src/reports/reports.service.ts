@@ -109,6 +109,12 @@ export interface WebcamTimelineEntry {
   screenshotCapReached?: boolean;
 }
 
+export interface CandidateFaceEnrolment {
+  status: string;
+  referenceImageUrl: string | null;
+  capturedAt: string | null;
+}
+
 export interface CandidateDetail {
   candidateId: string;
   candidateName: string;
@@ -123,6 +129,7 @@ export interface CandidateDetail {
   sections: CandidateDetailSection[];
   webcamTimeline: WebcamTimelineEntry[];
   tabActivitySummary: TabActivityEventTypeSummary[];
+  faceEnrolment: CandidateFaceEnrolment | null;
 }
 
 export interface CandidateComparisonRow {
@@ -343,16 +350,16 @@ export class ReportsService {
     };
 
     if (!row.attemptId) {
-      return { ...base, sections: [], webcamTimeline: [], tabActivitySummary: [] };
+      return { ...base, sections: [], webcamTimeline: [], tabActivitySummary: [], faceEnrolment: null };
     }
 
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const attempt = await tx.attempt.findFirst({
         where: { id: row.attemptId as string },
-        select: { sectionSnapshotJson: true, answers: true },
+        select: { sectionSnapshotJson: true, answers: true, faceEnrolment: true },
       });
       if (!attempt) {
-        return { ...base, sections: [], webcamTimeline: [], tabActivitySummary: [] };
+        return { ...base, sections: [], webcamTimeline: [], tabActivitySummary: [], faceEnrolment: null };
       }
 
       const webcamEvents = await tx.proctoringEvent.findMany({
@@ -486,7 +493,16 @@ export class ReportsService {
         };
       });
 
-      return { ...base, sections, webcamTimeline, tabActivitySummary: tabActivity.summary };
+      const faceEnrolment: CandidateFaceEnrolment | null = attempt.faceEnrolment
+        ? {
+            status: attempt.faceEnrolment.status,
+            // The container is private: sign on read, and never persist the signed value.
+            referenceImageUrl: (await this.blobStorage.signIfOurs(attempt.faceEnrolment.referenceImagePath)) as string | null,
+            capturedAt: attempt.faceEnrolment.capturedAt?.toISOString() ?? null,
+          }
+        : null;
+
+      return { ...base, sections, webcamTimeline, tabActivitySummary: tabActivity.summary, faceEnrolment };
     });
   }
 

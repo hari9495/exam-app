@@ -2765,6 +2765,109 @@ describe('AttemptService', () => {
     });
   });
 
+  describe('recordFaceEnrolment', () => {
+    it('uploads the reference image and stores its PATH, never a signed URL', async () => {
+      const upsert = jest.fn().mockResolvedValue({});
+      blobStorage.uploadDataUri = jest.fn().mockResolvedValue('https://acct.blob.core.windows.net/c/face/attempt-1.jpg');
+      // Two scoped forTenant calls (read attempt, then write) with the upload running between
+      // them, same "decide -- upload with no transaction open -- commit" shape as
+      // reportProctoringEvent/webcamViolation (ADO #6810) -- mockBootstrapThenScoped only stubs
+      // one scoped call and can't exercise this.
+      mockBootstrapThenTwoScopedCalls({ attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, faceEnrolment: { upsert } });
+
+      await service.recordFaceEnrolment(session, {
+        status: 'enrolled', snapshot: 'data:image/jpeg;base64,AAA', qualityJson: '{"faceCount":1}', consentGiven: true,
+      });
+
+      expect(blobStorage.uploadDataUri).toHaveBeenCalled();
+      const stored = upsert.mock.calls[0][0].create.referenceImagePath;
+      expect(stored).not.toContain('?');
+      expect(stored).toContain('face/');
+    });
+
+    it('records not_verified with no image when capture failed', async () => {
+      const upsert = jest.fn().mockResolvedValue({});
+      blobStorage.uploadDataUri = jest.fn();
+      mockBootstrapThenTwoScopedCalls({ attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, faceEnrolment: { upsert } });
+
+      await service.recordFaceEnrolment(session, { status: 'not_verified', consentGiven: true });
+
+      expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
+      expect(upsert.mock.calls[0][0].create).toMatchObject({ status: 'not_verified', referenceImagePath: null });
+    });
+
+    // Consent is the lawful basis for holding biometric data. No consent, no IMAGE, ever.
+    it('refuses to store an image when consent was not given', async () => {
+      const upsert = jest.fn();
+      blobStorage.uploadDataUri = jest.fn();
+      mockBootstrapThenScoped({ attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, faceEnrolment: { upsert } });
+
+      await expect(
+        service.recordFaceEnrolment(session, { status: 'enrolled', snapshot: 'data:image/jpeg;base64,AAA', consentGiven: false }),
+      ).rejects.toThrow(/consent/i);
+      expect(upsert).not.toHaveBeenCalled();
+      expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
+    });
+
+    // ...but a snapshot smuggled in alongside status:'not_verified' is still an image, and the
+    // guard has to be about the image rather than about the status word.
+    it('refuses a snapshot sent without consent even when the status says not_verified', async () => {
+      const upsert = jest.fn();
+      blobStorage.uploadDataUri = jest.fn();
+      mockBootstrapThenScoped({ attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, faceEnrolment: { upsert } });
+
+      await expect(
+        service.recordFaceEnrolment(session, { status: 'not_verified', snapshot: 'data:image/jpeg;base64,AAA', consentGiven: false }),
+      ).rejects.toThrow(/consent/i);
+      expect(upsert).not.toHaveBeenCalled();
+      expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
+    });
+
+    // A declined consent must leave a flag with the candidate's name on it. Throwing here made a
+    // refusal indistinguishable from an exam that never had face verification switched on.
+    it('records a not_verified row with no image and no consentAt when the candidate declines', async () => {
+      const upsert = jest.fn().mockResolvedValue({});
+      blobStorage.uploadDataUri = jest.fn();
+      mockBootstrapThenTwoScopedCalls({ attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, faceEnrolment: { upsert } });
+
+      const result = await service.recordFaceEnrolment(session, { status: 'not_verified', consentGiven: false });
+
+      expect(result).toEqual({ status: 'not_verified' });
+      expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
+      expect(upsert.mock.calls[0][0].create).toMatchObject({
+        attemptId: 'attempt-1',
+        status: 'not_verified',
+        referenceImagePath: null,
+        consentAt: null,
+        capturedAt: null,
+      });
+    });
+
+    // "enrolled" with nothing behind it shows a recruiter a green "Verified" badge backed by no
+    // image at all. The API accepts the shape (the DTO's snapshot is optional), so the service
+    // has to refuse to believe it.
+    it('downgrades an enrolled status with no snapshot to not_verified rather than claiming a verification it cannot show', async () => {
+      const upsert = jest.fn().mockResolvedValue({});
+      blobStorage.uploadDataUri = jest.fn();
+      mockBootstrapThenTwoScopedCalls({ attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, faceEnrolment: { upsert } });
+
+      const result = await service.recordFaceEnrolment(session, { status: 'enrolled', consentGiven: true });
+
+      expect(result).toEqual({ status: 'not_verified' });
+      expect(upsert.mock.calls[0][0].create).toMatchObject({ status: 'not_verified', referenceImagePath: null });
+    });
+
+    it('is idempotent — a retry replaces the previous row rather than failing on the unique key', async () => {
+      const upsert = jest.fn().mockResolvedValue({});
+      blobStorage.uploadDataUri = jest.fn().mockResolvedValue('https://acct.blob.core.windows.net/c/face/attempt-1.jpg');
+      mockBootstrapThenTwoScopedCalls({ attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, faceEnrolment: { upsert } });
+
+      await service.recordFaceEnrolment(session, { status: 'enrolled', snapshot: 'data:image/jpeg;base64,AAA', consentGiven: true });
+
+      expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { attemptId: 'attempt-1' } }));
+    });
+  });
+
   describe('getLeaderboard', () => {
     it('delegates to LeaderboardService.computeCandidateView while the attempt is in_progress, regardless of feedbackVisibility', async () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) } };

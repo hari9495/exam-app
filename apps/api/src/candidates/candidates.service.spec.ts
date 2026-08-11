@@ -472,6 +472,76 @@ describe('CandidatesService', () => {
       expect(result.attempts[0].proctoringEvents[0].metadata).toEqual({ snapshot: 'data:image/jpeg;base64,AAAA' });
     });
 
+    // Face reference images are special-category biometric data. erase() already reaches them;
+    // the subject-access path did not, so a subject's own export was silently missing the most
+    // sensitive thing held about them.
+    function exportTxWithFaceEnrolment(faceEnrolment: Record<string, unknown> | null) {
+      return {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'a@test.com', name: 'Alice', phone: null, createdAt: new Date('2026-01-01') }),
+        },
+        invitation: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'inv-1', status: 'completed', invitedAt: new Date('2026-01-02'), expiresAt: new Date('2026-01-09'), revokedAt: null,
+              exam: { title: 'Backend Round' },
+              attempt: {
+                id: 'attempt-1', status: 'submitted', startedAt: new Date('2026-01-03'), submittedAt: new Date('2026-01-03'), deviceFingerprint: null,
+                result: null, answers: [], proctoringEvents: [], proctoringAnalysis: null, insight: null, messages: [],
+                faceEnrolment,
+              },
+            },
+          ]),
+        },
+      };
+    }
+
+    it('includes the face enrolment, with the reference image signed on read', async () => {
+      const tx = exportTxWithFaceEnrolment({
+        status: 'enrolled',
+        referenceImagePath: 'https://blob.test/container/face/attempt-1.jpg',
+        capturedAt: new Date('2026-01-03T10:00:00Z'),
+        consentAt: new Date('2026-01-03T09:59:00Z'),
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      blobStorage.signIfOurs.mockImplementation(async (value: string) => `${value}?sig=signed`);
+
+      const result = await service.exportData(context, 'user-1', 'cand-1');
+
+      // The query has to ASK for it -- otherwise the mapping above only works because this mock
+      // volunteered the relation.
+      expect(tx.invitation.findMany.mock.calls[0][0].include.attempt.include).toMatchObject({ faceEnrolment: true });
+      expect(result.attempts[0].faceEnrolment).toEqual({
+        status: 'enrolled',
+        capturedAt: new Date('2026-01-03T10:00:00Z'),
+        consentAt: new Date('2026-01-03T09:59:00Z'),
+        referenceImageUrl: 'https://blob.test/container/face/attempt-1.jpg?sig=signed',
+      });
+      expect(blobStorage.signIfOurs).toHaveBeenCalledWith('https://blob.test/container/face/attempt-1.jpg');
+    });
+
+    it('exports a declined enrolment as a null image and a null consent moment, not as silence', async () => {
+      const tx = exportTxWithFaceEnrolment({
+        status: 'not_verified', referenceImagePath: null, capturedAt: null, consentAt: null,
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.exportData(context, 'user-1', 'cand-1');
+
+      expect(result.attempts[0].faceEnrolment).toEqual({
+        status: 'not_verified', capturedAt: null, consentAt: null, referenceImageUrl: null,
+      });
+    });
+
+    it('reports null face enrolment for an attempt from before the feature existed', async () => {
+      const tx = exportTxWithFaceEnrolment(null);
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.exportData(context, 'user-1', 'cand-1');
+
+      expect(result.attempts[0].faceEnrolment).toBeNull();
+    });
+
     describe('with the real BlobStorageService (offline SAS signing, no network)', () => {
       const CONTAINER_URL = 'https://fakeaccount.blob.core.windows.net/container';
       let realService: CandidatesService;
@@ -508,7 +578,12 @@ describe('CandidatesService', () => {
 
   describe('erase', () => {
     function makeEraseTx(
-      overrides: { candidate?: Record<string, unknown>; proctoringEvents?: { metadataJson: string | null }[] } = {},
+      overrides: {
+        candidate?: Record<string, unknown>;
+        proctoringEvents?: { metadataJson: string | null }[];
+        faceEnrolments?: { referenceImagePath: string | null }[];
+        faceEnrolment?: { deleteMany?: jest.Mock };
+      } = {},
     ) {
       return {
         candidate: {
@@ -533,8 +608,18 @@ describe('CandidatesService', () => {
         proctoringAnalysis: { updateMany: jest.fn() },
         attemptInsight: { updateMany: jest.fn() },
         candidateRefreshToken: { deleteMany: jest.fn() },
+        faceEnrolment: {
+          findMany: jest.fn().mockResolvedValue(overrides.faceEnrolments ?? []),
+          deleteMany: overrides.faceEnrolment?.deleteMany ?? jest.fn(),
+        },
       };
     }
+    // Alias matching the brief's naming -- same helper, used by the face-data tests below.
+    const mockEraseTx = (overrides: Parameters<typeof makeEraseTx>[0] = {}) => {
+      const tx = makeEraseTx(overrides);
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
+      return tx;
+    };
 
     it('scrubs every PII-bearing field, deletes session tokens, and revokes live invitations atomically', async () => {
       const tx = makeEraseTx();
@@ -878,6 +963,47 @@ describe('CandidatesService', () => {
       expect(blobStorage.deleteByUrl).toHaveBeenCalledTimes(1);
       expect(blobStorage.deleteByUrl).toHaveBeenCalledWith('https://blob.test/container/webcam-snapshots/c.jpg');
       expect(audit.record).toHaveBeenCalled();
+    });
+
+    it('deletes the face reference image blob and the enrolment row', async () => {
+      const deleteMany = jest.fn().mockResolvedValue({ count: 1 });
+      blobStorage.deleteByUrl = jest.fn().mockResolvedValue('deleted');
+      mockEraseTx({
+        faceEnrolments: [{ referenceImagePath: 'https://acct.blob.core.windows.net/c/face/a1.jpg' }],
+        faceEnrolment: { deleteMany },
+      });
+
+      await service.erase(context, 'user-1', 'cand-1');
+
+      expect(blobStorage.deleteByUrl).toHaveBeenCalledWith('https://acct.blob.core.windows.net/c/face/a1.jpg');
+      expect(deleteMany).toHaveBeenCalled();
+    });
+
+    // This is the assertion that makes the GDPR position defensible rather than nominal.
+    it('leaves NO face data behind for the erased candidate', async () => {
+      const deleteMany = jest.fn().mockResolvedValue({ count: 2 });
+      blobStorage.deleteByUrl = jest.fn().mockResolvedValue('deleted');
+      mockEraseTx({
+        faceEnrolments: [
+          { referenceImagePath: 'https://acct.blob.core.windows.net/c/face/a1.jpg' },
+          { referenceImagePath: 'https://acct.blob.core.windows.net/c/face/a2.jpg' },
+        ],
+        faceEnrolment: { deleteMany },
+      });
+
+      await service.erase(context, 'user-1', 'cand-1');
+
+      expect(blobStorage.deleteByUrl).toHaveBeenCalledTimes(2);
+      expect(deleteMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.anything() }));
+    });
+
+    it('still deletes the row when the blob is already gone', async () => {
+      const deleteMany = jest.fn().mockResolvedValue({ count: 1 });
+      blobStorage.deleteByUrl = jest.fn().mockRejectedValue(new Error('404'));
+      mockEraseTx({ faceEnrolments: [{ referenceImagePath: 'https://acct.blob.core.windows.net/c/face/a1.jpg' }], faceEnrolment: { deleteMany } });
+
+      await expect(service.erase(context, 'user-1', 'cand-1')).resolves.toBeDefined();
+      expect(deleteMany).toHaveBeenCalled();
     });
   });
 });

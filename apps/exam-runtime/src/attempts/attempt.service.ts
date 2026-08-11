@@ -31,6 +31,7 @@ import { WebcamSnapshotDto } from './dto/webcam-snapshot.dto';
 import { ScreenShareStateDto } from './dto/screen-share-state.dto';
 import { ScreenAnalysisDto } from './dto/screen-analysis.dto';
 import { ClientErrorDto } from './dto/client-error.dto';
+import { FaceEnrolmentDto } from './dto/face-enrolment.dto';
 import { sanitizeMetadataOrDrop } from './sanitize-metadata';
 
 interface AttemptQuestionOption {
@@ -1088,6 +1089,53 @@ export class AttemptService {
       });
     });
     return { ok: true };
+  }
+
+  async recordFaceEnrolment(session: CandidateSession, dto: FaceEnrolmentDto): Promise<{ status: string }> {
+    // Consent is the lawful basis for holding an IMAGE of the candidate's face, so no consent
+    // means no image -- ever. It is NOT a reason to record nothing at all: a candidate who
+    // declines must leave a flag with their name on it rather than silence, otherwise they are
+    // indistinguishable from an exam that never had the feature switched on. That row carries
+    // no image and no consentAt.
+    if (!dto.consentGiven && (dto.status === 'enrolled' || dto.snapshot)) {
+      throw new BadRequestException('Face enrolment requires the candidate’s consent');
+    }
+    const { organizationId, invitation } = await this.resolveContext(session.invitationId);
+    const attempt = await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
+      tx.attempt.findUnique({ where: { invitationId: invitation.id }, select: { id: true } }),
+    );
+    if (!attempt) {
+      throw new BadRequestException('Cannot enrol before the attempt has started');
+    }
+
+    // Upload OUTSIDE the transaction: a slow blob write inside forTenant holds a pooled
+    // connection for its whole duration and starves concurrent candidates.
+    let referenceImagePath: string | null = null;
+    if (dto.status === 'enrolled' && dto.snapshot) {
+      const url = await this.blobStorage.uploadDataUri(`face/${attempt.id}.jpg`, dto.snapshot);
+      // Store the PATH, never a signed URL -- a stored SAS expires and cannot be re-signed.
+      referenceImagePath = url.split('?')[0];
+    }
+
+    // "enrolled" with nothing behind it renders as "Verified" to a recruiter, which is worse
+    // than an honest "Not verified" -- so an enrolment that stored no image is not one.
+    const status = dto.status === 'enrolled' && !referenceImagePath ? 'not_verified' : dto.status;
+
+    const row = {
+      status,
+      referenceImagePath,
+      qualityJson: dto.qualityJson ?? null,
+      consentAt: dto.consentGiven ? new Date() : null,
+      capturedAt: referenceImagePath ? new Date() : null,
+    };
+    await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
+      tx.faceEnrolment.upsert({
+        where: { attemptId: attempt.id },
+        create: { attemptId: attempt.id, ...row },
+        update: row,
+      }),
+    );
+    return { status };
   }
 
   async getLeaderboard(session: CandidateSession): Promise<CandidateLeaderboardResponse> {

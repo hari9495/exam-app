@@ -5,6 +5,8 @@ const FEEDBACK_VISIBILITY_VALUES = ['none', 'pass_fail', 'score', 'breakdown'] a
 
 export const PROCTORING_ENFORCEMENT_VALUES = ['warn', 'block'] as const;
 
+export const FACE_ENROLMENT_POLICY_VALUES = ['allow_unenrolled', 'retry_then_allow', 'require_enrolment'] as const;
+
 // Exactly the strike-worthy browser signals. Webcam signals are governed by
 // webcamProctoringEnabled; editor_paste/refresh_warning are telemetry, not strikes.
 export const TOGGLEABLE_PROCTORING_SIGNALS = [
@@ -112,4 +114,18 @@ export class CreateExamDto {
   @IsOptional()
   @IsBoolean()
   lockdownRequired?: boolean;
+
+  // Master switch for the reference-photo capture step. Off by default -- the candidate flow
+  // added later only shows the capture UI when this is true.
+  @IsOptional()
+  @IsBoolean()
+  faceVerificationEnabled?: boolean;
+
+  // What happens when a candidate can't produce a usable reference photo (bad camera, dark
+  // room, no face found). Only meaningful while faceVerificationEnabled is true.
+  @IsOptional()
+  @IsIn(FACE_ENROLMENT_POLICY_VALUES, {
+    message: 'Enrolment policy must be allow_unenrolled, retry_then_allow or require_enrolment',
+  })
+  faceEnrolmentPolicy?: string;
 }

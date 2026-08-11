@@ -27,6 +27,8 @@ export interface ExamDetailsValue {
   disabledProctoringSignals: string[];
   screenCaptureEnabled: boolean;
   lockdownRequired: boolean;
+  faceVerificationEnabled: boolean;
+  faceEnrolmentPolicy: 'allow_unenrolled' | 'retry_then_allow' | 'require_enrolment';
 }
 
 interface ExamDetailsFormProps {
@@ -109,6 +111,10 @@ export function ExamDetailsForm({
   });
   const [screenCaptureEnabled, setScreenCaptureEnabled] = useState(initialExam?.screenCaptureEnabled ?? false);
   const [lockdownRequired, setLockdownRequired] = useState(initialExam?.lockdownRequired ?? false);
+  const [faceVerificationEnabled, setFaceVerificationEnabled] = useState(initialExam?.faceVerificationEnabled ?? false);
+  const [faceEnrolmentPolicy, setFaceEnrolmentPolicy] = useState<ExamDetailsValue['faceEnrolmentPolicy']>(
+    (initialExam?.faceEnrolmentPolicy as ExamDetailsValue['faceEnrolmentPolicy']) ?? 'retry_then_allow',
+  );
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -146,6 +152,8 @@ export function ExamDetailsForm({
       disabledProctoringSignals: disabledSignals,
       screenCaptureEnabled,
       lockdownRequired,
+      faceVerificationEnabled,
+      faceEnrolmentPolicy,
     });
   }
 
@@ -370,6 +378,27 @@ export function ExamDetailsForm({
             </div>
           </div>
         )}
+        <div className="flex flex-col gap-1.5 border-t border-recruiter-border pt-4 sm:col-span-2">
+          <Checkbox
+            label="Require a face photo before starting"
+            checked={faceVerificationEnabled}
+            onChange={setFaceVerificationEnabled}
+          />
+          {faceVerificationEnabled && (
+            <div className="pl-6 pt-2">
+              <Select
+                label="If the photo can't be captured"
+                value={faceEnrolmentPolicy}
+                onChange={(value) => setFaceEnrolmentPolicy(value as ExamDetailsValue['faceEnrolmentPolicy'])}
+                options={[
+                  { value: 'allow_unenrolled', label: "Let them start (recorded as not verified)" },
+                  { value: 'retry_then_allow', label: 'Retry 3 times, then let them start (recommended)' },
+                  { value: 'require_enrolment', label: "Don't let them start" },
+                ]}
+              />
+            </div>
+          )}
+        </div>
       </CollapsibleSection>
 
       {!locked && (

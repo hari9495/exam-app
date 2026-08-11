@@ -1,5 +1,24 @@
 import PDFDocument from 'pdfkit';
 import { ExportResultRow } from '../reports.service';
+import { formatFaceEnrolment } from './face-enrolment-label';
+
+// Exported so a test can assert what a row actually SAYS. pdfkit compresses its content
+// streams, so the finished buffer can only be checked for being a valid PDF -- the columns
+// themselves are unreadable from it, which is how the Face column went missing unnoticed.
+export function buildResultLine(row: ExportResultRow): string {
+  return [
+    row.candidateName,
+    row.status,
+    row.score !== null ? `${row.score}/${row.maxScore}` : '-',
+    row.percentage !== null ? `${row.percentage}%` : '-',
+    row.passFail ?? '-',
+    row.durationMinutes !== null ? `${Math.round(row.durationMinutes)} min` : '-',
+    row.integrityLevel ?? '-',
+    `${row.integrityFlagCount ?? 0} flags`,
+    // '-' rather than blank, matching every other optional column on this line.
+    formatFaceEnrolment(row.faceEnrolmentStatus, '-'),
+  ].join('   ');
+}
 
 export function exportResultsToPdf(rows: ExportResultRow[]): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -14,17 +33,7 @@ export function exportResultsToPdf(rows: ExportResultRow[]): Promise<Buffer> {
     doc.fontSize(10);
 
     rows.forEach((row) => {
-      const line = [
-        row.candidateName,
-        row.status,
-        row.score !== null ? `${row.score}/${row.maxScore}` : '-',
-        row.percentage !== null ? `${row.percentage}%` : '-',
-        row.passFail ?? '-',
-        row.durationMinutes !== null ? `${Math.round(row.durationMinutes)} min` : '-',
-        row.integrityLevel ?? '-',
-        `${row.integrityFlagCount ?? 0} flags`,
-      ].join('   ');
-      doc.text(line);
+      doc.text(buildResultLine(row));
     });
 
     doc.end();

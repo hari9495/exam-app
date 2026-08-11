@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import { ExportResultRow } from '../reports.service';
+import { formatFaceEnrolment } from './face-enrolment-label';
 
 const COLUMNS = [
   { header: 'Candidate Name', key: 'candidateName', width: 24 },
@@ -12,6 +13,7 @@ const COLUMNS = [
   { header: 'Duration (min)', key: 'durationMinutes', width: 14 },
   { header: 'Integrity level', key: 'integrityLevel', width: 16 },
   { header: 'Integrity flags', key: 'integrityFlagCount', width: 14 },
+  { header: 'Face', key: 'faceEnrolment', width: 14 },
 ];
 
 export async function exportResultsToXlsx(rows: ExportResultRow[]): Promise<Buffer> {
@@ -30,6 +32,7 @@ export async function exportResultsToXlsx(rows: ExportResultRow[]): Promise<Buff
       durationMinutes: row.durationMinutes,
       integrityLevel: row.integrityLevel ?? '',
       integrityFlagCount: row.integrityFlagCount ?? 0,
+      faceEnrolment: formatFaceEnrolment(row.faceEnrolmentStatus),
     });
   });
   const arrayBuffer = await workbook.xlsx.writeBuffer();

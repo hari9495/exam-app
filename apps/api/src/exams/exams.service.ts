@@ -5,7 +5,7 @@ import { TenantContext } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
 import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
-import { CreateExamDto, TOGGLEABLE_PROCTORING_SIGNALS } from './dto/create-exam.dto';
+import { CreateExamDto, TOGGLEABLE_PROCTORING_SIGNALS, FACE_ENROLMENT_POLICY_VALUES } from './dto/create-exam.dto';
 import { UpdateExamDto } from './dto/update-exam.dto';
 import { CreateExamSectionDto } from './dto/create-exam-section.dto';
 import { UpdateExamSectionDto } from './dto/update-exam-section.dto';
@@ -56,6 +56,7 @@ export interface ExamResultRow {
   integrityAnalysis: { status: string; level: string | null; flagsJson: string | null; narrative: string | null } | null;
   integrityLevel: string | null;
   integrityFlagCount: number;
+  faceEnrolmentStatus: string | null;
   /**
    * The invite created by advancing this candidate to another exam FROM this one, so the
    * recruiter can see whether it actually reached them. Null when they were never advanced.
@@ -206,9 +207,28 @@ export class ExamsService {
     };
   }
 
+  // Validated here too (not just via the DTO's @IsIn) because ValidationPipe only runs in
+  // front of the controller -- service.update() is also called directly in tests, and an
+  // unknown policy must never reach the database either way.
+  private resolveFaceIdFields(dto: { faceVerificationEnabled?: boolean; faceEnrolmentPolicy?: string }): {
+    faceVerificationEnabled?: boolean;
+    faceEnrolmentPolicy?: string;
+  } {
+    if (dto.faceEnrolmentPolicy !== undefined && !(FACE_ENROLMENT_POLICY_VALUES as readonly string[]).includes(dto.faceEnrolmentPolicy)) {
+      throw new BadRequestException(
+        `Enrolment policy must be one of: ${FACE_ENROLMENT_POLICY_VALUES.join(', ')}`,
+      );
+    }
+    return {
+      ...(dto.faceVerificationEnabled !== undefined ? { faceVerificationEnabled: dto.faceVerificationEnabled } : {}),
+      ...(dto.faceEnrolmentPolicy !== undefined ? { faceEnrolmentPolicy: dto.faceEnrolmentPolicy } : {}),
+    };
+  }
+
   async create(context: TenantContext, userId: string, dto: CreateExamDto): Promise<Exam> {
     const scheduling = this.resolveSchedulingFields(dto.schedulingEnabled, dto.availabilityWindowStart, dto.availabilityWindowEnd);
     const proctoring = this.resolveProctoringFields(dto);
+    const faceId = this.resolveFaceIdFields(dto);
     const exam = await this.tenantPrisma.forTenant(context, (tx) =>
       tx.exam.create({
         data: {
@@ -224,6 +244,7 @@ export class ExamsService {
           availabilityWindowEnd: scheduling.availabilityWindowEnd,
           allowedIpRange: dto.allowedIpRange ?? null,
           ...proctoring,
+          ...faceId,
           createdBy: userId,
         },
       }),
@@ -431,6 +452,7 @@ export class ExamsService {
         dto.availabilityWindowEnd !== undefined ? dto.availabilityWindowEnd : (existing.availabilityWindowEnd?.toISOString() ?? undefined);
       const scheduling = this.resolveSchedulingFields(schedulingEnabledInput, availabilityWindowStartInput, availabilityWindowEndInput);
       const proctoring = this.resolveProctoringFields(dto);
+      const faceId = this.resolveFaceIdFields(dto);
 
       const updated = await tx.exam.update({
         where: { id },
@@ -445,6 +467,7 @@ export class ExamsService {
           ...(dto.walkInListed !== undefined ? { walkInListed: dto.walkInListed } : {}),
           ...(dto.allowedIpRange !== undefined ? { allowedIpRange: dto.allowedIpRange || null } : {}),
           ...proctoring,
+          ...faceId,
           schedulingEnabled: scheduling.schedulingEnabled,
           availabilityWindowStart: scheduling.availabilityWindowStart,
           availabilityWindowEnd: scheduling.availabilityWindowEnd,
@@ -671,6 +694,8 @@ export class ExamsService {
           disabledProctoringSignalsJson: exam.disabledProctoringSignalsJson,
           screenCaptureEnabled: exam.screenCaptureEnabled,
           lockdownRequired: exam.lockdownRequired,
+          faceVerificationEnabled: exam.faceVerificationEnabled,
+          faceEnrolmentPolicy: exam.faceEnrolmentPolicy,
           schedulingEnabled: false,
           availabilityWindowStart: null,
           availabilityWindowEnd: null,
@@ -1075,7 +1100,7 @@ export class ExamsService {
 
       const invitations = await tx.invitation.findMany({
         where: { examId },
-        include: { candidate: true, attempt: { include: { result: true, proctoringAnalysis: true, integrityAnalysis: true } } },
+        include: { candidate: true, attempt: { include: { result: true, proctoringAnalysis: true, integrityAnalysis: true, faceEnrolment: true } } },
         orderBy: [{ invitedAt: 'desc' }, { id: 'desc' }],
       });
 
@@ -1118,7 +1143,7 @@ export class ExamsService {
     const settledAttempts = await this.tenantPrisma.forTenant(context, async (tx) => {
       const attempts = await tx.attempt.findMany({
         where: { id: { in: attemptIdsToSettle } },
-        include: { result: true, proctoringAnalysis: true, integrityAnalysis: true },
+        include: { result: true, proctoringAnalysis: true, integrityAnalysis: true, faceEnrolment: true },
       });
       return new Map(attempts.map((attempt) => [attempt.id, attempt]));
     });
@@ -1223,6 +1248,7 @@ export class ExamsService {
           result: { score: number; maxScore: number; percentage: number; passFail: string | null } | null;
           proctoringAnalysis: { status: string; riskLevel: string | null; summary: string | null } | null;
           integrityAnalysis?: { status: string; level: string | null; flagsJson: string | null; narrative: string | null } | null;
+          faceEnrolment?: { status: string } | null;
         }
       | null
       | undefined,
@@ -1251,6 +1277,7 @@ export class ExamsService {
         : null,
       integrityLevel: attempt?.integrityAnalysis?.level ?? null,
       integrityFlagCount: countIntegrityFlags(attempt?.integrityAnalysis?.flagsJson ?? null),
+      faceEnrolmentStatus: attempt?.faceEnrolment?.status ?? null,
       nextRound: nextRoundByCandidate.get(invitation.candidateId) ?? null,
     };
   }

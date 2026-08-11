@@ -1,12 +1,16 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useRouter } from 'next/navigation';
-import { useAttemptQuery, useStartAttempt } from '../../../lib/hooks/useAttempt';
+import { useAttemptQuery, useFaceEnrolment, useStartAttempt } from '../../../lib/hooks/useAttempt';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
 import CandidateWelcomePage from './page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn() }));
-jest.mock('../../../lib/hooks/useAttempt', () => ({ useAttemptQuery: jest.fn(), useStartAttempt: jest.fn() }));
+jest.mock('../../../lib/hooks/useAttempt', () => ({
+  useAttemptQuery: jest.fn(),
+  useStartAttempt: jest.fn(),
+  useFaceEnrolment: jest.fn(),
+}));
 jest.mock('../../../lib/candidate-auth-context', () => ({ useCandidateAuth: jest.fn() }));
 
 const mockToast = jest.fn();
@@ -43,6 +47,7 @@ describe('CandidateWelcomePage', () => {
     mockToast.mockClear();
     (useRouter as jest.Mock).mockReturnValue({ push });
     (useCandidateAuth as jest.Mock).mockReturnValue({ accessToken: 'token-1', isLoading: false });
+    (useFaceEnrolment as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
   });
 
   it('shows exam title, duration, instructions, and a monitoring disclosure before start', async () => {
@@ -637,5 +642,155 @@ describe('CandidateWelcomePage', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
+  });
+
+  // These specs exist because the two sides of face enrolment were each tested against a fiction
+  // of the other: the server spec mocked an attempt into existence, the component spec mocked the
+  // whole mutation. Nothing rendered the real step inside the real page, so nobody noticed the
+  // step sits HERE, in place of the Start button, at a moment when no attempt exists -- which
+  // made every enrolment POST a silent 400. These drive the real FaceEnrolmentStep.
+  describe('face enrolment', () => {
+    function mockFaceExam(faceEnrolmentPolicy: string) {
+      (useAttemptQuery as jest.Mock).mockReturnValue({
+        data: {
+          exam: {
+            title: 'Backend Screening', instructions: null, durationMinutes: 45,
+            // webcamEnabled false keeps this focused on the face gate: no camera-permission step
+            // stands between the settled enrolment and the Start button.
+            proctoring: {
+              webcamEnabled: false, enforcement: 'block', strikeLimit: 3, disabledSignals: [],
+              faceVerificationEnabled: true, faceEnrolmentPolicy,
+            },
+          },
+          sections: [],
+        },
+        isLoading: false,
+      });
+    }
+
+    async function declineThePhoto() {
+      render(<CandidateWelcomePage />);
+      await skipPractice();
+      await checkConsent();
+      await userEvent.click(screen.getByRole('button', { name: /don’t agree/i }));
+    }
+
+    it('records the enrolment only after /attempt/start has created the attempt to key it to', async () => {
+      const order: string[] = [];
+      const start = jest.fn(async () => {
+        order.push('start');
+        return { id: 'attempt-1', status: 'in_progress' };
+      });
+      const enrol = jest.fn(async () => {
+        order.push('enrol');
+        return { status: 'not_verified' };
+      });
+      mockFaceExam('retry_then_allow');
+      (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: start, isPending: false });
+      (useFaceEnrolment as jest.Mock).mockReturnValue({ mutateAsync: enrol, isPending: false });
+
+      await declineThePhoto();
+      // Nothing may be recorded yet -- there is no attempt.
+      expect(enrol).not.toHaveBeenCalled();
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+
+      await waitFor(() => expect(enrol).toHaveBeenCalled());
+      expect(order).toEqual(['start', 'enrol']);
+      expect(enrol).toHaveBeenCalledWith({ status: 'not_verified', consentGiven: false });
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/exam'));
+    });
+
+    it('lets the candidate into the exam unenrolled when the enrolment POST fails after start', async () => {
+      mockFaceExam('retry_then_allow');
+      (useStartAttempt as jest.Mock).mockReturnValue({
+        mutateAsync: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }),
+        isPending: false,
+      });
+      (useFaceEnrolment as jest.Mock).mockReturnValue({
+        mutateAsync: jest.fn().mockRejectedValue(new Error('500')),
+        isPending: false,
+      });
+
+      await declineThePhoto();
+      await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/exam'));
+      expect(mockToast).not.toHaveBeenCalled();
+    });
+
+    it('never records anything when the attempt itself fails to start', async () => {
+      const enrol = jest.fn();
+      mockFaceExam('retry_then_allow');
+      (useStartAttempt as jest.Mock).mockReturnValue({
+        mutateAsync: jest.fn().mockRejectedValue(new Error('This exam must be started inside Safe Exam Browser.')),
+        isPending: false,
+      });
+      (useFaceEnrolment as jest.Mock).mockReturnValue({ mutateAsync: enrol, isPending: false });
+
+      await declineThePhoto();
+      await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+
+      await waitFor(() => expect(mockToast).toHaveBeenCalled());
+      expect(enrol).not.toHaveBeenCalled();
+      expect(push).not.toHaveBeenCalledWith('/exam');
+    });
+
+    it('still gates the Start button behind the photo when the exam requires enrolment', async () => {
+      mockFaceExam('require_enrolment');
+      (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+
+      render(<CandidateWelcomePage />);
+      await skipPractice();
+      await checkConsent();
+      expect(screen.queryByRole('button', { name: 'Start exam' })).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: /don’t agree/i }));
+
+      expect(screen.getByText(/requires a photo before you can start/i)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Start exam' })).not.toBeInTheDocument();
+    });
+
+    // The enrolment POST runs after start resolves, so startAttempt.isPending is already false
+    // while it is in flight. Without the second guard the button re-enables mid-flight and a
+    // second click would start the attempt all over again.
+    it('keeps the Start button disabled while the enrolment POST is still in flight', async () => {
+      mockFaceExam('retry_then_allow');
+      (useStartAttempt as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+      (useFaceEnrolment as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: true });
+
+      await declineThePhoto();
+
+      const button = await screen.findByRole('button', { name: 'Starting…' });
+      expect(button).toBeDisabled();
+    });
+
+    it('posts no enrolment at all for an exam nobody configured face verification on', async () => {
+      const enrol = jest.fn();
+      (useAttemptQuery as jest.Mock).mockReturnValue({
+        data: {
+          exam: {
+            title: 'Backend Screening', instructions: null, durationMinutes: 45,
+            proctoring: { webcamEnabled: false, enforcement: 'block', strikeLimit: 3, disabledSignals: [] },
+          },
+          sections: [],
+        },
+        isLoading: false,
+      });
+      (useStartAttempt as jest.Mock).mockReturnValue({
+        mutateAsync: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }),
+        isPending: false,
+      });
+      (useFaceEnrolment as jest.Mock).mockReturnValue({ mutateAsync: enrol, isPending: false });
+
+      render(<CandidateWelcomePage />);
+      await skipPractice();
+      await checkConsent();
+      expect(screen.queryByText(/photo of your face/i)).not.toBeInTheDocument();
+      await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/exam'));
+      expect(enrol).not.toHaveBeenCalled();
+    });
   });
 });

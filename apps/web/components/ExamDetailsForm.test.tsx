@@ -90,6 +90,7 @@ describe('ExamDetailsForm', () => {
       hasStartedAttempts: false, requiresManualGrading: false,
       enableAntiCheating: true, webcamProctoringEnabled: true, webcamRecordOnly: false, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
       disabledProctoringSignalsJson: null, screenCaptureEnabled: false, lockdownRequired: false,
+      faceVerificationEnabled: false, faceEnrolmentPolicy: 'retry_then_allow' as const,
     };
     render(<ExamDetailsForm initialExam={scheduledExam} onSubmit={jest.fn()} submitLabel="Save" />);
 
@@ -204,6 +205,7 @@ describe('ExamDetailsForm', () => {
       hasStartedAttempts: false, requiresManualGrading: false,
       enableAntiCheating: true, webcamProctoringEnabled: true, webcamRecordOnly: false, proctoringEnforcement: 'block' as const, proctoringStrikeLimit: 3,
       disabledProctoringSignalsJson: null, screenCaptureEnabled: false, lockdownRequired: false,
+      faceVerificationEnabled: false, faceEnrolmentPolicy: 'retry_then_allow' as const,
     };
     render(<ExamDetailsForm initialExam={examWithIpRange} onSubmit={onSubmit} submitLabel="Save" />);
 
@@ -336,6 +338,7 @@ describe('ExamDetailsForm', () => {
         hasStartedAttempts: false, requiresManualGrading: false,
         enableAntiCheating: true, webcamProctoringEnabled: true, webcamRecordOnly: true, proctoringEnforcement: 'block' as const,
         proctoringStrikeLimit: 3, disabledProctoringSignalsJson: null, screenCaptureEnabled: false, lockdownRequired: false,
+        faceVerificationEnabled: false, faceEnrolmentPolicy: 'retry_then_allow' as const,
       };
       render(<ExamDetailsForm initialExam={examWithRecordOnlyWebcam} onSubmit={jest.fn()} submitLabel="Save" />);
 

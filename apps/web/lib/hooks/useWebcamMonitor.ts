@@ -15,8 +15,8 @@ const PERIODIC_SNAPSHOT_MAX_MS = 180_000;
 // webcam proctoring unable to initialise, which on a webcam-required exam blocks
 // the candidate entirely. scripts/copy-mediapipe.mjs populates /mediapipe/* at
 // build time (wasm from node_modules, model vendored in the repo). See ADO #6826.
-const MEDIAPIPE_WASM_URL = '/mediapipe/wasm';
-const FACE_LANDMARKER_MODEL_URL = '/mediapipe/face_landmarker.task';
+export const MEDIAPIPE_WASM_URL = '/mediapipe/wasm';
+export const FACE_LANDMARKER_MODEL_URL = '/mediapipe/face_landmarker.task';
 
 function captureSnapshot(video: HTMLVideoElement): string {
   const canvas = document.createElement('canvas');
