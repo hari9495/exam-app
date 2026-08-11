@@ -54,7 +54,7 @@ export class FaceEmbedderService implements OnModuleInit {
   }
 
   // Decode to the model's expected input. EdgeFace takes a 112x112 RGB tensor normalised to
-  // [-1, 1] in NCHW order. `sharp` is already a dependency of this repo.
+  // [-1, 1] in NCHW order.
   private async toInputTensor(ort: typeof import('onnxruntime-node'), image: Buffer): Promise<unknown | null> {
     try {
       const sharp = (await import('sharp')).default;
@@ -67,7 +67,10 @@ export class FaceEmbedderService implements OnModuleInit {
         floats[plane * 2 + i] = (data[i * 3 + 2] / 255 - 0.5) / 0.5;
       }
       return new ort.Tensor('float32', floats, [1, 3, 112, 112]);
-    } catch {
+    } catch (error) {
+      // Silence here would be the worst outcome: a missing decoder makes verification
+      // permanently inert with nothing in the logs to say why.
+      this.logger.warn(`Face image decode failed: ${(error as Error).message}`);
       return null;
     }
   }
