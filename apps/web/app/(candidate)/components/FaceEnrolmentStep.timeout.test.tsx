@@ -1,11 +1,9 @@
 import { act, render, screen, fireEvent } from '@testing-library/react';
 import { FaceEnrolmentStep, ATTEMPT_TIMEOUT_MS } from './FaceEnrolmentStep';
-import { useFaceEnrolment } from '../../../lib/hooks/useAttempt';
 
 // Separate file from FaceEnrolmentStep.test.tsx on purpose: those specs render only the consent and
 // blocked phases and must keep working with no camera and no MediaPipe. Only the capture phase --
 // exercised here -- needs either.
-jest.mock('../../../lib/hooks/useAttempt', () => ({ useFaceEnrolment: jest.fn() }));
 
 // A camera and a model that both work perfectly, and a candidate the challenge never sees blink:
 // detectForVideo reports no face, which createBlinkChallenge deliberately holds its state on. This
@@ -20,14 +18,11 @@ jest.mock('@mediapipe/tasks-vision', () => ({
   },
 }));
 
-const mutateAsync = jest.fn().mockResolvedValue({ status: 'not_verified' });
 const stop = jest.fn();
 
 beforeEach(() => {
   jest.useFakeTimers();
-  mutateAsync.mockClear();
   stop.mockClear();
-  (useFaceEnrolment as jest.Mock).mockReturnValue({ mutateAsync, isPending: false });
   HTMLMediaElement.prototype.play = jest.fn().mockResolvedValue(undefined);
   Object.defineProperty(navigator, 'mediaDevices', {
     configurable: true,
@@ -46,7 +41,7 @@ async function flush() {
   });
 }
 
-async function agree(policy: 'retry_then_allow' | 'require_enrolment', onSettled = jest.fn()) {
+async function agree(policy: 'allow_unenrolled' | 'retry_then_allow' | 'require_enrolment', onSettled = jest.fn()) {
   render(<FaceEnrolmentStep policy={policy} onSettled={onSettled} />);
   fireEvent.click(screen.getByRole('button', { name: /I agree/i }));
   await flush();
@@ -78,11 +73,32 @@ describe('FaceEnrolmentStep capture timeout', () => {
     await waitOutTheDeadline();
     await waitOutTheDeadline();
 
-    expect(mutateAsync).toHaveBeenCalledTimes(1);
-    expect(mutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'not_verified', consentGiven: true }),
-    );
-    expect(onSettled).toHaveBeenCalledWith('not_verified');
+    expect(onSettled).toHaveBeenCalledTimes(1);
+    expect(onSettled).toHaveBeenCalledWith({ status: 'not_verified', consentGiven: true });
+  });
+
+  // allow_unenrolled and retry_then_allow are separate dropdown options. They used to do exactly
+  // the same thing -- three attempts, then settle -- which made one of them a lie.
+  it('settles on the FIRST failure under allow_unenrolled instead of labouring three attempts', async () => {
+    const onSettled = await agree('allow_unenrolled');
+    expect(screen.getByText(/Attempt 1 of 1/)).toBeInTheDocument();
+
+    await waitOutTheDeadline();
+
+    expect(onSettled).toHaveBeenCalledTimes(1);
+    expect(onSettled).toHaveBeenCalledWith({ status: 'not_verified', consentGiven: true });
+  });
+
+  it('still spends all three attempts under retry_then_allow before settling', async () => {
+    const onSettled = await agree('retry_then_allow');
+
+    await waitOutTheDeadline();
+    expect(onSettled).not.toHaveBeenCalled();
+    await waitOutTheDeadline();
+    expect(onSettled).not.toHaveBeenCalled();
+    await waitOutTheDeadline();
+
+    expect(onSettled).toHaveBeenCalledTimes(1);
   });
 
   it('blocks rather than settling when the exam requires enrolment', async () => {

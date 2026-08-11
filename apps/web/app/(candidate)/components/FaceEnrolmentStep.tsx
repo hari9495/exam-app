@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useFaceEnrolment } from '../../../lib/hooks/useAttempt';
 import { assessFaceQuality } from '../../../lib/face-quality';
 import { createBlinkChallenge } from '../../../lib/face-liveness';
 import { MEDIAPIPE_WASM_URL, FACE_LANDMARKER_MODEL_URL } from '../../../lib/hooks/useWebcamMonitor';
@@ -9,15 +8,36 @@ import { MEDIAPIPE_WASM_URL, FACE_LANDMARKER_MODEL_URL } from '../../../lib/hook
 export type EnrolmentPolicy = 'allow_unenrolled' | 'retry_then_allow' | 'require_enrolment';
 type Phase = 'consent' | 'capture' | 'blocked';
 
+// What the exam-runtime's POST /attempt/face-enrolment body looks like. This step BUILDS it and
+// hands it up; it deliberately does not send it. The row is keyed on the attempt, and this step
+// renders on the welcome page IN PLACE OF the Start button -- so at this moment there is no
+// attempt to key it to and the POST could only ever 400. The welcome page holds the payload and
+// sends it the instant /attempt/start returns. Consent is still given before anything is
+// captured; only the moment of recording moves, by a few seconds.
+export interface FaceEnrolmentPayload {
+  status: 'enrolled' | 'not_verified';
+  snapshot?: string;
+  qualityJson?: string;
+  consentGiven: boolean;
+}
+
 const MAX_ATTEMPTS = 3;
 // Wall clock for a whole attempt: model load, camera permission, and the blink itself. Generous
 // enough for a cold model fetch on a slow office network, short enough that three attempts still
 // resolve in about a minute. Exported so the test asserts against the same budget.
 export const ATTEMPT_TIMEOUT_MS = 20_000;
 
+// allow_unenrolled and retry_then_allow are separate dropdown options and must not behave
+// identically: "allow unenrolled" means don't labour the point -- the first failure settles.
+// retry_then_allow spends all three attempts before giving up. require_enrolment retries too,
+// and blocks instead of settling.
+function attemptBudget(policy: EnrolmentPolicy): number {
+  return policy === 'allow_unenrolled' ? 1 : MAX_ATTEMPTS;
+}
+
 interface Props {
   policy: EnrolmentPolicy;
-  onSettled: (status: 'enrolled' | 'not_verified') => void;
+  onSettled: (payload: FaceEnrolmentPayload) => void;
 }
 
 export function FaceEnrolmentStep({ policy, onSettled }: Props) {
@@ -25,63 +45,52 @@ export function FaceEnrolmentStep({ policy, onSettled }: Props) {
   const [attempts, setAttempts] = useState(0);
   const [hint, setHint] = useState('Look at the camera and blink.');
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const enrol = useFaceEnrolment();
-
-  // Every settle path funnels through here so a failure can never leave the candidate on a
-  // spinner: if the POST itself fails we still call onSettled, because the exam must go on.
-  const settle = useCallback(
-    async (status: 'enrolled' | 'not_verified', body: Parameters<typeof enrol.mutateAsync>[0]) => {
-      try {
-        await enrol.mutateAsync(body);
-      } catch {
-        // Recording enrolment is best-effort; it must never block the exam.
-      }
-      onSettled(status);
-    },
-    [enrol, onSettled],
-  );
+  const maxAttempts = attemptBudget(policy);
 
   function handleDecline() {
     if (policy === 'require_enrolment') {
       setPhase('blocked');
       return;
     }
-    void settle('not_verified', { status: 'not_verified', consentGiven: false });
+    // A refusal is still a fact about this candidate. The server records it as not_verified with
+    // no image and no consent moment, so a decline never reads as an exam that simply had the
+    // feature switched off.
+    onSettled({ status: 'not_verified', consentGiven: false });
   }
 
   // Called once the blink challenge is satisfied AND the quality gate passes.
   const handleCaptured = useCallback(
     (snapshot: string, metrics: unknown) => {
-      void settle('enrolled', {
+      onSettled({
         status: 'enrolled',
         snapshot,
         qualityJson: JSON.stringify(metrics),
         consentGiven: true,
       });
     },
-    [settle],
+    [onSettled],
   );
 
   // Side effects stay OUT of the setAttempts updater: StrictMode double-invokes updaters in
-  // development, which double-fired the settle POST.
+  // development, which double-fired the settle callback.
   const handleAttemptFailed = useCallback(
     (why: string) => {
       const next = attempts + 1;
       setHint(why);
       setAttempts(next);
-      if (next >= MAX_ATTEMPTS) {
+      if (next >= attemptBudget(policy)) {
         if (policy === 'require_enrolment') {
           setPhase('blocked');
         } else {
-          void settle('not_verified', { status: 'not_verified', consentGiven: true });
+          onSettled({ status: 'not_verified', consentGiven: true });
         }
       }
     },
-    [attempts, policy, settle],
+    [attempts, policy, onSettled],
   );
 
   useEnrolmentCapture({
-    active: phase === 'capture' && attempts < MAX_ATTEMPTS,
+    active: phase === 'capture' && attempts < maxAttempts,
     attempt: attempts,
     videoRef,
     onCaptured: handleCaptured,
@@ -137,7 +146,7 @@ export function FaceEnrolmentStep({ policy, onSettled }: Props) {
       <video ref={videoRef} autoPlay playsInline muted className="w-full max-w-sm rounded" />
       <p className="mt-2">{hint}</p>
       <p className="mt-1 text-xs text-candidate-text-faint">
-        Attempt {Math.min(attempts + 1, MAX_ATTEMPTS)} of {MAX_ATTEMPTS}
+        Attempt {Math.min(attempts + 1, maxAttempts)} of {maxAttempts}
       </p>
     </div>
   );

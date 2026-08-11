@@ -1,16 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FaceEnrolmentStep } from './FaceEnrolmentStep';
-import { useFaceEnrolment } from '../../../lib/hooks/useAttempt';
-
-jest.mock('../../../lib/hooks/useAttempt', () => ({ useFaceEnrolment: jest.fn() }));
-
-const mutateAsync = jest.fn().mockResolvedValue({ status: 'enrolled' });
-
-beforeEach(() => {
-  mutateAsync.mockClear();
-  (useFaceEnrolment as jest.Mock).mockReturnValue({ mutateAsync, isPending: false });
-});
 
 describe('FaceEnrolmentStep', () => {
   // Consent is the lawful basis. Nothing may be captured before it is given.
@@ -25,14 +15,15 @@ describe('FaceEnrolmentStep', () => {
     expect(screen.getByText(/you won’t be able to start/i)).toBeInTheDocument();
   });
 
-  it('settles as not_verified without a photo when the candidate declines under a permissive policy', async () => {
+  // The step BUILDS the enrolment body and hands it up; it must not send it. There is no attempt
+  // to key the row to until /attempt/start has run, so a POST from here could only ever 400.
+  it('hands a declined not_verified payload up rather than posting it itself', async () => {
     const onSettled = jest.fn();
     render(<FaceEnrolmentStep policy="retry_then_allow" onSettled={onSettled} />);
 
     await userEvent.click(screen.getByRole('button', { name: /don’t agree/i }));
 
-    expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ status: 'not_verified', consentGiven: false }));
-    expect(onSettled).toHaveBeenCalledWith('not_verified');
+    expect(onSettled).toHaveBeenCalledWith({ status: 'not_verified', consentGiven: false });
   });
 
   it('does not settle at all when the candidate declines and enrolment is required', async () => {

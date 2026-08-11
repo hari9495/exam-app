@@ -268,6 +268,11 @@ export function useFaceEnrolment() {
   return useMutation({
     mutationFn: (body: { status: 'enrolled' | 'not_verified'; snapshot?: string; qualityJson?: string; consentGiven: boolean }) =>
       candidateApiFetch('/attempt/face-enrolment', { method: 'POST', body: JSON.stringify(body) }, accessToken ?? undefined),
+    // Deliberately opted out of the global mutation retry. This POST now sits between "the
+    // attempt has started" and "the candidate is in the exam", so the global three retries with
+    // backoff would hold a candidate on the welcome screen for seconds over a recording that is
+    // explicitly best-effort. One attempt, then let them in.
+    retry: false,
   });
 }
 
