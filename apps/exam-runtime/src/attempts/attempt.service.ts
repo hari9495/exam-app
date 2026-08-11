@@ -13,6 +13,7 @@ import {
   OrgSecretsCryptoService,
   encodeEmbedding,
   extractBase64FromDataUri,
+  ALLOWED_DATA_URI_CONTENT_TYPES,
 } from '@exam-platform/shared';
 import { FaceEmbedderService } from '../face/face-embedder.service';
 import { FaceVerificationService } from '../face/face-verification.service';
@@ -807,12 +808,22 @@ export class AttemptService {
   // slow upload logs and resolves to '' rather than throwing: the violation record is what
   // matters, losing the image is acceptable (registerWebcamViolation stores whatever string it's
   // given, including an empty one).
-  private async uploadWebcamSnapshot(attemptId: string, snapshot: string): Promise<string> {
+  // `decoded`, when given, is bytes already extracted by the caller (webcamSnapshot, to avoid
+  // decoding the same data URI a second time for its face-mismatch check -- see finding 7) --
+  // uploads them directly via the raw-buffer path instead of re-decoding through uploadDataUri.
+  // webcamViolation has no such buffer lying around, so it omits `decoded` and keeps going
+  // through uploadDataUri exactly as before.
+  private async uploadWebcamSnapshot(
+    attemptId: string,
+    snapshot: string,
+    decoded?: { contentType: string; buffer: Buffer },
+  ): Promise<string> {
     try {
-      return await withTimeout(
-        this.blobStorage.uploadDataUri(`webcam-snapshots/${attemptId}-${Date.now()}.jpg`, snapshot),
-        SCREENSHOT_UPLOAD_TIMEOUT_MS,
-      );
+      const blobPath = `webcam-snapshots/${attemptId}-${Date.now()}.jpg`;
+      const upload = decoded
+        ? this.blobStorage.upload(blobPath, decoded.buffer, decoded.contentType)
+        : this.blobStorage.uploadDataUri(blobPath, snapshot);
+      return await withTimeout(upload, SCREENSHOT_UPLOAD_TIMEOUT_MS);
     } catch (error) {
       this.logger.error('Failed to upload webcam snapshot', error as Error);
       return '';
@@ -1089,7 +1100,20 @@ export class AttemptService {
       return { ok: true };
     }
 
-    const snapshotUrl = await this.uploadWebcamSnapshot(attemptId, dto.snapshot);
+    // Decoded once, here, and reused below for both the upload and the face-mismatch check --
+    // this endpoint fires every 120-180s per candidate carrying multi-MB images, so decoding the
+    // same bytes twice (once per consumer) was measurable, wasted CPU (task-8 finding 7).
+    // `snapshotUpload` is only populated when the content type is one uploadDataUri would also
+    // have accepted -- an unsupported/malformed data URI falls back to the string path below so
+    // uploadWebcamSnapshot's existing validation and error handling still apply unchanged.
+    const parsedSnapshot = extractBase64FromDataUri(dto.snapshot);
+    const snapshotBuffer = parsedSnapshot ? Buffer.from(parsedSnapshot.base64, 'base64') : null;
+    const snapshotUpload =
+      parsedSnapshot && ALLOWED_DATA_URI_CONTENT_TYPES.has(parsedSnapshot.contentType)
+        ? { contentType: parsedSnapshot.contentType, buffer: snapshotBuffer as Buffer }
+        : undefined;
+
+    const snapshotUrl = await this.uploadWebcamSnapshot(attemptId, dto.snapshot, snapshotUpload);
 
     await this.tenantPrisma.withoutTenantScope(async (client) => {
       await client.proctoringEvent.create({
@@ -1099,10 +1123,17 @@ export class AttemptService {
 
     // Fire-and-forget, relative to THIS response -- deliberately not awaited. verifySnapshot()'s
     // embed call is exactly the kind of slow I/O that must never sit in the candidate's hot path
-    // (this endpoint fires every 120-180s for the whole exam; see the comment above). verifySnapshot()
-    // itself never rejects, so there is nothing here that needs a .catch either.
-    if (exam.faceVerificationEnabled) {
-      void this.checkFaceMismatch(attemptId, organizationId, dto.snapshot, snapshotUrl || null, exam.faceMismatchAction);
+    // (this endpoint fires every 120-180s for the whole exam; see the comment above). A .catch is
+    // required, not optional: Node 24 defaults to --unhandled-rejections=throw and main.ts installs
+    // no unhandledRejection handler, so an uncaught rejection here kills the whole exam-runtime
+    // process -- every concurrent candidate's exam, not just this one. checkFaceMismatch is an
+    // `async` method, so it can never throw synchronously either -- a bare .catch() on its returned
+    // promise is sufficient (contrast the void-IIFE idiom in internal.controller.ts, needed there
+    // because those callees are not themselves guaranteed to be async).
+    if (exam.faceVerificationEnabled && snapshotBuffer) {
+      void this.checkFaceMismatch(attemptId, organizationId, snapshotBuffer, snapshotUrl || null, exam.faceMismatchAction).catch(
+        (error) => this.logger.warn(`Face mismatch check failed for attempt ${attemptId}: ${String(error)}`),
+      );
     }
 
     return { ok: true };
@@ -1119,13 +1150,11 @@ export class AttemptService {
   private async checkFaceMismatch(
     attemptId: string,
     organizationId: string,
-    snapshotDataUri: string,
+    snapshotBuffer: Buffer,
     snapshotPath: string | null,
     faceMismatchAction: string,
   ): Promise<void> {
-    const base64 = extractBase64FromDataUri(snapshotDataUri)?.base64;
-    if (!base64) return;
-    const outcome = await this.faceVerification.verifySnapshot(attemptId, organizationId, Buffer.from(base64, 'base64'), snapshotPath);
+    const outcome = await this.faceVerification.verifySnapshot(attemptId, organizationId, snapshotBuffer, snapshotPath);
     if (!outcome.confirmed || faceMismatchAction === 'flag') return;
     this.logger.debug(
       `Confirmed face mismatch on attempt ${attemptId}: action '${faceMismatchAction}' is stored but not yet enforced (stage 3)`,

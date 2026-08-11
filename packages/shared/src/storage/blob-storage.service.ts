@@ -6,7 +6,7 @@ import { BlobServiceClient, BlockBlobClient, ContainerClient, BlobSASPermissions
 // candidate could POST data:text/html;base64,... and get live HTML hosted at a .jpg path on
 // the storage origin. Every current caller uploads a JPEG; PNG/WebP are allowed too since
 // browsers can produce either from a canvas depending on support.
-const ALLOWED_DATA_URI_CONTENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+export const ALLOWED_DATA_URI_CONTENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 // Shared with any caller that needs the raw bytes (e.g. AttemptService's face-embedding path) so
 // the upload path and its callers cannot drift apart on what counts as a base64 data URI.

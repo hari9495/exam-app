@@ -141,6 +141,38 @@ describe('FaceVerificationService', () => {
     expect(outcome).toEqual({ verdict: 'skipped', score: null, confirmed: false });
   });
 
+  // Finding 3 (task-8): the model-unavailable branch above already warns once per attempt so a
+  // silently-inert deployment shows up in logs -- but if the model loads fine and enrolment
+  // embeddings simply never got written (an encrypt failure at enrolment, or a stalled backfill),
+  // verification was *also* silently inert forever, with zero logs, which is exactly the case
+  // this whole warning mechanism exists to catch.
+  it('warns once per attempt, with a message distinct from the model-unavailable one, when the enrolment row has no embedding', async () => {
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const { service } = buildWith({ enrolment: null });
+
+    await service.verifySnapshot('a1', 'org-1', Buffer.from('img'));
+    await service.verifySnapshot('a1', 'org-1', Buffer.from('img'));
+    await service.verifySnapshot('a1', 'org-1', Buffer.from('img'));
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const [message] = warnSpy.mock.calls[0];
+    expect(message).toContain('a1');
+    expect(message).not.toContain('embedding model is unavailable');
+    warnSpy.mockRestore();
+  });
+
+  it('warns again after forgetAttempt for the missing-embedding case too', async () => {
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const { service } = buildWith({ enrolment: null });
+
+    await service.verifySnapshot('a1', 'org-1', Buffer.from('img'));
+    service.forgetAttempt('a1');
+    await service.verifySnapshot('a1', 'org-1', Buffer.from('img'));
+
+    expect(warnSpy).toHaveBeenCalledTimes(2);
+    warnSpy.mockRestore();
+  });
+
   it('skips when the enrolment row has a null embedding', async () => {
     const { service } = buildWith({ enrolment: { embedding: null } });
     const outcome = await service.verifySnapshot('a1', 'org-1', Buffer.from('img'));

@@ -1170,6 +1170,36 @@ describe('AttemptSettlementService', () => {
       expect(tx.attempt.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'blocked' }) }));
     });
 
+    // Finding 4 (task-8): finalize() is not the only way an attempt goes terminal -- a blocked
+    // attempt is not necessarily force-submitted afterwards, so it may never reach finalize() at
+    // all. Without this, a blocked candidate's voter/warning state would leak in
+    // FaceVerificationService's maps for the rest of the process lifetime.
+    it('forgets the attempt in FaceVerificationService when a strike blocks it', async () => {
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', status: 'in_progress', webcamViolationCount: 2 } as any;
+      const tx = {
+        proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
+        attempt: { update: jest.fn().mockResolvedValue({ ...attempt, status: 'blocked', webcamViolationCount: 3 }) },
+      } as any;
+
+      await service.registerWebcamViolation(tx, exam, attempt, 'head_turned', 'snap');
+
+      expect(faceVerification.forgetAttempt).toHaveBeenCalledWith('attempt-1');
+    });
+
+    // A pause is not terminal -- the attempt is still live and may still take snapshots, so its
+    // voter/warning state must not be dropped early (that would just re-arm the run for free).
+    it('does not forget the attempt when a strike only pauses it', async () => {
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', status: 'in_progress', webcamViolationCount: 0 } as any;
+      const tx = {
+        proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
+        attempt: { update: jest.fn().mockResolvedValue({ ...attempt, status: 'paused', webcamViolationCount: 1 }) },
+      } as any;
+
+      await service.registerWebcamViolation(tx, exam, attempt, 'no_face', 'data:image/jpeg;base64,abc');
+
+      expect(faceVerification.forgetAttempt).not.toHaveBeenCalled();
+    });
+
     it('with webcamRecordOnly=true, still counts the strike and logs a high-severity event at the limit, but never pauses or blocks', async () => {
       const recordOnlyExam = { ...exam, webcamRecordOnly: true };
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', status: 'in_progress', webcamViolationCount: 2 } as any;
@@ -1332,6 +1362,38 @@ describe('AttemptSettlementService', () => {
       expect(strike).toBe(3);
       expect(updated.status).toBe('blocked');
       expect(tx.attempt.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'blocked' }) }));
+    });
+
+    // Finding 4 (task-8): same leak as registerWebcamViolation's blocked path -- a
+    // browser-activity strike can block an attempt too, with no guaranteed later finalize() call.
+    it('forgets the attempt in FaceVerificationService when a strike blocks it', async () => {
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 2, status: 'paused' } as any;
+      const tx = {
+        proctoringEvent: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'evt-2', eventType: 'right_click', severity: 'low' }),
+        },
+        attempt: { update: jest.fn().mockResolvedValue({ ...attempt, browserActivityViolationCount: 3, status: 'blocked' }) },
+      } as any;
+
+      await service.registerBrowserActivityViolation(tx, exam, attempt, 'right_click');
+
+      expect(faceVerification.forgetAttempt).toHaveBeenCalledWith('attempt-1');
+    });
+
+    it('does not forget the attempt when a strike only pauses it', async () => {
+      const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 0, status: 'in_progress' } as any;
+      const tx = {
+        proctoringEvent: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'tab_switch', severity: 'medium' }),
+        },
+        attempt: { update: jest.fn().mockResolvedValue({ ...attempt, browserActivityViolationCount: 1, status: 'paused' }) },
+      } as any;
+
+      await service.registerBrowserActivityViolation(tx, exam, attempt, 'tab_switch');
+
+      expect(faceVerification.forgetAttempt).not.toHaveBeenCalled();
     });
 
     it('serializes optional metadata to JSON', async () => {

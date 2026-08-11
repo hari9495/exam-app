@@ -217,9 +217,17 @@ export class AttemptSettlementService {
 
     const finalStatus = hasCodeQuestions ? 'pending_manual_grade' : status;
     const finalized = await tx.attempt.update({ where: { id: attempt.id }, data: { status: finalStatus, submittedAt: new Date() } });
-    // The attempt is no longer live -- no further webcam snapshot for it is expected, so its
-    // per-attempt mismatch-run state (and one-time "model unavailable" warning) can be dropped.
-    // In-memory only, no I/O, so this is safe to call from inside the transaction.
+    // Finding 6 (task-8): called here, BEFORE this transaction commits -- at this point the
+    // attempt is not yet reliably "no longer live": if the transaction rolls back after this line
+    // (e.g. the auditLog.create below throws), the attempt is still in_progress in the database
+    // while its voter/warning state has already been dropped in memory. Deliberately left here
+    // rather than moved to run only after commit, because the failure mode is fail-safe, not
+    // fail-open: losing the voter early just means the run restarts from zero on the next
+    // snapshot (dropping at most one already-in-progress mismatch run) -- it can never fabricate
+    // or retain a false accusation, and finalize()'s only callers (attempt.service.ts,
+    // internal.controller.ts) already run this inside a single forTenant transaction with no
+    // natural post-commit hook to move it to without threading a callback through both. In-memory
+    // only, no I/O, so it's cheap regardless of which side of the commit it runs on.
     this.faceVerification.forgetAttempt(finalized.id);
     await tx.auditLog.create({
       data: {
@@ -487,6 +495,13 @@ export class AttemptSettlementService {
             : { pausedAt: new Date(), pausedReason: 'webcam' as const }),
       },
     });
+    // Finding 4 (task-8): a blocked attempt is not necessarily force-submitted right after this --
+    // it may sit blocked indefinitely -- so finalize() below is not guaranteed to ever run for it.
+    // This is the other terminal-without-finalize path forgetAttempt needs to reach; see its own
+    // comment for the one path even this still doesn't cover (an attempt abandoned in_progress).
+    if (updated.status === 'blocked') {
+      this.faceVerification.forgetAttempt(updated.id);
+    }
     void this.broadcaster
       .emitAttemptStatus(attempt.examId, { attemptId: updated.id, candidateId: attempt.candidateId, status: updated.status })
       .catch((error) => this.logger.error('Failed to broadcast attempt status', error as Error));
@@ -588,6 +603,11 @@ export class AttemptSettlementService {
             : { pausedAt: new Date(), pausedReason: 'browser_activity' as const }),
       },
     });
+    // Finding 4 (task-8): same as registerWebcamViolation above -- a browser-activity strike can
+    // block an attempt too, and a blocked attempt isn't guaranteed a later finalize() call.
+    if (updated.status === 'blocked') {
+      this.faceVerification.forgetAttempt(updated.id);
+    }
     void this.broadcaster
       .emitAttemptStatus(attempt.examId, { attemptId: updated.id, candidateId: attempt.candidateId, status: updated.status })
       .catch((error) => this.logger.error('Failed to broadcast attempt status', error as Error));

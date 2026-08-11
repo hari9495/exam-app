@@ -35,13 +35,19 @@ export class FaceVerificationService {
   private readonly voters = new Map<string, MismatchVoter>();
 
   // Attempts already warned about a missing/broken embedding model. A production deployment
-  // with no model file (or an org with no enrolment embeddings for any other reason) makes
-  // verifySnapshot() skip forever -- correctly, per this file's own never-accuse-on-doubt rule
-  // -- but silently: same outcome, same log volume, as an org that simply has the feature off.
-  // Warning once per attempt (not once per snapshot, which fires every 120-180s for the whole
-  // exam) is a cheap enough signal to make that distinguishable in the logs without adding a
-  // metrics dependency.
+  // with no model file makes verifySnapshot() skip forever -- correctly, per this file's own
+  // never-accuse-on-doubt rule -- but silently: same outcome, same log volume, as an org that
+  // simply has the feature off. Warning once per attempt (not once per snapshot, which fires
+  // every 120-180s for the whole exam) is a cheap enough signal to make that distinguishable in
+  // the logs without adding a metrics dependency.
   private readonly warnedModelUnavailableFor = new Set<string>();
+
+  // Same once-per-attempt mechanism as warnedModelUnavailableFor, for a different silent-inert
+  // cause (finding 3, task-8): the model loads fine but this attempt's enrolment row has no
+  // embedding -- an encrypt failure at enrolment time, or an org's embeddings never having been
+  // backfilled. Without this, that path returns `skip` with zero logs, which is exactly the
+  // "silently inert deployment" this whole warning mechanism exists to surface.
+  private readonly warnedMissingEmbeddingFor = new Set<string>();
 
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
@@ -56,12 +62,11 @@ export class FaceVerificationService {
     snapshotPath?: string | null,
   ): Promise<FaceCheckOutcome> {
     if (!this.faceEmbedder.isAvailable()) {
-      if (!this.warnedModelUnavailableFor.has(attemptId)) {
-        this.warnedModelUnavailableFor.add(attemptId);
-        this.logger.warn(
-          `Face verification is enabled but the embedding model is unavailable -- attempt ${attemptId} will skip verification for its whole run`,
-        );
-      }
+      this.warnOnce(
+        this.warnedModelUnavailableFor,
+        attemptId,
+        `Face verification is enabled but the embedding model is unavailable -- attempt ${attemptId} will skip verification for its whole run`,
+      );
       return this.skip(attemptId);
     }
 
@@ -83,7 +88,14 @@ export class FaceVerificationService {
       this.logger.warn(`Face enrolment read failed for attempt ${attemptId}: ${String(error)}`);
       return this.skip(attemptId);
     }
-    if (!enrolment?.embedding) return this.skip(attemptId);
+    if (!enrolment?.embedding) {
+      this.warnOnce(
+        this.warnedMissingEmbeddingFor,
+        attemptId,
+        `Face verification is enabled but attempt ${attemptId} has no enrolment embedding -- verification will skip for its whole run (encrypt failure at enrolment, or embeddings never backfilled)`,
+      );
+      return this.skip(attemptId);
+    }
 
     let reference: Float32Array;
     try {
@@ -137,14 +149,32 @@ export class FaceVerificationService {
   }
 
   /**
-   * Drop an attempt's voter (and its one-time skip warning) once it settles, so neither map
-   * grows without bound. Called by AttemptSettlementService.finalize() -- the one place every
-   * settle/submit path (submitted, auto_submitted, force_submitted, pending_manual_grade) funnels
-   * through -- once the attempt is no longer live and no further snapshot for it is expected.
+   * Drop an attempt's voter (and its one-time skip warnings) once it settles, so neither map
+   * grows without bound. Called from every place an attempt reaches a status this file treats as
+   * terminal, honestly enumerated (finding 4, task-8) rather than claimed as exhaustive:
+   *   - AttemptSettlementService.finalize() -- submitted, auto_submitted, force_submitted,
+   *     pending_manual_grade.
+   *   - AttemptSettlementService.registerWebcamViolation/registerBrowserActivityViolation's own
+   *     strike-limit transitions to 'blocked' -- a blocked attempt is not necessarily
+   *     force-submitted afterwards, so finalize() is not guaranteed to ever run for it.
+   * NOT covered: an attempt abandoned mid-exam that is never blocked, force-submitted, or
+   * revisited before its exam window lapses -- settleIfExpired only finalizes a status that is
+   * still 'in_progress' *when it's called*, so one nobody calls back into at all leaks its
+   * voter/warning entries until process restart. Low severity (bounded by exam duration, not
+   * unbounded), not zero.
    */
   forgetAttempt(attemptId: string): void {
     this.voters.delete(attemptId);
     this.warnedModelUnavailableFor.delete(attemptId);
+    this.warnedMissingEmbeddingFor.delete(attemptId);
+  }
+
+  // Shared by both once-per-attempt "verification is silently inert" signals above -- same
+  // dedupe-by-Set shape, different cause and message.
+  private warnOnce(warned: Set<string>, attemptId: string, message: string): void {
+    if (warned.has(attemptId)) return;
+    warned.add(attemptId);
+    this.logger.warn(message);
   }
 
   // A run interrupted by ignorance is not a run -- mismatch-voter.ts's own rule for 'uncertain'

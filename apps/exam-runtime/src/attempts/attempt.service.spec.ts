@@ -30,6 +30,25 @@ function foldForCapCheck(text: string): string {
   return text.normalize('NFKC').toLowerCase();
 }
 
+// Finding 2 (task-8): tenantPrisma.forTenant's default fallback implementation (see beforeEach)
+// invokes its callback with one of these instead of returning undefined without calling it.
+// Every property resolves to a fresh stub table with the handful of Prisma methods this file's
+// code actually calls on a tx, each defaulting to an empty/absent result -- generic and inert on
+// purpose, so a test that doesn't care about a particular forTenant call still gets *something*
+// callable back rather than a thrown "Cannot read properties of undefined".
+function defaultTx(): unknown {
+  const stubTable = () => ({
+    findUnique: jest.fn().mockResolvedValue(null),
+    findFirst: jest.fn().mockResolvedValue(null),
+    findMany: jest.fn().mockResolvedValue([]),
+    findUniqueOrThrow: jest.fn().mockResolvedValue({}),
+    create: jest.fn().mockResolvedValue({}),
+    update: jest.fn().mockResolvedValue({}),
+    upsert: jest.fn().mockResolvedValue({}),
+  });
+  return new Proxy({}, { get: () => stubTable() });
+}
+
 describe('AttemptService', () => {
   let service: AttemptService;
   let tenantPrisma: { forTenant: jest.Mock; withoutTenantScope: jest.Mock };
@@ -67,7 +86,15 @@ describe('AttemptService', () => {
   const invitationRecord = { id: 'inv-1', candidateId: 'cand-1', examId: 'exam-1', exam, extraTimePercent: 0, candidate: { name: 'Ada Lovelace' } };
 
   beforeEach(async () => {
-    tenantPrisma = { forTenant: jest.fn(), withoutTenantScope: jest.fn() };
+    // Finding 2 (task-8): a bare `jest.fn()` never invokes its callback, so a stage-3 developer
+    // who writes the natural `forTenant(ctx, tx => registerWebcamViolation(tx, …))` gets `tx`
+    // as `undefined` and the callback never runs at all -- the whole suite stays green even
+    // though real enforcement would follow. Give it a default that actually calls back with a
+    // generic stub transaction, so wrapping a mock method in forTenant is exercised the same way
+    // production would exercise it. Individual tests still layer `.mockImplementationOnce(...)`
+    // on top for the specific tx/return value their assertions need; this default only fires for
+    // calls a test doesn't explicitly stub.
+    tenantPrisma = { forTenant: jest.fn((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(defaultTx())), withoutTenantScope: jest.fn() };
     settlement = {
       settleIfExpired: jest.fn(),
       finalize: jest.fn(),
@@ -83,7 +110,11 @@ describe('AttemptService', () => {
     leaderboardService = { computeRecruiterView: jest.fn(), computeCandidateView: jest.fn() };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
     blobStorage = {
-      upload: jest.fn(),
+      // Same `https://blob.test/${path}` shape as uploadDataUri below -- webcamSnapshot's
+      // pre-decoded upload path (finding 7) calls this directly instead of uploadDataUri when the
+      // snapshot's content type is supported, so tests asserting on the returned URL work the same
+      // regardless of which of the two the code under test happens to route through.
+      upload: jest.fn().mockImplementation((path) => Promise.resolve(`https://blob.test/${path}`)),
       uploadDataUri: jest.fn().mockImplementation((path, dataUri) => Promise.resolve(`https://blob.test/${path}`)),
       signIfOurs: jest.fn(async (value: unknown) => value),
     };
@@ -2721,7 +2752,15 @@ describe('AttemptService', () => {
       const result = await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,abc' });
 
       expect(result).toEqual({ ok: true });
-      expect(blobStorage.uploadDataUri).toHaveBeenCalledWith(expect.stringContaining('webcam-snapshots/attempt-1-'), 'data:image/jpeg;base64,abc');
+      // Finding 7: a supported content type (image/jpeg here) routes through the pre-decoded
+      // blobStorage.upload() path instead of uploadDataUri, reusing the one decode done up front
+      // in webcamSnapshot rather than decoding the data URI a second time.
+      expect(blobStorage.upload).toHaveBeenCalledWith(
+        expect.stringContaining('webcam-snapshots/attempt-1-'),
+        Buffer.from('abc', 'base64'),
+        'image/jpeg',
+      );
+      expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
       const created = client.proctoringEvent.create.mock.calls[0][0];
       expect(created.data.attemptId).toBe('attempt-1');
       expect(created.data.eventType).toBe('webcam_snapshot');
@@ -2774,11 +2813,44 @@ describe('AttemptService', () => {
       expect(settlement.registerWebcamViolation).not.toHaveBeenCalled();
     });
 
+    // Finding 1 (task-8, CRITICAL): checkFaceMismatch is fire-and-forget (`void ...`), relative
+    // to this response. Node 24 here defaults to --unhandled-rejections=throw and main.ts installs
+    // no unhandledRejection handler, so a rejecting verifySnapshot with no .catch on the fire-and-
+    // forget call used to escape application code entirely and take the whole process -- every
+    // concurrent candidate's exam -- down with it. This listens for the real Node event, not just
+    // a mock, so it would have caught the original bug and catches a regression to it.
+    it('leaves the snapshot request successful and produces no unhandled rejection when verifySnapshot rejects', async () => {
+      const client = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
+      mockBootstrapThenPlainClient(client, { ...invitationRecord, exam: { ...exam, faceVerificationEnabled: true } });
+      faceVerification.verifySnapshot.mockRejectedValue(new Error('embedding service unreachable'));
+      const loggerWarnSpy = jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+
+      const unhandledRejections: unknown[] = [];
+      const onUnhandledRejection = (reason: unknown) => unhandledRejections.push(reason);
+      process.on('unhandledRejection', onUnhandledRejection);
+      let result: { ok: true };
+      try {
+        result = await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,YWJj' });
+        // Give the fire-and-forget checkFaceMismatch's rejection -- and its .catch -- a couple of
+        // microtask turns to actually run; an unhandled rejection would surface during these.
+        await new Promise((resolve) => setImmediate(resolve));
+        await new Promise((resolve) => setImmediate(resolve));
+      } finally {
+        process.off('unhandledRejection', onUnhandledRejection);
+      }
+
+      expect(result).toEqual({ ok: true });
+      expect(unhandledRejections).toEqual([]);
+      expect(loggerWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Face mismatch check failed for attempt attempt-1'));
+    });
+
     it('still records the (informational) event with an empty snapshot when the upload throws, rather than 500ing', async () => {
       const client = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
       mockBootstrapThenPlainClient(client);
       const loggerErrorSpy = jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
-      blobStorage.uploadDataUri.mockRejectedValueOnce(new Error('blob storage unavailable'));
+      // image/jpeg is a supported content type, so this snapshot routes through blobStorage.upload
+      // (finding 7's pre-decoded path), not uploadDataUri -- see the test above.
+      blobStorage.upload.mockRejectedValueOnce(new Error('blob storage unavailable'));
 
       const result = await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,abc' });
 
@@ -2816,6 +2888,44 @@ describe('AttemptService', () => {
 
       await expect(service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,abc' })).rejects.toBe(poolExhausted);
       expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
+    });
+
+    // Finding 5 (task-8) / ADO #6810: verifySnapshot's embed() call is exactly the slow I/O that
+    // must never run inside a held pooled connection. Today checkFaceMismatch is fire-and-forget
+    // and never wrapped in forTenant at all, so this always passes -- but before finding 2's fix,
+    // a mistaken `forTenant(ctx, () => checkFaceMismatch(...))` rewrite was only incidentally
+    // caught by forTenant's bare-jest.fn() mock never invoking its callback. Once forTenant gets a
+    // real default (finding 2), that incidental detection disappears -- this is the real
+    // re-entrancy check that replaces it, following the idiom at this file's own "runs embedding
+    // strictly outside every forTenant transaction" test above and face-verification.service.spec.ts's
+    // "runs decrypt and embed strictly outside every forTenant transaction": a flag that is true
+    // only while a forTenant callback is actually executing, so it can't be fooled by call order.
+    it('runs the face-mismatch check strictly outside every forTenant transaction (ADO #6810)', async () => {
+      const client = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
+      let insideTx = false;
+      tenantPrisma.forTenant.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) => {
+        insideTx = true;
+        try {
+          return await fn({
+            invitation: {
+              findUnique: jest.fn().mockResolvedValue({ ...invitationRecord, exam: { ...exam, faceVerificationEnabled: true } }),
+            },
+          });
+        } finally {
+          insideTx = false;
+        }
+      });
+      tenantPrisma.withoutTenantScope.mockImplementation((fn: (client: unknown) => unknown) => fn(client));
+      faceVerification.verifySnapshot = jest.fn(async () => {
+        expect(insideTx).toBe(false);
+        return { verdict: 'skipped', score: null, confirmed: false };
+      });
+
+      await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,YWJj' });
+      // Fire-and-forget relative to the response -- let its microtasks settle before asserting.
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(faceVerification.verifySnapshot).toHaveBeenCalledTimes(1);
     });
   });
 
