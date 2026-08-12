@@ -553,10 +553,11 @@ describe('QuestionsService', () => {
 
     it('rejects tag ids that do not belong to the caller organization, before anything is billed', async () => {
       const enqueue = jest.fn();
+      // Only one of the two requested tags resolves within this organization.
+      const findMany = jest.fn().mockResolvedValue([{ id: 't1' }]);
       const service = buildService({
         jobsService: { enqueue },
-        // Only one of the two requested tags resolves within this organization.
-        tenantPrisma: { forTenant: jest.fn((_c: unknown, fn: (tx: unknown) => unknown) => fn({ tag: { findMany: jest.fn().mockResolvedValue([{ id: 't1' }]) } })) },
+        tenantPrisma: { forTenant: jest.fn((_c: unknown, fn: (tx: unknown) => unknown) => fn({ tag: { findMany } })) },
       });
 
       await expect(
@@ -567,6 +568,14 @@ describe('QuestionsService', () => {
         ),
       ).rejects.toThrow(/tag/i);
       expect(enqueue).not.toHaveBeenCalled();
+
+      // Pin the tenant predicate itself, not just that a lookup happened. The mock resolves
+      // regardless of its arguments, so without this the organizationId could be deleted from the
+      // query and every test would still pass -- while cross-organization tag ids became
+      // attachable. ai-question-generation.processor.spec.ts already asserts this same shape.
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: { in: ['t1', 't2'] }, organizationId: 'org-1' } }),
+      );
     });
 
     it('refuses to enqueue when the organization has no AI provider configured', async () => {
