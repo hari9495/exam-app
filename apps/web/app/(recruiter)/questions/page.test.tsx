@@ -490,4 +490,233 @@ describe('QuestionsPage', () => {
       );
     });
   });
+
+  describe('drafts', () => {
+    const DRAFT_QUESTION = {
+      id: 'q1',
+      type: 'single_mcq',
+      text: 'What does an AI-generated question look like?',
+      topic: null,
+      category: null,
+      difficulty: 'easy',
+      marks: 1,
+      negativeMarks: 0,
+      status: 'draft',
+      aiGenerated: true,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      options: [],
+    };
+
+    function renderPage() {
+      render(
+        <QueryProvider>
+          <ToastProvider>
+            <AuthProvider>
+              <QuestionsPage />
+            </AuthProvider>
+          </ToastProvider>
+        </QueryProvider>,
+      );
+    }
+
+    it('offers Drafts as a status filter', async () => {
+      // The Status column header (and its filter) lives inside the Table, which only renders
+      // once there's at least one row -- an empty result set never shows the filter at all.
+      const ACTIVE_QUESTION = { ...DRAFT_QUESTION, id: 'q-active', status: 'active', aiGenerated: false };
+      global.fetch = jest.fn(async (url) => {
+        const u = String(url);
+        if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        if (u.includes('/questions')) {
+          return new Response(JSON.stringify({ data: [ACTIVE_QUESTION], total: 1, page: 1, pageSize: 20, totalPages: 1 }), { status: 200 });
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      }) as unknown as typeof fetch;
+
+      renderPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Filter by Status' }));
+      expect(await screen.findByRole('menuitem', { name: 'Drafts' })).toBeInTheDocument();
+    });
+
+    // Regression guard: the status column used to be a two-way active/archived ternary, which
+    // rendered any non-active question (including a draft) as "Archived" -- wrong and alarming
+    // for a recruiter reviewing AI output. Asserting the exact "Draft" text (not just "not
+    // Archived") is what makes this fail if the ternary ever goes back to two-way.
+    it('shows a Draft badge and a Publish action on a draft row', async () => {
+      global.fetch = jest.fn(async (url) => {
+        const u = String(url);
+        if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        if (u.includes('/questions')) {
+          return new Response(JSON.stringify({ data: [DRAFT_QUESTION], total: 1, page: 1, pageSize: 20, totalPages: 1 }), { status: 200 });
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      }) as unknown as typeof fetch;
+
+      renderPage();
+      expect(await screen.findByText('Draft')).toBeInTheDocument();
+      expect(screen.queryByText('Archived')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Publish' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Discard' })).toBeInTheDocument();
+    });
+
+    // Regression guard: Publish must go through the existing publish endpoint (useRestoreQuestion),
+    // never a DELETE. If the button were wired to archiveQuestion instead, this fails because the
+    // request would hit /archive, not /publish.
+    it('publishes a draft through the existing publish endpoint', async () => {
+      const fetchMock = jest.fn(async (url, options: RequestInit | undefined) => {
+        const u = String(url);
+        if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        if (u.includes('/questions/q1/publish') && options?.method === 'POST') {
+          return new Response(JSON.stringify({ id: 'q1' }), { status: 200 });
+        }
+        if (u.includes('/questions')) {
+          return new Response(JSON.stringify({ data: [DRAFT_QUESTION], total: 1, page: 1, pageSize: 20, totalPages: 1 }), { status: 200 });
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      renderPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Publish' }));
+
+      await waitFor(() =>
+        expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/questions/q1/publish'))).toBe(true),
+      );
+      // Discard must never hit a DELETE -- there is no delete endpoint for a question.
+      expect(fetchMock.mock.calls.some((call) => call[1]?.method === 'DELETE')).toBe(false);
+    });
+
+    it('discards a draft through the existing archive endpoint, not a delete', async () => {
+      const fetchMock = jest.fn(async (url, options: RequestInit | undefined) => {
+        const u = String(url);
+        if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        if (u.includes('/questions/q1/archive') && options?.method === 'POST') {
+          return new Response(JSON.stringify({ id: 'q1' }), { status: 200 });
+        }
+        if (u.includes('/questions')) {
+          return new Response(JSON.stringify({ data: [DRAFT_QUESTION], total: 1, page: 1, pageSize: 20, totalPages: 1 }), { status: 200 });
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      renderPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Discard' }));
+
+      await waitFor(() =>
+        expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/questions/q1/archive'))).toBe(true),
+      );
+    });
+
+    it('shows how many drafts are waiting, so they are not forgotten behind a filter', async () => {
+      global.fetch = jest.fn(async (url) => {
+        const u = String(url);
+        if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        if (u.includes('/questions') && u.includes('status=draft')) {
+          return new Response(JSON.stringify({ data: [], total: 3, page: 1, pageSize: 1, totalPages: 3 }), { status: 200 });
+        }
+        if (u.includes('/questions')) {
+          return new Response(JSON.stringify({ data: [], total: 0, page: 1, pageSize: 20, totalPages: 0 }), { status: 200 });
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      }) as unknown as typeof fetch;
+
+      renderPage();
+      expect(await screen.findByText('3 drafts awaiting review')).toBeInTheDocument();
+    });
+
+    it('clicking the pending-drafts count switches the list to the Drafts filter', async () => {
+      const fetchMock = jest.fn(async (url) => {
+        const u = String(url);
+        if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        if (u.includes('/questions') && u.includes('status=draft')) {
+          return new Response(JSON.stringify({ data: [], total: 2, page: 1, pageSize: 1, totalPages: 2 }), { status: 200 });
+        }
+        if (u.includes('/questions')) {
+          return new Response(JSON.stringify({ data: [], total: 0, page: 1, pageSize: 20, totalPages: 0 }), { status: 200 });
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      renderPage();
+      await userEvent.click(await screen.findByText('2 drafts awaiting review'));
+
+      await waitFor(() =>
+        expect(
+          fetchMock.mock.calls.some(
+            (call) => String(call[0]).includes('/questions?') && String(call[0]).includes('status=draft') && String(call[0]).includes('pageSize=20'),
+          ),
+        ).toBe(true),
+      );
+    });
+
+    // The critical wiring from the brief: GenerateQuestionsModal must be mounted unconditionally
+    // (`<GenerateQuestionsModal open={...} />`), never `{open && <Modal/>}`. Closing the modal
+    // must not unmount it, or the in-flight job's poll dies and onCompleted never fires. This test
+    // starts a job, closes the modal (Cancel/Close, not the completion), *then* lets the job
+    // resolve as completed -- only a still-mounted component keeps polling and switches the page
+    // to Drafts afterward.
+    it('keeps polling a generation job after the modal is closed, and switches to Drafts when it completes', async () => {
+      let resolveJob: (value: Response) => void;
+      const jobPromise = new Promise<Response>((resolve) => {
+        resolveJob = resolve;
+      });
+
+      const fetchMock = jest.fn(async (url, options: RequestInit | undefined) => {
+        const u = String(url);
+        if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        if (u.includes('/questions/ai-generate') && options?.method === 'POST') {
+          return new Response(JSON.stringify({ aiJobId: 'job-1' }), { status: 200 });
+        }
+        if (u.includes('/ai-jobs/job-1')) {
+          return jobPromise;
+        }
+        if (u.includes('/tags')) {
+          return new Response(JSON.stringify([]), { status: 200 });
+        }
+        if (u.includes('/questions') && u.includes('status=draft')) {
+          return new Response(JSON.stringify({ data: [DRAFT_QUESTION], total: 1, page: 1, pageSize: 20, totalPages: 1 }), { status: 200 });
+        }
+        if (u.includes('/questions')) {
+          return new Response(JSON.stringify({ data: [], total: 0, page: 1, pageSize: 20, totalPages: 0 }), { status: 200 });
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      renderPage();
+      fireEvent.click(await screen.findByRole('button', { name: 'Generate with AI' }));
+      await userEvent.type(await screen.findByLabelText('Topic'), 'SQL joins');
+      fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+      // Job is in flight (aiJobId set, poll not yet resolved) -- the button reads "Close" now.
+      fireEvent.click(await screen.findByRole('button', { name: 'Close' }));
+
+      // The dialog itself is gone from the accessibility tree...
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+      // ...but the job resolves as completed only now, after the close click.
+      resolveJob!(
+        new Response(
+          JSON.stringify({
+            id: 'job-1',
+            type: 'ai-question-generation',
+            status: 'completed',
+            error: null,
+            outputJson: JSON.stringify({ requested: 1, created: 1, dropped: [], questionIds: ['q1'] }),
+          }),
+          { status: 200 },
+        ),
+      );
+
+      // onCompleted only fires (and switches the filter to Drafts) if the modal component --
+      // and its aiJobId state and useAiJob poll -- survived the close, i.e. stayed mounted.
+      await waitFor(() =>
+        expect(
+          fetchMock.mock.calls.some((call) => String(call[0]).includes('/questions?') && String(call[0]).includes('status=draft')),
+        ).toBe(true),
+      );
+      expect(await screen.findByText('What does an AI-generated question look like?')).toBeInTheDocument();
+    });
+  });
 });

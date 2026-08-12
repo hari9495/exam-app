@@ -6,6 +6,7 @@ import { Plus, Search, ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
 import { useQuestions, useArchiveQuestion, useRestoreQuestion } from '../../../lib/hooks/useQuestions';
 import { Select, Button, Modal, Pagination, StatusBadge, Table, useToast, useColumnVisibility, FilterableHeader, type Column } from '../../../components/ui';
+import { GenerateQuestionsModal } from '../../../components/GenerateQuestionsModal';
 import { groupQuestions, type GroupBy } from '../../../lib/question-grouping';
 import { TYPE_TONE, TYPE_LABEL, DIFFICULTY_LABEL, DIFFICULTY_LEVEL } from '../../../lib/question-display';
 import { Question } from '../../../lib/types';
@@ -25,6 +26,7 @@ const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
 
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
+  { value: 'draft', label: 'Drafts' },
   { value: 'archived', label: 'Archived' },
 ];
 
@@ -47,7 +49,12 @@ export default function QuestionsPage() {
     search: search || undefined,
     status,
   });
+  // pageSize 1: we only want `total`, not the rows. Runs on every status view so the count is
+  // visible from Active, which is where a recruiter actually is.
+  const { data: draftCount } = useQuestions({ status: 'draft', pageSize: 1 });
+  const pendingDrafts = draftCount?.total ?? 0;
   const [questionPendingDelete, setQuestionPendingDelete] = useState<Question | null>(null);
+  const [generateModalOpen, setGenerateModalOpen] = useState(false);
   const archiveQuestion = useArchiveQuestion();
   const restoreQuestion = useRestoreQuestion();
   const { toast } = useToast();
@@ -127,7 +134,11 @@ export default function QuestionsPage() {
       ),
       width: '10%',
       sortLabel: 'Status',
-      render: (question) => <StatusBadge tone={question.status === 'active' ? 'success' : 'neutral'}>{question.status === 'active' ? 'Active' : 'Archived'}</StatusBadge>,
+      render: (question) => {
+        const tone = question.status === 'active' ? 'success' : question.status === 'draft' ? 'warning' : 'neutral';
+        const label = question.status === 'active' ? 'Active' : question.status === 'draft' ? 'Draft' : 'Archived';
+        return <StatusBadge tone={tone}>{label}</StatusBadge>;
+      },
     },
     {
       key: 'type',
@@ -180,7 +191,26 @@ export default function QuestionsPage() {
       width: '3%',
       render: (question) => (
         <div className="flex items-center justify-end opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-          {question.status === 'archived' ? (
+          {question.status === 'draft' ? (
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => handleRestore(question)}
+                disabled={restoreQuestion.isPending}
+                className="text-xs font-medium text-primary hover:underline disabled:opacity-50"
+              >
+                Publish
+              </button>
+              <button
+                type="button"
+                onClick={() => archiveQuestion.mutate(question.id)}
+                disabled={archiveQuestion.isPending}
+                className="text-xs font-medium text-status-danger hover:underline disabled:opacity-50"
+              >
+                Discard
+              </button>
+            </div>
+          ) : question.status === 'archived' ? (
             <button
               type="button"
               onClick={() => handleRestore(question)}
@@ -236,6 +266,9 @@ export default function QuestionsPage() {
           <Link href="/questions/bulk-upload">
             <Button variant="secondary">Bulk upload</Button>
           </Link>
+          <Button type="button" variant="secondary" onClick={() => setGenerateModalOpen(true)}>
+            Generate with AI
+          </Button>
           <Link href="/questions/new">
             <Button className="inline-flex items-center gap-1.5">
               <Plus size={14} />
@@ -244,6 +277,19 @@ export default function QuestionsPage() {
           </Link>
         </div>
       </div>
+
+      {pendingDrafts > 0 && (
+        <button
+          type="button"
+          onClick={() => {
+            setStatus('draft');
+            setPage(1);
+          }}
+          className="mb-3 block text-sm font-medium text-primary hover:underline"
+        >
+          {pendingDrafts} drafts awaiting review
+        </button>
+      )}
 
       <div className="mb-3 flex flex-wrap items-end gap-2">
         <div className="relative max-w-xs flex-1">
@@ -331,6 +377,15 @@ export default function QuestionsPage() {
           </div>
         </Modal>
       )}
+
+      <GenerateQuestionsModal
+        open={generateModalOpen}
+        onClose={() => setGenerateModalOpen(false)}
+        onCompleted={() => {
+          setStatus('draft');
+          setPage(1);
+        }}
+      />
     </div>
   );
 }

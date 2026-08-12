@@ -88,7 +88,7 @@ export interface Question {
   difficulty: Difficulty;
   marks: number;
   negativeMarks: number;
-  status: 'active' | 'archived';
+  status: 'active' | 'draft' | 'archived';
   aiGenerated: boolean;
   languageMode: 'fixed' | 'any';
   allowedLanguages: string[];
