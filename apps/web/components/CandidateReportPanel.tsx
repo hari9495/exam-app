@@ -285,13 +285,15 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
             >
               <ExternalLink size={16} />
             </a>
-            {/* max-h/max-w (not w-full + a fixed height) let the browser's native
-             *  replaced-element sizing shrink WHICHEVER dimension binds first while
-             *  preserving the screenshot's real aspect ratio, with no letterboxing.
-             *  A real proctoring screenshot's aspect ratio varies with the candidate's
-             *  screen, so a plain w-full with no height limit could render taller than
-             *  the available modal space and trigger the body's own scrollbar. */}
-            <img src={selectedScreenshot} alt="Screen capture" className="max-h-[60vh] max-w-full rounded" />
+            {/* A fixed-height, centered presentation box (not a bare max-h/max-w img)
+             *  so a real proctoring screenshot's aspect ratio -- which is usually wider
+             *  than this modal's content width, making height the binding constraint --
+             *  shrinks the rendered image on BOTH axes and centers it, instead of the
+             *  browser's default flush-left alignment dumping all the resulting slack
+             *  as blank space on one side. object-contain never crops the evidence. */}
+            <div className="flex h-[60vh] items-center justify-center overflow-hidden rounded bg-recruiter-bg-subtle">
+              <img src={selectedScreenshot} alt="Screen capture" className="max-h-full max-w-full object-contain" />
+            </div>
           </div>
         )}
       </Modal>
