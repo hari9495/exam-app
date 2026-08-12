@@ -77,7 +77,7 @@ Almost entirely frontend, because the backend path already runs.
 
 Backend changes needed in Stage 1 — all small, but none optional:
 
-**1. Surface dropped questions.** The processor returns a `dropped` count and discards the rejected questions silently. Extend the job result to carry the rejection reasons, so a consistently-failing prompt is diagnosable rather than looking like the model being stingy.
+**1. Display dropped reasons.** *(Frontend only — corrected 2026-08-12.)* The processor already carries per-question rejection reasons in its output (`dropped: { reason: string }[]`), so no backend change is needed. Nothing displays them. The UI must show them, so a consistently-failing prompt is diagnosable rather than looking like the model being stingy.
 
 **2. Stop hardcoding marks.** `ai-question-generation.processor.ts:74-75` writes every generated question with `marks: 1, negativeMarks: 0` regardless of what the exam needs, and assigns **no tags**. A bank of 1-mark untagged questions is tedious to clean up by hand — which is the work this feature exists to remove. Add marks, negative marks and tags to the generate request, applied to every question in the batch. The recruiter can still adjust individually afterwards.
 
