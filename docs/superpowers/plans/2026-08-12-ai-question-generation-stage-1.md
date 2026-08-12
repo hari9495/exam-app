@@ -18,6 +18,10 @@
 - Endpoints already exist and must be reused, not rebuilt: `POST /questions/ai-generate`, `GET /ai-jobs/:id` (note: `ai-jobs`, not `jobs`), `POST /questions/:id/publish`, `GET /questions?status=draft`.
 - The `ai_jobs:view` permission is already seeded and granted to `recruiter` (`apps/api/prisma/seed.ts:36`). No RBAC changes needed.
 - **Migrations:** write the SQL by hand and never run `prisma migrate dev` (no shadow-DB permission on this project). `npx prisma generate` is fine. Timestamp defaults use `GETUTCDATE()`, never `CURRENT_TIMESTAMP`.
+- **Paths in command examples say `D:/exam app`; that is the path this plan was written against, not
+  necessarily where you are working.** Run every command from the root of YOUR checkout. If you are
+  in a worktree, stay in it -- never `cd` into another checkout, because they share junctioned
+  `node_modules` and built workspace packages.
 - Run the changed workspace's `npx jest` (`--maxWorkers=2` for the two Nest apps — the default OOMs V8 on this machine) and `npx tsc --noEmit` before every commit. Run the `apps/web` suite from inside `apps/web` with `-w 2`.
 
 ---
