@@ -531,16 +531,15 @@ export class ReportsService {
               parsed = {};
             }
           }
-          const meta = (parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}) as {
+          // Same helper as the webcam timeline above -- snapshotPath is one of its signed keys
+          // (see sign-proctoring-evidence.ts), so this no longer needs its own signIfOurs call.
+          // The container is private: sign on read, every time -- never persist the signed value.
+          const meta = ((await signProctoringEvidence(this.blobStorage, parsed)) ?? {}) as {
             score?: unknown;
             snapshotPath?: unknown;
           };
           const score = typeof meta.score === 'number' ? meta.score : null;
-          // The container is private: sign on read, every time -- never persist the signed value.
-          const snapshotUrl =
-            typeof meta.snapshotPath === 'string' && meta.snapshotPath
-              ? ((await this.blobStorage.signIfOurs(meta.snapshotPath)) as string | null)
-              : null;
+          const snapshotUrl = typeof meta.snapshotPath === 'string' && meta.snapshotPath ? meta.snapshotPath : null;
           return { occurredAt: e.occurredAt.toISOString(), score, snapshotUrl };
         }),
       );

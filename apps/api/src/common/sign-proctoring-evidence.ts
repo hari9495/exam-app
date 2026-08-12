@@ -1,10 +1,11 @@
 import { BlobStorageService } from '@exam-platform/shared';
 
-// The only two metadataJson keys that ever hold evidence-image URLs (see
-// apps/exam-runtime/src/attempts/attempt.service.ts: webcam snapshot, screen-capture
-// screenshot). Everything else on the object (strike, confidence, reason, screenshotCapReached,
-// ...) is left alone.
-const EVIDENCE_URL_KEYS = ['snapshot', 'screenshot'] as const;
+// The metadataJson keys that ever hold evidence-image URLs: webcam snapshot / screen-capture
+// screenshot (see apps/exam-runtime/src/attempts/attempt.service.ts), and face_mismatch's
+// snapshotPath / referenceImagePath (see apps/exam-runtime/src/face/face-verification.service.ts).
+// Everything else on the object (strike, confidence, reason, screenshotCapReached, score, ...)
+// is left alone.
+const EVIDENCE_URL_KEYS = ['snapshot', 'screenshot', 'snapshotPath', 'referenceImagePath'] as const;
 
 // Single place all three proctoring-evidence read paths (recruiter log modal, reports webcam
 // timeline, GDPR export) route through to rewrite raw blob URLs into short-lived SAS URLs,

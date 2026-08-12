@@ -102,6 +102,37 @@ describe('AttemptsAdminService', () => {
       });
     });
 
+    // Pins the finding-4 fix: EVIDENCE_URL_KEYS used to only cover 'snapshot'/'screenshot', so a
+    // face_mismatch event's snapshotPath/referenceImagePath passed through this same recruiter
+    // log modal endpoint raw, unsigned, straight into a private container's blob path.
+    it('signs a face_mismatch event\'s snapshotPath and referenceImagePath, not just webcam snapshot/screenshot', async () => {
+      const events = [
+        {
+          id: 'event-1',
+          eventType: 'face_mismatch',
+          metadataJson: JSON.stringify({
+            score: 0.21,
+            snapshotPath: 'https://blob.test/container/face-mismatches/a.jpg',
+            referenceImagePath: 'https://blob.test/container/face/ref.jpg',
+          }),
+        },
+      ];
+      const tx = {
+        attempt: { findFirst: jest.fn().mockResolvedValue({ id: 'attempt-1' }) },
+        proctoringEvent: { findMany: jest.fn().mockResolvedValue(events) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      blobStorage.signIfOurs.mockImplementation(async (value: string) => `${value}?sig=signed`);
+
+      const [result] = await service.listProctoringEvents(context, 'attempt-1');
+
+      expect(JSON.parse(result.metadataJson as string)).toEqual({
+        score: 0.21,
+        snapshotPath: 'https://blob.test/container/face-mismatches/a.jpg?sig=signed',
+        referenceImagePath: 'https://blob.test/container/face/ref.jpg?sig=signed',
+      });
+    });
+
     it('leaves a data: URI in metadataJson identical after signing', async () => {
       const events = [{ id: 'event-1', metadataJson: JSON.stringify({ snapshot: 'data:image/jpeg;base64,AAAA' }) }];
       const tx = {
