@@ -4,6 +4,7 @@ import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
+import { AiApiKeyResolverService } from '@exam-platform/shared';
 import { randomUUID } from 'crypto';
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
@@ -71,6 +72,7 @@ export class QuestionsService {
     private readonly examRuntime: ExamRuntimeInternalClient,
     private readonly blobStorage: BlobStorageService,
     private readonly audit: AuditService,
+    private readonly aiApiKeyResolver: AiApiKeyResolverService,
   ) {}
 
   private async fetchAvailableLanguagesIfNeeded(type: string, languageMode: string | undefined): Promise<string[]> {
@@ -282,11 +284,43 @@ export class QuestionsService {
   }
 
   async aiGenerate(context: TenantContext, userId: string, dto: AiGenerateQuestionsDto): Promise<{ aiJobId: string }> {
+    // Fail fast: every generated question would fail this exact check downstream (see
+    // validateQuestionPayload) and be silently dropped -- after the provider call had been paid for.
+    if (dto.negativeMarks > dto.marks) {
+      throw new BadRequestException('negativeMarks cannot exceed marks');
+    }
+
+    if (dto.tagIds.length > 0) {
+      // The processor resolves tags org-scoped and skips what it cannot resolve, deliberately --
+      // losing a whole paid-for batch over one stale tag is worse than a question landing with
+      // fewer tags. But that means a stale/foreign tag id otherwise produces untagged drafts with
+      // no signal the recruiter can see (the processor's warning is server-side only). Catch it
+      // here, before anything is enqueued or billed.
+      await this.tenantPrisma.forTenant(context, async (tx) => {
+        const resolved = await tx.tag.findMany({
+          where: { id: { in: dto.tagIds }, organizationId: context.organizationId as string },
+          select: { id: true },
+        });
+        const resolvedIds = new Set(resolved.map((t) => t.id));
+        const unresolved = dto.tagIds.filter((id) => !resolvedIds.has(id));
+        if (unresolved.length > 0) {
+          throw new BadRequestException(`Unknown tag id(s) for this organization: ${unresolved.join(', ')}`);
+        }
+      });
+    }
+
+    // Fail fast. Without this the job is enqueued, picked up, and fails minutes later -- the
+    // recruiter waits for a result that was never possible.
+    await this.aiApiKeyResolver.resolve(context.organizationId as string);
+
     const inputJson = JSON.stringify({
       topic: dto.topic,
       difficulty: dto.difficulty,
       questionTypes: dto.questionTypes,
       count: dto.count,
+      marks: dto.marks,
+      negativeMarks: dto.negativeMarks,
+      tagIds: dto.tagIds,
       requestedBy: userId,
     });
     const aiJob = await this.jobsService.enqueue(context, 'ai-question-generation', inputJson, userId);

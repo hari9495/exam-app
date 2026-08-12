@@ -1,10 +1,37 @@
 import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { QuestionsService } from './questions.service';
-import { TenantPrismaService, BlobStorageService } from '@exam-platform/shared';
+import { TenantPrismaService, BlobStorageService, AiApiKeyResolverService } from '@exam-platform/shared';
 import { JobsService } from '../jobs/jobs.service';
 import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
 import { AuditService } from '@exam-platform/shared';
+
+// Direct-construction helper for tests that only care about aiGenerate's collaborators. Bypasses
+// Nest's (async) DI container so call sites can stay synchronous, and lets each test override just
+// the collaborator it's exercising instead of restating the whole provider list.
+function buildService(overrides: {
+  tenantPrisma?: Partial<{ forTenant: jest.Mock }>;
+  jobsService?: Partial<{ enqueue: jest.Mock }>;
+  examRuntime?: Partial<{ listAvailableLanguages: jest.Mock }>;
+  audit?: Partial<{ record: jest.Mock }>;
+  blobStorage?: Partial<{ upload: jest.Mock; uploadDataUri: jest.Mock; signIfOurs: jest.Mock }>;
+  aiApiKeyResolver?: Partial<{ resolve: jest.Mock }>;
+} = {}): QuestionsService {
+  const tenantPrisma = { forTenant: jest.fn(), ...overrides.tenantPrisma };
+  const jobsService = { enqueue: jest.fn(), ...overrides.jobsService };
+  const examRuntime = { listAvailableLanguages: jest.fn(), ...overrides.examRuntime };
+  const audit = { record: jest.fn(), ...overrides.audit };
+  const blobStorage = { upload: jest.fn(), uploadDataUri: jest.fn(), signIfOurs: jest.fn((v: unknown) => Promise.resolve(v)), ...overrides.blobStorage };
+  const aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue({ name: 'anthropic' }), ...overrides.aiApiKeyResolver };
+  return new QuestionsService(
+    tenantPrisma as unknown as TenantPrismaService,
+    jobsService as unknown as JobsService,
+    examRuntime as unknown as ExamRuntimeInternalClient,
+    blobStorage as unknown as BlobStorageService,
+    audit as unknown as AuditService,
+    aiApiKeyResolver as unknown as AiApiKeyResolverService,
+  );
+}
 
 describe('QuestionsService', () => {
   let service: QuestionsService;
@@ -25,6 +52,7 @@ describe('QuestionsService', () => {
         { provide: ExamRuntimeInternalClient, useValue: examRuntime },
         { provide: AuditService, useValue: { record: jest.fn() } },
         { provide: BlobStorageService, useValue: { upload: jest.fn(), uploadDataUri: jest.fn(), signIfOurs: jest.fn((v) => Promise.resolve(v)) } },
+        { provide: AiApiKeyResolverService, useValue: { resolve: jest.fn().mockResolvedValue({ name: 'anthropic' }) } },
       ],
     }).compile();
     service = moduleRef.get(QuestionsService);
@@ -469,15 +497,93 @@ describe('QuestionsService', () => {
         difficulty: 'medium',
         questionTypes: ['single_mcq'],
         count: 5,
-      });
+        marks: 2,
+        negativeMarks: 0,
+        tagIds: [],
+      } as never);
 
       expect(result).toEqual({ aiJobId: 'job-1' });
       expect(jobsService.enqueue).toHaveBeenCalledWith(
         context,
         'ai-question-generation',
-        JSON.stringify({ topic: 'React hooks', difficulty: 'medium', questionTypes: ['single_mcq'], count: 5, requestedBy: 'user-1' }),
+        JSON.stringify({
+          topic: 'React hooks',
+          difficulty: 'medium',
+          questionTypes: ['single_mcq'],
+          count: 5,
+          marks: 2,
+          negativeMarks: 0,
+          tagIds: [],
+          requestedBy: 'user-1',
+        }),
         'user-1',
       );
+    });
+
+    it('passes marks, negative marks and tags through to the generation job', async () => {
+      const enqueue = jest.fn().mockResolvedValue({ id: 'job-9' });
+      const service = buildService({ jobsService: { enqueue } });
+
+      const result = await service.aiGenerate(
+        { organizationId: 'org-1', isSuperAdmin: false } as never,
+        'user-1',
+        { topic: 'SQL', difficulty: 'medium', questionTypes: ['single_mcq'], count: 3, marks: 4, negativeMarks: 1, tagIds: ['t1'] } as never,
+      );
+
+      expect(result).toEqual({ aiJobId: 'job-9' });
+      const input = JSON.parse(enqueue.mock.calls[0][2]);
+      expect(input.marks).toBe(4);
+      expect(input.negativeMarks).toBe(1);
+      expect(input.tagIds).toEqual(['t1']);
+    });
+
+    it('rejects negativeMarks greater than marks before enqueueing', async () => {
+      const enqueue = jest.fn();
+      const service = buildService({ jobsService: { enqueue } });
+
+      await expect(
+        service.aiGenerate(
+          { organizationId: 'org-1', isSuperAdmin: false } as never,
+          'user-1',
+          { topic: 'SQL', difficulty: 'medium', questionTypes: ['single_mcq'], count: 3, marks: 2, negativeMarks: 3, tagIds: [] } as never,
+        ),
+      ).rejects.toThrow(/negativeMarks/i);
+      expect(enqueue).not.toHaveBeenCalled();
+    });
+
+    it('rejects tag ids that do not belong to the caller organization, before anything is billed', async () => {
+      const enqueue = jest.fn();
+      const service = buildService({
+        jobsService: { enqueue },
+        // Only one of the two requested tags resolves within this organization.
+        tenantPrisma: { forTenant: jest.fn((_c: unknown, fn: (tx: unknown) => unknown) => fn({ tag: { findMany: jest.fn().mockResolvedValue([{ id: 't1' }]) } })) },
+      });
+
+      await expect(
+        service.aiGenerate(
+          { organizationId: 'org-1', isSuperAdmin: false } as never,
+          'user-1',
+          { topic: 'SQL', difficulty: 'medium', questionTypes: ['single_mcq'], count: 3, marks: 1, negativeMarks: 0, tagIds: ['t1', 't2'] } as never,
+        ),
+      ).rejects.toThrow(/tag/i);
+      expect(enqueue).not.toHaveBeenCalled();
+    });
+
+    it('refuses to enqueue when the organization has no AI provider configured', async () => {
+      const enqueue = jest.fn();
+      const service = buildService({
+        jobsService: { enqueue },
+        aiApiKeyResolver: { resolve: jest.fn().mockRejectedValue(new Error('No AI provider configured')) },
+      });
+
+      await expect(
+        service.aiGenerate(
+          { organizationId: 'org-1', isSuperAdmin: false } as never,
+          'user-1',
+          { topic: 'SQL', difficulty: 'medium', questionTypes: ['single_mcq'], count: 3, marks: 1, negativeMarks: 0, tagIds: [] } as never,
+        ),
+      ).rejects.toThrow(/AI provider/i);
+      expect(enqueue).not.toHaveBeenCalled();
     });
   });
 
@@ -586,6 +692,7 @@ describe('QuestionsService.uploadImage', () => {
         { provide: ExamRuntimeInternalClient, useValue: examRuntime },
         { provide: AuditService, useValue: { record: jest.fn() } },
         { provide: BlobStorageService, useValue: blobStorage },
+        { provide: AiApiKeyResolverService, useValue: { resolve: jest.fn().mockResolvedValue({ name: 'anthropic' }) } },
       ],
     }).compile();
     service = moduleRef.get(QuestionsService);
