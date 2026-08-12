@@ -776,5 +776,165 @@ describe('QuestionsPage', () => {
       );
       expect(await screen.findByText('What does an AI-generated question look like?')).toBeInTheDocument();
     });
+
+    // Regression guard: onCompleted invalidates ['questions'] before switching to Drafts. The
+    // pending-drafts count query has no other trigger to refetch (it's mounted once, keyed only
+    // on status=draft/pageSize=1, and carries the client's 30s staleTime) -- without the explicit
+    // invalidation, a just-completed generation would leave the banner reporting a stale count.
+    it('updates the pending-drafts count immediately when a generation completes, not after the 30s staleTime', async () => {
+      let resolveJob: (value: Response) => void;
+      const jobPromise = new Promise<Response>((resolve) => {
+        resolveJob = resolve;
+      });
+      let jobLanded = false;
+      const ACTIVE_SEED = { ...DRAFT_QUESTION, id: 'q-active-seed', status: 'active', aiGenerated: false, text: 'Seed active question' };
+
+      const fetchMock = jest.fn(async (url, options: RequestInit | undefined) => {
+        const u = String(url);
+        if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        if (u.includes('/questions/ai-generate') && options?.method === 'POST') {
+          return new Response(JSON.stringify({ aiJobId: 'job-1' }), { status: 200 });
+        }
+        if (u.includes('/ai-jobs/job-1')) return jobPromise;
+        if (u.includes('/tags')) return new Response(JSON.stringify([]), { status: 200 });
+        // The count query (pageSize=1): 0 until the job lands, then a higher number.
+        if (u.includes('/questions') && u.includes('pageSize=1')) {
+          return new Response(
+            JSON.stringify({ data: [], total: jobLanded ? 4 : 0, page: 1, pageSize: 1, totalPages: jobLanded ? 4 : 0 }),
+            { status: 200 },
+          );
+        }
+        if (u.includes('/questions') && u.includes('status=draft')) {
+          return new Response(JSON.stringify({ data: [DRAFT_QUESTION], total: 1, page: 1, pageSize: 20, totalPages: 1 }), { status: 200 });
+        }
+        if (u.includes('/questions')) {
+          return new Response(JSON.stringify({ data: [ACTIVE_SEED], total: 1, page: 1, pageSize: 20, totalPages: 1 }), { status: 200 });
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      renderPage();
+      // Settle on post-refresh content before clicking (see the trap noted in the polling test
+      // above) -- the active list only renders once /auth/refresh has landed and re-enabled it.
+      await screen.findByText('Seed active question');
+      expect(screen.queryByText(/drafts awaiting review/)).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Generate with AI' }));
+      await userEvent.type(await screen.findByLabelText('Topic'), 'SQL joins');
+      await userEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+      // Job is in flight -- confirms mutateAsync resolved and the poll is live before we land it.
+      await screen.findByRole('button', { name: 'Close' });
+
+      jobLanded = true;
+      resolveJob!(
+        new Response(
+          JSON.stringify({
+            id: 'job-1',
+            type: 'ai-question-generation',
+            status: 'completed',
+            error: null,
+            outputJson: JSON.stringify({ requested: 4, created: 4, dropped: [], questionIds: ['q1', 'q2', 'q3', 'q4'] }),
+          }),
+          { status: 200 },
+        ),
+      );
+
+      await waitFor(() => expect(screen.getByText('4 drafts awaiting review')).toBeInTheDocument());
+    });
+
+    // Regression guard: "Back to Active" must reset page back to 1, not just flip the status.
+    // Without it, a recruiter who discards the last draft on page 3 of Drafts lands on an empty
+    // page 3 of Active (assuming Active even has 3 pages) instead of the real first page.
+    it('resets to page 1 when returning to Active from a drained page of Drafts', async () => {
+      const ACTIVE_QUESTION = { ...DRAFT_QUESTION, id: 'q-active', status: 'active', aiGenerated: false, text: 'Active question after reset' };
+      const DRAFT_PAGE: Record<number, typeof DRAFT_QUESTION> = {
+        1: { ...DRAFT_QUESTION, id: 'd1', text: 'Draft one' },
+        2: { ...DRAFT_QUESTION, id: 'd2', text: 'Draft two' },
+        3: { ...DRAFT_QUESTION, id: 'd3', text: 'Draft three' },
+      };
+      let page3Drained = false;
+
+      const fetchMock = jest.fn(async (url, options: RequestInit | undefined) => {
+        const u = String(url);
+        if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        if (u.includes('/questions/d3/archive') && options?.method === 'POST') {
+          page3Drained = true;
+          return new Response(JSON.stringify({ id: 'd3' }), { status: 200 });
+        }
+        if (u.includes('/questions') && u.includes('status=draft') && u.includes('page=3')) {
+          return page3Drained
+            ? new Response(JSON.stringify({ data: [], total: 2, page: 3, pageSize: 20, totalPages: 3 }), { status: 200 })
+            : new Response(JSON.stringify({ data: [DRAFT_PAGE[3]], total: 3, page: 3, pageSize: 20, totalPages: 3 }), { status: 200 });
+        }
+        if (u.includes('/questions') && u.includes('status=draft') && u.includes('page=2')) {
+          return new Response(JSON.stringify({ data: [DRAFT_PAGE[2]], total: 3, page: 2, pageSize: 20, totalPages: 3 }), { status: 200 });
+        }
+        if (u.includes('/questions') && u.includes('status=draft')) {
+          return new Response(JSON.stringify({ data: [DRAFT_PAGE[1]], total: 3, page: 1, pageSize: 20, totalPages: 3 }), { status: 200 });
+        }
+        // A regression (missing setPage(1)) lands here -- the explicit assertion below checks
+        // this request is never made at all, on top of the empty result steering the UI away
+        // from the active content the test waits for.
+        if (u.includes('/questions') && u.includes('status=active') && u.includes('page=3')) {
+          return new Response(JSON.stringify({ data: [], total: 1, page: 3, pageSize: 20, totalPages: 1 }), { status: 200 });
+        }
+        if (u.includes('/questions')) {
+          return new Response(JSON.stringify({ data: [ACTIVE_QUESTION], total: 1, page: 1, pageSize: 20, totalPages: 1 }), { status: 200 });
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      renderPage();
+      await screen.findByText('Active question after reset');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Filter by Status' }));
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Drafts' }));
+      await screen.findByText('Draft one');
+
+      await userEvent.click(screen.getByRole('button', { name: '3' }));
+      await screen.findByText('Draft three');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Discard' }));
+      await screen.findByText('No drafts to review.');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Back to Active' }));
+
+      await waitFor(() => expect(screen.getByText('Active question after reset')).toBeInTheDocument());
+      expect(
+        fetchMock.mock.calls.some((call) => String(call[0]).includes('status=active') && String(call[0]).includes('page=3')),
+      ).toBe(false);
+    });
+
+    // The empty-state escape is written for any non-active status, but only the Drafts path
+    // above is covered -- this is the Archived equivalent, so the `status !== 'active'` branch
+    // doesn't quietly regress to a draft-only check.
+    it('offers a way back to Active from an empty Archived view', async () => {
+      const ACTIVE_QUESTION = { ...DRAFT_QUESTION, id: 'q-active', status: 'active', aiGenerated: false };
+      global.fetch = jest.fn(async (url) => {
+        const u = String(url);
+        if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        if (u.includes('/questions') && u.includes('status=archived')) {
+          return new Response(JSON.stringify({ data: [], total: 0, page: 1, pageSize: 20, totalPages: 0 }), { status: 200 });
+        }
+        if (u.includes('/questions')) {
+          return new Response(JSON.stringify({ data: [ACTIVE_QUESTION], total: 1, page: 1, pageSize: 20, totalPages: 1 }), { status: 200 });
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      }) as unknown as typeof fetch;
+
+      renderPage();
+      await screen.findByText('What does an AI-generated question look like?');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Filter by Status' }));
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Archived' }));
+
+      expect(await screen.findByText('No archived questions.')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Back to Active' }));
+
+      await waitFor(() => expect(screen.getByText('What does an AI-generated question look like?')).toBeInTheDocument());
+    });
   });
 });
