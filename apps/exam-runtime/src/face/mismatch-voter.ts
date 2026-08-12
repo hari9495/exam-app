@@ -1,9 +1,10 @@
-import type { FaceVerdict } from '@exam-platform/shared';
+import { CONSECUTIVE_MISMATCHES_TO_CONFIRM, type FaceVerdict } from '@exam-platform/shared';
 
 // PROVISIONAL, like the thresholds. Trades detection speed against false accusations: higher
 // means a wrongly-classified frame is less likely to accuse anyone, at the cost of noticing a
-// real swap later. Stage 3 sets this against the fixture set.
-export const CONSECUTIVE_MISMATCHES_TO_CONFIRM = 3;
+// real swap later. Stage 3 sets this against the fixture set. Defined in the shared package so
+// the browser advisory tier cannot drift from this one -- re-exported here for existing callers.
+export { CONSECUTIVE_MISMATCHES_TO_CONFIRM };
 
 export interface MismatchVoter {
   /** Returns true exactly once, on the push that confirms a mismatch episode. */

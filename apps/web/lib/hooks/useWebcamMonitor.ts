@@ -6,7 +6,7 @@ import { useEffect, useRef } from 'react';
 // Nest's CryptoModule) that don't run in a browser and pull in Node-only shims -- importing the
 // root here broke the Next.js client bundle. cosineSimilarity/classifySimilarity have no such
 // dependency, so packages/shared/package.json exposes them on their own "exports" subpath.
-import { cosineSimilarity, classifySimilarity, FaceVerdict } from '@exam-platform/shared/face/similarity';
+import { cosineSimilarity, classifySimilarity, CONSECUTIVE_MISMATCHES_TO_CONFIRM, FaceVerdict } from '@exam-platform/shared/face/similarity';
 import { detectViolationReason, detectLookingDown, ViolationReason } from '../webcam-detection';
 import { createViolationVoter } from '../webcam-voting';
 import { createBrowserEmbedder } from '../face-embedder';
@@ -124,13 +124,16 @@ export function useWebcamMonitor(
     // down briefly is normal).
     const violationVoter = createViolationVoter({ windowSize: 8, threshold: 5 });
     const lookingVoter = createViolationVoter({ windowSize: 24, threshold: 20 });
-    // Same voter primitive as the two above, sized to require 3 *consecutive* mismatches
-    // (windowSize === threshold, so the only way to cross threshold is the whole window agreeing)
-    // before a mismatch hint reaches the candidate -- mirrors the server tier's
-    // CONSECUTIVE_MISMATCHES_TO_CONFIRM (apps/exam-runtime/src/face/mismatch-voter.ts), so one bad
-    // frame (a head turn, a moment of bad light) never reads as an accusation. 'match' and
-    // 'uncertain' hints are not gated -- only 'mismatch' is worth debouncing here.
-    const identityMismatchVoter = createViolationVoter({ windowSize: 3, threshold: 3 });
+    // Same voter primitive as the two above, sized from the SHARED constant the server tier's
+    // mismatch voter uses (windowSize === threshold, so the only way to cross threshold is the
+    // whole window agreeing). One bad frame -- a head turn, a moment of bad light -- must never
+    // read as an accusation. Importing rather than mirroring the number is deliberate: if the two
+    // tiers drifted, a candidate would see a warning at a different moment than the recruiter sees
+    // evidence for it. 'match' and 'uncertain' hints are not gated -- only 'mismatch' is.
+    const identityMismatchVoter = createViolationVoter({
+      windowSize: CONSECUTIVE_MISMATCHES_TO_CONFIRM,
+      threshold: CONSECUTIVE_MISMATCHES_TO_CONFIRM,
+    });
 
     const video = document.createElement('video');
     video.muted = true;
