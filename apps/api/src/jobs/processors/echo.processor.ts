@@ -6,7 +6,7 @@ import { JobProcessor } from './job-processor.interface';
 export class EchoProcessor implements JobProcessor {
   readonly type = 'echo';
 
-  async process(input: unknown, _context: TenantContext): Promise<unknown> {
+  async process(input: unknown, _context: TenantContext, _aiJobId: string): Promise<unknown> {
     return { echoed: input };
   }
 }

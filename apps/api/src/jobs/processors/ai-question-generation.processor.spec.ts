@@ -38,7 +38,7 @@ describe('AiQuestionGenerationProcessor', () => {
     const create = jest.fn().mockResolvedValueOnce({ id: 'q-1' }).mockResolvedValueOnce({ id: 'q-2' });
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ question: { create }, aiCreditUsage: { create: jest.fn() } }));
 
-    const result = await processor.process(input, context);
+    const result = await processor.process(input, context, 'job-1');
 
     expect(result).toEqual({ requested: 2, created: 2, dropped: [], questionIds: ['q-1', 'q-2'] });
     expect(create).toHaveBeenNthCalledWith(1, {
@@ -80,7 +80,7 @@ describe('AiQuestionGenerationProcessor', () => {
       fn({ question: { create }, aiCreditUsage: { create: aiCreditUsageCreate } }),
     );
 
-    await processor.process(input, context);
+    await processor.process(input, context, 'job-1');
 
     expect(aiCreditUsageCreate).toHaveBeenCalledWith({
       data: { organizationId: 'org-1', source: 'question_generation', credits: 1, sourceId: null },
@@ -103,7 +103,7 @@ describe('AiQuestionGenerationProcessor', () => {
       fn({ question: { create: jest.fn() }, aiCreditUsage: { create: aiCreditUsageCreate } }),
     );
 
-    await processor.process(input, context);
+    await processor.process(input, context, 'job-1');
 
     expect(aiCreditUsageCreate).not.toHaveBeenCalled();
   });
@@ -130,7 +130,7 @@ describe('AiQuestionGenerationProcessor', () => {
     const create = jest.fn().mockResolvedValue({ id: 'q-1' });
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ question: { create }, aiCreditUsage: { create: jest.fn() } }));
 
-    const result = await processor.process(input, context);
+    const result = await processor.process(input, context, 'job-1');
 
     expect(result.created).toBe(1);
     expect(result.dropped).toHaveLength(1);
@@ -150,7 +150,7 @@ describe('AiQuestionGenerationProcessor', () => {
     ]);
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ question: { create: jest.fn() } }));
 
-    const result = await processor.process(input, context);
+    const result = await processor.process(input, context, 'job-1');
 
     expect(result).toEqual({ requested: 2, created: 0, dropped: [{ reason: expect.any(String) }], questionIds: [] });
   });
@@ -185,7 +185,7 @@ describe('AiQuestionGenerationProcessor', () => {
     const create = jest.fn().mockResolvedValueOnce({ id: 'q-1' }).mockResolvedValueOnce({ id: 'q-2' });
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ question: { create }, aiCreditUsage: { create: jest.fn() } }));
 
-    const result = await processor.process(input, context);
+    const result = await processor.process(input, context, 'job-1');
 
     expect(result.created).toBe(2);
     expect(result.questionIds).toEqual(['q-1', 'q-2']);
@@ -214,7 +214,7 @@ describe('AiQuestionGenerationProcessor', () => {
     const create = jest.fn().mockResolvedValueOnce({ id: 'q-1' });
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ question: { create }, aiCreditUsage: { create: jest.fn() } }));
 
-    const result = await processor.process(input, context);
+    const result = await processor.process(input, context, 'job-1');
 
     expect(result.created).toBe(1);
     expect(result.questionIds).toEqual(['q-1']);
@@ -227,7 +227,7 @@ describe('AiQuestionGenerationProcessor', () => {
   it('propagates an error thrown by the Claude client, failing the whole job with zero inserts', async () => {
     questionGenerationClient.generate.mockRejectedValue(new Error('rate limited'));
 
-    await expect(processor.process(input, context)).rejects.toThrow('rate limited');
+    await expect(processor.process(input, context, 'job-1')).rejects.toThrow('rate limited');
     expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
   });
 });

@@ -33,7 +33,7 @@ export class AiQuestionGenerationProcessor implements JobProcessor {
     private readonly aiApiKeyResolver: AiApiKeyResolverService,
   ) {}
 
-  async process(input: unknown, context: TenantContext): Promise<AiQuestionGenerationOutput> {
+  async process(input: unknown, context: TenantContext, aiJobId: string): Promise<AiQuestionGenerationOutput> {
     const { topic, difficulty, questionTypes, count, requestedBy } = input as AiQuestionGenerationInput;
 
     const aiProvider = await this.aiApiKeyResolver.resolve(context.organizationId as string);
