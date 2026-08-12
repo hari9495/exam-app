@@ -6,7 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
 import { useQuestions, useArchiveQuestion, useRestoreQuestion } from '../../../lib/hooks/useQuestions';
-import { Select, Button, Modal, Pagination, StatusBadge, Table, useToast, useColumnVisibility, FilterableHeader, type Column } from '../../../components/ui';
+import { Select, Button, Checkbox, Modal, Pagination, StatusBadge, Table, useToast, useColumnVisibility, FilterableHeader, type Column } from '../../../components/ui';
 import { GenerateQuestionsModal } from '../../../components/GenerateQuestionsModal';
 import { groupQuestions, type GroupBy } from '../../../lib/question-grouping';
 import { TYPE_TONE, TYPE_LABEL, DIFFICULTY_LABEL, DIFFICULTY_LEVEL } from '../../../lib/question-display';
@@ -61,14 +61,23 @@ export default function QuestionsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const rows = questions?.data ?? [];
+
   // Bulk select/publish/discard -- only meaningful in the Drafts view (see the checkbox column
-  // below). Carrying a selection across a status or page change would act on rows the recruiter
-  // can no longer see, so it's cleared whenever either moves.
+  // below). Carrying a selection across a status, page, or search change would act on rows the
+  // recruiter can no longer see, so it's cleared whenever any of them moves.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkActionPending, setBulkActionPending] = useState(false);
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [status, page]);
+  }, [status, page, search]);
+
+  // A row can also drop out of view without any of the above changing -- a per-row Publish/Discard
+  // refetches this same view and the row it acted on is simply gone. Deriving the acted-on set as
+  // the intersection with what's actually on screen (rather than pruning the Set itself) keeps this
+  // a one-line guard instead of another effect to get wrong.
+  const visibleRowIds = new Set(rows.map((question) => question.id));
+  const selectedVisibleIds = Array.from(selectedIds).filter((id) => visibleRowIds.has(id));
 
   function toggleSelected(id: string) {
     setSelectedIds((current) => {
@@ -86,7 +95,9 @@ export default function QuestionsPage() {
   // doesn't cancel the rest, and the toast always states the real count so a recruiter is never
   // told "published 7" when only 5 landed.
   async function handleBulkAction(action: 'publish' | 'discard') {
-    const ids = Array.from(selectedIds);
+    // Never the raw selection -- an id whose row has already left `rows` (a per-row action, a
+    // refetch) must not be recounted or resubmitted, only what's still actually on screen.
+    const ids = selectedVisibleIds;
     const mutation = action === 'publish' ? restoreQuestion : archiveQuestion;
     const verb = action === 'publish' ? 'published' : 'discarded';
     setBulkActionPending(true);
@@ -145,34 +156,41 @@ export default function QuestionsPage() {
     });
   }
 
-  const rows = questions?.data ?? [];
-
   const selectionColumn: Column<NumberedQuestion> | null =
     status === 'draft'
       ? {
           key: '__select',
-          header: (
-            <input
-              type="checkbox"
-              aria-label="Select all questions"
-              checked={rows.length > 0 && rows.every((question) => selectedIds.has(question.id))}
-              onChange={(event) => setSelectedIds(event.target.checked ? new Set(rows.map((question) => question.id)) : new Set())}
-            />
-          ),
+          // Grouped view renders one <Table> per group, all sharing this same column -- a
+          // select-all bound to `rows` (the whole page) would reach into every OTHER group too,
+          // including ones collapsed and not even in the DOM. There's no per-group row list here
+          // to bind it to instead (each group builds its own further down), so it's simplest and
+          // safest to just not offer the shortcut while grouped; the per-row checkboxes below are
+          // unaffected and still work group by group.
+          header:
+            groupBy === 'none' ? (
+              <Checkbox
+                checked={rows.length > 0 && rows.every((question) => selectedIds.has(question.id))}
+                onChange={(checked) => setSelectedIds(checked ? new Set(rows.map((question) => question.id)) : new Set())}
+                label="Select all questions on this page"
+                hideLabel
+              />
+            ) : null,
           width: '3%',
           render: (question) => (
-            <input
-              type="checkbox"
-              aria-label={`Select question ${question.id}`}
+            <Checkbox
               checked={selectedIds.has(question.id)}
               onChange={() => toggleSelected(question.id)}
+              label={`Select question ${question.id}`}
+              hideLabel
             />
           ),
         }
       : null;
 
-  const columns: Column<NumberedQuestion>[] = [
-    ...(selectionColumn ? [selectionColumn] : []),
+  // Kept out of useColumnVisibility (below) and prepended after it: hiding this column would
+  // strand an in-progress selection with no way to bring it back except clearing storage --
+  // ExamResultsPanel's selectColumn (components/ExamResultsPanel.tsx) is the same call.
+  const dataColumns: Column<NumberedQuestion>[] = [
     {
       key: 'number',
       header: '#',
@@ -313,7 +331,8 @@ export default function QuestionsPage() {
       ),
     },
   ];
-  const { visibleColumns, chooser } = useColumnVisibility('recruiter-questions', columns);
+  const { visibleColumns, chooser } = useColumnVisibility('recruiter-questions', dataColumns);
+  const tableColumns = selectionColumn ? [selectionColumn, ...visibleColumns] : visibleColumns;
 
   if (isLoading) {
     return (
@@ -391,14 +410,14 @@ export default function QuestionsPage() {
         {chooser}
       </div>
 
-      {status === 'draft' && selectedIds.size > 0 && (
+      {status === 'draft' && selectedVisibleIds.length > 0 && (
         <div className="mb-3 flex items-center gap-2 rounded-md border border-recruiter-border bg-recruiter-bg-subtle px-3 py-2">
-          <span className="text-sm text-recruiter-text-secondary">{selectedIds.size} selected</span>
-          <Button type="button" size="sm" disabled={bulkActionPending} onClick={() => handleBulkAction('publish')}>
-            {`Publish selected (${selectedIds.size})`}
+          <span className="text-sm text-recruiter-text-secondary">{selectedVisibleIds.length} selected</span>
+          <Button type="button" size="sm" loading={bulkActionPending} onClick={() => handleBulkAction('publish')}>
+            {`Publish selected (${selectedVisibleIds.length})`}
           </Button>
-          <Button type="button" size="sm" variant="danger" disabled={bulkActionPending} onClick={() => handleBulkAction('discard')}>
-            {`Discard selected (${selectedIds.size})`}
+          <Button type="button" size="sm" variant="danger" loading={bulkActionPending} onClick={() => handleBulkAction('discard')}>
+            {`Discard selected (${selectedVisibleIds.length})`}
           </Button>
         </div>
       )}
@@ -454,7 +473,7 @@ export default function QuestionsPage() {
                 )}
                 {expanded && (
                   <div className={groupBy !== 'none' ? 'p-3' : undefined}>
-                    <Table columns={visibleColumns} rows={numberedQuestions} rowKey={(question) => question.id} />
+                    <Table columns={tableColumns} rows={numberedQuestions} rowKey={(question) => question.id} />
                   </div>
                 )}
               </section>

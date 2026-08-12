@@ -1,4 +1,4 @@
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import QuestionsPage from './page';
 import { AuthProvider } from '../../../lib/auth-context';
@@ -1108,6 +1108,169 @@ describe('QuestionsPage', () => {
 
         await userEvent.click(screen.getByRole('button', { name: 'Back to Active' }));
         await waitFor(() => expect(screen.getByText('An active question')).toBeInTheDocument());
+      });
+
+      // Regression for the invariant: a bulk action must never touch a row the recruiter cannot
+      // currently see. Grouped view renders one <Table> per group -- a select-all bound to the
+      // whole page's rows would reach into every other group too, including one that's collapsed
+      // and not even in the DOM. There's no way to click "select all" here at all anymore.
+      it('does not offer a select-all while grouped, so one group cannot select rows in another (unrendered) group', async () => {
+        const GROUPED_DRAFT_1 = { ...DRAFT_1, topic: 'Arrays' };
+        const GROUPED_DRAFT_2 = { ...DRAFT_2, topic: 'Trees' };
+        const fetchMock = jest.fn(async (url) => {
+          const u = String(url);
+          if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+          if (u.includes('/questions')) {
+            return new Response(JSON.stringify({ data: [GROUPED_DRAFT_1, GROUPED_DRAFT_2], total: 2, page: 1, pageSize: 100, totalPages: 1 }), {
+              status: 200,
+            });
+          }
+          return new Response(JSON.stringify({}), { status: 200 });
+        });
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        renderDraftsPage();
+        await userEvent.click(await screen.findByRole('button', { name: 'Filter by Status' }));
+        await userEvent.click(await screen.findByRole('menuitem', { name: 'Drafts' }));
+
+        await userEvent.click(screen.getByRole('combobox', { name: 'Group By' }));
+        await userEvent.click(screen.getByRole('option', { name: 'Topic' }));
+
+        // Only Arrays is expanded -- Trees (and its draft) never renders.
+        await userEvent.click(screen.getByRole('button', { name: /Arrays/ }));
+        await screen.findByLabelText('Select question q1');
+
+        expect(screen.queryByLabelText('Select all questions on this page')).not.toBeInTheDocument();
+        expect(screen.queryByText('A second draft question')).not.toBeInTheDocument();
+      });
+
+      // Regression: setSelectedIds(new Set()) only ran off [status, page] -- typing into search
+      // calls setPage(1), a no-op when already on page 1, so a selection survived a search that
+      // filtered its row out of view entirely.
+      it('clears the selection when the search text changes', async () => {
+        const fetchMock = jest.fn(async (url) => {
+          const u = String(url);
+          if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+          if (u.includes('/questions')) {
+            return new Response(JSON.stringify({ data: [DRAFT_1, DRAFT_2], total: 2, page: 1, pageSize: 20, totalPages: 1 }), { status: 200 });
+          }
+          return new Response(JSON.stringify({}), { status: 200 });
+        });
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        renderDraftsPage();
+        await userEvent.click(await screen.findByRole('button', { name: 'Filter by Status' }));
+        await userEvent.click(await screen.findByRole('menuitem', { name: 'Drafts' }));
+        await userEvent.click(await screen.findByLabelText('Select question q1'));
+        expect(screen.getByRole('button', { name: 'Publish selected (1)' })).toBeInTheDocument();
+
+        fireEvent.change(screen.getByLabelText('Search Questions'), { target: { value: 'second' } });
+
+        await waitFor(() => expect(screen.queryByRole('button', { name: /Publish selected/ })).not.toBeInTheDocument());
+      });
+
+      // Regression: the chooser filtered on `column.header !== ''`, and the select column's header
+      // is JSX (never the empty string), so it was listed -- hiding it via the chooser removed
+      // every row checkbox with no way back short of clearing localStorage.
+      it('never offers the selection column in the column chooser', async () => {
+        const fetchMock = jest.fn(async (url) => {
+          const u = String(url);
+          if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+          if (u.includes('/questions')) {
+            return new Response(JSON.stringify({ data: [DRAFT_1, DRAFT_2], total: 2, page: 1, pageSize: 20, totalPages: 1 }), { status: 200 });
+          }
+          return new Response(JSON.stringify({}), { status: 200 });
+        });
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        renderDraftsPage();
+        await userEvent.click(await screen.findByRole('button', { name: 'Filter by Status' }));
+        await userEvent.click(await screen.findByRole('menuitem', { name: 'Drafts' }));
+        await screen.findByLabelText('Select question q1');
+
+        await userEvent.click(screen.getByRole('button', { name: 'Choose Columns' }));
+
+        expect(screen.queryByRole('menuitemcheckbox', { name: '__select' })).not.toBeInTheDocument();
+        // The chooser did open and lists real data columns -- it just skips the selection one.
+        expect(screen.getByRole('menuitemcheckbox', { name: 'Type' })).toBeInTheDocument();
+      });
+
+      // "Select all questions" claimed the whole filtered set but only ever acted on the current
+      // page -- at the 20-plus-drafts-across-pages scale bulk actions exist for, that's a
+      // misleading promise on a control whose neighbour is destructive (Discard).
+      it('labels select-all for what it actually does -- the current page, not the whole filtered set', async () => {
+        const fetchMock = jest.fn(async (url) => {
+          const u = String(url);
+          if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+          if (u.includes('/questions')) {
+            return new Response(JSON.stringify({ data: [DRAFT_1, DRAFT_2], total: 2, page: 1, pageSize: 20, totalPages: 1 }), { status: 200 });
+          }
+          return new Response(JSON.stringify({}), { status: 200 });
+        });
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        renderDraftsPage();
+        await userEvent.click(await screen.findByRole('button', { name: 'Filter by Status' }));
+        await userEvent.click(await screen.findByRole('menuitem', { name: 'Drafts' }));
+
+        expect(await screen.findByLabelText('Select all questions on this page')).toBeInTheDocument();
+      });
+
+      // Regression: nothing pruned selectedIds against rows. Selecting q1 and q2, then publishing
+      // q1 via its per-row action, used to leave the bar reading "Publish selected (2)" and the
+      // bulk action resubmitting POST /questions/q1/publish a second time -- with a success toast
+      // claiming 2 published when only q2 was still on screen.
+      it('drops an id from the bulk count and re-submission once its own row is no longer visible', async () => {
+        let q1Published = false;
+        const publishCalls: string[] = [];
+        const fetchMock = jest.fn(async (url, options: RequestInit | undefined) => {
+          const u = String(url);
+          if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+          if (u.includes('/questions/q1/publish') && options?.method === 'POST') {
+            publishCalls.push('q1');
+            q1Published = true;
+            return new Response(JSON.stringify({ id: 'q1' }), { status: 200 });
+          }
+          if (u.includes('/questions/q2/publish') && options?.method === 'POST') {
+            publishCalls.push('q2');
+            return new Response(JSON.stringify({ id: 'q2' }), { status: 200 });
+          }
+          if (u.includes('/questions')) {
+            return new Response(
+              JSON.stringify({
+                data: q1Published ? [DRAFT_2] : [DRAFT_1, DRAFT_2],
+                total: q1Published ? 1 : 2,
+                page: 1,
+                pageSize: 20,
+                totalPages: 1,
+              }),
+              { status: 200 },
+            );
+          }
+          return new Response(JSON.stringify({}), { status: 200 });
+        });
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        renderDraftsPage();
+        await userEvent.click(await screen.findByRole('button', { name: 'Filter by Status' }));
+        await userEvent.click(await screen.findByRole('menuitem', { name: 'Drafts' }));
+
+        await userEvent.click(await screen.findByLabelText('Select question q1'));
+        await userEvent.click(screen.getByLabelText('Select question q2'));
+        expect(screen.getByRole('button', { name: 'Publish selected (2)' })).toBeInTheDocument();
+
+        // Per-row Publish on q1's row specifically -- not the bulk button.
+        const q1Row = screen.getByText(DRAFT_1.text).closest('tr')!;
+        await userEvent.click(within(q1Row).getByRole('button', { name: 'Publish' }));
+        await waitFor(() => expect(screen.queryByText(DRAFT_1.text)).not.toBeInTheDocument());
+
+        // The bar must now count only what's actually still on screen.
+        expect(screen.getByRole('button', { name: 'Publish selected (1)' })).toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Publish selected (1)' }));
+
+        await waitFor(() => expect(publishCalls).toContain('q2'));
+        expect(publishCalls.filter((id) => id === 'q1')).toHaveLength(1);
       });
     });
   });
