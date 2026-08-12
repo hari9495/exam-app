@@ -68,6 +68,28 @@ Download the EdgeFace-S ONNX weights. Place them at `apps/exam-runtime/models/fa
 
 Record the file size in your report. **On a VM whose P6 disk already collapses during deploys, this number matters** — if the pair exceeds ~50MB, say so explicitly, because it moves the P10 disk resize from advisable to required.
 
+Note: the browser half of this step is moot — the browser tier was removed (see Task 9). Only
+`apps/exam-runtime/models/face-embedder.onnx` is needed.
+
+- [ ] **Step 4b: Install `onnxruntime-node` — it is deliberately NOT a dependency yet**
+
+Stage 2 shipped without it. Every release in `1.22.0-dev … 1.29.0-dev` depends on `adm-zip` 0.5.x,
+which carries a **high** advisory (GHSA-xcpc-8h2w-3j85) with no non-breaking fix — `npm audit fix`
+only offers a downgrade to 1.21.1, and this repo's `overrides` block silently no-ops, so it cannot
+be forced. Taking a production CVE for a package that could not run yet was the wrong trade, so it
+was deferred to here.
+
+Before installing, **re-check whether a current release has bumped `adm-zip` past 0.6.0**. If not,
+this is a real decision to put to the human: accept the advisory (it is exercised by the
+package's installer unpacking its own binaries, not at runtime on untrusted input) and merge past
+the audit gate, or wait. Do not silently re-break a green gate.
+
+Then in `apps/exam-runtime/src/face/face-embedder.service.ts`: replace the local `OrtModule` /
+`OrtTensorCtor` interfaces and the non-literal-specifier `loadOrt` with a plain
+`await import('onnxruntime-node')` and `typeof import('onnxruntime-node')`, so the compiler checks
+those shapes against the real library. Then delete `__setOrtLoaderForTests` and the `FakeTensor`
+block at the top of `face-embedder.service.spec.ts`, which exist only because the package is absent.
+
 - [ ] **Step 5: Commit**
 
 ```bash

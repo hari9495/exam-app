@@ -1,5 +1,20 @@
 import sharp from 'sharp';
-import { FaceEmbedderService } from './face-embedder.service';
+import { FaceEmbedderService, __setOrtLoaderForTests } from './face-embedder.service';
+
+// onnxruntime-node is deliberately not installed yet (see the note in face-embedder.service.ts),
+// so the tensor-layout tests below supply their own Tensor. This records exactly what the service
+// hands the model, which is what those tests assert on -- the real package would give us an opaque
+// object and tell us less.
+class FakeTensor {
+  constructor(readonly type: string, readonly data: Float32Array, readonly dims: number[]) {}
+}
+beforeEach(() => {
+  __setOrtLoaderForTests(async () => ({
+    Tensor: FakeTensor as never,
+    InferenceSession: { create: async () => ({}) },
+  }));
+});
+afterAll(() => __setOrtLoaderForTests(null));
 
 type FakeSession = {
   inputNames: string[];
