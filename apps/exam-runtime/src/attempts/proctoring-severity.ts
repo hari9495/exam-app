@@ -24,10 +24,12 @@ const SEVERITY_BY_EVENT_TYPE: Record<string, Severity> = {
   // strike-worthy: an AI false positive must flag for recruiter review, never auto-punish.
   remote_access_suspected: 'high',
   screen_share_stopped: 'high',
-  // Server-generated only (face verification), same band as remote_access_suspected and same
-  // reasoning: stage 2 is flag-only, so this is deliberately absent from
-  // STRIKE_WORTHY_EVENT_TYPES below -- a wrong verdict must never auto-punish a candidate.
-  face_mismatch: 'high',
+  // Server-generated only (face verification). Deliberately kept below 'high': stage 2's
+  // mismatch threshold is uncalibrated, so on its own a mismatch must not push an attempt to
+  // high_concern. It stays absent from STRIKE_WORTHY_EVENT_TYPES below regardless -- a wrong
+  // verdict must never auto-punish a candidate. Revisit this band once stage 3 calibrates the
+  // thresholds.
+  face_mismatch: 'medium',
   tab_switch: 'medium',
   fullscreen_exit: 'medium',
   copy_paste: 'medium',

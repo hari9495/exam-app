@@ -233,9 +233,10 @@ describe('FaceVerificationService', () => {
     const call = create.mock.calls[0][0];
     expect(call.data.attemptId).toBe('a1');
     expect(call.data.eventType).toBe('face_mismatch');
-    // Pins the map->row wiring, not just the map: a recruiter triaging by severity must not see
-    // the strongest signal in the system ranked alongside a right-click.
-    expect(call.data.severity).toBe('high');
+    // Pins the map->row wiring, not just the map: severity on the row must track whatever
+    // proctoring-severity.ts currently maps face_mismatch to (medium while stage 2's
+    // threshold is uncalibrated), not a hardcoded band that drifts from the source of truth.
+    expect(call.data.severity).toBe('medium');
     expect(JSON.parse(call.data.metadataJson)).toEqual({
       score: outcome.score,
       referenceImagePath: '/ref.jpg',

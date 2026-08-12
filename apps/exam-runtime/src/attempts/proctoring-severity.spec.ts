@@ -84,11 +84,10 @@ describe('getProctoringEventSeverity', () => {
     expect(getProctoringEventSeverity('screen_share_stopped')).toBe('high');
   });
 
-  // Finding 7: face_mismatch was missing from SEVERITY_BY_EVENT_TYPE, so it silently fell back
-  // to 'low' -- the same band as right_click -- instead of matching remote_access_suspected,
-  // the comparable server-generated signal.
-  it('maps face_mismatch to high severity, same band as remote_access_suspected', () => {
-    expect(getProctoringEventSeverity('face_mismatch')).toBe('high');
+  // Deliberately below 'high' while stage 2's mismatch threshold is uncalibrated -- see
+  // proctoring-severity.ts. Revisit once stage 3 calibrates the thresholds.
+  it('maps face_mismatch to medium severity, not high, while thresholds are uncalibrated', () => {
+    expect(getProctoringEventSeverity('face_mismatch')).toBe('medium');
   });
 
   it('does not treat face_mismatch as client-reportable (server-generated only)', () => {
