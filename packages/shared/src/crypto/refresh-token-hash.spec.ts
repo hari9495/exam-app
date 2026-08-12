@@ -1,7 +1,10 @@
 import { createHash } from 'crypto';
 import { hashRefreshToken, isLegacyArgon2Hash, refreshTokenMatches } from './refresh-token-hash';
 
-const TOKEN = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhYmMiLCJmYW1pbHlJZCI6IjEyMyJ9.sig';
+// Not JWT-shaped on purpose -- hashRefreshToken/refreshTokenMatches operate on an opaque string
+// and don't care about token structure, and a JWT-shaped fixture previously tripped the CI
+// secret scanner's generic-api-key/entropy heuristic on every PR that got far enough to run it.
+const TOKEN = 'test-refresh-token';
 
 describe('hashRefreshToken', () => {
   it('produces a hex sha256 digest', () => {

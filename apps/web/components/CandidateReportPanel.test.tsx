@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { CandidateReportPanel } from './CandidateReportPanel';
 import { ToastProvider } from './ui';
@@ -100,6 +100,29 @@ describe('CandidateReportPanel', () => {
     expect(screen.getByText('Not counted')).toBeInTheDocument();
   });
 
+  describe('screen capture modal', () => {
+    function renderWithScreenshot() {
+      renderPanel([], {
+        webcamTimeline: [
+          {
+            occurredAt: '2026-01-01T00:00:00.000Z', kind: 'periodic', snapshot: '',
+            screenshot: 'data:image/png;base64,abc',
+          },
+        ],
+      });
+      fireEvent.click(screen.getByRole('button', { name: /screen capture at/i }));
+    }
+
+    it('opens larger than the default modal size, and links the raw screenshot open in a new tab', () => {
+      renderWithScreenshot();
+
+      const link = screen.getByRole('link', { name: 'Open screen capture in a new tab' });
+      expect(link).toHaveAttribute('href', 'data:image/png;base64,abc');
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    });
+  });
+
   // Finalizing an attempt moves it out of pending_manual_grade, so the grading queue stops
   // listing it and this report becomes the only place the submitted code can still be read.
   describe('code answers', () => {
@@ -195,7 +218,7 @@ describe('CandidateReportPanel', () => {
     );
 
     expect(screen.getByText('Tabs & Background Apps')).toBeInTheDocument();
-    expect(screen.getByText('WhatsApp × 1')).toBeInTheDocument();
+    expect(screen.getByText('Possible background app: WhatsApp × 1')).toBeInTheDocument();
     expect(screen.getByText('Suspicious pattern noted.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /WhatsApp/ })).toBeInTheDocument();
   });

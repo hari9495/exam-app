@@ -3,7 +3,7 @@
 import { ReactNode, useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Download } from 'lucide-react';
+import { Download, ExternalLink } from 'lucide-react';
 import {
   useCandidateReport,
   useAttemptInsight,
@@ -339,8 +339,29 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
         )}
       </Modal>
 
-      <Modal open={selectedScreenshot !== null} title="Screen Capture" onClose={() => setSelectedScreenshot(null)}>
-        {selectedScreenshot && <img src={selectedScreenshot} alt="Screen capture" className="w-full rounded" />}
+      <Modal open={selectedScreenshot !== null} title="Screen Capture" onClose={() => setSelectedScreenshot(null)} size="xl">
+        {selectedScreenshot && (
+          <div className="relative">
+            <a
+              href={selectedScreenshot}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Open screen capture in a new tab"
+              className="absolute right-2 top-2 rounded bg-black/60 p-1.5 text-white transition-colors hover:bg-black/80"
+            >
+              <ExternalLink size={16} />
+            </a>
+            {/* A fixed-height, centered presentation box (not a bare max-h/max-w img)
+             *  so a real proctoring screenshot's aspect ratio -- which is usually wider
+             *  than this modal's content width, making height the binding constraint --
+             *  shrinks the rendered image on BOTH axes and centers it, instead of the
+             *  browser's default flush-left alignment dumping all the resulting slack
+             *  as blank space on one side. object-contain never crops the evidence. */}
+            <div className="flex h-[60vh] items-center justify-center overflow-hidden rounded bg-recruiter-bg-subtle">
+              <img src={selectedScreenshot} alt="Screen capture" className="max-h-full max-w-full object-contain" />
+            </div>
+          </div>
+        )}
       </Modal>
 
       <Modal open={selectedFaceImage !== null} title={selectedFaceImage?.title ?? ''} onClose={() => setSelectedFaceImage(null)}>

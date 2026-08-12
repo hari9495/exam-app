@@ -3949,6 +3949,23 @@ describe('AttemptService', () => {
       expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
     });
 
+    // A bookmarks-bar shortcut was repeatedly misread as an open tab in production (a bookmark
+    // labeled "ChatGPT" reported as "a ChatGPT tab is open"), and an unreadable favicon was
+    // sometimes given a specific, fabricated name instead of "unclear". Both instructions must stay
+    // in the prompt sent to the model, not just in this file's comments.
+    it('instructs the model not to mistake a bookmarks-bar shortcut for an open tab, and not to guess an unclear tab\'s name', async () => {
+      generateStructured.mockResolvedValue({ remoteAccessVisible: false, toolName: 'none', reasoning: 'clean' });
+      const tx = scopedTxFor(attemptFixture());
+      mockBootstrapThenAllScoped(tx);
+
+      await service.analyzeScreenCapture(session, { screenshot: SHOT });
+
+      const sentPrompt = generateStructured.mock.calls[0][0].prompt;
+      expect(sentPrompt).toContain('bookmarks/favorites bar');
+      expect(sentPrompt).toContain('is NOT an open tab');
+      expect(sentPrompt).toContain('describe it generically');
+    });
+
     it('uploads the screenshot and records a high-severity remote_access_suspected event when flagged', async () => {
       generateStructured.mockResolvedValue({ remoteAccessVisible: true, toolName: 'AnyDesk', reasoning: 'AnyDesk toolbar top-right' });
       const tx = scopedTxFor(attemptFixture());

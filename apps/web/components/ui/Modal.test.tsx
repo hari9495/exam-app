@@ -22,4 +22,13 @@ describe('Modal', () => {
     );
     expect(screen.queryByText('Modal body')).not.toBeInTheDocument();
   });
+
+  it('applies a wider class for the xl size than the default', () => {
+    render(
+      <Modal open title="Screen Capture" onClose={() => {}} size="xl">
+        <p>Modal body</p>
+      </Modal>,
+    );
+    expect(screen.getByRole('dialog')).toHaveClass('max-w-5xl');
+  });
 });

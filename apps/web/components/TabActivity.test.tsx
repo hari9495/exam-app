@@ -17,7 +17,7 @@ describe('hasTabActivityContent', () => {
 });
 
 describe('TabActivitySummaryCard', () => {
-  it('renders grouped tool counts and the AI narrative', () => {
+  it('renders grouped tool counts under a hedged label, and the AI narrative', () => {
     render(
       <TabActivitySummaryCard
         summary={[{ eventType: 'background_app_detected', count: 3, toolCounts: { WhatsApp: 2, Gmail: 1 } }]}
@@ -25,7 +25,7 @@ describe('TabActivitySummaryCard', () => {
       />,
     );
 
-    expect(screen.getByText('WhatsApp × 2, Gmail × 1')).toBeInTheDocument();
+    expect(screen.getByText('Possible background app: WhatsApp × 2, Gmail × 1')).toBeInTheDocument();
     expect(screen.getByText('Patterns consistent with outside help.')).toBeInTheDocument();
   });
 
@@ -33,6 +33,17 @@ describe('TabActivitySummaryCard', () => {
     render(<TabActivitySummaryCard summary={[{ eventType: 'tab_switch', count: 4 }]} />);
 
     expect(screen.getByText('Tab switch × 4')).toBeInTheDocument();
+  });
+
+  // The AI names a specific app from a screenshot with no verification step (confirmed in
+  // production: a bookmarks-bar shortcut was read as an open tab), so a name-bearing entry gets
+  // an explicit caveat -- a deterministic browser event (tab_switch etc.) needs none.
+  it('shows a best-guess caveat only when a toolCounts entry is present', () => {
+    const { rerender } = render(<TabActivitySummaryCard summary={[{ eventType: 'tab_switch', count: 4 }]} />);
+    expect(screen.queryByText(/best guess/)).not.toBeInTheDocument();
+
+    rerender(<TabActivitySummaryCard summary={[{ eventType: 'background_app_detected', count: 1, toolCounts: { WhatsApp: 1 } }]} />);
+    expect(screen.getByText(/best guess/)).toBeInTheDocument();
   });
 });
 
@@ -42,7 +53,7 @@ describe('TabActivityBanner', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('shows the estimated-timing disclaimer and expands reasoning/screenshot on click', async () => {
+  it('shows the estimated-timing disclaimer, hedges the tool name, and expands reasoning/screenshot with an accuracy caveat on click', async () => {
     render(
       <TabActivityBanner
         entries={[
@@ -52,8 +63,14 @@ describe('TabActivityBanner', () => {
     );
 
     expect(screen.getByText(/estimated timing/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: /WhatsApp/ }));
+    const button = screen.getByRole('button', { name: /WhatsApp/ });
+    // Not asserted as a bare fact -- the AI names a specific app from a screenshot with no
+    // verification step, and has been confirmed wrong in production (a bookmarks-bar shortcut
+    // read as an open tab), so the badge must read as a guess, not an assertion.
+    expect(button).toHaveTextContent('Possible background app: WhatsApp');
+    await userEvent.click(button);
 
+    expect(screen.getByText(/AI-generated observation/)).toBeInTheDocument();
     expect(screen.getByText('Taskbar icon visible.')).toBeInTheDocument();
     expect(screen.getByAltText('Screen capture')).toHaveAttribute('src', 'https://example.com/shot.jpg');
   });
