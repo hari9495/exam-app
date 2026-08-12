@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
@@ -60,6 +60,49 @@ export default function QuestionsPage() {
   const restoreQuestion = useRestoreQuestion();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Bulk select/publish/discard -- only meaningful in the Drafts view (see the checkbox column
+  // below). Carrying a selection across a status or page change would act on rows the recruiter
+  // can no longer see, so it's cleared whenever either moves.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkActionPending, setBulkActionPending] = useState(false);
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [status, page]);
+
+  function toggleSelected(id: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  // N separate requests, not a batch endpoint -- there isn't one. allSettled so one failure
+  // doesn't cancel the rest, and the toast always states the real count so a recruiter is never
+  // told "published 7" when only 5 landed.
+  async function handleBulkAction(action: 'publish' | 'discard') {
+    const ids = Array.from(selectedIds);
+    const mutation = action === 'publish' ? restoreQuestion : archiveQuestion;
+    const verb = action === 'publish' ? 'published' : 'discarded';
+    setBulkActionPending(true);
+    try {
+      const results = await Promise.allSettled(ids.map((id) => mutation.mutateAsync(id)));
+      const failed = results.filter((result) => result.status === 'rejected').length;
+      if (failed === 0) {
+        toast(`${ids.length} question${ids.length === 1 ? '' : 's'} ${verb}.`);
+      } else {
+        toast(`${ids.length - failed} of ${ids.length} ${verb} — ${failed} failed.`, 'error');
+      }
+      setSelectedIds(new Set());
+    } finally {
+      setBulkActionPending(false);
+    }
+  }
   // Collapsed by default: with many topics/categories, dumping every group's full row list
   // open at once is exactly the clutter grouping is meant to cut through. Keyed by group
   // label rather than index -- stable across a re-group even though group order can shift.
@@ -102,7 +145,34 @@ export default function QuestionsPage() {
     });
   }
 
+  const rows = questions?.data ?? [];
+
+  const selectionColumn: Column<NumberedQuestion> | null =
+    status === 'draft'
+      ? {
+          key: '__select',
+          header: (
+            <input
+              type="checkbox"
+              aria-label="Select all questions"
+              checked={rows.length > 0 && rows.every((question) => selectedIds.has(question.id))}
+              onChange={(event) => setSelectedIds(event.target.checked ? new Set(rows.map((question) => question.id)) : new Set())}
+            />
+          ),
+          width: '3%',
+          render: (question) => (
+            <input
+              type="checkbox"
+              aria-label={`Select question ${question.id}`}
+              checked={selectedIds.has(question.id)}
+              onChange={() => toggleSelected(question.id)}
+            />
+          ),
+        }
+      : null;
+
   const columns: Column<NumberedQuestion>[] = [
+    ...(selectionColumn ? [selectionColumn] : []),
     {
       key: 'number',
       header: '#',
@@ -265,7 +335,6 @@ export default function QuestionsPage() {
     );
   }
 
-  const rows = questions?.data ?? [];
   // Each group renders its own Table, so column-header sorting applies within a group.
   const groups = groupBy === 'none' ? [{ label: '', questions: rows }] : groupQuestions(rows, groupBy);
 
@@ -321,6 +390,18 @@ export default function QuestionsPage() {
         <Select label="Group By" value={groupBy} onChange={(value) => setGroupBy(value as GroupBy)} options={GROUP_BY_OPTIONS} />
         {chooser}
       </div>
+
+      {status === 'draft' && selectedIds.size > 0 && (
+        <div className="mb-3 flex items-center gap-2 rounded-md border border-recruiter-border bg-recruiter-bg-subtle px-3 py-2">
+          <span className="text-sm text-recruiter-text-secondary">{selectedIds.size} selected</span>
+          <Button type="button" size="sm" disabled={bulkActionPending} onClick={() => handleBulkAction('publish')}>
+            {`Publish selected (${selectedIds.size})`}
+          </Button>
+          <Button type="button" size="sm" variant="danger" disabled={bulkActionPending} onClick={() => handleBulkAction('discard')}>
+            {`Discard selected (${selectedIds.size})`}
+          </Button>
+        </div>
+      )}
 
       {rows.length === 0 ? (
         <div className="py-8 text-center text-sm text-recruiter-text-tertiary">

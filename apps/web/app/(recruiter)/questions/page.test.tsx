@@ -936,5 +936,179 @@ describe('QuestionsPage', () => {
 
       await waitFor(() => expect(screen.getByText('What does an AI-generated question look like?')).toBeInTheDocument());
     });
+
+    describe('bulk publish and discard', () => {
+      const DRAFT_1 = DRAFT_QUESTION;
+      const DRAFT_2 = { ...DRAFT_QUESTION, id: 'q2', text: 'A second draft question' };
+
+      function renderDraftsPage() {
+        render(
+          <QueryProvider>
+            <ToastProvider>
+              <AuthProvider>
+                <QuestionsPage />
+              </AuthProvider>
+            </ToastProvider>
+          </QueryProvider>,
+        );
+      }
+
+      it('publishes every selected draft', async () => {
+        const fetchMock = jest.fn(async (url, options: RequestInit | undefined) => {
+          const u = String(url);
+          if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+          if (u.includes('/questions/q1/publish') && options?.method === 'POST') {
+            return new Response(JSON.stringify({ id: 'q1' }), { status: 200 });
+          }
+          if (u.includes('/questions/q2/publish') && options?.method === 'POST') {
+            return new Response(JSON.stringify({ id: 'q2' }), { status: 200 });
+          }
+          if (u.includes('/questions')) {
+            return new Response(JSON.stringify({ data: [DRAFT_1, DRAFT_2], total: 2, page: 1, pageSize: 20, totalPages: 1 }), { status: 200 });
+          }
+          return new Response(JSON.stringify({}), { status: 200 });
+        });
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        renderDraftsPage();
+        await userEvent.click(await screen.findByRole('button', { name: 'Filter by Status' }));
+        await userEvent.click(await screen.findByRole('menuitem', { name: 'Drafts' }));
+
+        await userEvent.click(await screen.findByLabelText('Select question q1'));
+        await userEvent.click(screen.getByLabelText('Select question q2'));
+        await userEvent.click(screen.getByRole('button', { name: 'Publish selected (2)' }));
+
+        await waitFor(() => {
+          expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/questions/q1/publish'))).toBe(true);
+          expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('/questions/q2/publish'))).toBe(true);
+        });
+      });
+
+      it('does not offer bulk actions outside the Drafts view', async () => {
+        const ACTIVE_QUESTION = { ...DRAFT_QUESTION, id: 'q1', status: 'active', aiGenerated: false };
+        global.fetch = jest.fn(async (url) => {
+          const u = String(url);
+          if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+          if (u.includes('/questions')) {
+            return new Response(JSON.stringify({ data: [ACTIVE_QUESTION], total: 1, page: 1, pageSize: 20, totalPages: 1 }), { status: 200 });
+          }
+          return new Response(JSON.stringify({}), { status: 200 });
+        }) as unknown as typeof fetch;
+
+        renderDraftsPage();
+        await screen.findByText(ACTIVE_QUESTION.text);
+        expect(screen.queryByLabelText('Select question q1')).not.toBeInTheDocument();
+      });
+
+      // The recruiter must never be told "published 7" when only some landed -- these are N
+      // separate requests (no batch endpoint exists), so a mid-batch failure has to be reported
+      // honestly rather than swallowed or treated as an all-or-nothing result.
+      it('reports a partial failure without claiming full success', async () => {
+        const fetchMock = jest.fn(async (url, options: RequestInit | undefined) => {
+          const u = String(url);
+          if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+          if (u.includes('/questions/q1/publish') && options?.method === 'POST') {
+            return new Response(JSON.stringify({ id: 'q1' }), { status: 200 });
+          }
+          if (u.includes('/questions/q2/publish') && options?.method === 'POST') {
+            return new Response(JSON.stringify({ message: 'Server error' }), { status: 500 });
+          }
+          if (u.includes('/questions')) {
+            return new Response(JSON.stringify({ data: [DRAFT_1, DRAFT_2], total: 2, page: 1, pageSize: 20, totalPages: 1 }), { status: 200 });
+          }
+          return new Response(JSON.stringify({}), { status: 200 });
+        });
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        renderDraftsPage();
+        await userEvent.click(await screen.findByRole('button', { name: 'Filter by Status' }));
+        await userEvent.click(await screen.findByRole('menuitem', { name: 'Drafts' }));
+
+        await userEvent.click(await screen.findByLabelText('Select question q1'));
+        await userEvent.click(screen.getByLabelText('Select question q2'));
+        await userEvent.click(screen.getByRole('button', { name: 'Publish selected (2)' }));
+
+        expect(await screen.findByText('1 of 2 published — 1 failed.')).toBeInTheDocument();
+      });
+
+      // Requirement from the brief: a selection carried across a status-filter change would act
+      // on rows the recruiter can no longer see. Round-tripping Drafts -> Active -> Drafts must
+      // land back with nothing selected and no leftover bulk-action bar.
+      it('clears the selection when the status filter changes away and back', async () => {
+        const ACTIVE_QUESTION = { ...DRAFT_QUESTION, id: 'q-active', status: 'active', aiGenerated: false, text: 'An active question' };
+        const fetchMock = jest.fn(async (url) => {
+          const u = String(url);
+          if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+          if (u.includes('/questions') && u.includes('status=draft')) {
+            return new Response(JSON.stringify({ data: [DRAFT_1, DRAFT_2], total: 2, page: 1, pageSize: 20, totalPages: 1 }), { status: 200 });
+          }
+          if (u.includes('/questions')) {
+            return new Response(JSON.stringify({ data: [ACTIVE_QUESTION], total: 1, page: 1, pageSize: 20, totalPages: 1 }), { status: 200 });
+          }
+          return new Response(JSON.stringify({}), { status: 200 });
+        });
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        renderDraftsPage();
+        await screen.findByText('An active question');
+
+        await userEvent.click(screen.getByRole('button', { name: 'Filter by Status' }));
+        await userEvent.click(await screen.findByRole('menuitem', { name: 'Drafts' }));
+        await userEvent.click(await screen.findByLabelText('Select question q1'));
+        expect(screen.getByRole('button', { name: 'Publish selected (1)' })).toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Filter by Status' }));
+        await userEvent.click(await screen.findByRole('menuitem', { name: 'Active' }));
+        await screen.findByText('An active question');
+        expect(screen.queryByRole('button', { name: /Publish selected/ })).not.toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Filter by Status' }));
+        await userEvent.click(await screen.findByRole('menuitem', { name: 'Drafts' }));
+
+        await screen.findByLabelText('Select question q1');
+        expect(screen.queryByRole('button', { name: /Publish selected/ })).not.toBeInTheDocument();
+        expect(screen.getByLabelText('Select question q1')).not.toBeChecked();
+      });
+
+      // Requirement from the brief: bulk publishing every draft leaves the Drafts view empty --
+      // the existing "Back to Active" escape must still work, and no selection (or bulk-action
+      // bar) should linger once the list drains.
+      it('leaves Back to Active working, with no lingering selection, once bulk publishing empties the Drafts list', async () => {
+        let published = false;
+        const ACTIVE_QUESTION = { ...DRAFT_QUESTION, id: 'q-active', status: 'active', aiGenerated: false, text: 'An active question' };
+        const fetchMock = jest.fn(async (url, options: RequestInit | undefined) => {
+          const u = String(url);
+          if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+          if (u.includes('/questions/q1/publish') && options?.method === 'POST') {
+            published = true;
+            return new Response(JSON.stringify({ id: 'q1' }), { status: 200 });
+          }
+          if (u.includes('/questions') && u.includes('status=draft')) {
+            return published
+              ? new Response(JSON.stringify({ data: [], total: 0, page: 1, pageSize: 20, totalPages: 0 }), { status: 200 })
+              : new Response(JSON.stringify({ data: [DRAFT_1], total: 1, page: 1, pageSize: 20, totalPages: 1 }), { status: 200 });
+          }
+          if (u.includes('/questions')) {
+            return new Response(JSON.stringify({ data: [ACTIVE_QUESTION], total: 1, page: 1, pageSize: 20, totalPages: 1 }), { status: 200 });
+          }
+          return new Response(JSON.stringify({}), { status: 200 });
+        });
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        renderDraftsPage();
+        await screen.findByText('An active question');
+
+        await userEvent.click(screen.getByRole('button', { name: 'Filter by Status' }));
+        await userEvent.click(await screen.findByRole('menuitem', { name: 'Drafts' }));
+        await userEvent.click(await screen.findByLabelText('Select question q1'));
+        await userEvent.click(screen.getByRole('button', { name: 'Publish selected (1)' }));
+
+        expect(await screen.findByText('No drafts to review.')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /Publish selected/ })).not.toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Back to Active' }));
+        await waitFor(() => expect(screen.getByText('An active question')).toBeInTheDocument());
+      });
+    });
   });
 });
