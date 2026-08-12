@@ -68,9 +68,9 @@ export function createBrowserEmbedder(modelUrl: string): BrowserFaceEmbedder {
   let session: InferenceSession | null = null;
   let loadFailed = false;
   let loadPromise: Promise<InferenceSession | null> | null = null;
-  // Terminal once set by close() -- see close() below. Distinct from loadFailed: loadFailed
-  // means "try again never", closed means "this embedder is done", and only closed must survive
-  // forever (loadFailed/loadPromise get reset elsewhere, closed must not).
+  // Terminal once set by close() -- see close() below. Distinct from loadFailed: loadFailed means
+  // "this model URL will never load", closed means "this embedder is done". Nothing resets any of
+  // the three; an embedder is single-use by design, so `close` can never be mistaken for a pause.
   let closed = false;
 
   async function getSession(): Promise<InferenceSession | null> {
