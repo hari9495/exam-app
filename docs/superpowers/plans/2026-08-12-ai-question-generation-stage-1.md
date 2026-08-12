@@ -1152,6 +1152,14 @@ In the actions column, add a `draft` branch alongside the existing `archived` br
 
 - [ ] **Step 6: Add the Generate button and wire the modal**
 
+> **Render the modal UNCONDITIONALLY, toggling only its `open` prop.** Almost every other modal in
+> this codebase is rendered as `{someState && <SomeModal .../>}` -- doing that here silently breaks
+> the feature. Unmounting drops the job id and the React Query observer, so the poll dies, the job
+> completes unseen, `onCompleted` never fires, and the page never switches to Drafts. A reviewer
+> proved this with a throwaway spec: `onCompleted` was never called, while every test in the modal'''s
+> own file still passed because they all keep it mounted. Write `<GenerateQuestionsModal open={...} />`,
+> not `{open && <GenerateQuestionsModal ... />}`.
+
 Next to the existing page actions, add a `Generate with AI` button that opens `GenerateQuestionsModal`. On its `onCompleted`, switch the status filter to `'draft'` and reset the page to 1, so the recruiter lands on what was just generated instead of having to find it.
 
 - [ ] **Step 7: Add the pending-drafts count**
