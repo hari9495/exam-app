@@ -12,7 +12,7 @@ import {
 } from '../lib/hooks/usePanelReports';
 import { useSystemEvents } from '../lib/hooks/useSystemEvents';
 import { plainEnglish } from '../lib/system-event-message';
-import type { WebcamTimelineEntry } from '../lib/types';
+import type { WebcamTimelineEntry, FaceMismatchEntry } from '../lib/types';
 import { Badge, Button, Card, Modal, StatusBadge, IntegrityBadge, useToast, type StatusTone } from './ui';
 import { AuditHistoryLink } from './AuditHistoryLink';
 import { TabActivitySummaryCard, TabActivityBanner, hasTabActivityContent } from './TabActivity';
@@ -74,6 +74,10 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
   }
 
   const integrity = candidate.integrityAnalysis;
+  // Absent (not empty) on an attempt from before this feature existed -- default so that report
+  // renders exactly as it did before, no error and no empty section.
+  const faceMismatches: FaceMismatchEntry[] = candidate.faceMismatches ?? [];
+  const referenceImageUrl = candidate.faceEnrolment?.referenceImageUrl ?? null;
   const questionTextById = new Map(
     candidate.sections.flatMap((section) => section.questions.map((question) => [question.questionId, question.questionText] as const)),
   );
@@ -163,20 +167,58 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
         <div className="mb-6">
           <h2 className="mb-2 text-lg font-medium">Face Verification</h2>
           <Card>
-            {candidate.faceEnrolment.referenceImageUrl ? (
-              <div className="flex items-center gap-3">
-                <img
-                  src={candidate.faceEnrolment.referenceImageUrl}
-                  alt="Reference photo"
-                  className="h-20 w-20 rounded object-cover"
-                />
-                <div className="text-sm text-gray-700">
-                  <p className="font-medium capitalize">{candidate.faceEnrolment.status.replace(/_/g, ' ')}</p>
-                  {candidate.faceEnrolment.capturedAt && (
-                    <p className="text-xs text-gray-500">Captured {new Date(candidate.faceEnrolment.capturedAt).toLocaleString()}</p>
-                  )}
+            {referenceImageUrl ? (
+              <>
+                <div className="flex items-center gap-3">
+                  <img
+                    src={referenceImageUrl}
+                    alt="Reference photo"
+                    className="h-20 w-20 rounded object-cover"
+                  />
+                  <div className="text-sm text-gray-700">
+                    <p className="font-medium capitalize">{candidate.faceEnrolment.status.replace(/_/g, ' ')}</p>
+                    {candidate.faceEnrolment.capturedAt && (
+                      <p className="text-xs text-gray-500">Captured {new Date(candidate.faceEnrolment.capturedAt).toLocaleString()}</p>
+                    )}
+                  </div>
                 </div>
-              </div>
+                {/* Stage 2 is flag-only and the score is uncalibrated (see ExamDetailsForm's note),
+                    so this is put in front of a recruiter as evidence to look at, not a verdict --
+                    both faces rendered together, at a size a face is actually recognisable at. */}
+                {faceMismatches.length > 0 && (
+                  <div className="mt-4 flex flex-col gap-3 border-t border-gray-100 pt-4">
+                    <p className="text-xs font-medium uppercase text-gray-400">Flagged snapshots — compare before acting</p>
+                    {faceMismatches.map((mismatch, index) => (
+                      <div key={index} className="flex items-center gap-4">
+                        <div className="text-center">
+                          <img
+                            src={referenceImageUrl}
+                            alt="Reference photo"
+                            className="h-24 w-24 rounded object-cover"
+                          />
+                          <p className="mt-1 text-[10px] text-gray-400">Reference</p>
+                        </div>
+                        <div className="text-center">
+                          {mismatch.snapshotUrl ? (
+                            <img src={mismatch.snapshotUrl} alt="Flagged snapshot" className="h-24 w-24 rounded object-cover" />
+                          ) : (
+                            <div className="flex h-24 w-24 items-center justify-center rounded bg-gray-100 text-xs text-gray-400">
+                              No image
+                            </div>
+                          )}
+                          <p className="mt-1 text-[10px] text-gray-400">Flagged snapshot</p>
+                        </div>
+                        <div className="text-sm text-gray-700">
+                          <p>{formatSnapshotTime(mismatch.occurredAt)}</p>
+                          {mismatch.score !== null && (
+                            <p className="text-xs text-gray-500">Similarity score: {mismatch.score.toFixed(2)}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             ) : (
               <p className="text-sm text-gray-500">Not verified — no reference photo was captured</p>
             )}

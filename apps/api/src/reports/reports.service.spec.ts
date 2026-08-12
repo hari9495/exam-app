@@ -380,7 +380,7 @@ describe('ReportsService', () => {
         candidateId: 'cand-2', candidateName: 'Bob', status: 'invited',
         score: null, maxScore: null, percentage: null, passFail: null, submittedAt: null,
         proctoringAnalysis: null, integrityAnalysis: null, sections: [], webcamTimeline: [],
-        tabActivitySummary: [], faceEnrolment: null,
+        tabActivitySummary: [], faceEnrolment: null, faceMismatches: [],
       });
       expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
     });
@@ -1032,6 +1032,55 @@ describe('ReportsService', () => {
       const detail = await service.getCandidateDetail(context, 'exam-1', 'cand-1');
 
       expect(detail.faceEnrolment).toBeNull();
+    });
+
+    it('returns face mismatch events with SIGNED snapshot urls', async () => {
+      examsService.getResults.mockResolvedValue([row({ candidateId: 'cand-1', attemptId: 'a1', status: 'submitted' })]);
+      blobStorage.signIfOurs = jest.fn().mockResolvedValue('https://blob/snap.jpg?sig=x');
+      const tx = {
+        attempt: { findFirst: jest.fn().mockResolvedValue({ sectionSnapshotJson: '[]', answers: [], faceEnrolment: null }) },
+        question: { findMany: jest.fn().mockResolvedValue([]) },
+        proctoringEvent: { findMany: jest.fn().mockResolvedValue([
+          { eventType: 'face_mismatch', occurredAt: new Date('2026-08-12T09:00:00Z'), metadataJson: JSON.stringify({ score: 0.21, snapshotPath: 'https://blob/snap.jpg' }) },
+        ]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const detail = await service.getCandidateDetail(context, 'exam-1', 'cand-1');
+
+      expect(detail.faceMismatches).toHaveLength(1);
+      expect(detail.faceMismatches[0].score).toBeCloseTo(0.21);
+      expect(detail.faceMismatches[0].snapshotUrl).toContain('sig=');
+    });
+
+    it('returns an empty list, not null, when there were no mismatches', async () => {
+      examsService.getResults.mockResolvedValue([row({ candidateId: 'cand-1', attemptId: 'a1', status: 'submitted' })]);
+      const tx = {
+        attempt: { findFirst: jest.fn().mockResolvedValue({ sectionSnapshotJson: '[]', answers: [], faceEnrolment: null }) },
+        question: { findMany: jest.fn().mockResolvedValue([]) },
+        proctoringEvent: { findMany: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      expect((await service.getCandidateDetail(context, 'exam-1', 'cand-1')).faceMismatches).toEqual([]);
+    });
+
+    it('degrades a malformed metadataJson to a mismatch entry with null score/snapshot, without throwing', async () => {
+      examsService.getResults.mockResolvedValue([row({ candidateId: 'cand-1', attemptId: 'a1', status: 'submitted' })]);
+      const tx = {
+        attempt: { findFirst: jest.fn().mockResolvedValue({ sectionSnapshotJson: '[]', answers: [], faceEnrolment: null }) },
+        question: { findMany: jest.fn().mockResolvedValue([]) },
+        proctoringEvent: { findMany: jest.fn().mockResolvedValue([
+          { eventType: 'face_mismatch', occurredAt: new Date('2026-08-12T09:00:00Z'), metadataJson: '{not valid json' },
+        ]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const detail = await service.getCandidateDetail(context, 'exam-1', 'cand-1');
+
+      expect(detail.faceMismatches).toEqual([
+        { occurredAt: '2026-08-12T09:00:00.000Z', score: null, snapshotUrl: null },
+      ]);
     });
   });
 

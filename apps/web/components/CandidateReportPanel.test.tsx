@@ -214,5 +214,37 @@ describe('CandidateReportPanel', () => {
       renderPanel([], { faceEnrolment: null });
       expect(screen.queryByText(/face verification/i)).not.toBeInTheDocument();
     });
+
+    it('renders no comparison when the feature is on but there were no mismatches', () => {
+      renderPanel([], {
+        faceEnrolment: { status: 'enrolled', referenceImageUrl: 'https://blob/face.jpg?sig=x', capturedAt: '2026-08-11T09:00:00.000Z' },
+        faceMismatches: [],
+      });
+      expect(screen.queryByText(/flagged snapshot/i)).not.toBeInTheDocument();
+    });
+
+    it('renders the reference photo and the flagged snapshot side by side, with the score visible', () => {
+      renderPanel([], {
+        faceEnrolment: { status: 'enrolled', referenceImageUrl: 'https://blob/face.jpg?sig=ref', capturedAt: '2026-08-11T09:00:00.000Z' },
+        faceMismatches: [
+          { occurredAt: '2026-08-12T09:00:00.000Z', score: 0.214, snapshotUrl: 'https://blob/snap.jpg?sig=snap' },
+        ],
+      });
+
+      const referencePhotos = screen.getAllByAltText('Reference photo');
+      expect(referencePhotos.some((img) => img.getAttribute('src') === 'https://blob/face.jpg?sig=ref')).toBe(true);
+      expect(screen.getByAltText('Flagged snapshot')).toHaveAttribute('src', 'https://blob/snap.jpg?sig=snap');
+      expect(screen.getByText('Similarity score: 0.21')).toBeInTheDocument();
+    });
+
+    it('shows a "no image" placeholder instead of a broken image when the snapshot blob is missing', () => {
+      renderPanel([], {
+        faceEnrolment: { status: 'enrolled', referenceImageUrl: 'https://blob/face.jpg?sig=ref', capturedAt: '2026-08-11T09:00:00.000Z' },
+        faceMismatches: [{ occurredAt: '2026-08-12T09:00:00.000Z', score: null, snapshotUrl: null }],
+      });
+
+      expect(screen.getByText(/no image/i)).toBeInTheDocument();
+      expect(screen.queryByAltText('Flagged snapshot')).not.toBeInTheDocument();
+    });
   });
 });

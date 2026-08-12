@@ -602,6 +602,15 @@ export interface CandidateFaceEnrolment {
   capturedAt: string | null;
 }
 
+// One confirmed face_mismatch ProctoringEvent -- score alongside the (signed) snapshot, meant
+// to be rendered next to CandidateFaceEnrolment.referenceImageUrl so a recruiter can compare
+// the two faces the system thought were different. See reports.service.ts.
+export interface FaceMismatchEntry {
+  occurredAt: string;
+  score: number | null;
+  snapshotUrl: string | null;
+}
+
 export interface CandidateDetail {
   candidateId: string;
   candidateName: string;
@@ -617,6 +626,7 @@ export interface CandidateDetail {
   webcamTimeline: WebcamTimelineEntry[];
   tabActivitySummary: TabActivityEventTypeSummary[];
   faceEnrolment: CandidateFaceEnrolment | null;
+  faceMismatches: FaceMismatchEntry[];
 }
 
 export interface CandidateComparisonRow {

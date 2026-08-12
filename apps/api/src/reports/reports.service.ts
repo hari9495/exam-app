@@ -115,6 +115,17 @@ export interface CandidateFaceEnrolment {
   capturedAt: string | null;
 }
 
+// One confirmed face_mismatch ProctoringEvent, evidence-shaped for a human reviewer -- score
+// alongside the (signed) snapshot so it can be rendered next to the reference photo. No
+// referenceImagePath here: the reference photo is already carried on faceEnrolment, and
+// repeating a second signed URL for the same image would just be two SAS tokens to keep in
+// sync instead of one.
+export interface FaceMismatchEntry {
+  occurredAt: string;
+  score: number | null;
+  snapshotUrl: string | null;
+}
+
 export interface CandidateDetail {
   candidateId: string;
   candidateName: string;
@@ -130,6 +141,7 @@ export interface CandidateDetail {
   webcamTimeline: WebcamTimelineEntry[];
   tabActivitySummary: TabActivityEventTypeSummary[];
   faceEnrolment: CandidateFaceEnrolment | null;
+  faceMismatches: FaceMismatchEntry[];
 }
 
 export interface CandidateComparisonRow {
@@ -350,7 +362,7 @@ export class ReportsService {
     };
 
     if (!row.attemptId) {
-      return { ...base, sections: [], webcamTimeline: [], tabActivitySummary: [], faceEnrolment: null };
+      return { ...base, sections: [], webcamTimeline: [], tabActivitySummary: [], faceEnrolment: null, faceMismatches: [] };
     }
 
     return this.tenantPrisma.forTenant(context, async (tx) => {
@@ -359,7 +371,7 @@ export class ReportsService {
         select: { sectionSnapshotJson: true, answers: true, faceEnrolment: true },
       });
       if (!attempt) {
-        return { ...base, sections: [], webcamTimeline: [], tabActivitySummary: [], faceEnrolment: null };
+        return { ...base, sections: [], webcamTimeline: [], tabActivitySummary: [], faceEnrolment: null, faceMismatches: [] };
       }
 
       const webcamEvents = await tx.proctoringEvent.findMany({
@@ -502,7 +514,38 @@ export class ReportsService {
           }
         : null;
 
-      return { ...base, sections, webcamTimeline, tabActivitySummary: tabActivity.summary, faceEnrolment };
+      const faceMismatchEvents = await tx.proctoringEvent.findMany({
+        where: { attemptId: row.attemptId as string, eventType: 'face_mismatch' },
+        orderBy: { occurredAt: 'asc' },
+      });
+      const faceMismatches: FaceMismatchEntry[] = await Promise.all(
+        faceMismatchEvents.map(async (e) => {
+          // metadataJson is stored text and may be malformed or from an older shape -- a parse
+          // failure degrades to "no score/snapshot for this row", same as the webcam timeline above,
+          // rather than breaking the whole report over one bad event.
+          let parsed: unknown = {};
+          if (e.metadataJson) {
+            try {
+              parsed = JSON.parse(e.metadataJson);
+            } catch {
+              parsed = {};
+            }
+          }
+          const meta = (parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}) as {
+            score?: unknown;
+            snapshotPath?: unknown;
+          };
+          const score = typeof meta.score === 'number' ? meta.score : null;
+          // The container is private: sign on read, every time -- never persist the signed value.
+          const snapshotUrl =
+            typeof meta.snapshotPath === 'string' && meta.snapshotPath
+              ? ((await this.blobStorage.signIfOurs(meta.snapshotPath)) as string | null)
+              : null;
+          return { occurredAt: e.occurredAt.toISOString(), score, snapshotUrl };
+        }),
+      );
+
+      return { ...base, sections, webcamTimeline, tabActivitySummary: tabActivity.summary, faceEnrolment, faceMismatches };
     });
   }
 
