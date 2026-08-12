@@ -161,10 +161,16 @@ export function useUploadQuestionImage() {
   });
 }
 
+// Narrower than the app-wide QuestionType on purpose: the API's @IsIn allows only these three.
+// Generating `code` questions is a later stage (the model would also have to produce starter code
+// and pick a runtime), so offering it in the UI would fail validation with a 400 the recruiter
+// cannot act on. Typing it out here means that mistake is a compile error, not a runtime one.
+export type GeneratableQuestionType = Extract<QuestionType, 'single_mcq' | 'multi_mcq' | 'true_false'>;
+
 export interface GenerateQuestionsPayload {
   topic: string;
   difficulty: Difficulty;
-  questionTypes: QuestionType[];
+  questionTypes: GeneratableQuestionType[];
   count: number;
   marks: number;
   negativeMarks: number;
