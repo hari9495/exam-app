@@ -12,7 +12,7 @@ import {
 } from '../lib/hooks/usePanelReports';
 import { useSystemEvents } from '../lib/hooks/useSystemEvents';
 import { plainEnglish } from '../lib/system-event-message';
-import type { WebcamTimelineEntry } from '../lib/types';
+import type { WebcamTimelineEntry, FaceMismatchEntry } from '../lib/types';
 import { Badge, Button, Card, Modal, StatusBadge, IntegrityBadge, useToast, type StatusTone } from './ui';
 import { AuditHistoryLink } from './AuditHistoryLink';
 import { TabActivitySummaryCard, TabActivityBanner, hasTabActivityContent } from './TabActivity';
@@ -61,6 +61,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
   const { toast } = useToast();
   const [selectedSnapshot, setSelectedSnapshot] = useState<WebcamTimelineEntry | null>(null);
   const [selectedScreenshot, setSelectedScreenshot] = useState<string | null>(null);
+  const [selectedFaceImage, setSelectedFaceImage] = useState<{ src: string; title: string } | null>(null);
 
   const handleRegenerate = () => {
     if (!attemptId) return;
@@ -74,6 +75,10 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
   }
 
   const integrity = candidate.integrityAnalysis;
+  // Absent (not empty) on an attempt from before this feature existed -- default so that report
+  // renders exactly as it did before, no error and no empty section.
+  const faceMismatches: FaceMismatchEntry[] = candidate.faceMismatches ?? [];
+  const referenceImageUrl = candidate.faceEnrolment?.referenceImageUrl ?? null;
   const questionTextById = new Map(
     candidate.sections.flatMap((section) => section.questions.map((question) => [question.questionId, question.questionText] as const)),
   );
@@ -163,10 +168,10 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
         <div className="mb-6">
           <h2 className="mb-2 text-lg font-medium">Face Verification</h2>
           <Card>
-            {candidate.faceEnrolment.referenceImageUrl ? (
+            {referenceImageUrl ? (
               <div className="flex items-center gap-3">
                 <img
-                  src={candidate.faceEnrolment.referenceImageUrl}
+                  src={referenceImageUrl}
                   alt="Reference photo"
                   className="h-20 w-20 rounded object-cover"
                 />
@@ -177,8 +182,69 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
                   )}
                 </div>
               </div>
+            ) : faceMismatches.length > 0 ? (
+              // FaceRetentionService nulls referenceImagePath 90 days after the attempt finalises but
+              // leaves the face_mismatch events alone -- this is the only surface those snapshots are
+              // ever visible on, so it must keep showing them even once the reference photo is gone.
+              <p className="text-sm text-gray-500">Reference photo no longer retained (90-day retention period elapsed) — flagged snapshots below remain available.</p>
             ) : (
               <p className="text-sm text-gray-500">Not verified — no reference photo was captured</p>
+            )}
+            {/* Stage 2 is flag-only and the score is uncalibrated (see ExamDetailsForm's note),
+                so this is put in front of a recruiter as evidence to look at, not a verdict --
+                both faces rendered together, at a size a face is actually recognisable at, and
+                click-to-enlarge (same pattern as the webcam timeline below) for when it isn't. */}
+            {faceMismatches.length > 0 && (
+              <div className="mt-4 flex flex-col gap-3 border-t border-gray-100 pt-4">
+                <p className="text-xs font-medium uppercase text-gray-400">Flagged snapshots — compare before acting</p>
+                {faceMismatches.map((mismatch, index) => (
+                  <div key={index} data-testid="mismatch-row" className="flex items-center gap-4">
+                    <div className="text-center">
+                      {referenceImageUrl ? (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedFaceImage({ src: referenceImageUrl, title: 'Reference photo' })}
+                          aria-label="View reference photo full size"
+                        >
+                          {/* Alt text distinguishes this from the header photo above (both would
+                              otherwise say "Reference photo", which is noise for screen readers). */}
+                          <img src={referenceImageUrl} alt="Reference photo (comparison)" className="h-24 w-24 rounded object-cover" />
+                        </button>
+                      ) : (
+                        <div className="flex h-24 w-24 items-center justify-center rounded bg-gray-100 p-1 text-center text-[10px] text-gray-400">
+                          Reference photo no longer retained
+                        </div>
+                      )}
+                      <p className="mt-1 text-[10px] text-gray-400">Reference</p>
+                    </div>
+                    <div className="text-center">
+                      {mismatch.snapshotUrl ? (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedFaceImage({ src: mismatch.snapshotUrl as string, title: 'Flagged snapshot' })}
+                          aria-label="View flagged snapshot full size"
+                        >
+                          <img src={mismatch.snapshotUrl} alt="Flagged snapshot" className="h-24 w-24 rounded object-cover" />
+                        </button>
+                      ) : (
+                        <div className="flex h-24 w-24 items-center justify-center rounded bg-gray-100 text-xs text-gray-400">
+                          No image
+                        </div>
+                      )}
+                      <p className="mt-1 text-[10px] text-gray-400">Flagged snapshot</p>
+                    </div>
+                    <div className="text-sm text-gray-700">
+                      <p>{formatSnapshotTime(mismatch.occurredAt)}</p>
+                      {mismatch.score !== null && (
+                        <>
+                          <p className="text-xs text-gray-500">Similarity score: {mismatch.score.toFixed(2)}</p>
+                          <p className="text-[10px] text-gray-400">0–1 scale, higher means more similar. Thresholds are not yet calibrated.</p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </Card>
         </div>
@@ -296,6 +362,10 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal open={selectedFaceImage !== null} title={selectedFaceImage?.title ?? ''} onClose={() => setSelectedFaceImage(null)}>
+        {selectedFaceImage && <img src={selectedFaceImage.src} alt={selectedFaceImage.title} className="w-full rounded" />}
       </Modal>
 
       {attemptId && (

@@ -7,6 +7,7 @@ import {
   BlobStorageService,
   AiApiKeyResolverService,
   SystemEventsService,
+  OrgSecretsCryptoService,
   POOL_EXHAUSTED_RESPONSE,
   buildSebConfig,
   requestConfigKeyHash,
@@ -18,6 +19,8 @@ import { getProctoringEventSeverity } from './proctoring-severity';
 import { PistonClient } from '../code-execution/piston-client';
 import { PistonRuntimesService } from '../code-execution/piston-runtimes.service';
 import { RunLimiter } from '../code-execution/run-limiter';
+import { FaceEmbedderService } from '../face/face-embedder.service';
+import { FaceVerificationService } from '../face/face-verification.service';
 
 // The cap-count query folds case AND width (see sanitize-metadata.ts / scc-task-5-report.md),
 // so a plain `.toContain('"screenshot":')` assertion is case- and width-sensitive in JS and
@@ -25,6 +28,25 @@ import { RunLimiter } from '../code-execution/run-limiter';
 // production does before asserting, so a passing test means what it looks like it means.
 function foldForCapCheck(text: string): string {
   return text.normalize('NFKC').toLowerCase();
+}
+
+// Finding 2 (task-8): tenantPrisma.forTenant's default fallback implementation (see beforeEach)
+// invokes its callback with one of these instead of returning undefined without calling it.
+// Every property resolves to a fresh stub table with the handful of Prisma methods this file's
+// code actually calls on a tx, each defaulting to an empty/absent result -- generic and inert on
+// purpose, so a test that doesn't care about a particular forTenant call still gets *something*
+// callable back rather than a thrown "Cannot read properties of undefined".
+function defaultTx(): unknown {
+  const stubTable = () => ({
+    findUnique: jest.fn().mockResolvedValue(null),
+    findFirst: jest.fn().mockResolvedValue(null),
+    findMany: jest.fn().mockResolvedValue([]),
+    findUniqueOrThrow: jest.fn().mockResolvedValue({}),
+    create: jest.fn().mockResolvedValue({}),
+    update: jest.fn().mockResolvedValue({}),
+    upsert: jest.fn().mockResolvedValue({}),
+  });
+  return new Proxy({}, { get: () => stubTable() });
 }
 
 describe('AttemptService', () => {
@@ -48,6 +70,9 @@ describe('AttemptService', () => {
   let aiApiKeyResolver: { resolve: jest.Mock };
   let generateStructured: jest.Mock;
   let systemEvents: { record: jest.Mock };
+  let faceEmbedder: { embed: jest.Mock; isAvailable: jest.Mock };
+  let crypto: { encrypt: jest.Mock; decrypt: jest.Mock };
+  let faceVerification: { verifySnapshot: jest.Mock; forgetAttempt: jest.Mock };
   const session = { invitationId: 'inv-1' };
   const exam = {
     id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false,
@@ -61,7 +86,15 @@ describe('AttemptService', () => {
   const invitationRecord = { id: 'inv-1', candidateId: 'cand-1', examId: 'exam-1', exam, extraTimePercent: 0, candidate: { name: 'Ada Lovelace' } };
 
   beforeEach(async () => {
-    tenantPrisma = { forTenant: jest.fn(), withoutTenantScope: jest.fn() };
+    // Finding 2 (task-8): a bare `jest.fn()` never invokes its callback, so a stage-3 developer
+    // who writes the natural `forTenant(ctx, tx => registerWebcamViolation(tx, …))` gets `tx`
+    // as `undefined` and the callback never runs at all -- the whole suite stays green even
+    // though real enforcement would follow. Give it a default that actually calls back with a
+    // generic stub transaction, so wrapping a mock method in forTenant is exercised the same way
+    // production would exercise it. Individual tests still layer `.mockImplementationOnce(...)`
+    // on top for the specific tx/return value their assertions need; this default only fires for
+    // calls a test doesn't explicitly stub.
+    tenantPrisma = { forTenant: jest.fn((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(defaultTx())), withoutTenantScope: jest.fn() };
     settlement = {
       settleIfExpired: jest.fn(),
       finalize: jest.fn(),
@@ -77,13 +110,23 @@ describe('AttemptService', () => {
     leaderboardService = { computeRecruiterView: jest.fn(), computeCandidateView: jest.fn() };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
     blobStorage = {
-      upload: jest.fn(),
+      // Same `https://blob.test/${path}` shape as uploadDataUri below -- webcamSnapshot's
+      // pre-decoded upload path (finding 7) calls this directly instead of uploadDataUri when the
+      // snapshot's content type is supported, so tests asserting on the returned URL work the same
+      // regardless of which of the two the code under test happens to route through.
+      upload: jest.fn().mockImplementation((path) => Promise.resolve(`https://blob.test/${path}`)),
       uploadDataUri: jest.fn().mockImplementation((path, dataUri) => Promise.resolve(`https://blob.test/${path}`)),
       signIfOurs: jest.fn(async (value: unknown) => value),
     };
     generateStructured = jest.fn();
     aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue({ generateStructured, ping: jest.fn() }) };
     systemEvents = { record: jest.fn().mockResolvedValue(undefined) };
+    faceEmbedder = { embed: jest.fn().mockResolvedValue(null), isAvailable: jest.fn().mockReturnValue(false) };
+    crypto = { encrypt: jest.fn((plain: string) => `enc(${plain})`), decrypt: jest.fn() };
+    faceVerification = {
+      verifySnapshot: jest.fn().mockResolvedValue({ verdict: 'skipped', score: null, confirmed: false }),
+      forgetAttempt: jest.fn(),
+    };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -99,6 +142,9 @@ describe('AttemptService', () => {
         { provide: BlobStorageService, useValue: blobStorage },
         { provide: AiApiKeyResolverService, useValue: aiApiKeyResolver },
         { provide: SystemEventsService, useValue: systemEvents },
+        { provide: FaceEmbedderService, useValue: faceEmbedder },
+        { provide: OrgSecretsCryptoService, useValue: crypto },
+        { provide: FaceVerificationService, useValue: faceVerification },
       ],
     }).compile();
     service = moduleRef.get(AttemptService);
@@ -2706,7 +2752,15 @@ describe('AttemptService', () => {
       const result = await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,abc' });
 
       expect(result).toEqual({ ok: true });
-      expect(blobStorage.uploadDataUri).toHaveBeenCalledWith(expect.stringContaining('webcam-snapshots/attempt-1-'), 'data:image/jpeg;base64,abc');
+      // Finding 7: a supported content type (image/jpeg here) routes through the pre-decoded
+      // blobStorage.upload() path instead of uploadDataUri, reusing the one decode done up front
+      // in webcamSnapshot rather than decoding the data URI a second time.
+      expect(blobStorage.upload).toHaveBeenCalledWith(
+        expect.stringContaining('webcam-snapshots/attempt-1-'),
+        Buffer.from('abc', 'base64'),
+        'image/jpeg',
+      );
+      expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
       const created = client.proctoringEvent.create.mock.calls[0][0];
       expect(created.data.attemptId).toBe('attempt-1');
       expect(created.data.eventType).toBe('webcam_snapshot');
@@ -2718,13 +2772,85 @@ describe('AttemptService', () => {
       // on this path. This is the assertion that would fail if someone reverted the fix.
       expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(1);
       expect(tenantPrisma.withoutTenantScope).toHaveBeenCalledTimes(2);
+      // faceVerificationEnabled is false on the shared `exam` fixture -- verification must not
+      // run (let alone cost a model call) for every exam that hasn't opted in.
+      expect(faceVerification.verifySnapshot).not.toHaveBeenCalled();
+    });
+
+    // Item 3 (task-8): the stored blob path must reach FaceVerificationService, or the
+    // recruiter's side-by-side evidence view (a later task) shows no evidence for a mismatch.
+    it('calls faceVerification.verifySnapshot with the decoded frame and the stored snapshot path when face verification is enabled', async () => {
+      const client = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
+      mockBootstrapThenPlainClient(client, { ...invitationRecord, exam: { ...exam, faceVerificationEnabled: true } });
+
+      await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,YWJj' });
+      // Fire-and-forget relative to the response (see webcamSnapshot's own comment) -- let its
+      // microtasks settle before asserting on the call it queued.
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(faceVerification.verifySnapshot).toHaveBeenCalledWith(
+        'attempt-1',
+        'org-1',
+        Buffer.from('YWJj', 'base64'),
+        expect.stringMatching(/^https:\/\/blob\.test\/webcam-snapshots\/attempt-1-/),
+      );
+    });
+
+    // Stage-2 gate (task-8 brief): flag is the only action allowed to affect the candidate right
+    // now. This is the test the brief explicitly calls for: a confirmed mismatch on an exam set
+    // to 'block' must not block (or pause) anyone yet -- enforcement beyond flag is deferred to
+    // stage 3. Mutating checkFaceMismatch to route 'pause'/'block' through registerWebcamViolation
+    // must make this fail.
+    it('does not pause or block the candidate on a confirmed mismatch even when faceMismatchAction is "block"', async () => {
+      const client = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
+      mockBootstrapThenPlainClient(client, { ...invitationRecord, exam: { ...exam, faceVerificationEnabled: true, faceMismatchAction: 'block' } });
+      faceVerification.verifySnapshot.mockResolvedValue({ verdict: 'mismatch', score: 0.1, confirmed: true });
+
+      const result = await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,YWJj' });
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(result).toEqual({ ok: true });
+      expect(settlement.registerWebcamViolation).not.toHaveBeenCalled();
+    });
+
+    // Finding 1 (task-8, CRITICAL): checkFaceMismatch is fire-and-forget (`void ...`), relative
+    // to this response. Node 24 here defaults to --unhandled-rejections=throw and main.ts installs
+    // no unhandledRejection handler, so a rejecting verifySnapshot with no .catch on the fire-and-
+    // forget call used to escape application code entirely and take the whole process -- every
+    // concurrent candidate's exam -- down with it. This listens for the real Node event, not just
+    // a mock, so it would have caught the original bug and catches a regression to it.
+    it('leaves the snapshot request successful and produces no unhandled rejection when verifySnapshot rejects', async () => {
+      const client = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
+      mockBootstrapThenPlainClient(client, { ...invitationRecord, exam: { ...exam, faceVerificationEnabled: true } });
+      faceVerification.verifySnapshot.mockRejectedValue(new Error('embedding service unreachable'));
+      const loggerWarnSpy = jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+
+      const unhandledRejections: unknown[] = [];
+      const onUnhandledRejection = (reason: unknown) => unhandledRejections.push(reason);
+      process.on('unhandledRejection', onUnhandledRejection);
+      let result: { ok: true };
+      try {
+        result = await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,YWJj' });
+        // Give the fire-and-forget checkFaceMismatch's rejection -- and its .catch -- a couple of
+        // microtask turns to actually run; an unhandled rejection would surface during these.
+        await new Promise((resolve) => setImmediate(resolve));
+        await new Promise((resolve) => setImmediate(resolve));
+      } finally {
+        process.off('unhandledRejection', onUnhandledRejection);
+      }
+
+      expect(result).toEqual({ ok: true });
+      expect(unhandledRejections).toEqual([]);
+      expect(loggerWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Face mismatch check failed for attempt attempt-1'));
     });
 
     it('still records the (informational) event with an empty snapshot when the upload throws, rather than 500ing', async () => {
       const client = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
       mockBootstrapThenPlainClient(client);
       const loggerErrorSpy = jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
-      blobStorage.uploadDataUri.mockRejectedValueOnce(new Error('blob storage unavailable'));
+      // image/jpeg is a supported content type, so this snapshot routes through blobStorage.upload
+      // (finding 7's pre-decoded path), not uploadDataUri -- see the test above.
+      blobStorage.upload.mockRejectedValueOnce(new Error('blob storage unavailable'));
 
       const result = await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,abc' });
 
@@ -2762,6 +2888,68 @@ describe('AttemptService', () => {
 
       await expect(service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,abc' })).rejects.toBe(poolExhausted);
       expect(blobStorage.uploadDataUri).not.toHaveBeenCalled();
+    });
+
+    // Finding 5 (task-8) / ADO #6810: verifySnapshot's embed() call is exactly the slow I/O that
+    // must never run inside a held pooled connection. Today checkFaceMismatch is fire-and-forget
+    // and never wrapped in forTenant at all, so this always passes -- but before finding 2's fix,
+    // a mistaken `forTenant(ctx, () => checkFaceMismatch(...))` rewrite was only incidentally
+    // caught by forTenant's bare-jest.fn() mock never invoking its callback. Once forTenant gets a
+    // real default (finding 2), that incidental detection disappears -- this is the real
+    // re-entrancy check that replaces it, following the idiom at this file's own "runs embedding
+    // strictly outside every forTenant transaction" test above and face-verification.service.spec.ts's
+    // "runs decrypt and embed strictly outside every forTenant transaction": a flag that is true
+    // only while a forTenant callback is actually executing, so it can't be fooled by call order.
+    it('runs the face-mismatch check strictly outside every forTenant transaction (ADO #6810)', async () => {
+      const client = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
+      let insideTx = false;
+      tenantPrisma.forTenant.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) => {
+        insideTx = true;
+        try {
+          return await fn({
+            invitation: {
+              findUnique: jest.fn().mockResolvedValue({ ...invitationRecord, exam: { ...exam, faceVerificationEnabled: true } }),
+            },
+          });
+        } finally {
+          insideTx = false;
+        }
+      });
+      tenantPrisma.withoutTenantScope.mockImplementation((fn: (client: unknown) => unknown) => fn(client));
+      // CAPTURE the flag here, ASSERT in the test body. An `expect()` inside this mock would be
+      // swallowed: the call is fire-and-forget and its .catch (required, see the call site) turns
+      // any throw into a logger.warn, so the test would stay green under the exact mutation it
+      // exists to catch. Anything reachable from `void this.checkFaceMismatch(...)` has this
+      // property -- never assert inside it.
+      let sawInsideTx: boolean | null = null;
+      faceVerification.verifySnapshot = jest.fn(async () => {
+        sawInsideTx = insideTx;
+        return { verdict: 'skipped', score: null, confirmed: false };
+      });
+
+      await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,YWJj' });
+      // Fire-and-forget relative to the response -- let its microtasks settle before asserting.
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(faceVerification.verifySnapshot).toHaveBeenCalledTimes(1);
+      expect(sawInsideTx).toBe(false);
+    });
+
+    // The fast path added for finding 7 hands the decoded buffer straight to blobStorage.upload,
+    // which enforces NO content-type allowlist. A candidate-supplied data:text/html reaching it
+    // would be hosted from the storage origin, so the allowlist check in front of it is load
+    // bearing -- this pins it to uploadDataUri, which rejects the type as it always has.
+    it('routes a disallowed data-uri content type through uploadDataUri rather than the raw upload fast path', async () => {
+      const client = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
+      tenantPrisma.forTenant.mockImplementationOnce(() => Promise.resolve(invitationRecord));
+      tenantPrisma.withoutTenantScope.mockImplementation((fn: (c: unknown) => unknown) => fn(client));
+      blobStorage.upload = jest.fn();
+      blobStorage.uploadDataUri = jest.fn().mockRejectedValue(new Error('Unsupported data URI content type: text/html'));
+
+      await service.webcamSnapshot(session, { snapshot: 'data:text/html;base64,PGh0bWw+' });
+
+      expect(blobStorage.upload).not.toHaveBeenCalled();
+      expect(blobStorage.uploadDataUri).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -2865,6 +3053,150 @@ describe('AttemptService', () => {
       await service.recordFaceEnrolment(session, { status: 'enrolled', snapshot: 'data:image/jpeg;base64,AAA', consentGiven: true });
 
       expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { attemptId: 'attempt-1' } }));
+    });
+  });
+
+  describe('recordFaceEnrolment — reference embedding', () => {
+    it('stores the embedding ENCRYPTED, never as a bare vector', async () => {
+      const upsert = jest.fn().mockResolvedValue({});
+      faceEmbedder.embed = jest.fn().mockResolvedValue(Float32Array.from([0.1, 0.2, 0.3]));
+      crypto.encrypt = jest.fn((plain: string) => `enc(${plain})`);
+      blobStorage.uploadDataUri = jest.fn().mockResolvedValue('https://acct.blob/face/a1.jpg');
+      mockBootstrapThenTwoScopedCalls({ attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, faceEnrolment: { upsert } });
+
+      await service.recordFaceEnrolment(session, { status: 'enrolled', snapshot: 'data:image/jpeg;base64,AAA', consentGiven: true });
+
+      expect(crypto.encrypt).toHaveBeenCalled();
+      expect(upsert.mock.calls[0][0].create.embedding).toMatch(/^enc\(/);
+    });
+
+    // The photo is the evidence a human reviews. If embedding fails, we must still keep it --
+    // losing the reference over a model problem would make the attempt unverifiable forever.
+    it('still enrols with a null embedding when the model is unavailable', async () => {
+      const upsert = jest.fn().mockResolvedValue({});
+      faceEmbedder.embed = jest.fn().mockResolvedValue(null);
+      blobStorage.uploadDataUri = jest.fn().mockResolvedValue('https://acct.blob/face/a1.jpg');
+      mockBootstrapThenTwoScopedCalls({ attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, faceEnrolment: { upsert } });
+
+      await service.recordFaceEnrolment(session, { status: 'enrolled', snapshot: 'data:image/jpeg;base64,AAA', consentGiven: true });
+
+      expect(upsert.mock.calls[0][0].create.embedding).toBeNull();
+      expect(upsert.mock.calls[0][0].create.status).toBe('enrolled');
+    });
+
+    it('does not attempt to embed a declined enrolment', async () => {
+      const upsert = jest.fn().mockResolvedValue({});
+      faceEmbedder.embed = jest.fn();
+      mockBootstrapThenTwoScopedCalls({ attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, faceEnrolment: { upsert } });
+
+      await service.recordFaceEnrolment(session, { status: 'not_verified', consentGiven: false });
+
+      expect(faceEmbedder.embed).not.toHaveBeenCalled();
+    });
+
+    // Finding 1 (GDPR retention gap): a candidate withdrawing consent is the clearest possible
+    // signal to stop holding their biometric template -- this must clear a previously-stored
+    // embedding on the SAME request, not leave it for the 90-day retention sweep to eventually
+    // catch (see face-retention.service.ts). Without this, the decline payload
+    // (FaceEnrolmentStep.tsx's onDecline) nulls referenceImagePath but the update spread
+    // `...(embedding ? { embedding } : {})` would omit the key entirely, leaving any
+    // earlier-enrolled embedding sitting in the row untouched.
+    it('clears a previously-stored embedding on the same request the candidate declines consent', async () => {
+      const upsert = jest.fn().mockResolvedValue({});
+      mockBootstrapThenTwoScopedCalls({ attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, faceEnrolment: { upsert } });
+
+      await service.recordFaceEnrolment(session, { status: 'not_verified', consentGiven: false });
+
+      expect(upsert.mock.calls[0][0].update).toHaveProperty('embedding', null);
+    });
+
+    // Finding 1: crypto.encrypt throws for real (missing/invalid ORG_SECRETS_ENCRYPTION_KEY),
+    // unlike embed() which never throws. Nothing caught that before -- recordFaceEnrolment would
+    // reject after the blob upload had already run, leaving a photo in storage with no row
+    // behind it and blocking the candidate from enrolling at all. It must degrade exactly like a
+    // failed embed(): keep the reference image, null out the embedding, resolve normally.
+    it('still enrols with a null embedding, and still upserts the row, when crypto.encrypt throws', async () => {
+      const upsert = jest.fn().mockResolvedValue({});
+      faceEmbedder.embed = jest.fn().mockResolvedValue(Float32Array.from([0.1, 0.2, 0.3]));
+      crypto.encrypt = jest.fn(() => {
+        throw new Error('ORG_SECRETS_ENCRYPTION_KEY is not set');
+      });
+      blobStorage.uploadDataUri = jest.fn().mockResolvedValue('https://acct.blob/face/a1.jpg');
+      mockBootstrapThenTwoScopedCalls({ attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, faceEnrolment: { upsert } });
+
+      const result = await service.recordFaceEnrolment(session, {
+        status: 'enrolled', snapshot: 'data:image/jpeg;base64,AAA', consentGiven: true,
+      });
+
+      expect(result).toEqual({ status: 'enrolled' });
+      expect(upsert).toHaveBeenCalled();
+      expect(upsert.mock.calls[0][0].create.embedding).toBeNull();
+      expect(upsert.mock.calls[0][0].create.referenceImagePath).toBe('https://acct.blob/face/a1.jpg');
+    });
+
+    // Finding 3: a retry POST while the model is briefly unavailable produces no new embedding.
+    // The update payload must leave the `embedding` column untouched rather than carrying an
+    // explicit null that overwrites a previously-stored good vector.
+    it('does not clear a previously-stored embedding when a retry produces no new one', async () => {
+      const upsert = jest.fn().mockResolvedValue({});
+      faceEmbedder.embed = jest.fn().mockResolvedValue(null);
+      blobStorage.uploadDataUri = jest.fn().mockResolvedValue('https://acct.blob/face/a1.jpg');
+      mockBootstrapThenTwoScopedCalls({ attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, faceEnrolment: { upsert } });
+
+      await service.recordFaceEnrolment(session, {
+        status: 'enrolled', snapshot: 'data:image/jpeg;base64,AAA', consentGiven: true,
+      });
+
+      const updatePayload = upsert.mock.calls[0][0].update;
+      expect(updatePayload).not.toHaveProperty('embedding');
+      // create: is unaffected -- a brand-new row still records the (null) outcome explicitly.
+      expect(upsert.mock.calls[0][0].create).toHaveProperty('embedding', null);
+    });
+
+    // Finding 2 / ADO #6810 regression guard: embed()+encrypt() must run strictly outside every
+    // forTenant transaction, never inside the pooled connection any of them hold -- ONNX
+    // inference under a held connection is exactly the pool-starvation shape #6810 fixed.
+    //
+    // A call-order assertion (comparing jest.fn().mock.invocationCallOrder for forTenant against
+    // embed()) looks right but is vacuous: invocationCallOrder records when forTenant is
+    // *called*, before its callback body runs, so work done inside the callback and work done
+    // after forTenant resolves both satisfy "embed ran before forTenant[2] was called". This
+    // particular assertion happened to still fail under the reviewer's mutation (it compares
+    // against a *later* forTenant call, [2], so nesting embed inside an *earlier* one still
+    // trips it) -- see task-6-report.md -- but that's incidental to this ordering, not a property
+    // of the idiom, and the re-entrancy check below is strictly stronger: it directly measures
+    // "is a forTenant callback executing right now", so it can't be fooled by call order at all.
+    it('runs embedding strictly outside every forTenant transaction (ADO #6810)', async () => {
+      const upsert = jest.fn().mockResolvedValue({});
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, faceEnrolment: { upsert } };
+      let insideTx = false;
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve(invitationRecord))
+        .mockImplementation(async (_ctx: unknown, fn: (t: unknown) => unknown) => {
+          insideTx = true;
+          try {
+            return await fn(tx);
+          } finally {
+            insideTx = false;
+          }
+        });
+      faceEmbedder.embed = jest.fn(async () => {
+        expect(insideTx).toBe(false);
+        return Float32Array.from([0.1, 0.2, 0.3]);
+      });
+      crypto.encrypt = jest.fn((v: string) => {
+        expect(insideTx).toBe(false);
+        return `enc(${v})`;
+      });
+      blobStorage.uploadDataUri = jest.fn().mockResolvedValue('https://acct.blob/face/a1.jpg');
+
+      await service.recordFaceEnrolment(session, {
+        status: 'enrolled', snapshot: 'data:image/jpeg;base64,AAA', consentGiven: true,
+      });
+
+      expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(3);
+      expect(faceEmbedder.embed).toHaveBeenCalledTimes(1);
+      expect(crypto.encrypt).toHaveBeenCalledTimes(1);
     });
   });
 

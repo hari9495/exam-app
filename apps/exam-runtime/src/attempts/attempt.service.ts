@@ -10,7 +10,13 @@ import {
   requestConfigKeyHash,
   SystemEventsService,
   selectCountedAnswers,
+  OrgSecretsCryptoService,
+  encodeEmbedding,
+  extractBase64FromDataUri,
+  ALLOWED_DATA_URI_CONTENT_TYPES,
 } from '@exam-platform/shared';
+import { FaceEmbedderService } from '../face/face-embedder.service';
+import { FaceVerificationService } from '../face/face-verification.service';
 import { AttemptSettlementService, PauseReason, SettlementExam } from '../grading/attempt-settlement.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { LeaderboardService, AUTO_GRADABLE_QUESTION_TYPES, CandidateLeaderboardResponse } from '../leaderboard/leaderboard.service';
@@ -245,6 +251,9 @@ export class AttemptService {
     private readonly blobStorage: BlobStorageService,
     private readonly aiApiKeyResolver: AiApiKeyResolverService,
     private readonly systemEvents: SystemEventsService,
+    private readonly faceEmbedder: FaceEmbedderService,
+    private readonly crypto: OrgSecretsCryptoService,
+    private readonly faceVerification: FaceVerificationService,
   ) {}
 
   // ponytail: in-memory per-attempt floor between AI screen analyses -- single pm2 process, so a
@@ -805,12 +814,22 @@ export class AttemptService {
   // slow upload logs and resolves to '' rather than throwing: the violation record is what
   // matters, losing the image is acceptable (registerWebcamViolation stores whatever string it's
   // given, including an empty one).
-  private async uploadWebcamSnapshot(attemptId: string, snapshot: string): Promise<string> {
+  // `decoded`, when given, is bytes already extracted by the caller (webcamSnapshot, to avoid
+  // decoding the same data URI a second time for its face-mismatch check -- see finding 7) --
+  // uploads them directly via the raw-buffer path instead of re-decoding through uploadDataUri.
+  // webcamViolation has no such buffer lying around, so it omits `decoded` and keeps going
+  // through uploadDataUri exactly as before.
+  private async uploadWebcamSnapshot(
+    attemptId: string,
+    snapshot: string,
+    decoded?: { contentType: string; buffer: Buffer },
+  ): Promise<string> {
     try {
-      return await withTimeout(
-        this.blobStorage.uploadDataUri(`webcam-snapshots/${attemptId}-${Date.now()}.jpg`, snapshot),
-        SCREENSHOT_UPLOAD_TIMEOUT_MS,
-      );
+      const blobPath = `webcam-snapshots/${attemptId}-${Date.now()}.jpg`;
+      const upload = decoded
+        ? this.blobStorage.upload(blobPath, decoded.buffer, decoded.contentType)
+        : this.blobStorage.uploadDataUri(blobPath, snapshot);
+      return await withTimeout(upload, SCREENSHOT_UPLOAD_TIMEOUT_MS);
     } catch (error) {
       this.logger.error('Failed to upload webcam snapshot', error as Error);
       return '';
@@ -1070,7 +1089,7 @@ export class AttemptService {
   }
 
   async webcamSnapshot(session: CandidateSession, dto: WebcamSnapshotDto): Promise<{ ok: true }> {
-    const { invitation } = await this.resolveContext(session.invitationId);
+    const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
 
     // Unlike webcamViolation/reportProctoringEvent, this touches only Attempt (a single read) and
     // ProctoringEvent (a single create) -- neither RLS-protected -- and needs no multi-statement
@@ -1087,14 +1106,68 @@ export class AttemptService {
       return { ok: true };
     }
 
-    const snapshotUrl = await this.uploadWebcamSnapshot(attemptId, dto.snapshot);
+    // Decoded once, here, and reused below for both the upload and the face-mismatch check --
+    // this endpoint fires every 120-180s per candidate carrying multi-MB images, so decoding the
+    // same bytes twice (once per consumer) was measurable, wasted CPU (task-8 finding 7).
+    // `snapshotUpload` is only populated when the content type is one uploadDataUri would also
+    // have accepted -- an unsupported/malformed data URI falls back to the string path below so
+    // uploadWebcamSnapshot's existing validation and error handling still apply unchanged.
+    const parsedSnapshot = extractBase64FromDataUri(dto.snapshot);
+    const snapshotBuffer = parsedSnapshot ? Buffer.from(parsedSnapshot.base64, 'base64') : null;
+    const snapshotUpload =
+      parsedSnapshot && ALLOWED_DATA_URI_CONTENT_TYPES.has(parsedSnapshot.contentType)
+        ? { contentType: parsedSnapshot.contentType, buffer: snapshotBuffer as Buffer }
+        : undefined;
+
+    const snapshotUrl = await this.uploadWebcamSnapshot(attemptId, dto.snapshot, snapshotUpload);
 
     await this.tenantPrisma.withoutTenantScope(async (client) => {
       await client.proctoringEvent.create({
         data: { attemptId, eventType: 'webcam_snapshot', severity: 'low', metadataJson: JSON.stringify({ snapshot: snapshotUrl }) },
       });
     });
+
+    // Fire-and-forget, relative to THIS response -- deliberately not awaited. verifySnapshot()'s
+    // embed call is exactly the kind of slow I/O that must never sit in the candidate's hot path
+    // (this endpoint fires every 120-180s for the whole exam; see the comment above). A .catch is
+    // required, not optional: Node 24 defaults to --unhandled-rejections=throw and main.ts installs
+    // no unhandledRejection handler, so an uncaught rejection here kills the whole exam-runtime
+    // process -- every concurrent candidate's exam, not just this one. checkFaceMismatch is an
+    // `async` method, so it can never throw synchronously either -- a bare .catch() on its returned
+    // promise is sufficient (contrast the void-IIFE idiom in internal.controller.ts, needed there
+    // because those callees are not themselves guaranteed to be async).
+    // length > 0, not just truthiness: `data:image/jpeg;base64,` decodes to a zero-length Buffer,
+    // which is truthy. Without the length check an empty payload would cost a pointless enrolment
+    // read and a sharp() decode per snapshot before skipping anyway.
+    if (exam.faceVerificationEnabled && snapshotBuffer && snapshotBuffer.length > 0) {
+      void this.checkFaceMismatch(attemptId, organizationId, snapshotBuffer, snapshotUrl || null, exam.faceMismatchAction).catch(
+        (error) => this.logger.warn(`Face mismatch check failed for attempt ${attemptId}: ${String(error)}`),
+      );
+    }
+
     return { ok: true };
+  }
+
+  // Stage-2 gate (task-8 brief): on a confirmed mismatch, only 'flag' may affect the candidate --
+  // and verifySnapshot() already applied it unconditionally by recording the event and
+  // incrementing Attempt.faceMismatchCount, so there is nothing left to do for it here.
+  // warn/pause/block are accepted and stored (resolveFaceIdFields on the API side,
+  // ExamDetailsForm's recruiter control) so recruiters can select them today, but enforcement
+  // beyond flag is deliberately deferred to stage 3 pending threshold calibration and a fairness
+  // check. Pinned by attempt.service.spec.ts: a confirmed mismatch on an exam set to 'block' must
+  // not pause or block anyone yet. Extend this switch, not the gate itself, once stage 3 lands.
+  private async checkFaceMismatch(
+    attemptId: string,
+    organizationId: string,
+    snapshotBuffer: Buffer,
+    snapshotPath: string | null,
+    faceMismatchAction: string,
+  ): Promise<void> {
+    const outcome = await this.faceVerification.verifySnapshot(attemptId, organizationId, snapshotBuffer, snapshotPath);
+    if (!outcome.confirmed || faceMismatchAction === 'flag') return;
+    this.logger.debug(
+      `Confirmed face mismatch on attempt ${attemptId}: action '${faceMismatchAction}' is stored but not yet enforced (stage 3)`,
+    );
   }
 
   async recordFaceEnrolment(session: CandidateSession, dto: FaceEnrolmentDto): Promise<{ status: string }> {
@@ -1127,7 +1200,29 @@ export class AttemptService {
     // than an honest "Not verified" -- so an enrolment that stored no image is not one.
     const status = dto.status === 'enrolled' && !referenceImagePath ? 'not_verified' : dto.status;
 
-    const row = {
+    // Best-effort, same as the upload above: still outside any transaction, and never allowed to
+    // block enrolment. Neither failure mode here can cost a candidate their exam: embed()
+    // degrades to null (never throws) whenever the model weights are missing, the image can't
+    // be decoded, or anything else goes wrong; encrypt() DOES throw (missing/invalid
+    // ORG_SECRETS_ENCRYPTION_KEY), so it's wrapped the same way -- either failure just leaves
+    // embedding null. The reference image already recorded above is what actually matters for a
+    // candidate to sit their exam.
+    let embedding: string | null = null;
+    if (referenceImagePath && dto.snapshot) {
+      const base64 = extractBase64FromDataUri(dto.snapshot)?.base64;
+      const vector = base64 ? await this.faceEmbedder.embed(Buffer.from(base64, 'base64')) : null;
+      // Biometric data under GDPR -- never persisted as a bare vector, even transiently in this
+      // row object.
+      if (vector) {
+        try {
+          embedding = this.crypto.encrypt(encodeEmbedding(vector));
+        } catch (error) {
+          this.logger.warn(`Face embedding encryption failed: ${String(error)}`);
+        }
+      }
+    }
+
+    const rowBase = {
       status,
       referenceImagePath,
       qualityJson: dto.qualityJson ?? null,
@@ -1137,8 +1232,19 @@ export class AttemptService {
     await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
       tx.faceEnrolment.upsert({
         where: { attemptId: attempt.id },
-        create: { attemptId: attempt.id, ...row },
-        update: row,
+        create: { attemptId: attempt.id, ...rowBase, embedding },
+        // A retry that produces no embedding (model briefly unavailable) must not overwrite a
+        // previously-stored good vector with null -- only touch the column when there's a new
+        // value to write. Note the consequence: the reference image path is deterministic, so a
+        // retry overwrites the photo while keeping the earlier vector. Keeping the first vector
+        // is the safer side to err on -- it is the one enrolled under the original capture, so a
+        // later substituted photo cannot quietly become the thing every snapshot is matched to.
+        //
+        // Declining consent is the one case that must override "only touch the column when
+        // there's a new value": it is the candidate's own signal to stop holding their biometric
+        // template, not a retry glitch, so a previously-stored embedding is cleared immediately
+        // rather than left for the 90-day retention sweep (see face-retention.service.ts).
+        update: { ...rowBase, ...(dto.consentGiven ? (embedding ? { embedding } : {}) : { embedding: null }) },
       }),
     );
     return { status };

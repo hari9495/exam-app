@@ -48,6 +48,14 @@ MediaPipe FaceLandmarker  (exists, 500ms)
 
 They have different jobs, and only one produces a verdict.
 
+> **NOT SHIPPED (2026-08-12).** The browser tier described in this section was built in stage 2,
+> then removed before merge. It was unreachable: nothing ever delivers the reference embedding to
+> the client, and doing so would mean handing a candidate's biometric template to the browser — a
+> question this design assumed away rather than answered. **The server tier below is what ships,
+> and it is the tier that produces every verdict, so no detection capability was lost.** What the
+> browser tier was for — telling a candidate "we can't see your face clearly" *now* — is still
+> unmet, and would need that delivery question settled first.
+
 **The browser tier is advisory.** It computes an embedding locally, compares it to the reference,
 and uses the result solely to tell the candidate something actionable now — "we can't see your face
 clearly". It also sends its score to the server as a hint that a check is worth running. A

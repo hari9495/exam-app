@@ -6,7 +6,17 @@ import { BlobServiceClient, BlockBlobClient, ContainerClient, BlobSASPermissions
 // candidate could POST data:text/html;base64,... and get live HTML hosted at a .jpg path on
 // the storage origin. Every current caller uploads a JPEG; PNG/WebP are allowed too since
 // browsers can produce either from a canvas depending on support.
-const ALLOWED_DATA_URI_CONTENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+export const ALLOWED_DATA_URI_CONTENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+// Shared with any caller that needs the raw bytes (e.g. AttemptService's face-embedding path) so
+// the upload path and its callers cannot drift apart on what counts as a base64 data URI.
+// ai-provider.ts keeps its own, deliberately stricter regex for a different purpose.
+export function extractBase64FromDataUri(dataUri: string): { contentType: string; base64: string } | null {
+  const match = /^data:(.+);base64,(.*)$/.exec(dataUri);
+  if (!match) return null;
+  const [, contentType, base64] = match;
+  return { contentType, base64 };
+}
 
 // Evidence links only need to survive one reviewer's page load, not a whole review session.
 const SAS_READ_TTL_MS = 15 * 60_000;
@@ -51,11 +61,11 @@ export class BlobStorageService {
   }
 
   async uploadDataUri(blobPath: string, dataUri: string): Promise<string> {
-    const match = /^data:(.+);base64,(.*)$/.exec(dataUri);
-    if (!match) {
+    const parsed = extractBase64FromDataUri(dataUri);
+    if (!parsed) {
       throw new Error('Expected a base64 data URI');
     }
-    const [, contentType, base64] = match;
+    const { contentType, base64 } = parsed;
     if (!ALLOWED_DATA_URI_CONTENT_TYPES.has(contentType)) {
       throw new Error(`Unsupported data URI content type: ${contentType}`);
     }

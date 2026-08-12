@@ -10,6 +10,7 @@ import { MonitoringModule } from './monitoring/monitoring.module';
 import { ProctoringAnalysisModule } from './proctoring-analysis/proctoring-analysis.module';
 import { GradingModule } from './grading/grading.module';
 import { LocalMonitoringBridgeModule } from './monitoring/local-monitoring-bridge.module';
+import { FaceModule } from './face/face.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
 import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
 import { ServerBusyRetryAfterFilter } from './server-busy-retry-after.filter';
@@ -38,6 +39,7 @@ import { ServerBusyRetryAfterFilter } from './server-busy-retry-after.filter';
     ProctoringAnalysisModule,
     GradingModule,
     LocalMonitoringBridgeModule,
+    FaceModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: FailOpenThrottlerGuard },

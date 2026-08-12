@@ -1,4 +1,5 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, within, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { CandidateReportPanel } from './CandidateReportPanel';
 import { ToastProvider } from './ui';
 
@@ -236,6 +237,82 @@ describe('CandidateReportPanel', () => {
     it('renders nothing for an attempt from before the feature existed', () => {
       renderPanel([], { faceEnrolment: null });
       expect(screen.queryByText(/face verification/i)).not.toBeInTheDocument();
+    });
+
+    it('renders no comparison when the feature is on but there were no mismatches', () => {
+      renderPanel([], {
+        faceEnrolment: { status: 'enrolled', referenceImageUrl: 'https://blob/face.jpg?sig=x', capturedAt: '2026-08-11T09:00:00.000Z' },
+        faceMismatches: [],
+      });
+      expect(screen.queryByText(/flagged snapshot/i)).not.toBeInTheDocument();
+    });
+
+    // The reference photo also appears in the card header (outside the mismatch row) whenever
+    // referenceImageUrl is set, so this test scopes every assertion to the mismatch row itself
+    // via `within` -- a reviewer deleting the in-row <img> must fail THIS test, not pass because
+    // getAllByAltText('Reference photo') happened to also match the unrelated header photo.
+    it('renders the reference photo and the flagged snapshot side by side, with the score, its caveat, and the timestamp visible', () => {
+      renderPanel([], {
+        faceEnrolment: { status: 'enrolled', referenceImageUrl: 'https://blob/face.jpg?sig=ref', capturedAt: '2026-08-11T09:00:00.000Z' },
+        faceMismatches: [
+          { occurredAt: '2026-08-12T09:00:00.000Z', score: 0.214, snapshotUrl: 'https://blob/snap.jpg?sig=snap' },
+        ],
+      });
+
+      const row = within(screen.getByTestId('mismatch-row'));
+      expect(row.getByAltText('Reference photo (comparison)')).toHaveAttribute('src', 'https://blob/face.jpg?sig=ref');
+      expect(row.getByAltText('Flagged snapshot')).toHaveAttribute('src', 'https://blob/snap.jpg?sig=snap');
+      expect(row.getByText('Similarity score: 0.21')).toBeInTheDocument();
+      expect(row.getByText(/not yet calibrated/i)).toBeInTheDocument();
+      expect(row.getByText(new Date('2026-08-12T09:00:00.000Z').toLocaleString())).toBeInTheDocument();
+      // The header photo (outside the row) keeps the plain "Reference photo" alt -- only one of
+      // it, distinguishing it from the in-row comparison copy above (finding 7).
+      expect(screen.getAllByAltText('Reference photo')).toHaveLength(1);
+    });
+
+    it('shows a "no image" placeholder instead of a broken image when the snapshot blob is missing', () => {
+      renderPanel([], {
+        faceEnrolment: { status: 'enrolled', referenceImageUrl: 'https://blob/face.jpg?sig=ref', capturedAt: '2026-08-11T09:00:00.000Z' },
+        faceMismatches: [{ occurredAt: '2026-08-12T09:00:00.000Z', score: null, snapshotUrl: null }],
+      });
+
+      expect(screen.getByText(/no image/i)).toBeInTheDocument();
+      expect(screen.queryByAltText('Flagged snapshot')).not.toBeInTheDocument();
+    });
+
+    // A face isn't reliably recognisable at the 96px thumbnail size this row renders at -- a
+    // recruiter has to be able to blow the evidence up before ever acting on it.
+    it('opens an evidence image at full size when clicked, reusing the webcam-snapshot modal pattern', async () => {
+      renderPanel([], {
+        faceEnrolment: { status: 'enrolled', referenceImageUrl: 'https://blob/face.jpg?sig=ref', capturedAt: '2026-08-11T09:00:00.000Z' },
+        faceMismatches: [
+          { occurredAt: '2026-08-12T09:00:00.000Z', score: 0.214, snapshotUrl: 'https://blob/snap.jpg?sig=snap' },
+        ],
+      });
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: /view flagged snapshot full size/i }));
+
+      const dialog = within(screen.getByRole('dialog'));
+      expect(dialog.getByAltText('Flagged snapshot')).toHaveAttribute('src', 'https://blob/snap.jpg?sig=snap');
+    });
+
+    // FaceRetentionService nulls referenceImagePath 90 days after the attempt finalises but never
+    // deletes the face_mismatch events -- this report is the only surface those snapshots are
+    // ever visible on, so it must keep showing them even once the reference photo is gone,
+    // instead of the whole evidence block silently vanishing behind "no reference photo".
+    it('keeps showing flagged snapshots once the reference photo has aged out of retention', () => {
+      renderPanel([], {
+        faceEnrolment: { status: 'enrolled', referenceImageUrl: null, capturedAt: '2026-05-01T09:00:00.000Z' },
+        faceMismatches: [
+          { occurredAt: '2026-08-12T09:00:00.000Z', score: 0.214, snapshotUrl: 'https://blob/snap.jpg?sig=snap' },
+        ],
+      });
+
+      expect(screen.getAllByText(/no longer retained/i).length).toBeGreaterThan(0);
+      const row = within(screen.getByTestId('mismatch-row'));
+      expect(row.getByAltText('Flagged snapshot')).toHaveAttribute('src', 'https://blob/snap.jpg?sig=snap');
+      expect(row.queryByAltText('Reference photo (comparison)')).not.toBeInTheDocument();
     });
   });
 });

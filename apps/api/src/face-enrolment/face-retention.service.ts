@@ -38,7 +38,12 @@ export class FaceRetentionService implements OnModuleInit, OnModuleDestroy {
       const expired = await this.tenantPrisma.forTenant(superAdmin, (tx) =>
         tx.faceEnrolment.findMany({
           where: {
-            referenceImagePath: { not: null },
+            // A declined-consent update (recordFaceEnrolment) nulls referenceImagePath but keeps
+            // a previously-stored embedding, so filtering on referenceImagePath alone stopped
+            // matching that row -- an encrypted biometric template with no expiry, past the
+            // 90-day purpose limitation. Either column being non-null is enough to be a prune
+            // candidate.
+            OR: [{ referenceImagePath: { not: null } }, { embedding: { not: null } }],
             attempt: {
               OR: [
                 { submittedAt: { lt: cutoff } },
@@ -58,8 +63,11 @@ export class FaceRetentionService implements OnModuleInit, OnModuleDestroy {
       // One failed blob delete must not strand the remaining rows: the DB reference is cleared
       // either way, and an orphaned blob is a smaller problem than retained biometric data.
       for (const row of expired) {
+        // A row can now be a prune candidate on embedding alone (see the OR above), with no
+        // image to delete -- skip the blob call rather than hand it a null URL.
+        if (!row.referenceImagePath) continue;
         try {
-          await this.blobStorage.deleteByUrl(row.referenceImagePath as string);
+          await this.blobStorage.deleteByUrl(row.referenceImagePath);
         } catch (error) {
           this.logger.warn(`Failed to delete face reference blob for ${row.id}: ${(error as Error).message}`);
         }

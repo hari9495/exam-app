@@ -83,6 +83,16 @@ describe('getProctoringEventSeverity', () => {
     expect(CLIENT_REPORTABLE_EVENT_TYPES).toContain('screen_share_stopped');
     expect(getProctoringEventSeverity('screen_share_stopped')).toBe('high');
   });
+
+  // Deliberately below 'high' while stage 2's mismatch threshold is uncalibrated -- see
+  // proctoring-severity.ts. Revisit once stage 3 calibrates the thresholds.
+  it('maps face_mismatch to medium severity, not high, while thresholds are uncalibrated', () => {
+    expect(getProctoringEventSeverity('face_mismatch')).toBe('medium');
+  });
+
+  it('does not treat face_mismatch as client-reportable (server-generated only)', () => {
+    expect(CLIENT_REPORTABLE_EVENT_TYPES).not.toContain('face_mismatch');
+  });
 });
 
 describe('isStrikeWorthy', () => {
@@ -100,7 +110,7 @@ describe('isStrikeWorthy', () => {
     expect(isStrikeWorthy(eventType)).toBe(true);
   });
 
-  it.each(['refresh_warning', 'editor_paste', 'looking_down', 'webcam_snapshot', 'screen_share_started', 'something_unmapped'])(
+  it.each(['refresh_warning', 'editor_paste', 'looking_down', 'webcam_snapshot', 'screen_share_started', 'face_mismatch', 'something_unmapped'])(
     'returns false for %s',
     (eventType) => {
       expect(isStrikeWorthy(eventType)).toBe(false);

@@ -2,6 +2,10 @@
   "name": "@exam-platform/shared",
   "version": "0.0.1",
   "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./package.json": "./package.json"
+  },
   "scripts": {
     "build": "tsc",
     "prepare": "prisma generate --schema ../../apps/api/prisma/schema.prisma && npm run build",

@@ -2870,6 +2870,29 @@ describe('ExamsService', () => {
     });
   });
 
+  describe('face mismatch action', () => {
+    it('accepts a valid face mismatch action', async () => {
+      const update = jest.fn().mockResolvedValue({ id: 'exam-1' });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
+        fn({ exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'draft' }), update }, attempt: { count: jest.fn().mockResolvedValue(0) } }),
+      );
+
+      await service.update(context, 'user-1', 'exam-1', { faceMismatchAction: 'warn' } as never);
+
+      expect(update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ faceMismatchAction: 'warn' }) }));
+    });
+
+    it('rejects an unknown action rather than storing it', async () => {
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
+        fn({ exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'draft' }), update: jest.fn() }, attempt: { count: jest.fn().mockResolvedValue(0) } }),
+      );
+
+      await expect(
+        service.update(context, 'user-1', 'exam-1', { faceMismatchAction: 'delete_candidate' } as never),
+      ).rejects.toThrow(/mismatch action/i);
+    });
+  });
+
   describe('anti-cheating master switch', () => {
     it('persists enableAntiCheating alongside the individual fields when on', async () => {
       const tx = { exam: { create: jest.fn().mockResolvedValue({ id: 'exam-1' }) } };
