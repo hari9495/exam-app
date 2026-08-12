@@ -3094,6 +3094,22 @@ describe('AttemptService', () => {
       expect(faceEmbedder.embed).not.toHaveBeenCalled();
     });
 
+    // Finding 1 (GDPR retention gap): a candidate withdrawing consent is the clearest possible
+    // signal to stop holding their biometric template -- this must clear a previously-stored
+    // embedding on the SAME request, not leave it for the 90-day retention sweep to eventually
+    // catch (see face-retention.service.ts). Without this, the decline payload
+    // (FaceEnrolmentStep.tsx's onDecline) nulls referenceImagePath but the update spread
+    // `...(embedding ? { embedding } : {})` would omit the key entirely, leaving any
+    // earlier-enrolled embedding sitting in the row untouched.
+    it('clears a previously-stored embedding on the same request the candidate declines consent', async () => {
+      const upsert = jest.fn().mockResolvedValue({});
+      mockBootstrapThenTwoScopedCalls({ attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, faceEnrolment: { upsert } });
+
+      await service.recordFaceEnrolment(session, { status: 'not_verified', consentGiven: false });
+
+      expect(upsert.mock.calls[0][0].update).toHaveProperty('embedding', null);
+    });
+
     // Finding 1: crypto.encrypt throws for real (missing/invalid ORG_SECRETS_ENCRYPTION_KEY),
     // unlike embed() which never throws. Nothing caught that before -- recordFaceEnrolment would
     // reject after the blob upload had already run, leaving a photo in storage with no row

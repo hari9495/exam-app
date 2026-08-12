@@ -1,6 +1,15 @@
 import { Logger } from '@nestjs/common';
 import { FaceVerificationService } from './face-verification.service';
 import { encodeEmbedding } from '@exam-platform/shared';
+import { __resetFaceVerificationStateForTests } from './face-verification-state';
+
+// The per-attempt state moved to module scope (finding 2, this task) so both Nest app
+// containers share it -- but that also means every `new FaceVerificationService(...)` built
+// below now reads and writes the SAME maps, and most tests below reuse attempt id 'a1'. Without
+// this reset, a later test would see voter/warning state left behind by an earlier one.
+beforeEach(() => {
+  __resetFaceVerificationStateForTests();
+});
 
 const SAME = Float32Array.from([1, 0, 0]);
 const OTHER = Float32Array.from([-1, 0, 0]);
@@ -250,6 +259,41 @@ describe('FaceVerificationService', () => {
     service.forgetAttempt('a1');
     // Without forgetAttempt this would be the 3rd consecutive mismatch and would confirm.
     const outcome = await service.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+    expect(outcome.confirmed).toBe(false);
+  });
+
+  // Finding 2: main.ts boots two separate Nest app containers in one process (the public app and
+  // the internal/recruiter app), and FaceModule is reachable from both -- so Nest constructs two
+  // independent FaceVerificationService instances. AttemptSettlementService.finalize() calls
+  // forgetAttempt() under whichever app handled the request; if a voter registered through one
+  // instance were invisible to the other, forgetAttempt() from the internal app's force-submit
+  // path would clear an always-empty map while the public app's real entry leaked forever. Two
+  // `new FaceVerificationService(...)` calls stand in for the two DI containers here -- no Nest
+  // TestingModule needed to prove the underlying maps are the same object.
+  it('shares per-attempt voter state across separate instances, since two Nest app containers each construct their own', async () => {
+    const { service: instanceA } = buildWith({
+      enrolment: { embedding: `enc:${encodeEmbedding(SAME)}` },
+      embedder: { embed: jest.fn().mockResolvedValue(OTHER) },
+    });
+    const { service: instanceB } = buildWith({
+      enrolment: { embedding: `enc:${encodeEmbedding(SAME)}` },
+      embedder: { embed: jest.fn().mockResolvedValue(OTHER) },
+    });
+
+    // Two mismatches registered through instance A (stands in for the public app).
+    await instanceA.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+    await instanceA.verifySnapshot('a1', 'org-1', Buffer.from('i'));
+
+    // forgetAttempt called through instance B (stands in for the internal app's force-submit
+    // path). If the two instances had separate maps, this would be a no-op against an
+    // already-empty one, and instance A's run would still be live.
+    instanceB.forgetAttempt('a1');
+
+    // Proof: a fresh mismatch through instance A starts a new run at 1, not continuing the old
+    // run at 3 -- so it must NOT confirm. Before the fix (separate instance-level maps), B's
+    // forgetAttempt would not have reached A's voter, and this would be the 3rd consecutive
+    // mismatch, confirming.
+    const outcome = await instanceA.verifySnapshot('a1', 'org-1', Buffer.from('i'));
     expect(outcome.confirmed).toBe(false);
   });
 

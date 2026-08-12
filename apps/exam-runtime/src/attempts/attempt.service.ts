@@ -1233,7 +1233,12 @@ export class AttemptService {
         // retry overwrites the photo while keeping the earlier vector. Keeping the first vector
         // is the safer side to err on -- it is the one enrolled under the original capture, so a
         // later substituted photo cannot quietly become the thing every snapshot is matched to.
-        update: { ...rowBase, ...(embedding ? { embedding } : {}) },
+        //
+        // Declining consent is the one case that must override "only touch the column when
+        // there's a new value": it is the candidate's own signal to stop holding their biometric
+        // template, not a retry glitch, so a previously-stored embedding is cleared immediately
+        // rather than left for the 90-day retention sweep (see face-retention.service.ts).
+        update: { ...rowBase, ...(dto.consentGiven ? (embedding ? { embedding } : {}) : { embedding: null }) },
       }),
     );
     return { status };

@@ -58,6 +58,39 @@ describe('FaceRetentionService', () => {
     expect(blobStorage.deleteByUrl).not.toHaveBeenCalled();
   });
 
+  // Finding 1: a declined-consent update nulls referenceImagePath but keeps a previously-stored
+  // embedding (see attempt.service.ts's recordFaceEnrolment). A row in that shape must still be
+  // a prune candidate, or the encrypted biometric template is retained forever, past the 90-day
+  // purpose limitation the whole service exists to enforce. findMany is a mock -- it returns
+  // whatever a test hands it regardless of the where clause -- so, same as the never-finalised
+  // test above, the where clause IS the behaviour under test here, not the returned rows.
+  it('includes a row with a null referenceImagePath but a live embedding in the prune query (declined-consent shape)', async () => {
+    await service.prune(NOW);
+
+    const { OR } = findMany.mock.calls[0][0].where;
+    expect(OR).toContainEqual({ referenceImagePath: { not: null } });
+    expect(OR).toContainEqual({ embedding: { not: null } });
+  });
+
+  it('clears both columns for a row selected purely on its embedding, with no image to delete', async () => {
+    findMany.mockResolvedValue([{ id: 'fe-1', referenceImagePath: null }]);
+
+    const purged = await service.prune(NOW);
+
+    expect(purged).toBe(1);
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: { in: ['fe-1'] } },
+      data: { referenceImagePath: null, embedding: null },
+    }));
+  });
+
+  it('does not throw, and does not call deleteByUrl, when the prune candidate has no image', async () => {
+    findMany.mockResolvedValue([{ id: 'fe-1', referenceImagePath: null }]);
+
+    await expect(service.prune(NOW)).resolves.toBe(1);
+    expect(blobStorage.deleteByUrl).not.toHaveBeenCalled();
+  });
+
   it('keeps going when one blob delete fails, rather than stranding the rest', async () => {
     findMany.mockResolvedValue([
       { id: 'fe-1', referenceImagePath: 'https://acct.blob/face/a1.jpg' },

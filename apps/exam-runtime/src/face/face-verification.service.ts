@@ -10,6 +10,11 @@ import {
 import { FaceEmbedderService } from './face-embedder.service';
 import { createMismatchVoter, MismatchVoter } from './mismatch-voter';
 import { getProctoringEventSeverity } from '../attempts/proctoring-severity';
+import {
+  voters as sharedVoters,
+  warnedModelUnavailableFor as sharedWarnedModelUnavailableFor,
+  warnedMissingEmbeddingFor as sharedWarnedMissingEmbeddingFor,
+} from './face-verification-state';
 
 export interface FaceCheckOutcome {
   verdict: FaceVerdict | 'skipped';
@@ -30,24 +35,14 @@ const SKIPPED: Readonly<FaceCheckOutcome> = Object.freeze({ verdict: 'skipped', 
 export class FaceVerificationService {
   private readonly logger = new Logger(FaceVerificationService.name);
 
-  // Per-attempt mismatch-run state. Keyed by attemptId so two candidates' runs can never
-  // combine into one accusation -- see forgetAttempt().
-  private readonly voters = new Map<string, MismatchVoter>();
-
-  // Attempts already warned about a missing/broken embedding model. A production deployment
-  // with no model file makes verifySnapshot() skip forever -- correctly, per this file's own
-  // never-accuse-on-doubt rule -- but silently: same outcome, same log volume, as an org that
-  // simply has the feature off. Warning once per attempt (not once per snapshot, which fires
-  // every 120-180s for the whole exam) is a cheap enough signal to make that distinguishable in
-  // the logs without adding a metrics dependency.
-  private readonly warnedModelUnavailableFor = new Set<string>();
-
-  // Same once-per-attempt mechanism as warnedModelUnavailableFor, for a different silent-inert
-  // cause (finding 3, task-8): the model loads fine but this attempt's enrolment row has no
-  // embedding -- an encrypt failure at enrolment time, or an org's embeddings never having been
-  // backfilled. Without this, that path returns `skip` with zero logs, which is exactly the
-  // "silently inert deployment" this whole warning mechanism exists to surface.
-  private readonly warnedMissingEmbeddingFor = new Set<string>();
+  // Per-attempt mismatch-run state, plus the two once-per-attempt warning sets below, are
+  // imported from face-verification-state.ts at MODULE scope rather than declared as fields on
+  // this class -- see that file's comment for why: two Nest app containers (main.ts) each
+  // construct their own instance of this service, and instance fields would give each its own,
+  // independently-empty map. These aliases just keep every reference below unchanged.
+  private readonly voters = sharedVoters;
+  private readonly warnedModelUnavailableFor = sharedWarnedModelUnavailableFor;
+  private readonly warnedMissingEmbeddingFor = sharedWarnedMissingEmbeddingFor;
 
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
