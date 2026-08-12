@@ -622,9 +622,41 @@ Without this, an organization with no AI key configured gets a job that is enque
 Run: `cd "D:/exam app" && npx jest --config apps/api/jest.config.js questions.service --maxWorkers=2`
 Expected: FAIL — the job is enqueued regardless.
 
-- [ ] **Step 6c: Reject tag ids that are not this organization'''s**
+- [ ] **Step 6b: Reject negativeMarks greater than marks, before spending anything**
 
-`@IsUUID('''4''', { each: true })` catches a malformed id but not a stale one or one belonging to
+The DTO permits `marks: 1, negativeMarks: 99`. `validateQuestionPayload` rejects `negativeMarks > marks` (`question-validation.ts:41`), so such a request would call the AI provider, charge credits, and then drop **every** generated question — with correct reasons, but after the money was spent. Reject it up front.
+
+Test:
+
+```ts
+  it('rejects negative marks greater than marks before calling the provider', async () => {
+    const enqueue = jest.fn();
+    const service = buildService({ jobsService: { enqueue } });
+
+    await expect(
+      service.aiGenerate(
+        { organizationId: 'org-1', isSuperAdmin: false } as never,
+        'user-1',
+        { topic: 'SQL', difficulty: 'medium', questionTypes: ['single_mcq'], count: 3, marks: 1, negativeMarks: 99, tagIds: [] } as never,
+      ),
+    ).rejects.toThrow(/negativeMarks cannot exceed marks/);
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+```
+
+Implementation, immediately before the AI-key check in the next step:
+
+```ts
+    if (dto.negativeMarks > dto.marks) {
+      // Every generated question would fail validateQuestionPayload and be dropped -- after the
+      // provider call had already been paid for.
+      throw new BadRequestException('negativeMarks cannot exceed marks');
+    }
+```
+
+- [ ] **Step 6c: Reject tag ids that are not this organization's**
+
+`@IsUUID('4', { each: true })` catches a malformed id but not a stale one or one belonging to
 another organization. The processor now resolves tags org-scoped and skips what it cannot resolve --
 deliberately, because losing a whole paid-for batch over one stale tag is worse than a question
 landing with fewer tags. But that means a recruiter who picks a stale tag gets untagged drafts and
@@ -634,19 +666,19 @@ for it. Catch it here instead, before anything is enqueued or billed.
 Test:
 
 ```ts
-  it('''rejects tag ids that do not belong to the caller organization, before anything is billed''', async () => {
+  it('rejects tag ids that do not belong to the caller organization, before anything is billed', async () => {
     const enqueue = jest.fn();
     const service = buildService({
       jobsService: { enqueue },
       // Only one of the two requested tags resolves within this organization.
-      tenantPrisma: { forTenant: jest.fn((_c: unknown, fn: (tx: unknown) => unknown) => fn({ tag: { findMany: jest.fn().mockResolvedValue([{ id: '''t1''' }]) } })) },
+      tenantPrisma: { forTenant: jest.fn((_c: unknown, fn: (tx: unknown) => unknown) => fn({ tag: { findMany: jest.fn().mockResolvedValue([{ id: 't1' }]) } })) },
     });
 
     await expect(
       service.aiGenerate(
-        { organizationId: '''org-1''', isSuperAdmin: false } as never,
-        '''user-1''',
-        { topic: '''SQL''', difficulty: '''medium''', questionTypes: ['''single_mcq'''], count: 3, marks: 1, negativeMarks: 0, tagIds: ['''t1''', '''t2'''] } as never,
+        { organizationId: 'org-1', isSuperAdmin: false } as never,
+        'user-1',
+        { topic: 'SQL', difficulty: 'medium', questionTypes: ['single_mcq'], count: 3, marks: 1, negativeMarks: 0, tagIds: ['t1', 't2'] } as never,
       ),
     ).rejects.toThrow(/tag/i);
     expect(enqueue).not.toHaveBeenCalled();
@@ -656,9 +688,9 @@ Test:
 Implementation, before the AI-key check: when `tagIds` is non-empty, resolve them inside
 `tenantPrisma.forTenant` with `tx.tag.findMany({ where: { id: { in: tagIds }, organizationId }, select: { id: true } })`
 and throw `BadRequestException` naming the unresolved ids if any are missing. Match the surrounding
-service'''s existing style for tenant reads.
+service's existing style for tenant reads.
 
-The processor'''s skip-and-warn then correctly degrades to what it should be: a defence against a tag
+The processor's skip-and-warn then correctly degrades to what it should be: a defence against a tag
 deleted in the window between enqueue and processing.
 
 - [ ] **Step 7: Check the key before enqueueing**
