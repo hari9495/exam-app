@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { TenantContext, TenantPrismaService, AiApiKeyResolverService } from '@exam-platform/shared';
 import { JobProcessor } from './job-processor.interface';
 import { QuestionGenerationClient, GeneratedQuestion } from './question-generation.client';
@@ -29,6 +29,7 @@ interface AiQuestionGenerationOutput {
 @Injectable()
 export class AiQuestionGenerationProcessor implements JobProcessor {
   readonly type = 'ai-question-generation';
+  private readonly logger = new Logger(AiQuestionGenerationProcessor.name);
 
   constructor(
     private readonly questionGenerationClient: QuestionGenerationClient,
@@ -37,8 +38,19 @@ export class AiQuestionGenerationProcessor implements JobProcessor {
   ) {}
 
   async process(input: unknown, context: TenantContext, aiJobId: string): Promise<AiQuestionGenerationOutput> {
-    const { topic, difficulty, questionTypes, count, marks, negativeMarks, tagIds, requestedBy } =
-      input as AiQuestionGenerationInput;
+    // inputJson is persisted JSON written at enqueue time, so a job enqueued before marks/negativeMarks/tagIds
+    // were added to the payload shape can still be picked up (or retried) after this deploy — default them to
+    // the old hardcoded behaviour instead of throwing on the missing fields.
+    const {
+      topic,
+      difficulty,
+      questionTypes,
+      count,
+      marks = 1,
+      negativeMarks = 0,
+      tagIds = [],
+      requestedBy,
+    } = input as AiQuestionGenerationInput;
 
     const aiProvider = await this.aiApiKeyResolver.resolve(context.organizationId as string);
     const generated = (await this.questionGenerationClient.generate(topic, difficulty, questionTypes, count, aiProvider)).slice(0, count);
@@ -65,7 +77,27 @@ export class AiQuestionGenerationProcessor implements JobProcessor {
       }
     }
 
+    const uniqueTagIds = [...new Set(tagIds)];
+
     const questionIds = await this.tenantPrisma.forTenant(context, async (tx) => {
+      // question_tags has no RLS and SQL Server does not apply RLS predicates to FK validation, so a tag id
+      // from another organization would otherwise attach successfully. Resolve org-scoped here and use only
+      // what comes back — a single indexed lookup, not slow I/O like the AI provider call above.
+      const resolvedTagIds =
+        uniqueTagIds.length > 0
+          ? (
+              await tx.tag.findMany({
+                where: { id: { in: uniqueTagIds }, organizationId: context.organizationId as string },
+                select: { id: true },
+              })
+            ).map((t) => t.id)
+          : [];
+      if (resolvedTagIds.length < uniqueTagIds.length) {
+        this.logger.warn(
+          `AI question generation job ${aiJobId}: dropped ${uniqueTagIds.length - resolvedTagIds.length} of ${uniqueTagIds.length} requested tagIds (not found or not owned by organization ${context.organizationId})`,
+        );
+      }
+
       const ids: string[] = [];
       for (const question of valid) {
         const created = await tx.question.create({
@@ -84,7 +116,7 @@ export class AiQuestionGenerationProcessor implements JobProcessor {
             options: {
               create: question.options.map((o, index) => ({ text: o.text, isCorrect: o.isCorrect, orderIndex: index })),
             },
-            ...(tagIds.length > 0 ? { tags: { create: tagIds.map((tagId) => ({ tagId })) } } : {}),
+            ...(resolvedTagIds.length > 0 ? { tags: { create: resolvedTagIds.map((tagId) => ({ tagId })) } } : {}),
           },
         });
         ids.push(created.id);
