@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
 import { useQuestions, useArchiveQuestion, useRestoreQuestion } from '../../../lib/hooks/useQuestions';
@@ -58,6 +59,7 @@ export default function QuestionsPage() {
   const archiveQuestion = useArchiveQuestion();
   const restoreQuestion = useRestoreQuestion();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   // Collapsed by default: with many topics/categories, dumping every group's full row list
   // open at once is exactly the clutter grouping is meant to cut through. Keyed by group
   // label rather than index -- stable across a re-group even though group order can shift.
@@ -90,9 +92,13 @@ export default function QuestionsPage() {
   }
 
   function handleRestore(question: Question) {
+    // Same endpoint (archived -> active or draft -> active) but the toast copy must match what
+    // actually happened -- a draft was never archived, so "restored" would be misleading there.
+    const isDraft = question.status === 'draft';
     restoreQuestion.mutate(question.id, {
-      onSuccess: () => toast('Question restored.'),
-      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to restore question.', 'error'),
+      onSuccess: () => toast(isDraft ? 'Question published.' : 'Question restored.'),
+      onError: (error) =>
+        toast(error instanceof Error ? error.message : isDraft ? 'Failed to publish question.' : 'Failed to restore question.', 'error'),
     });
   }
 
@@ -203,7 +209,12 @@ export default function QuestionsPage() {
               </button>
               <button
                 type="button"
-                onClick={() => archiveQuestion.mutate(question.id)}
+                onClick={() =>
+                  archiveQuestion.mutate(question.id, {
+                    onSuccess: () => toast('Question discarded.'),
+                    onError: (error) => toast(error instanceof Error ? error.message : 'Failed to discard question.', 'error'),
+                  })
+                }
                 disabled={archiveQuestion.isPending}
                 className="text-xs font-medium text-status-danger hover:underline disabled:opacity-50"
               >
@@ -287,7 +298,7 @@ export default function QuestionsPage() {
           }}
           className="mb-3 block text-sm font-medium text-primary hover:underline"
         >
-          {pendingDrafts} drafts awaiting review
+          {pendingDrafts} {pendingDrafts === 1 ? 'draft' : 'drafts'} awaiting review
         </button>
       )}
 
@@ -312,9 +323,27 @@ export default function QuestionsPage() {
       </div>
 
       {rows.length === 0 ? (
-        <p className="py-8 text-center text-sm text-recruiter-text-tertiary">
-          {status === 'archived' ? 'No archived questions.' : 'No questions yet.'}
-        </p>
+        <div className="py-8 text-center text-sm text-recruiter-text-tertiary">
+          <p>
+            {status === 'archived' ? 'No archived questions.' : status === 'draft' ? 'No drafts to review.' : 'No questions yet.'}
+          </p>
+          {/* The Status filter lives inside the Table's column header, which never renders when
+              there are no rows -- without this, draining a non-active view (the designed happy
+              path once Discard/Publish empty the Drafts list) leaves status stuck with no way
+              back except a page reload. */}
+          {status !== 'active' && (
+            <button
+              type="button"
+              onClick={() => {
+                setStatus('active');
+                setPage(1);
+              }}
+              className="mt-2 font-medium text-primary hover:underline"
+            >
+              Back to Active
+            </button>
+          )}
+        </div>
       ) : (
         <div className="flex flex-col gap-3">
           {groups.map((group) => {
@@ -382,6 +411,10 @@ export default function QuestionsPage() {
         open={generateModalOpen}
         onClose={() => setGenerateModalOpen(false)}
         onCompleted={() => {
+          // The count query has a 30s staleTime and nothing else invalidates ['questions'] when
+          // a job lands -- without this, the pending-drafts count and the Drafts list can lag a
+          // just-completed generation.
+          queryClient.invalidateQueries({ queryKey: ['questions'] });
           setStatus('draft');
           setPage(1);
         }}

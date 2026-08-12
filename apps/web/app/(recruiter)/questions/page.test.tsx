@@ -607,6 +607,57 @@ describe('QuestionsPage', () => {
       );
     });
 
+    // Discard was previously fire-and-forget (archiveQuestion.mutate with no onSuccess/onError),
+    // so a failed request left the row sitting there with no feedback at all.
+    it('toasts an error when discarding a draft fails', async () => {
+      global.fetch = jest.fn(async (url) => {
+        const u = String(url);
+        if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        if (u.includes('/questions/q1/archive')) {
+          return new Response(JSON.stringify({ message: 'Server error' }), { status: 500 });
+        }
+        if (u.includes('/questions')) {
+          return new Response(JSON.stringify({ data: [DRAFT_QUESTION], total: 1, page: 1, pageSize: 20, totalPages: 1 }), { status: 200 });
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      }) as unknown as typeof fetch;
+
+      renderPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Discard' }));
+
+      expect(await screen.findByText('Server error')).toBeInTheDocument();
+    });
+
+    // Regression guard for the trap: once the Drafts list is drained (the designed happy path --
+    // onCompleted switches to Drafts, then Publish/Discard empties it), status is stuck on
+    // 'draft', the pending-count link is gone (count is 0), and the Status filter itself only
+    // lives inside <Table>, which is skipped when there are no rows. Without a way back on the
+    // empty state, only a page reload recovers.
+    it('offers a way back to Active from an empty Drafts view', async () => {
+      global.fetch = jest.fn(async (url) => {
+        const u = String(url);
+        if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        if (u.includes('/questions') && u.includes('status=draft')) {
+          return new Response(JSON.stringify({ data: [], total: 0, page: 1, pageSize: 20, totalPages: 0 }), { status: 200 });
+        }
+        if (u.includes('/questions')) {
+          return new Response(JSON.stringify({ data: [{ ...DRAFT_QUESTION, id: 'q-active', status: 'active' }], total: 1, page: 1, pageSize: 20, totalPages: 1 }), {
+            status: 200,
+          });
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      }) as unknown as typeof fetch;
+
+      renderPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Filter by Status' }));
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Drafts' }));
+
+      expect(await screen.findByText('No drafts to review.')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Back to Active' }));
+
+      await waitFor(() => expect(screen.getByText('What does an AI-generated question look like?')).toBeInTheDocument());
+    });
+
     it('shows how many drafts are waiting, so they are not forgotten behind a filter', async () => {
       global.fetch = jest.fn(async (url) => {
         const u = String(url);
@@ -685,12 +736,19 @@ describe('QuestionsPage', () => {
       global.fetch = fetchMock as unknown as typeof fetch;
 
       renderPage();
-      fireEvent.click(await screen.findByRole('button', { name: 'Generate with AI' }));
+      // Settle first: at first render accessToken is null, so both useQuestions calls are
+      // enabled: false and isLoading is false -- the page (and the button) is fully rendered.
+      // When /auth/refresh lands the queries enable, isLoading flips true, and the page's
+      // `if (isLoading) return ...` early-return unmounts the whole subtree, destroying that
+      // button node. Waiting for content that only appears post-refresh (the draft count) means
+      // we're clicking the button that survives, not the one about to be torn down.
+      await screen.findByText('1 draft awaiting review');
+      await userEvent.click(await screen.findByRole('button', { name: 'Generate with AI' }));
       await userEvent.type(await screen.findByLabelText('Topic'), 'SQL joins');
-      fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
       // Job is in flight (aiJobId set, poll not yet resolved) -- the button reads "Close" now.
-      fireEvent.click(await screen.findByRole('button', { name: 'Close' }));
+      await userEvent.click(await screen.findByRole('button', { name: 'Close' }));
 
       // The dialog itself is gone from the accessibility tree...
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
