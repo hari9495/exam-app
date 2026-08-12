@@ -9,6 +9,9 @@ interface AiQuestionGenerationInput {
   difficulty: string;
   questionTypes: string[];
   count: number;
+  marks: number;
+  negativeMarks: number;
+  tagIds: string[];
   requestedBy: string;
 }
 
@@ -34,7 +37,8 @@ export class AiQuestionGenerationProcessor implements JobProcessor {
   ) {}
 
   async process(input: unknown, context: TenantContext, aiJobId: string): Promise<AiQuestionGenerationOutput> {
-    const { topic, difficulty, questionTypes, count, requestedBy } = input as AiQuestionGenerationInput;
+    const { topic, difficulty, questionTypes, count, marks, negativeMarks, tagIds, requestedBy } =
+      input as AiQuestionGenerationInput;
 
     const aiProvider = await this.aiApiKeyResolver.resolve(context.organizationId as string);
     const generated = (await this.questionGenerationClient.generate(topic, difficulty, questionTypes, count, aiProvider)).slice(0, count);
@@ -50,8 +54,8 @@ export class AiQuestionGenerationProcessor implements JobProcessor {
         validateQuestionPayload({
           type: question.type,
           difficulty,
-          marks: 1,
-          negativeMarks: 0,
+          marks,
+          negativeMarks,
           options: question.options,
         });
         valid.push(question);
@@ -71,21 +75,28 @@ export class AiQuestionGenerationProcessor implements JobProcessor {
             text: question.text,
             topic,
             difficulty,
-            marks: 1,
-            negativeMarks: 0,
+            marks,
+            negativeMarks,
             status: 'draft',
             aiGenerated: true,
+            aiJobId,
             createdBy: requestedBy,
             options: {
               create: question.options.map((o, index) => ({ text: o.text, isCorrect: o.isCorrect, orderIndex: index })),
             },
+            ...(tagIds.length > 0 ? { tags: { create: tagIds.map((tagId) => ({ tagId })) } } : {}),
           },
         });
         ids.push(created.id);
       }
       if (ids.length > 0) {
         await tx.aiCreditUsage.create({
-          data: { organizationId: context.organizationId as string, source: 'question_generation', credits: ids.length, sourceId: null },
+          data: {
+            organizationId: context.organizationId as string,
+            source: 'question_generation',
+            credits: ids.length,
+            sourceId: aiJobId,
+          },
         });
       }
       return ids;
