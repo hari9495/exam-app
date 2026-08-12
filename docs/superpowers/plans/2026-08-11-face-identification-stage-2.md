@@ -929,7 +929,19 @@ git commit -m "feat(face-id): per-exam mismatch action wired to the existing enf
 
 ---
 
-### Task 9: Browser advisory tier
+### Task 9: Browser advisory tier — BUILT, THEN REMOVED BY DECISION (2026-08-12)
+
+> **Do not rebuild this from the steps below.** It was implemented, reviewed and then deleted
+> before merge. The final whole-branch review found it unreachable: the exam page calls
+> `useWebcamMonitor` with four arguments, and — more fundamentally — **no endpoint ever returns a
+> reference embedding to the browser**, so the tier could never run. Wiring it would mean handing
+> a candidate's biometric template to the client, which is a design question this plan never
+> settled. The user chose to remove it rather than ship ~260 lines and an `onnxruntime-web`
+> dependency with no consumer.
+>
+> The **server** tier is authoritative and unaffected — it produces every verdict. If a browser
+> tier is wanted later, it needs a design decision about how the reference reaches the client
+> first, not a re-run of these steps.
 
 **Files:**
 - Create: `apps/web/lib/face-embedder.ts`
