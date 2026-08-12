@@ -146,8 +146,17 @@ ALTER TABLE [dbo].[questions] ADD [ai_job_id] UNIQUEIDENTIFIER NULL;
 ALTER TABLE [dbo].[questions]
   ADD CONSTRAINT [questions_ai_job_id_fkey]
   FOREIGN KEY ([ai_job_id]) REFERENCES [dbo].[ai_jobs]([id])
-  ON DELETE SET NULL ON UPDATE NO ACTION;
+  ON DELETE SET NULL ON UPDATE CASCADE;
 ```
+
+`ON UPDATE CASCADE` is not arbitrary: it is what Prisma generates by default for an optional
+relation with no explicit `onUpdate`, which is what the schema above declares. Two existing
+migrations in this repo confirm it (`exams_walk_in_group_id_fkey`, `users_organization_id_fkey` --
+both `SetNull` with no explicit `onUpdate`, both compiled to `ON UPDATE CASCADE`). The one place
+this repo uses `NO ACTION` on a `SetNull` relation (`audit_logs_actor_user_id_fkey`) carries a
+comment explaining a real SQL Server multiple-cascade-paths conflict, which does not exist here.
+Writing `NO ACTION` would be silent drift from the schema -- invisible to tsc and CI, and surfacing
+only when someone with shadow-DB access next runs `prisma migrate diff`.
 
 - [ ] **Step 4: Regenerate the Prisma client**
 
