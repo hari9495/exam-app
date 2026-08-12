@@ -124,6 +124,13 @@ export function useWebcamMonitor(
     // down briefly is normal).
     const violationVoter = createViolationVoter({ windowSize: 8, threshold: 5 });
     const lookingVoter = createViolationVoter({ windowSize: 24, threshold: 20 });
+    // Same voter primitive as the two above, sized to require 3 *consecutive* mismatches
+    // (windowSize === threshold, so the only way to cross threshold is the whole window agreeing)
+    // before a mismatch hint reaches the candidate -- mirrors the server tier's
+    // CONSECUTIVE_MISMATCHES_TO_CONFIRM (apps/exam-runtime/src/face/mismatch-voter.ts), so one bad
+    // frame (a head turn, a moment of bad light) never reads as an accusation. 'match' and
+    // 'uncertain' hints are not gated -- only 'mismatch' is worth debouncing here.
+    const identityMismatchVoter = createViolationVoter({ windowSize: 3, threshold: 3 });
 
     const video = document.createElement('video');
     video.muted = true;
@@ -187,20 +194,49 @@ export function useWebcamMonitor(
       // Advisory only: the result only ever reaches `identity.onHint`, never reportViolationRef,
       // reportEventRef, or anything else that could flag the candidate.
       if (embedder) {
+        // A forward pass can take longer than the 4s tick on a slow machine (ORT-web runs WASM
+        // single-threaded on the main thread by default -- see face-embedder.ts's `proxy` note).
+        // Without this guard, ticks pile up: concurrent session.run() calls, each with its own
+        // fresh canvas and Float32Array, unbounded over a multi-hour exam. Skip a tick outright
+        // while one is still in flight rather than queuing it.
+        let inFlight = false;
         identityIntervalId = setInterval(() => {
+          if (inFlight) return;
           const currentIdentity = identityRef.current;
           if (!currentIdentity || !currentIdentity.referenceEmbedding || video.readyState < 2) return;
           const referenceEmbedding = currentIdentity.referenceEmbedding;
+          inFlight = true;
           embedder
             .embed(video)
             .then((liveEmbedding) => {
               if (cancelled || !liveEmbedding) return;
               const score = cosineSimilarity(liveEmbedding, referenceEmbedding);
-              identityRef.current?.onHint(classifySimilarity(score));
+              // A zero score is what a degenerate/zero-length embedding also produces (see
+              // cosineSimilarity's comment) -- indistinguishable here from a genuine "no
+              // relation" score of exactly 0. Treat it as no signal rather than let a numerical
+              // degenerate read as a mismatch accusation.
+              if (score === 0) {
+                identityMismatchVoter.push(null);
+                return;
+              }
+              const verdict = classifySimilarity(score);
+              if (verdict !== 'mismatch') {
+                identityMismatchVoter.push(null);
+                identityRef.current?.onHint(verdict);
+                return;
+              }
+              // Debounced: only a confirmed (3-consecutive) mismatch reaches the candidate --
+              // see identityMismatchVoter above.
+              if (identityMismatchVoter.push('mismatch')) {
+                identityRef.current?.onHint('mismatch');
+              }
             })
             .catch(() => {
               // Belt and braces: embed() already never rejects, but this loop must never be the
               // thing that turns a model hiccup into an unhandled rejection on the exam page.
+            })
+            .finally(() => {
+              inFlight = false;
             });
         }, IDENTITY_HINT_INTERVAL_MS);
       }

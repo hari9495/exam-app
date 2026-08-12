@@ -1,4 +1,4 @@
-import { createBrowserEmbedder, toNchwFloat32 } from './face-embedder';
+import { createBrowserEmbedder, toNchwFloat32, frameToImageData } from './face-embedder';
 
 describe('createBrowserEmbedder', () => {
   // The advisory tier is a convenience. If it cannot load, the candidate must see no difference
@@ -84,6 +84,238 @@ describe('createBrowserEmbedder', () => {
         embedder.close();
         expect(release).toHaveBeenCalledTimes(1);
       });
+    } finally {
+      HTMLCanvasElement.prototype.getContext = originalGetContext;
+    }
+  });
+
+  it('close() during an in-flight load releases the session once loading finishes, instead of leaking it', async () => {
+    // React StrictMode's double-mount hits exactly this: embed() kicks off the first load, then
+    // close() runs (component unmounted) before InferenceSession.create() has settled. `session`
+    // is still null at that point, so a naive `session?.release()` in close() can't see the
+    // session the pending load is about to produce -- it becomes unreachable and leaks for the
+    // rest of the exam attempt.
+    const release = jest.fn().mockResolvedValue(undefined);
+    let resolveCreate!: (session: unknown) => void;
+    const create = jest.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCreate = resolve;
+        }),
+    );
+
+    const originalGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = jest.fn().mockReturnValue({
+      drawImage: jest.fn(),
+      getImageData: jest.fn().mockReturnValue({ data: new Uint8ClampedArray(112 * 112 * 4) }),
+    }) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+
+    try {
+      await jest.isolateModulesAsync(async () => {
+        jest.doMock('onnxruntime-web', () => ({
+          InferenceSession: { create },
+          Tensor: class {
+            constructor(
+              public type: string,
+              public data: unknown,
+              public dims: number[],
+            ) {}
+          },
+        }));
+        const { createBrowserEmbedder: createIsolated } = await import('./face-embedder');
+        const embedder = createIsolated('https://models.example/face-embedder.onnx');
+
+        const embedPromise = embedder.embed({ videoWidth: 112, videoHeight: 112 } as unknown as HTMLVideoElement);
+        // Let the dynamic import of onnxruntime-web resolve and reach InferenceSession.create()
+        // before racing it with close() -- a macrotask flush guarantees every pending microtask
+        // (including the mocked dynamic import) has run.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(create).toHaveBeenCalledTimes(1);
+
+        embedder.close(); // races the still-pending load
+
+        resolveCreate({ inputNames: ['input'], outputNames: ['embedding'], run: jest.fn(), release });
+        await embedPromise;
+
+        expect(release).toHaveBeenCalledTimes(1);
+
+        // And it stays closed -- the session the in-flight load produced must not become usable.
+        await embedder.embed({ videoWidth: 112, videoHeight: 112 } as unknown as HTMLVideoElement);
+        expect(create).toHaveBeenCalledTimes(1);
+      });
+    } finally {
+      HTMLCanvasElement.prototype.getContext = originalGetContext;
+    }
+  });
+
+  it('close() swallows a rejecting release() instead of leaving an unhandled promise rejection', async () => {
+    // A failing cleanup must stay invisible: the candidate layout's ClientErrorListener turns any
+    // unhandled rejection into a `systemEvents` row (severity 'error') tied to the candidate's
+    // attemptId -- exactly the accusation this advisory tier must never cause.
+    const release = jest.fn().mockRejectedValue(new Error('release failed'));
+    const create = jest.fn().mockResolvedValue({ inputNames: ['input'], outputNames: ['embedding'], run: jest.fn(), release });
+
+    const originalGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = jest.fn().mockReturnValue({
+      drawImage: jest.fn(),
+      getImageData: jest.fn().mockReturnValue({ data: new Uint8ClampedArray(112 * 112 * 4) }),
+    }) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+
+    const onUnhandledRejection = jest.fn();
+    process.on('unhandledRejection', onUnhandledRejection);
+
+    try {
+      await jest.isolateModulesAsync(async () => {
+        jest.doMock('onnxruntime-web', () => ({
+          InferenceSession: { create },
+          Tensor: class {
+            constructor(
+              public type: string,
+              public data: unknown,
+              public dims: number[],
+            ) {}
+          },
+        }));
+        const { createBrowserEmbedder: createIsolated } = await import('./face-embedder');
+        const embedder = createIsolated('https://models.example/face-embedder.onnx');
+
+        await embedder.embed({ videoWidth: 112, videoHeight: 112 } as unknown as HTMLVideoElement);
+        expect(() => embedder.close()).not.toThrow();
+
+        // Give the swallowed rejection's microtask a turn before asserting nothing escaped.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(release).toHaveBeenCalledTimes(1);
+        expect(onUnhandledRejection).not.toHaveBeenCalled();
+      });
+    } finally {
+      HTMLCanvasElement.prototype.getContext = originalGetContext;
+      process.off('unhandledRejection', onUnhandledRejection);
+    }
+  });
+
+  it('close() is terminal: embed() after close() returns null without creating a new session', async () => {
+    const release = jest.fn().mockResolvedValue(undefined);
+    const create = jest.fn().mockResolvedValue({
+      inputNames: ['input'],
+      outputNames: ['embedding'],
+      run: jest.fn().mockResolvedValue({ embedding: { type: 'float32', data: new Float32Array(4) } }),
+      release,
+    });
+
+    const originalGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = jest.fn().mockReturnValue({
+      drawImage: jest.fn(),
+      getImageData: jest.fn().mockReturnValue({ data: new Uint8ClampedArray(112 * 112 * 4) }),
+    }) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+
+    try {
+      await jest.isolateModulesAsync(async () => {
+        jest.doMock('onnxruntime-web', () => ({
+          InferenceSession: { create },
+          Tensor: class {
+            constructor(
+              public type: string,
+              public data: unknown,
+              public dims: number[],
+            ) {}
+          },
+        }));
+        const { createBrowserEmbedder: createIsolated } = await import('./face-embedder');
+        const embedder = createIsolated('https://models.example/face-embedder.onnx');
+
+        await embedder.embed({ videoWidth: 112, videoHeight: 112 } as unknown as HTMLVideoElement);
+        embedder.close();
+
+        const result = await embedder.embed({ videoWidth: 112, videoHeight: 112 } as unknown as HTMLVideoElement);
+
+        expect(result).toBeNull();
+        expect(create).toHaveBeenCalledTimes(1); // close() did not silently reopen a new session
+
+        // Idempotent: a second close() is a no-op, not a second release().
+        embedder.close();
+        expect(release).toHaveBeenCalledTimes(1);
+      });
+    } finally {
+      HTMLCanvasElement.prototype.getContext = originalGetContext;
+    }
+  });
+
+  it('sets ort.env.wasm.proxy so inference is moved off the main thread', async () => {
+    const release = jest.fn().mockResolvedValue(undefined);
+    const create = jest.fn().mockResolvedValue({ inputNames: ['input'], outputNames: ['embedding'], run: jest.fn(), release });
+    const env = { wasm: {} as { proxy?: boolean } };
+
+    const originalGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = jest.fn().mockReturnValue({
+      drawImage: jest.fn(),
+      getImageData: jest.fn().mockReturnValue({ data: new Uint8ClampedArray(112 * 112 * 4) }),
+    }) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+
+    try {
+      await jest.isolateModulesAsync(async () => {
+        jest.doMock('onnxruntime-web', () => ({
+          InferenceSession: { create },
+          Tensor: class {
+            constructor(
+              public type: string,
+              public data: unknown,
+              public dims: number[],
+            ) {}
+          },
+          env,
+        }));
+        const { createBrowserEmbedder: createIsolated } = await import('./face-embedder');
+        const embedder = createIsolated('https://models.example/face-embedder.onnx');
+        await embedder.embed({ videoWidth: 112, videoHeight: 112 } as unknown as HTMLVideoElement);
+
+        expect(env.wasm.proxy).toBe(true);
+      });
+    } finally {
+      HTMLCanvasElement.prototype.getContext = originalGetContext;
+    }
+  });
+});
+
+describe('frameToImageData (center-crop geometry)', () => {
+  it('draws a center-square crop of the source rect onto the 112x112 canvas, not a full-frame stretch', () => {
+    // Regression guard for the exact defect the module comment warns about: a reviewer once
+    // replaced this crop with a full-frame stretch and all other tests (including
+    // toNchwFloat32's) still passed, because that math never looks at the drawImage call.
+    const drawImage = jest.fn();
+    const originalGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = jest.fn().mockReturnValue({
+      drawImage,
+      imageSmoothingQuality: 'low',
+      getImageData: jest.fn().mockReturnValue({ data: new Uint8ClampedArray(112 * 112 * 4) }),
+    }) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+
+    try {
+      const video = { videoWidth: 640, videoHeight: 480 } as unknown as HTMLVideoElement;
+      frameToImageData(video);
+
+      // 480 (the shorter side) square, centered within the 640-wide frame: sx = (640-480)/2 = 80,
+      // sy = 0. A full-frame stretch would instead pass the untouched (0, 0, 640, 480) source
+      // rect -- this assertion fails under that mutation.
+      expect(drawImage).toHaveBeenCalledWith(video, 80, 0, 480, 480, 0, 0, 112, 112);
+    } finally {
+      HTMLCanvasElement.prototype.getContext = originalGetContext;
+    }
+  });
+
+  it('requests willReadFrequently for the per-tick getImageData readback and sets high-quality resampling to narrow the gap with the server tier', () => {
+    const ctx = {
+      drawImage: jest.fn(),
+      imageSmoothingQuality: 'low',
+      getImageData: jest.fn().mockReturnValue({ data: new Uint8ClampedArray(112 * 112 * 4) }),
+    };
+    const getContext = jest.fn().mockReturnValue(ctx);
+    const originalGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = getContext as unknown as typeof HTMLCanvasElement.prototype.getContext;
+
+    try {
+      frameToImageData({ videoWidth: 112, videoHeight: 112 } as unknown as HTMLVideoElement);
+      expect(getContext).toHaveBeenCalledWith('2d', { willReadFrequently: true });
+      expect(ctx.imageSmoothingQuality).toBe('high');
     } finally {
       HTMLCanvasElement.prototype.getContext = originalGetContext;
     }

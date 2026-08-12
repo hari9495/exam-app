@@ -317,9 +317,11 @@ describe('useWebcamMonitor', () => {
       expect(reportEvent).not.toHaveBeenCalled();
     });
 
-    it('reports a mismatch hint for a dissimilar embedding and an uncertain hint for a middling one', async () => {
+    it('reports an uncertain hint on the very first tick -- only mismatch is debounced', async () => {
       process.env.NEXT_PUBLIC_FACE_EMBEDDING_MODEL_URL = 'https://models.example/face-embedder.onnx';
-      mockEmbed.mockResolvedValue(new Float32Array([0, 1, 0])); // orthogonal to the [1,0,0] reference -> similarity 0
+      // Unit vector at cosine similarity 0.5 against the [1,0,0] reference -- inside the
+      // (0.4, 0.6) uncertain band, and clearly non-zero (not the degenerate case below).
+      mockEmbed.mockResolvedValue(new Float32Array([0.5, Math.sqrt(3) / 2, 0]));
 
       const onHint = jest.fn();
       render(<IdentityProbe onHint={onHint} />);
@@ -329,7 +331,85 @@ describe('useWebcamMonitor', () => {
         await jest.advanceTimersByTimeAsync(IDENTITY_HINT_INTERVAL_MS);
       });
 
+      expect(onHint).toHaveBeenCalledWith('uncertain');
+    });
+
+    it('requires 3 consecutive mismatch classifications before showing a mismatch hint -- one bad frame must not accuse', async () => {
+      process.env.NEXT_PUBLIC_FACE_EMBEDDING_MODEL_URL = 'https://models.example/face-embedder.onnx';
+      mockEmbed.mockResolvedValue(new Float32Array([-1, 0, 0])); // opposite direction to [1,0,0] -> similarity -1
+
+      const onHint = jest.fn();
+      render(<IdentityProbe onHint={onHint} />);
+      await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled());
+
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(IDENTITY_HINT_INTERVAL_MS);
+      });
+      expect(onHint).not.toHaveBeenCalled(); // 1 of 3
+
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(IDENTITY_HINT_INTERVAL_MS);
+      });
+      expect(onHint).not.toHaveBeenCalled(); // 2 of 3
+
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(IDENTITY_HINT_INTERVAL_MS);
+      });
+      expect(onHint).toHaveBeenCalledTimes(1); // 3rd consecutive -> confirmed, fires once
       expect(onHint).toHaveBeenCalledWith('mismatch');
+    });
+
+    it('treats a zero/degenerate similarity as no signal, never as an instant mismatch accusation', async () => {
+      process.env.NEXT_PUBLIC_FACE_EMBEDDING_MODEL_URL = 'https://models.example/face-embedder.onnx';
+      // A zero-length embedding: cosineSimilarity's zero-vector guard returns exactly 0, which
+      // classifySimilarity alone would read as 'mismatch' (0 < the 0.4 low threshold).
+      mockEmbed.mockResolvedValue(new Float32Array([0, 0, 0]));
+
+      const onHint = jest.fn();
+      render(<IdentityProbe onHint={onHint} />);
+      await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled());
+
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(IDENTITY_HINT_INTERVAL_MS * 4);
+      });
+
+      expect(onHint).not.toHaveBeenCalled();
+    });
+
+    it("skips a tick while the previous tick's embed() is still in flight, rather than letting them pile up", async () => {
+      process.env.NEXT_PUBLIC_FACE_EMBEDDING_MODEL_URL = 'https://models.example/face-embedder.onnx';
+      let resolveFirst!: (v: Float32Array | null) => void;
+      mockEmbed.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirst = resolve;
+          }),
+      );
+      mockEmbed.mockResolvedValue(new Float32Array([1, 0, 0])); // default for the tick after recovery
+
+      const onHint = jest.fn();
+      render(<IdentityProbe onHint={onHint} />);
+      await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled());
+
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(IDENTITY_HINT_INTERVAL_MS);
+      });
+      expect(mockEmbed).toHaveBeenCalledTimes(1); // 1st tick: embed() starts, stays pending
+
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(IDENTITY_HINT_INTERVAL_MS);
+      });
+      expect(mockEmbed).toHaveBeenCalledTimes(1); // 2nd tick: skipped -- the 1st is still in flight
+
+      await act(async () => {
+        resolveFirst(new Float32Array([1, 0, 0]));
+        await jest.advanceTimersByTimeAsync(0);
+      });
+
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(IDENTITY_HINT_INTERVAL_MS);
+      });
+      expect(mockEmbed).toHaveBeenCalledTimes(2); // free again once the 1st settled
     });
 
     it('never calls onHint when embed() resolves null (model failed to load) -- same invisible-failure contract as face-embedder.ts', async () => {

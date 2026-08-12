@@ -42,7 +42,7 @@ export function toNchwFloat32(rgba: Uint8ClampedArray | Uint8Array, size = INPUT
 // image file, and a canvas drawn from a live <video> element already reflects the frame exactly
 // as the browser's camera pipeline oriented it for display -- there is no separate "raw sensor"
 // orientation left to correct here.
-function frameToImageData(video: HTMLVideoElement): ImageData | null {
+export function frameToImageData(video: HTMLVideoElement): ImageData | null {
   const side = Math.min(video.videoWidth, video.videoHeight);
   if (!side) return null;
   const sx = (video.videoWidth - side) / 2;
@@ -50,8 +50,13 @@ function frameToImageData(video: HTMLVideoElement): ImageData | null {
   const canvas = document.createElement('canvas');
   canvas.width = INPUT_SIZE;
   canvas.height = INPUT_SIZE;
-  const ctx = canvas.getContext('2d');
+  // willReadFrequently: this canvas does a getImageData readback every ~4s for the life of the
+  // exam attempt -- Chrome console-warns on exactly this read-heavy-2d-context pattern otherwise.
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return null;
+  // 'high' narrows the resampling gap with the server tier's sharp (Lanczos3); the canvas default
+  // ('low') would make the two tiers see meaningfully different pixels for the same crop.
+  ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(video, sx, sy, side, side, 0, 0, INPUT_SIZE, INPUT_SIZE);
   return ctx.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
 }
@@ -63,8 +68,13 @@ export function createBrowserEmbedder(modelUrl: string): BrowserFaceEmbedder {
   let session: InferenceSession | null = null;
   let loadFailed = false;
   let loadPromise: Promise<InferenceSession | null> | null = null;
+  // Terminal once set by close() -- see close() below. Distinct from loadFailed: loadFailed
+  // means "try again never", closed means "this embedder is done", and only closed must survive
+  // forever (loadFailed/loadPromise get reset elsewhere, closed must not).
+  let closed = false;
 
   async function getSession(): Promise<InferenceSession | null> {
+    if (closed) return null;
     if (session) return session;
     if (loadFailed) return null;
     if (!loadPromise) {
@@ -73,7 +83,26 @@ export function createBrowserEmbedder(modelUrl: string): BrowserFaceEmbedder {
           // Dynamic import so onnxruntime-web (and the WASM it loads) never ships on the
           // critical path -- most candidates, in every environment today, never need it.
           const ort = await import('onnxruntime-web');
-          session = await ort.InferenceSession.create(modelUrl);
+          if (ort.env?.wasm) {
+            // ORT-web runs WASM on the main thread by default (single-threaded -- this app isn't
+            // cross-origin-isolated, so the SharedArrayBuffer-based multi-threaded backend isn't
+            // available). A slow forward pass on a loaded machine would otherwise stutter the
+            // exam timer and the code editor for however long it takes. `proxy` moves execution
+            // to a dedicated Worker instead, without requiring cross-origin isolation. Guarded on
+            // `ort.env?.wasm` so a test double that mocks only `InferenceSession`/`Tensor` (no
+            // `env`) doesn't throw here.
+            ort.env.wasm.proxy = true;
+          }
+          const created = await ort.InferenceSession.create(modelUrl);
+          if (closed) {
+            // close() ran while this load was in flight (React StrictMode's double-mount hits
+            // this on every dev page load). `session` is still null at this point, so a plain
+            // `session?.release()` in close() cannot see this session -- it would otherwise be
+            // unreachable and leak for the rest of the exam attempt. Release it here instead.
+            void created.release().catch(() => {});
+            return null;
+          }
+          session = created;
           return session;
         } catch {
           loadFailed = true;
@@ -109,12 +138,20 @@ export function createBrowserEmbedder(modelUrl: string): BrowserFaceEmbedder {
       }
     },
     close() {
+      // Terminal, and idempotent: a second close() (or a close() that races an in-flight load,
+      // see getSession() above) must produce exactly one release() call, and an embed() called
+      // after close() must never build a fresh session -- an API named "close" that silently
+      // reopens is a trap for whatever calls it next.
+      if (closed) return;
+      closed = true;
       // Actually release the ONNX session's underlying (WASM-side) memory. This runs on an
       // interval for hours during a live exam; a leak here accumulates for the whole attempt.
-      void session?.release();
+      // .catch(): a rejecting release() must not become an unhandled rejection -- the candidate
+      // layout's ClientErrorListener turns those into a visible error record against the
+      // candidate's attempt, and a failed cleanup must stay invisible like every other failure
+      // path here.
+      void session?.release().catch(() => {});
       session = null;
-      loadFailed = false;
-      loadPromise = null;
     },
   };
 }
