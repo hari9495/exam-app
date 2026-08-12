@@ -4,11 +4,7 @@
   "main": "dist/index.js",
   "exports": {
     ".": "./dist/index.js",
-    "./package.json": "./package.json",
-    "./face/similarity": {
-      "types": "./dist/face/similarity.d.ts",
-      "default": "./dist/face/similarity.js"
-    }
+    "./package.json": "./package.json"
   },
   "scripts": {
     "build": "tsc",

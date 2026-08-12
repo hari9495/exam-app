@@ -1,34 +1,14 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-// The `./face/similarity` subpath, not the package root: `@exam-platform/shared`'s barrel
-// (dist/index.js) also re-exports server-only modules (Prisma, the Anthropic/OpenAI SDKs,
-// Nest's CryptoModule) that don't run in a browser and pull in Node-only shims -- importing the
-// root here broke the Next.js client bundle. cosineSimilarity/classifySimilarity have no such
-// dependency, so packages/shared/package.json exposes them on their own "exports" subpath.
-import { cosineSimilarity, classifySimilarity, CONSECUTIVE_MISMATCHES_TO_CONFIRM, FaceVerdict } from '@exam-platform/shared/face/similarity';
 import { detectViolationReason, detectLookingDown, ViolationReason } from '../webcam-detection';
 import { createViolationVoter } from '../webcam-voting';
-import { createBrowserEmbedder } from '../face-embedder';
 import { useReportProctoringEvent, useReportWebcamSnapshot, useReportWebcamViolation } from './useAttempt';
 import { ExamProctoringConfig } from '../types';
 
 const SAMPLE_INTERVAL_MS = 500;
 const PERIODIC_SNAPSHOT_MIN_MS = 120_000;
 const PERIODIC_SNAPSHOT_MAX_MS = 180_000;
-// Far more expensive than the 500ms landmark loop above (a full model forward pass, not
-// landmark geometry), so the browser advisory tier runs on its own, much slower interval.
-const IDENTITY_HINT_INTERVAL_MS = 4_000;
-
-// The browser tier is advisory only: `onHint` may update a candidate-facing hint and nothing
-// else. It must never be wired to report an event, set a flag, or otherwise touch exam state --
-// only the server tier decides those. `referenceEmbedding` is whatever the page currently holds
-// (e.g. decoded from an enrolment embedding); pass null while none is available yet, which the
-// hook treats as "nothing to compare against" rather than as a failure.
-export interface IdentityHintConfig {
-  referenceEmbedding: Float32Array | null;
-  onHint: (verdict: FaceVerdict | null) => void;
-}
 // Self-hosted from the app's own origin, NOT jsdelivr / storage.googleapis.com.
 // Candidates take proctored exams on locked-down office networks that block
 // third-party CDNs; loading the MediaPipe runtime or model cross-origin left
@@ -51,7 +31,6 @@ export function useWebcamMonitor(
   onViolationReason?: (reason: string) => void,
   config?: ExamProctoringConfig,
   capture?: () => string | null,
-  identity?: IdentityHintConfig,
 ): void {
   const reportViolation = useReportWebcamViolation();
   const reportViolationRef = useRef(reportViolation.mutate);
@@ -78,12 +57,6 @@ export function useWebcamMonitor(
   const configRef = useRef(config);
   configRef.current = config;
 
-  // `identity` (its reference embedding especially) can change identity every render -- same
-  // ref-mirror reasoning as `capture` above, so a fresh object here never tears down and
-  // restarts the camera/model.
-  const identityRef = useRef(identity);
-  identityRef.current = identity;
-
   useEffect(() => {
     // webcamEnabled === false must bail before setup() -- see the fail-safe below,
     // which reports a real no_face violation if the camera cannot be acquired.
@@ -108,15 +81,6 @@ export function useWebcamMonitor(
     let stream: MediaStream | null = null;
     let intervalId: ReturnType<typeof setInterval> | undefined;
     let snapshotTimer: ReturnType<typeof setTimeout> | undefined;
-    let identityIntervalId: ReturnType<typeof setInterval> | undefined;
-    // Self-hosted, like MEDIAPIPE_WASM_URL below -- but unlike that model, this one (see
-    // face-embedder.ts) is gated on a licensing review and does not exist yet. Unset in every
-    // environment today, which is exactly what keeps this tier off: no env var, no embedder, no
-    // difference to the candidate. Read here (not hoisted to module scope) so Next.js's
-    // build-time inlining of NEXT_PUBLIC_* still applies -- it replaces the expression textually,
-    // not just at module top level.
-    const modelUrl = process.env.NEXT_PUBLIC_FACE_EMBEDDING_MODEL_URL;
-    const embedder = modelUrl ? createBrowserEmbedder(modelUrl) : null;
 
     // Two independent voters debounce raw per-sample detections into confirmed episodes:
     // strike-worthy violations (8-sample window, 5 to confirm) and report-only looking_down
@@ -124,16 +88,6 @@ export function useWebcamMonitor(
     // down briefly is normal).
     const violationVoter = createViolationVoter({ windowSize: 8, threshold: 5 });
     const lookingVoter = createViolationVoter({ windowSize: 24, threshold: 20 });
-    // Same voter primitive as the two above, sized from the SHARED constant the server tier's
-    // mismatch voter uses (windowSize === threshold, so the only way to cross threshold is the
-    // whole window agreeing). One bad frame -- a head turn, a moment of bad light -- must never
-    // read as an accusation. Importing rather than mirroring the number is deliberate: if the two
-    // tiers drifted, a candidate would see a warning at a different moment than the recruiter sees
-    // evidence for it. 'match' and 'uncertain' hints are not gated -- only 'mismatch' is.
-    const identityMismatchVoter = createViolationVoter({
-      windowSize: CONSECUTIVE_MISMATCHES_TO_CONFIRM,
-      threshold: CONSECUTIVE_MISMATCHES_TO_CONFIRM,
-    });
 
     const video = document.createElement('video');
     video.muted = true;
@@ -193,57 +147,6 @@ export function useWebcamMonitor(
         }
       }, SAMPLE_INTERVAL_MS);
 
-      // Separate, much slower interval -- never on the SAMPLE_INTERVAL_MS landmark tick above.
-      // Advisory only: the result only ever reaches `identity.onHint`, never reportViolationRef,
-      // reportEventRef, or anything else that could flag the candidate.
-      if (embedder) {
-        // A forward pass can take longer than the 4s tick on a slow machine (ORT-web runs WASM
-        // single-threaded on the main thread by default -- see face-embedder.ts's `proxy` note).
-        // Without this guard, ticks pile up: concurrent session.run() calls, each with its own
-        // fresh canvas and Float32Array, unbounded over a multi-hour exam. Skip a tick outright
-        // while one is still in flight rather than queuing it.
-        let inFlight = false;
-        identityIntervalId = setInterval(() => {
-          if (inFlight) return;
-          const currentIdentity = identityRef.current;
-          if (!currentIdentity || !currentIdentity.referenceEmbedding || video.readyState < 2) return;
-          const referenceEmbedding = currentIdentity.referenceEmbedding;
-          inFlight = true;
-          embedder
-            .embed(video)
-            .then((liveEmbedding) => {
-              if (cancelled || !liveEmbedding) return;
-              const score = cosineSimilarity(liveEmbedding, referenceEmbedding);
-              // A zero score is what a degenerate/zero-length embedding also produces (see
-              // cosineSimilarity's comment) -- indistinguishable here from a genuine "no
-              // relation" score of exactly 0. Treat it as no signal rather than let a numerical
-              // degenerate read as a mismatch accusation.
-              if (score === 0) {
-                identityMismatchVoter.push(null);
-                return;
-              }
-              const verdict = classifySimilarity(score);
-              if (verdict !== 'mismatch') {
-                identityMismatchVoter.push(null);
-                identityRef.current?.onHint(verdict);
-                return;
-              }
-              // Debounced: only a confirmed (3-consecutive) mismatch reaches the candidate --
-              // see identityMismatchVoter above.
-              if (identityMismatchVoter.push('mismatch')) {
-                identityRef.current?.onHint('mismatch');
-              }
-            })
-            .catch(() => {
-              // Belt and braces: embed() already never rejects, but this loop must never be the
-              // thing that turns a model hiccup into an unhandled rejection on the exam page.
-            })
-            .finally(() => {
-              inFlight = false;
-            });
-        }, IDENTITY_HINT_INTERVAL_MS);
-      }
-
       scheduleSnapshot();
     }
 
@@ -258,13 +161,8 @@ export function useWebcamMonitor(
     return () => {
       cancelled = true;
       if (intervalId) clearInterval(intervalId);
-      if (identityIntervalId) clearInterval(identityIntervalId);
       if (snapshotTimer) clearTimeout(snapshotTimer);
       stream?.getTracks().forEach((track) => track.stop());
-      // Actually releases the ONNX session -- see face-embedder.ts. Without this, every
-      // mount/unmount of the exam page (or every attempt re-render that tears the effect down)
-      // would leak a session for the life of the tab.
-      embedder?.close();
     };
   }, [enabled]);
 }
