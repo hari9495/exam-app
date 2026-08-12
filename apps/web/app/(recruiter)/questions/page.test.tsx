@@ -1111,10 +1111,10 @@ describe('QuestionsPage', () => {
       });
 
       // Regression for the invariant: a bulk action must never touch a row the recruiter cannot
-      // currently see. Grouped view renders one <Table> per group -- a select-all bound to the
-      // whole page's rows would reach into every other group too, including one that's collapsed
-      // and not even in the DOM. There's no way to click "select all" here at all anymore.
-      it('does not offer a select-all while grouped, so one group cannot select rows in another (unrendered) group', async () => {
+      // currently see. Grouped view renders one <Table> per group, each with its own select-all
+      // bound only to that group's rows -- checking Arrays' select-all while Trees is collapsed
+      // must select only Arrays' draft, never reach into Trees (which never even mounted).
+      it('scopes a group select-all to its own group, never reaching into another (unrendered) group', async () => {
         const GROUPED_DRAFT_1 = { ...DRAFT_1, topic: 'Arrays' };
         const GROUPED_DRAFT_2 = { ...DRAFT_2, topic: 'Trees' };
         const fetchMock = jest.fn(async (url) => {
@@ -1138,10 +1138,56 @@ describe('QuestionsPage', () => {
 
         // Only Arrays is expanded -- Trees (and its draft) never renders.
         await userEvent.click(screen.getByRole('button', { name: /Arrays/ }));
-        await screen.findByLabelText('Select question q1');
+        await userEvent.click(await screen.findByLabelText('Select all questions in Arrays'));
 
-        expect(screen.queryByLabelText('Select all questions on this page')).not.toBeInTheDocument();
-        expect(screen.queryByText('A second draft question')).not.toBeInTheDocument();
+        // Only the one visible, Arrays-only row is selected.
+        expect(screen.getByRole('button', { name: 'Publish selected (1)' })).toBeInTheDocument();
+
+        // Now expand Trees too -- if Arrays' select-all had wrongly reached into it, its
+        // checkbox would already be checked here.
+        await userEvent.click(screen.getByRole('button', { name: /Trees/ }));
+        expect(screen.getByLabelText('Select question q2')).not.toBeChecked();
+        expect(screen.getByRole('button', { name: 'Publish selected (1)' })).toBeInTheDocument();
+      });
+
+      // Regression for the invariant itself: collapsing a group is the normal interaction in a
+      // grouped view, not a corner case -- its rows stay in `rows` (the fetched page) even though
+      // nothing renders. The bulk-action bar must disappear the moment the selected rows leave
+      // the DOM, not keep offering to act on rows the recruiter can no longer see.
+      it('hides the bulk-action bar once its selected rows are hidden by collapsing their group', async () => {
+        const GROUPED_DRAFT_1 = { ...DRAFT_1, topic: 'Arrays' };
+        const GROUPED_DRAFT_2 = { ...DRAFT_2, topic: 'Arrays' };
+        const fetchMock = jest.fn(async (url) => {
+          const u = String(url);
+          if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+          if (u.includes('/questions')) {
+            return new Response(JSON.stringify({ data: [GROUPED_DRAFT_1, GROUPED_DRAFT_2], total: 2, page: 1, pageSize: 100, totalPages: 1 }), {
+              status: 200,
+            });
+          }
+          return new Response(JSON.stringify({}), { status: 200 });
+        });
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        renderDraftsPage();
+        await userEvent.click(await screen.findByRole('button', { name: 'Filter by Status' }));
+        await userEvent.click(await screen.findByRole('menuitem', { name: 'Drafts' }));
+
+        await userEvent.click(screen.getByRole('combobox', { name: 'Group By' }));
+        await userEvent.click(screen.getByRole('option', { name: 'Topic' }));
+
+        const arraysHeading = screen.getByRole('button', { name: /Arrays/ });
+        await userEvent.click(arraysHeading);
+        await userEvent.click(await screen.findByLabelText('Select question q1'));
+        await userEvent.click(screen.getByLabelText('Select question q2'));
+        expect(screen.getByRole('button', { name: 'Discard selected (2)' })).toBeInTheDocument();
+
+        // Collapse the group -- both selected rows leave the DOM, but selectedIds still holds them.
+        await userEvent.click(arraysHeading);
+
+        // The bulk-action bar must disappear entirely rather than keep offering an action
+        // against rows that are no longer on screen.
+        expect(screen.queryByRole('button', { name: /Discard selected/ })).not.toBeInTheDocument();
       });
 
       // Regression: setSelectedIds(new Set()) only ran off [status, page] -- typing into search

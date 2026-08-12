@@ -72,11 +72,37 @@ export default function QuestionsPage() {
     setSelectedIds(new Set());
   }, [status, page, search]);
 
-  // A row can also drop out of view without any of the above changing -- a per-row Publish/Discard
-  // refetches this same view and the row it acted on is simply gone. Deriving the acted-on set as
-  // the intersection with what's actually on screen (rather than pruning the Set itself) keeps this
-  // a one-line guard instead of another effect to get wrong.
-  const visibleRowIds = new Set(rows.map((question) => question.id));
+  // Collapsed by default: with many topics/categories, dumping every group's full row list
+  // open at once is exactly the clutter grouping is meant to cut through. Keyed by group
+  // label rather than index -- stable across a re-group even though group order can shift.
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  function toggleGroup(label: string) {
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      return next;
+    });
+  }
+
+  // Each group renders its own Table, so column-header sorting applies within a group. Computed
+  // here (ahead of the early returns below) because visibleRowIds needs it too.
+  const groups = groupBy === 'none' ? [{ label: '', questions: rows }] : groupQuestions(rows, groupBy);
+
+  // A row can drop out of view two ways without status/page/search moving: a per-row
+  // Publish/Discard refetches this view and the row it acted on is simply gone, or its group
+  // gets collapsed -- the row stays in `rows` (the fetched page) but nothing renders in the DOM.
+  // Deriving the visible set from the *expanded* groups, not from `rows`, is what keeps a bulk
+  // action from ever reaching a row the recruiter can't currently see.
+  const visibleRowIds = new Set(
+    groups
+      .filter((group) => groupBy === 'none' || expandedGroups.has(group.label))
+      .flatMap((group) => group.questions.map((question) => question.id)),
+  );
   const selectedVisibleIds = Array.from(selectedIds).filter((id) => visibleRowIds.has(id));
 
   function toggleSelected(id: string) {
@@ -114,23 +140,6 @@ export default function QuestionsPage() {
       setBulkActionPending(false);
     }
   }
-  // Collapsed by default: with many topics/categories, dumping every group's full row list
-  // open at once is exactly the clutter grouping is meant to cut through. Keyed by group
-  // label rather than index -- stable across a re-group even though group order can shift.
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-
-  function toggleGroup(label: string) {
-    setExpandedGroups((current) => {
-      const next = new Set(current);
-      if (next.has(label)) {
-        next.delete(label);
-      } else {
-        next.add(label);
-      }
-      return next;
-    });
-  }
-
   function handleConfirmDelete() {
     if (!questionPendingDelete) return;
     archiveQuestion.mutate(questionPendingDelete.id, {
@@ -160,12 +169,8 @@ export default function QuestionsPage() {
     status === 'draft'
       ? {
           key: '__select',
-          // Grouped view renders one <Table> per group, all sharing this same column -- a
-          // select-all bound to `rows` (the whole page) would reach into every OTHER group too,
-          // including ones collapsed and not even in the DOM. There's no per-group row list here
-          // to bind it to instead (each group builds its own further down), so it's simplest and
-          // safest to just not offer the shortcut while grouped; the per-row checkboxes below are
-          // unaffected and still work group by group.
+          // Only meaningful ungrouped -- bound to the whole page (`rows`). The grouped case gets
+          // its own column per group below, scoped to that group's own rows.
           header:
             groupBy === 'none' ? (
               <Checkbox
@@ -186,6 +191,42 @@ export default function QuestionsPage() {
           ),
         }
       : null;
+
+  // Grouped view renders one <Table> per group -- this binds a select-all to that one group's
+  // own rows (`group.questions`, in hand where the tables render below), so checking it can
+  // never reach into a different, possibly-collapsed group. Safe by construction: visibleRowIds
+  // above already restricts bulk actions to expanded groups regardless of what's in selectedIds.
+  function groupSelectionColumn(group: { label: string; questions: Question[] }): Column<NumberedQuestion> {
+    return {
+      key: '__select',
+      header: (
+        <Checkbox
+          checked={group.questions.length > 0 && group.questions.every((question) => selectedIds.has(question.id))}
+          onChange={(checked) =>
+            setSelectedIds((current) => {
+              const next = new Set(current);
+              for (const question of group.questions) {
+                if (checked) next.add(question.id);
+                else next.delete(question.id);
+              }
+              return next;
+            })
+          }
+          label={`Select all questions in ${group.label}`}
+          hideLabel
+        />
+      ),
+      width: '3%',
+      render: (question) => (
+        <Checkbox
+          checked={selectedIds.has(question.id)}
+          onChange={() => toggleSelected(question.id)}
+          label={`Select question ${question.id}`}
+          hideLabel
+        />
+      ),
+    };
+  }
 
   // Kept out of useColumnVisibility (below) and prepended after it: hiding this column would
   // strand an in-progress selection with no way to bring it back except clearing storage --
@@ -332,7 +373,12 @@ export default function QuestionsPage() {
     },
   ];
   const { visibleColumns, chooser } = useColumnVisibility('recruiter-questions', dataColumns);
-  const tableColumns = selectionColumn ? [selectionColumn, ...visibleColumns] : visibleColumns;
+
+  function columnsForGroup(group: { label: string; questions: Question[] }): Column<NumberedQuestion>[] {
+    if (!selectionColumn) return visibleColumns;
+    const select = groupBy === 'none' ? selectionColumn : groupSelectionColumn(group);
+    return [select, ...visibleColumns];
+  }
 
   if (isLoading) {
     return (
@@ -353,9 +399,6 @@ export default function QuestionsPage() {
       </div>
     );
   }
-
-  // Each group renders its own Table, so column-header sorting applies within a group.
-  const groups = groupBy === 'none' ? [{ label: '', questions: rows }] : groupQuestions(rows, groupBy);
 
   return (
     <div>
@@ -473,7 +516,7 @@ export default function QuestionsPage() {
                 )}
                 {expanded && (
                   <div className={groupBy !== 'none' ? 'p-3' : undefined}>
-                    <Table columns={tableColumns} rows={numberedQuestions} rowKey={(question) => question.id} />
+                    <Table columns={columnsForGroup(group)} rows={numberedQuestions} rowKey={(question) => question.id} />
                   </div>
                 )}
               </section>
