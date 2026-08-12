@@ -1190,6 +1190,51 @@ describe('QuestionsPage', () => {
         expect(screen.queryByRole('button', { name: /Discard selected/ })).not.toBeInTheDocument();
       });
 
+      // Regression for the same invariant via the other proven path: the selection is made
+      // *before* grouping is turned on, not by collapsing an already-grouped view. Switching
+      // Group By resets neither [status, page, search] (so the selectedIds-clearing effect never
+      // fires) nor expandedGroups, so every group starts collapsed with both previously-visible,
+      // previously-selected rows now off-screen -- the bulk-action bar must disappear. Expanding
+      // one group afterward must report the count for exactly its own now-visible row, not the
+      // stale 2 -- that distinguishes "the selection was hidden" from "the selection was
+      // silently thrown away".
+      it('hides the bulk-action bar when grouping collapses a selection made while ungrouped, then shows the right count once a group reopens', async () => {
+        const GROUPED_DRAFT_1 = { ...DRAFT_1, topic: 'Arrays' };
+        const GROUPED_DRAFT_2 = { ...DRAFT_2, topic: 'Trees' };
+        const fetchMock = jest.fn(async (url) => {
+          const u = String(url);
+          if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+          if (u.includes('/questions')) {
+            return new Response(JSON.stringify({ data: [GROUPED_DRAFT_1, GROUPED_DRAFT_2], total: 2, page: 1, pageSize: 100, totalPages: 1 }), {
+              status: 200,
+            });
+          }
+          return new Response(JSON.stringify({}), { status: 200 });
+        });
+        global.fetch = fetchMock as unknown as typeof fetch;
+
+        renderDraftsPage();
+        await userEvent.click(await screen.findByRole('button', { name: 'Filter by Status' }));
+        await userEvent.click(await screen.findByRole('menuitem', { name: 'Drafts' }));
+
+        // Select both drafts while still ungrouped -- both rows are on screen.
+        await userEvent.click(await screen.findByLabelText('Select question q1'));
+        await userEvent.click(screen.getByLabelText('Select question q2'));
+        expect(screen.getByRole('button', { name: 'Publish selected (2)' })).toBeInTheDocument();
+
+        // Turn on Topic grouping -- both groups start collapsed, so both selected rows leave the
+        // DOM in the same tick even though selectedIds still holds both ids.
+        await userEvent.click(screen.getByRole('combobox', { name: 'Group By' }));
+        await userEvent.click(screen.getByRole('option', { name: 'Topic' }));
+
+        expect(screen.queryByRole('button', { name: /Publish selected/ })).not.toBeInTheDocument();
+
+        // Expand Arrays -- only its one selected row (q1) is visible now.
+        await userEvent.click(screen.getByRole('button', { name: /Arrays/ }));
+
+        expect(screen.getByRole('button', { name: 'Publish selected (1)' })).toBeInTheDocument();
+      });
+
       // Regression: setSelectedIds(new Set()) only ran off [status, page] -- typing into search
       // calls setPage(1), a no-op when already on page 1, so a selection survived a search that
       // filtered its row out of view entirely.
