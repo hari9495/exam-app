@@ -130,7 +130,9 @@ describe('GenerateQuestionsModal', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Generate' }));
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
 
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    // The footer button relabels to "Close" while a job is running -- "Cancel" would be a lie,
+    // since clicking it does not cancel the paid job, only hides the dialog.
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(onClose).toHaveBeenCalled();
 
     // Parent hides the dialog (open=false) but keeps this component mounted, same as the
@@ -168,6 +170,60 @@ describe('GenerateQuestionsModal', () => {
 
     render(<GenerateQuestionsModal open onClose={jest.fn()} onCompleted={jest.fn()} />);
     expect(await screen.findAllByText(/must have exactly one correct option/)).toHaveLength(1);
+  });
+
+  // N1: without this, a poll error (token expiry mid-job, an API restart, a 500) leaves
+  // `running` stuck true forever -- job.data never resolves, so "Generating..." shows with
+  // no error and the only way out is a page reload, since aiJobId is never cleared on close.
+  it('shows an error and re-enables Generate when the poll itself errors', async () => {
+    (useGenerateQuestions as jest.Mock).mockReturnValue({ mutateAsync: jest.fn().mockResolvedValue({ aiJobId: 'j1' }), isPending: false });
+    (useAiJob as jest.Mock).mockReturnValue({ data: undefined, isError: true });
+
+    render(<GenerateQuestionsModal open onClose={jest.fn()} onCompleted={jest.fn()} />);
+    await userEvent.type(screen.getByLabelText('Topic'), 'SQL joins');
+    await userEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't check on the generation job/i);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Generate' })).not.toBeDisabled());
+  });
+
+  // N3: aiJobId and the parsed output persist by design (see the comment above aiJobId), so
+  // reopening the modal after a completed run renders the previous summary. Without a "Last
+  // run:" prefix that reads as the current run's result.
+  it('labels a completed run\'s summary as history, not as the current result', async () => {
+    (useGenerateQuestions as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+    (useAiJob as jest.Mock).mockReturnValue({
+      data: {
+        id: 'j1', type: 'ai-question-generation', status: 'completed', error: null,
+        outputJson: JSON.stringify({ requested: 10, created: 6, dropped: [], questionIds: [] }),
+      },
+    });
+
+    render(<GenerateQuestionsModal open onClose={jest.fn()} onCompleted={jest.fn()} />);
+    expect(await screen.findByText(/^Last run: 10 requested/)).toBeInTheDocument();
+  });
+
+  // N4: a second submit that rejects (e.g. the server rejects the payload) must not leave the
+  // previous run's "10 requested..." summary sitting under the fresh form error -- that reads
+  // as though those numbers belong to the failed attempt.
+  it('hides the previous run\'s output once a new submit fails', async () => {
+    const mutateAsync = jest.fn().mockRejectedValue(new Error('Server rejected the request.'));
+    (useGenerateQuestions as jest.Mock).mockReturnValue({ mutateAsync, isPending: false });
+    (useAiJob as jest.Mock).mockReturnValue({
+      data: {
+        id: 'j1', type: 'ai-question-generation', status: 'completed', error: null,
+        outputJson: JSON.stringify({ requested: 10, created: 6, dropped: [], questionIds: [] }),
+      },
+    });
+
+    render(<GenerateQuestionsModal open onClose={jest.fn()} onCompleted={jest.fn()} />);
+    expect(await screen.findByText(/10 requested/)).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText('Topic'), 'SQL joins');
+    await userEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    expect(await screen.findByText('Server rejected the request.')).toBeInTheDocument();
+    expect(screen.queryByText(/10 requested/)).not.toBeInTheDocument();
   });
 
   // Important #5: Count is a bare <div>, not a <form>, so `min`/`max` never ran and there was

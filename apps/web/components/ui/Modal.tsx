@@ -17,6 +17,10 @@ interface ModalProps {
    *  `children` can ignore this and nothing changes for them. */
   footer?: ReactNode;
   size?: ModalSize;
+  /** Override the dialog's own X-button label. Only needed when a caller's own footer
+   *  button is also labelled "Close" -- default "Close" would then give two controls the
+   *  same accessible name. Defaults to "Close". */
+  closeAriaLabel?: string;
 }
 
 const SIZE_CLASSES: Record<ModalSize, string> = {
@@ -25,7 +29,7 @@ const SIZE_CLASSES: Record<ModalSize, string> = {
   xl: 'max-w-5xl',
 };
 
-export function Modal({ open, title, onClose, children, footer, size = 'md' }: ModalProps) {
+export function Modal({ open, title, onClose, children, footer, size = 'md', closeAriaLabel = 'Close' }: ModalProps) {
   return (
     <Dialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
       <Dialog.Portal>
@@ -44,7 +48,7 @@ export function Modal({ open, title, onClose, children, footer, size = 'md' }: M
             <div className="flex items-center justify-between gap-4 border-b border-recruiter-border px-6 py-4">
               <Dialog.Title className="text-lg font-bold text-recruiter-text">{title}</Dialog.Title>
               <Dialog.Close
-                aria-label="Close"
+                aria-label={closeAriaLabel}
                 className="rounded p-1 text-recruiter-text-tertiary transition-colors hover:bg-recruiter-bg-subtle hover:text-recruiter-text"
               >
                 <X size={18} />

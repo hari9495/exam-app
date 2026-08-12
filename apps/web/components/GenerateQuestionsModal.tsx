@@ -23,6 +23,14 @@ const QUESTION_TYPE_OPTIONS: { value: GeneratableQuestionType; label: string }[]
   { value: 'true_false', label: 'True / False' },
 ];
 
+/**
+ * Must be rendered unconditionally (`<GenerateQuestionsModal open={open} .../>`, never
+ * `{open && <GenerateQuestionsModal .../>}`), with `open` toggled to show/hide it. The
+ * generation job is a paid, 15-90s background job that keeps polling after the dialog is
+ * closed so the page can switch to Drafts when it lands (see the `aiJobId` comment below).
+ * Mounting the component only while `open` is true unmounts it on close, which drops
+ * `aiJobId` and the React Query observer -- the poll dies and `onCompleted` never fires.
+ */
 interface GenerateQuestionsModalProps {
   open: boolean;
   onClose: () => void;
@@ -66,7 +74,19 @@ export function GenerateQuestionsModal({ open, onClose, onCompleted }: GenerateQ
   // aiJobId !== null (not job.data) covers the gap between submit resolving and the first
   // poll resolving: `job.data` is still undefined then, but a job is already in flight and a
   // second click must not start (and pay for) another one.
-  const running = aiJobId !== null && job.data?.status !== 'completed' && job.data?.status !== 'failed';
+  //
+  // If useAiJob ever gains `placeholderData` (as useQuestions/useTags already have, to avoid
+  // a loading flash on refetch), that changes this calculation, not just notifiedFor above:
+  // `job.data` would keep showing the *previous* job's status for a moment after aiJobId
+  // switches to a new id, so `running` would read that old `completed` and briefly report
+  // false right after a new submit -- reopening the double-click window this line exists to
+  // close. notifiedFor survives that because it's keyed on aiJobId; running is not.
+  //
+  // job.isError means the poll itself failed (token expiry mid-job, API restart, a 500) --
+  // not that the job failed. Without excluding it here, `running` never becomes false, so a
+  // failed poll leaves the form disabled and "Generating..." showing forever, with the only
+  // recovery being a page reload (aiJobId is deliberately never cleared -- see above).
+  const running = aiJobId !== null && !job.isError && job.data?.status !== 'completed' && job.data?.status !== 'failed';
 
   function toggleQuestionType(type: GeneratableQuestionType, checked: boolean) {
     setQuestionTypes((current) => (checked ? [...current, type] : current.filter((t) => t !== type)));
@@ -124,7 +144,12 @@ export function GenerateQuestionsModal({ open, onClose, onCompleted }: GenerateQ
   }
 
   return (
-    <Modal open={open} title="Generate questions with AI" onClose={handleClose}>
+    <Modal
+      open={open}
+      title="Generate questions with AI"
+      onClose={handleClose}
+      closeAriaLabel="Close dialog"
+    >
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <RequiredFieldsNote />
         <fieldset disabled={generate.isPending || running} className="contents">
@@ -174,10 +199,13 @@ export function GenerateQuestionsModal({ open, onClose, onCompleted }: GenerateQ
           </p>
         )}
 
-        {output && (
+        {/* Hidden (not cleared) when a later submit fails: `output` is still derived from the
+            old completed job, and rendering it under a fresh formError would read as though
+            those numbers belong to the failed attempt. */}
+        {output && !formError && (
           <div className="space-y-2 text-sm">
             <p>
-              {output.requested} requested · {output.created} created · {output.dropped.length} dropped
+              Last run: {output.requested} requested · {output.created} created · {output.dropped.length} dropped
             </p>
             {output.dropped.length > 0 && (
               <ul className="list-disc pl-5 text-recruiter-text-secondary">
@@ -189,15 +217,15 @@ export function GenerateQuestionsModal({ open, onClose, onCompleted }: GenerateQ
           </div>
         )}
 
-        {job.data?.status === 'failed' && (
+        {(job.data?.status === 'failed' || job.isError) && (
           <p role="alert" className="text-sm text-status-danger">
-            {job.data.error ?? 'Generation failed.'}
+            {job.isError ? "Couldn't check on the generation job. Try again." : (job.data?.error ?? 'Generation failed.')}
           </p>
         )}
 
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={handleClose}>
-            Cancel
+            {running ? 'Close' : 'Cancel'}
           </Button>
           <Button type="submit" loading={generate.isPending || running}>
             Generate
