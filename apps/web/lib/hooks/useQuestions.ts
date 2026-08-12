@@ -161,6 +161,55 @@ export function useUploadQuestionImage() {
   });
 }
 
+export interface GenerateQuestionsPayload {
+  topic: string;
+  difficulty: Difficulty;
+  questionTypes: QuestionType[];
+  count: number;
+  marks: number;
+  negativeMarks: number;
+  tagIds: string[];
+}
+
+export interface GenerationOutput {
+  requested: number;
+  created: number;
+  dropped: { reason: string }[];
+  questionIds: string[];
+}
+
+export interface AiJobStatus {
+  id: string;
+  type: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  outputJson: string | null;
+  error: string | null;
+}
+
+export function useGenerateQuestions() {
+  const { accessToken } = useAuth();
+  return useMutation<{ aiJobId: string }, Error, GenerateQuestionsPayload>({
+    mutationFn: (payload) =>
+      apiFetch('/questions/ai-generate', { method: 'POST', body: JSON.stringify(payload) }, accessToken ?? undefined),
+  });
+}
+
+// Note the path: the controller is mounted at `ai-jobs`, not `jobs`.
+export function useAiJob(aiJobId: string | null) {
+  const { accessToken } = useAuth();
+  return useQuery<AiJobStatus>({
+    queryKey: ['ai-job', aiJobId],
+    queryFn: () => apiFetch(`/ai-jobs/${aiJobId}`, {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken && aiJobId),
+    // Poll while the job is still running, then stop. Without the false branch this polls
+    // forever after completion, once per open modal, for as long as the tab is open.
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === 'pending' || status === 'processing' ? 2000 : false;
+    },
+  });
+}
+
 export function useCodeLanguages() {
   const { accessToken } = useAuth();
   return useQuery<{ language: string; version: string }[]>({
