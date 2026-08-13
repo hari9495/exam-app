@@ -3,9 +3,9 @@ import { APP_FILTER, APP_GUARD, HttpAdapterHost } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, seconds } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
+import Redis from 'ioredis';
 import { PrismaModule, AuditModule, SystemEventsModule, SystemEventsService, SystemEventsExceptionFilter, PrismaService, HealthService } from '@exam-platform/shared';
 import { HealthController } from './health/health.controller';
-import { createRedisConnection } from './jobs/redis-connection';
 import { RbacModule } from './rbac/rbac.module';
 import { AuthModule } from './auth/auth.module';
 import { SetupModule } from './setup/setup.module';
@@ -82,10 +82,16 @@ import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
     {
       provide: HealthService,
       useFactory: (prisma: PrismaService) => {
-        // Created ONCE here, not inside checkRedis. Calling createRedisConnection() per check
+        // Created ONCE here, not inside checkRedis. Constructing a client per check
         // would open a new socket on every health poll -- a connection leak driven by the
         // monitor itself, at 3 monitors x every 5 minutes, forever.
-        const redis = createRedisConnection();
+        //
+        // Deliberately NOT createRedisConnection() (jobs/redis-connection.ts): that factory
+        // sets maxRetriesPerRequest: null for BullMQ's blocking commands, which is wrong here
+        // -- it means ping() never rejects during an outage, just parks in ioredis's offline
+        // queue forever. A plain client rejects instead, so a Redis outage is reported as
+        // down rather than accumulating one more permanently-pending ping() per poll.
+        const redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
         return new HealthService({
           checkDb: () => prisma.$queryRaw`SELECT 1`,
           checkRedis: () => redis.ping(),
