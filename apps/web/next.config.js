@@ -11,6 +11,10 @@ const nextConfig = {
 // instead of relying on the absence of a token.
 module.exports = withSentryConfig(nextConfig, {
   silent: true,
+  // ponytail: disable telemetry. The bundler plugin defaults telemetry to true
+  // and phones home on every production build regardless of DSN configuration;
+  // silent:true only suppresses the console message, not the network call.
+  telemetry: false,
   sourcemaps: {
     disable: true,
   },
