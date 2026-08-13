@@ -117,7 +117,7 @@ It also inherits, for free, four properties that would otherwise have to be rebu
 
 **`apps/web`** uses the Next.js SDK for both server and browser runtimes. This is genuinely new — no equivalent exists.
 
-### 3. PII scrubbing — `toSentryEvent(entry) => event | null`
+### 3. PII scrubbing — `buildSentryPayload(entry) => event | null`
 
 Mostly already solved, and the design deliberately does not re-solve it. `contextFrom()` in the existing filter is **already an allow-list**: it emits `status`, `method`, `route`, `invitationId`, `userId` and a truncated stack, and nothing else. Request bodies, headers and cookies are never read, so answer text, candidate names, emails and `Authorization` bearer tokens cannot ride along.
 
@@ -173,7 +173,7 @@ All are gitignored and must be re-applied after any redeploy that regenerates `.
 
 ## Data flow
 
-**Errors.** Request throws → `SystemEventsExceptionFilter.catch()` → existing DB sink (`void record(...)`, unchanged) **and** the new Sentry sink in parallel → `toSentryEvent()` → `classifySeverity()` → rate-limit check → async send → `super.catch()` produces the HTTP response exactly as today.
+**Errors.** Request throws → `SystemEventsExceptionFilter.catch()` → existing DB sink (`void record(...)`, unchanged) **and** the new Sentry sink in parallel → `buildSentryPayload()` → `classifySeverity()` → rate-limit check → async send → `super.catch()` produces the HTTP response exactly as today.
 
 Both sinks are fire-and-forget, so neither can delay the response and neither can fail the other: a Sentry outage must not stop the DB audit trail, and a database outage — the case where external reporting matters most — must not stop the Sentry send. `apps/api` calls `enableShutdownHooks()` already (`main.ts:16`), so Nest's shutdown hook can call `Sentry.close(timeout)` to flush in-flight events instead of losing them on every deploy restart.
 
@@ -201,8 +201,8 @@ The logic lives in pure functions specifically so it is testable. "Did Sentry re
 
 | Test | Asserts |
 |---|---|
-| `toSentryEvent` against a context built from a request carrying every known PII field — candidate email, name, answer text, `Authorization` header, cookies, request body | none survive; only opaque IDs remain |
-| `toSentryEvent` given a context containing an unexpected extra key | the key is **not** forwarded — pins the allow-list against future additions to `contextFrom()` |
+| `buildSentryPayload` against a context built from a request carrying every known PII field — candidate email, name, answer text, `Authorization` header, cookies, request body | none survive; only opaque IDs remain |
+| `buildSentryPayload` given a context containing an unexpected extra key | the key is **not** forwarded — pins the allow-list against future additions to `contextFrom()` |
 | mapping throws | event dropped, nothing sent, exception swallowed |
 | rate limiter, N+1 events in one window | overflow dropped from send, still logged |
 | `classifySeverity` table test over (service × hasAttempt) | expected level per row |
