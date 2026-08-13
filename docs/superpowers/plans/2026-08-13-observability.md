@@ -972,8 +972,20 @@ git commit -m "feat(observability): wire the Sentry reporter into both backends"
 
 **Files:**
 - Create: `apps/web/app/health/route.ts`
-- Create: `apps/web/sentry.client.config.ts`, `apps/web/sentry.server.config.ts`
-- Modify: `apps/web/next.config.ts`, `apps/web/.env.example` if present
+- Create: Sentry init files — **exact filenames depend on the installed SDK version, see Step 3**
+- Modify: `apps/web/next.config.js` (note: `.js` CommonJS, not `.ts`)
+
+**CRITICAL — `next.config.js` currently reads:**
+
+```javascript
+/** @type {import('next').NextConfig} */
+module.exports = {
+  reactStrictMode: true,
+  output: 'standalone',
+};
+```
+
+`output: 'standalone'` **must survive any wrapping**. pm2 runs the app from `.next/standalone/apps/web/server.js`; losing that option breaks the entire production deployment, and it breaks it at deploy time rather than at build time.
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks. `@sentry/nextjs` is a separate SDK from `@sentry/node`.
@@ -1003,44 +1015,22 @@ export function GET(): Response {
 }
 ```
 
-- [ ] **Step 3: Add the Sentry configs**
+- [ ] **Step 3: Add the Sentry init, following the installed SDK's own convention**
 
-```typescript
-// apps/web/sentry.client.config.ts
-import * as Sentry from '@sentry/nextjs';
+This project runs **Next.js 16.2.10**, and `@sentry/nextjs` changed its init convention across recent majors — the older `sentry.client.config.ts` / `sentry.server.config.ts` pair was replaced by an `instrumentation` -based setup. **Do not guess.** After installing, read the version's own setup documentation in `node_modules/@sentry/nextjs/README.md` (and its `package.json` `version`) and follow whatever that version prescribes for a Next.js App Router project.
 
-const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
-if (dsn) {
-  Sentry.init({
-    dsn,
-    environment: process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT ?? 'production',
-    // Candidate names, emails and answer text live in this app's DOM and network calls.
-    sendDefaultPii: false,
-    tracesSampleRate: 0,
-    replaysSessionSampleRate: 0,
-    replaysOnErrorSampleRate: 0,
-  });
-}
-```
+The **binding requirements** are behavioural, not file-layout, and all of them must hold whichever convention the SDK uses:
 
-```typescript
-// apps/web/sentry.server.config.ts
-import * as Sentry from '@sentry/nextjs';
+1. `sendDefaultPii: false` — set explicitly, never left to the SDK default. Candidate names, emails and answer text live in this app's DOM and network calls.
+2. **Session Replay fully disabled** — `replaysSessionSampleRate: 0` and `replaysOnErrorSampleRate: 0`. Replay records the DOM, which on the exam page contains question text and candidate answers. This is the single highest PII risk in the whole plan.
+3. `tracesSampleRate: 0` — no APM, per the spec.
+4. **Inert without a DSN.** Client init reads `NEXT_PUBLIC_SENTRY_DSN`, server init reads `SENTRY_DSN`; if the relevant variable is unset, do not call `Sentry.init` at all.
+5. **Do not enable source-map upload.** It requires an auth token and a paid-tier-adjacent setup, and it uploads build artifacts to a third party. Out of scope.
+6. `next.config.js` must remain CommonJS and **must still export `output: 'standalone'`** after any Sentry wrapping.
 
-const dsn = process.env.SENTRY_DSN;
-if (dsn) {
-  Sentry.init({
-    dsn,
-    environment: process.env.SENTRY_ENVIRONMENT ?? 'production',
-    sendDefaultPii: false,
-    tracesSampleRate: 0,
-  });
-}
-```
+If the SDK's setup wants a build-time wrapper, apply it around the existing config object rather than replacing it, and verify `output` survives in Step 4.
 
-Session Replay is disabled explicitly: it records the DOM, which on the exam page contains question text and candidate answers.
-
-- [ ] **Step 4: Verify the build and that the route responds**
+- [ ] **Step 4: Verify the build, the standalone output, and the route**
 
 ```bash
 npm run build --workspace=apps/web
@@ -1048,10 +1038,21 @@ npm run build --workspace=apps/web
 
 Expected: build succeeds and the route table lists `/health`. Note that Next.js prints the first route with `┌`, not `├`/`└` — a grep for only `├`/`└` silently misses routes.
 
-- [ ] **Step 5: Commit**
+Then prove `output: 'standalone'` survived, because losing it breaks production deployment rather than the build:
 
 ```bash
-git add apps/web/app/health/route.ts apps/web/sentry.client.config.ts apps/web/sentry.server.config.ts apps/web/next.config.ts package.json package-lock.json apps/web/package.json
+ls apps/web/.next/standalone/apps/web/server.js
+```
+
+Expected: the file exists. If it does not, the Sentry config wrapping dropped `output: 'standalone'` — fix that before committing.
+
+- [ ] **Step 5: Commit**
+
+Stage the health route, whichever Sentry init files the SDK version prescribed, `next.config.js`, and the lockfile:
+
+```bash
+git add apps/web/app/health/route.ts apps/web/next.config.js package.json package-lock.json apps/web/package.json
+git add apps/web/instrumentation*.ts apps/web/sentry.*.config.ts 2>/dev/null || true
 git commit -m "feat(observability): web health route and frontend error tracking"
 ```
 
