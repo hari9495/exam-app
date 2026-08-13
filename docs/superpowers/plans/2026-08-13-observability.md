@@ -834,16 +834,24 @@ export class HealthController {
 
 - [ ] **Step 5: Register in both app modules**
 
-In `apps/api/src/app.module.ts`, add `HealthController` to `controllers` and provide `HealthService`. Import `createRedisConnection` from `./jobs/redis-connection`:
+In `apps/api/src/app.module.ts`, add `HealthController` to `controllers` and provide `HealthService`. Add `import Redis from 'ioredis';`:
 
 ```typescript
     {
       provide: HealthService,
       useFactory: (prisma: PrismaService) => {
-        // Created ONCE here, not inside checkRedis. Calling createRedisConnection() per check
-        // would open a new socket on every health poll -- a connection leak driven by the
-        // monitor itself, at 3 monitors x every 5 minutes, forever.
-        const redis = createRedisConnection();
+        // Created ONCE here, not inside checkRedis. Constructing per check would open a new
+        // socket on every health poll -- a connection leak driven by the monitor itself, at
+        // 3 monitors x every 5 minutes, forever.
+        //
+        // Deliberately NOT createRedisConnection() from ./jobs/redis-connection, even though
+        // that helper exists two directories away. It sets maxRetriesPerRequest: null because
+        // BullMQ's blocking commands require it, and under an extended Redis outage that makes
+        // ping() never reject -- ioredis parks it in the offline queue awaiting reconnection.
+        // The endpoint would still 503 correctly on the 2s race timeout, but every cache-miss
+        // poll would leave another permanently-pending command queued, accumulating without
+        // bound during exactly the outage this endpoint exists to detect.
+        const redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
         return new HealthService({
           checkDb: () => prisma.$queryRaw`SELECT 1`,
           checkRedis: () => redis.ping(),
