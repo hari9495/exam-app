@@ -72,4 +72,55 @@ describe('SentryReporter', () => {
   it('flush resolves even when disabled', async () => {
     await expect(new SentryReporter().flush(100)).resolves.toBeUndefined();
   });
+
+  describe('never throws, even when the SDK misbehaves', () => {
+    it('does not throw when Sentry.init throws, and enabled stays false', () => {
+      process.env.SENTRY_DSN = 'https://key@example.invalid/1';
+      (Sentry.init as jest.Mock).mockImplementationOnce(() => {
+        throw new Error('init exploded');
+      });
+      const reporter = new SentryReporter();
+      expect(() => reporter.init()).not.toThrow();
+      expect(reporter.enabled).toBe(false);
+    });
+
+    it('does not throw when Sentry.captureException throws during capture()', () => {
+      process.env.SENTRY_DSN = 'https://key@example.invalid/1';
+      const reporter = new SentryReporter();
+      reporter.init();
+      (Sentry.captureException as jest.Mock).mockImplementationOnce(() => {
+        throw new Error('capture exploded');
+      });
+      expect(() => reporter.capture(entry, new Error('boom'))).not.toThrow();
+    });
+
+    it('does not throw when Sentry.flush rejects during flush()', async () => {
+      process.env.SENTRY_DSN = 'https://key@example.invalid/1';
+      const reporter = new SentryReporter();
+      reporter.init();
+      (Sentry.flush as jest.Mock).mockRejectedValueOnce(new Error('flush exploded'));
+      await expect(reporter.flush(100)).resolves.toBeUndefined();
+    });
+
+    it('does not throw when capture() is called before init() has ever run', () => {
+      const reporter = new SentryReporter();
+      expect(() => reporter.capture(entry, new Error('boom'))).not.toThrow();
+      expect(Sentry.captureException).not.toHaveBeenCalled();
+    });
+  });
+
+  it('logs once when payload building fails repeatedly, without flooding', () => {
+    process.env.SENTRY_DSN = 'https://key@example.invalid/1';
+    const reporter = new SentryReporter();
+    reporter.init();
+    const warnSpy = jest.spyOn((reporter as unknown as { logger: { warn: (msg: string) => void } }).logger, 'warn');
+    const poisoned = { get service() { throw new Error('payload bug'); } } as unknown as SystemEventEntry;
+
+    for (let i = 0; i < 5; i += 1) {
+      expect(() => reporter.capture(poisoned, new Error('boom'))).not.toThrow();
+    }
+
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
 });

@@ -13,6 +13,7 @@ export class SentryReporter {
   private readonly logger = new Logger(SentryReporter.name);
   private readonly allow: () => boolean;
   private active = false;
+  private payloadFailureLogged = false;
 
   constructor(maxPerWindow = 20, windowMs = 60_000) {
     this.allow = createRateLimiter(maxPerWindow, windowMs, () => Date.now());
@@ -48,14 +49,28 @@ export class SentryReporter {
   capture(entry: SystemEventEntry, exception: unknown): void {
     if (!this.active) return;
     try {
-      // Rate-limited inside the try so a limiter bug cannot escape either. Over the cap the
-      // event is dropped from the SEND only -- SystemEventsService.record() has already
-      // logged and persisted it, so nothing is lost, only quota is saved.
-      if (!this.allow()) return;
+      // Payload built before the rate limit is checked, so a build failure (see catch below)
+      // never burns a slot from the per-minute quota -- only events that are actually
+      // sendable consume it. Both calls stay in this one try so a bug in either the builder
+      // or the limiter is caught the same way.
       const payload = buildSentryPayload(entry);
+      if (!this.allow()) return;
       Sentry.captureException(exception, { tags: payload.tags });
-    } catch {
+    } catch (error) {
       // Fail closed: drop the event rather than send something unmapped.
+      //
+      // Log once per process (not once per event) -- ponytail: a payload-building regression
+      // fires on every event, and a per-event log would reproduce the exact flood this class
+      // exists to contain; the upgrade path is a proper N-per-window if one-shot proves too
+      // quiet in practice. Wrapped so the logging itself can never become a new throw source.
+      if (!this.payloadFailureLogged) {
+        this.payloadFailureLogged = true;
+        try {
+          this.logger.warn(`Sentry capture failed; dropping event(s): ${String(error)}`);
+        } catch {
+          // Logging must not become a new throw source.
+        }
+      }
     }
   }
 
