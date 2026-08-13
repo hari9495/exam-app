@@ -578,13 +578,24 @@ describe('QuestionsService', () => {
       );
     });
 
-    it('refuses to enqueue when the organization has no AI provider configured', async () => {
+    it('refuses to enqueue when the organization has no AI provider configured, reporting it as a fixable 400 (not the resolver\'s bare 500-mapped Error)', async () => {
       const enqueue = jest.fn();
       const service = buildService({
         jobsService: { enqueue },
+        // The resolver throws a plain Error -- Nest maps that to a 500, and the web client
+        // renders every 500 as "something went wrong, try again", which is actively misleading
+        // here (retrying can never work). The service must catch it and rethrow as a
+        // BadRequestException with a message naming the real, actionable problem.
         aiApiKeyResolver: { resolve: jest.fn().mockRejectedValue(new Error('No AI provider configured')) },
       });
 
+      await expect(
+        service.aiGenerate(
+          { organizationId: 'org-1', isSuperAdmin: false } as never,
+          'user-1',
+          { topic: 'SQL', difficulty: 'medium', questionTypes: ['single_mcq'], count: 3, marks: 1, negativeMarks: 0, tagIds: [] } as never,
+        ),
+      ).rejects.toThrow(BadRequestException);
       await expect(
         service.aiGenerate(
           { organizationId: 'org-1', isSuperAdmin: false } as never,

@@ -41,6 +41,29 @@ describe('GenerateQuestionsModal', () => {
     expect(screen.getByText(/must have exactly one correct option/)).toBeInTheDocument();
   });
 
+  // Finding 3: a batch where every generated question failed validation still completes the
+  // job with created: 0. Notifying the caller on status alone would yank the page to Drafts and
+  // show "No drafts to review.", which reads like the feature broke -- the modal's own summary
+  // (asserted above) is the useful surface for a zero-created run, not a page switch.
+  it('does not call onCompleted when the job completes but every question was dropped', async () => {
+    const onCompleted = jest.fn();
+    (useGenerateQuestions as jest.Mock).mockReturnValue({ mutateAsync: jest.fn().mockResolvedValue({ aiJobId: 'j1' }), isPending: false });
+    (useAiJob as jest.Mock).mockReturnValue({
+      data: {
+        id: 'j1', type: 'ai-question-generation', status: 'completed', error: null,
+        outputJson: JSON.stringify({ requested: 5, created: 0, dropped: [{ reason: 'Question must have exactly one correct option' }], questionIds: [] }),
+      },
+    });
+
+    render(<GenerateQuestionsModal open onClose={jest.fn()} onCompleted={onCompleted} />);
+    await userEvent.type(screen.getByLabelText('Topic'), 'SQL joins');
+    await userEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    // The modal still reports the counts and dropped reasons -- only the page switch is skipped.
+    expect(await screen.findByText(/0 created/)).toBeInTheDocument();
+    expect(onCompleted).not.toHaveBeenCalled();
+  });
+
   it('shows the failure message when the job fails, rather than an empty result', async () => {
     (useGenerateQuestions as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
     (useAiJob as jest.Mock).mockReturnValue({
@@ -183,7 +206,13 @@ describe('GenerateQuestionsModal', () => {
     await userEvent.type(screen.getByLabelText('Topic'), 'SQL joins');
     await userEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't check on the generation job/i);
+    // The copy must not read as "generation failed, try generating again" -- the paid job is
+    // almost certainly still running; only the status *check* failed. A recruiter reading
+    // "try again" here would buy a second, redundant generation.
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/couldn't check on the generation job/i);
+    expect(alert).toHaveTextContent(/still running/i);
+    expect(alert).toHaveTextContent(/drafts/i);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Generate' })).not.toBeDisabled());
   });
 

@@ -311,7 +311,19 @@ export class QuestionsService {
 
     // Fail fast. Without this the job is enqueued, picked up, and fails minutes later -- the
     // recruiter waits for a result that was never possible.
-    await this.aiApiKeyResolver.resolve(context.organizationId as string);
+    //
+    // The resolver throws a plain Error, which Nest maps to a 500 -- and the web client renders
+    // every 500 as a generic "something went wrong, try again" (see humanizeHttpError). That's
+    // wrong here: the guard is right (nothing enqueued, nothing billed) but "try again" can never
+    // work when the org simply has no AI provider configured. Rethrow as a 400 with a message the
+    // web client will pass through untouched, naming the real, fixable problem.
+    try {
+      await this.aiApiKeyResolver.resolve(context.organizationId as string);
+    } catch {
+      throw new BadRequestException(
+        'This organization has no AI provider configured. Ask an org admin to set one up before generating questions.',
+      );
+    }
 
     const inputJson = JSON.stringify({
       topic: dto.topic,

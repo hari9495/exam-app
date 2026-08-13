@@ -58,18 +58,39 @@ export function GenerateQuestionsModal({ open, onClose, onCompleted }: GenerateQ
   const [aiJobId, setAiJobId] = useState<string | null>(null);
   const job = useAiJob(aiJobId);
 
+  // outputJson is stored text written by the worker. Parse defensively: a malformed value must
+  // not blank the modal, leaving the recruiter with no idea whether anything was generated.
+  // A valid-JSON-wrong-shape value (e.g. '{}') parses without throwing, so the shape is
+  // checked too -- not just that JSON.parse succeeded -- or `output.dropped.length` below
+  // throws during render with no error boundary above it, and the recruiter gets a blank page.
+  let output: GenerationOutput | null = null;
+  if (job.data?.status === 'completed' && job.data.outputJson) {
+    try {
+      const parsed = JSON.parse(job.data.outputJson);
+      output = Array.isArray(parsed?.dropped) && typeof parsed?.requested === 'number' ? parsed : null;
+    } catch {
+      output = null;
+    }
+  }
+
   // onCompleted switches the page to the Drafts view. Firing it on every poll after completion
   // would yank the filter back while the recruiter is working, so latch it -- keyed on the job
   // id (not a plain boolean) so a second generation is guaranteed to notify again even if a
   // future change makes useAiJob preserve `data` across query-key changes (placeholderData),
   // the way useTags/useQuestions already do.
+  //
+  // Only notify when at least one question actually landed (output.created > 0). A batch where
+  // every question failed validation still completes the job -- switching to Drafts for a
+  // recruiter who created zero questions yanks them to "No drafts to review.", which reads like
+  // the feature broke. The modal's own summary below already reports the counts and reasons;
+  // that's the useful surface for a zero-created run, not a page switch.
   const notifiedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (job.data?.status === 'completed' && notifiedFor.current !== aiJobId) {
+    if (job.data?.status === 'completed' && (output?.created ?? 0) > 0 && notifiedFor.current !== aiJobId) {
       notifiedFor.current = aiJobId;
       onCompleted();
     }
-  }, [job.data?.status, aiJobId, onCompleted]);
+  }, [job.data?.status, output?.created, aiJobId, onCompleted]);
 
   // aiJobId !== null (not job.data) covers the gap between submit resolving and the first
   // poll resolving: `job.data` is still undefined then, but a job is already in flight and a
@@ -125,21 +146,6 @@ export function GenerateQuestionsModal({ open, onClose, onCompleted }: GenerateQ
       setAiJobId(result.aiJobId);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to start generation.');
-    }
-  }
-
-  // outputJson is stored text written by the worker. Parse defensively: a malformed value must
-  // not blank the modal, leaving the recruiter with no idea whether anything was generated.
-  // A valid-JSON-wrong-shape value (e.g. '{}') parses without throwing, so the shape is
-  // checked too -- not just that JSON.parse succeeded -- or `output.dropped.length` below
-  // throws during render with no error boundary above it, and the recruiter gets a blank page.
-  let output: GenerationOutput | null = null;
-  if (job.data?.status === 'completed' && job.data.outputJson) {
-    try {
-      const parsed = JSON.parse(job.data.outputJson);
-      output = Array.isArray(parsed?.dropped) && typeof parsed?.requested === 'number' ? parsed : null;
-    } catch {
-      output = null;
     }
   }
 
@@ -219,7 +225,9 @@ export function GenerateQuestionsModal({ open, onClose, onCompleted }: GenerateQ
 
         {(job.data?.status === 'failed' || job.isError) && (
           <p role="alert" className="text-sm text-status-danger">
-            {job.isError ? "Couldn't check on the generation job. Try again." : (job.data?.error ?? 'Generation failed.')}
+            {job.isError
+              ? "Couldn't check on the generation job's status. It's likely still running in the background -- the questions will appear in Drafts when it finishes. No need to generate again."
+              : (job.data?.error ?? 'Generation failed.')}
           </p>
         )}
 
