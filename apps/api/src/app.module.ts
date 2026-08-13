@@ -38,6 +38,7 @@ import { PublicApiModule } from './public-api/public-api.module';
 import { FaceEnrolmentModule } from './face-enrolment/face-enrolment.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
 import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
+import { SentryShutdownFlush } from './sentry-shutdown.provider';
 
 @Module({
   imports: [
@@ -116,6 +117,7 @@ import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
       },
       inject: [PrismaService],
     },
+    SentryShutdownFlush,
   ],
 })
 export class AppModule {}

@@ -2,7 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import { json, urlencoded } from 'express';
-import { configureTrustProxy, SentryReporter } from '@exam-platform/shared';
+import { configureTrustProxy } from '@exam-platform/shared';
 import { AppModule } from './app.module';
 import { InternalAppModule } from './internal-app.module';
 import { resolveInternalBindHost } from './bootstrap-config';
@@ -31,14 +31,18 @@ async function bootstrap() {
   app.enableCors({ origin: process.env.WEB_ORIGIN, credentials: true, exposedHeaders: ['Retry-After'] });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
   app.setGlobalPrefix('api/v1');
-  // pm2 stops this process with SIGTERM/SIGINT, not by letting the event loop drain --
-  // 'beforeExit' never fires on a signal-driven exit, so it would silently never flush in
-  // production. Fire-and-forget and un-awaited on purpose: a stuck or unreachable Sentry
-  // endpoint must not add latency to -- or block -- shutdown.
-  const reporter = app.get(SentryReporter);
-  const flushOnSignal = () => void reporter.flush(2000);
-  process.on('SIGTERM', flushOnSignal);
-  process.on('SIGINT', flushOnSignal);
+  // No flush-on-shutdown here, deliberately. This service (unlike apps/api) never calls
+  // enableShutdownHooks() -- OS default signal termination is the only thing that stops it on
+  // pm2 stop/restart/reload, and this is the candidate-facing live-exam service, so that must
+  // keep working. The only two ways to add a flush are: a bare process.on('SIGTERM'/'SIGINT')
+  // listener, which removes Node's default termination action for that signal and would hang
+  // shutdown until pm2's SIGKILL grace period; or enabling Nest shutdown hooks, which would
+  // start running onModuleDestroy/onApplicationShutdown across every module here -- including
+  // BullMQ and Redis clients -- a real change to this service's teardown behaviour that a
+  // monitoring task should not introduce as a side effect. The cost of omitting the flush is
+  // small: Sentry's transport sends events as they occur rather than batching, so the
+  // unflushed window on exit is milliseconds, not the buffered backlog a batching client would
+  // lose.
   await app.listen(process.env.EXAM_RUNTIME_PORT ?? 3002);
 
   const internalApp = await NestFactory.create(InternalAppModule);
