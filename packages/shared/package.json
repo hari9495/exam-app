@@ -16,6 +16,7 @@
     "@azure/storage-blob": "^12.33.0",
     "@nestjs/common": "^11.1.28",
     "@prisma/client": "^5.10.0",
+    "@sentry/node": "^10.70.0",
     "openai": "^6.48.0"
   },
   "devDependencies": {
