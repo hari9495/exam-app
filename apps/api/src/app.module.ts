@@ -3,7 +3,9 @@ import { APP_FILTER, APP_GUARD, HttpAdapterHost } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, seconds } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
-import { PrismaModule, AuditModule, SystemEventsModule, SystemEventsService, SystemEventsExceptionFilter } from '@exam-platform/shared';
+import { PrismaModule, AuditModule, SystemEventsModule, SystemEventsService, SystemEventsExceptionFilter, PrismaService, HealthService } from '@exam-platform/shared';
+import { HealthController } from './health/health.controller';
+import { createRedisConnection } from './jobs/redis-connection';
 import { RbacModule } from './rbac/rbac.module';
 import { AuthModule } from './auth/auth.module';
 import { SetupModule } from './setup/setup.module';
@@ -68,6 +70,7 @@ import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
     PublicApiModule,
     FaceEnrolmentModule,
   ],
+  controllers: [HealthController],
   providers: [
     { provide: APP_GUARD, useClass: FailOpenThrottlerGuard },
     {
@@ -75,6 +78,20 @@ import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
       useFactory: (adapterHost: HttpAdapterHost, systemEvents: SystemEventsService) =>
         new SystemEventsExceptionFilter(adapterHost, systemEvents, 'api'),
       inject: [HttpAdapterHost, SystemEventsService],
+    },
+    {
+      provide: HealthService,
+      useFactory: (prisma: PrismaService) => {
+        // Created ONCE here, not inside checkRedis. Calling createRedisConnection() per check
+        // would open a new socket on every health poll -- a connection leak driven by the
+        // monitor itself, at 3 monitors x every 5 minutes, forever.
+        const redis = createRedisConnection();
+        return new HealthService({
+          checkDb: () => prisma.$queryRaw`SELECT 1`,
+          checkRedis: () => redis.ping(),
+        });
+      },
+      inject: [PrismaService],
     },
   ],
 })

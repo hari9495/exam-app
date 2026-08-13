@@ -25,3 +25,4 @@ export * from './face/similarity';
 export * from './face/embedding-codec';
 export * from './observability/sentry-payload';
 export * from './observability/sentry-reporter';
+export * from './health/health.service';
