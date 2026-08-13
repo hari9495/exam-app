@@ -2,7 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import { json, urlencoded } from 'express';
-import { configureTrustProxy } from '@exam-platform/shared';
+import { configureTrustProxy, SentryReporter } from '@exam-platform/shared';
 import { AppModule } from './app.module';
 import { InternalAppModule } from './internal-app.module';
 import { resolveInternalBindHost } from './bootstrap-config';
@@ -31,6 +31,14 @@ async function bootstrap() {
   app.enableCors({ origin: process.env.WEB_ORIGIN, credentials: true, exposedHeaders: ['Retry-After'] });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
   app.setGlobalPrefix('api/v1');
+  // pm2 stops this process with SIGTERM/SIGINT, not by letting the event loop drain --
+  // 'beforeExit' never fires on a signal-driven exit, so it would silently never flush in
+  // production. Fire-and-forget and un-awaited on purpose: a stuck or unreachable Sentry
+  // endpoint must not add latency to -- or block -- shutdown.
+  const reporter = app.get(SentryReporter);
+  const flushOnSignal = () => void reporter.flush(2000);
+  process.on('SIGTERM', flushOnSignal);
+  process.on('SIGINT', flushOnSignal);
   await app.listen(process.env.EXAM_RUNTIME_PORT ?? 3002);
 
   const internalApp = await NestFactory.create(InternalAppModule);

@@ -4,7 +4,16 @@ import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, seconds } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import Redis from 'ioredis';
-import { PrismaModule, AuditModule, SystemEventsModule, SystemEventsService, SystemEventsExceptionFilter, PrismaService, HealthService } from '@exam-platform/shared';
+import {
+  PrismaModule,
+  AuditModule,
+  SystemEventsModule,
+  SystemEventsService,
+  SystemEventsExceptionFilter,
+  PrismaService,
+  HealthService,
+  SentryReporter,
+} from '@exam-platform/shared';
 import { HealthController } from './health/health.controller';
 import { RbacModule } from './rbac/rbac.module';
 import { AuthModule } from './auth/auth.module';
@@ -74,10 +83,18 @@ import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
   providers: [
     { provide: APP_GUARD, useClass: FailOpenThrottlerGuard },
     {
+      provide: SentryReporter,
+      useFactory: () => {
+        const reporter = new SentryReporter();
+        reporter.init();
+        return reporter;
+      },
+    },
+    {
       provide: APP_FILTER,
-      useFactory: (adapterHost: HttpAdapterHost, systemEvents: SystemEventsService) =>
-        new SystemEventsExceptionFilter(adapterHost, systemEvents, 'api'),
-      inject: [HttpAdapterHost, SystemEventsService],
+      useFactory: (adapterHost: HttpAdapterHost, systemEvents: SystemEventsService, reporter: SentryReporter) =>
+        new SystemEventsExceptionFilter(adapterHost, systemEvents, 'api', reporter),
+      inject: [HttpAdapterHost, SystemEventsService, SentryReporter],
     },
     {
       provide: HealthService,
