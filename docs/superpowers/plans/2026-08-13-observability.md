@@ -129,7 +129,7 @@ describe('buildSentryPayload', () => {
     );
 
     expect(Object.keys(payload.tags).sort()).toEqual(
-      ['attemptId', 'invitationId', 'method', 'organizationId', 'route', 'service', 'severity_band', 'status'].sort(),
+      ['attemptId', 'invitationId', 'method', 'organizationId', 'route', 'service', 'severity_band', 'status', 'userId'].sort(),
     );
     const serialised = JSON.stringify(payload);
     for (const leak of ['candidate@example.com', 'Jane Doe', 'the answer is 42', 'secret-token', 'session=abc', 'hunter2']) {
