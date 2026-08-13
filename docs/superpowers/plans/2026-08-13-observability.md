@@ -945,17 +945,40 @@ In `apps/api/src/app.module.ts`, add to `providers` and pass it into the existin
 
 Apply the identical change in `apps/exam-runtime/src/app.module.ts`, with `'exam-runtime'` as the service name. **Keep `ServerBusyRetryAfterFilter` registered last** — the ordering comment in that file explains why, and changing it silently breaks the `server_busy` 503 contract.
 
-- [ ] **Step 2: Flush on shutdown**
+- [ ] **Step 2: Flush on shutdown — `apps/api` only, via Nest's lifecycle**
 
-`apps/api/src/main.ts` already calls `app.enableShutdownHooks()` at line 16. Add flushing so in-flight events are not lost on every deploy restart:
+**Do NOT register a bare `process.on('SIGTERM'/'SIGINT')` listener, and do NOT use `beforeExit`.** Both are wrong here, in opposite directions:
+
+- `beforeExit` does not fire when a process is terminated by a signal, and pm2 terminates with signals. It would compile, pass every test, and silently never flush in production.
+- A bare signal listener is worse. Node removes a signal's **default termination action** as soon as a listener is registered, so a handler that flushes but never calls `process.exit()` or re-raises means the process no longer terminates at all. `apps/exam-runtime` has no other termination path, so every pm2 restart of the live-exam service would hang until SIGKILL. `apps/api` is subtler: `enableShutdownHooks()` re-delivers the signal after teardown expecting the OS default to kill the process, and a lingering listener intercepts that too.
+
+Instead, create `apps/api/src/sentry-shutdown.provider.ts` and register it in `apps/api/src/app.module.ts` providers:
 
 ```typescript
-  const reporter = app.get(SentryReporter);
-  app.enableShutdownHooks();
-  process.on('beforeExit', () => { void reporter.flush(2000); });
+import { Injectable, OnApplicationShutdown } from '@nestjs/common';
+import { SentryReporter } from '@exam-platform/shared';
+
+@Injectable()
+export class SentryShutdownFlush implements OnApplicationShutdown {
+  constructor(private readonly reporter: SentryReporter) {}
+
+  async onApplicationShutdown(): Promise<void> {
+    try {
+      // 1000ms, NOT an arbitrary number: pm2 runs this deployment on its default
+      // kill_timeout of 1600ms and SIGKILLs after that, so the whole Nest teardown must
+      // fit inside it. Raising this without also raising kill_timeout reintroduces
+      // SIGKILL-mid-flush on every restart.
+      await this.reporter.flush(1000);
+    } catch {
+      // Shutdown must not fail because telemetry could not drain.
+    }
+  }
+}
 ```
 
-Apply the equivalent in `apps/exam-runtime/src/main.ts`.
+`apps/api/src/main.ts` already calls `app.enableShutdownHooks()`, so Nest awaits this hook before removing its own listener and re-delivering the signal. Nothing of ours stays attached.
+
+**`apps/exam-runtime` gets no flush at all.** It does not call `enableShutdownHooks()`, and adding it would start running `onModuleDestroy`/`onApplicationShutdown` across every module — BullMQ workers, Redis clients, the monitoring bridge — none of which this work has verified tears down safely. That is a real change to the teardown path of the service running live exams, and too large a side effect for a monitoring task. Leave a comment in its `main.ts` recording the tradeoff. The cost is one in-flight event at most, since Sentry's transport sends per event rather than batching.
 
 - [ ] **Step 3: Document the variables**
 
