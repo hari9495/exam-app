@@ -66,3 +66,81 @@ describe('SystemEventsExceptionFilter', () => {
     expect(record).toHaveBeenCalledWith(expect.objectContaining({ organizationId: null }));
   });
 });
+
+import { SentryReporter } from '../observability/sentry-reporter';
+
+describe('SystemEventsExceptionFilter — Sentry sink', () => {
+  let record: jest.Mock;
+  let capture: jest.Mock;
+  let superCatch: jest.SpyInstance;
+
+  function httpHost(request: Record<string, unknown> = {}): ArgumentsHost {
+    return {
+      getType: () => 'http',
+      switchToHttp: () => ({ getRequest: () => request, getResponse: () => ({}) }),
+    } as unknown as ArgumentsHost;
+  }
+
+  function makeFilter() {
+    record = jest.fn().mockResolvedValue(undefined);
+    capture = jest.fn();
+    return new SystemEventsExceptionFilter(
+      { httpAdapter: {} } as never,
+      { record } as unknown as SystemEventsService,
+      'api',
+      { capture } as unknown as SentryReporter,
+    );
+  }
+
+  beforeEach(() => {
+    superCatch = jest
+      .spyOn(Object.getPrototypeOf(SystemEventsExceptionFilter.prototype), 'catch')
+      .mockImplementation(() => undefined);
+  });
+  afterEach(() => superCatch.mockRestore());
+
+  it('reports to both sinks for an unhandled crash', () => {
+    const filter = makeFilter();
+    filter.catch(new TypeError('boom'), httpHost({ method: 'GET', originalUrl: '/api/v1/exams' }));
+    expect(record).toHaveBeenCalledTimes(1);
+    expect(capture).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not report 4xx to Sentry, matching the DB sink', () => {
+    const filter = makeFilter();
+    filter.catch(new BadRequestException('nope'), httpHost());
+    expect(record).not.toHaveBeenCalled();
+    expect(capture).not.toHaveBeenCalled();
+  });
+
+  it('includes attemptId in the recorded context when the request carries one', () => {
+    const filter = makeFilter();
+    filter.catch(new TypeError('boom'), httpHost({ user: { attemptId: 'att-9' } }));
+    expect(record).toHaveBeenCalledWith(
+      expect.objectContaining({ context: expect.objectContaining({ attemptId: 'att-9' }) }),
+    );
+  });
+
+  it('still records to the DB when the Sentry sink throws', () => {
+    record = jest.fn().mockResolvedValue(undefined);
+    const filter = new SystemEventsExceptionFilter(
+      { httpAdapter: {} } as never,
+      { record } as unknown as SystemEventsService,
+      'api',
+      { capture: () => { throw new Error('sentry down'); } } as unknown as SentryReporter,
+    );
+    expect(() => filter.catch(new TypeError('boom'), httpHost())).not.toThrow();
+    expect(record).toHaveBeenCalledTimes(1);
+  });
+
+  it('works with no reporter supplied at all', () => {
+    const localRecord = jest.fn().mockResolvedValue(undefined);
+    const filter = new SystemEventsExceptionFilter(
+      { httpAdapter: {} } as never,
+      { record: localRecord } as unknown as SystemEventsService,
+      'api',
+    );
+    expect(() => filter.catch(new TypeError('boom'), httpHost())).not.toThrow();
+    expect(localRecord).toHaveBeenCalledTimes(1);
+  });
+});
