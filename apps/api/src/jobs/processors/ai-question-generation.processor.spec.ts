@@ -234,6 +234,30 @@ describe('AiQuestionGenerationProcessor', () => {
     ]);
   });
 
+  it('gives the write transaction a budget larger than Prisma defaults, so an expiry cannot bin a paid batch', async () => {
+    questionGenerationClient.generate.mockResolvedValue([
+      {
+        type: 'single_mcq',
+        text: 'What does a closure capture?',
+        options: [
+          { text: 'Its enclosing scope', isCorrect: true },
+          { text: 'Nothing', isCorrect: false },
+        ],
+      },
+    ]);
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
+      fn({ question: { create: jest.fn().mockResolvedValue({ id: 'q-1' }) }, aiCreditUsage: { create: jest.fn() } }),
+    );
+
+    await processor.process(input, context, 'job-1');
+
+    // Asserted against Prisma's own defaults rather than the literals, so this fails if the
+    // options are dropped OR if they are set to something that isn't actually an increase.
+    const options = tenantPrisma.forTenant.mock.calls[0][2];
+    expect(options.timeout).toBeGreaterThan(5000);
+    expect(options.maxWait).toBeGreaterThan(2000);
+  });
+
   it('propagates an error thrown by the Claude client, failing the whole job with zero inserts', async () => {
     questionGenerationClient.generate.mockRejectedValue(new Error('rate limited'));
 

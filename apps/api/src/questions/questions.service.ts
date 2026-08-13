@@ -339,6 +339,13 @@ export class QuestionsService {
     return { aiJobId: aiJob.id };
   }
 
+  // Serves both the Drafts view's Publish and the Archived view's Restore, and deliberately sends
+  // both to 'active'. Restoring a discarded AI draft therefore skips a second review -- accepted,
+  // because the bulk bar is gated to the Drafts view, so Restore is only ever one click on one row
+  // the recruiter is looking at. Routing AI questions back to 'draft' instead would make two rows
+  // in the same Archived list behave differently with nothing on screen explaining why, and the
+  // invariant that actually protects exams is enforced elsewhere: a non-active question cannot be
+  // added to a section (see exam-section-question-validation.ts).
   async publish(context: TenantContext, actorUserId: string, id: string): Promise<QuestionResponse> {
     const result = await this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.question.findFirst({ where: { id, organizationId: context.organizationId as string } });

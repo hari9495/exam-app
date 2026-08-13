@@ -170,6 +170,6 @@ Tests must be able to fail. Generated-content features are especially prone to t
 
 **No spend cap.** `ai_credit_usage` records consumption and the organization settings page reports it, but nothing enforces a limit. Four input modes plus code generation makes it easier for one organization to run up cost by accident. The only brake today is `count ≤ 20` per request. Worth revisiting if usage grows; not built now.
 
-**Near-duplicates.** Generating the same topic twice produces overlapping questions, and there is no similarity check against the existing bank. Stage 1 mitigates cheaply by passing existing question texts for that topic into the prompt as exclusions. That is a hint, not a guarantee. Embedding-based deduplication is explicitly out of scope.
+**Near-duplicates.** Generating the same topic twice produces overlapping questions, and there is no similarity check against the existing bank. The cheap mitigation — passing existing question texts for that topic into the prompt as exclusions — was **planned for stage 1 but not built**, and is deferred until repeat generation on one topic is actually observed; the Drafts gate means a recruiter sees duplicates before they can reach an exam. Embedding-based deduplication is explicitly out of scope.
 
 **Generation quality is unmeasured.** Stage 0 exists precisely to close this before anything is built on top.

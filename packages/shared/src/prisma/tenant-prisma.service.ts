@@ -24,9 +24,14 @@ export class TenantPrismaService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  // `options` is for the rare caller whose unit of work is legitimately larger than Prisma's
+  // 5s default -- a batch write whose inputs were already paid for before the transaction
+  // opened, where expiry throws that spend away. Leave it unset everywhere else: a request-path
+  // transaction that needs longer than 5s is a bug to fix, not a timeout to raise.
   async forTenant<T>(
     context: TenantContext,
     fn: (tx: Prisma.TransactionClient) => Promise<T>,
+    options?: { timeout?: number; maxWait?: number },
   ): Promise<T> {
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -51,7 +56,7 @@ export class TenantPrismaService {
           // nothing else.
           await this.resetSessionContext(tx);
         }
-      });
+      }, options);
     } catch (error) {
       this.rethrowMappingPoolExhaustion(error);
     }
