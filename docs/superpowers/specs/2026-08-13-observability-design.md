@@ -8,12 +8,15 @@
 
 The platform has no telemetry of any kind. Concretely, as of `cfe9e26d`:
 
-- No error tracking, no APM, no metrics. No `@sentry/*`, OpenTelemetry, Application Insights, pino or winston anywhere in the tree.
+- No external error tracking, no APM, no metrics. No `@sentry/*`, OpenTelemetry, Application Insights, pino or winston anywhere in the tree.
 - **No health endpoint exists.** `/api/v1/health` returns 404 because it was never built. Every verification to date has used `/api/v1/auth/saml/<slug>/status` as a stand-in.
-- **`apps/api` has no catch-all exception filter.** Unhandled errors become generic 500s and are recorded nowhere. `apps/exam-runtime` has two filters, but they are purpose-built (`ServerBusyRetryAfterFilter` and one registered ahead of it), not general capture.
 - 30 files use Nest's `Logger`, writing unstructured text to pm2 logs.
 - **pm2 logs are unbounded** — 24MB and growing, no `pm2-logrotate` installed.
 - Frontend errors are entirely invisible.
+
+**What already exists, and which this design builds on rather than replaces.** `packages/shared/src/system-events/system-events-exception.filter.ts` defines `SystemEventsExceptionFilter`, a `@Catch()` catch-all registered as an `APP_FILTER` in **both** `apps/api` and `apps/exam-runtime`. It records unhandled exceptions — and deliberate `HttpException`s with status ≥ 500 — into a `system_events` table, viewable in the admin console, with a retention service alongside it. It is already fire-and-forget, already never throws, already WebSocket-safe, and its `contextFrom()` already builds an **allow-list** of `status`, `method`, `route`, `invitationId`, `userId` and a 1500-char truncated stack.
+
+Its limits are what motivate this work: it writes to the same database that is often the thing failing, it has no alerting, nothing watches it, it cannot see frontend errors, and it cannot tell you the process is down. It is a good audit trail, not a monitoring system.
 
 The cost of this is documented in the deployment history: on 2026-08-06 production served 502s for 18 minutes because a deploy stopped `web` and never restarted it. Nothing detected it.
 
@@ -104,25 +107,27 @@ exam-runtime is reached on `:3002` because nginx serves it on its own TLS port r
 
 At a 5-minute interval with two consecutive failures required, **worst-case detection is ~10 minutes**. That is a deliberate trade against alert flapping on a single dropped packet. It would have surfaced the 2026-08-06 outage in roughly 10 minutes rather than by chance after 18.
 
-### 2. Error capture
+### 2. Error capture — extend the existing filter, add nothing parallel
 
-**`apps/api`** has no catch-all filter today and gets one.
+**Backends: `SystemEventsExceptionFilter` gains a second sink.** Where it today calls `void this.systemEvents.record(...)`, it additionally reports to Sentry. One shared file, both apps, no new filter and no interceptor.
 
-**`apps/exam-runtime` is the integration risk.** It registers two global filters via `APP_FILTER` with an explicit ordering comment in `app.module.ts` about how Nest matches them. A naive catch-all Sentry filter would shadow them and silently break the `server_busy` 503 + `Retry-After` contract. **Decision: capture in exam-runtime via an interceptor that reports and re-throws**, leaving the filter chain untouched, with a regression test pinning that `ServerBusyRetryAfterFilter` still produces its 503 and header.
+This is the load-bearing decision of the whole design, and it is worth stating why. Adding a separate catch-all filter would have to be registered in each app's `APP_FILTER` chain, and `apps/exam-runtime` registers `SystemEventsExceptionFilter` **before** `ServerBusyRetryAfterFilter` on purpose — Nest matches global filters in reverse registration order, so a naively-appended catch-all would shadow the `@Catch(HttpException)` filter and silently break the `server_busy` 503 + `Retry-After` contract. Extending the existing filter sidesteps that entirely: the ordering is already correct and already documented in the file.
 
-**`apps/web`** uses the Next.js SDK for both server and browser runtimes.
+It also inherits, for free, four properties that would otherwise have to be rebuilt and retested: fire-and-forget so the response never waits, a `record()` that never throws, WebSocket-safety for the monitoring gateway where `switchToHttp()` yields no response, and the 4xx filter (only non-`HttpException` or status ≥ 500) that keeps expected request outcomes out of the signal.
 
-### 3. PII scrubbing — `scrubEvent(event) => event | null`
+**`apps/web`** uses the Next.js SDK for both server and browser runtimes. This is genuinely new — no equivalent exists.
 
-A pure function, **allow-list not deny-list**.
+### 3. PII scrubbing — `toSentryEvent(entry) => event | null`
 
-**Dropped wholesale:** request bodies, all headers, all cookies. These carry answer text, candidate names and emails, and `Authorization` bearer tokens.
+Mostly already solved, and the design deliberately does not re-solve it. `contextFrom()` in the existing filter is **already an allow-list**: it emits `status`, `method`, `route`, `invitationId`, `userId` and a truncated stack, and nothing else. Request bodies, headers and cookies are never read, so answer text, candidate names, emails and `Authorization` bearer tokens cannot ride along.
 
-**Retained:** opaque identifiers and request metadata only — `organizationId`, `attemptId`, `examId`, `userId`, route template, HTTP method, status code.
+The new work is therefore narrow: map that existing context onto a Sentry event and **pin the allow-list with a test**, so that a future field added to `contextFrom()` for the system-events console cannot silently start leaving the infrastructure. That test is the actual deliverable here — the risk being defended against is not today's code, it is next year's innocuous-looking addition.
 
-A deny-list would leak the first PII field someone adds and forgets to list. The allow-list fails safe by construction. `sendDefaultPii` is set to `false` explicitly rather than relying on the SDK default.
+`sendDefaultPii` is set to `false` explicitly rather than relying on the SDK default, because the SDK would otherwise attach request data the existing filter is careful never to touch.
 
-**Fail closed:** if the scrubber throws, the event is dropped entirely. A scrubber bug must never become a PII leak.
+**Fail closed:** if mapping throws, the event is dropped rather than sent raw, and the exception is swallowed so a telemetry bug cannot convert a handled error into an unhandled one.
+
+**One addition to `contextFrom()`:** `attemptId`, when the request carries one. The severity classifier needs it, and it is an opaque identifier consistent with what the allow-list already emits. It also improves the system-events console independently.
 
 ### 4. Severity classification — `classifySeverity(service, hasAttempt) => level`
 
@@ -168,7 +173,9 @@ All are gitignored and must be re-applied after any redeploy that regenerates `.
 
 ## Data flow
 
-**Errors.** Request throws → interceptor or filter catches → event built → `scrubEvent()` → `classifySeverity()` → rate-limit check → async send → **re-throw**, so existing filters still produce the HTTP response. Sending never blocks the response. Nest's shutdown hook calls `Sentry.close(timeout)` so in-flight events flush instead of vanishing on every deploy restart.
+**Errors.** Request throws → `SystemEventsExceptionFilter.catch()` → existing DB sink (`void record(...)`, unchanged) **and** the new Sentry sink in parallel → `toSentryEvent()` → `classifySeverity()` → rate-limit check → async send → `super.catch()` produces the HTTP response exactly as today.
+
+Both sinks are fire-and-forget, so neither can delay the response and neither can fail the other: a Sentry outage must not stop the DB audit trail, and a database outage — the case where external reporting matters most — must not stop the Sentry send. `apps/api` calls `enableShutdownHooks()` already (`main.ts:16`), so Nest's shutdown hook can call `Sentry.close(timeout)` to flush in-flight events instead of losing them on every deploy restart.
 
 **Health.** UptimeRobot → nginx → app → cached dependency checks → 200/503. Two consecutive failures before alerting, to avoid flapping on a single dropped packet.
 
@@ -194,14 +201,16 @@ The logic lives in pure functions specifically so it is testable. "Did Sentry re
 
 | Test | Asserts |
 |---|---|
-| `scrubEvent` against a fixture carrying every known PII field — candidate email, name, answer text, `Authorization` header, cookies, request body | none survive; only opaque IDs remain |
-| scrubber throws | event dropped, nothing sent |
+| `toSentryEvent` against a context built from a request carrying every known PII field — candidate email, name, answer text, `Authorization` header, cookies, request body | none survive; only opaque IDs remain |
+| `toSentryEvent` given a context containing an unexpected extra key | the key is **not** forwarded — pins the allow-list against future additions to `contextFrom()` |
+| mapping throws | event dropped, nothing sent, exception swallowed |
 | rate limiter, N+1 events in one window | overflow dropped from send, still logged |
 | `classifySeverity` table test over (service × hasAttempt) | expected level per row |
 | health: DB rejects / Redis rejects / both healthy | 503, 503, 200 |
 | health 503 body | contains **no** dependency detail |
 | health under repeated calls | dependencies checked once per cache window, not per request |
-| exam-runtime with interceptor installed | `ServerBusyRetryAfterFilter` still returns 503 + `Retry-After` |
+| exam-runtime with Sentry reporting added to `SystemEventsExceptionFilter` | `ServerBusyRetryAfterFilter` still returns 503 + `Retry-After` — the filter ordering is unchanged, and this pins it |
+| existing `system-events-exception.filter.spec.ts` suite | still passes unmodified — the DB sink's behaviour is not altered by adding the second sink |
 | no DSN configured | init does not throw; warn logged |
 | DSN pointed at an unreachable host | request handling unchanged |
 
