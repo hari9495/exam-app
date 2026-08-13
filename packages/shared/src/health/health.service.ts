@@ -14,6 +14,10 @@ export class HealthService {
   private readonly cacheMs: number;
   private readonly timeoutMs: number;
   private cached: { at: number; ok: boolean } | null = null;
+  // Shares one in-flight check across concurrent callers on a cache miss, so a burst of
+  // requests hitting this public, unauthenticated endpoint in the same instant can't each
+  // fire a real checkDb/checkRedis -- that's the load-amplification the cache exists to stop.
+  private inflight: Promise<boolean> | null = null;
 
   constructor(private readonly deps: HealthDeps) {
     this.now = deps.now ?? (() => Date.now());
@@ -24,9 +28,22 @@ export class HealthService {
   async check(): Promise<boolean> {
     const cached = this.cached;
     if (cached && this.now() - cached.at < this.cacheMs) return cached.ok;
-    const ok = await this.run();
-    this.cached = { at: this.now(), ok };
-    return ok;
+    if (this.inflight) return this.inflight;
+    this.inflight = this.run()
+      .then(
+        (ok) => {
+          this.cached = { at: this.now(), ok };
+          return ok;
+        },
+        // run() should never reject (settle() catches everything), but if it ever did, the
+        // slot below must still be released unconditionally -- otherwise every future call
+        // returns this same rejected promise forever, wedging the health endpoint permanently.
+        () => false,
+      )
+      .finally(() => {
+        this.inflight = null;
+      });
+    return this.inflight;
   }
 
   private async run(): Promise<boolean> {
