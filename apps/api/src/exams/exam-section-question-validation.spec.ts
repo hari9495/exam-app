@@ -62,4 +62,13 @@ describe('validateSectionQuestionsReplace', () => {
       validateSectionQuestionsReplace(['q1', 'q1'], ['q1'], [{ id: 'q1', status: 'archived' }]),
     ).toThrow(BadRequestException);
   });
+
+  // Load-bearing for AI question generation: generated questions land as 'draft', and the only
+  // thing stopping an unreviewed AI question reaching a real candidate is this guard. A future
+  // refactor that relaxed it to "not archived" would silently open that path.
+  it('refuses to add a draft question to a section', () => {
+    expect(() =>
+      validateSectionQuestionsReplace(['q1'], [], [{ id: 'q1', status: 'draft' }]),
+    ).toThrow('is not active and cannot be added to a section for the first time');
+  });
 });

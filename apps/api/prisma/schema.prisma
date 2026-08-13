@@ -243,6 +243,7 @@ model Question {
   negativeMarks    Int                   @default(0) @map("negative_marks")
   status           String                @default("active")
   aiGenerated      Boolean               @default(false) @map("ai_generated")
+  aiJobId          String?               @map("ai_job_id") @db.UniqueIdentifier
   languageMode     String                @default("fixed") @map("language_mode")
   allowedLanguages String?               @map("allowed_languages") @db.NVarChar(Max)
   starterCode      String?               @map("starter_code") @db.NVarChar(Max)
@@ -256,6 +257,7 @@ model Question {
   examLinks        ExamSectionQuestion[]
   answers          Answer[]
   tags             QuestionTag[]
+  aiJob            AiJob?                @relation(fields: [aiJobId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, topic, difficulty])
   @@map("questions")
@@ -657,6 +659,7 @@ model AiJob {
   createdBy      String   @map("created_by") @db.UniqueIdentifier
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
+  questions      Question[]
 
   @@index([organizationId, status])
   @@map("ai_jobs")

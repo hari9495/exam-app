@@ -47,7 +47,7 @@ export class AiJobsWorkerService implements OnModuleDestroy {
     }
 
     try {
-      const output = await processor.process(JSON.parse(aiJob.inputJson), context);
+      const output = await processor.process(JSON.parse(aiJob.inputJson), context, aiJobId);
       await this.tenantPrisma.forTenant(context, (tx) =>
         tx.aiJob.update({
           where: { id: aiJobId },

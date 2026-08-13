@@ -1,11 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
 import { useQuestions, useArchiveQuestion, useRestoreQuestion } from '../../../lib/hooks/useQuestions';
-import { Select, Button, Modal, Pagination, StatusBadge, Table, useToast, useColumnVisibility, FilterableHeader, type Column } from '../../../components/ui';
+import { Select, Button, Checkbox, Modal, Pagination, StatusBadge, Table, useToast, useColumnVisibility, FilterableHeader, type Column } from '../../../components/ui';
+import { GenerateQuestionsModal } from '../../../components/GenerateQuestionsModal';
 import { groupQuestions, type GroupBy } from '../../../lib/question-grouping';
 import { TYPE_TONE, TYPE_LABEL, DIFFICULTY_LABEL, DIFFICULTY_LEVEL } from '../../../lib/question-display';
 import { Question } from '../../../lib/types';
@@ -25,6 +27,7 @@ const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
 
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
+  { value: 'draft', label: 'Drafts' },
   { value: 'archived', label: 'Archived' },
 ];
 
@@ -47,10 +50,28 @@ export default function QuestionsPage() {
     search: search || undefined,
     status,
   });
+  // pageSize 1: we only want `total`, not the rows. Runs on every status view so the count is
+  // visible from Active, which is where a recruiter actually is.
+  const { data: draftCount } = useQuestions({ status: 'draft', pageSize: 1 });
+  const pendingDrafts = draftCount?.total ?? 0;
   const [questionPendingDelete, setQuestionPendingDelete] = useState<Question | null>(null);
+  const [generateModalOpen, setGenerateModalOpen] = useState(false);
   const archiveQuestion = useArchiveQuestion();
   const restoreQuestion = useRestoreQuestion();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const rows = questions?.data ?? [];
+
+  // Bulk select/publish/discard -- only meaningful in the Drafts view (see the checkbox column
+  // below). Carrying a selection across a status, page, or search change would act on rows the
+  // recruiter can no longer see, so it's cleared whenever any of them moves.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkActionPending, setBulkActionPending] = useState(false);
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [status, page, search]);
+
   // Collapsed by default: with many topics/categories, dumping every group's full row list
   // open at once is exactly the clutter grouping is meant to cut through. Keyed by group
   // label rather than index -- stable across a re-group even though group order can shift.
@@ -68,6 +89,57 @@ export default function QuestionsPage() {
     });
   }
 
+  // Each group renders its own Table, so column-header sorting applies within a group. Computed
+  // here (ahead of the early returns below) because visibleRowIds needs it too.
+  const groups = groupBy === 'none' ? [{ label: '', questions: rows }] : groupQuestions(rows, groupBy);
+
+  // A row can drop out of view two ways without status/page/search moving: a per-row
+  // Publish/Discard refetches this view and the row it acted on is simply gone, or its group
+  // gets collapsed -- the row stays in `rows` (the fetched page) but nothing renders in the DOM.
+  // Deriving the visible set from the *expanded* groups, not from `rows`, is what keeps a bulk
+  // action from ever reaching a row the recruiter can't currently see.
+  const visibleRowIds = new Set(
+    groups
+      .filter((group) => groupBy === 'none' || expandedGroups.has(group.label))
+      .flatMap((group) => group.questions.map((question) => question.id)),
+  );
+  const selectedVisibleIds = Array.from(selectedIds).filter((id) => visibleRowIds.has(id));
+
+  function toggleSelected(id: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  // N separate requests, not a batch endpoint -- there isn't one. allSettled so one failure
+  // doesn't cancel the rest, and the toast always states the real count so a recruiter is never
+  // told "published 7" when only 5 landed.
+  async function handleBulkAction(action: 'publish' | 'discard') {
+    // Never the raw selection -- an id whose row has already left `rows` (a per-row action, a
+    // refetch) must not be recounted or resubmitted, only what's still actually on screen.
+    const ids = selectedVisibleIds;
+    const mutation = action === 'publish' ? restoreQuestion : archiveQuestion;
+    const verb = action === 'publish' ? 'published' : 'discarded';
+    setBulkActionPending(true);
+    try {
+      const results = await Promise.allSettled(ids.map((id) => mutation.mutateAsync(id)));
+      const failed = results.filter((result) => result.status === 'rejected').length;
+      if (failed === 0) {
+        toast(`${ids.length} question${ids.length === 1 ? '' : 's'} ${verb}.`);
+      } else {
+        toast(`${ids.length - failed} of ${ids.length} ${verb} — ${failed} failed.`, 'error');
+      }
+      setSelectedIds(new Set());
+    } finally {
+      setBulkActionPending(false);
+    }
+  }
   function handleConfirmDelete() {
     if (!questionPendingDelete) return;
     archiveQuestion.mutate(questionPendingDelete.id, {
@@ -83,13 +155,83 @@ export default function QuestionsPage() {
   }
 
   function handleRestore(question: Question) {
+    // Same endpoint (archived -> active or draft -> active) but the toast copy must match what
+    // actually happened -- a draft was never archived, so "restored" would be misleading there.
+    const isDraft = question.status === 'draft';
     restoreQuestion.mutate(question.id, {
-      onSuccess: () => toast('Question restored.'),
-      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to restore question.', 'error'),
+      onSuccess: () => toast(isDraft ? 'Question published.' : 'Question restored.'),
+      onError: (error) =>
+        toast(error instanceof Error ? error.message : isDraft ? 'Failed to publish question.' : 'Failed to restore question.', 'error'),
     });
   }
 
-  const columns: Column<NumberedQuestion>[] = [
+  const selectionColumn: Column<NumberedQuestion> | null =
+    status === 'draft'
+      ? {
+          key: '__select',
+          // Only meaningful ungrouped -- bound to the whole page (`rows`). The grouped case gets
+          // its own column per group below, scoped to that group's own rows.
+          header:
+            groupBy === 'none' ? (
+              <Checkbox
+                checked={rows.length > 0 && rows.every((question) => selectedIds.has(question.id))}
+                onChange={(checked) => setSelectedIds(checked ? new Set(rows.map((question) => question.id)) : new Set())}
+                label="Select all questions on this page"
+                hideLabel
+              />
+            ) : null,
+          width: '3%',
+          render: (question) => (
+            <Checkbox
+              checked={selectedIds.has(question.id)}
+              onChange={() => toggleSelected(question.id)}
+              label={`Select question ${question.id}`}
+              hideLabel
+            />
+          ),
+        }
+      : null;
+
+  // Grouped view renders one <Table> per group -- this binds a select-all to that one group's
+  // own rows (`group.questions`, in hand where the tables render below), so checking it can
+  // never reach into a different, possibly-collapsed group. Safe by construction: visibleRowIds
+  // above already restricts bulk actions to expanded groups regardless of what's in selectedIds.
+  function groupSelectionColumn(group: { label: string; questions: Question[] }): Column<NumberedQuestion> {
+    return {
+      key: '__select',
+      header: (
+        <Checkbox
+          checked={group.questions.length > 0 && group.questions.every((question) => selectedIds.has(question.id))}
+          onChange={(checked) =>
+            setSelectedIds((current) => {
+              const next = new Set(current);
+              for (const question of group.questions) {
+                if (checked) next.add(question.id);
+                else next.delete(question.id);
+              }
+              return next;
+            })
+          }
+          label={`Select all questions in ${group.label}`}
+          hideLabel
+        />
+      ),
+      width: '3%',
+      render: (question) => (
+        <Checkbox
+          checked={selectedIds.has(question.id)}
+          onChange={() => toggleSelected(question.id)}
+          label={`Select question ${question.id}`}
+          hideLabel
+        />
+      ),
+    };
+  }
+
+  // Kept out of useColumnVisibility (below) and prepended after it: hiding this column would
+  // strand an in-progress selection with no way to bring it back except clearing storage --
+  // ExamResultsPanel's selectColumn (components/ExamResultsPanel.tsx) is the same call.
+  const dataColumns: Column<NumberedQuestion>[] = [
     {
       key: 'number',
       header: '#',
@@ -127,7 +269,11 @@ export default function QuestionsPage() {
       ),
       width: '10%',
       sortLabel: 'Status',
-      render: (question) => <StatusBadge tone={question.status === 'active' ? 'success' : 'neutral'}>{question.status === 'active' ? 'Active' : 'Archived'}</StatusBadge>,
+      render: (question) => {
+        const tone = question.status === 'active' ? 'success' : question.status === 'draft' ? 'warning' : 'neutral';
+        const label = question.status === 'active' ? 'Active' : question.status === 'draft' ? 'Draft' : 'Archived';
+        return <StatusBadge tone={tone}>{label}</StatusBadge>;
+      },
     },
     {
       key: 'type',
@@ -180,7 +326,31 @@ export default function QuestionsPage() {
       width: '3%',
       render: (question) => (
         <div className="flex items-center justify-end opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-          {question.status === 'archived' ? (
+          {question.status === 'draft' ? (
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => handleRestore(question)}
+                disabled={restoreQuestion.isPending}
+                className="text-xs font-medium text-primary hover:underline disabled:opacity-50"
+              >
+                Publish
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  archiveQuestion.mutate(question.id, {
+                    onSuccess: () => toast('Question discarded.'),
+                    onError: (error) => toast(error instanceof Error ? error.message : 'Failed to discard question.', 'error'),
+                  })
+                }
+                disabled={archiveQuestion.isPending}
+                className="text-xs font-medium text-status-danger hover:underline disabled:opacity-50"
+              >
+                Discard
+              </button>
+            </div>
+          ) : question.status === 'archived' ? (
             <button
               type="button"
               onClick={() => handleRestore(question)}
@@ -202,7 +372,13 @@ export default function QuestionsPage() {
       ),
     },
   ];
-  const { visibleColumns, chooser } = useColumnVisibility('recruiter-questions', columns);
+  const { visibleColumns, chooser } = useColumnVisibility('recruiter-questions', dataColumns);
+
+  function columnsForGroup(group: { label: string; questions: Question[] }): Column<NumberedQuestion>[] {
+    if (!selectionColumn) return visibleColumns;
+    const select = groupBy === 'none' ? selectionColumn : groupSelectionColumn(group);
+    return [select, ...visibleColumns];
+  }
 
   if (isLoading) {
     return (
@@ -224,10 +400,6 @@ export default function QuestionsPage() {
     );
   }
 
-  const rows = questions?.data ?? [];
-  // Each group renders its own Table, so column-header sorting applies within a group.
-  const groups = groupBy === 'none' ? [{ label: '', questions: rows }] : groupQuestions(rows, groupBy);
-
   return (
     <div>
       <div className="mb-4.5 flex items-center justify-between">
@@ -236,6 +408,9 @@ export default function QuestionsPage() {
           <Link href="/questions/bulk-upload">
             <Button variant="secondary">Bulk upload</Button>
           </Link>
+          <Button type="button" variant="secondary" onClick={() => setGenerateModalOpen(true)}>
+            Generate with AI
+          </Button>
           <Link href="/questions/new">
             <Button className="inline-flex items-center gap-1.5">
               <Plus size={14} />
@@ -244,6 +419,19 @@ export default function QuestionsPage() {
           </Link>
         </div>
       </div>
+
+      {pendingDrafts > 0 && (
+        <button
+          type="button"
+          onClick={() => {
+            setStatus('draft');
+            setPage(1);
+          }}
+          className="mb-3 block text-sm font-medium text-primary hover:underline"
+        >
+          {pendingDrafts} {pendingDrafts === 1 ? 'draft' : 'drafts'} awaiting review
+        </button>
+      )}
 
       <div className="mb-3 flex flex-wrap items-end gap-2">
         <div className="relative max-w-xs flex-1">
@@ -265,10 +453,40 @@ export default function QuestionsPage() {
         {chooser}
       </div>
 
+      {status === 'draft' && selectedVisibleIds.length > 0 && (
+        <div className="mb-3 flex items-center gap-2 rounded-md border border-recruiter-border bg-recruiter-bg-subtle px-3 py-2">
+          <span className="text-sm text-recruiter-text-secondary">{selectedVisibleIds.length} selected</span>
+          <Button type="button" size="sm" loading={bulkActionPending} onClick={() => handleBulkAction('publish')}>
+            {`Publish selected (${selectedVisibleIds.length})`}
+          </Button>
+          <Button type="button" size="sm" variant="danger" loading={bulkActionPending} onClick={() => handleBulkAction('discard')}>
+            {`Discard selected (${selectedVisibleIds.length})`}
+          </Button>
+        </div>
+      )}
+
       {rows.length === 0 ? (
-        <p className="py-8 text-center text-sm text-recruiter-text-tertiary">
-          {status === 'archived' ? 'No archived questions.' : 'No questions yet.'}
-        </p>
+        <div className="py-8 text-center text-sm text-recruiter-text-tertiary">
+          <p>
+            {status === 'archived' ? 'No archived questions.' : status === 'draft' ? 'No drafts to review.' : 'No questions yet.'}
+          </p>
+          {/* The Status filter lives inside the Table's column header, which never renders when
+              there are no rows -- without this, draining a non-active view (the designed happy
+              path once Discard/Publish empty the Drafts list) leaves status stuck with no way
+              back except a page reload. */}
+          {status !== 'active' && (
+            <button
+              type="button"
+              onClick={() => {
+                setStatus('active');
+                setPage(1);
+              }}
+              className="mt-2 font-medium text-primary hover:underline"
+            >
+              Back to Active
+            </button>
+          )}
+        </div>
       ) : (
         <div className="flex flex-col gap-3">
           {groups.map((group) => {
@@ -298,7 +516,7 @@ export default function QuestionsPage() {
                 )}
                 {expanded && (
                   <div className={groupBy !== 'none' ? 'p-3' : undefined}>
-                    <Table columns={visibleColumns} rows={numberedQuestions} rowKey={(question) => question.id} />
+                    <Table columns={columnsForGroup(group)} rows={numberedQuestions} rowKey={(question) => question.id} />
                   </div>
                 )}
               </section>
@@ -331,6 +549,19 @@ export default function QuestionsPage() {
           </div>
         </Modal>
       )}
+
+      <GenerateQuestionsModal
+        open={generateModalOpen}
+        onClose={() => setGenerateModalOpen(false)}
+        onCompleted={() => {
+          // The count query has a 30s staleTime and nothing else invalidates ['questions'] when
+          // a job lands -- without this, the pending-drafts count and the Drafts list can lag a
+          // just-completed generation.
+          queryClient.invalidateQueries({ queryKey: ['questions'] });
+          setStatus('draft');
+          setPage(1);
+        }}
+      />
     </div>
   );
 }

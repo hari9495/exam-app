@@ -161,6 +161,61 @@ export function useUploadQuestionImage() {
   });
 }
 
+// Narrower than the app-wide QuestionType on purpose: the API's @IsIn allows only these three.
+// Generating `code` questions is a later stage (the model would also have to produce starter code
+// and pick a runtime), so offering it in the UI would fail validation with a 400 the recruiter
+// cannot act on. Typing it out here means that mistake is a compile error, not a runtime one.
+export type GeneratableQuestionType = Extract<QuestionType, 'single_mcq' | 'multi_mcq' | 'true_false'>;
+
+export interface GenerateQuestionsPayload {
+  topic: string;
+  difficulty: Difficulty;
+  questionTypes: GeneratableQuestionType[];
+  count: number;
+  marks: number;
+  negativeMarks: number;
+  tagIds: string[];
+}
+
+export interface GenerationOutput {
+  requested: number;
+  created: number;
+  dropped: { reason: string }[];
+  questionIds: string[];
+}
+
+export interface AiJobStatus {
+  id: string;
+  type: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  outputJson: string | null;
+  error: string | null;
+}
+
+export function useGenerateQuestions() {
+  const { accessToken } = useAuth();
+  return useMutation<{ aiJobId: string }, Error, GenerateQuestionsPayload>({
+    mutationFn: (payload) =>
+      apiFetch('/questions/ai-generate', { method: 'POST', body: JSON.stringify(payload) }, accessToken ?? undefined),
+  });
+}
+
+// Note the path: the controller is mounted at `ai-jobs`, not `jobs`.
+export function useAiJob(aiJobId: string | null) {
+  const { accessToken } = useAuth();
+  return useQuery<AiJobStatus>({
+    queryKey: ['ai-job', aiJobId],
+    queryFn: () => apiFetch(`/ai-jobs/${aiJobId}`, {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken && aiJobId),
+    // Poll while the job is still running, then stop. Without the false branch this polls
+    // forever after completion, once per open modal, for as long as the tab is open.
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === 'pending' || status === 'processing' ? 2000 : false;
+    },
+  });
+}
+
 export function useCodeLanguages() {
   const { accessToken } = useAuth();
   return useQuery<{ language: string; version: string }[]>({

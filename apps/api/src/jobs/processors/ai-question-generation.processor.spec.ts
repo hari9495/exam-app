@@ -6,7 +6,16 @@ describe('AiQuestionGenerationProcessor', () => {
   let tenantPrisma: { forTenant: jest.Mock };
   let aiApiKeyResolver: { resolve: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
-  const input = { topic: 'JavaScript closures', difficulty: 'medium', questionTypes: ['single_mcq', 'true_false'], count: 2, requestedBy: 'user-1' };
+  const input = {
+    topic: 'JavaScript closures',
+    difficulty: 'medium',
+    questionTypes: ['single_mcq', 'true_false'],
+    count: 2,
+    marks: 1,
+    negativeMarks: 0,
+    tagIds: [],
+    requestedBy: 'user-1',
+  };
   const aiProvider = { generateStructured: jest.fn(), ping: jest.fn() };
 
   beforeEach(() => {
@@ -38,7 +47,7 @@ describe('AiQuestionGenerationProcessor', () => {
     const create = jest.fn().mockResolvedValueOnce({ id: 'q-1' }).mockResolvedValueOnce({ id: 'q-2' });
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ question: { create }, aiCreditUsage: { create: jest.fn() } }));
 
-    const result = await processor.process(input, context);
+    const result = await processor.process(input, context, 'job-1');
 
     expect(result).toEqual({ requested: 2, created: 2, dropped: [], questionIds: ['q-1', 'q-2'] });
     expect(create).toHaveBeenNthCalledWith(1, {
@@ -52,6 +61,7 @@ describe('AiQuestionGenerationProcessor', () => {
         negativeMarks: 0,
         status: 'draft',
         aiGenerated: true,
+        aiJobId: 'job-1',
         createdBy: 'user-1',
         options: {
           create: [
@@ -80,10 +90,10 @@ describe('AiQuestionGenerationProcessor', () => {
       fn({ question: { create }, aiCreditUsage: { create: aiCreditUsageCreate } }),
     );
 
-    await processor.process(input, context);
+    await processor.process(input, context, 'job-1');
 
     expect(aiCreditUsageCreate).toHaveBeenCalledWith({
-      data: { organizationId: 'org-1', source: 'question_generation', credits: 1, sourceId: null },
+      data: { organizationId: 'org-1', source: 'question_generation', credits: 1, sourceId: 'job-1' },
     });
   });
 
@@ -103,7 +113,7 @@ describe('AiQuestionGenerationProcessor', () => {
       fn({ question: { create: jest.fn() }, aiCreditUsage: { create: aiCreditUsageCreate } }),
     );
 
-    await processor.process(input, context);
+    await processor.process(input, context, 'job-1');
 
     expect(aiCreditUsageCreate).not.toHaveBeenCalled();
   });
@@ -130,7 +140,7 @@ describe('AiQuestionGenerationProcessor', () => {
     const create = jest.fn().mockResolvedValue({ id: 'q-1' });
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ question: { create }, aiCreditUsage: { create: jest.fn() } }));
 
-    const result = await processor.process(input, context);
+    const result = await processor.process(input, context, 'job-1');
 
     expect(result.created).toBe(1);
     expect(result.dropped).toHaveLength(1);
@@ -150,7 +160,7 @@ describe('AiQuestionGenerationProcessor', () => {
     ]);
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ question: { create: jest.fn() } }));
 
-    const result = await processor.process(input, context);
+    const result = await processor.process(input, context, 'job-1');
 
     expect(result).toEqual({ requested: 2, created: 0, dropped: [{ reason: expect.any(String) }], questionIds: [] });
   });
@@ -185,7 +195,7 @@ describe('AiQuestionGenerationProcessor', () => {
     const create = jest.fn().mockResolvedValueOnce({ id: 'q-1' }).mockResolvedValueOnce({ id: 'q-2' });
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ question: { create }, aiCreditUsage: { create: jest.fn() } }));
 
-    const result = await processor.process(input, context);
+    const result = await processor.process(input, context, 'job-1');
 
     expect(result.created).toBe(2);
     expect(result.questionIds).toEqual(['q-1', 'q-2']);
@@ -214,7 +224,7 @@ describe('AiQuestionGenerationProcessor', () => {
     const create = jest.fn().mockResolvedValueOnce({ id: 'q-1' });
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ question: { create }, aiCreditUsage: { create: jest.fn() } }));
 
-    const result = await processor.process(input, context);
+    const result = await processor.process(input, context, 'job-1');
 
     expect(result.created).toBe(1);
     expect(result.questionIds).toEqual(['q-1']);
@@ -227,7 +237,203 @@ describe('AiQuestionGenerationProcessor', () => {
   it('propagates an error thrown by the Claude client, failing the whole job with zero inserts', async () => {
     questionGenerationClient.generate.mockRejectedValue(new Error('rate limited'));
 
-    await expect(processor.process(input, context)).rejects.toThrow('rate limited');
+    await expect(processor.process(input, context, 'job-1')).rejects.toThrow('rate limited');
     expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+  });
+
+  it('applies the requested marks, negative marks and tags to every generated question', async () => {
+    const create = jest.fn().mockResolvedValue({ id: 'q1' });
+    const creditCreate = jest.fn().mockResolvedValue({});
+    const tagFindMany = jest.fn().mockResolvedValue([{ id: 'tag-1' }]);
+    const tenantPrisma = {
+      forTenant: jest.fn((_c: unknown, fn: (tx: unknown) => unknown) =>
+        fn({ question: { create }, aiCreditUsage: { create: creditCreate }, tag: { findMany: tagFindMany } }),
+      ),
+    };
+    const client = {
+      generate: jest.fn().mockResolvedValue([
+        { type: 'single_mcq', text: 'Q', options: [{ text: 'a', isCorrect: true }, { text: 'b', isCorrect: false }] },
+      ]),
+    };
+    const processor = new AiQuestionGenerationProcessor(
+      client as never,
+      tenantPrisma as never,
+      { resolve: jest.fn().mockResolvedValue({}) } as never,
+    );
+
+    await processor.process(
+      { topic: 'SQL', difficulty: 'medium', questionTypes: ['single_mcq'], count: 1, marks: 5, negativeMarks: 2, tagIds: ['tag-1'], requestedBy: 'user-1' },
+      { organizationId: 'org-1', isSuperAdmin: false } as never,
+      'job-1',
+    );
+
+    expect(create).toHaveBeenCalledTimes(1);
+    const data = create.mock.calls[0][0].data;
+    expect(data.marks).toBe(5);
+    expect(data.negativeMarks).toBe(2);
+    expect(data.tags).toEqual({ create: [{ tagId: 'tag-1' }] });
+  });
+
+  it('dedupes duplicate tagIds so a repeated id does not violate the question_tags composite primary key', async () => {
+    const create = jest.fn().mockResolvedValue({ id: 'q1' });
+    const tagFindMany = jest.fn().mockResolvedValue([{ id: 'tag-1' }]);
+    const tenantPrisma = {
+      forTenant: jest.fn((_c: unknown, fn: (tx: unknown) => unknown) =>
+        fn({ question: { create }, aiCreditUsage: { create: jest.fn() }, tag: { findMany: tagFindMany } }),
+      ),
+    };
+    const client = {
+      generate: jest.fn().mockResolvedValue([
+        { type: 'single_mcq', text: 'Q', options: [{ text: 'a', isCorrect: true }, { text: 'b', isCorrect: false }] },
+      ]),
+    };
+    const processor = new AiQuestionGenerationProcessor(
+      client as never,
+      tenantPrisma as never,
+      { resolve: jest.fn().mockResolvedValue({}) } as never,
+    );
+
+    await processor.process(
+      { topic: 'SQL', difficulty: 'medium', questionTypes: ['single_mcq'], count: 1, marks: 1, negativeMarks: 0, tagIds: ['tag-1', 'tag-1'], requestedBy: 'user-1' },
+      { organizationId: 'org-1', isSuperAdmin: false } as never,
+      'job-1',
+    );
+
+    expect(tagFindMany).toHaveBeenCalledWith({
+      where: { id: { in: ['tag-1'] }, organizationId: 'org-1' },
+      select: { id: true },
+    });
+    const data = create.mock.calls[0][0].data;
+    expect(data.tags).toEqual({ create: [{ tagId: 'tag-1' }] });
+  });
+
+  it('resolves tagIds scoped to the caller organization and silently drops ids that are stale or belong to another org', async () => {
+    const create = jest.fn().mockResolvedValue({ id: 'q1' });
+    // only tag-1 comes back: tag-2 either does not exist or belongs to a different organization
+    const tagFindMany = jest.fn().mockResolvedValue([{ id: 'tag-1' }]);
+    const tenantPrisma = {
+      forTenant: jest.fn((_c: unknown, fn: (tx: unknown) => unknown) =>
+        fn({ question: { create }, aiCreditUsage: { create: jest.fn() }, tag: { findMany: tagFindMany } }),
+      ),
+    };
+    const client = {
+      generate: jest.fn().mockResolvedValue([
+        { type: 'single_mcq', text: 'Q', options: [{ text: 'a', isCorrect: true }, { text: 'b', isCorrect: false }] },
+      ]),
+    };
+    const processor = new AiQuestionGenerationProcessor(
+      client as never,
+      tenantPrisma as never,
+      { resolve: jest.fn().mockResolvedValue({}) } as never,
+    );
+
+    const result = await processor.process(
+      { topic: 'SQL', difficulty: 'medium', questionTypes: ['single_mcq'], count: 1, marks: 1, negativeMarks: 0, tagIds: ['tag-1', 'tag-2'], requestedBy: 'user-1' },
+      { organizationId: 'org-1', isSuperAdmin: false } as never,
+      'job-1',
+    );
+
+    expect(tagFindMany).toHaveBeenCalledWith({
+      where: { id: { in: ['tag-1', 'tag-2'] }, organizationId: 'org-1' },
+      select: { id: true },
+    });
+    const data = create.mock.calls[0][0].data;
+    expect(data.tags).toEqual({ create: [{ tagId: 'tag-1' }] });
+    expect(result.created).toBe(1);
+  });
+
+  it('still processes an old-shaped persisted job input that predates marks/negativeMarks/tagIds without throwing', async () => {
+    const create = jest.fn().mockResolvedValue({ id: 'q1' });
+    const creditCreate = jest.fn().mockResolvedValue({});
+    const tenantPrisma = {
+      forTenant: jest.fn((_c: unknown, fn: (tx: unknown) => unknown) =>
+        fn({ question: { create }, aiCreditUsage: { create: creditCreate } }),
+      ),
+    };
+    const client = {
+      generate: jest.fn().mockResolvedValue([
+        { type: 'single_mcq', text: 'Q', options: [{ text: 'a', isCorrect: true }, { text: 'b', isCorrect: false }] },
+      ]),
+    };
+    const processor = new AiQuestionGenerationProcessor(
+      client as never,
+      tenantPrisma as never,
+      { resolve: jest.fn().mockResolvedValue({}) } as never,
+    );
+
+    // old-shaped input: no marks, no negativeMarks, no tagIds
+    const oldShapedInput = { topic: 'SQL', difficulty: 'medium', questionTypes: ['single_mcq'], count: 1, requestedBy: 'user-1' };
+
+    const result = await processor.process(
+      oldShapedInput,
+      { organizationId: 'org-1', isSuperAdmin: false } as never,
+      'job-1',
+    );
+
+    expect(result.created).toBe(1);
+    const data = create.mock.calls[0][0].data;
+    expect(data.marks).toBe(1);
+    expect(data.negativeMarks).toBe(0);
+    expect(data.tags).toBeUndefined();
+  });
+
+  it('stamps the job id on each question and on the credit usage row, so a charge can be traced back', async () => {
+    const create = jest.fn().mockResolvedValue({ id: 'q1' });
+    const creditCreate = jest.fn().mockResolvedValue({});
+    const tenantPrisma = {
+      forTenant: jest.fn((_c: unknown, fn: (tx: unknown) => unknown) =>
+        fn({ question: { create }, aiCreditUsage: { create: creditCreate } }),
+      ),
+    };
+    const client = {
+      generate: jest.fn().mockResolvedValue([
+        { type: 'single_mcq', text: 'Q', options: [{ text: 'a', isCorrect: true }, { text: 'b', isCorrect: false }] },
+      ]),
+    };
+    const processor = new AiQuestionGenerationProcessor(
+      client as never,
+      tenantPrisma as never,
+      { resolve: jest.fn().mockResolvedValue({}) } as never,
+    );
+
+    await processor.process(
+      { topic: 'SQL', difficulty: 'medium', questionTypes: ['single_mcq'], count: 1, marks: 1, negativeMarks: 0, tagIds: [], requestedBy: 'user-1' },
+      { organizationId: 'org-1', isSuperAdmin: false } as never,
+      'job-42',
+    );
+
+    expect(create.mock.calls[0][0].data.aiJobId).toBe('job-42');
+    expect(creditCreate.mock.calls[0][0].data.sourceId).toBe('job-42');
+  });
+
+  it('validates against the requested marks, not a hardcoded 1', async () => {
+    // negativeMarks greater than marks is invalid; if the processor validated against a
+    // hardcoded marks:1 it would wrongly accept this and write an unusable question.
+    const create = jest.fn().mockResolvedValue({ id: 'q1' });
+    const tenantPrisma = {
+      forTenant: jest.fn((_c: unknown, fn: (tx: unknown) => unknown) =>
+        fn({ question: { create }, aiCreditUsage: { create: jest.fn() } }),
+      ),
+    };
+    const client = {
+      generate: jest.fn().mockResolvedValue([
+        { type: 'single_mcq', text: 'Q', options: [{ text: 'a', isCorrect: true }, { text: 'b', isCorrect: false }] },
+      ]),
+    };
+    const processor = new AiQuestionGenerationProcessor(
+      client as never,
+      tenantPrisma as never,
+      { resolve: jest.fn().mockResolvedValue({}) } as never,
+    );
+
+    const result = await processor.process(
+      { topic: 'SQL', difficulty: 'medium', questionTypes: ['single_mcq'], count: 1, marks: 1, negativeMarks: 99, tagIds: [], requestedBy: 'user-1' },
+      { organizationId: 'org-1', isSuperAdmin: false } as never,
+      'job-1',
+    ) as { created: number; dropped: { reason: string }[] };
+
+    expect(result.created).toBe(0);
+    expect(result.dropped).toHaveLength(1);
+    expect(result.dropped[0].reason).toBe('negativeMarks cannot exceed marks');
   });
 });
