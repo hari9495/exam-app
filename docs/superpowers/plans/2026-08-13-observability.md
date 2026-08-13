@@ -769,12 +769,34 @@ export class HealthService {
     this.timeoutMs = deps.timeoutMs ?? 2_000;
   }
 
+  // Caches the IN-FLIGHT check as well as the settled result. Result-only caching leaves a
+  // gap: concurrent callers arriving during a miss all read `cached` as stale before any of
+  // them resolves, and each fires a real dependency check. This endpoint is public and
+  // unauthenticated, so the reference class is not the 5-minute monitor poll -- an adversary
+  // picks their own concurrency, and distributed IPs bypass the per-IP throttler.
+  //
+  // `inflight` is cleared in `finally` rather than on the success path, because a rejection
+  // that left it set would return the same rejected promise to every later caller forever --
+  // a permanently wedged health endpoint, unrecoverable without a restart. `check()` also
+  // resolves false rather than rejecting: a failing health check must report unhealthy, not
+  // throw. On that path `cached` is deliberately left untouched so the next call retries for
+  // real instead of serving a cached failure for the rest of the window.
   async check(): Promise<boolean> {
     const cached = this.cached;
     if (cached && this.now() - cached.at < this.cacheMs) return cached.ok;
-    const ok = await this.run();
-    this.cached = { at: this.now(), ok };
-    return ok;
+    if (this.inflight) return this.inflight;
+    this.inflight = this.run()
+      .then(
+        (ok) => {
+          this.cached = { at: this.now(), ok };
+          return ok;
+        },
+        () => false,
+      )
+      .finally(() => {
+        this.inflight = null;
+      });
+    return this.inflight;
   }
 
   private async run(): Promise<boolean> {
