@@ -4,7 +4,8 @@ import { useParams, useRouter } from 'next/navigation';
 import { QuestionForm } from '../../../../../components/QuestionForm';
 import { BackLink } from '../../../../../components/BackLink';
 import { AuditHistoryLink } from '../../../../../components/AuditHistoryLink';
-import { useQuestion, useUpdateQuestion, useTags } from '../../../../../lib/hooks/useQuestions';
+import { QuestionStatisticsPanel } from '../../../../../components/QuestionStatisticsPanel';
+import { useQuestion, useUpdateQuestion, useTags, useQuestionAnalytics } from '../../../../../lib/hooks/useQuestions';
 import { useToast } from '../../../../../components/ui';
 
 export default function EditQuestionPage() {
@@ -13,6 +14,7 @@ export default function EditQuestionPage() {
   const { toast } = useToast();
   const { data: question } = useQuestion(params.id);
   const { data: tags } = useTags();
+  const { data: analytics } = useQuestionAnalytics(params.id);
   const updateQuestion = useUpdateQuestion(params.id);
 
   if (!question) {
@@ -40,6 +42,11 @@ export default function EditQuestionPage() {
           })
         }
       />
+      {analytics && (
+        <div className="mt-8">
+          <QuestionStatisticsPanel analytics={analytics} />
+        </div>
+      )}
     </div>
   );
 }

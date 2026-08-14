@@ -45,6 +45,37 @@ export function useQuestion(id: string | null) {
   });
 }
 
+// Inline, not imported from @exam-platform/shared: apps/web cannot import that package at
+// runtime (see lib/sentry-rate-limiter.ts) and it isn't declared as a dependency here, so these
+// shapes are kept in sync with FlagSeverity/ItemFlag/OptionCount by hand.
+export interface QuestionAnalytics {
+  questionId: string;
+  responses: number;
+  percentCorrect: number | null;
+  discrimination: number | null;
+  flags: { code: string; severity: 'critical' | 'warning' | 'info'; message: string }[];
+  options: { optionId: string; text: string; isCorrect: boolean; selections: number }[];
+  hasEnoughData: boolean;
+}
+
+export function useQuestionAnalytics(questionId: string | null) {
+  const { accessToken } = useAuth();
+  return useQuery<QuestionAnalytics>({
+    queryKey: ['question-analytics', questionId],
+    queryFn: () => apiFetch(`/analytics/questions/${questionId}`, {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken) && Boolean(questionId),
+  });
+}
+
+export function useFlaggedQuestions() {
+  const { accessToken } = useAuth();
+  return useQuery<QuestionAnalytics[]>({
+    queryKey: ['flagged-questions'],
+    queryFn: () => apiFetch('/analytics/questions/flagged', {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken),
+  });
+}
+
 export function useTags() {
   const { accessToken } = useAuth();
   return useQuery<Tag[]>({

@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
-import { useQuestions, useArchiveQuestion, useRestoreQuestion } from '../../../lib/hooks/useQuestions';
+import { useQuestions, useArchiveQuestion, useRestoreQuestion, useFlaggedQuestions } from '../../../lib/hooks/useQuestions';
 import { Select, Button, Checkbox, Modal, Pagination, StatusBadge, Table, useToast, useColumnVisibility, FilterableHeader, type Column } from '../../../components/ui';
 import { GenerateQuestionsModal } from '../../../components/GenerateQuestionsModal';
 import { groupQuestions, type GroupBy } from '../../../lib/question-grouping';
@@ -36,14 +36,19 @@ export default function QuestionsPage() {
   const [search, setSearch] = useState('');
   const [groupBy, setGroupBy] = useState<GroupBy>('none');
   const [status, setStatus] = useState('active');
+  const [needsReviewOnly, setNeedsReviewOnly] = useState(false);
   // "Group by" groups whatever's already loaded, which is one 20-row page by default -- a
   // topic with 15 real questions could show "3" if only 3 of them happened to land on the
   // current page (ADO #6843). Widen to the server's max page size while grouping so the
   // counts reflect (up to) the whole filtered set instead of one page of it.
+  // "Needs review" has the identical problem: `rows` below intersects the flagged set against
+  // whatever page is loaded, so the single worst (critical) question in the bank could sit on
+  // page 12 while page 1 shows nothing but `info`-level items. Widen and pin to page 1 here too.
   // ponytail: still a real ceiling for an org with >100 questions matching the filter -- a
   // dedicated backend group-by/count endpoint is the real fix if that becomes a problem.
-  const effectivePageSize = groupBy === 'none' ? 20 : 100;
-  const effectivePage = groupBy === 'none' ? page : 1;
+  const widenPage = groupBy !== 'none' || needsReviewOnly;
+  const effectivePageSize = widenPage ? 100 : 20;
+  const effectivePage = widenPage ? 1 : page;
   const { data: questions, isLoading, isError } = useQuestions({
     page: effectivePage,
     pageSize: effectivePageSize,
@@ -54,6 +59,8 @@ export default function QuestionsPage() {
   // visible from Active, which is where a recruiter actually is.
   const { data: draftCount } = useQuestions({ status: 'draft', pageSize: 1 });
   const pendingDrafts = draftCount?.total ?? 0;
+  // Worst-first, per the API's own ordering -- never re-sorted client-side (see below).
+  const { data: flaggedQuestions } = useFlaggedQuestions();
   const [questionPendingDelete, setQuestionPendingDelete] = useState<Question | null>(null);
   const [generateModalOpen, setGenerateModalOpen] = useState(false);
   const archiveQuestion = useArchiveQuestion();
@@ -61,16 +68,30 @@ export default function QuestionsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const rows = questions?.data ?? [];
+  const fetchedRows = questions?.data ?? [];
+  // Read-only shortlist: never a re-sort, just an intersection with the current page's rows,
+  // walked in the flagged API's own worst-first order (critical, then warning, then info).
+  const rows = needsReviewOnly
+    ? (flaggedQuestions ?? [])
+        .map((flagged) => fetchedRows.find((question) => question.id === flagged.questionId))
+        .filter((question): question is Question => Boolean(question))
+    : fetchedRows;
+
+  // The widened page above caps at 100, and the question list is ordered `createdAt desc` --
+  // so the window is the NEWEST 100, while a question can only be flagged once it has 20+
+  // responses, which correlates with age. The truncation is therefore biased AGAINST exactly
+  // the questions that can be flagged, and a flagged question in another status never appears
+  // at all. Without this line the button would claim 56 while the list showed ten, silently.
+  const hiddenFlaggedCount = needsReviewOnly ? Math.max(0, (flaggedQuestions?.length ?? 0) - rows.length) : 0;
 
   // Bulk select/publish/discard -- only meaningful in the Drafts view (see the checkbox column
-  // below). Carrying a selection across a status, page, or search change would act on rows the
-  // recruiter can no longer see, so it's cleared whenever any of them moves.
+  // below). Carrying a selection across a status, page, search, or Needs review change would act
+  // on rows the recruiter can no longer see, so it's cleared whenever any of them moves.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkActionPending, setBulkActionPending] = useState(false);
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [status, page, search]);
+  }, [status, page, search, needsReviewOnly]);
 
   // Collapsed by default: with many topics/categories, dumping every group's full row list
   // open at once is exactly the clutter grouping is meant to cut through. Keyed by group
@@ -450,6 +471,23 @@ export default function QuestionsPage() {
         </div>
 
         <Select label="Group By" value={groupBy} onChange={(value) => setGroupBy(value as GroupBy)} options={GROUP_BY_OPTIONS} />
+        {/* Rendered once something is actually flagged -- an always-visible "(0)" control trains
+            recruiters to ignore it. Also rendered whenever the filter is already on, even if the
+            flagged set has since emptied out from under it, so there's always a way to turn it
+            back off (a transient "(0)" while filtering is honest, not noise). */}
+        {((flaggedQuestions && flaggedQuestions.length > 0) || needsReviewOnly) && (
+          <Button
+            type="button"
+            variant={needsReviewOnly ? 'primary' : 'secondary'}
+            aria-pressed={needsReviewOnly}
+            onClick={() => {
+              setNeedsReviewOnly((current) => !current);
+              setPage(1);
+            }}
+          >
+            {`Needs review (${flaggedQuestions?.length ?? 0})`}
+          </Button>
+        )}
         {chooser}
       </div>
 
@@ -465,10 +503,28 @@ export default function QuestionsPage() {
         </div>
       )}
 
+      {hiddenFlaggedCount > 0 && rows.length > 0 && (
+        <p className="mb-3 text-sm text-recruiter-text-secondary">
+          {`Showing ${rows.length} of ${flaggedQuestions?.length ?? 0} flagged questions. The rest sit outside this view — a different status, or beyond the first 100 questions.`}
+        </p>
+      )}
+
       {rows.length === 0 ? (
         <div className="py-8 text-center text-sm text-recruiter-text-tertiary">
           <p>
-            {status === 'archived' ? 'No archived questions.' : status === 'draft' ? 'No drafts to review.' : 'No questions yet.'}
+            {needsReviewOnly
+              ? // The generic copy below would otherwise sit right under a "Needs review (N)"
+                // control still showing N > 0 -- a flagged question can sit outside the current
+                // view (a different status, page, or excluded by search) even though the flagged
+                // set itself isn't empty. Say so explicitly instead of claiming there's nothing.
+                `No flagged questions in this view. ${flaggedQuestions?.length ?? 0} question${
+                  (flaggedQuestions?.length ?? 0) === 1 ? ' needs' : 's need'
+                } review under a different status or search.`
+              : status === 'archived'
+                ? 'No archived questions.'
+                : status === 'draft'
+                  ? 'No drafts to review.'
+                  : 'No questions yet.'}
           </p>
           {/* The Status filter lives inside the Table's column header, which never renders when
               there are no rows -- without this, draining a non-active view (the designed happy
@@ -525,9 +581,10 @@ export default function QuestionsPage() {
         </div>
       )}
 
-      {/* Paging is meaningless while grouped -- effectivePage is pinned to 1 above so every
-          group's count stays consistent regardless of which "page" the control might show. */}
-      {groupBy === 'none' && (
+      {/* Paging is meaningless while grouped or while Needs review is active -- effectivePage is
+          pinned to 1 above in both cases, so every group's count (or the flagged shortlist)
+          stays consistent regardless of which "page" the control might show. */}
+      {!widenPage && (
         <Pagination page={questions?.page ?? 1} totalPages={questions?.totalPages ?? 1} onPageChange={setPage} />
       )}
 

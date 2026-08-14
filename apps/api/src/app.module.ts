@@ -36,6 +36,7 @@ import { AuditQueryModule } from './audit/audit-query.module';
 import { SystemEventsQueryModule } from './system-events/system-events.module';
 import { PublicApiModule } from './public-api/public-api.module';
 import { FaceEnrolmentModule } from './face-enrolment/face-enrolment.module';
+import { ItemAnalyticsModule } from './analytics/item-analytics.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
 import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
 import { SentryShutdownFlush } from './sentry-shutdown.provider';
@@ -79,6 +80,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     JobsModule,
     PublicApiModule,
     FaceEnrolmentModule,
+    ItemAnalyticsModule,
   ],
   controllers: [HealthController],
   providers: [

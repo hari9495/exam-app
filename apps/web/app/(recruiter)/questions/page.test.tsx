@@ -1,5 +1,7 @@
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { act } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import QuestionsPage from './page';
 import { AuthProvider } from '../../../lib/auth-context';
 import { QueryProvider } from '../../../lib/query-provider';
@@ -1363,6 +1365,261 @@ describe('QuestionsPage', () => {
         await waitFor(() => expect(publishCalls).toContain('q2'));
         expect(publishCalls.filter((id) => id === 'q1')).toHaveLength(1);
       });
+    });
+  });
+
+  describe('Needs review filter', () => {
+    const originalFetch = global.fetch;
+    afterEach(() => {
+      global.fetch = originalFetch;
+    });
+
+    function mockApi(flagged: unknown[]) {
+      const question = (id: string, text: string) => ({
+        id, type: 'single_mcq', text, topic: null, category: null, difficulty: 'easy',
+        marks: 5, negativeMarks: 0, status: 'active', aiGenerated: false,
+        createdAt: '2026-01-01T00:00:00.000Z', options: [],
+      });
+      global.fetch = jest.fn(async (url) => {
+        const u = String(url);
+        if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        if (u.includes('/analytics/questions/flagged')) return new Response(JSON.stringify(flagged), { status: 200 });
+        if (u.includes('/tags')) return new Response(JSON.stringify([]), { status: 200 });
+        if (u.includes('/questions')) {
+          return new Response(JSON.stringify({
+            data: [question('q-bad', 'Miskeyed question'), question('q-weak', 'Weak question'), question('q-ok', 'Healthy question')],
+            total: 3, page: 1, pageSize: 20,
+          }), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+      }) as unknown as typeof fetch;
+    }
+
+    const flaggedPair = [
+      { questionId: 'q-bad', responses: 40, percentCorrect: 0.5, discrimination: -0.2, options: [], hasEnoughData: true,
+        flags: [{ code: 'miskeyed_suspect', severity: 'critical', message: 'Answer key is probably wrong.' }] },
+      { questionId: 'q-weak', responses: 40, percentCorrect: 0.5, discrimination: 0.1, options: [], hasEnoughData: true,
+        flags: [{ code: 'weak_discrimination', severity: 'warning', message: 'Barely separates candidates.' }] },
+    ];
+
+    it('shows a count of flagged questions', async () => {
+      mockApi(flaggedPair);
+      render(
+        <QueryProvider>
+          <ToastProvider>
+            <AuthProvider>
+              <QuestionsPage />
+            </AuthProvider>
+          </ToastProvider>
+        </QueryProvider>,
+      );
+      expect(await screen.findByRole('button', { name: /needs review \(2\)/i })).toBeInTheDocument();
+    });
+
+    it('lists only flagged questions when active, most severe first', async () => {
+      mockApi(flaggedPair);
+      render(
+        <QueryProvider>
+          <ToastProvider>
+            <AuthProvider>
+              <QuestionsPage />
+            </AuthProvider>
+          </ToastProvider>
+        </QueryProvider>,
+      );
+      await userEvent.click(await screen.findByRole('button', { name: /needs review/i }));
+
+      await waitFor(() => expect(screen.queryByText('Healthy question')).not.toBeInTheDocument());
+      const rendered = screen.getAllByText(/question$/i).map((el) => el.textContent);
+      expect(rendered.indexOf('Miskeyed question')).toBeLessThan(rendered.indexOf('Weak question'));
+    });
+
+    // Finding 1 (important): `rows` used to intersect the flagged set against whatever single
+    // page was already loaded (default pageSize 20), so a flagged question sitting past page 1
+    // could never appear even while the "Needs review (N)" count kept counting it. This mirrors
+    // the ADO #6843 fix for Group By: widen to pageSize 100 and pin to page 1 once the filter is
+    // active, so the intersection is built against the whole (up to 100-row) filtered set.
+    it('widens the page and pins to page 1 when Needs review is active, so a flagged question outside a normal page still renders, worst-first', async () => {
+      const question = (id: string, text: string) => ({
+        id, type: 'single_mcq', text, topic: null, category: null, difficulty: 'easy',
+        marks: 5, negativeMarks: 0, status: 'active', aiGenerated: false,
+        createdAt: '2026-01-01T00:00:00.000Z', options: [],
+      });
+      // The API's own worst-first order: critical before warning.
+      const flagged = [
+        { questionId: 'q-critical', responses: 40, percentCorrect: 0.5, discrimination: -0.3, options: [], hasEnoughData: true,
+          flags: [{ code: 'miskeyed_suspect', severity: 'critical', message: 'Answer key is probably wrong.' }] },
+        { questionId: 'q-warning', responses: 40, percentCorrect: 0.5, discrimination: 0.1, options: [], hasEnoughData: true,
+          flags: [{ code: 'weak_discrimination', severity: 'warning', message: 'Barely separates candidates.' }] },
+      ];
+      // A normal 20-row page (pageSize=20) has the warning item but NOT the critical one -- it
+      // "sits on a later page". Only the widened (pageSize=100) fetch carries both.
+      const narrowPage = [question('q-warning', 'Weak question'), question('q-other', 'Unflagged question')];
+      const widePage = [...narrowPage, question('q-critical', 'Miskeyed question')];
+
+      const fetchMock = jest.fn(async (url) => {
+        const u = String(url);
+        if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        if (u.includes('/analytics/questions/flagged')) return new Response(JSON.stringify(flagged), { status: 200 });
+        if (u.includes('/tags')) return new Response(JSON.stringify([]), { status: 200 });
+        if (u.includes('/questions')) {
+          const wide = u.includes('pageSize=100');
+          const data = wide ? widePage : narrowPage;
+          return new Response(JSON.stringify({ data, total: data.length, page: 1, pageSize: wide ? 100 : 20, totalPages: 1 }), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      render(
+        <QueryProvider>
+          <ToastProvider>
+            <AuthProvider>
+              <QuestionsPage />
+            </AuthProvider>
+          </ToastProvider>
+        </QueryProvider>,
+      );
+
+      await userEvent.click(await screen.findByRole('button', { name: /needs review \(2\)/i }));
+
+      // Both flagged questions render, including the one absent from the narrow page.
+      await waitFor(() => expect(screen.getByText('Miskeyed question')).toBeInTheDocument());
+      expect(screen.getByText('Weak question')).toBeInTheDocument();
+      // The unflagged row never renders -- the filter still only shows the shortlist.
+      expect(screen.queryByText('Unflagged question')).not.toBeInTheDocument();
+
+      // Worst-first, per the API's own order -- never re-sorted client-side.
+      const rendered = screen.getAllByText(/question$/i).map((el) => el.textContent);
+      expect(rendered.indexOf('Miskeyed question')).toBeLessThan(rendered.indexOf('Weak question'));
+
+      // And the fetch that made this possible was actually widened and pinned to page 1.
+      const widenedCall = fetchMock.mock.calls.find(
+        (call) => String(call[0]).includes('/questions') && String(call[0]).includes('pageSize=100'),
+      );
+      expect(widenedCall).toBeDefined();
+      expect(String(widenedCall![0])).toContain('page=1');
+    });
+
+    it('offers no Needs review control when nothing is flagged', async () => {
+      mockApi([]);
+      render(
+        <QueryProvider>
+          <ToastProvider>
+            <AuthProvider>
+              <QuestionsPage />
+            </AuthProvider>
+          </ToastProvider>
+        </QueryProvider>,
+      );
+      await screen.findByText('Healthy question');
+      expect(screen.queryByRole('button', { name: /needs review/i })).not.toBeInTheDocument();
+    });
+
+    // Finding 1 (critical): needsReviewOnly is state independent of the flagged set. If the
+    // flagged set empties out while the filter is active -- e.g. a background refetch lands zero
+    // flags -- the control that turns the filter back off must stay visible. Otherwise the
+    // recruiter is stuck on an empty list with no in-page escape ("Back to Active" only resets
+    // status, never needsReviewOnly).
+    it('keeps the Needs review control visible when the flagged set empties out while the filter is active', async () => {
+      let flaggedCallCount = 0;
+      const question = (id: string, text: string) => ({
+        id, type: 'single_mcq', text, topic: null, category: null, difficulty: 'easy',
+        marks: 5, negativeMarks: 0, status: 'active', aiGenerated: false,
+        createdAt: '2026-01-01T00:00:00.000Z', options: [],
+      });
+      global.fetch = jest.fn(async (url) => {
+        const u = String(url);
+        if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        if (u.includes('/analytics/questions/flagged')) {
+          flaggedCallCount += 1;
+          // First fetch returns the usual pair; every fetch after that (forced below) comes back
+          // empty, simulating the flagged set draining out from under an active filter.
+          return new Response(JSON.stringify(flaggedCallCount === 1 ? flaggedPair : []), { status: 200 });
+        }
+        if (u.includes('/tags')) return new Response(JSON.stringify([]), { status: 200 });
+        if (u.includes('/questions')) {
+          return new Response(JSON.stringify({
+            data: [question('q-bad', 'Miskeyed question'), question('q-weak', 'Weak question'), question('q-ok', 'Healthy question')],
+            total: 3, page: 1, pageSize: 20,
+          }), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+      }) as unknown as typeof fetch;
+
+      // A dedicated QueryClient (rather than the app's <QueryProvider>, which hides its client
+      // instance) so the test can force a second fetch of the flagged-questions query
+      // deterministically, instead of waiting on the 30s staleTime / window-focus refetch the
+      // app relies on in production.
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
+
+      render(
+        <QueryClientProvider client={queryClient}>
+          <ToastProvider>
+            <AuthProvider>
+              <QuestionsPage />
+            </AuthProvider>
+          </ToastProvider>
+        </QueryClientProvider>,
+      );
+
+      await userEvent.click(await screen.findByRole('button', { name: /needs review \(2\)/i }));
+      await waitFor(() => expect(screen.queryByText('Healthy question')).not.toBeInTheDocument());
+
+      await act(async () => {
+        await queryClient.refetchQueries({ queryKey: ['flagged-questions'] });
+      });
+
+      // The control is still on screen (now honestly reading "(0)") so the recruiter has a way
+      // to turn the filter back off.
+      expect(await screen.findByRole('button', { name: /needs review \(0\)/i })).toBeInTheDocument();
+    });
+
+    // Finding 2 (important): the intersection of the filter and the current view can be empty
+    // even while the flagged set itself is not -- a flagged question sitting under a different
+    // status, page, or excluded by the search box. The generic empty-state copy would then
+    // contradict a "Needs review (N)" control still showing N > 0 right above it.
+    it('shows filter-specific empty copy, not the generic empty state, when flagged questions exist but none are in the current view', async () => {
+      const question = (id: string, text: string) => ({
+        id, type: 'single_mcq', text, topic: null, category: null, difficulty: 'easy',
+        marks: 5, negativeMarks: 0, status: 'active', aiGenerated: false,
+        createdAt: '2026-01-01T00:00:00.000Z', options: [],
+      });
+      global.fetch = jest.fn(async (url) => {
+        const u = String(url);
+        if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        if (u.includes('/analytics/questions/flagged')) return new Response(JSON.stringify(flaggedPair), { status: 200 });
+        if (u.includes('/tags')) return new Response(JSON.stringify([]), { status: 200 });
+        if (u.includes('/questions')) {
+          // Once a search is applied, both flagged questions (q-bad, q-weak) fall outside the
+          // result set -- only the unflagged one still matches.
+          const data = u.includes('search=')
+            ? [question('q-ok', 'Healthy question')]
+            : [question('q-bad', 'Miskeyed question'), question('q-weak', 'Weak question'), question('q-ok', 'Healthy question')];
+          return new Response(JSON.stringify({ data, total: data.length, page: 1, pageSize: 20 }), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+      }) as unknown as typeof fetch;
+
+      render(
+        <QueryProvider>
+          <ToastProvider>
+            <AuthProvider>
+              <QuestionsPage />
+            </AuthProvider>
+          </ToastProvider>
+        </QueryProvider>,
+      );
+
+      await userEvent.click(await screen.findByRole('button', { name: /needs review \(2\)/i }));
+      await waitFor(() => expect(screen.getByText('Miskeyed question')).toBeInTheDocument());
+
+      fireEvent.change(screen.getByLabelText('Search Questions'), { target: { value: 'onboarding' } });
+
+      expect(
+        await screen.findByText('No flagged questions in this view. 2 questions need review under a different status or search.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('No questions yet.')).not.toBeInTheDocument();
     });
   });
 });
