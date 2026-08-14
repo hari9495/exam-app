@@ -46,9 +46,15 @@ export function pointBiserial(agg: ItemAggregate): number | null {
   // Undefined rather than zero. Everyone-correct and everyone-wrong items carry no
   // discrimination information at all; reporting 0 would file them under "weak
   // discrimination", implying we measured something. They are already flagged on p alone.
-  if (p <= 0 || p >= 1) return null;
-  if (sdRest === 0) return null;
-  if (m1 === null || m0 === null) return null;
+  //
+  // Number.isFinite (not a bare comparison) is load-bearing here: every comparison against
+  // NaN is false, so `p <= 0` and friends silently let a NaN input (e.g. Number(undefined)
+  // from a mismapped SQL column) flow through as a real correlation. A negative sdRest is
+  // likewise invalid -- a standard deviation can't be negative -- and would flip the sign of
+  // the result, so it's rejected the same way rather than only checking `=== 0`.
+  if (!Number.isFinite(p) || p <= 0 || p >= 1) return null;
+  if (!Number.isFinite(sdRest) || sdRest <= 0) return null;
+  if (m1 === null || m0 === null || !Number.isFinite(m1) || !Number.isFinite(m0)) return null;
   return ((m1 - m0) / sdRest) * Math.sqrt(p * (1 - p));
 }
 

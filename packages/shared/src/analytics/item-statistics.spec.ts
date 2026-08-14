@@ -30,6 +30,44 @@ describe('pointBiserial', () => {
   ])('returns null when discrimination is undefined (%s)', (_label, overrides) => {
     expect(pointBiserial(agg(overrides as Partial<ItemAggregate>))).toBeNull();
   });
+
+  // A mismapped SQL column (Number(undefined)) produces NaN, not undefined. Every guard
+  // above is a comparison against NaN, which is always false, so NaN alone would sail
+  // through them all and come out as a NaN "correlation" -- worse than null, because
+  // downstream comparisons against NaN are also always false, and the item would show no
+  // flags at all instead of being reported as unmeasurable.
+  it.each([
+    ['p', { p: NaN }],
+    ['m1', { m1: NaN }],
+    ['m0', { m0: NaN }],
+    ['sdRest', { sdRest: NaN }],
+  ])('returns null (not NaN) when %s is NaN', (_label, overrides) => {
+    expect(pointBiserial(agg(overrides as Partial<ItemAggregate>))).toBeNull();
+  });
+
+  // A standard deviation can never be negative. Upstream corruption that produces one would
+  // flip the sign of the correlation rather than merely being ignored like sdRest === 0.
+  it('returns null when sdRest is negative', () => {
+    expect(pointBiserial(agg({ sdRest: -10 }))).toBeNull();
+  });
+
+  // Ties the regression together end to end: a corrupted field (sdRest) makes the
+  // discrimination unmeasurable, but the item must not come back reported as flag-free just
+  // because one input was garbage. The independent p-based check still catches it.
+  it('an item with a NaN-corrupted field is not silently reported flag-free', () => {
+    const corruptAgg = agg({ p: 0.15, sdRest: NaN });
+    const discrimination = pointBiserial(corruptAgg);
+    expect(discrimination).toBeNull();
+
+    const goodOptions: OptionCount[] = [
+      { optionId: 'a', isCorrect: true, selections: 6 },
+      { optionId: 'b', isCorrect: false, selections: 17 },
+      { optionId: 'c', isCorrect: false, selections: 17 },
+    ];
+    const flags = classifyFlags(corruptAgg, discrimination, goodOptions).map((f) => f.code);
+    expect(flags).not.toEqual([]);
+    expect(flags).toContain('very_hard');
+  });
 });
 
 describe('classifyFlags', () => {
@@ -60,8 +98,26 @@ describe('classifyFlags', () => {
     expect(classifyFlags(agg({ p: 0.97 }), null, goodOptions).map((f) => f.code)).toContain('too_easy');
   });
 
+  // Boundary: the rule is `p > 0.95`, strict. Exactly 0.95 must not flag.
+  it('does not flag too-easy at exactly p = 0.95', () => {
+    expect(classifyFlags(agg({ p: 0.95 }), null, goodOptions).map((f) => f.code)).not.toContain('too_easy');
+  });
+
   it('flags a very hard item', () => {
     expect(classifyFlags(agg({ p: 0.15 }), 0.3, goodOptions).map((f) => f.code)).toContain('very_hard');
+  });
+
+  // Boundary: the rule is `p < 0.20`, strict. Exactly 0.20 must not flag.
+  it('does not flag very-hard at exactly p = 0.20', () => {
+    expect(classifyFlags(agg({ p: 0.2 }), 0.3, goodOptions).map((f) => f.code)).not.toContain('very_hard');
+  });
+
+  // Boundary between "critical, tell someone now" and "warning": the rule is `r < 0` for
+  // critical. Exactly 0 must land as weak_discrimination, not miskeyed_suspect.
+  it('classifies discrimination = 0 exactly as weak, not miskeyed', () => {
+    const codes = classifyFlags(agg(), 0, goodOptions).map((f) => f.code);
+    expect(codes).toContain('weak_discrimination');
+    expect(codes).not.toContain('miskeyed_suspect');
   });
 
   it('flags a distractor chosen more often than the correct answer', () => {
