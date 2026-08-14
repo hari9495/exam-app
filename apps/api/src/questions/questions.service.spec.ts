@@ -385,7 +385,7 @@ describe('QuestionsService', () => {
         findFirst: jest.fn().mockResolvedValue({ id: 'q-1' }),
         update: jest.fn().mockResolvedValue({ id: 'q-1', ...validDto, tags: [] }),
       },
-      questionOption: { deleteMany: jest.fn() },
+      questionOption: { deleteMany: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
       questionTag: { deleteMany: jest.fn() },
       tag: { upsert: jest.fn().mockResolvedValue({ id: 'tag-new' }) },
     };
@@ -418,7 +418,7 @@ describe('QuestionsService', () => {
         findFirst: jest.fn().mockResolvedValue({ id: 'q-1' }),
         update: jest.fn().mockResolvedValue({ id: 'q-1', ...dto, tags: [] }),
       },
-      questionOption: { deleteMany: jest.fn() },
+      questionOption: { deleteMany: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
       questionTag: { deleteMany: jest.fn() },
       tag: { upsert: jest.fn() },
     };
@@ -431,6 +431,81 @@ describe('QuestionsService', () => {
         data: expect.objectContaining({ snippetCode: null, snippetLanguage: null, imageUrl: null }),
       }),
     );
+  });
+
+  // The whole point of answerKeyChangedAt: analytics discards responses from before it, so a
+  // recruiter who fixes a miskeyed question sees the flag clear instead of persisting forever.
+  describe('answer-key change tracking on update', () => {
+    const paris = [
+      { text: 'Paris', isCorrect: true },
+      { text: 'London', isCorrect: false },
+    ];
+    function txFor(previous: { text: string; isCorrect: boolean }[]) {
+      return {
+        question: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'q-1' }),
+          update: jest.fn().mockResolvedValue({ id: 'q-1', tags: [] }),
+        },
+        questionOption: {
+          deleteMany: jest.fn(),
+          findMany: jest.fn().mockResolvedValue(
+            previous.map((o, index) => ({ ...o, orderIndex: index, imageUrl: null })),
+          ),
+        },
+        questionTag: { deleteMany: jest.fn() },
+        tag: { upsert: jest.fn() },
+      };
+    }
+    const dtoWith = (options: { text: string; isCorrect: boolean }[]) => ({
+      type: 'single_mcq',
+      text: 'Capital of France?',
+      difficulty: 'easy',
+      marks: 5,
+      options,
+    });
+
+    it('stamps answerKeyChangedAt when the correct answer moves', async () => {
+      const tx = txFor(paris);
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      await service.update(context, 'user-1', 'q-1', dtoWith([
+        { text: 'Paris', isCorrect: false },
+        { text: 'London', isCorrect: true },
+      ]) as never);
+      expect(tx.question.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ answerKeyChangedAt: expect.any(Date) }) }),
+      );
+    });
+
+    it('does NOT stamp it when only the question text changes -- that would discard the whole response history', async () => {
+      const tx = txFor(paris);
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      await service.update(context, 'user-1', 'q-1', {
+        ...dtoWith(paris),
+        text: 'What is the capital of France?',
+      } as never);
+      const data = tx.question.update.mock.calls[0][0].data;
+      expect(data).not.toHaveProperty('answerKeyChangedAt');
+    });
+
+    it('skips the option rewrite when the options are unchanged, so their ids survive', async () => {
+      const tx = txFor(paris);
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      await service.update(context, 'user-1', 'q-1', dtoWith(paris) as never);
+      // Recreating identical rows would mint fresh ids and orphan every historical answer's
+      // stored selection, silently under-counting the distractor breakdown.
+      expect(tx.questionOption.deleteMany).not.toHaveBeenCalled();
+      expect(tx.question.update.mock.calls[0][0].data).not.toHaveProperty('options');
+    });
+
+    it('still rewrites the options when one of them actually changes', async () => {
+      const tx = txFor(paris);
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      await service.update(context, 'user-1', 'q-1', dtoWith([
+        { text: 'Paris', isCorrect: true },
+        { text: 'Rome', isCorrect: false },
+      ]) as never);
+      expect(tx.questionOption.deleteMany).toHaveBeenCalled();
+    });
   });
 
   it('clears a stale starterCode on update when the dto omits it (e.g. languageMode widened past single-fixed)', async () => {
@@ -449,7 +524,7 @@ describe('QuestionsService', () => {
         findFirst: jest.fn().mockResolvedValue({ id: 'q-1', starterCode: 'function reverse(str) {\n  \n}' }),
         update: jest.fn().mockResolvedValue({ id: 'q-1', ...dto, starterCode: null, tags: [] }),
       },
-      questionOption: { deleteMany: jest.fn() },
+      questionOption: { deleteMany: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
       questionTag: { deleteMany: jest.fn() },
       tag: { upsert: jest.fn() },
     };

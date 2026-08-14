@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, Question, QuestionOption, QuestionTag, Tag } from '@prisma/client';
-import { TenantPrismaService } from '@exam-platform/shared';
+import { TenantPrismaService, answerKeyDiffers, optionRowsDiffer } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
@@ -220,7 +220,32 @@ export class QuestionsService {
 
       const tagIds = await this.resolveTagIds(tx, context.organizationId as string, dto.tags ?? []);
 
-      await tx.questionOption.deleteMany({ where: { questionId: id } });
+      // Read the options BEFORE deleting them: they are the only record of what the key was.
+      const previousOptions = await tx.questionOption.findMany({
+        where: { questionId: id },
+        orderBy: { orderIndex: 'asc' },
+        select: { text: true, isCorrect: true, orderIndex: true, imageUrl: true },
+      });
+      const incomingOptions = dto.options.map((o, index) => ({
+        text: o.text,
+        isCorrect: o.isCorrect,
+        orderIndex: index,
+        imageUrl: toStoredImageUrl(o.imageUrl),
+      }));
+      // Skip the rewrite entirely when nothing about the options moved. This used to delete and
+      // recreate them on every save, minting fresh ids -- and answers store the chosen option's
+      // id, so editing only the question text orphaned every prior response's selection and
+      // silently under-counted the distractor breakdown.
+      const rewriteOptions = optionRowsDiffer(previousOptions, incomingOptions);
+      // Compared by TEXT, not id, because the delete/recreate below issues fresh ids on every
+      // edit -- ids carry no identity across an update, so they cannot answer "did the key
+      // change?". Item analytics discards responses from before a key change, so a false
+      // positive here silently throws away a question's entire response history.
+      const keyChanged = answerKeyDiffers(previousOptions, dto.options);
+
+      if (rewriteOptions) {
+        await tx.questionOption.deleteMany({ where: { questionId: id } });
+      }
       await tx.questionTag.deleteMany({ where: { questionId: id } });
 
       const updated = await tx.question.update({
@@ -240,9 +265,10 @@ export class QuestionsService {
           snippetCode: dto.type === 'code' ? null : dto.snippetCode ?? null,
           snippetLanguage: dto.type === 'code' ? null : dto.snippetLanguage ?? null,
           imageUrl: dto.type === 'code' ? null : toStoredImageUrl(dto.imageUrl),
-          options: {
-            create: dto.options.map((o, index) => ({ text: o.text, isCorrect: o.isCorrect, orderIndex: index, imageUrl: toStoredImageUrl(o.imageUrl) })),
-          },
+          // Only stamped when the key actually moved. A typo fix in the question text, a marks
+          // change, or a retag leaves it alone, so those edits keep the question's statistics.
+          ...(keyChanged ? { answerKeyChangedAt: new Date() } : {}),
+          ...(rewriteOptions ? { options: { create: incomingOptions } } : {}),
           tags: {
             create: tagIds.map((tagId) => ({ tagId })),
           },

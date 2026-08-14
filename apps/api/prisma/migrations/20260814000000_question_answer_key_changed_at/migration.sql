@@ -1,0 +1,11 @@
+-- Records when a question's answer key last changed -- i.e. when an edit altered WHICH
+-- options are correct, not merely their wording or the question text.
+--
+-- Item analytics discards responses submitted before this instant: those candidates answered
+-- a question whose correct answer was different, so `answers.is_correct` for them reflects a
+-- key that no longer exists. Pooling them measures two different items as one, which is why a
+-- miskeyed question stayed flagged even after a recruiter did exactly what the flag asked.
+--
+-- Nullable with no backfill on purpose: NULL means "the key has never changed", so every
+-- existing question keeps its full response history and no statistic shifts on deploy.
+ALTER TABLE [dbo].[questions] ADD [answer_key_changed_at] DATETIME2 NULL;

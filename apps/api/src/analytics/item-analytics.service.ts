@@ -54,6 +54,11 @@ export class ItemAnalyticsService {
           JOIN results   res ON res.attempt_id = att.id
           JOIN questions q   ON q.id = ans.question_id
           WHERE att.submitted_at IS NOT NULL
+            -- Responses from before a key change answered a DIFFERENT question: their
+            -- is_correct reflects an answer key that no longer exists. Pooling them measures
+            -- two items as one, and is why a miskeyed question stayed flagged after the
+            -- recruiter fixed it. NULL means the key never changed, so everything counts.
+            AND (q.answer_key_changed_at IS NULL OR att.submitted_at >= q.answer_key_changed_at)
             AND ans.is_correct IS NOT NULL
             AND q.type IN ('single_mcq', 'multi_mcq', 'true_false')
             AND ans.question_id = ${questionId}
@@ -95,6 +100,11 @@ export class ItemAnalyticsService {
           JOIN results   res ON res.attempt_id = att.id
           JOIN questions q   ON q.id = ans.question_id
           WHERE att.submitted_at IS NOT NULL
+            -- Responses from before a key change answered a DIFFERENT question: their
+            -- is_correct reflects an answer key that no longer exists. Pooling them measures
+            -- two items as one, and is why a miskeyed question stayed flagged after the
+            -- recruiter fixed it. NULL means the key never changed, so everything counts.
+            AND (q.answer_key_changed_at IS NULL OR att.submitted_at >= q.answer_key_changed_at)
             AND ans.is_correct IS NOT NULL
             AND q.type IN ('single_mcq', 'multi_mcq', 'true_false')
         ) e
@@ -135,6 +145,7 @@ export class ItemAnalyticsService {
       WHERE o.question_id = ${questionId}
         AND q.type <> 'multi_mcq'
         AND att.submitted_at IS NOT NULL
+        AND (q.answer_key_changed_at IS NULL OR att.submitted_at >= q.answer_key_changed_at)
         AND ans.is_correct IS NOT NULL
       GROUP BY o.id, o.text, o.is_correct, o.order_index
       ORDER BY o.order_index`;

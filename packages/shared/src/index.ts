@@ -27,3 +27,4 @@ export * from './observability/sentry-payload';
 export * from './observability/sentry-reporter';
 export * from './health/health.service';
 export * from './analytics/item-statistics';
+export * from './analytics/answer-key-change';
