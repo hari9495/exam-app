@@ -60,9 +60,9 @@ describe('pointBiserial', () => {
     expect(discrimination).toBeNull();
 
     const goodOptions: OptionCount[] = [
-      { optionId: 'a', isCorrect: true, selections: 6 },
-      { optionId: 'b', isCorrect: false, selections: 17 },
-      { optionId: 'c', isCorrect: false, selections: 17 },
+      { optionId: 'a', text: 'A', isCorrect: true, selections: 6 },
+      { optionId: 'b', text: 'B', isCorrect: false, selections: 17 },
+      { optionId: 'c', text: 'C', isCorrect: false, selections: 17 },
     ];
     const flags = classifyFlags(corruptAgg, discrimination, goodOptions).map((f) => f.code);
     expect(flags).not.toEqual([]);
@@ -72,9 +72,9 @@ describe('pointBiserial', () => {
 
 describe('classifyFlags', () => {
   const goodOptions: OptionCount[] = [
-    { optionId: 'a', isCorrect: true, selections: 20 },
-    { optionId: 'b', isCorrect: false, selections: 10 },
-    { optionId: 'c', isCorrect: false, selections: 10 },
+    { optionId: 'a', text: 'A', isCorrect: true, selections: 20 },
+    { optionId: 'b', text: 'B', isCorrect: false, selections: 10 },
+    { optionId: 'c', text: 'C', isCorrect: false, selections: 10 },
   ];
 
   it('flags negative discrimination as critical', () => {
@@ -122,25 +122,25 @@ describe('classifyFlags', () => {
 
   it('flags a distractor chosen more often than the correct answer', () => {
     const options: OptionCount[] = [
-      { optionId: 'a', isCorrect: true, selections: 8 },
-      { optionId: 'b', isCorrect: false, selections: 25 },
+      { optionId: 'a', text: 'A', isCorrect: true, selections: 8 },
+      { optionId: 'b', text: 'B', isCorrect: false, selections: 25 },
     ];
     expect(classifyFlags(agg({ p: 0.24 }), 0.3, options).map((f) => f.code)).toContain('ambiguous_option');
   });
 
   it('flags a distractor nobody chose', () => {
     const options: OptionCount[] = [
-      { optionId: 'a', isCorrect: true, selections: 30 },
-      { optionId: 'b', isCorrect: false, selections: 10 },
-      { optionId: 'c', isCorrect: false, selections: 0 },
+      { optionId: 'a', text: 'A', isCorrect: true, selections: 30 },
+      { optionId: 'b', text: 'B', isCorrect: false, selections: 10 },
+      { optionId: 'c', text: 'C', isCorrect: false, selections: 0 },
     ];
     expect(classifyFlags(agg(), 0.3, options).map((f) => f.code)).toContain('dead_distractor');
   });
 
   it('never flags a dead distractor against the correct option', () => {
     const options: OptionCount[] = [
-      { optionId: 'a', isCorrect: true, selections: 0 },
-      { optionId: 'b', isCorrect: false, selections: 40 },
+      { optionId: 'a', text: 'A', isCorrect: true, selections: 0 },
+      { optionId: 'b', text: 'B', isCorrect: false, selections: 40 },
     ];
     expect(classifyFlags(agg({ p: 0 }), null, options).map((f) => f.code)).not.toContain('dead_distractor');
   });

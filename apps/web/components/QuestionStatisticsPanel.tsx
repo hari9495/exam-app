@@ -2,7 +2,13 @@
 
 import type { QuestionAnalytics } from '../lib/hooks/useQuestions';
 
-const SEVERITY_STYLES: Record<string, string> = {
+// Derived from QuestionAnalytics (itself kept in sync with @exam-platform/shared's FlagSeverity
+// by hand -- see the comment on QuestionAnalytics in useQuestions.ts for why this can't just be
+// an import) rather than `Record<string, ...>`, so an unrecognised severity is a compile error
+// here instead of silently rendering an `undefined` className.
+type Severity = QuestionAnalytics['flags'][number]['severity'];
+
+const SEVERITY_STYLES: Record<Severity, string> = {
   critical: 'border-red-300 bg-red-50 text-red-900',
   warning: 'border-amber-300 bg-amber-50 text-amber-900',
   info: 'border-slate-300 bg-slate-50 text-slate-700',
@@ -55,7 +61,12 @@ export function QuestionStatisticsPanel({ analytics }: { analytics: QuestionAnal
           <tbody>
             {analytics.options.map((o) => (
               <tr key={o.optionId}>
-                <td className="py-1">{o.isCorrect ? 'Correct answer' : 'Distractor'}</td>
+                <td className="py-1">
+                  <span className={o.isCorrect ? 'font-medium text-recruiter-text' : 'text-recruiter-text-secondary'}>
+                    {o.isCorrect ? 'Correct answer: ' : 'Distractor: '}
+                    {o.text}
+                  </span>
+                </td>
                 <td className="py-1 text-right">
                   {o.selections} ({analytics.responses === 0 ? 0 : Math.round((o.selections / analytics.responses) * 100)}%)
                 </td>

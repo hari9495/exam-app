@@ -38,4 +38,23 @@ describe('QuestionStatisticsPanel', () => {
     render(<QuestionStatisticsPanel analytics={base} />);
     expect(screen.getByText(/test attempts/i)).toBeInTheDocument();
   });
+
+  // Finding 4 (important): the actionable fact for a miskeyed item is *which* option candidates
+  // actually picked, not just that some unnamed "Distractor" outscored the key. The option text
+  // must be on screen, not just a selection count.
+  it('shows the option text, not just Correct answer/Distractor labels', () => {
+    render(
+      <QuestionStatisticsPanel
+        analytics={{
+          ...base,
+          options: [
+            { optionId: 'a', text: 'Paris', isCorrect: true, selections: 6 },
+            { optionId: 'b', text: 'Lyon', isCorrect: false, selections: 25 },
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByText(/Correct answer:\s*Paris/)).toBeInTheDocument();
+    expect(screen.getByText(/Distractor:\s*Lyon/)).toBeInTheDocument();
+  });
 });

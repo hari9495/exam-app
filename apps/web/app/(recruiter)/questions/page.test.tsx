@@ -1434,6 +1434,73 @@ describe('QuestionsPage', () => {
       expect(rendered.indexOf('Miskeyed question')).toBeLessThan(rendered.indexOf('Weak question'));
     });
 
+    // Finding 1 (important): `rows` used to intersect the flagged set against whatever single
+    // page was already loaded (default pageSize 20), so a flagged question sitting past page 1
+    // could never appear even while the "Needs review (N)" count kept counting it. This mirrors
+    // the ADO #6843 fix for Group By: widen to pageSize 100 and pin to page 1 once the filter is
+    // active, so the intersection is built against the whole (up to 100-row) filtered set.
+    it('widens the page and pins to page 1 when Needs review is active, so a flagged question outside a normal page still renders, worst-first', async () => {
+      const question = (id: string, text: string) => ({
+        id, type: 'single_mcq', text, topic: null, category: null, difficulty: 'easy',
+        marks: 5, negativeMarks: 0, status: 'active', aiGenerated: false,
+        createdAt: '2026-01-01T00:00:00.000Z', options: [],
+      });
+      // The API's own worst-first order: critical before warning.
+      const flagged = [
+        { questionId: 'q-critical', responses: 40, percentCorrect: 0.5, discrimination: -0.3, options: [], hasEnoughData: true,
+          flags: [{ code: 'miskeyed_suspect', severity: 'critical', message: 'Answer key is probably wrong.' }] },
+        { questionId: 'q-warning', responses: 40, percentCorrect: 0.5, discrimination: 0.1, options: [], hasEnoughData: true,
+          flags: [{ code: 'weak_discrimination', severity: 'warning', message: 'Barely separates candidates.' }] },
+      ];
+      // A normal 20-row page (pageSize=20) has the warning item but NOT the critical one -- it
+      // "sits on a later page". Only the widened (pageSize=100) fetch carries both.
+      const narrowPage = [question('q-warning', 'Weak question'), question('q-other', 'Unflagged question')];
+      const widePage = [...narrowPage, question('q-critical', 'Miskeyed question')];
+
+      const fetchMock = jest.fn(async (url) => {
+        const u = String(url);
+        if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        if (u.includes('/analytics/questions/flagged')) return new Response(JSON.stringify(flagged), { status: 200 });
+        if (u.includes('/tags')) return new Response(JSON.stringify([]), { status: 200 });
+        if (u.includes('/questions')) {
+          const wide = u.includes('pageSize=100');
+          const data = wide ? widePage : narrowPage;
+          return new Response(JSON.stringify({ data, total: data.length, page: 1, pageSize: wide ? 100 : 20, totalPages: 1 }), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      render(
+        <QueryProvider>
+          <ToastProvider>
+            <AuthProvider>
+              <QuestionsPage />
+            </AuthProvider>
+          </ToastProvider>
+        </QueryProvider>,
+      );
+
+      await userEvent.click(await screen.findByRole('button', { name: /needs review \(2\)/i }));
+
+      // Both flagged questions render, including the one absent from the narrow page.
+      await waitFor(() => expect(screen.getByText('Miskeyed question')).toBeInTheDocument());
+      expect(screen.getByText('Weak question')).toBeInTheDocument();
+      // The unflagged row never renders -- the filter still only shows the shortlist.
+      expect(screen.queryByText('Unflagged question')).not.toBeInTheDocument();
+
+      // Worst-first, per the API's own order -- never re-sorted client-side.
+      const rendered = screen.getAllByText(/question$/i).map((el) => el.textContent);
+      expect(rendered.indexOf('Miskeyed question')).toBeLessThan(rendered.indexOf('Weak question'));
+
+      // And the fetch that made this possible was actually widened and pinned to page 1.
+      const widenedCall = fetchMock.mock.calls.find(
+        (call) => String(call[0]).includes('/questions') && String(call[0]).includes('pageSize=100'),
+      );
+      expect(widenedCall).toBeDefined();
+      expect(String(widenedCall![0])).toContain('page=1');
+    });
+
     it('offers no Needs review control when nothing is flagged', async () => {
       mockApi([]);
       render(

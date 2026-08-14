@@ -4,6 +4,7 @@ import {
   TenantContext,
   ItemAggregate,
   ItemFlag,
+  FlagSeverity,
   OptionCount,
   MIN_RESPONSES,
   pointBiserial,
@@ -21,12 +22,14 @@ export interface QuestionAnalytics {
 }
 
 interface AggregateRow { question_id: string; n: number; p: number; m1: number | null; m0: number | null; sd_rest: number }
-interface OptionRow { option_id: string; is_correct: boolean; selections: number }
+interface OptionRow { option_id: string; text: string; is_correct: boolean; selections: number; order_index: number }
 
 // Only used to sort flagged() output by worst flag first: classifyFlags always pushes
 // miskeyed_suspect/weak_discrimination before the p-value/distractor flags, so flags[0] is
 // already each question's most severe flag.
-const SEVERITY_ORDER: Record<string, number> = { critical: 0, warning: 1, info: 2 };
+// Typed on FlagSeverity (not Record<string, ...>) so an unrecognised severity is a compile
+// error instead of an `undefined` sort key.
+const SEVERITY_ORDER: Record<FlagSeverity, number> = { critical: 0, warning: 1, info: 2 };
 
 @Injectable()
 export class ItemAnalyticsService {
@@ -114,20 +117,33 @@ export class ItemAnalyticsService {
     questionId: string,
   ): Promise<OptionCount[]> {
     // JSON_VALUE reads the first element of selected_option_ids_json, i.e. the whole
-    // selection for single-select types (single_mcq, true_false). multi_mcq is excluded from
-    // distractor analysis by classifyFlags' caller contract, not by this query.
+    // selection for single-select types (single_mcq, true_false). multi_mcq is explicitly
+    // excluded below (q.type <> 'multi_mcq'): counting only each candidate's first selection
+    // would undercount every option except the first pick, leaving options that were never
+    // picked first misread as dead_distractor and percentages that don't sum to 100.
     const rows = await tx.$queryRaw<OptionRow[]>`
-      SELECT o.id AS option_id, o.is_correct,
+      SELECT o.id AS option_id, o.text, o.is_correct, o.order_index,
              SUM(CASE WHEN JSON_VALUE(ans.selected_option_ids_json, '$[0]') = CAST(o.id AS NVARCHAR(36)) THEN 1 ELSE 0 END) AS selections
       FROM question_options o
+      -- Joining questions here is not for any column it contributes -- it's what makes this
+      -- query's tenant scoping explicit rather than an accident of forQuestion() never being
+      -- called with a foreign questionId. Do not remove it as "redundant".
+      JOIN questions q   ON q.id = o.question_id
       JOIN answers  ans ON ans.question_id = o.question_id
       JOIN attempts att ON att.id = ans.attempt_id
       JOIN results  res ON res.attempt_id = att.id
       WHERE o.question_id = ${questionId}
+        AND q.type <> 'multi_mcq'
         AND att.submitted_at IS NOT NULL
         AND ans.is_correct IS NOT NULL
-      GROUP BY o.id, o.is_correct`;
-    return rows.map((r) => ({ optionId: r.option_id, isCorrect: Boolean(r.is_correct), selections: Number(r.selections) }));
+      GROUP BY o.id, o.text, o.is_correct, o.order_index
+      ORDER BY o.order_index`;
+    return rows.map((r) => ({
+      optionId: r.option_id,
+      text: r.text,
+      isCorrect: Boolean(r.is_correct),
+      selections: Number(r.selections),
+    }));
   }
 
   private assemble(row: AggregateRow, options: OptionCount[]): QuestionAnalytics {

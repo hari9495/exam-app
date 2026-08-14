@@ -45,13 +45,16 @@ export function useQuestion(id: string | null) {
   });
 }
 
+// Inline, not imported from @exam-platform/shared: apps/web cannot import that package at
+// runtime (see lib/sentry-rate-limiter.ts) and it isn't declared as a dependency here, so these
+// shapes are kept in sync with FlagSeverity/ItemFlag/OptionCount by hand.
 export interface QuestionAnalytics {
   questionId: string;
   responses: number;
   percentCorrect: number | null;
   discrimination: number | null;
   flags: { code: string; severity: 'critical' | 'warning' | 'info'; message: string }[];
-  options: { optionId: string; isCorrect: boolean; selections: number }[];
+  options: { optionId: string; text: string; isCorrect: boolean; selections: number }[];
   hasEnoughData: boolean;
 }
 

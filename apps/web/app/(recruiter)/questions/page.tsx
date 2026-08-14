@@ -41,10 +41,14 @@ export default function QuestionsPage() {
   // topic with 15 real questions could show "3" if only 3 of them happened to land on the
   // current page (ADO #6843). Widen to the server's max page size while grouping so the
   // counts reflect (up to) the whole filtered set instead of one page of it.
+  // "Needs review" has the identical problem: `rows` below intersects the flagged set against
+  // whatever page is loaded, so the single worst (critical) question in the bank could sit on
+  // page 12 while page 1 shows nothing but `info`-level items. Widen and pin to page 1 here too.
   // ponytail: still a real ceiling for an org with >100 questions matching the filter -- a
   // dedicated backend group-by/count endpoint is the real fix if that becomes a problem.
-  const effectivePageSize = groupBy === 'none' ? 20 : 100;
-  const effectivePage = groupBy === 'none' ? page : 1;
+  const widenPage = groupBy !== 'none' || needsReviewOnly;
+  const effectivePageSize = widenPage ? 100 : 20;
+  const effectivePage = widenPage ? 1 : page;
   const { data: questions, isLoading, isError } = useQuestions({
     page: effectivePage,
     pageSize: effectivePageSize,
@@ -564,9 +568,10 @@ export default function QuestionsPage() {
         </div>
       )}
 
-      {/* Paging is meaningless while grouped -- effectivePage is pinned to 1 above so every
-          group's count stays consistent regardless of which "page" the control might show. */}
-      {groupBy === 'none' && (
+      {/* Paging is meaningless while grouped or while Needs review is active -- effectivePage is
+          pinned to 1 above in both cases, so every group's count (or the flagged shortlist)
+          stays consistent regardless of which "page" the control might show. */}
+      {!widenPage && (
         <Pagination page={questions?.page ?? 1} totalPages={questions?.totalPages ?? 1} onPageChange={setPage} />
       )}
 

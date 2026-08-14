@@ -22,6 +22,7 @@ export interface ItemAggregate {
 
 export interface OptionCount {
   optionId: string;
+  text: string;
   isCorrect: boolean;
   selections: number;
 }
