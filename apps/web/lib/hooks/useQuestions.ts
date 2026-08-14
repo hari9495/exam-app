@@ -45,6 +45,25 @@ export function useQuestion(id: string | null) {
   });
 }
 
+export interface QuestionAnalytics {
+  questionId: string;
+  responses: number;
+  percentCorrect: number | null;
+  discrimination: number | null;
+  flags: { code: string; severity: 'critical' | 'warning' | 'info'; message: string }[];
+  options: { optionId: string; isCorrect: boolean; selections: number }[];
+  hasEnoughData: boolean;
+}
+
+export function useQuestionAnalytics(questionId: string | null) {
+  const { accessToken } = useAuth();
+  return useQuery<QuestionAnalytics>({
+    queryKey: ['question-analytics', questionId],
+    queryFn: () => apiFetch(`/analytics/questions/${questionId}`, {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken) && Boolean(questionId),
+  });
+}
+
 export function useTags() {
   const { accessToken } = useAuth();
   return useQuery<Tag[]>({
