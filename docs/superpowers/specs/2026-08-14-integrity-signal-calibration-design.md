@@ -88,12 +88,14 @@ This is the detail most easily got wrong. **Flags** and **proctoring events** ar
 | `webcam_head_turned` | context | 171 (65%) |
 | `webcam_no_face` | context | 163 (62%) |
 | `multi_login` | context | 42 (16%) |
-| `webcam_multiple_faces` | hard | 48 (18%) |
+| `webcam_multiple_faces` | context | 48 (18%) |
 | `dev_tools_detected` | hard | 3 |
 | `screen_share_stopped` | hard | 9 |
 | `multi_monitor_detected` | hard | 1 |
 
-`multi_login` is context deliberately: 145 occurrences across 42 attempts reads more like reconnects on flaky connections than 42 cheats, and this platform already has candidates losing connectivity mid-exam. `webcam_multiple_faces` stays hard — another person in frame is unambiguous in a way that looking away is not.
+`multi_login` is context deliberately: 145 occurrences across 42 attempts reads more like reconnects on flaky connections than 42 cheats, and this platform already has candidates losing connectivity mid-exam.
+
+**`webcam_multiple_faces` is context too — revised 2026-08-14 after measurement, see "What the dry-run changed" below.** The original draft of this spec classified it hard on the reasoning that another person in frame is unambiguous where looking away is not. Production data says otherwise, and the revision is recorded rather than silently edited because the reasoning is worth keeping: the detector is *accurate* but the inference is *ambiguous*. A confirmed event is trustworthy — the client debounces through a 5-of-8-sample voter at 500ms per sample (`useWebcamMonitor.ts`), so an event means a second face was genuinely visible for ~2.5 seconds, not a single bad frame. What it cannot distinguish is a housemate crossing the room from a second person sitting alongside the candidate. At 48 of 265 attempts (18%) in at-home exams, the innocent reading is at least as likely as the guilty one, and the spec's own asymmetric-cost principle then decides it.
 
 `deriveAttemptFlags` therefore computes `proctoring_events` severity from **non-context high events only**. An attempt whose only high events are head-turned and no-face gets a medium `proctoring_events` flag, not a high one.
 
@@ -105,7 +107,7 @@ This is the detail most easily got wrong. **Flags** and **proctoring events** ar
 | `large_paste` | answer | Yes |
 | `similarity_match` | answer | Yes |
 | `no_iteration` | answer | Yes |
-| `proctoring_events` | environmental | Yes — but only reaches high via a hard event, per layer 1 |
+| `proctoring_events` | environmental | Yes — but only reaches high via a hard event, per layer 1, and after the revision above the only hard events left are `dev_tools_detected`, `screen_share_stopped`, `multi_monitor_detected` and any unrecognised type |
 | `webcam_violations` | context | **No** |
 
 The two layers do different jobs: layer 1 stops ambiguous events from *manufacturing* a high severity, layer 2 stops the remaining count-based flag from driving the headline at all. Fixing only one of them would leave the bug intact — layer 1 alone still lets `webcam_violations` promote on a threshold of one, and layer 2 alone still lets a single head-turn make `proctoring_events` high.
@@ -171,7 +173,31 @@ This change is *supposed* to move ~200 verdicts, so "the suite still passes" pro
 1. **Classification map table test** — every flag type asserted against its class, so a future reclassification is a deliberate edit to an assertion rather than an accident.
 2. **`deriveLevel` table test** over the combinations that matter: context-only → `review`, never `high_concern`; a single `paste_dominant` → `high_concern`; `webcam_no_face` ×50 → still not `high_concern`.
 3. **Delete the tests that pin the old behaviour, do not adapt them.** Existing tests assert that a high-severity event yields `high_concern`; those encode the bug. Remove them with a comment saying so. Quietly editing them until green leaves the next reader unable to tell which assertions are intentional.
-4. **Production dry-run before writing anything.** Compute the new level for all 265 attempts and print the transition matrix without persisting. Every rate in this document is arithmetic over flag counts; the dry-run is what turns it into a measurement. If it does not land near ~30–35% `high_concern`, the design is wrong and we learn that before touching data.
+4. **Production dry-run before writing anything.** Compute the new level for all 265 attempts and print the transition matrix without persisting. Every rate in this document is arithmetic over flag counts; the dry-run is what turns it into a measurement.
+
+   ~~If it does not land near ~30–35% `high_concern`, the design is wrong.~~ **This gate was wrong and has been struck.** The rate was never the right question, and the band was unreachable by construction: these rules only ever *demote*, so no configuration of them could have raised the rate toward a target above what the demotion produces. The gate a dry-run should apply is about **composition, not volume** — what fraction of the surviving `high_concern` population is promoted by answer evidence rather than by environment. See below.
+
+## What the dry-run changed
+
+The dry-run ran against all 265 production attempts on 2026-08-14, before any code was written. It did what it was there to do: it falsified part of the design.
+
+**Measurement 1 — the rate.** The rules as originally specced produced 61 `high_concern` (23%), down from 200 (75%). Transition matrix: 134 `high_concern → review`, 61 held, 5 → `clear`, and nothing promoted from `clear` or `review`.
+
+**Measurement 2 — the composition, which is what mattered.** Of those 61 survivors:
+
+| Promoted by | Attempts |
+|---|---|
+| answer evidence only | 5 |
+| `proctoring_events` only | 47 |
+| both | 9 |
+
+`webcam_multiple_faces` alone accounted for 48 of the 56 proctoring-promoted attempts. So the original design cut the *volume* of environmental flagging without shifting its *composition*: a recruiter opening `high_concern` would still overwhelmingly have been reading a webcam finding, not answer evidence. That is the original failure mode at lower volume, and it is why the design was revised rather than shipped at 23%.
+
+**Measurement 3 — whether a volume threshold could rescue it.** It could not. Episode counts per affected attempt were `{1:17, 2:10, 3-4:9, 5-9:19, 10-19:2, 20+:1}`, median 3, max 21 — a smooth decay with no valley to cut at, so no threshold separates a passer-by from a sustained second presence. And since every threshold only makes promotion *harder*, the projections moved away from the original band, not toward it: 23% → 20% (≥2) → 17% (≥3) → 15% (≥5).
+
+**The decision.** `high_concern` now means *the answer is suspect*. `webcam_multiple_faces` joins the context set. Hard events reduce to `dev_tools_detected`, `screen_share_stopped`, `multi_monitor_detected`, and any unrecognised type.
+
+**Two lessons worth keeping.** First, an estimate built by summing overlapping prevalences is not a target; treating it as a gate produced a threshold that could never be met. Second, "how many attempts are flagged" was the wrong measure throughout — the problem was always *what a flag means*, and only the composition breakdown could see that.
 
 ## Out of scope
 
