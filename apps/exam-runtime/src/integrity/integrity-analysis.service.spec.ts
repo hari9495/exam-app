@@ -157,7 +157,12 @@ describe('IntegrityAnalysisService', () => {
     );
   });
 
-  it('flagged path (high severity): webcam-blocked attempt derives high_concern level', async () => {
+  it('flagged path (high severity, context-only): webcam-blocked attempt derives review, not high_concern', async () => {
+    // Updated for Task 2 (evidence classification): webcam_violations is a context-class flag.
+    // A blocked session with no other evidence says the proctor stopped the session, not that
+    // the candidate's answer is suspect, so the level tops out at 'review' however high the
+    // flag's own severity reads. Previously this asserted 'high_concern' -- that assertion
+    // encoded the pre-fix rule that any high flag promotes the whole attempt.
     integrityNarrativeClient.writeNarrative.mockResolvedValue('Multiple webcam violations, session blocked.');
 
     const analysis = await runAnalysisWith({
@@ -169,10 +174,10 @@ describe('IntegrityAnalysisService', () => {
 
     expect(integrityNarrativeClient.writeNarrative).toHaveBeenCalledWith(
       expect.any(Array),
-      { examTitle: 'Backend Engineer Exam', level: 'high_concern' },
+      { examTitle: 'Backend Engineer Exam', level: 'review' },
       fakeAiProvider,
     );
-    expect(analysis.level).toBe('high_concern');
+    expect(analysis.level).toBe('review');
   });
 
   it('config-aware blocked flag: a higher strike limit (5) with only 3 violations is not blocked -- medium severity, no "session blocked" wording', async () => {
@@ -250,7 +255,9 @@ describe('IntegrityAnalysisService', () => {
     );
   });
 
-  it('config-aware blocked flag: a default exam (block, limit 3) with 3 violations is blocked -- high severity, "session blocked" wording preserved', async () => {
+  it('config-aware blocked flag: a default exam (block, limit 3) with 3 violations is blocked -- high severity flag, but level stops at review (context-only)', async () => {
+    // Updated for Task 2: the flag itself still reads 'high' (severity is about the flag), but
+    // webcam_violations is context-class, so with no other evidence the level is 'review'.
     integrityNarrativeClient.writeNarrative.mockResolvedValue('Multiple webcam violations, session blocked.');
 
     await runAnalysisWith({
@@ -262,7 +269,7 @@ describe('IntegrityAnalysisService', () => {
 
     expect(integrityNarrativeClient.writeNarrative).toHaveBeenCalledWith(
       [{ type: 'webcam_violations', severity: 'high', detail: '3 webcam violation(s) recorded, session blocked' }],
-      { examTitle: 'Backend Engineer Exam', level: 'high_concern' },
+      { examTitle: 'Backend Engineer Exam', level: 'review' },
       fakeAiProvider,
     );
   });
