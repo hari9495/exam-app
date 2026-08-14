@@ -68,6 +68,18 @@ describe('buildSentryPayload', () => {
     }
   });
 
+  // PII regression guard: route is allow-listed and forwarded as-is, so if the caller ever
+  // fails to strip the query string (see system-events-exception.filter.ts contextFrom()),
+  // this is the last line of defence catching it before the value reaches Sentry.
+  it('does not leak a query string carried in route (upstream must strip it, this proves it stays stripped)', () => {
+    const payload = buildSentryPayload(
+      entry({ context: { status: 500, method: 'GET', route: '/api/v1/candidates/lookup' } }),
+    );
+    const serialised = JSON.stringify(payload);
+    expect(serialised).not.toContain('candidate@example.com');
+    expect(serialised).not.toContain('?email=');
+  });
+
   it('omits the userId tag when absent rather than emitting the string "undefined"', () => {
     const payload = buildSentryPayload(entry({ context: { status: 500 } }));
     expect(payload.tags).not.toHaveProperty('userId');

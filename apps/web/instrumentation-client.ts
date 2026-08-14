@@ -36,7 +36,18 @@ if (dsn) {
     // The browser sink is unbounded unlike the backends' SentryReporter -- a render-loop error
     // multiplied across concurrent candidates could exhaust the org-wide quota. See
     // lib/sentry-rate-limiter.ts.
-    beforeSend: (event) => (allow() ? event : null),
+    //
+    // sendDefaultPii: false is a deny-list in @sentry/node v10, not an off switch -- it
+    // doesn't cover "email" or "search", and requestDataIntegration always attaches the
+    // request URL regardless. Strip both wholesale as a fail-closed backstop, same as
+    // SentryReporter. Only reached once the rate limiter has already decided to keep the
+    // event, so a dropped event never pays for work that gets thrown away.
+    beforeSend: (event) => {
+      if (!allow()) return null;
+      delete event.request;
+      delete event.breadcrumbs;
+      return event;
+    },
   });
 } else {
   // Mirrors SentryReporter and instrumentation.ts: without this line a silently-inert

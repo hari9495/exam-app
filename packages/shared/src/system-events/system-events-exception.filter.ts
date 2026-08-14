@@ -72,7 +72,12 @@ export class SystemEventsExceptionFilter extends BaseExceptionFilter {
         user?: { invitationId?: unknown; userId?: unknown; sub?: unknown; attemptId?: unknown };
       };
       if (req.method) context.method = req.method;
-      if (req.originalUrl) context.route = req.originalUrl;
+      // originalUrl includes the query string (?email=..., ?search=...), which can carry
+      // candidate PII (lookup-by-email) or recruiter-typed names. route is allow-listed
+      // downstream and forwarded verbatim to Sentry as a tag, so the query must never reach
+      // this object in the first place -- stripping here fixes both the Sentry sink and the
+      // system_events DB row in one place.
+      if (req.originalUrl) context.route = req.originalUrl.split('?')[0];
       if (typeof req.user?.invitationId === 'string') context.invitationId = req.user.invitationId;
       // Added for severity banding: an error carrying an attemptId is hurting a candidate
       // mid-exam. Opaque id, consistent with the rest of this allow-list.

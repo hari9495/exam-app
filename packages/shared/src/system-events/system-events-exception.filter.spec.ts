@@ -65,6 +65,20 @@ describe('SystemEventsExceptionFilter', () => {
     filter.catch(new Error('socket blew up'), wsHost);
     expect(record).toHaveBeenCalledWith(expect.objectContaining({ organizationId: null }));
   });
+
+  // PII regression guard: originalUrl includes the query string, and route is allow-listed
+  // and forwarded to Sentry verbatim. A candidate-lookup query string must never survive into
+  // the recorded context -- neither this DB sink nor the Sentry sink downstream of it.
+  it('strips the query string from originalUrl before recording it as route', () => {
+    const host = httpHost({ method: 'GET', originalUrl: '/api/v1/candidates/lookup?email=candidate@example.com' });
+    filter.catch(new TypeError('boom'), host);
+
+    expect(record).toHaveBeenCalledWith(
+      expect.objectContaining({ context: expect.objectContaining({ route: '/api/v1/candidates/lookup' }) }),
+    );
+    const [recordedEntry] = record.mock.calls[0];
+    expect(JSON.stringify(recordedEntry)).not.toContain('candidate@example.com');
+  });
 });
 
 import { SentryReporter } from '../observability/sentry-reporter';

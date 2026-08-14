@@ -63,6 +63,18 @@ export class SentryReporter {
         // service running in an unknown state while /health keeps returning 200. 'strict' mode
         // reports the rejection to Sentry AND lets Node's fatal behaviour proceed.
         integrations: [Sentry.onUnhandledRejectionIntegration({ mode: 'strict' })],
+        // sendDefaultPii: false is NOT an off switch in @sentry/node v10 -- it maps to a
+        // deny-list of header/query snippets that contains neither "email" nor "search", and
+        // requestDataIntegration (a default integration) always attaches the request URL
+        // regardless. Outgoing-request breadcrumbs record full query strings too, and one
+        // outgoing target in this app is a customer-supplied webhook URL. Fail closed: strip
+        // both structures wholesale rather than trying to enumerate what's safe inside them.
+        // Tags already carry everything the backends need, so nothing of value is lost.
+        beforeSend(event) {
+          delete event.request;
+          delete event.breadcrumbs;
+          return event;
+        },
       });
       this.active = true;
     } catch (error) {

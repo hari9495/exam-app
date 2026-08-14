@@ -31,7 +31,18 @@ export async function register(): Promise<void> {
     initialScope: { tags: { service: 'web', severity_band: 'digest' } },
     // apps/web has no per-process send cap like the backends' SentryReporter -- see
     // lib/sentry-rate-limiter.ts for why.
-    beforeSend: (event) => (allow() ? event : null),
+    //
+    // sendDefaultPii: false is a deny-list in @sentry/node v10, not an off switch -- it
+    // doesn't cover "email" or "search", and requestDataIntegration always attaches the
+    // request URL regardless. Strip both wholesale as a fail-closed backstop, same as
+    // SentryReporter. Only reached once the rate limiter has already decided to keep the
+    // event, so a dropped event never pays for work that gets thrown away.
+    beforeSend: (event) => {
+      if (!allow()) return null;
+      delete event.request;
+      delete event.breadcrumbs;
+      return event;
+    },
   });
 }
 

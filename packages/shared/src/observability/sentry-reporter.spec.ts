@@ -137,6 +137,37 @@ describe('SentryReporter', () => {
     });
   });
 
+  // sendDefaultPii: false is a deny-list in @sentry/node v10, not an off switch -- it doesn't
+  // cover "email" or "search", and requestDataIntegration always attaches the request URL, and
+  // breadcrumbs record outgoing query strings (one target is a customer webhook URL). This must
+  // be stripped wholesale in beforeSend as a fail-closed backstop.
+  describe('beforeSend strips request and breadcrumbs', () => {
+    function initAndGetBeforeSend(): (event: Record<string, unknown>) => unknown {
+      process.env.SENTRY_DSN = 'https://key@example.invalid/1';
+      new SentryReporter('api').init();
+      const options = (Sentry.init as jest.Mock).mock.calls[0][0];
+      return options.beforeSend;
+    }
+
+    it('removes request and breadcrumbs from the event before send', () => {
+      const beforeSend = initAndGetBeforeSend();
+      const event = {
+        request: { url: 'https://api.example.com/lookup?email=candidate@example.com', headers: {} },
+        breadcrumbs: [{ category: 'http', data: { url: 'https://webhook.customer.example/x?token=secret' } }],
+        tags: { service: 'api' },
+      };
+      const result = beforeSend(event) as Record<string, unknown>;
+      expect(result).not.toHaveProperty('request');
+      expect(result).not.toHaveProperty('breadcrumbs');
+      expect(result.tags).toEqual({ service: 'api' });
+    });
+
+    it('does not throw when the event has neither field', () => {
+      const beforeSend = initAndGetBeforeSend();
+      expect(() => beforeSend({ tags: {} })).not.toThrow();
+    });
+  });
+
   it('logs once when payload building fails repeatedly, without flooding', () => {
     process.env.SENTRY_DSN = 'https://key@example.invalid/1';
     const reporter = new SentryReporter('api');

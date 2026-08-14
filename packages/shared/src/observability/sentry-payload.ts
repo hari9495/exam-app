@@ -31,7 +31,12 @@ export function buildSentryPayload(entry: SystemEventEntry): SentryPayload {
   if (entry.organizationId) tags.organizationId = entry.organizationId;
   for (const key of ALLOWED_CONTEXT_KEYS) {
     const value = context[key];
-    if (value !== undefined && value !== null) tags[key] = String(value);
+    if (value === undefined || value === null) continue;
+    // route stays allow-listed by key, but its value is sanitised here as defence in depth:
+    // the query string is where candidate PII lives (?email=..., ?search=...), and the primary
+    // fix is upstream in the exception filter's contextFrom(). This is a second, independent
+    // place that must never forward it, in case a future caller of buildSentryPayload forgets.
+    tags[key] = key === 'route' ? String(value).split('?')[0] : String(value);
   }
   return { tags };
 }
