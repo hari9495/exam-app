@@ -77,6 +77,13 @@ export default function QuestionsPage() {
         .filter((question): question is Question => Boolean(question))
     : fetchedRows;
 
+  // The widened page above caps at 100, and the question list is ordered `createdAt desc` --
+  // so the window is the NEWEST 100, while a question can only be flagged once it has 20+
+  // responses, which correlates with age. The truncation is therefore biased AGAINST exactly
+  // the questions that can be flagged, and a flagged question in another status never appears
+  // at all. Without this line the button would claim 56 while the list showed ten, silently.
+  const hiddenFlaggedCount = needsReviewOnly ? Math.max(0, (flaggedQuestions?.length ?? 0) - rows.length) : 0;
+
   // Bulk select/publish/discard -- only meaningful in the Drafts view (see the checkbox column
   // below). Carrying a selection across a status, page, search, or Needs review change would act
   // on rows the recruiter can no longer see, so it's cleared whenever any of them moves.
@@ -494,6 +501,12 @@ export default function QuestionsPage() {
             {`Discard selected (${selectedVisibleIds.length})`}
           </Button>
         </div>
+      )}
+
+      {hiddenFlaggedCount > 0 && rows.length > 0 && (
+        <p className="mb-3 text-sm text-recruiter-text-secondary">
+          {`Showing ${rows.length} of ${flaggedQuestions?.length ?? 0} flagged questions. The rest sit outside this view — a different status, or beyond the first 100 questions.`}
+        </p>
       )}
 
       {rows.length === 0 ? (
