@@ -460,9 +460,11 @@ export default function QuestionsPage() {
         </div>
 
         <Select label="Group By" value={groupBy} onChange={(value) => setGroupBy(value as GroupBy)} options={GROUP_BY_OPTIONS} />
-        {/* Only rendered once something is actually flagged -- an always-visible "(0)" control
-            trains recruiters to ignore it. */}
-        {flaggedQuestions && flaggedQuestions.length > 0 && (
+        {/* Rendered once something is actually flagged -- an always-visible "(0)" control trains
+            recruiters to ignore it. Also rendered whenever the filter is already on, even if the
+            flagged set has since emptied out from under it, so there's always a way to turn it
+            back off (a transient "(0)" while filtering is honest, not noise). */}
+        {((flaggedQuestions && flaggedQuestions.length > 0) || needsReviewOnly) && (
           <Button
             type="button"
             variant={needsReviewOnly ? 'primary' : 'secondary'}
@@ -472,7 +474,7 @@ export default function QuestionsPage() {
               setPage(1);
             }}
           >
-            {`Needs review (${flaggedQuestions.length})`}
+            {`Needs review (${flaggedQuestions?.length ?? 0})`}
           </Button>
         )}
         {chooser}
@@ -493,7 +495,19 @@ export default function QuestionsPage() {
       {rows.length === 0 ? (
         <div className="py-8 text-center text-sm text-recruiter-text-tertiary">
           <p>
-            {status === 'archived' ? 'No archived questions.' : status === 'draft' ? 'No drafts to review.' : 'No questions yet.'}
+            {needsReviewOnly
+              ? // The generic copy below would otherwise sit right under a "Needs review (N)"
+                // control still showing N > 0 -- a flagged question can sit outside the current
+                // view (a different status, page, or excluded by search) even though the flagged
+                // set itself isn't empty. Say so explicitly instead of claiming there's nothing.
+                `No flagged questions in this view. ${flaggedQuestions?.length ?? 0} question${
+                  (flaggedQuestions?.length ?? 0) === 1 ? ' needs' : 's need'
+                } review under a different status or search.`
+              : status === 'archived'
+                ? 'No archived questions.'
+                : status === 'draft'
+                  ? 'No drafts to review.'
+                  : 'No questions yet.'}
           </p>
           {/* The Status filter lives inside the Table's column header, which never renders when
               there are no rows -- without this, draining a non-active view (the designed happy
