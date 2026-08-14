@@ -64,6 +64,15 @@ export function useQuestionAnalytics(questionId: string | null) {
   });
 }
 
+export function useFlaggedQuestions() {
+  const { accessToken } = useAuth();
+  return useQuery<QuestionAnalytics[]>({
+    queryKey: ['flagged-questions'],
+    queryFn: () => apiFetch('/analytics/questions/flagged', {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken),
+  });
+}
+
 export function useTags() {
   const { accessToken } = useAuth();
   return useQuery<Tag[]>({

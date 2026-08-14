@@ -1365,4 +1365,86 @@ describe('QuestionsPage', () => {
       });
     });
   });
+
+  describe('Needs review filter', () => {
+    const originalFetch = global.fetch;
+    afterEach(() => {
+      global.fetch = originalFetch;
+    });
+
+    function mockApi(flagged: unknown[]) {
+      const question = (id: string, text: string) => ({
+        id, type: 'single_mcq', text, topic: null, category: null, difficulty: 'easy',
+        marks: 5, negativeMarks: 0, status: 'active', aiGenerated: false,
+        createdAt: '2026-01-01T00:00:00.000Z', options: [],
+      });
+      global.fetch = jest.fn(async (url) => {
+        const u = String(url);
+        if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+        if (u.includes('/analytics/questions/flagged')) return new Response(JSON.stringify(flagged), { status: 200 });
+        if (u.includes('/tags')) return new Response(JSON.stringify([]), { status: 200 });
+        if (u.includes('/questions')) {
+          return new Response(JSON.stringify({
+            data: [question('q-bad', 'Miskeyed question'), question('q-weak', 'Weak question'), question('q-ok', 'Healthy question')],
+            total: 3, page: 1, pageSize: 20,
+          }), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+      }) as unknown as typeof fetch;
+    }
+
+    const flaggedPair = [
+      { questionId: 'q-bad', responses: 40, percentCorrect: 0.5, discrimination: -0.2, options: [], hasEnoughData: true,
+        flags: [{ code: 'miskeyed_suspect', severity: 'critical', message: 'Answer key is probably wrong.' }] },
+      { questionId: 'q-weak', responses: 40, percentCorrect: 0.5, discrimination: 0.1, options: [], hasEnoughData: true,
+        flags: [{ code: 'weak_discrimination', severity: 'warning', message: 'Barely separates candidates.' }] },
+    ];
+
+    it('shows a count of flagged questions', async () => {
+      mockApi(flaggedPair);
+      render(
+        <QueryProvider>
+          <ToastProvider>
+            <AuthProvider>
+              <QuestionsPage />
+            </AuthProvider>
+          </ToastProvider>
+        </QueryProvider>,
+      );
+      expect(await screen.findByRole('button', { name: /needs review \(2\)/i })).toBeInTheDocument();
+    });
+
+    it('lists only flagged questions when active, most severe first', async () => {
+      mockApi(flaggedPair);
+      render(
+        <QueryProvider>
+          <ToastProvider>
+            <AuthProvider>
+              <QuestionsPage />
+            </AuthProvider>
+          </ToastProvider>
+        </QueryProvider>,
+      );
+      await userEvent.click(await screen.findByRole('button', { name: /needs review/i }));
+
+      await waitFor(() => expect(screen.queryByText('Healthy question')).not.toBeInTheDocument());
+      const rendered = screen.getAllByText(/question$/i).map((el) => el.textContent);
+      expect(rendered.indexOf('Miskeyed question')).toBeLessThan(rendered.indexOf('Weak question'));
+    });
+
+    it('offers no Needs review control when nothing is flagged', async () => {
+      mockApi([]);
+      render(
+        <QueryProvider>
+          <ToastProvider>
+            <AuthProvider>
+              <QuestionsPage />
+            </AuthProvider>
+          </ToastProvider>
+        </QueryProvider>,
+      );
+      await screen.findByText('Healthy question');
+      expect(screen.queryByRole('button', { name: /needs review/i })).not.toBeInTheDocument();
+    });
+  });
 });
