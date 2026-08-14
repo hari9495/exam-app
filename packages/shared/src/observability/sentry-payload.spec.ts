@@ -80,6 +80,26 @@ describe('buildSentryPayload', () => {
     expect(serialised).not.toContain('?email=');
   });
 
+  it('strips query strings containing PII from route tags (candidate email and recruiter search)', () => {
+    const payload = buildSentryPayload(
+      entry({
+        context: {
+          status: 400,
+          method: 'GET',
+          route: '/api/v1/candidates/lookup?email=candidate@example.com&search=Jane%20Doe',
+        },
+      }),
+    );
+    // Verify the route field itself is stripped to the path-only portion
+    expect(payload.tags.route).toBe('/api/v1/candidates/lookup');
+    // Verify the PII values never appear anywhere in the serialised payload
+    const serialised = JSON.stringify(payload);
+    expect(serialised).not.toContain('candidate@example.com');
+    expect(serialised).not.toContain('Jane Doe');
+    expect(serialised).not.toContain('?email=');
+    expect(serialised).not.toContain('?search=');
+  });
+
   it('omits the userId tag when absent rather than emitting the string "undefined"', () => {
     const payload = buildSentryPayload(entry({ context: { status: 500 } }));
     expect(payload.tags).not.toHaveProperty('userId');
