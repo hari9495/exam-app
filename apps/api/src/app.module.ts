@@ -3,7 +3,18 @@ import { APP_FILTER, APP_GUARD, HttpAdapterHost } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, seconds } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
-import { PrismaModule, AuditModule, SystemEventsModule, SystemEventsService, SystemEventsExceptionFilter } from '@exam-platform/shared';
+import Redis from 'ioredis';
+import {
+  PrismaModule,
+  AuditModule,
+  SystemEventsModule,
+  SystemEventsService,
+  SystemEventsExceptionFilter,
+  PrismaService,
+  HealthService,
+  SentryReporter,
+} from '@exam-platform/shared';
+import { HealthController } from './health/health.controller';
 import { RbacModule } from './rbac/rbac.module';
 import { AuthModule } from './auth/auth.module';
 import { SetupModule } from './setup/setup.module';
@@ -27,6 +38,7 @@ import { PublicApiModule } from './public-api/public-api.module';
 import { FaceEnrolmentModule } from './face-enrolment/face-enrolment.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
 import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
+import { SentryShutdownFlush } from './sentry-shutdown.provider';
 
 @Module({
   imports: [
@@ -68,14 +80,48 @@ import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
     PublicApiModule,
     FaceEnrolmentModule,
   ],
+  controllers: [HealthController],
   providers: [
     { provide: APP_GUARD, useClass: FailOpenThrottlerGuard },
     {
-      provide: APP_FILTER,
-      useFactory: (adapterHost: HttpAdapterHost, systemEvents: SystemEventsService) =>
-        new SystemEventsExceptionFilter(adapterHost, systemEvents, 'api'),
-      inject: [HttpAdapterHost, SystemEventsService],
+      provide: SentryReporter,
+      useFactory: () => {
+        const reporter = new SentryReporter('api');
+        reporter.init();
+        return reporter;
+      },
     },
+    {
+      provide: APP_FILTER,
+      useFactory: (adapterHost: HttpAdapterHost, systemEvents: SystemEventsService, reporter: SentryReporter) =>
+        new SystemEventsExceptionFilter(adapterHost, systemEvents, 'api', reporter),
+      inject: [HttpAdapterHost, SystemEventsService, SentryReporter],
+    },
+    {
+      provide: HealthService,
+      useFactory: (prisma: PrismaService) => {
+        // Created ONCE here, not inside checkRedis. Constructing a client per check
+        // would open a new socket on every health poll -- a connection leak driven by the
+        // monitor itself, at 3 monitors x every 5 minutes, forever.
+        //
+        // Deliberately NOT createRedisConnection() (jobs/redis-connection.ts): that factory
+        // sets maxRetriesPerRequest: null for BullMQ's blocking commands, which is wrong here
+        // -- it means ping() never rejects during an outage, just parks in ioredis's offline
+        // queue forever. A plain client rejects instead, so a Redis outage is reported as
+        // down rather than accumulating one more permanently-pending ping() per poll.
+        const redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
+        // The health check reports failure through its own timeout/rejection, not through this
+        // listener -- it exists only to stop ioredis printing a full stack per reconnect attempt
+        // during an outage (this VM has no log rotation installed yet, so that noise fills disk).
+        redis.on('error', () => {});
+        return new HealthService({
+          checkDb: () => prisma.$queryRaw`SELECT 1`,
+          checkRedis: () => redis.ping(),
+        });
+      },
+      inject: [PrismaService],
+    },
+    SentryShutdownFlush,
   ],
 })
 export class AppModule {}

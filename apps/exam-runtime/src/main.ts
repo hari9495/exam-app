@@ -31,6 +31,18 @@ async function bootstrap() {
   app.enableCors({ origin: process.env.WEB_ORIGIN, credentials: true, exposedHeaders: ['Retry-After'] });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
   app.setGlobalPrefix('api/v1');
+  // No flush-on-shutdown here, deliberately. This service (unlike apps/api) never calls
+  // enableShutdownHooks() -- OS default signal termination is the only thing that stops it on
+  // pm2 stop/restart/reload, and this is the candidate-facing live-exam service, so that must
+  // keep working. The only two ways to add a flush are: a bare process.on('SIGTERM'/'SIGINT')
+  // listener, which removes Node's default termination action for that signal and would hang
+  // shutdown until pm2's SIGKILL grace period; or enabling Nest shutdown hooks, which would
+  // start running onModuleDestroy/onApplicationShutdown across every module here -- including
+  // BullMQ and Redis clients -- a real change to this service's teardown behaviour that a
+  // monitoring task should not introduce as a side effect. The cost of omitting the flush is
+  // small: Sentry's transport sends events as they occur rather than batching, so the
+  // unflushed window on exit is milliseconds, not the buffered backlog a batching client would
+  // lose.
   await app.listen(process.env.EXAM_RUNTIME_PORT ?? 3002);
 
   const internalApp = await NestFactory.create(InternalAppModule);

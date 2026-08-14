@@ -3,7 +3,18 @@ import { APP_FILTER, APP_GUARD, HttpAdapterHost } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, seconds } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
-import { PrismaModule, AuditModule, SystemEventsModule, SystemEventsService, SystemEventsExceptionFilter } from '@exam-platform/shared';
+import Redis from 'ioredis';
+import {
+  PrismaModule,
+  AuditModule,
+  SystemEventsModule,
+  SystemEventsService,
+  SystemEventsExceptionFilter,
+  PrismaService,
+  HealthService,
+  SentryReporter,
+} from '@exam-platform/shared';
+import { HealthController } from './health/health.controller';
 import { CandidateAuthModule } from './candidate-auth/candidate-auth.module';
 import { AttemptModule } from './attempts/attempt.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
@@ -41,19 +52,52 @@ import { ServerBusyRetryAfterFilter } from './server-busy-retry-after.filter';
     LocalMonitoringBridgeModule,
     FaceModule,
   ],
+  controllers: [HealthController],
   providers: [
     { provide: APP_GUARD, useClass: FailOpenThrottlerGuard },
+    {
+      provide: SentryReporter,
+      useFactory: () => {
+        const reporter = new SentryReporter('exam-runtime');
+        reporter.init();
+        return reporter;
+      },
+    },
     // Registered before ServerBusyRetryAfterFilter on purpose: Nest matches global filters
     // in reverse registration order, so the specific @Catch(HttpException) filter below
     // keeps handling HttpExceptions (and its Retry-After header) while this catch-all
     // records only the unhandled-crash class it doesn't match.
     {
       provide: APP_FILTER,
-      useFactory: (adapterHost: HttpAdapterHost, systemEvents: SystemEventsService) =>
-        new SystemEventsExceptionFilter(adapterHost, systemEvents, 'exam-runtime'),
-      inject: [HttpAdapterHost, SystemEventsService],
+      useFactory: (adapterHost: HttpAdapterHost, systemEvents: SystemEventsService, reporter: SentryReporter) =>
+        new SystemEventsExceptionFilter(adapterHost, systemEvents, 'exam-runtime', reporter),
+      inject: [HttpAdapterHost, SystemEventsService, SentryReporter],
     },
     { provide: APP_FILTER, useClass: ServerBusyRetryAfterFilter },
+    {
+      provide: HealthService,
+      useFactory: (prisma: PrismaService) => {
+        // Created ONCE here, not inside checkRedis -- see apps/api/src/app.module.ts for why
+        // (a client per check would leak a socket per poll, forever).
+        //
+        // Deliberately NOT createRedisConnection() (jobs/redis-connection.ts): that factory sets
+        // maxRetriesPerRequest: null for BullMQ's blocking commands, which is wrong here -- it
+        // means ping() never rejects during an outage, just parks in ioredis's offline queue
+        // forever. A plain client rejects instead, so a Redis outage is reported as down rather
+        // than accumulating one more permanently-pending ping() per poll. Do not "simplify" this
+        // into the shared BullMQ factory.
+        const redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
+        // The health check reports failure through its own timeout/rejection, not through this
+        // listener -- it exists only to stop ioredis printing a full stack per reconnect attempt
+        // during an outage (this VM has no log rotation installed yet, so that noise fills disk).
+        redis.on('error', () => {});
+        return new HealthService({
+          checkDb: () => prisma.$queryRaw`SELECT 1`,
+          checkRedis: () => redis.ping(),
+        });
+      },
+      inject: [PrismaService],
+    },
   ],
 })
 export class AppModule {}
