@@ -253,6 +253,12 @@ model Question {
   imageUrl         String?               @map("image_url")
   createdBy        String                @map("created_by") @db.UniqueIdentifier
   createdAt        DateTime              @default(now()) @map("created_at")
+  // Stamped only when an edit actually changes WHICH answers are correct. Item analytics
+  // discards responses submitted before this instant: those candidates answered a question
+  // whose key was different, so pooling them measures two different items as one -- and it
+  // is why a miskeyed question stayed flagged even after a recruiter fixed it.
+  // Null means the key has never changed, so every response counts.
+  answerKeyChangedAt DateTime?           @map("answer_key_changed_at")
   options          QuestionOption[]
   examLinks        ExamSectionQuestion[]
   answers          Answer[]
