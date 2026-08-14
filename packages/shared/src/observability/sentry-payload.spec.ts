@@ -27,12 +27,12 @@ describe('classifySeverity', () => {
 describe('buildSentryPayload', () => {
   it('bands an api error carrying an attemptId as immediate', () => {
     const payload = buildSentryPayload(entry({ context: { status: 500, attemptId: 'att-1' } }));
-    expect(payload.severityBand).toBe('immediate');
+    expect(payload.tags.severity_band).toBe('immediate');
     expect(payload.tags.attemptId).toBe('att-1');
   });
 
   it('bands an api error with no attempt as digest', () => {
-    expect(buildSentryPayload(entry()).severityBand).toBe('digest');
+    expect(buildSentryPayload(entry()).tags.severity_band).toBe('digest');
   });
 
   // The load-bearing test. A field added to contextFrom() later for the system-events

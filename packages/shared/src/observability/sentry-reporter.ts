@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import * as Sentry from '@sentry/node';
 import type { SystemEventEntry } from '../system-events/system-events.service';
-import { buildSentryPayload, createRateLimiter } from './sentry-payload';
+import { buildSentryPayload, classifySeverity, createRateLimiter } from './sentry-payload';
 
 // Second sink alongside the system_events table. It exists because that table lives in the
 // database that is often the failing dependency, nothing watches it, and it cannot alert.
@@ -15,7 +15,13 @@ export class SentryReporter {
   private active = false;
   private payloadFailureLogged = false;
 
-  constructor(maxPerWindow = 20, windowMs = 60_000) {
+  // `service` names this process for both the default-tag scope below and the rate limiter's
+  // caller; it's the same string each app.module.ts already passes to SystemEventsExceptionFilter.
+  constructor(
+    private readonly service: string,
+    maxPerWindow = 20,
+    windowMs = 60_000,
+  ) {
     this.allow = createRateLimiter(maxPerWindow, windowMs, () => Date.now());
   }
 
@@ -39,6 +45,24 @@ export class SentryReporter {
         // bodies, headers or cookies, and default PII would attach them anyway.
         sendDefaultPii: false,
         tracesSampleRate: 0,
+        // Every event needs a severity_band or it matches neither alert rule and is collected
+        // silently -- including events raised by the SDK's own default integrations, which never
+        // pass through capture()/buildSentryPayload below. classifySeverity(service, false) is
+        // exactly the "no attempt context" default it already computes for filter-routed events,
+        // so exam-runtime defaults to 'immediate' and api to 'digest'. Tags passed to
+        // captureException still override same-key scope tags, so filter-routed events keep their
+        // computed band.
+        initialScope: { tags: { service: this.service, severity_band: classifySeverity(this.service, false) } },
+        // NOT optional: @sentry/node's default onUnhandledRejectionIntegration runs in 'warn'
+        // mode, which attaches a process.on('unhandledRejection') listener that only logs. Node
+        // treats an unhandled rejection as fatal ONLY when no listener is attached -- so the
+        // moment a DSN is configured, that default silently turns a fatal, restart-triggering
+        // condition into a warning. exam-runtime's fire-and-forget checkFaceMismatch() (see
+        // attempt.service.ts) relies in writing on the crash: an uncaught rejection there is
+        // meant to kill the process so pm2 restarts it, rather than leave a candidate-facing
+        // service running in an unknown state while /health keeps returning 200. 'strict' mode
+        // reports the rejection to Sentry AND lets Node's fatal behaviour proceed.
+        integrations: [Sentry.onUnhandledRejectionIntegration({ mode: 'strict' })],
       });
       this.active = true;
     } catch (error) {

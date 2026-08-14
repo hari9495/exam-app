@@ -2,8 +2,10 @@ import type { SystemEventEntry } from '../system-events/system-events.service';
 
 export type SeverityBand = 'immediate' | 'digest';
 
+// ponytail: severityBand used to be a top-level field alongside tags, but nothing read it --
+// SentryReporter only ever consumes payload.tags, and tags.severity_band already carries the
+// same value. Dropped rather than wired up to a second consumer that doesn't exist yet.
 export interface SentryPayload {
-  severityBand: SeverityBand;
   tags: Record<string, string>;
 }
 
@@ -31,7 +33,7 @@ export function buildSentryPayload(entry: SystemEventEntry): SentryPayload {
     const value = context[key];
     if (value !== undefined && value !== null) tags[key] = String(value);
   }
-  return { severityBand, tags };
+  return { tags };
 }
 
 // `now` is injected so the tests need no fake timers.

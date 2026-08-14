@@ -86,7 +86,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     {
       provide: SentryReporter,
       useFactory: () => {
-        const reporter = new SentryReporter();
+        const reporter = new SentryReporter('api');
         reporter.init();
         return reporter;
       },
@@ -110,6 +110,10 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
         // queue forever. A plain client rejects instead, so a Redis outage is reported as
         // down rather than accumulating one more permanently-pending ping() per poll.
         const redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
+        // The health check reports failure through its own timeout/rejection, not through this
+        // listener -- it exists only to stop ioredis printing a full stack per reconnect attempt
+        // during an outage (this VM has no log rotation installed yet, so that noise fills disk).
+        redis.on('error', () => {});
         return new HealthService({
           checkDb: () => prisma.$queryRaw`SELECT 1`,
           checkRedis: () => redis.ping(),

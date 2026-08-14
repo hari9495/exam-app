@@ -58,7 +58,7 @@ import { ServerBusyRetryAfterFilter } from './server-busy-retry-after.filter';
     {
       provide: SentryReporter,
       useFactory: () => {
-        const reporter = new SentryReporter();
+        const reporter = new SentryReporter('exam-runtime');
         reporter.init();
         return reporter;
       },
@@ -77,7 +77,20 @@ import { ServerBusyRetryAfterFilter } from './server-busy-retry-after.filter';
     {
       provide: HealthService,
       useFactory: (prisma: PrismaService) => {
+        // Created ONCE here, not inside checkRedis -- see apps/api/src/app.module.ts for why
+        // (a client per check would leak a socket per poll, forever).
+        //
+        // Deliberately NOT createRedisConnection() (jobs/redis-connection.ts): that factory sets
+        // maxRetriesPerRequest: null for BullMQ's blocking commands, which is wrong here -- it
+        // means ping() never rejects during an outage, just parks in ioredis's offline queue
+        // forever. A plain client rejects instead, so a Redis outage is reported as down rather
+        // than accumulating one more permanently-pending ping() per poll. Do not "simplify" this
+        // into the shared BullMQ factory.
         const redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
+        // The health check reports failure through its own timeout/rejection, not through this
+        // listener -- it exists only to stop ioredis printing a full stack per reconnect attempt
+        // during an outage (this VM has no log rotation installed yet, so that noise fills disk).
+        redis.on('error', () => {});
         return new HealthService({
           checkDb: () => prisma.$queryRaw`SELECT 1`,
           checkRedis: () => redis.ping(),

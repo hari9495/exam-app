@@ -6,6 +6,9 @@ jest.mock('@sentry/node', () => ({
   init: jest.fn(),
   captureException: jest.fn(),
   flush: jest.fn().mockResolvedValue(true),
+  // Deterministic (not jest.fn()'s default undefined) so two calls with the same options are
+  // deep-equal in assertions -- real enough to prove the integration was actually configured.
+  onUnhandledRejectionIntegration: jest.fn((options) => ({ name: 'OnUnhandledRejection', options })),
 }));
 
 const entry: SystemEventEntry = {
@@ -26,7 +29,7 @@ describe('SentryReporter', () => {
   afterAll(() => { process.env = OLD_ENV; });
 
   it('stays inert and does not throw when no DSN is configured', () => {
-    const reporter = new SentryReporter();
+    const reporter = new SentryReporter('api');
     expect(() => reporter.init()).not.toThrow();
     expect(reporter.enabled).toBe(false);
     expect(Sentry.init).not.toHaveBeenCalled();
@@ -36,13 +39,38 @@ describe('SentryReporter', () => {
 
   it('initialises with sendDefaultPii disabled explicitly', () => {
     process.env.SENTRY_DSN = 'https://key@example.invalid/1';
-    new SentryReporter().init();
+    new SentryReporter('api').init();
     expect(Sentry.init).toHaveBeenCalledWith(expect.objectContaining({ sendDefaultPii: false }));
+  });
+
+  // I1: events that never pass through capture()/buildSentryPayload (e.g. raised by the SDK's
+  // own default integrations) still need a severity_band or they match neither alert rule.
+  it.each([
+    ['api', 'digest'],
+    ['exam-runtime', 'immediate'],
+  ])('seeds initialScope with service=%s and its default severity_band=%s', (service, band) => {
+    process.env.SENTRY_DSN = 'https://key@example.invalid/1';
+    new SentryReporter(service).init();
+    expect(Sentry.init).toHaveBeenCalledWith(
+      expect.objectContaining({ initialScope: { tags: { service, severity_band: band } } }),
+    );
+  });
+
+  // I2: the SDK's default onUnhandledRejectionIntegration only warns, which -- because Node
+  // treats an unhandled rejection as fatal only when no listener is attached -- would silently
+  // stop exam-runtime crash-restarting under pm2 the moment a DSN is configured. 'strict' must
+  // replace the default, not add alongside it.
+  it('replaces the default onUnhandledRejectionIntegration with strict mode', () => {
+    process.env.SENTRY_DSN = 'https://key@example.invalid/1';
+    new SentryReporter('exam-runtime').init();
+    expect(Sentry.init).toHaveBeenCalledWith(
+      expect.objectContaining({ integrations: [Sentry.onUnhandledRejectionIntegration({ mode: 'strict' })] }),
+    );
   });
 
   it('captures with allow-listed tags once enabled', () => {
     process.env.SENTRY_DSN = 'https://key@example.invalid/1';
-    const reporter = new SentryReporter();
+    const reporter = new SentryReporter('api');
     reporter.init();
     reporter.capture(entry, new Error('boom'));
     expect(Sentry.captureException).toHaveBeenCalledWith(
@@ -53,7 +81,7 @@ describe('SentryReporter', () => {
 
   it('drops the event and does not throw when payload building fails', () => {
     process.env.SENTRY_DSN = 'https://key@example.invalid/1';
-    const reporter = new SentryReporter();
+    const reporter = new SentryReporter('api');
     reporter.init();
     // A getter that throws simulates a bug in payload construction.
     const poisoned = { get service() { throw new Error('payload bug'); } } as unknown as SystemEventEntry;
@@ -63,14 +91,14 @@ describe('SentryReporter', () => {
 
   it('stops sending past the per-minute cap but never throws', () => {
     process.env.SENTRY_DSN = 'https://key@example.invalid/1';
-    const reporter = new SentryReporter(2, 60_000);
+    const reporter = new SentryReporter('api', 2, 60_000);
     reporter.init();
     for (let i = 0; i < 5; i += 1) reporter.capture(entry, new Error('boom'));
     expect((Sentry.captureException as jest.Mock).mock.calls).toHaveLength(2);
   });
 
   it('flush resolves even when disabled', async () => {
-    await expect(new SentryReporter().flush(100)).resolves.toBeUndefined();
+    await expect(new SentryReporter('api').flush(100)).resolves.toBeUndefined();
   });
 
   describe('never throws, even when the SDK misbehaves', () => {
@@ -79,14 +107,14 @@ describe('SentryReporter', () => {
       (Sentry.init as jest.Mock).mockImplementationOnce(() => {
         throw new Error('init exploded');
       });
-      const reporter = new SentryReporter();
+      const reporter = new SentryReporter('api');
       expect(() => reporter.init()).not.toThrow();
       expect(reporter.enabled).toBe(false);
     });
 
     it('does not throw when Sentry.captureException throws during capture()', () => {
       process.env.SENTRY_DSN = 'https://key@example.invalid/1';
-      const reporter = new SentryReporter();
+      const reporter = new SentryReporter('api');
       reporter.init();
       (Sentry.captureException as jest.Mock).mockImplementationOnce(() => {
         throw new Error('capture exploded');
@@ -96,14 +124,14 @@ describe('SentryReporter', () => {
 
     it('does not throw when Sentry.flush rejects during flush()', async () => {
       process.env.SENTRY_DSN = 'https://key@example.invalid/1';
-      const reporter = new SentryReporter();
+      const reporter = new SentryReporter('api');
       reporter.init();
       (Sentry.flush as jest.Mock).mockRejectedValueOnce(new Error('flush exploded'));
       await expect(reporter.flush(100)).resolves.toBeUndefined();
     });
 
     it('does not throw when capture() is called before init() has ever run', () => {
-      const reporter = new SentryReporter();
+      const reporter = new SentryReporter('api');
       expect(() => reporter.capture(entry, new Error('boom'))).not.toThrow();
       expect(Sentry.captureException).not.toHaveBeenCalled();
     });
@@ -111,7 +139,7 @@ describe('SentryReporter', () => {
 
   it('logs once when payload building fails repeatedly, without flooding', () => {
     process.env.SENTRY_DSN = 'https://key@example.invalid/1';
-    const reporter = new SentryReporter();
+    const reporter = new SentryReporter('api');
     reporter.init();
     const warnSpy = jest.spyOn((reporter as unknown as { logger: { warn: (msg: string) => void } }).logger, 'warn');
     const poisoned = { get service() { throw new Error('payload bug'); } } as unknown as SystemEventEntry;
