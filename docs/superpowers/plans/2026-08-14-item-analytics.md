@@ -43,7 +43,7 @@
 - `packages/shared/src/index.ts` — export the analytics module.
 - `apps/api/src/app.module.ts` — register `ItemAnalyticsModule`.
 - `apps/web/lib/hooks/useQuestions.ts` — add the analytics query hooks.
-- `apps/web/app/(recruiter)/questions/[id]/page.tsx` — mount the panel.
+- `apps/web/app/(recruiter)/questions/[id]/edit/page.tsx` — mount the panel. Note: there is no question *detail* page; `edit` is the route.
 - `apps/web/app/(recruiter)/questions/page.tsx` — add the "Needs review" filter.
 
 All statistical judgement lives in one file with no dependencies, so its tests need no database, no mocks, and no fixtures beyond plain numbers.
@@ -661,7 +661,7 @@ git commit -m "feat(analytics): expose item analytics endpoints"
 
 **Files:**
 - Create: `apps/web/components/QuestionStatisticsPanel.tsx`, `apps/web/components/QuestionStatisticsPanel.test.tsx`
-- Modify: `apps/web/lib/hooks/useQuestions.ts`, `apps/web/app/(recruiter)/questions/[id]/page.tsx`
+- Modify: `apps/web/lib/hooks/useQuestions.ts`, `apps/web/app/(recruiter)/questions/[id]/edit/page.tsx`
 
 **Interfaces:**
 - Consumes: `GET /analytics/questions/:id` from Task 3.
@@ -866,7 +866,7 @@ ls apps/web/.next/standalone/apps/web/server.js
 - [ ] **Step 7: Commit**
 
 ```bash
-git add apps/web/components/QuestionStatisticsPanel.tsx apps/web/components/QuestionStatisticsPanel.test.tsx apps/web/lib/hooks/useQuestions.ts "apps/web/app/(recruiter)/questions/[id]/page.tsx"
+git add apps/web/components/QuestionStatisticsPanel.tsx apps/web/components/QuestionStatisticsPanel.test.tsx apps/web/lib/hooks/useQuestions.ts "apps/web/app/(recruiter)/questions/[id]/edit/page.tsx"
 git commit -m "feat(analytics): question statistics panel on the question detail"
 ```
 
