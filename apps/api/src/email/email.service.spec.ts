@@ -94,16 +94,21 @@ describe('EmailService', () => {
     expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({ from: 'no-reply@customer.test', to: 'a@b.com' }));
   });
 
-  it('falls back to the platform transporter when no organizationId is given', async () => {
+  // These two previously asserted `success: true` for the Ethereal fallback. That assertion IS
+  // the bug: in production it let 24 emails -- including org-admin and platform-admin setup
+  // links -- report success while going to a throwaway inbox nobody reads.
+  it('refuses to send, and reports failure, when no organizationId is given and no platform SMTP exists', async () => {
     const result = await service.send({ to: 'a@b.com', subject: 'Test', html: '<p>Test</p>' });
 
     expect(prisma.organization.findUnique).not.toHaveBeenCalled();
-    expect(mockCreateTestAccount).toHaveBeenCalledTimes(1);
-    expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({ from: 'no-reply@exam-platform.test' }));
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
+    // Not merely "reported a failure" -- nothing was transmitted. The Ethereal fallback relays
+    // the message to a third-party service whose preview URLs are readable by anyone with the
+    // link, and these messages carry password-setup links.
+    expect(mockSendMail).not.toHaveBeenCalled();
   });
 
-  it('falls back to the platform transporter when the given organizationId has no SMTP configured', async () => {
+  it('refuses to send when the given organizationId has no SMTP configured', async () => {
     prisma.organization.findUnique.mockResolvedValue({
       smtpHost: null,
       smtpPort: null,
@@ -115,16 +120,47 @@ describe('EmailService', () => {
     const result = await service.send({ to: 'a@b.com', subject: 'Test', html: '<p>Test</p>', organizationId: 'org-1' });
 
     expect(cryptoService.decrypt).not.toHaveBeenCalled();
-    expect(mockCreateTestAccount).toHaveBeenCalledTimes(1);
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
+    expect(mockSendMail).not.toHaveBeenCalled();
+  });
+
+  describe('ALLOW_UNDELIVERABLE_EMAIL escape hatch', () => {
+    afterEach(() => {
+      delete process.env.ALLOW_UNDELIVERABLE_EMAIL;
+    });
+
+    it('sends via the Ethereal preview inbox when explicitly opted in', async () => {
+      process.env.ALLOW_UNDELIVERABLE_EMAIL = 'true';
+
+      const result = await service.send({ to: 'a@b.com', subject: 'Test', html: '<p>Test</p>' });
+
+      expect(mockCreateTestAccount).toHaveBeenCalledTimes(1);
+      expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({ from: 'no-reply@exam-platform.test' }));
+      expect(result.success).toBe(true);
+    });
+
+    it('is opt-in by exact value, so a stray truthy string does not enable it', async () => {
+      // Guards the production case specifically: this must not be switched on by accident.
+      process.env.ALLOW_UNDELIVERABLE_EMAIL = '1';
+
+      const result = await service.send({ to: 'a@b.com', subject: 'Test', html: '<p>Test</p>' });
+
+      expect(result.success).toBe(false);
+      expect(mockSendMail).not.toHaveBeenCalled();
+    });
   });
 
   it('caches the platform transporter across multiple sends (built only once)', async () => {
-    await service.send({ to: 'a@b.com', subject: 'Test', html: '<p>Test</p>' });
-    await service.send({ to: 'c@d.com', subject: 'Test 2', html: '<p>Test 2</p>' });
+    process.env.ALLOW_UNDELIVERABLE_EMAIL = 'true';
+    try {
+      await service.send({ to: 'a@b.com', subject: 'Test', html: '<p>Test</p>' });
+      await service.send({ to: 'c@d.com', subject: 'Test 2', html: '<p>Test 2</p>' });
 
-    expect(mockCreateTestAccount).toHaveBeenCalledTimes(1);
-    expect(mockSendMail).toHaveBeenCalledTimes(2);
+      expect(mockCreateTestAccount).toHaveBeenCalledTimes(1);
+      expect(mockSendMail).toHaveBeenCalledTimes(2);
+    } finally {
+      delete process.env.ALLOW_UNDELIVERABLE_EMAIL;
+    }
   });
 
   it("caches a given organization's transporter across multiple sends (built only once)", async () => {
