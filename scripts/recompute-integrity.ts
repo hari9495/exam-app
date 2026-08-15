@@ -90,6 +90,11 @@ async function main(): Promise<void> {
   // AppModule opens Redis clients (throttler storage, health check) that app.close() does not
   // quit, so ioredis keeps the event loop alive and the process would hang here after doing all
   // its work. Exit explicitly rather than leave an operator staring at a finished-looking run.
+  //
+  // process.exit() gives no flush guarantee for buffered stdout, and this runs piped through pm2
+  // on the VM -- exactly the case where the results above could be truncated. Writes are ordered,
+  // so waiting on an empty write's callback confirms everything before it reached the OS.
+  await new Promise<void>((resolve) => process.stdout.write('', () => resolve()));
   process.exit(stale.length ? 1 : 0);
 }
 
