@@ -605,4 +605,64 @@ describe('IntegrityAnalysisService', () => {
       expect(webcamFlag?.detail).not.toContain('session blocked');
     });
   });
+
+  describe('analyze with preserveNarrative', () => {
+    // A telemetry-flagged answer, so flags.length > 0 and the narrative path would normally run.
+    const pastedAnswer = [
+      {
+        answerText: 'x'.repeat(400),
+        // Field name matches Answer.telemetryJson (see readTxWith fixtures above) -- the brief's
+        // draft used `answerTelemetryJson` / `typedChars`, which the service never reads, so the
+        // fixture would derive zero flags. Renamed to `telemetryJson` / `keystrokeChars` so
+        // largestPasteChars >= LARGE_PASTE_CHARS (200) actually fires a large_paste flag.
+        telemetryJson: JSON.stringify({ keystrokeChars: 10, pastedChars: 400, largestPasteChars: 400 }),
+        question: { id: 'q1', type: 'code', marks: 10 },
+      },
+    ];
+
+    it('does not call the AI narrative client', async () => {
+      const persist = persistTx();
+      mockReadWrite(readTxWith(pastedAnswer), persist);
+
+      await service.analyze('attempt-1', { preserveNarrative: true });
+
+      expect(integrityNarrativeClient.writeNarrative).not.toHaveBeenCalled();
+      // Not resolving the key matters as much as not calling the client: with no key configured
+      // in production, resolve() throws, and that is what would have nulled the narrative.
+      expect(aiApiKeyResolver.resolve).not.toHaveBeenCalled();
+    });
+
+    it('omits narrative from the update so an existing explanation survives', async () => {
+      const persist = persistTx();
+      mockReadWrite(readTxWith(pastedAnswer), persist);
+
+      await service.analyze('attempt-1', { preserveNarrative: true });
+
+      const args = persist.integrityAnalysis.upsert.mock.calls[0][0];
+      expect(args.update).not.toHaveProperty('narrative');
+      expect(args.update.level).toBeDefined();
+      expect(args.update.flagsJson).toBeDefined();
+    });
+
+    it('records no AI credit usage', async () => {
+      const persist = persistTx();
+      mockReadWrite(readTxWith(pastedAnswer), persist);
+
+      await service.analyze('attempt-1', { preserveNarrative: true });
+
+      expect(persist.aiCreditUsage.create).not.toHaveBeenCalled();
+    });
+
+    it('still writes the narrative on the default path', async () => {
+      integrityNarrativeClient.writeNarrative.mockResolvedValue('a narrative');
+      const persist = persistTx();
+      mockReadWrite(readTxWith(pastedAnswer), persist);
+
+      await service.analyze('attempt-1');
+
+      const args = persist.integrityAnalysis.upsert.mock.calls[0][0];
+      expect(args.update.narrative).toBe('a narrative');
+      expect(integrityNarrativeClient.writeNarrative).toHaveBeenCalled();
+    });
+  });
 });
