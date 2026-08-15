@@ -657,7 +657,13 @@ main().catch((error) => {
 });
 ```
 
-`NULL_LEVEL` is the failure detector: `analyze()` swallows its own errors, so an attempt that blew up leaves its row untouched rather than crashing the run. A non-zero count means something needs investigating before the result is trusted.
+**CORRECTION — the `NULL_LEVEL` detector above is broken; do not ship it.** Task 4's review caught this and it was my error in writing the plan. `NULL_LEVEL` counts rows whose `level` is null, but a failed `analyze()` leaves its row *completely untouched*, keeping the non-null level it already had — and `deriveLevel` never returns null anyway. Every row in the snapshot already has a non-null level, because that is how the snapshot query selected it. So `NULL_LEVEL` reads 0 even if all 265 calls fail. The one safety mechanism on a one-shot production run would have silently reported success.
+
+The shipped script (`scripts/recompute-integrity.ts`, commit after cc2d1f8d) replaces it with three real checks:
+
+- **`FAILED`** — rows whose `analyzed_at` did not advance past a timestamp taken before the loop. A successful update always sets `analyzedAt: new Date()` from this process's clock, so a stale timestamp is precise evidence of failure, with no app-vs-database clock skew involved. Also exits non-zero so a wrapper script cannot mistake a partial run for success.
+- **`NARRATIVE_LOST`** — `updateCounterparts()` writes `narrative: null` on a counterpart when it adds a similarity flag, and `preserveNarrative` does not cover that path. On a re-run its `alreadyPresent` guard should short-circuit, but this counts rather than assumes.
+- **Scoping** — the after-snapshot is filtered to the attempts actually processed, so an attempt submitted by live traffic mid-run cannot pollute the totals.
 
 - [ ] **Step 2: Typecheck**
 
