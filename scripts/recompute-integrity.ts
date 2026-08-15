@@ -24,6 +24,7 @@
 import { NestFactory } from '@nestjs/core';
 import { TenantPrismaService } from '@exam-platform/shared';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { AppModule } from '../apps/exam-runtime/src/app.module';
 import { IntegrityAnalysisService } from '../apps/exam-runtime/src/integrity/integrity-analysis.service';
@@ -53,7 +54,14 @@ async function main(): Promise<void> {
   // counterpart's narrative on a path preserveNarrative does not cover, and the pre-run
   // narratives exist only in this in-memory array. Snapshot to disk before the loop mutates
   // anything, so a non-zero NARRATIVE_LOST count has a real place to restore from.
-  const backupPath = path.join(process.cwd(), `integrity-narratives-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+  //
+  // Written to the home directory, NOT the repo. This file holds candidate narrative text, and
+  // process.cwd() is ~/app -- inside the working tree, where it would show up untracked in git
+  // status and get swept into the deploy's `tar` of the app directory.
+  const backupPath = path.join(
+    os.homedir(),
+    `integrity-narratives-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
+  );
   fs.writeFileSync(backupPath, JSON.stringify(before, null, 2));
   console.log(`backed up pre-run snapshot (attempt_id, level, narrative, analyzed_at) to ${backupPath}`);
 
