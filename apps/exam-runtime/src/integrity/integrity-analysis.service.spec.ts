@@ -653,6 +653,16 @@ describe('IntegrityAnalysisService', () => {
       expect(persist.aiCreditUsage.create).not.toHaveBeenCalled();
     });
 
+    it('sets narrative to CLEAR_NARRATIVE on the update when flags are empty, even with preserveNarrative: an attempt that lost all its flags under the new rules must not keep a stale "high concern" narrative', async () => {
+      const persist = persistTx();
+      mockReadWrite(readTxWith([]), persist);
+
+      await service.analyze('attempt-1', { preserveNarrative: true });
+
+      const args = persist.integrityAnalysis.upsert.mock.calls[0][0];
+      expect(args.update.narrative).toBe('No integrity concerns detected.');
+    });
+
     it('still writes the narrative on the default path', async () => {
       integrityNarrativeClient.writeNarrative.mockResolvedValue('a narrative');
       const persist = persistTx();

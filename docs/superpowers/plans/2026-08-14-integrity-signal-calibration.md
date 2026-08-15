@@ -597,7 +597,7 @@ git commit -m "feat(integrity): recompute analyses without re-running the narrat
  * preserveNarrative keeps the recruiter-facing explanation. Without it, the AI call fails on a
  * box with no key configured and every flagged attempt's narrative is written as null.
  *
- * Usage on the VM:  cd ~/app && npx ts-node scripts/recompute-integrity.ts
+ * Usage on the VM:  cd ~/app && npx ts-node --project apps/exam-runtime/tsconfig.json scripts/recompute-integrity.ts
  */
 import { NestFactory } from '@nestjs/core';
 import { TenantPrismaService } from '@exam-platform/shared';

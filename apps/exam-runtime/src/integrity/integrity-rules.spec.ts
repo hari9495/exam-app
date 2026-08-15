@@ -296,6 +296,19 @@ describe('deriveAttemptFlags -- layer 1, context events cannot manufacture a hig
     expect(flags.find((f) => f.type === 'proctoring_events')?.severity).not.toBe('high');
   });
 
+  it('does not raise proctoring_events to high for a lone high-severity multi_login event', () => {
+    // Regression coverage for the deleted test above: multi_login must actually be filtered by
+    // deriveAttemptFlags, not just listed in the CONTEXT_EVENT_TYPES constant. A filter written
+    // as `!e.eventType.startsWith('webcam_')` would pass every other test in this file while
+    // silently re-promoting the 42 real attempts that have multi_login events.
+    const flags = deriveAttemptFlags({
+      webcamViolationCount: 0,
+      blocked: false,
+      events: [{ eventType: 'multi_login', severity: 'high' }],
+    });
+    expect(flags.find((f) => f.type === 'proctoring_events')?.severity).not.toBe('high');
+  });
+
   it('treats an unrecognised event type as hard, not context', () => {
     const flags = deriveAttemptFlags({
       webcamViolationCount: 0,

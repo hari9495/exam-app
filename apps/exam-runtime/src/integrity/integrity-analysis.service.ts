@@ -135,12 +135,18 @@ export class IntegrityAnalysisService {
 
       let narrative: string | null = null;
       let narrativeSucceeded = false;
-      if (options?.preserveNarrative) {
+      // preserveNarrative exists because the AI-authored explanation is still valid and cannot
+      // be regenerated without an API key. When an attempt has NO flags, the old explanation is
+      // actively wrong -- it describes concerns that no longer exist -- and its replacement is a
+      // constant needing no AI, so preserving it would be the wrong behaviour here. Attempts
+      // that still have flags keep preserving as before.
+      const preserveExistingNarrative = options?.preserveNarrative && flags.length > 0;
+      if (flags.length === 0) {
+        narrative = CLEAR_NARRATIVE;
+      } else if (preserveExistingNarrative) {
         // Backfill path: re-deriving flags must not re-run the AI. This is not an optimisation
         // -- with no AI key configured the call throws, and the upsert below would then write
         // null over an explanation a recruiter has already read.
-      } else if (flags.length === 0) {
-        narrative = CLEAR_NARRATIVE;
       } else {
         try {
           const aiProvider = await this.aiApiKeyResolver.resolve(organizationId);
@@ -164,7 +170,7 @@ export class IntegrityAnalysisService {
           // A brand-new row still gets whatever narrative was computed -- on the preserve path
           // that is the disclosure alone, or null, because there is nothing yet to preserve.
           create: { attemptId, ...core, narrative },
-          update: options?.preserveNarrative
+          update: preserveExistingNarrative
             ? { ...core, analyzedAt: new Date() }
             : { ...core, narrative, analyzedAt: new Date() },
         });

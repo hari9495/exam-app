@@ -12,10 +12,19 @@
  * preserveNarrative keeps the recruiter-facing explanation. Without it, the AI call fails on a
  * box with no key configured and every flagged attempt's narrative is written as null.
  *
- * Usage on the VM:  cd ~/app && npx ts-node scripts/recompute-integrity.ts
+ * Usage on the VM:  cd ~/app && npx ts-node --project apps/exam-runtime/tsconfig.json scripts/recompute-integrity.ts
+ *
+ * The --project flag is not optional. There is no tsconfig.json at the repo root -- only
+ * tsconfig.base.json, which ts-node does not read on its own -- so without it ts-node compiles
+ * with decorators disabled and the whole NestJS AppModule graph fails (TS1241/TS1270/TS1206).
+ * Compiling with `-T` (transpile-only) "fixes" that but emits no design:paramtypes, so Nest DI
+ * then dies trying to resolve IntegrityAnalysisService. Pointing at the app's own tsconfig
+ * (which extends tsconfig.base.json and turns decorators on) is what makes both problems go away.
  */
 import { NestFactory } from '@nestjs/core';
 import { TenantPrismaService } from '@exam-platform/shared';
+import * as fs from 'fs';
+import * as path from 'path';
 import { AppModule } from '../apps/exam-runtime/src/app.module';
 import { IntegrityAnalysisService } from '../apps/exam-runtime/src/integrity/integrity-analysis.service';
 
@@ -39,6 +48,14 @@ async function main(): Promise<void> {
 
   const before = await snapshot(tenantPrisma);
   console.log(`recomputing ${before.length} analyses`);
+
+  // Restore source if NARRATIVE_LOST comes back non-zero below: updateCounterparts() nulls a
+  // counterpart's narrative on a path preserveNarrative does not cover, and the pre-run
+  // narratives exist only in this in-memory array. Snapshot to disk before the loop mutates
+  // anything, so a non-zero NARRATIVE_LOST count has a real place to restore from.
+  const backupPath = path.join(process.cwd(), `integrity-narratives-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+  fs.writeFileSync(backupPath, JSON.stringify(before, null, 2));
+  console.log(`backed up pre-run snapshot (attempt_id, level, narrative, analyzed_at) to ${backupPath}`);
 
   const previous = new Map(before.map((r) => [r.attempt_id, r]));
 
@@ -79,7 +96,8 @@ async function main(): Promise<void> {
   );
 
   console.log(`TRANSITIONS ${JSON.stringify(matrix)}`);
-  console.log(`NEW_HIGH_CONCERN ${high} of ${processed.length} (${Math.round((high / processed.length) * 100)}%)`);
+  const highPct = processed.length ? Math.round((high / processed.length) * 100) : 0;
+  console.log(`NEW_HIGH_CONCERN ${high} of ${processed.length} (${highPct}%)`);
   console.log(`FAILED ${stale.length}${stale.length ? ' -- ' + stale.slice(0, 10).map((r) => r.attempt_id).join(',') : ''}`);
   console.log(`NARRATIVE_LOST ${narrativeLost.length}`);
   if (stale.length || narrativeLost.length) {
