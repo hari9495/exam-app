@@ -157,7 +157,12 @@ describe('IntegrityAnalysisService', () => {
     );
   });
 
-  it('flagged path (high severity): webcam-blocked attempt derives high_concern level', async () => {
+  it('flagged path (high severity, context-only): webcam-blocked attempt derives review, not high_concern', async () => {
+    // Updated for Task 2 (evidence classification): webcam_violations is a context-class flag.
+    // A blocked session with no other evidence says the proctor stopped the session, not that
+    // the candidate's answer is suspect, so the level tops out at 'review' however high the
+    // flag's own severity reads. Previously this asserted 'high_concern' -- that assertion
+    // encoded the pre-fix rule that any high flag promotes the whole attempt.
     integrityNarrativeClient.writeNarrative.mockResolvedValue('Multiple webcam violations, session blocked.');
 
     const analysis = await runAnalysisWith({
@@ -169,10 +174,10 @@ describe('IntegrityAnalysisService', () => {
 
     expect(integrityNarrativeClient.writeNarrative).toHaveBeenCalledWith(
       expect.any(Array),
-      { examTitle: 'Backend Engineer Exam', level: 'high_concern' },
+      { examTitle: 'Backend Engineer Exam', level: 'review' },
       fakeAiProvider,
     );
-    expect(analysis.level).toBe('high_concern');
+    expect(analysis.level).toBe('review');
   });
 
   it('config-aware blocked flag: a higher strike limit (5) with only 3 violations is not blocked -- medium severity, no "session blocked" wording', async () => {
@@ -250,7 +255,9 @@ describe('IntegrityAnalysisService', () => {
     );
   });
 
-  it('config-aware blocked flag: a default exam (block, limit 3) with 3 violations is blocked -- high severity, "session blocked" wording preserved', async () => {
+  it('config-aware blocked flag: a default exam (block, limit 3) with 3 violations is blocked -- high severity flag, but level stops at review (context-only)', async () => {
+    // Updated for Task 2: the flag itself still reads 'high' (severity is about the flag), but
+    // webcam_violations is context-class, so with no other evidence the level is 'review'.
     integrityNarrativeClient.writeNarrative.mockResolvedValue('Multiple webcam violations, session blocked.');
 
     await runAnalysisWith({
@@ -262,7 +269,7 @@ describe('IntegrityAnalysisService', () => {
 
     expect(integrityNarrativeClient.writeNarrative).toHaveBeenCalledWith(
       [{ type: 'webcam_violations', severity: 'high', detail: '3 webcam violation(s) recorded, session blocked' }],
-      { examTitle: 'Backend Engineer Exam', level: 'high_concern' },
+      { examTitle: 'Backend Engineer Exam', level: 'review' },
       fakeAiProvider,
     );
   });
@@ -596,6 +603,76 @@ describe('IntegrityAnalysisService', () => {
       const flags = JSON.parse(analysis.flagsJson ?? '[]') as { type: string; detail: string }[];
       const webcamFlag = flags.find((flag) => flag.type === 'webcam_violations');
       expect(webcamFlag?.detail).not.toContain('session blocked');
+    });
+  });
+
+  describe('analyze with preserveNarrative', () => {
+    // A telemetry-flagged answer, so flags.length > 0 and the narrative path would normally run.
+    const pastedAnswer = [
+      {
+        answerText: 'x'.repeat(400),
+        // Field name matches Answer.telemetryJson (see readTxWith fixtures above) -- the brief's
+        // draft used `answerTelemetryJson` / `typedChars`, which the service never reads, so the
+        // fixture would derive zero flags. Renamed to `telemetryJson` / `keystrokeChars` so
+        // largestPasteChars >= LARGE_PASTE_CHARS (200) actually fires a large_paste flag.
+        telemetryJson: JSON.stringify({ keystrokeChars: 10, pastedChars: 400, largestPasteChars: 400 }),
+        question: { id: 'q1', type: 'code', marks: 10 },
+      },
+    ];
+
+    it('does not call the AI narrative client', async () => {
+      const persist = persistTx();
+      mockReadWrite(readTxWith(pastedAnswer), persist);
+
+      await service.analyze('attempt-1', { preserveNarrative: true });
+
+      expect(integrityNarrativeClient.writeNarrative).not.toHaveBeenCalled();
+      // Not resolving the key matters as much as not calling the client: with no key configured
+      // in production, resolve() throws, and that is what would have nulled the narrative.
+      expect(aiApiKeyResolver.resolve).not.toHaveBeenCalled();
+    });
+
+    it('omits narrative from the update so an existing explanation survives', async () => {
+      const persist = persistTx();
+      mockReadWrite(readTxWith(pastedAnswer), persist);
+
+      await service.analyze('attempt-1', { preserveNarrative: true });
+
+      const args = persist.integrityAnalysis.upsert.mock.calls[0][0];
+      expect(args.update).not.toHaveProperty('narrative');
+      expect(args.update.level).toBeDefined();
+      expect(args.update.flagsJson).toBeDefined();
+    });
+
+    it('records no AI credit usage', async () => {
+      const persist = persistTx();
+      mockReadWrite(readTxWith(pastedAnswer), persist);
+
+      await service.analyze('attempt-1', { preserveNarrative: true });
+
+      expect(persist.aiCreditUsage.create).not.toHaveBeenCalled();
+    });
+
+    it('sets narrative to CLEAR_NARRATIVE on the update when flags are empty, even with preserveNarrative: an attempt that lost all its flags under the new rules must not keep a stale "high concern" narrative', async () => {
+      const persist = persistTx();
+      mockReadWrite(readTxWith([]), persist);
+
+      await service.analyze('attempt-1', { preserveNarrative: true });
+
+      const args = persist.integrityAnalysis.upsert.mock.calls[0][0];
+      expect(args.update.narrative).toBe('No integrity concerns detected.');
+    });
+
+    it('still writes the narrative on the default path', async () => {
+      integrityNarrativeClient.writeNarrative.mockResolvedValue('a narrative');
+      const persist = persistTx();
+      mockReadWrite(readTxWith(pastedAnswer), persist);
+
+      await service.analyze('attempt-1');
+
+      const args = persist.integrityAnalysis.upsert.mock.calls[0][0];
+      expect(args.update.narrative).toBe('a narrative');
+      expect(integrityNarrativeClient.writeNarrative).toHaveBeenCalled();
     });
   });
 });

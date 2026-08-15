@@ -28,7 +28,7 @@ export class IntegrityAnalysisService {
     private readonly aiApiKeyResolver: AiApiKeyResolverService,
   ) {}
 
-  async analyze(attemptId: string): Promise<void> {
+  async analyze(attemptId: string, options?: { preserveNarrative?: boolean }): Promise<void> {
     try {
       const attempt = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
         tx.attempt.findUnique({
@@ -133,10 +133,20 @@ export class IntegrityAnalysisService {
 
       const level = deriveLevel(flags);
 
-      let narrative: string | null;
+      let narrative: string | null = null;
       let narrativeSucceeded = false;
+      // preserveNarrative exists because the AI-authored explanation is still valid and cannot
+      // be regenerated without an API key. When an attempt has NO flags, the old explanation is
+      // actively wrong -- it describes concerns that no longer exist -- and its replacement is a
+      // constant needing no AI, so preserving it would be the wrong behaviour here. Attempts
+      // that still have flags keep preserving as before.
+      const preserveExistingNarrative = options?.preserveNarrative && flags.length > 0;
       if (flags.length === 0) {
         narrative = CLEAR_NARRATIVE;
+      } else if (preserveExistingNarrative) {
+        // Backfill path: re-deriving flags must not re-run the AI. This is not an optimisation
+        // -- with no AI key configured the call throws, and the upsert below would then write
+        // null over an explanation a recruiter has already read.
       } else {
         try {
           const aiProvider = await this.aiApiKeyResolver.resolve(organizationId);
@@ -153,12 +163,16 @@ export class IntegrityAnalysisService {
         narrative = narrative ? `${disclosure}\n\n${narrative}` : disclosure;
       }
 
-      const result = { status: 'completed', level, flagsJson: JSON.stringify(flags), narrative };
+      const core = { status: 'completed', level, flagsJson: JSON.stringify(flags) };
       await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
         await tx.integrityAnalysis.upsert({
           where: { attemptId },
-          create: { attemptId, ...result },
-          update: { ...result, analyzedAt: new Date() },
+          // A brand-new row still gets whatever narrative was computed -- on the preserve path
+          // that is the disclosure alone, or null, because there is nothing yet to preserve.
+          create: { attemptId, ...core, narrative },
+          update: preserveExistingNarrative
+            ? { ...core, analyzedAt: new Date() }
+            : { ...core, narrative, analyzedAt: new Date() },
         });
         if (narrativeSucceeded) {
           await tx.aiCreditUsage.create({
