@@ -80,13 +80,37 @@ echo "=== 3. restart backends ==="
 # alone would not do it.
 pm2 restart api exam-runtime --update-env
 
-echo "=== 4. confirm the inert warning is GONE ==="
+echo "=== 4. confirm the DSNs actually landed ==="
 sleep 12
-if grep -a 'SENTRY_DSN=unset' ~/.pm2/logs/api-out.log | tail -1 | grep -q "$(date -u +%Y)"; then
-  echo "WARNING: api still logging the inert message -- check the DSN reached apps/api/.env"
+# Positive checks only. An earlier version of this script inferred success from the ABSENCE of
+# the "SENTRY_DSN=unset" warning in api-out.log -- but pm2-logrotate had already rotated that
+# line away, so the check passed identically whether or not the DSN was written. Absence of a
+# warning is not evidence when the log it lived in may no longer exist.
+for f in apps/api/.env apps/exam-runtime/.env apps/web/.env.local; do
+  if grep -q '^SENTRY_DSN=https://' "$f"; then
+    echo "  $f: SENTRY_DSN present"
+  else
+    echo "  $f: SENTRY_DSN MISSING -- deploy did not take"; echo "SENTRY_ENABLE_FAIL" >> "$MARK"; exit 1
+  fi
+done
+grep -q '^NEXT_PUBLIC_SENTRY_DSN=https://' apps/web/.env.local \
+  && echo "  apps/web/.env.local: NEXT_PUBLIC_SENTRY_DSN present" \
+  || { echo "  apps/web/.env.local: NEXT_PUBLIC_SENTRY_DSN MISSING"; echo "SENTRY_ENABLE_FAIL" >> "$MARK"; exit 1; }
+
+# The browser half is the one that fails silently: NEXT_PUBLIC_* is inlined at BUILD time, so a
+# correct .env with a stale bundle looks fine everywhere except in Sentry, where web events
+# simply never arrive. Prove the value is in the shipped bundle, not just in the file.
+if grep -rq 'ingest\.\(de\.\)\?sentry\.io' apps/web/.next/static 2>/dev/null; then
+  echo "  web bundle: DSN inlined into client chunks"
 else
-  echo "api: no inert warning after restart"
+  echo "  web bundle: DSN NOT found in client chunks -- browser errors will not report"
+  echo "SENTRY_ENABLE_FAIL" >> "$MARK"; exit 1
 fi
+
+# Only meaningful for a process that has just restarted, so check the CURRENT boot's log tail.
+echo "  recent inert warnings (expect none):"
+tail -200 ~/.pm2/logs/api-out.log 2>/dev/null | grep -c 'SENTRY_DSN=unset' || true
+tail -200 ~/.pm2/logs/exam-runtime-out.log 2>/dev/null | grep -c 'SENTRY_DSN=unset' || true
 
 echo "=== 5. pm2 state ==="
 pm2 list --no-color
