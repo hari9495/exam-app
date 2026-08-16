@@ -188,27 +188,45 @@ export class AuthService {
     }
 
     if (!stored || !refreshTokenMatches(stored.tokenHash, refreshToken)) {
-      // Before calling it reuse: was THIS token rotated out only moments ago? That is the
-      // concurrent-refresh race, not an attack -- see REFRESH_REUSE_GRACE_MS.
-      const justRotated = await this.prisma.refreshToken.findFirst({
-        where: {
-          userId: payload.sub,
-          familyId: payload.familyId,
-          revokedAt: { gte: new Date(Date.now() - REFRESH_REUSE_GRACE_MS) },
-        },
-        orderBy: { revokedAt: 'desc' },
-      });
-      if (justRotated && !isLegacyArgon2Hash(justRotated.tokenHash) && refreshTokenMatches(justRotated.tokenHash, refreshToken)) {
+      // Before calling it reuse: was THIS token rotated out only moments ago, AND is there a
+      // live successor in the family? That combination is the concurrent-refresh race -- see
+      // REFRESH_REUSE_GRACE_MS -- and only that combination.
+      //
+      // `stored` (a live row) is REQUIRED. The benign race always has one: the other tab's
+      // rotation produced it. A logout, a password reset, or a prior reuse detection leave
+      // ZERO live rows in the family, and forgiving there would let a copied token resurrect
+      // a session the user had deliberately killed, for up to 10s. Security review caught
+      // exactly that before this shipped.
+      //
+      // The hash is matched in the WHERE clause, not by ordering: with three tabs racing, the
+      // most-recently-revoked row is not necessarily the one this caller holds, and an
+      // orderBy+findFirst would wrongly reject the third tab. sha256 is deterministic, so an
+      // exact match is available. Legacy argon2 rows can never equal a sha256 digest, so
+      // they are excluded by construction.
+      const justRotated = stored
+        ? await this.prisma.refreshToken.findFirst({
+            where: {
+              userId: payload.sub,
+              familyId: payload.familyId,
+              tokenHash: hashRefreshToken(refreshToken),
+              revokedAt: { gte: new Date(Date.now() - REFRESH_REUSE_GRACE_MS) },
+            },
+          })
+        : null;
+      if (justRotated) {
         // Forgive: hand this caller a fresh rotation rather than replaying the other tab's
-        // token (which cannot be recovered from its hash anyway). Fall through to the normal
-        // issue path with the CURRENT live row as `stored`, so the family stays single-live.
-        // Nothing is revoked here that was not already revoked; no reuse audit is written.
+        // token (which cannot be recovered from its hash anyway). This DOES revoke the other
+        // tab's live token -- it must, to keep the family single-live -- and that is fine:
+        // the other tab adopts this one's result over the BroadcastChannel, or on its next
+        // 401 goes through this same forgiveness path itself.
         this.logger.warn(`Refresh race forgiven for user ${payload.sub} (token rotated ${Date.now() - justRotated.revokedAt!.getTime()}ms ago)`);
         return this.issueAfterRefreshChecks(payload, stored);
       }
-      // Reuse of an already-rotated/unknown token: revoke the whole family.
+      // Reuse of an already-rotated/unknown token: revoke the whole family. Only LIVE rows --
+      // re-stamping already-revoked rows would move them back inside the grace window on every
+      // failed retry, so a family under attack could never age out of forgiveness.
       await this.prisma.refreshToken.updateMany({
-        where: { userId: payload.sub, familyId: payload.familyId },
+        where: { userId: payload.sub, familyId: payload.familyId, revokedAt: null },
         data: { revokedAt: new Date() },
       });
       // The lookup below and the audit write both live inside this one try: the family

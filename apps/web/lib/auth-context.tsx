@@ -159,10 +159,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const channel = new BroadcastChannel('exam-platform-staff-auth');
       channel.onmessage = (event: MessageEvent<{ type: 'token'; accessToken: string } | { type: 'signed-out' }>) => {
         if (event.data?.type === 'token' && typeof event.data.accessToken === 'string') {
-          // Another tab just refreshed. Adopt its token rather than racing for our own.
+          // Another tab just refreshed. Adopt its token rather than racing for our own --
+          // but only if it belongs to the SAME user this tab already holds. Same origin does
+          // not mean same person: on a shared machine, user Y logging in beside user X's tab
+          // must not hand X's tab Y's session (with X's cached data still on screen).
+          const mine = accessTokenRef.current ? decodeJwtPayload(accessTokenRef.current)?.sub : null;
+          const theirs = decodeJwtPayload(event.data.accessToken)?.sub;
+          if (mine && theirs && mine !== theirs) return;
           applyToken(event.data.accessToken);
         } else if (event.data?.type === 'signed-out') {
           applyToken(null);
+          queryClient.removeQueries({ queryKey: ['currentUser'] });
         }
       };
       refreshChannelRef.current = channel;
@@ -222,6 +229,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function logout() {
     await apiFetch('/auth/logout', { method: 'POST', body: JSON.stringify({}) }).catch(() => undefined);
     applyToken(null);
+    // Sibling tabs must learn the family is dead, or their next scheduled refresh runs
+    // straight into reuse detection against a family this tab just revoked.
+    refreshChannelRef.current?.postMessage({ type: 'signed-out' });
     setOrganizationSlug(null);
     if (typeof window !== 'undefined') {
       window.sessionStorage.removeItem(SLUG_STORAGE_KEY);

@@ -239,7 +239,7 @@ describe('AuthProvider', () => {
       global.fetch = jest.fn(async (url) => {
         if (String(url).endsWith('/auth/refresh')) {
           refreshCalls += 1;
-          return new Response(JSON.stringify({ accessToken: fakeJwt({ role: 'recruiter' }) }), { status: 200 });
+          return new Response(JSON.stringify({ accessToken: fakeJwt({ sub: 'user-X', role: 'recruiter' }) }), { status: 200 });
         }
         throw new Error(`Unexpected fetch to ${url}`);
       }) as unknown as typeof fetch;
@@ -253,8 +253,10 @@ describe('AuthProvider', () => {
       await waitFor(() => expect(refreshCalls).toBe(1));
 
       // "Another tab" completes a refresh and broadcasts its result.
+      // Real tokens always carry `sub`; the same-user guard is what makes adoption safe, so
+      // this fixture carries the SAME sub as this tab's token -- the case that must be adopted.
       const otherTab = new StubChannel('exam-platform-staff-auth');
-      const fromOtherTab = fakeJwt({ role: 'org_admin' });
+      const fromOtherTab = fakeJwt({ sub: 'user-X', role: 'org_admin' });
       await act(async () => {
         otherTab.postMessage({ type: 'token', accessToken: fromOtherTab });
       });
@@ -264,6 +266,34 @@ describe('AuthProvider', () => {
       // ...and crucially did NOT go to the server for its own rotation. That second call is
       // the one that used to arrive with a just-rotated token and log everyone out.
       expect(refreshCalls).toBe(1);
+    });
+
+    it('ignores a broadcast token that belongs to a DIFFERENT user (shared machine, two accounts)', async () => {
+      // Same origin is not the same person. If user Y logs in beside user X's tab, X's tab must
+      // not silently become Y's session with X's cached data still on screen.
+      const mine = fakeJwt({ sub: 'user-X', role: 'recruiter' });
+      global.fetch = jest.fn(async (url) => {
+        if (String(url).endsWith('/auth/refresh')) {
+          return new Response(JSON.stringify({ accessToken: mine }), { status: 200 });
+        }
+        throw new Error(`Unexpected fetch to ${url}`);
+      }) as unknown as typeof fetch;
+
+      renderWithQueryClient(
+        <AuthProvider>
+          <Probe />
+        </AuthProvider>,
+      );
+      await waitFor(() => expect(screen.getByText(`token:${mine} slug:none`)).toBeInTheDocument());
+
+      const otherTab = new StubChannel('exam-platform-staff-auth');
+      const someoneElses = fakeJwt({ sub: 'user-Y', role: 'org_admin' });
+      await act(async () => {
+        otherTab.postMessage({ type: 'token', accessToken: someoneElses });
+      });
+
+      // Still user X's token. Not adopted.
+      expect(screen.getByText(`token:${mine} slug:none`)).toBeInTheDocument();
     });
 
     it('broadcasts its own successful refresh so other tabs can adopt it', async () => {
