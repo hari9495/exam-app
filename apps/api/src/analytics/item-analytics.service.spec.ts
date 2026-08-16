@@ -66,4 +66,13 @@ describe('ItemAnalyticsService.flagged', () => {
     const results = await service.flagged(context);
     expect(results.map((r) => r.questionId)).toEqual(['miskeyed', 'weak']);
   });
+
+  it('carries the question text so a listing can render without a second fetch', async () => {
+    const { service } = serviceWith(
+      [{ question_id: 'q1', n: 40, p: 0.5, m1: 40, m0: 60, sd_rest: 10, text: 'Which of these is a monad?' }],
+      [],
+    );
+    const result = await service.flagged(context);
+    expect(result[0].text).toBe('Which of these is a monad?');
+  });
 });
