@@ -21,6 +21,23 @@ interface TokenPair {
 
 const PASSWORD_RESET_EXPIRY_MINUTES = 15;
 
+// How long after a refresh token is rotated out that presenting it is treated as a benign
+// concurrent-refresh race rather than reuse of a stolen token.
+//
+// Why this exists: 119 `auth.token_reuse_detected` events across 18 ordinary staff users in
+// 10 days, 72 of them within 10 seconds of another for the SAME user. That is not 119
+// stolen tokens; it is two browser tabs each refreshing, the second arriving with the token
+// the first had just rotated. Reuse detection then revoked the whole family and logged the
+// user out of every tab. The single-tab client already collapses concurrent refreshes onto
+// one in-flight promise; a useRef cannot reach across tabs, so the race is inherently
+// cross-tab and has to be tolerated server-side.
+//
+// Why 10 seconds and not more: a stolen token replayed within the window yields only what
+// the legitimate session already holds, and only once (the row stays revoked; the forgiven
+// caller gets a fresh rotation, which itself rotates the current live token). Beyond the
+// window, replay is treated exactly as before -- family revoked, incident audited.
+const REFRESH_REUSE_GRACE_MS = 10_000;
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -171,6 +188,24 @@ export class AuthService {
     }
 
     if (!stored || !refreshTokenMatches(stored.tokenHash, refreshToken)) {
+      // Before calling it reuse: was THIS token rotated out only moments ago? That is the
+      // concurrent-refresh race, not an attack -- see REFRESH_REUSE_GRACE_MS.
+      const justRotated = await this.prisma.refreshToken.findFirst({
+        where: {
+          userId: payload.sub,
+          familyId: payload.familyId,
+          revokedAt: { gte: new Date(Date.now() - REFRESH_REUSE_GRACE_MS) },
+        },
+        orderBy: { revokedAt: 'desc' },
+      });
+      if (justRotated && !isLegacyArgon2Hash(justRotated.tokenHash) && refreshTokenMatches(justRotated.tokenHash, refreshToken)) {
+        // Forgive: hand this caller a fresh rotation rather than replaying the other tab's
+        // token (which cannot be recovered from its hash anyway). Fall through to the normal
+        // issue path with the CURRENT live row as `stored`, so the family stays single-live.
+        // Nothing is revoked here that was not already revoked; no reuse audit is written.
+        this.logger.warn(`Refresh race forgiven for user ${payload.sub} (token rotated ${Date.now() - justRotated.revokedAt!.getTime()}ms ago)`);
+        return this.issueAfterRefreshChecks(payload, stored);
+      }
       // Reuse of an already-rotated/unknown token: revoke the whole family.
       await this.prisma.refreshToken.updateMany({
         where: { userId: payload.sub, familyId: payload.familyId },
@@ -211,7 +246,19 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token reuse detected — session revoked');
     }
 
-    await this.prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
+    return this.issueAfterRefreshChecks(payload, stored);
+  }
+
+  // The tail of refresh(): revoke the presented live row, re-check the account and org are
+  // still active, issue a new pair in the same family. Shared by the normal path and the
+  // concurrent-refresh forgiveness path so the two cannot drift.
+  private async issueAfterRefreshChecks(
+    payload: { sub: string; familyId: string },
+    stored: { id: string } | null,
+  ): Promise<TokenPair> {
+    if (stored) {
+      await this.prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
+    }
 
     const user = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
       tx.user.findUniqueOrThrow({ where: { id: payload.sub } }),

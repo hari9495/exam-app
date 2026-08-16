@@ -60,6 +60,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // reuse-detection path, revoking the whole session. Collapsing concurrent callers onto the same
   // in-flight request keeps that to one real call at a time.
   const refreshInFlightRef = useRef<Promise<string | null> | null>(null);
+  // Cross-tab counterpart of refreshInFlightRef. A useRef lives in ONE tab's heap, so with
+  // two tabs open each ran its own 5-minute interval and its own visibility-change refresh --
+  // and refresh tokens rotate on every use, so the second tab's call arrived with a token the
+  // first had just rotated, tripped reuse detection, and revoked the family: every tab logged
+  // out. Measured in production: 119 forced logouts in 10 days, 72 within 10s of another for
+  // the same user (ADO #6981). The server now forgives that race inside a short window; this
+  // channel makes it rare in the first place by letting the tab that DID refresh hand the new
+  // token to the others, so they adopt it instead of racing for their own.
+  const refreshChannelRef = useRef<BroadcastChannel | null>(null);
   const queryClient = useQueryClient();
 
   function applyToken(token: string | null) {
@@ -101,6 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               result.accessToken,
             );
             applyToken(switched.accessToken);
+            refreshChannelRef.current?.postMessage({ type: 'token', accessToken: switched.accessToken });
             return switched.accessToken;
           } catch {
             // The org is gone or access was revoked -- fall back to the base super_admin session.
@@ -110,6 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
         applyToken(result.accessToken);
+        refreshChannelRef.current?.postMessage({ type: 'token', accessToken: result.accessToken });
         return result.accessToken;
       } catch (error) {
         // Only a definitive 401 (the server saying the refresh token itself is invalid,
@@ -122,6 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // trigger retry instead.
         if ((error as { status?: number } | undefined)?.status === 401) {
           applyToken(null);
+          refreshChannelRef.current?.postMessage({ type: 'signed-out' });
           return null;
         }
         return accessTokenRef.current;
@@ -141,8 +153,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (storedSlug) {
       setOrganizationSlug(storedSlug);
     }
+    // Feature-detected: absent BroadcastChannel (very old browsers, some test envs) means
+    // exactly today's single-tab behaviour, nothing worse.
+    if (typeof BroadcastChannel !== 'undefined') {
+      const channel = new BroadcastChannel('exam-platform-staff-auth');
+      channel.onmessage = (event: MessageEvent<{ type: 'token'; accessToken: string } | { type: 'signed-out' }>) => {
+        if (event.data?.type === 'token' && typeof event.data.accessToken === 'string') {
+          // Another tab just refreshed. Adopt its token rather than racing for our own.
+          applyToken(event.data.accessToken);
+        } else if (event.data?.type === 'signed-out') {
+          applyToken(null);
+        }
+      };
+      refreshChannelRef.current = channel;
+    }
     silentRefresh().finally(() => setIsLoading(false));
-    return () => setUnauthorizedHandler(null);
+    return () => {
+      setUnauthorizedHandler(null);
+      refreshChannelRef.current?.close();
+      refreshChannelRef.current = null;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

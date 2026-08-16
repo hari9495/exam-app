@@ -161,6 +161,93 @@ describe('AuthService', () => {
     );
   });
 
+  describe('concurrent-refresh grace window (F3)', () => {
+    // 119 forced logouts in 10 days, 72 of them within 10s of another for the same user: two
+    // tabs each refreshing, the second arriving with the token the first had just rotated.
+    // Reuse detection is right to exist; treating THIS as reuse is not.
+    it('forgives a token revoked by rotation moments ago and returns a token pair without revoking the family', async () => {
+      const refreshToken = jwt.sign({ sub: 'user-1', familyId: 'family-1' }, { secret: process.env.JWT_REFRESH_SECRET });
+      const tokenHash = createHash('sha256').update(refreshToken).digest('hex');
+      prisma.refreshToken.findFirst
+        // 1st lookup: newest LIVE row -- a different token (the other tab's rotation result).
+        .mockResolvedValueOnce({ id: 'rt-live', tokenHash: 'someone-elses-hash', createdAt: new Date() })
+        // 2nd lookup: the presented token IS the row rotated out 2 seconds ago.
+        .mockResolvedValueOnce({ id: 'rt-old', tokenHash, revokedAt: new Date(Date.now() - 2_000) });
+      tenantPrisma.forTenant.mockResolvedValue({ id: 'user-1', organizationId: 'org-1', role: 'org_admin', status: 'active' });
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', status: 'active' });
+
+      const result = await service.refresh(refreshToken);
+
+      expect(result.accessToken).toBeDefined();
+      expect(result.refreshToken).toBeDefined();
+      // The whole point: NO family revocation, NO reuse audit.
+      expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ action: 'auth.token_reuse_detected' }),
+      );
+    });
+
+    it('still treats a token revoked OUTSIDE the grace window as reuse and revokes the family', async () => {
+      const refreshToken = jwt.sign({ sub: 'user-1', familyId: 'family-1' }, { secret: process.env.JWT_REFRESH_SECRET });
+      const tokenHash = createHash('sha256').update(refreshToken).digest('hex');
+      // The grace lookup filters `revokedAt >= now - window` in the WHERE clause, so a row
+      // revoked 5 minutes ago is not returned by the database at all. Model that faithfully:
+      // the second findFirst resolves null. (A mock that returned the stale row regardless
+      // would be testing a query the code never issues.)
+      prisma.refreshToken.findFirst
+        .mockResolvedValueOnce({ id: 'rt-live', tokenHash: 'someone-elses-hash', createdAt: new Date() })
+        .mockResolvedValueOnce(null);
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-1', organizationId: 'org-1', role: 'org_admin' });
+
+      await expect(service.refresh(refreshToken)).rejects.toThrow(UnauthorizedException);
+
+      // Pin that the grace lookup was actually constrained to the window -- this is the
+      // assertion that separates "forgives recent rotations" from "forgives any old token".
+      expect(prisma.refreshToken.findFirst).toHaveBeenNthCalledWith(2, expect.objectContaining({
+        where: expect.objectContaining({ revokedAt: { gte: expect.any(Date) } }),
+      }));
+      const gteArg = prisma.refreshToken.findFirst.mock.calls[1][0].where.revokedAt.gte as Date;
+      expect(Date.now() - gteArg.getTime()).toBeGreaterThanOrEqual(9_000);
+      expect(Date.now() - gteArg.getTime()).toBeLessThanOrEqual(11_000);
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1', familyId: 'family-1' },
+        data: { revokedAt: expect.any(Date) },
+      });
+      void tokenHash;
+    });
+
+    it('does not forgive a token whose hash does NOT match the recently-revoked row', async () => {
+      // The important negative: there IS a rotation within the window (the legitimate tab's),
+      // but the presented token is not that token. Forgiving here would let any junk token
+      // ride the grace path whenever the family had rotated recently. Mutation-checked:
+      // dropping the hash comparison must turn this red.
+      const refreshToken = jwt.sign({ sub: 'user-1', familyId: 'family-1' }, { secret: process.env.JWT_REFRESH_SECRET });
+      prisma.refreshToken.findFirst
+        .mockResolvedValueOnce({ id: 'rt-live', tokenHash: 'someone-elses-hash', createdAt: new Date() })
+        .mockResolvedValueOnce({ id: 'rt-old', tokenHash: 'a-different-recently-rotated-hash', revokedAt: new Date(Date.now() - 2_000) });
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-1', organizationId: 'org-1', role: 'org_admin' });
+
+      await expect(service.refresh(refreshToken)).rejects.toThrow(UnauthorizedException);
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1', familyId: 'family-1' },
+        data: { revokedAt: expect.any(Date) },
+      });
+    });
+
+    it('does not forgive a token that matches no row in the family at all', async () => {
+      // A forged or foreign token must not slip through the grace path.
+      const refreshToken = jwt.sign({ sub: 'user-1', familyId: 'family-1' }, { secret: process.env.JWT_REFRESH_SECRET });
+      prisma.refreshToken.findFirst
+        .mockResolvedValueOnce({ id: 'rt-live', tokenHash: 'someone-elses-hash', createdAt: new Date() })
+        .mockResolvedValueOnce(null);
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-1', organizationId: 'org-1', role: 'org_admin' });
+
+      await expect(service.refresh(refreshToken)).rejects.toThrow(UnauthorizedException);
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalled();
+    });
+  });
+
   it('audits reuse detection with isSuperAdmin: true when the token\'s user is genuinely absent', async () => {
     // organizationId: null with isSuperAdmin: false is unwritable under this table's RLS
     // block predicate (NULL = NULL is UNKNOWN in SQL, never TRUE) -- this must route
