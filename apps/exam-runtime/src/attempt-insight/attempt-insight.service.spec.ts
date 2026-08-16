@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { AttemptInsightService } from './attempt-insight.service';
 import { InsightClient } from './insight.client';
-import { TenantPrismaService, AiApiKeyResolverService } from '@exam-platform/shared';
+import { TenantPrismaService, AiApiKeyResolverService, AiNotConfiguredError } from '@exam-platform/shared';
 
 describe('AttemptInsightService', () => {
   let service: AttemptInsightService;
@@ -175,6 +175,32 @@ describe('AttemptInsightService', () => {
       where: { attemptId: 'attempt-1' },
       create: { attemptId: 'attempt-1', status: 'failed', summary: null },
       update: { status: 'failed', summary: null, generatedAt: expect.any(Date) },
+    });
+  });
+
+  it('records skipped_no_ai_key -- not failed -- when the org has no AI key, and never calls the LLM', async () => {
+    // Audit finding F2: an entire 104-candidate round at one org persisted as bare `failed`,
+    // and the report offered a Retry that could never succeed. A missing key is a distinct,
+    // permanent, user-fixable condition and must be recorded as one.
+    const readTx = {
+      answer: { findMany: jest.fn().mockResolvedValue([]) },
+      proctoringAnalysis: { findUnique: jest.fn().mockResolvedValue(null) },
+    };
+    const persistTx = { attemptInsight: { upsert: jest.fn() } };
+    tenantPrisma.forTenant
+      .mockResolvedValueOnce(attemptWithResult)
+      .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn({ attemptInsight: { upsert: jest.fn() } }))
+      .mockImplementationOnce((_ctx, fn) => fn(readTx))
+      .mockImplementationOnce((_ctx, fn) => fn(persistTx));
+    aiApiKeyResolver.resolve.mockRejectedValue(new AiNotConfiguredError('no key'));
+
+    await expect(service.analyze('attempt-1')).resolves.toBeUndefined();
+
+    expect(insightClient.generate).not.toHaveBeenCalled();
+    expect(persistTx.attemptInsight.upsert).toHaveBeenCalledWith({
+      where: { attemptId: 'attempt-1' },
+      create: { attemptId: 'attempt-1', status: 'skipped_no_ai_key', summary: null },
+      update: { status: 'skipped_no_ai_key', summary: null, generatedAt: expect.any(Date) },
     });
   });
 

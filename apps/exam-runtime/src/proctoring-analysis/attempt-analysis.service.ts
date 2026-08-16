@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { TenantPrismaService, AiApiKeyResolverService } from '@exam-platform/shared';
+import { TenantPrismaService, AiApiKeyResolverService, AiNotConfiguredError, AI_NOT_CONFIGURED_STATUS } from '@exam-platform/shared';
 import { ProctoringRiskClient } from './proctoring-risk.client';
 
 const CLEAN_SUMMARY = 'No proctoring events were recorded during this attempt.';
@@ -55,9 +55,18 @@ export class AttemptAnalysisService {
         }));
 
         try {
-          const aiProvider = await this.aiApiKeyResolver.resolve(organizationId);
-          const assessment = await this.proctoringRiskClient.assessRisk(timeline, aiProvider);
-          result = { status: 'completed', riskLevel: assessment.riskLevel, summary: assessment.summary };
+          // A MISSING key is recorded distinctly from a provider error -- see attempt-insight
+          // for the same guard and the reason (audit finding F2).
+          const aiProvider = await this.aiApiKeyResolver.resolve(organizationId).catch((error) => {
+            if (error instanceof AiNotConfiguredError) return null;
+            throw error;
+          });
+          if (!aiProvider) {
+            result = { status: AI_NOT_CONFIGURED_STATUS, riskLevel: null, summary: null };
+          } else {
+            const assessment = await this.proctoringRiskClient.assessRisk(timeline, aiProvider);
+            result = { status: 'completed', riskLevel: assessment.riskLevel, summary: assessment.summary };
+          }
         } catch (error) {
           this.logger.error(`Proctoring analysis failed for attempt ${attemptId}`, error as Error);
           result = { status: 'failed', riskLevel: null, summary: null };

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { TenantPrismaService, AiApiKeyResolverService } from '@exam-platform/shared';
+import { TenantPrismaService, AiApiKeyResolverService, AiNotConfiguredError, AI_NOT_CONFIGURED_STATUS } from '@exam-platform/shared';
 import { InsightClient, TopicBreakdownEntry } from './insight.client';
 
 @Injectable()
@@ -54,7 +54,16 @@ export class AttemptInsightService {
 
       let result: { status: string; summary: string | null };
       try {
-        const aiProvider = await this.aiApiKeyResolver.resolve(organizationId);
+        // Resolve the key as its own step so a MISSING key is recorded distinctly from a
+        // provider error. Both used to collapse into `failed`, and the report then offered a
+        // Retry for a condition retrying can never fix.
+        const aiProvider = await this.aiApiKeyResolver.resolve(organizationId).catch((error) => {
+          if (error instanceof AiNotConfiguredError) return null;
+          throw error;
+        });
+        if (!aiProvider) {
+          result = { status: AI_NOT_CONFIGURED_STATUS, summary: null };
+        } else {
         const summary = await this.insightClient.generate(
           {
             percentage: attempt.result.percentage,
@@ -67,6 +76,7 @@ export class AttemptInsightService {
           aiProvider,
         );
         result = { status: 'completed', summary };
+        }
       } catch (error) {
         this.logger.error(`Insight generation failed for attempt ${attemptId}`, error as Error);
         result = { status: 'failed', summary: null };

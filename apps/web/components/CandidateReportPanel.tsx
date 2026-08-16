@@ -382,6 +382,17 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
             <Card>
               <p className="text-sm text-gray-700">{insight.summary}</p>
             </Card>
+          ) : insight?.status === 'skipped_no_ai_key' ? (
+            // Deliberately NO Retry button: this is not a transient failure. An entire
+            // 104-candidate round at one org saw the "usually temporary -- try again" copy
+            // below for a missing key, and Retry could never have succeeded. Say what it is
+            // and where the fix lives.
+            <Card>
+              <p className="text-sm text-gray-700">
+                AI insight is not available because this organization has no AI provider configured. An organization
+                administrator can add one under Settings → Integrations; existing reports can then be regenerated.
+              </p>
+            </Card>
           ) : insight?.status === 'failed' ? (
             <Card>
               <p className="mb-3 text-sm text-red-700">Generation failed. This is usually temporary — try again.</p>

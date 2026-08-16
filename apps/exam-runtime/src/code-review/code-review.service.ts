@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { TenantPrismaService, AiApiKeyResolverService } from '@exam-platform/shared';
+import { TenantPrismaService, AiApiKeyResolverService, AiNotConfiguredError, AI_NOT_CONFIGURED_STATUS } from '@exam-platform/shared';
 import { CodeReviewClient } from './code-review.client';
 
 @Injectable()
@@ -43,7 +43,15 @@ export class CodeReviewService {
       result = { status: 'completed', suggestedMarks: 0, summary: 'No code was submitted for this question.' };
     } else {
       try {
-        const aiProvider = await this.aiApiKeyResolver.resolve(organizationId);
+        // A MISSING key is recorded distinctly from a provider error -- see attempt-insight
+        // for the same guard and the reason (audit finding F2).
+        const aiProvider = await this.aiApiKeyResolver.resolve(organizationId).catch((error) => {
+          if (error instanceof AiNotConfiguredError) return null;
+          throw error;
+        });
+        if (!aiProvider) {
+          result = { status: AI_NOT_CONFIGURED_STATUS, suggestedMarks: null, summary: null };
+        } else {
         const review = await this.codeReviewClient.review(
           {
             questionText: answer.question.text,
@@ -56,6 +64,7 @@ export class CodeReviewService {
         );
         result = { status: 'completed', suggestedMarks: review.suggestedMarks, summary: review.summary };
         chargeCredit = true;
+        }
       } catch (error) {
         this.logger.error(`Code review generation failed for answer ${answerId}`, error as Error);
         result = { status: 'failed', suggestedMarks: null, summary: null };

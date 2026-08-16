@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { AttemptAnalysisService } from './attempt-analysis.service';
 import { ProctoringRiskClient } from './proctoring-risk.client';
-import { TenantPrismaService, AiApiKeyResolverService } from '@exam-platform/shared';
+import { TenantPrismaService, AiApiKeyResolverService, AiNotConfiguredError } from '@exam-platform/shared';
 
 describe('AttemptAnalysisService', () => {
   let service: AttemptAnalysisService;
@@ -83,6 +83,28 @@ describe('AttemptAnalysisService', () => {
       where: { attemptId: 'attempt-1' },
       create: { attemptId: 'attempt-1', status: 'completed', riskLevel: 'medium', summary: 'One tab switch.' },
       update: { status: 'completed', riskLevel: 'medium', summary: 'One tab switch.', analyzedAt: expect.any(Date) },
+    });
+  });
+
+  it('records skipped_no_ai_key -- not failed -- when the org has no AI key, and never calls the LLM', async () => {
+    // Audit finding F2: 104 attempts at one org persisted as bare `failed` for a missing key.
+    const events = [{ eventType: 'tab_switch', severity: 'medium', occurredAt: new Date('2026-07-09T10:02:00Z') }];
+    const readTx = { proctoringEvent: { findMany: jest.fn().mockResolvedValue(events) } };
+    const persistTx = { proctoringAnalysis: { upsert: jest.fn() } };
+    tenantPrisma.forTenant
+      .mockResolvedValueOnce(attemptWithExam)
+      .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn({ proctoringAnalysis: { upsert: jest.fn() } }))
+      .mockImplementationOnce((_ctx, fn) => fn(readTx))
+      .mockImplementationOnce((_ctx, fn) => fn(persistTx));
+    aiApiKeyResolver.resolve.mockRejectedValue(new AiNotConfiguredError('no key'));
+
+    await expect(service.analyze('attempt-1')).resolves.toBeUndefined();
+
+    expect(proctoringRiskClient.assessRisk).not.toHaveBeenCalled();
+    expect(persistTx.proctoringAnalysis.upsert).toHaveBeenCalledWith({
+      where: { attemptId: 'attempt-1' },
+      create: { attemptId: 'attempt-1', status: 'skipped_no_ai_key', riskLevel: null, summary: null },
+      update: { status: 'skipped_no_ai_key', riskLevel: null, summary: null, analyzedAt: expect.any(Date) },
     });
   });
 
