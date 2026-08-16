@@ -5,7 +5,7 @@ import { QueryProvider } from '../../../lib/query-provider';
 import { ToastProvider } from '../../../components/ui';
 
 // A full, valid analytics payload. The dashboard reads nested fields
-// (scores.count, integrity.flaggedRate, ...), so a stub must supply the whole
+// (scores.count, integrity.highConcernRate, ...), so a stub must supply the whole
 // shape or the panels throw -- the production API always returns it complete.
 function analyticsFixture(overrides: Record<string, unknown> = {}) {
   return {
@@ -20,11 +20,12 @@ function analyticsFixture(overrides: Record<string, unknown> = {}) {
     },
     integrity: {
       submittedAttempts: 28,
-      cleanAttempts: 22,
-      flaggedAttempts: 6,
-      flaggedRate: 21,
+      highConcern: 3,
+      review: 19,
+      clear: 6,
+      unanalyzed: 0,
+      highConcernRate: 11,
       byType: [{ type: 'tab_switch', count: 9 }],
-      bySeverity: [{ severity: 'high', count: 3 }],
     },
     funnel: { invited: 100, started: 60, submitted: 55, passed: 22, completionRate: 92, abandoned: 5 },
     timing: { avgMinutes: 34, medianMinutes: 31, distribution: [{ bucket: '<5m', count: 0 }, { bucket: '5-15m', count: 4 }] },
@@ -195,13 +196,62 @@ describe('DashboardPage', () => {
     expect(screen.getByText('48–78')).toBeInTheDocument(); // middle-50% range p25-p75
   });
 
-  it('renders the proctoring-integrity panel with the flagged rate', async () => {
+  // Old tests here pinned the two-segment (clean/flagged) donut and "N flagged" copy --
+  // both counter-derived metrics that Task 1/3 replaced with stored-verdict counts.
+
+  it('headlines high_concern only -- review does not drive the colour', async () => {
+    // THE test this design exists for: 195 review of 265 must NOT read as an alarm.
+    mockDashboardFetch(
+      emptySummary,
+      analyticsFixture({
+        integrity: { submittedAttempts: 265, highConcern: 23, review: 195, clear: 47, unanalyzed: 0, highConcernRate: 9, byType: [] },
+      }),
+    );
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Proctoring Integrity')).toBeInTheDocument());
+    const headline = screen.getByText('9%');
+    expect(headline).toBeInTheDocument();
+    expect(screen.getByText(/need review/i)).toBeInTheDocument();
+    // amber at 9% (>= 8, < 15), not danger -- review being the overwhelming majority must not flip this to red.
+    expect(headline).toHaveClass('text-status-warning');
+    expect(headline).not.toHaveClass('text-status-danger');
+  });
+
+  it('renders the unanalyzed row only when non-zero', async () => {
+    mockDashboardFetch(
+      emptySummary,
+      analyticsFixture({
+        integrity: { submittedAttempts: 28, highConcern: 3, review: 19, clear: 6, unanalyzed: 0, highConcernRate: 11, byType: [] },
+      }),
+    );
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Proctoring Integrity')).toBeInTheDocument());
+    expect(screen.queryByText(/not analysed/)).not.toBeInTheDocument();
+  });
+
+  it('renders the unanalyzed row when present', async () => {
+    mockDashboardFetch(
+      emptySummary,
+      analyticsFixture({
+        integrity: { submittedAttempts: 28, highConcern: 3, review: 17, clear: 6, unanalyzed: 2, highConcernRate: 11, byType: [] },
+      }),
+    );
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Proctoring Integrity')).toBeInTheDocument());
+    expect(screen.getByText(/2 not analysed/)).toBeInTheDocument();
+  });
+
+  it('shows the three-way breakdown as context', async () => {
     mockDashboardFetch(emptySummary);
     renderPage();
 
     await waitFor(() => expect(screen.getByText('Proctoring Integrity')).toBeInTheDocument());
-    expect(screen.getByText('21%')).toBeInTheDocument(); // flaggedRate
-    expect(screen.getByText(/6 flagged/)).toBeInTheDocument();
+    expect(screen.getByText(/3 high concern/)).toBeInTheDocument();
+    expect(screen.getByText(/19 review/)).toBeInTheDocument();
+    expect(screen.getByText(/6 clear/)).toBeInTheDocument();
   });
 
   it('renders the hiring funnel and exam-quality table from analytics', async () => {

@@ -787,11 +787,12 @@ export interface DashboardAnalytics {
   };
   integrity: {
     submittedAttempts: number;
-    cleanAttempts: number;
-    flaggedAttempts: number;
-    flaggedRate: number;
+    highConcern: number;
+    review: number;
+    clear: number;
+    unanalyzed: number;
+    highConcernRate: number;
     byType: { type: string; count: number }[];
-    bySeverity: { severity: string; count: number }[];
   };
   funnel: DashboardFunnel & { completionRate: number; abandoned: number };
   timing: {

@@ -108,9 +108,14 @@ function ScorePanel({ scores }: { scores: DashboardAnalytics['scores'] }) {
 // ---- 2. Integrity & proctoring ----
 function IntegrityPanel({ integrity }: { integrity: DashboardAnalytics['integrity'] }) {
   const hasData = integrity.submittedAttempts > 0;
+  // Only highConcernRate drives the headline colour/threshold -- review is the normal
+  // resting state (most attempts land there) and must never read as an alarm.
+  const rate = integrity.highConcernRate;
+  const headlineClass = rate >= 15 ? 'text-status-danger' : rate >= 8 ? 'text-status-warning' : 'text-recruiter-text';
   const donut = [
-    { name: 'Clean', value: integrity.cleanAttempts, fill: C.success },
-    { name: 'Flagged', value: integrity.flaggedAttempts, fill: C.danger },
+    { name: 'High concern', value: integrity.highConcern, fill: C.danger },
+    { name: 'Review', value: integrity.review, fill: C.warning },
+    { name: 'Clear', value: integrity.clear, fill: C.success },
   ];
   const topTypes = integrity.byType.slice(0, 5).map((t) => ({ ...t, label: t.type.replace(/_/g, ' ') }));
   return (
@@ -121,7 +126,7 @@ function IntegrityPanel({ integrity }: { integrity: DashboardAnalytics['integrit
     // available height instead makes the card read as intentionally laid out.
     <Card className="flex flex-col">
       <PanelHeader
-        icon={integrity.flaggedRate > 0 ? ShieldAlert : ShieldCheck}
+        icon={integrity.highConcern > 0 ? ShieldAlert : ShieldCheck}
         title="Proctoring Integrity"
         hint={hasData ? `${integrity.submittedAttempts} attempts` : undefined}
       />
@@ -141,13 +146,15 @@ function IntegrityPanel({ integrity }: { integrity: DashboardAnalytics['integrit
                 </PieChart>
               </ResponsiveContainer>
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                <span className={`text-lg font-bold tabular-nums ${integrity.flaggedRate > 20 ? 'text-status-danger' : 'text-recruiter-text'}`}>{integrity.flaggedRate}%</span>
-                <span className="text-[10px] uppercase text-recruiter-text-tertiary">flagged</span>
+                <span className={`text-lg font-bold tabular-nums ${headlineClass}`}>{rate}%</span>
+                <span className="text-[10px] uppercase text-recruiter-text-tertiary">need review</span>
               </div>
             </div>
-            <div className="mt-2 flex gap-3 text-[11px]">
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: C.success }} />{integrity.cleanAttempts} clean</span>
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: C.danger }} />{integrity.flaggedAttempts} flagged</span>
+            <div className="mt-2 flex flex-wrap justify-center gap-3 text-[11px]">
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: C.danger }} />{integrity.highConcern} high concern</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: C.warning }} />{integrity.review} review</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: C.success }} />{integrity.clear} clear</span>
+              {integrity.unanalyzed > 0 && <span className="w-full text-center text-recruiter-text-tertiary">{integrity.unanalyzed} not analysed</span>}
             </div>
           </div>
           <div>
