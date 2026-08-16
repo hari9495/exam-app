@@ -10,7 +10,7 @@ import { useCandidates } from '../../../lib/hooks/useCandidates';
 import { DashboardTrendMetric, DashboardWindow } from '../../../lib/types';
 import { Card, Button } from '../../../components/ui';
 import { Sparkline } from '../../../components/charts/Sparkline';
-import { AnalyticsPanels } from '../../../components/dashboard/AnalyticsPanels';
+import { AnalyticsPanels, QuestionHealthPanel } from '../../../components/dashboard/AnalyticsPanels';
 import {
   DashboardFilterBar,
   defaultFilterState,
@@ -94,7 +94,7 @@ export default function DashboardPage() {
   // window; a specific month/year/custom range applies to the analytical panels below.
   const summaryWindow: DashboardWindow = filters.timeMode === 'relative' ? filters.window : 'all';
   const { data, isLoading, isError } = useDashboardSummary(summaryWindow);
-  const { data: analytics } = useDashboardAnalytics(toAnalyticsFilters(filters));
+  const { data: analytics, isError: analyticsError } = useDashboardAnalytics(toAnalyticsFilters(filters));
   const { data: examsData } = useExams(undefined, { pageSize: 200 });
   const { data: candidatesData } = useCandidates({ pageSize: 200 });
   const exams = (examsData?.data ?? []).map((e) => ({ id: e.id, title: e.title }));
@@ -175,14 +175,22 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.16 }} className="mb-5">
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.16 }} className="mb-5 flex flex-col gap-4">
         {analytics ? (
           <AnalyticsPanels data={analytics} />
+        ) : analyticsError ? (
+          // Previously this branch did not exist: isError was discarded, so a failed analytics
+          // fetch sat on "Loading analytics…" indefinitely and looked like a slow request.
+          <Card>
+            <p className="py-8 text-center text-sm text-status-danger">Failed to load analytics.</p>
+          </Card>
         ) : (
           <Card>
             <p className="py-8 text-center text-sm text-recruiter-text-tertiary">Loading analytics…</p>
           </Card>
         )}
+        {/* Fetches on its own; must not depend on the analytics gate above. */}
+        <QuestionHealthPanel />
       </motion.div>
 
       {summary.upcomingExams.length > 0 && (

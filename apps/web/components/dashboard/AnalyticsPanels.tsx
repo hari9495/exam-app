@@ -312,7 +312,11 @@ function ExamQualityPanel({ examQuality, questionDifficulty }: Pick<DashboardAna
 // it deliberately ignores the dashboard filter bar -- useFlaggedQuestions() takes no filter
 // args and ANALYTICS_FILTERS never reach its query key -- so the footer says so explicitly
 // rather than let a recruiter assume the panel narrowed along with everything above it.
-function QuestionHealthPanel() {
+// Exported and mounted by the PAGE, not by AnalyticsPanels, deliberately. This panel fetches
+// independently of the filtered analytics payload -- that independence is the point of its
+// separate query -- so it must not sit behind the page's "analytics loaded?" gate, or a
+// failing /dashboard/analytics would hide the one panel that never needed it.
+export function QuestionHealthPanel() {
   const { data, isLoading, isError } = useFlaggedQuestions();
   const items = data ?? [];
   // The authoritative classification is the flags array (see classifyFlags in
@@ -399,7 +403,6 @@ export function AnalyticsPanels({ data }: { data: DashboardAnalytics }) {
         <ThroughputPanel funnel={data.funnel} timing={data.timing} />
         <ExamQualityPanel examQuality={data.examQuality} questionDifficulty={data.questionDifficulty} />
       </div>
-      <QuestionHealthPanel />
     </div>
   );
 }

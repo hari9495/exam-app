@@ -415,6 +415,30 @@ describe('DashboardPage', () => {
     await waitFor(() => expect(screen.getByText('Failed to load question health.')).toBeInTheDocument());
   });
 
+  it('question health panel: still renders, and analytics shows an error, when the analytics fetch fails', async () => {
+    // The mirror image of the test above. QuestionHealthPanel fetches independently, so a
+    // failing /dashboard/analytics must not take it down -- and the analytics area must say it
+    // failed rather than sit on "Loading analytics…" forever, which is what discarding
+    // useDashboardAnalytics's isError did.
+    global.fetch = jest.fn(async (url) => {
+      const u = String(url);
+      if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      if (u.includes('/dashboard/summary')) return new Response(JSON.stringify(emptySummary), { status: 200 });
+      if (u.includes('/dashboard/analytics')) return new Response(JSON.stringify({ message: 'Server error' }), { status: 500 });
+      if (u.includes('/dashboard/trend')) return new Response(JSON.stringify({ points: [] }), { status: 200 });
+      if (u.includes('/analytics/questions/flagged')) return new Response(JSON.stringify(flaggedFixture()), { status: 200 });
+      if (u.includes('/exams')) return new Response(JSON.stringify({ data: [], total: 0, page: 1, pageSize: 200, totalPages: 0 }), { status: 200 });
+      if (u.includes('/candidates')) return new Response(JSON.stringify({ data: [], total: 0, page: 1, pageSize: 200, totalPages: 0 }), { status: 200 });
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Question Bank Health')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Failed to load analytics.')).toBeInTheDocument());
+    expect(screen.queryByText('Loading analytics…')).not.toBeInTheDocument();
+    expect(screen.queryByText('Score Distribution')).not.toBeInTheDocument();
+  });
+
   it('shows an error state when the summary fetch fails', async () => {
     global.fetch = jest.fn(async (url) => {
       const u = String(url);
