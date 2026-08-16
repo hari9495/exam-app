@@ -205,6 +205,142 @@ describe('AuthProvider', () => {
     expect(auth?.role).toBe('recruiter');
   });
 
+  describe('cross-tab token sharing (F3, ADO #6981)', () => {
+    // jsdom has no BroadcastChannel. A minimal in-process stub: every instance on the same
+    // name receives every other instance's postMessage, which is exactly the contract that
+    // matters here and lets the test play "the other tab".
+    class StubChannel {
+      static byName = new Map<string, Set<StubChannel>>();
+      onmessage: ((e: MessageEvent) => void) | null = null;
+      constructor(public name: string) {
+        if (!StubChannel.byName.has(name)) StubChannel.byName.set(name, new Set());
+        StubChannel.byName.get(name)!.add(this);
+      }
+      postMessage(data: unknown) {
+        for (const peer of StubChannel.byName.get(this.name)!) {
+          if (peer !== this) peer.onmessage?.({ data } as MessageEvent);
+        }
+      }
+      close() {
+        StubChannel.byName.get(this.name)?.delete(this);
+      }
+    }
+    const originalBC = (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel;
+    beforeEach(() => {
+      StubChannel.byName.clear();
+      (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel = StubChannel;
+    });
+    afterEach(() => {
+      (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel = originalBC;
+    });
+
+    it('adopts a token broadcast by another tab instead of refreshing for itself', async () => {
+      let refreshCalls = 0;
+      global.fetch = jest.fn(async (url) => {
+        if (String(url).endsWith('/auth/refresh')) {
+          refreshCalls += 1;
+          return new Response(JSON.stringify({ accessToken: fakeJwt({ sub: 'user-X', role: 'recruiter' }) }), { status: 200 });
+        }
+        throw new Error(`Unexpected fetch to ${url}`);
+      }) as unknown as typeof fetch;
+
+      renderWithQueryClient(
+        <AuthProvider>
+          <Probe />
+        </AuthProvider>,
+      );
+      // The mount refresh is expected: exactly one call.
+      await waitFor(() => expect(refreshCalls).toBe(1));
+
+      // "Another tab" completes a refresh and broadcasts its result.
+      // Real tokens always carry `sub`; the same-user guard is what makes adoption safe, so
+      // this fixture carries the SAME sub as this tab's token -- the case that must be adopted.
+      const otherTab = new StubChannel('exam-platform-staff-auth');
+      const fromOtherTab = fakeJwt({ sub: 'user-X', role: 'org_admin' });
+      await act(async () => {
+        otherTab.postMessage({ type: 'token', accessToken: fromOtherTab });
+      });
+
+      // This tab adopted it -- the exposed access token IS the other tab's token...
+      await waitFor(() => expect(screen.getByText(`token:${fromOtherTab} slug:none`)).toBeInTheDocument());
+      // ...and crucially did NOT go to the server for its own rotation. That second call is
+      // the one that used to arrive with a just-rotated token and log everyone out.
+      expect(refreshCalls).toBe(1);
+    });
+
+    it('ignores a broadcast token that belongs to a DIFFERENT user (shared machine, two accounts)', async () => {
+      // Same origin is not the same person. If user Y logs in beside user X's tab, X's tab must
+      // not silently become Y's session with X's cached data still on screen.
+      const mine = fakeJwt({ sub: 'user-X', role: 'recruiter' });
+      global.fetch = jest.fn(async (url) => {
+        if (String(url).endsWith('/auth/refresh')) {
+          return new Response(JSON.stringify({ accessToken: mine }), { status: 200 });
+        }
+        throw new Error(`Unexpected fetch to ${url}`);
+      }) as unknown as typeof fetch;
+
+      renderWithQueryClient(
+        <AuthProvider>
+          <Probe />
+        </AuthProvider>,
+      );
+      await waitFor(() => expect(screen.getByText(`token:${mine} slug:none`)).toBeInTheDocument());
+
+      const otherTab = new StubChannel('exam-platform-staff-auth');
+      const someoneElses = fakeJwt({ sub: 'user-Y', role: 'org_admin' });
+      await act(async () => {
+        otherTab.postMessage({ type: 'token', accessToken: someoneElses });
+      });
+
+      // Still user X's token. Not adopted.
+      expect(screen.getByText(`token:${mine} slug:none`)).toBeInTheDocument();
+    });
+
+    it('broadcasts its own successful refresh so other tabs can adopt it', async () => {
+      global.fetch = jest.fn(async (url) => {
+        if (String(url).endsWith('/auth/refresh')) {
+          return new Response(JSON.stringify({ accessToken: fakeJwt({ role: 'recruiter' }) }), { status: 200 });
+        }
+        throw new Error(`Unexpected fetch to ${url}`);
+      }) as unknown as typeof fetch;
+      const received: unknown[] = [];
+      const listener = new StubChannel('exam-platform-staff-auth');
+      listener.onmessage = (e) => received.push(e.data);
+
+      renderWithQueryClient(
+        <AuthProvider>
+          <Probe />
+        </AuthProvider>,
+      );
+
+      await waitFor(() => expect(received.length).toBeGreaterThan(0));
+      expect(received[0]).toMatchObject({ type: 'token' });
+    });
+
+    it('signs out when another tab reports the session is gone', async () => {
+      global.fetch = jest.fn(async (url) => {
+        if (String(url).endsWith('/auth/refresh')) {
+          return new Response(JSON.stringify({ accessToken: fakeJwt({ role: 'recruiter' }) }), { status: 200 });
+        }
+        throw new Error(`Unexpected fetch to ${url}`);
+      }) as unknown as typeof fetch;
+
+      renderWithQueryClient(
+        <AuthProvider>
+          <Probe />
+        </AuthProvider>,
+      );
+      await waitFor(() => expect(screen.getByText(/^token:/)).toBeInTheDocument());
+
+      const otherTab = new StubChannel('exam-platform-staff-auth');
+      await act(async () => {
+        otherTab.postMessage({ type: 'signed-out' });
+      });
+
+      await waitFor(() => expect(screen.getByText(/no-token/)).toBeInTheDocument());
+    });
+  });
+
   it('leaves accessToken null when the silent refresh fails (no prior session)', async () => {
     global.fetch = jest.fn(async () => new Response(JSON.stringify({ message: 'Refresh token required' }), { status: 401 })) as unknown as typeof fetch;
 
