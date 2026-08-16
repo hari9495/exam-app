@@ -37,13 +37,15 @@ function analyticsFixture(overrides: Record<string, unknown> = {}) {
   };
 }
 
-// 2 negative-discrimination (likely miskeyed) + 1 weak, matching the production shape the
-// brief calls out (5 miskeyed + 50 weak today) at test-sized numbers.
+// 2 miskeyed-suspect (negative discrimination) + 1 weak-discrimination, matching the
+// production shape the brief calls out (5 miskeyed + 50 weak today) at test-sized numbers.
+// The classification lives in `flags`, not the sign of `discrimination` -- these codes are
+// what the authoritative classifyFlags() in item-statistics.ts would have produced.
 function flaggedFixture() {
   return [
-    { questionId: 'q-neg-1', text: 'Which of these is NOT a valid HTTP method?', discrimination: -0.4, responses: 25, percentCorrect: 0.3, flags: [], options: [], hasEnoughData: true },
-    { questionId: 'q-neg-2', text: 'What does CSS stand for?', discrimination: -0.1, responses: 30, percentCorrect: 0.4, flags: [], options: [], hasEnoughData: true },
-    { questionId: 'q-weak-1', text: 'Explain closures in JavaScript', discrimination: 0.05, responses: 22, percentCorrect: 0.5, flags: [], options: [], hasEnoughData: true },
+    { questionId: 'q-neg-1', text: 'Which of these is NOT a valid HTTP method?', discrimination: -0.4, responses: 25, percentCorrect: 0.3, flags: [{ code: 'miskeyed_suspect', severity: 'critical', message: 'Stronger candidates answered this correctly less often than weaker ones.' }], options: [], hasEnoughData: true },
+    { questionId: 'q-neg-2', text: 'What does CSS stand for?', discrimination: -0.1, responses: 30, percentCorrect: 0.4, flags: [{ code: 'miskeyed_suspect', severity: 'critical', message: 'Stronger candidates answered this correctly less often than weaker ones.' }], options: [], hasEnoughData: true },
+    { questionId: 'q-weak-1', text: 'Explain closures in JavaScript', discrimination: 0.05, responses: 22, percentCorrect: 0.5, flags: [{ code: 'weak_discrimination', severity: 'warning', message: 'This question barely separates stronger candidates from weaker ones.' }], options: [], hasEnoughData: true },
   ];
 }
 
@@ -339,6 +341,42 @@ describe('DashboardPage', () => {
     expect(rows[0]).toHaveTextContent('-0.40');
     expect(rows[1]).toHaveAttribute('href', '/questions/q-neg-2/edit'); // -0.10
     expect(rows[2]).toHaveAttribute('href', '/questions/q-weak-1/edit'); // 0.05, least negative last
+  });
+
+  it('question health panel: a question flagged only for difficulty (null discrimination) counts in neither headline, renders "—", and sorts after measured items', async () => {
+    // Mirrors flagged() including questions where pointBiserial returned null (UNMEASURABLE)
+    // because they were flagged only on too_easy/very_hard -- not on discrimination at all.
+    const flagged = [
+      ...flaggedFixture(),
+      {
+        questionId: 'q-null-1',
+        text: 'A question almost nobody answers correctly',
+        discrimination: null,
+        responses: 21,
+        percentCorrect: 0.05,
+        flags: [{ code: 'very_hard', severity: 'info', message: 'Very few candidates answer this correctly.' }],
+        options: [],
+        hasEnoughData: true,
+      },
+    ];
+    mockDashboardFetch(emptySummary, analyticsFixture(), flagged);
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Question Bank Health')).toBeInTheDocument());
+    const panel = within(questionHealthPanel());
+
+    // Neither headline: still exactly 2 miskeyed and 1 weak -- the difficulty-only,
+    // null-discrimination row must not be coalesced into either bucket.
+    expect(panel.getByText('2')).toBeInTheDocument();
+    expect(panel.getByText('1 weak discrimination')).toBeInTheDocument();
+
+    const rows = panel.getAllByRole('link');
+    expect(rows).toHaveLength(4);
+    // Null discrimination has no position on the ascending-discrimination scale, so it must
+    // sort after every measured item, not coalesce to 0 and land mid-list.
+    expect(rows[3]).toHaveAttribute('href', '/questions/q-null-1/edit');
+    expect(rows[3]).toHaveTextContent('—');
+    expect(rows[3]).not.toHaveTextContent('0.00');
   });
 
   it('question health panel: shows the positive empty state with honest subtext when nothing is flagged', async () => {

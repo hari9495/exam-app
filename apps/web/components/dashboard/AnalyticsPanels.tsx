@@ -315,11 +315,23 @@ function ExamQualityPanel({ examQuality, questionDifficulty }: Pick<DashboardAna
 function QuestionHealthPanel() {
   const { data, isLoading, isError } = useFlaggedQuestions();
   const items = data ?? [];
-  const negative = items.filter((q) => (q.discrimination ?? 0) < 0);
-  const weak = items.length - negative.length;
+  // The authoritative classification is the flags array (see classifyFlags in
+  // item-statistics.ts), not the sign of `discrimination`. flagged() also returns questions
+  // flagged only for too_easy/very_hard -- including ones where discrimination is null because
+  // it was unmeasurable -- and those belong in neither headline count.
+  const miskeyed = items.filter((q) => q.flags.some((f) => f.code === 'miskeyed_suspect'));
+  const weak = items.filter(
+    (q) => q.flags.some((f) => f.code === 'weak_discrimination') && !q.flags.some((f) => f.code === 'miskeyed_suspect'),
+  );
   const worstFirst = items
     .slice()
-    .sort((a, b) => (a.discrimination ?? 0) - (b.discrimination ?? 0))
+    .sort((a, b) => {
+      // Null has no position on the discrimination scale -- sort it after every measured
+      // item instead of coalescing to 0 and landing it mid-list.
+      if (a.discrimination === null) return b.discrimination === null ? 0 : 1;
+      if (b.discrimination === null) return -1;
+      return a.discrimination - b.discrimination;
+    })
     .slice(0, 5);
 
   return (
@@ -346,8 +358,8 @@ function QuestionHealthPanel() {
       ) : (
         <>
           <div className="mb-3 flex items-center gap-4">
-            <Stat value={String(negative.length)} label="Likely miskeyed" tone={negative.length > 0 ? 'bad' : 'good'} />
-            <span className="text-xs text-recruiter-text-tertiary">{weak} weak discrimination</span>
+            <Stat value={String(miskeyed.length)} label="Likely miskeyed" tone={miskeyed.length > 0 ? 'bad' : 'good'} />
+            <span className="text-xs text-recruiter-text-tertiary">{weak.length} weak discrimination</span>
           </div>
           <ul className="flex flex-col gap-1">
             {worstFirst.map((q) => (
@@ -360,9 +372,9 @@ function QuestionHealthPanel() {
                     {q.text ?? 'Untitled question'}
                   </span>
                   <span
-                    className={`text-xs font-semibold tabular-nums ${(q.discrimination ?? 0) < 0 ? 'text-status-danger' : 'text-recruiter-text-secondary'}`}
+                    className={`text-xs font-semibold tabular-nums ${q.discrimination !== null && q.discrimination < 0 ? 'text-status-danger' : 'text-recruiter-text-secondary'}`}
                   >
-                    {(q.discrimination ?? 0).toFixed(2)}
+                    {q.discrimination !== null ? q.discrimination.toFixed(2) : '—'}
                   </span>
                   <span className="w-16 shrink-0 text-right text-[11px] tabular-nums text-recruiter-text-tertiary">{q.responses} resp.</span>
                 </Link>
