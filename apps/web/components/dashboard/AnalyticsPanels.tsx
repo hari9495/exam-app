@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import {
   Bar,
   BarChart,
@@ -11,9 +12,10 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { ShieldCheck, ShieldAlert, Timer, Target, TrendingDown, Users2 } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Timer, Target, TrendingDown, Users2, ListChecks } from 'lucide-react';
 import { Card } from '../ui';
 import { DashboardAnalytics } from '../../lib/types';
+import { useFlaggedQuestions } from '../../lib/hooks/useQuestions';
 
 // Charts read against the recruiter palette rather than recharts' defaults, so the
 // dashboard looks like one system. Semantic colours (pass=green, flagged=red) are
@@ -108,9 +110,14 @@ function ScorePanel({ scores }: { scores: DashboardAnalytics['scores'] }) {
 // ---- 2. Integrity & proctoring ----
 function IntegrityPanel({ integrity }: { integrity: DashboardAnalytics['integrity'] }) {
   const hasData = integrity.submittedAttempts > 0;
+  // Only highConcernRate drives the headline colour/threshold -- review is the normal
+  // resting state (most attempts land there) and must never read as an alarm.
+  const rate = integrity.highConcernRate;
+  const headlineClass = rate >= 15 ? 'text-status-danger' : rate >= 8 ? 'text-status-warning' : 'text-recruiter-text';
   const donut = [
-    { name: 'Clean', value: integrity.cleanAttempts, fill: C.success },
-    { name: 'Flagged', value: integrity.flaggedAttempts, fill: C.danger },
+    { name: 'High concern', value: integrity.highConcern, fill: C.danger },
+    { name: 'Review', value: integrity.review, fill: C.warning },
+    { name: 'Clear', value: integrity.clear, fill: C.success },
   ];
   const topTypes = integrity.byType.slice(0, 5).map((t) => ({ ...t, label: t.type.replace(/_/g, ' ') }));
   return (
@@ -121,7 +128,7 @@ function IntegrityPanel({ integrity }: { integrity: DashboardAnalytics['integrit
     // available height instead makes the card read as intentionally laid out.
     <Card className="flex flex-col">
       <PanelHeader
-        icon={integrity.flaggedRate > 0 ? ShieldAlert : ShieldCheck}
+        icon={integrity.highConcern > 0 ? ShieldAlert : ShieldCheck}
         title="Proctoring Integrity"
         hint={hasData ? `${integrity.submittedAttempts} attempts` : undefined}
       />
@@ -141,13 +148,15 @@ function IntegrityPanel({ integrity }: { integrity: DashboardAnalytics['integrit
                 </PieChart>
               </ResponsiveContainer>
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                <span className={`text-lg font-bold tabular-nums ${integrity.flaggedRate > 20 ? 'text-status-danger' : 'text-recruiter-text'}`}>{integrity.flaggedRate}%</span>
-                <span className="text-[10px] uppercase text-recruiter-text-tertiary">flagged</span>
+                <span className={`text-lg font-bold tabular-nums ${headlineClass}`}>{rate}%</span>
+                <span className="text-[10px] uppercase text-recruiter-text-tertiary">need review</span>
               </div>
             </div>
-            <div className="mt-2 flex gap-3 text-[11px]">
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: C.success }} />{integrity.cleanAttempts} clean</span>
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: C.danger }} />{integrity.flaggedAttempts} flagged</span>
+            <div className="mt-2 flex flex-wrap justify-center gap-3 text-[11px]">
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: C.danger }} />{integrity.highConcern} high concern</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: C.warning }} />{integrity.review} review</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: C.success }} />{integrity.clear} clear</span>
+              {integrity.unanalyzed > 0 && <span className="w-full text-center text-recruiter-text-tertiary">{integrity.unanalyzed} not analysed</span>}
             </div>
           </div>
           <div>
@@ -297,6 +306,88 @@ function ExamQualityPanel({ examQuality, questionDifficulty }: Pick<DashboardAna
   );
 }
 
+// ---- 5. Question bank health (item analytics) ----
+// Org-wide and time-independent: it reads the flagged-question aggregate, which the backend
+// computes across every exam and every submitted attempt ever. Unlike the other three panels
+// it deliberately ignores the dashboard filter bar -- useFlaggedQuestions() takes no filter
+// args and ANALYTICS_FILTERS never reach its query key -- so the footer says so explicitly
+// rather than let a recruiter assume the panel narrowed along with everything above it.
+function QuestionHealthPanel() {
+  const { data, isLoading, isError } = useFlaggedQuestions();
+  const items = data ?? [];
+  // The authoritative classification is the flags array (see classifyFlags in
+  // item-statistics.ts), not the sign of `discrimination`. flagged() also returns questions
+  // flagged only for too_easy/very_hard -- including ones where discrimination is null because
+  // it was unmeasurable -- and those belong in neither headline count.
+  const miskeyed = items.filter((q) => q.flags.some((f) => f.code === 'miskeyed_suspect'));
+  const weak = items.filter(
+    (q) => q.flags.some((f) => f.code === 'weak_discrimination') && !q.flags.some((f) => f.code === 'miskeyed_suspect'),
+  );
+  const worstFirst = items
+    .slice()
+    .sort((a, b) => {
+      // Null has no position on the discrimination scale -- sort it after every measured
+      // item instead of coalescing to 0 and landing it mid-list.
+      if (a.discrimination === null) return b.discrimination === null ? 0 : 1;
+      if (b.discrimination === null) return -1;
+      return a.discrimination - b.discrimination;
+    })
+    .slice(0, 5);
+
+  return (
+    <Card>
+      <PanelHeader icon={ListChecks} title="Question Bank Health" />
+      {isLoading ? (
+        <div className="animate-pulse space-y-2" aria-hidden="true">
+          <div className="h-14 rounded-lg bg-recruiter-bg-subtle" />
+          <div className="h-4 w-2/3 rounded bg-recruiter-bg-subtle" />
+          <div className="h-4 w-1/2 rounded bg-recruiter-bg-subtle" />
+        </div>
+      ) : isError ? (
+        <p role="alert" className="text-sm text-status-danger">
+          Failed to load question health.
+        </p>
+      ) : items.length === 0 ? (
+        // The endpoint only returns questions past MIN_RESPONSES, so an empty array can't be
+        // told apart from "nothing measured yet" here -- treated as the positive state, with
+        // an honest subtext instead of a fabricated third "not enough data" state.
+        <EmptyNote>
+          <span className="block font-semibold text-status-success">No question issues detected</span>
+          <span className="mt-1 block text-xs text-recruiter-text-tertiary">Questions with at least 20 responses are measured</span>
+        </EmptyNote>
+      ) : (
+        <>
+          <div className="mb-3 flex items-center gap-4">
+            <Stat value={String(miskeyed.length)} label="Likely miskeyed" tone={miskeyed.length > 0 ? 'bad' : 'good'} />
+            <span className="text-xs text-recruiter-text-tertiary">{weak.length} weak discrimination</span>
+          </div>
+          <ul className="flex flex-col gap-1">
+            {worstFirst.map((q) => (
+              <li key={q.questionId}>
+                <Link
+                  href={`/questions/${q.questionId}/edit`}
+                  className="flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-recruiter-bg-subtle"
+                >
+                  <span className="min-w-0 flex-1 truncate text-xs text-recruiter-text" title={q.text}>
+                    {q.text ?? 'Untitled question'}
+                  </span>
+                  <span
+                    className={`text-xs font-semibold tabular-nums ${q.discrimination !== null && q.discrimination < 0 ? 'text-status-danger' : 'text-recruiter-text-secondary'}`}
+                  >
+                    {q.discrimination !== null ? q.discrimination.toFixed(2) : '—'}
+                  </span>
+                  <span className="w-16 shrink-0 text-right text-[11px] tabular-nums text-recruiter-text-tertiary">{q.responses} resp.</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      <p className="mt-4 text-[11px] text-recruiter-text-tertiary">All exams, all time · questions with ≥ 20 responses</p>
+    </Card>
+  );
+}
+
 export function AnalyticsPanels({ data }: { data: DashboardAnalytics }) {
   return (
     <div className="flex flex-col gap-4">
@@ -308,6 +399,7 @@ export function AnalyticsPanels({ data }: { data: DashboardAnalytics }) {
         <ThroughputPanel funnel={data.funnel} timing={data.timing} />
         <ExamQualityPanel examQuality={data.examQuality} questionDifficulty={data.questionDifficulty} />
       </div>
+      <QuestionHealthPanel />
     </div>
   );
 }

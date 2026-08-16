@@ -1,11 +1,11 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import DashboardPage from './page';
 import { AuthProvider } from '../../../lib/auth-context';
 import { QueryProvider } from '../../../lib/query-provider';
 import { ToastProvider } from '../../../components/ui';
 
 // A full, valid analytics payload. The dashboard reads nested fields
-// (scores.count, integrity.flaggedRate, ...), so a stub must supply the whole
+// (scores.count, integrity.highConcernRate, ...), so a stub must supply the whole
 // shape or the panels throw -- the production API always returns it complete.
 function analyticsFixture(overrides: Record<string, unknown> = {}) {
   return {
@@ -20,11 +20,12 @@ function analyticsFixture(overrides: Record<string, unknown> = {}) {
     },
     integrity: {
       submittedAttempts: 28,
-      cleanAttempts: 22,
-      flaggedAttempts: 6,
-      flaggedRate: 21,
+      highConcern: 3,
+      review: 19,
+      clear: 6,
+      unanalyzed: 0,
+      highConcernRate: 11,
       byType: [{ type: 'tab_switch', count: 9 }],
-      bySeverity: [{ severity: 'high', count: 3 }],
     },
     funnel: { invited: 100, started: 60, submitted: 55, passed: 22, completionRate: 92, abandoned: 5 },
     timing: { avgMinutes: 34, medianMinutes: 31, distribution: [{ bucket: '<5m', count: 0 }, { bucket: '5-15m', count: 4 }] },
@@ -34,6 +35,22 @@ function analyticsFixture(overrides: Record<string, unknown> = {}) {
     questionDifficulty: [{ questionId: 'q1', text: 'Hardest question here', correctRate: 22, answered: 18 }],
     ...overrides,
   };
+}
+
+// 2 miskeyed-suspect (negative discrimination) + 1 weak-discrimination, matching the
+// production shape the brief calls out (5 miskeyed + 50 weak today) at test-sized numbers.
+// The classification lives in `flags`, not the sign of `discrimination` -- these codes are
+// what the authoritative classifyFlags() in item-statistics.ts would have produced.
+function flaggedFixture() {
+  return [
+    { questionId: 'q-neg-1', text: 'Which of these is NOT a valid HTTP method?', discrimination: -0.4, responses: 25, percentCorrect: 0.3, flags: [{ code: 'miskeyed_suspect', severity: 'critical', message: 'Stronger candidates answered this correctly less often than weaker ones.' }], options: [], hasEnoughData: true },
+    { questionId: 'q-neg-2', text: 'What does CSS stand for?', discrimination: -0.1, responses: 30, percentCorrect: 0.4, flags: [{ code: 'miskeyed_suspect', severity: 'critical', message: 'Stronger candidates answered this correctly less often than weaker ones.' }], options: [], hasEnoughData: true },
+    { questionId: 'q-weak-1', text: 'Explain closures in JavaScript', discrimination: 0.05, responses: 22, percentCorrect: 0.5, flags: [{ code: 'weak_discrimination', severity: 'warning', message: 'This question barely separates stronger candidates from weaker ones.' }], options: [], hasEnoughData: true },
+  ];
+}
+
+function questionHealthPanel() {
+  return screen.getByText('Question Bank Health').closest('.rounded-lg') as HTMLElement;
 }
 
 describe('DashboardPage', () => {
@@ -57,13 +74,14 @@ describe('DashboardPage', () => {
     Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
   });
 
-  function mockDashboardFetch(summary: any, analytics: any = analyticsFixture()) {
+  function mockDashboardFetch(summary: any, analytics: any = analyticsFixture(), flagged: any = flaggedFixture()) {
     global.fetch = jest.fn(async (url) => {
       const u = String(url);
       if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
       if (u.includes('/dashboard/summary')) return new Response(JSON.stringify(summary), { status: 200 });
       if (u.includes('/dashboard/analytics')) return new Response(JSON.stringify(analytics), { status: 200 });
       if (u.includes('/dashboard/trend')) return new Response(JSON.stringify({ points: [] }), { status: 200 });
+      if (u.includes('/analytics/questions/flagged')) return new Response(JSON.stringify(flagged), { status: 200 });
       if (u.includes('/exams')) return new Response(JSON.stringify({ data: [{ id: 'exam-1', title: 'Backend Round' }], total: 1, page: 1, pageSize: 200, totalPages: 1 }), { status: 200 });
       if (u.includes('/candidates')) return new Response(JSON.stringify({ data: [{ id: 'cand-1', name: 'Ada Lovelace' }], total: 1, page: 1, pageSize: 200, totalPages: 1 }), { status: 200 });
       return new Response(JSON.stringify({}), { status: 200 });
@@ -195,13 +213,62 @@ describe('DashboardPage', () => {
     expect(screen.getByText('48–78')).toBeInTheDocument(); // middle-50% range p25-p75
   });
 
-  it('renders the proctoring-integrity panel with the flagged rate', async () => {
+  // Old tests here pinned the two-segment (clean/flagged) donut and "N flagged" copy --
+  // both counter-derived metrics that Task 1/3 replaced with stored-verdict counts.
+
+  it('headlines high_concern only -- review does not drive the colour', async () => {
+    // THE test this design exists for: 195 review of 265 must NOT read as an alarm.
+    mockDashboardFetch(
+      emptySummary,
+      analyticsFixture({
+        integrity: { submittedAttempts: 265, highConcern: 23, review: 195, clear: 47, unanalyzed: 0, highConcernRate: 9, byType: [] },
+      }),
+    );
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Proctoring Integrity')).toBeInTheDocument());
+    const headline = screen.getByText('9%');
+    expect(headline).toBeInTheDocument();
+    expect(screen.getByText(/need review/i)).toBeInTheDocument();
+    // amber at 9% (>= 8, < 15), not danger -- review being the overwhelming majority must not flip this to red.
+    expect(headline).toHaveClass('text-status-warning');
+    expect(headline).not.toHaveClass('text-status-danger');
+  });
+
+  it('renders the unanalyzed row only when non-zero', async () => {
+    mockDashboardFetch(
+      emptySummary,
+      analyticsFixture({
+        integrity: { submittedAttempts: 28, highConcern: 3, review: 19, clear: 6, unanalyzed: 0, highConcernRate: 11, byType: [] },
+      }),
+    );
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Proctoring Integrity')).toBeInTheDocument());
+    expect(screen.queryByText(/not analysed/)).not.toBeInTheDocument();
+  });
+
+  it('renders the unanalyzed row when present', async () => {
+    mockDashboardFetch(
+      emptySummary,
+      analyticsFixture({
+        integrity: { submittedAttempts: 28, highConcern: 3, review: 17, clear: 6, unanalyzed: 2, highConcernRate: 11, byType: [] },
+      }),
+    );
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Proctoring Integrity')).toBeInTheDocument());
+    expect(screen.getByText(/2 not analysed/)).toBeInTheDocument();
+  });
+
+  it('shows the three-way breakdown as context', async () => {
     mockDashboardFetch(emptySummary);
     renderPage();
 
     await waitFor(() => expect(screen.getByText('Proctoring Integrity')).toBeInTheDocument());
-    expect(screen.getByText('21%')).toBeInTheDocument(); // flaggedRate
-    expect(screen.getByText(/6 flagged/)).toBeInTheDocument();
+    expect(screen.getByText(/3 high concern/)).toBeInTheDocument();
+    expect(screen.getByText(/19 review/)).toBeInTheDocument();
+    expect(screen.getByText(/6 clear/)).toBeInTheDocument();
   });
 
   it('renders the hiring funnel and exam-quality table from analytics', async () => {
@@ -248,6 +315,104 @@ describe('DashboardPage', () => {
 
     await waitFor(() => expect(screen.getByText('Score Distribution')).toBeInTheDocument());
     expect(screen.queryByText('Upcoming exams')).not.toBeInTheDocument();
+  });
+
+  it('question health panel: headlines the negative-discrimination count as "Likely miskeyed"', async () => {
+    mockDashboardFetch(emptySummary);
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Question Bank Health')).toBeInTheDocument());
+    const panel = within(questionHealthPanel());
+    expect(panel.getByText('Likely miskeyed')).toBeInTheDocument();
+    // 2 negative (discrimination < 0) of the 3-row fixture -- the weak-but-positive row must not count.
+    expect(panel.getByText('2')).toBeInTheDocument();
+    expect(panel.getByText('1 weak discrimination')).toBeInTheDocument();
+  });
+
+  it('question health panel: orders the list worst-first by discrimination and links each row to the question edit page', async () => {
+    mockDashboardFetch(emptySummary);
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Question Bank Health')).toBeInTheDocument());
+    const panel = within(questionHealthPanel());
+    const rows = panel.getAllByRole('link');
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toHaveAttribute('href', '/questions/q-neg-1/edit'); // -0.40, most negative
+    expect(rows[0]).toHaveTextContent('-0.40');
+    expect(rows[1]).toHaveAttribute('href', '/questions/q-neg-2/edit'); // -0.10
+    expect(rows[2]).toHaveAttribute('href', '/questions/q-weak-1/edit'); // 0.05, least negative last
+  });
+
+  it('question health panel: a question flagged only for difficulty (null discrimination) counts in neither headline, renders "—", and sorts after measured items', async () => {
+    // Mirrors flagged() including questions where pointBiserial returned null (UNMEASURABLE)
+    // because they were flagged only on too_easy/very_hard -- not on discrimination at all.
+    const flagged = [
+      ...flaggedFixture(),
+      {
+        questionId: 'q-null-1',
+        text: 'A question almost nobody answers correctly',
+        discrimination: null,
+        responses: 21,
+        percentCorrect: 0.05,
+        flags: [{ code: 'very_hard', severity: 'info', message: 'Very few candidates answer this correctly.' }],
+        options: [],
+        hasEnoughData: true,
+      },
+    ];
+    mockDashboardFetch(emptySummary, analyticsFixture(), flagged);
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Question Bank Health')).toBeInTheDocument());
+    const panel = within(questionHealthPanel());
+
+    // Neither headline: still exactly 2 miskeyed and 1 weak -- the difficulty-only,
+    // null-discrimination row must not be coalesced into either bucket.
+    expect(panel.getByText('2')).toBeInTheDocument();
+    expect(panel.getByText('1 weak discrimination')).toBeInTheDocument();
+
+    const rows = panel.getAllByRole('link');
+    expect(rows).toHaveLength(4);
+    // Null discrimination has no position on the ascending-discrimination scale, so it must
+    // sort after every measured item, not coalesce to 0 and land mid-list.
+    expect(rows[3]).toHaveAttribute('href', '/questions/q-null-1/edit');
+    expect(rows[3]).toHaveTextContent('—');
+    expect(rows[3]).not.toHaveTextContent('0.00');
+  });
+
+  it('question health panel: shows the positive empty state with honest subtext when nothing is flagged', async () => {
+    mockDashboardFetch(emptySummary, analyticsFixture(), []);
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Question Bank Health')).toBeInTheDocument());
+    expect(screen.getByText('No question issues detected')).toBeInTheDocument();
+    expect(screen.getByText('Questions with at least 20 responses are measured')).toBeInTheDocument();
+  });
+
+  it('question health panel: labels itself org-wide, independent of the dashboard filter bar', async () => {
+    mockDashboardFetch(emptySummary);
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Question Bank Health')).toBeInTheDocument());
+    expect(screen.getByText('All exams, all time · questions with ≥ 20 responses')).toBeInTheDocument();
+  });
+
+  it('question health panel: shows its own error card without affecting the other panels', async () => {
+    global.fetch = jest.fn(async (url) => {
+      const u = String(url);
+      if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      if (u.includes('/dashboard/summary')) return new Response(JSON.stringify(emptySummary), { status: 200 });
+      if (u.includes('/dashboard/analytics')) return new Response(JSON.stringify(analyticsFixture()), { status: 200 });
+      if (u.includes('/dashboard/trend')) return new Response(JSON.stringify({ points: [] }), { status: 200 });
+      if (u.includes('/analytics/questions/flagged')) return new Response(JSON.stringify({ message: 'Server error' }), { status: 500 });
+      if (u.includes('/exams')) return new Response(JSON.stringify({ data: [{ id: 'exam-1', title: 'Backend Round' }], total: 1, page: 1, pageSize: 200, totalPages: 1 }), { status: 200 });
+      if (u.includes('/candidates')) return new Response(JSON.stringify({ data: [{ id: 'cand-1', name: 'Ada Lovelace' }], total: 1, page: 1, pageSize: 200, totalPages: 1 }), { status: 200 });
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Score Distribution')).toBeInTheDocument());
+    expect(screen.getByText('Hiring Funnel & Throughput')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Failed to load question health.')).toBeInTheDocument());
   });
 
   it('shows an error state when the summary fetch fails', async () => {

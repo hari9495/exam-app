@@ -19,9 +19,10 @@ export interface QuestionAnalytics {
   flags: ItemFlag[];
   options: OptionCount[];
   hasEnoughData: boolean;
+  text?: string;
 }
 
-interface AggregateRow { question_id: string; n: number; p: number; m1: number | null; m0: number | null; sd_rest: number }
+interface AggregateRow { question_id: string; n: number; p: number; m1: number | null; m0: number | null; sd_rest: number; text?: string }
 interface OptionRow { option_id: string; text: string; is_correct: boolean; selections: number; order_index: number }
 
 // Only used to sort flagged() output by worst flag first: classifyFlags always pushes
@@ -91,10 +92,12 @@ export class ItemAnalyticsService {
                AVG(CAST(e.is_correct AS FLOAT))                 AS p,
                AVG(CASE WHEN e.is_correct = 1 THEN e.rest END)  AS m1,
                AVG(CASE WHEN e.is_correct = 0 THEN e.rest END)  AS m0,
-               STDEVP(e.rest)                                   AS sd_rest
+               STDEVP(e.rest)                                   AS sd_rest,
+               MAX(e.text)                                      AS text
         FROM (
           SELECT ans.question_id, ans.is_correct,
-                 res.score - COALESCE(ans.marks_awarded, 0) AS rest
+                 res.score - COALESCE(ans.marks_awarded, 0) AS rest,
+                 CAST(q.text AS NVARCHAR(300)) AS text
           FROM answers   ans
           JOIN attempts  att ON att.id = ans.attempt_id
           JOIN results   res ON res.attempt_id = att.id
@@ -116,7 +119,7 @@ export class ItemAnalyticsService {
       // distractor flags (ambiguous_option, dead_distractor) appear on the detail view
       // (forQuestion), where fetching one question's options is cheap.
       return rows
-        .map((r) => this.assemble(r, []))
+        .map((r) => ({ ...this.assemble(r, []), text: r.text }))
         .filter((a) => a.flags.length > 0)
         .sort((a, b) => SEVERITY_ORDER[a.flags[0].severity] - SEVERITY_ORDER[b.flags[0].severity]);
     });
