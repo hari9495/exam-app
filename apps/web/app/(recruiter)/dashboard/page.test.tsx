@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import DashboardPage from './page';
 import { AuthProvider } from '../../../lib/auth-context';
 import { QueryProvider } from '../../../lib/query-provider';
@@ -37,6 +37,20 @@ function analyticsFixture(overrides: Record<string, unknown> = {}) {
   };
 }
 
+// 2 negative-discrimination (likely miskeyed) + 1 weak, matching the production shape the
+// brief calls out (5 miskeyed + 50 weak today) at test-sized numbers.
+function flaggedFixture() {
+  return [
+    { questionId: 'q-neg-1', text: 'Which of these is NOT a valid HTTP method?', discrimination: -0.4, responses: 25, percentCorrect: 0.3, flags: [], options: [], hasEnoughData: true },
+    { questionId: 'q-neg-2', text: 'What does CSS stand for?', discrimination: -0.1, responses: 30, percentCorrect: 0.4, flags: [], options: [], hasEnoughData: true },
+    { questionId: 'q-weak-1', text: 'Explain closures in JavaScript', discrimination: 0.05, responses: 22, percentCorrect: 0.5, flags: [], options: [], hasEnoughData: true },
+  ];
+}
+
+function questionHealthPanel() {
+  return screen.getByText('Question Bank Health').closest('.rounded-lg') as HTMLElement;
+}
+
 describe('DashboardPage', () => {
   const originalFetch = global.fetch;
   const originalResizeObserver = globalThis.ResizeObserver;
@@ -58,13 +72,14 @@ describe('DashboardPage', () => {
     Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
   });
 
-  function mockDashboardFetch(summary: any, analytics: any = analyticsFixture()) {
+  function mockDashboardFetch(summary: any, analytics: any = analyticsFixture(), flagged: any = flaggedFixture()) {
     global.fetch = jest.fn(async (url) => {
       const u = String(url);
       if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
       if (u.includes('/dashboard/summary')) return new Response(JSON.stringify(summary), { status: 200 });
       if (u.includes('/dashboard/analytics')) return new Response(JSON.stringify(analytics), { status: 200 });
       if (u.includes('/dashboard/trend')) return new Response(JSON.stringify({ points: [] }), { status: 200 });
+      if (u.includes('/analytics/questions/flagged')) return new Response(JSON.stringify(flagged), { status: 200 });
       if (u.includes('/exams')) return new Response(JSON.stringify({ data: [{ id: 'exam-1', title: 'Backend Round' }], total: 1, page: 1, pageSize: 200, totalPages: 1 }), { status: 200 });
       if (u.includes('/candidates')) return new Response(JSON.stringify({ data: [{ id: 'cand-1', name: 'Ada Lovelace' }], total: 1, page: 1, pageSize: 200, totalPages: 1 }), { status: 200 });
       return new Response(JSON.stringify({}), { status: 200 });
@@ -298,6 +313,68 @@ describe('DashboardPage', () => {
 
     await waitFor(() => expect(screen.getByText('Score Distribution')).toBeInTheDocument());
     expect(screen.queryByText('Upcoming exams')).not.toBeInTheDocument();
+  });
+
+  it('question health panel: headlines the negative-discrimination count as "Likely miskeyed"', async () => {
+    mockDashboardFetch(emptySummary);
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Question Bank Health')).toBeInTheDocument());
+    const panel = within(questionHealthPanel());
+    expect(panel.getByText('Likely miskeyed')).toBeInTheDocument();
+    // 2 negative (discrimination < 0) of the 3-row fixture -- the weak-but-positive row must not count.
+    expect(panel.getByText('2')).toBeInTheDocument();
+    expect(panel.getByText('1 weak discrimination')).toBeInTheDocument();
+  });
+
+  it('question health panel: orders the list worst-first by discrimination and links each row to the question edit page', async () => {
+    mockDashboardFetch(emptySummary);
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Question Bank Health')).toBeInTheDocument());
+    const panel = within(questionHealthPanel());
+    const rows = panel.getAllByRole('link');
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toHaveAttribute('href', '/questions/q-neg-1/edit'); // -0.40, most negative
+    expect(rows[0]).toHaveTextContent('-0.40');
+    expect(rows[1]).toHaveAttribute('href', '/questions/q-neg-2/edit'); // -0.10
+    expect(rows[2]).toHaveAttribute('href', '/questions/q-weak-1/edit'); // 0.05, least negative last
+  });
+
+  it('question health panel: shows the positive empty state with honest subtext when nothing is flagged', async () => {
+    mockDashboardFetch(emptySummary, analyticsFixture(), []);
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Question Bank Health')).toBeInTheDocument());
+    expect(screen.getByText('No question issues detected')).toBeInTheDocument();
+    expect(screen.getByText('Questions with at least 20 responses are measured')).toBeInTheDocument();
+  });
+
+  it('question health panel: labels itself org-wide, independent of the dashboard filter bar', async () => {
+    mockDashboardFetch(emptySummary);
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Question Bank Health')).toBeInTheDocument());
+    expect(screen.getByText('All exams, all time · questions with ≥ 20 responses')).toBeInTheDocument();
+  });
+
+  it('question health panel: shows its own error card without affecting the other panels', async () => {
+    global.fetch = jest.fn(async (url) => {
+      const u = String(url);
+      if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      if (u.includes('/dashboard/summary')) return new Response(JSON.stringify(emptySummary), { status: 200 });
+      if (u.includes('/dashboard/analytics')) return new Response(JSON.stringify(analyticsFixture()), { status: 200 });
+      if (u.includes('/dashboard/trend')) return new Response(JSON.stringify({ points: [] }), { status: 200 });
+      if (u.includes('/analytics/questions/flagged')) return new Response(JSON.stringify({ message: 'Server error' }), { status: 500 });
+      if (u.includes('/exams')) return new Response(JSON.stringify({ data: [{ id: 'exam-1', title: 'Backend Round' }], total: 1, page: 1, pageSize: 200, totalPages: 1 }), { status: 200 });
+      if (u.includes('/candidates')) return new Response(JSON.stringify({ data: [{ id: 'cand-1', name: 'Ada Lovelace' }], total: 1, page: 1, pageSize: 200, totalPages: 1 }), { status: 200 });
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Score Distribution')).toBeInTheDocument());
+    expect(screen.getByText('Hiring Funnel & Throughput')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Failed to load question health.')).toBeInTheDocument());
   });
 
   it('shows an error state when the summary fetch fails', async () => {

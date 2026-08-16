@@ -56,6 +56,9 @@ export interface QuestionAnalytics {
   flags: { code: string; severity: 'critical' | 'warning' | 'info'; message: string }[];
   options: { optionId: string; text: string; isCorrect: boolean; selections: number }[];
   hasEnoughData: boolean;
+  // Only populated by the flagged() aggregate (GET /analytics/questions/flagged) -- forQuestion's
+  // caller already has the question loaded, so the single-question endpoint omits it.
+  text?: string;
 }
 
 export function useQuestionAnalytics(questionId: string | null) {
@@ -73,6 +76,9 @@ export function useFlaggedQuestions() {
     queryKey: ['flagged-questions'],
     queryFn: () => apiFetch('/analytics/questions/flagged', {}, accessToken ?? undefined),
     enabled: Boolean(accessToken),
+    // Heaviest query in the analytics module and org-wide/filter-independent -- no need to
+    // refetch on every dashboard filter change.
+    staleTime: 10 * 60_000,
   });
 }
 

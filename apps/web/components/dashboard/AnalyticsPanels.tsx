@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import {
   Bar,
   BarChart,
@@ -11,9 +12,10 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { ShieldCheck, ShieldAlert, Timer, Target, TrendingDown, Users2 } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Timer, Target, TrendingDown, Users2, ListChecks } from 'lucide-react';
 import { Card } from '../ui';
 import { DashboardAnalytics } from '../../lib/types';
+import { useFlaggedQuestions } from '../../lib/hooks/useQuestions';
 
 // Charts read against the recruiter palette rather than recharts' defaults, so the
 // dashboard looks like one system. Semantic colours (pass=green, flagged=red) are
@@ -304,6 +306,76 @@ function ExamQualityPanel({ examQuality, questionDifficulty }: Pick<DashboardAna
   );
 }
 
+// ---- 5. Question bank health (item analytics) ----
+// Org-wide and time-independent: it reads the flagged-question aggregate, which the backend
+// computes across every exam and every submitted attempt ever. Unlike the other three panels
+// it deliberately ignores the dashboard filter bar -- useFlaggedQuestions() takes no filter
+// args and ANALYTICS_FILTERS never reach its query key -- so the footer says so explicitly
+// rather than let a recruiter assume the panel narrowed along with everything above it.
+function QuestionHealthPanel() {
+  const { data, isLoading, isError } = useFlaggedQuestions();
+  const items = data ?? [];
+  const negative = items.filter((q) => (q.discrimination ?? 0) < 0);
+  const weak = items.length - negative.length;
+  const worstFirst = items
+    .slice()
+    .sort((a, b) => (a.discrimination ?? 0) - (b.discrimination ?? 0))
+    .slice(0, 5);
+
+  return (
+    <Card>
+      <PanelHeader icon={ListChecks} title="Question Bank Health" />
+      {isLoading ? (
+        <div className="animate-pulse space-y-2" aria-hidden="true">
+          <div className="h-14 rounded-lg bg-recruiter-bg-subtle" />
+          <div className="h-4 w-2/3 rounded bg-recruiter-bg-subtle" />
+          <div className="h-4 w-1/2 rounded bg-recruiter-bg-subtle" />
+        </div>
+      ) : isError ? (
+        <p role="alert" className="text-sm text-status-danger">
+          Failed to load question health.
+        </p>
+      ) : items.length === 0 ? (
+        // The endpoint only returns questions past MIN_RESPONSES, so an empty array can't be
+        // told apart from "nothing measured yet" here -- treated as the positive state, with
+        // an honest subtext instead of a fabricated third "not enough data" state.
+        <EmptyNote>
+          <span className="block font-semibold text-status-success">No question issues detected</span>
+          <span className="mt-1 block text-xs text-recruiter-text-tertiary">Questions with at least 20 responses are measured</span>
+        </EmptyNote>
+      ) : (
+        <>
+          <div className="mb-3 flex items-center gap-4">
+            <Stat value={String(negative.length)} label="Likely miskeyed" tone={negative.length > 0 ? 'bad' : 'good'} />
+            <span className="text-xs text-recruiter-text-tertiary">{weak} weak discrimination</span>
+          </div>
+          <ul className="flex flex-col gap-1">
+            {worstFirst.map((q) => (
+              <li key={q.questionId}>
+                <Link
+                  href={`/questions/${q.questionId}/edit`}
+                  className="flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-recruiter-bg-subtle"
+                >
+                  <span className="min-w-0 flex-1 truncate text-xs text-recruiter-text" title={q.text}>
+                    {q.text ?? 'Untitled question'}
+                  </span>
+                  <span
+                    className={`text-xs font-semibold tabular-nums ${(q.discrimination ?? 0) < 0 ? 'text-status-danger' : 'text-recruiter-text-secondary'}`}
+                  >
+                    {(q.discrimination ?? 0).toFixed(2)}
+                  </span>
+                  <span className="w-16 shrink-0 text-right text-[11px] tabular-nums text-recruiter-text-tertiary">{q.responses} resp.</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      <p className="mt-4 text-[11px] text-recruiter-text-tertiary">All exams, all time · questions with ≥ 20 responses</p>
+    </Card>
+  );
+}
+
 export function AnalyticsPanels({ data }: { data: DashboardAnalytics }) {
   return (
     <div className="flex flex-col gap-4">
@@ -315,6 +387,7 @@ export function AnalyticsPanels({ data }: { data: DashboardAnalytics }) {
         <ThroughputPanel funnel={data.funnel} timing={data.timing} />
         <ExamQualityPanel examQuality={data.examQuality} questionDifficulty={data.questionDifficulty} />
       </div>
+      <QuestionHealthPanel />
     </div>
   );
 }
