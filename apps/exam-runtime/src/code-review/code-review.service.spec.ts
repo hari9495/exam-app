@@ -1,4 +1,5 @@
 import { CodeReviewService } from './code-review.service';
+import { AiNotConfiguredError } from '@exam-platform/shared';
 
 describe('CodeReviewService', () => {
   function buildService(reviewResult: { suggestedMarks: number; summary: string } | Error, answerText: string | null = 'function reverse(s) { return s; }') {
@@ -44,6 +45,21 @@ describe('CodeReviewService', () => {
       expect.objectContaining({ data: expect.objectContaining({ source: 'code_review', sourceId: 'answer-1' }) }),
     );
     expect(codeReviewClient.review).toHaveBeenCalledWith(expect.anything(), aiProvider);
+  });
+
+  it('upserts skipped_no_ai_key -- not failed -- and never calls the AI when the org has no key', async () => {
+    // Audit finding F2: a missing key is permanent and user-fixable; it must not be recorded as
+    // a retryable failure.
+    const { service, tx, codeReviewClient, aiApiKeyResolver } = buildService({ suggestedMarks: 8, summary: 'unused' });
+    aiApiKeyResolver.resolve.mockRejectedValue(new AiNotConfiguredError('no key'));
+
+    await service.analyze('answer-1');
+
+    expect(codeReviewClient.review).not.toHaveBeenCalled();
+    expect(tx.codeAnswerReview.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ create: expect.objectContaining({ status: 'skipped_no_ai_key', suggestedMarks: null, summary: null }) }),
+    );
+    expect(tx.aiCreditUsage.create).not.toHaveBeenCalled();
   });
 
   it('upserts CodeAnswerReview as failed and records no credit usage when the AI provider throws', async () => {

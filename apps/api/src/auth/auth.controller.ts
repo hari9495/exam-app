@@ -2,7 +2,7 @@ import { Body, Controller, HttpCode, Param, Post, Req, Res, UnauthorizedExceptio
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { createHash } from 'crypto';
-import { PrismaService, TenantPrismaService, isOrganizationActive, ORGANIZATION_INACTIVE_MESSAGE } from '@exam-platform/shared';
+import { PrismaService, TenantPrismaService, isOrganizationActive, ORGANIZATION_INACTIVE_MESSAGE, authCookieSecure } from '@exam-platform/shared';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
@@ -17,6 +17,13 @@ import { CurrentUserId } from './current-user-id.decorator';
 
 const REFRESH_COOKIE = 'refresh_token';
 
+// One definition for all three set-cookie sites. `secure` was previously hardcoded false at
+// each of them; see authCookieSecure() for why it is now on by default with an explicit
+// local-dev opt-out rather than an environment-detection opt-in.
+function refreshCookieOptions() {
+  return { httpOnly: true, sameSite: 'lax' as const, secure: authCookieSecure() };
+}
+
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -30,7 +37,7 @@ export class AuthController {
   @Throttle(STRICT_AUTH_THROTTLE)
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
     const tokens = await this.authService.login(dto);
-    res.cookie(REFRESH_COOKIE, tokens.refreshToken, { httpOnly: true, sameSite: 'lax', secure: false });
+    res.cookie(REFRESH_COOKIE, tokens.refreshToken, refreshCookieOptions());
     return { accessToken: tokens.accessToken };
   }
 
@@ -59,7 +66,7 @@ export class AuthController {
       throw new UnauthorizedException('Refresh token required');
     }
     const tokens = await this.authService.refresh(refreshToken);
-    res.cookie(REFRESH_COOKIE, tokens.refreshToken, { httpOnly: true, sameSite: 'lax', secure: false });
+    res.cookie(REFRESH_COOKIE, tokens.refreshToken, refreshCookieOptions());
     return { accessToken: tokens.accessToken };
   }
 
@@ -107,7 +114,7 @@ export class AuthController {
     }
 
     const tokens = await this.authService.issueTokensForSso(user.id, user.organizationId, user.role);
-    res.cookie(REFRESH_COOKIE, tokens.refreshToken, { httpOnly: true, sameSite: 'lax', secure: false });
+    res.cookie(REFRESH_COOKIE, tokens.refreshToken, refreshCookieOptions());
     return { accessToken: tokens.accessToken };
   }
 

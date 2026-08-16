@@ -1,4 +1,5 @@
 import { Body, Controller, HttpCode, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
+import { authCookieSecure } from '@exam-platform/shared';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { CandidateAuthService } from './candidate-auth.service';
@@ -14,13 +15,17 @@ const CANDIDATE_REFRESH_COOKIE = 'candidate_refresh_token';
 // link (an email re-redeem also raises a spurious multi_login proctoring flag). maxAge
 // mirrors the refresh token's own TTL so cookie and token expire together. Read at call
 // time — the same way the service reads this env — so it honours a configured TTL
-// regardless of import ordering. secure is on in production (HTTPS) and off elsewhere so
-// local HTTP dev and the e2e suite still receive the cookie.
+// regardless of import ordering.
+//
+// `secure` used to be `process.env.NODE_ENV === 'production'`, with a comment claiming it
+// was on in production. NODE_ENV is not set on the production VM, so it was NOT on -- the
+// candidate session cookie shipped without Secure. authCookieSecure() is on by default with
+// an explicit INSECURE_COOKIES opt-out for local http dev and the e2e suite.
 function refreshCookieOptions() {
   return {
     httpOnly: true,
     sameSite: 'lax' as const,
-    secure: process.env.NODE_ENV === 'production',
+    secure: authCookieSecure(),
     maxAge: Number(process.env.CANDIDATE_REFRESH_TOKEN_TTL_DAYS ?? 1) * 24 * 60 * 60 * 1000,
   };
 }
