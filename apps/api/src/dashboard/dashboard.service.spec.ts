@@ -453,6 +453,21 @@ describe('DashboardService', () => {
   });
 
   describe('getAnalytics', () => {
+    // Shared shape for getAnalytics' tx; individual tests override only what they exercise.
+    function buildAnalyticsTx(overrides: Partial<Record<string, any>> = {}) {
+      return {
+        exam: { findMany: jest.fn().mockResolvedValue([{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60 }]) },
+        result: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
+        attempt: { count: jest.fn().mockResolvedValue(0) },
+        invitation: { count: jest.fn().mockResolvedValue(0) },
+        proctoringEvent: { groupBy: jest.fn().mockResolvedValue([]) },
+        integrityAnalysis: { groupBy: jest.fn().mockResolvedValue([]) },
+        answer: { groupBy: jest.fn().mockResolvedValue([]) },
+        question: { findMany: jest.fn().mockResolvedValue([]) },
+        ...overrides,
+      };
+    }
+
     it('computes scores, integrity, timing, exam quality, and question difficulty', async () => {
       const submittedAt = new Date('2026-07-20T10:00:00Z');
       const startedAt = new Date('2026-07-20T09:30:00Z'); // 30 minutes
@@ -460,22 +475,20 @@ describe('DashboardService', () => {
         { percentage: 80, passFail: 'pass', attempt: { examId: 'exam-1', candidateId: 'c1', startedAt, submittedAt } },
         { percentage: 30, passFail: 'fail', attempt: { examId: 'exam-1', candidateId: 'c2', startedAt, submittedAt } },
       ];
-      const tx = {
-        exam: { findMany: jest.fn().mockResolvedValue([{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60 }]) },
+      const tx = buildAnalyticsTx({
         result: { findMany: jest.fn().mockResolvedValue(results), count: jest.fn().mockResolvedValue(1) },
-        attempt: {
-          findMany: jest.fn().mockResolvedValue([
-            { webcamViolationCount: 2, browserActivityViolationCount: 0 },
-            { webcamViolationCount: 0, browserActivityViolationCount: 0 },
-          ]),
-          count: jest.fn().mockResolvedValue(2),
-        },
+        attempt: { count: jest.fn().mockResolvedValue(2) },
         invitation: { count: jest.fn().mockResolvedValue(4) },
-        proctoringEvent: {
-          groupBy: jest
-            .fn()
-            .mockResolvedValueOnce([{ eventType: 'tab_switch', _count: { _all: 3 } }])
-            .mockResolvedValueOnce([{ severity: 'high', _count: { _all: 1 } }]),
+        proctoringEvent: { groupBy: jest.fn().mockResolvedValue([{ eventType: 'tab_switch', _count: { _all: 3 } }]) },
+        // Deliberately removed: these asserted the counter-derived integrity flag
+        // (violations > 0 => flagged) -- the logic PR #29 removed from the verdict
+        // path, which survived here and showed recruiters 85% flagged while the
+        // stored verdicts said 9%. The dashboard now reads integrity_analyses.level.
+        integrityAnalysis: {
+          groupBy: jest.fn().mockResolvedValue([
+            { level: 'high_concern', _count: { _all: 1 } },
+            { level: 'review', _count: { _all: 1 } },
+          ]),
         },
         answer: {
           groupBy: jest
@@ -484,7 +497,7 @@ describe('DashboardService', () => {
             .mockResolvedValueOnce([{ questionId: 'q1', _count: { _all: 2 } }]),
         },
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Hardest question' }]) },
-      };
+      });
       tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
 
       const result = await service.getAnalytics(context, { window: 'all' });
@@ -492,12 +505,54 @@ describe('DashboardService', () => {
       expect(result.scores.count).toBe(2);
       expect(result.scores.avg).toBe(55);
       expect(result.scores.passRate).toBe(50);
-      expect(result.integrity.flaggedAttempts).toBe(1);
-      expect(result.integrity.flaggedRate).toBe(50);
+      expect(result.integrity).toMatchObject({
+        submittedAttempts: 2,
+        highConcern: 1,
+        review: 1,
+        clear: 0,
+        unanalyzed: 0,
+        highConcernRate: 50,
+      });
       expect(result.integrity.byType[0]).toEqual({ type: 'tab_switch', count: 3 });
       expect(result.timing.avgMinutes).toBe(30);
       expect(result.examQuality[0]).toMatchObject({ examTitle: 'Backend Round', avgScore: 55, passRate: 50, candidateCount: 2, allottedMinutes: 60 });
       expect(result.questionDifficulty[0]).toMatchObject({ text: 'Hardest question', correctRate: 20, answered: 10 });
+    });
+
+    it('counts attempts with no analysis row toward unanalyzed, not clean', async () => {
+      const tx = buildAnalyticsTx({
+        attempt: { count: jest.fn().mockResolvedValue(3) },
+        integrityAnalysis: { groupBy: jest.fn().mockResolvedValue([{ level: 'clear', _count: { _all: 2 } }]) },
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
+
+      const result = await service.getAnalytics(context, { window: 'all' });
+
+      expect(result.integrity).toMatchObject({ submittedAttempts: 3, clear: 2, unanalyzed: 1, highConcernRate: 0 });
+    });
+
+    it('treats a null level as unanalyzed rather than any verdict bucket', async () => {
+      const tx = buildAnalyticsTx({
+        attempt: { count: jest.fn().mockResolvedValue(1) },
+        integrityAnalysis: { groupBy: jest.fn().mockResolvedValue([{ level: null, _count: { _all: 1 } }]) },
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
+
+      const result = await service.getAnalytics(context, { window: 'all' });
+
+      expect(result.integrity).toMatchObject({ highConcern: 0, review: 0, clear: 0, unanalyzed: 1 });
+    });
+
+    it('computes highConcernRate over analyzed attempts, not submitted', async () => {
+      const tx = buildAnalyticsTx({
+        attempt: { count: jest.fn().mockResolvedValue(4) },
+        integrityAnalysis: { groupBy: jest.fn().mockResolvedValue([{ level: 'high_concern', _count: { _all: 1 } }]) },
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
+
+      const result = await service.getAnalytics(context, { window: 'all' });
+
+      expect(result.integrity).toMatchObject({ submittedAttempts: 4, highConcernRate: 100, unanalyzed: 3 });
     });
 
     it('returns empty analytics when the org has no exams', async () => {

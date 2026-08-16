@@ -47,11 +47,12 @@ export interface DashboardAnalytics {
   };
   integrity: {
     submittedAttempts: number;
-    cleanAttempts: number;
-    flaggedAttempts: number;
-    flaggedRate: number;
+    highConcern: number;
+    review: number;
+    clear: number;
+    unanalyzed: number;
+    highConcernRate: number;
     byType: { type: string; count: number }[];
-    bySeverity: { severity: string; count: number }[];
   };
   funnel: DashboardFunnel & { completionRate: number; abandoned: number };
   timing: {
@@ -476,17 +477,13 @@ export class DashboardService {
         ...(start || end ? dateWithin('submittedAt', start, end) : { submittedAt: { not: null } }),
       };
 
-      const [results, submittedAttempts, eventsByType, eventsBySeverity, invited, started, submitted, passed, answerRows, questions] = await Promise.all([
+      const [results, eventsByType, levelsGrouped, invited, started, submitted, passed, answerRows, questions] = await Promise.all([
         tx.result.findMany({
           where: { attempt: submittedScope },
           select: { percentage: true, passFail: true, attempt: { select: { examId: true, candidateId: true, startedAt: true, submittedAt: true } } },
         }),
-        tx.attempt.findMany({
-          where: submittedScope,
-          select: { webcamViolationCount: true, browserActivityViolationCount: true },
-        }),
         tx.proctoringEvent.groupBy({ by: ['eventType'], where: { attempt: submittedScope }, _count: { _all: true } }),
-        tx.proctoringEvent.groupBy({ by: ['severity'], where: { attempt: submittedScope }, _count: { _all: true } }),
+        tx.integrityAnalysis.groupBy({ by: ['level'], where: { attempt: submittedScope }, _count: { _all: true } }),
         // Funnel computed inline so it honours the exam/candidate/date filters. Each
         // stage is bounded by its own relevant timestamp.
         tx.invitation.count({ where: { examId: { in: examIds }, ...candidateFilter, ...dateWithin('invitedAt', start, end) } }),
@@ -512,14 +509,26 @@ export class DashboardService {
       };
 
       // ----- Integrity -----
-      const flaggedAttempts = submittedAttempts.filter((a) => a.webcamViolationCount + a.browserActivityViolationCount > 0).length;
+      // Read the stored verdict, never derive one. The previous computation here
+      // (violation counters > 0 => flagged) was the threshold-of-one logic PR #29
+      // removed from integrity-rules, and it showed 85% flagged while the
+      // recalibrated levels said 9%. integrity_analyses is the single source of
+      // truth for what an attempt's evidence means.
+      const levelCounts = new Map(levelsGrouped.map((g) => [g.level, g._count._all]));
+      const highConcern = levelCounts.get('high_concern') ?? 0;
+      const review = levelCounts.get('review') ?? 0;
+      const clear = levelCounts.get('clear') ?? 0;
+      const analyzed = highConcern + review + clear;
       const integrity = {
-        submittedAttempts: submittedAttempts.length,
-        cleanAttempts: submittedAttempts.length - flaggedAttempts,
-        flaggedAttempts,
-        flaggedRate: submittedAttempts.length ? Math.round((flaggedAttempts / submittedAttempts.length) * 100) : 0,
+        submittedAttempts: submitted,
+        highConcern,
+        review,
+        clear,
+        // Includes attempts with no analysis row AND rows with a null level:
+        // absence must be visible, not read as clean.
+        unanalyzed: submitted - analyzed,
+        highConcernRate: analyzed ? Math.round((highConcern / analyzed) * 100) : 0,
         byType: eventsByType.map((g) => ({ type: g.eventType, count: g._count._all })).sort((a, b) => b.count - a.count),
-        bySeverity: eventsBySeverity.map((g) => ({ severity: g.severity, count: g._count._all })).sort((a, b) => b.count - a.count),
       };
 
       // ----- Funnel (+ completion / abandoned) -----
@@ -594,7 +603,7 @@ export class DashboardService {
   private emptyAnalytics(): DashboardAnalytics {
     return {
       scores: { count: 0, passRate: null, avg: null, median: null, p25: null, p75: null, distribution: scoreHistogram([]) },
-      integrity: { submittedAttempts: 0, cleanAttempts: 0, flaggedAttempts: 0, flaggedRate: 0, byType: [], bySeverity: [] },
+      integrity: { submittedAttempts: 0, highConcern: 0, review: 0, clear: 0, unanalyzed: 0, highConcernRate: 0, byType: [] },
       funnel: { invited: 0, started: 0, submitted: 0, passed: 0, completionRate: 0, abandoned: 0 },
       timing: { avgMinutes: null, medianMinutes: null, distribution: durationHistogram([]) },
       examQuality: [],
