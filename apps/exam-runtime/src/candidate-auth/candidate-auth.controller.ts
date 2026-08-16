@@ -63,7 +63,10 @@ export class CandidateAuthController {
     if (refreshToken) {
       await this.candidateAuthService.logout(refreshToken);
     }
-    res.clearCookie(CANDIDATE_REFRESH_COOKIE);
+    // Attributes must match the set or the browser ignores the clear (see apps/api logout).
+    // maxAge is stripped: Express derives the clearing Expires itself.
+    const { maxAge: _maxAge, ...clearOptions } = refreshCookieOptions();
+    res.clearCookie(CANDIDATE_REFRESH_COOKIE, clearOptions);
     return { success: true };
   }
 }

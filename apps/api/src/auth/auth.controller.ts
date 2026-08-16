@@ -125,7 +125,10 @@ export class AuthController {
     if (refreshToken) {
       await this.authService.logout(refreshToken);
     }
-    res.clearCookie(REFRESH_COOKIE);
+    // Same attributes as the set. A browser only honours a clearing Set-Cookie whose
+    // attributes match the original -- and now that the cookie is Secure, a bare clear was
+    // silently ignored, leaving the session cookie in place after logout.
+    res.clearCookie(REFRESH_COOKIE, refreshCookieOptions());
     return { success: true };
   }
 
