@@ -6,13 +6,13 @@ import { createHash } from 'crypto';
 
 describe('AuthController.ssoExchange', () => {
   let controller: AuthController;
-  let authService: { issueTokensForSso: jest.Mock };
+  let authService: { issueTokensForSso: jest.Mock; logout: jest.Mock };
   let prisma: {
     organization: { findUnique: jest.Mock }; ssoLoginCode: { findUnique: jest.Mock; delete: jest.Mock } };
   let tenantPrisma: { forTenant: jest.Mock };
 
   beforeEach(async () => {
-    authService = { issueTokensForSso: jest.fn() };
+    authService = { issueTokensForSso: jest.fn(), logout: jest.fn() };
     prisma = {
       organization: { findUnique: jest.fn().mockResolvedValue({ id: 'org-1', status: 'active' }) }, ssoLoginCode: { findUnique: jest.fn(), delete: jest.fn() } };
     tenantPrisma = { forTenant: jest.fn() };
@@ -45,6 +45,19 @@ describe('AuthController.ssoExchange', () => {
     // secure: true is the assertion that matters. This previously pinned `secure: false` --
     // the value that shipped a session cookie without the Secure flag to production.
     expect(res.cookie).toHaveBeenCalledWith('refresh_token', 'refresh-1', { httpOnly: true, sameSite: 'lax', secure: true });
+  });
+
+  it('clears the refresh cookie with the SAME attributes it was set with', async () => {
+    // A browser only honours a clearing Set-Cookie whose attributes match the original. Once
+    // the cookie became Secure, a bare res.clearCookie(name) was silently ignored and logout
+    // left the session cookie in place -- verified live against production before this fix.
+    const res = { cookie: jest.fn(), clearCookie: jest.fn() };
+    const req = { cookies: { refresh_token: 'refresh-1' } };
+
+    await controller.logout({} as any, req as any, res as any);
+
+    expect(authService.logout).toHaveBeenCalledWith('refresh-1');
+    expect(res.clearCookie).toHaveBeenCalledWith('refresh_token', { httpOnly: true, sameSite: 'lax', secure: true });
   });
 
   it('sets the refresh cookie Secure regardless of NODE_ENV', async () => {
