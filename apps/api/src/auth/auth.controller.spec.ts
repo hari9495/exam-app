@@ -42,7 +42,30 @@ describe('AuthController.ssoExchange', () => {
     expect(tenantPrisma.forTenant).toHaveBeenCalledWith({ organizationId: null, isSuperAdmin: true }, expect.any(Function));
     expect(authService.issueTokensForSso).toHaveBeenCalledWith('user-1', 'org-1', 'recruiter');
     expect(prisma.ssoLoginCode.delete).toHaveBeenCalledWith({ where: { id: 'code-row-1' } });
-    expect(res.cookie).toHaveBeenCalledWith('refresh_token', 'refresh-1', { httpOnly: true, sameSite: 'lax', secure: false });
+    // secure: true is the assertion that matters. This previously pinned `secure: false` --
+    // the value that shipped a session cookie without the Secure flag to production.
+    expect(res.cookie).toHaveBeenCalledWith('refresh_token', 'refresh-1', { httpOnly: true, sameSite: 'lax', secure: true });
+  });
+
+  it('sets the refresh cookie Secure regardless of NODE_ENV', async () => {
+    // Pins the fix for the audit finding: the flag must not depend on NODE_ENV, which is
+    // unset in production and made the previous candidate-cookie guard evaluate false there.
+    const savedNodeEnv = process.env.NODE_ENV;
+    delete process.env.NODE_ENV;
+    try {
+      const codeHash = createHash('sha256').update('raw-code-123').digest('hex');
+      prisma.ssoLoginCode.findUnique.mockResolvedValue({
+        id: 'code-row-1', codeHash, userId: 'user-1', expiresAt: new Date(Date.now() + 30_000),
+      });
+      tenantPrisma.forTenant.mockResolvedValue({ id: 'user-1', organizationId: 'org-1', role: 'recruiter', status: 'active' });
+      authService.issueTokensForSso.mockResolvedValue({ accessToken: 'access-1', refreshToken: 'refresh-1' });
+      const res = { cookie: jest.fn() };
+      await controller.ssoExchange({ code: 'raw-code-123' }, res as any);
+      expect(res.cookie).toHaveBeenCalledWith('refresh_token', 'refresh-1', expect.objectContaining({ secure: true }));
+    } finally {
+      if (savedNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = savedNodeEnv;
+    }
   });
 
   it('rejects an expired code with 401 and still deletes it', async () => {
