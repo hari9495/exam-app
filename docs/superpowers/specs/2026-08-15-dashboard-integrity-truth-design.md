@@ -93,8 +93,7 @@ The two-fetch shape is a correctness feature, not a compromise: question health 
 |---|---|---|
 | Attempt has no `integrity_analyses` row | Counted in `unanalyzed`, rendered when non-zero | Missing data must not masquerade as clean |
 | Flagged-questions endpoint fails | That panel shows its standard error card; other panels unaffected (separate query) | Panel independence is the point of the second fetch |
-| No flagged questions | Positive "No question issues detected" state | This is success, distinct from no-data |
-| No question reaches MIN_RESPONSES | "Not enough responses yet to measure question quality" | Distinct from success and from error |
+| No flagged questions | Positive "No question issues detected" state, with subtext "Questions with at least 20 responses are measured" | `flagged()` returns only flagged rows, so an empty response cannot distinguish "healthy" from "nothing measured yet" without a second query. Rather than add one, the positive state carries the measurement criterion so it stays honest in both cases. (Revised from an earlier three-state design during planning.) |
 | Zero submitted attempts in window | Existing empty-analytics state unchanged, `integrity` zeroes | Matches current behaviour |
 
 ## Testing
