@@ -270,6 +270,29 @@ export interface DriveListItem extends DriveSession {
   status: DriveSessionStatus;
 }
 
+export type DriveRosterState = 'registered' | 'in_progress' | 'submitted' | 'passed' | 'failed';
+
+// candidateId/examId/attemptId are NOT part of the current GET /drives/:id/live|results
+// response (apps/api/src/drives/drives.service.ts's buildRoster only returns invitationId) --
+// left optional so a future backend addition lights up the report link without another
+// frontend change, while today's real payload (which omits them) still typechecks.
+export interface DriveRosterRow {
+  invitationId: string;
+  candidateName: string;
+  examTitle: string;
+  state: DriveRosterState;
+  startedAt: string | null;
+  score: number | null;
+  candidateId?: string;
+  examId?: string;
+  attemptId?: string | null;
+}
+
+export interface DriveRoster {
+  rows: DriveRosterRow[];
+  counts: { registered: number; inProgress: number; submitted: number; passed: number; failed: number };
+}
+
 // Every walk-in-enabled exam in the org, whichever group it's currently in (or none) --
 // the pool a "manage members" picker offers, so an exam can be moved between groups.
 export interface EligibleWalkInExam {

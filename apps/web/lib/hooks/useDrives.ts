@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../api-client';
 import { useAuth } from '../auth-context';
-import { DriveListItem } from '../types';
+import { DriveListItem, DriveRoster } from '../types';
 
 export function useGroupDrives(groupId: string) {
   const { accessToken } = useAuth();
@@ -25,5 +25,26 @@ export function useCreateDrive(groupId: string) {
     mutationFn: (input: CreateDriveInput) =>
       apiFetch(`/walk-in-groups/${groupId}/drives`, { method: 'POST', body: JSON.stringify(input) }, accessToken ?? undefined),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['walk-in-groups', groupId, 'drives'] }),
+  });
+}
+
+// Polling, not websockets, is the whole "live" mechanism here (see the design spec) --
+// 5s keeps the board current without the server needing to push anything.
+export function useDriveLive(driveId: string) {
+  const { accessToken } = useAuth();
+  return useQuery<DriveRoster>({
+    queryKey: ['drives', driveId, 'live'],
+    queryFn: () => apiFetch(`/drives/${driveId}/live`, {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken) && Boolean(driveId),
+    refetchInterval: 5000,
+  });
+}
+
+export function useDriveResults(driveId: string) {
+  const { accessToken } = useAuth();
+  return useQuery<DriveRoster>({
+    queryKey: ['drives', driveId, 'results'],
+    queryFn: () => apiFetch(`/drives/${driveId}/results`, {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken) && Boolean(driveId),
   });
 }
