@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { API_BASE } from '../../../../lib/api-client';
+import { EMAIL_PATTERN } from '../../../../lib/candidateValidation';
 import { PublicJob } from '../../../../lib/types';
 import { CandidateButton } from '../../components/CandidateButton';
 import { TerminalCard } from '../../components/TerminalCard';
@@ -55,6 +56,14 @@ export default function ApplyPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!name.trim()) {
+      setSubmitError('Enter your name.');
+      return;
+    }
+    if (!email.trim() || !EMAIL_PATTERN.test(email.trim())) {
+      setSubmitError('Enter a valid email address.');
+      return;
+    }
     if (!file) {
       setFileError('Attach your resume (PDF).');
       return;

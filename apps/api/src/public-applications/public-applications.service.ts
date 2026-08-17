@@ -56,7 +56,9 @@ export class PublicApplicationsService {
       jobTitle: job.title,
       jobDescription: job.description,
       orgName: org?.name ?? '',
-      orgLogo: org?.logoPath ?? null,
+      // Container is private -- unsigned logoPath 403s in <img src>. signIfOurs mints a
+      // read-only SAS for blobs we own and passes anything else through untouched.
+      orgLogo: org?.logoPath ? ((await this.blobStorage.signIfOurs(org.logoPath)) as string | null) : null,
     };
   }
 

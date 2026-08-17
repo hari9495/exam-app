@@ -8,7 +8,7 @@ describe('PublicApplicationsService', () => {
   let service: PublicApplicationsService;
   let prisma: { organization: { findUnique: jest.Mock } };
   let tenantPrisma: { forTenant: jest.Mock };
-  let blobStorage: { upload: jest.Mock };
+  let blobStorage: { upload: jest.Mock; signIfOurs: jest.Mock };
   let jobsService: { enqueue: jest.Mock };
 
   const openJob = {
@@ -24,7 +24,7 @@ describe('PublicApplicationsService', () => {
   beforeEach(async () => {
     prisma = { organization: { findUnique: jest.fn() } };
     tenantPrisma = { forTenant: jest.fn() };
-    blobStorage = { upload: jest.fn() };
+    blobStorage = { upload: jest.fn(), signIfOurs: jest.fn(async (value) => value) };
     jobsService = { enqueue: jest.fn() };
 
     const moduleRef = await Test.createTestingModule({
@@ -59,9 +59,10 @@ describe('PublicApplicationsService', () => {
       await expect(service.getPublicJob('tok')).rejects.toThrow('This role is not accepting applications');
     });
 
-    it('returns header fields for a valid job', async () => {
+    it('returns header fields with a signed logo URL for a valid job', async () => {
       tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ job: { findUnique: jest.fn().mockResolvedValue(openJob) } }));
       prisma.organization.findUnique.mockResolvedValue({ name: 'Acme', logoPath: 'logos/acme.png' });
+      blobStorage.signIfOurs.mockResolvedValue('logos/acme.png?sig=abc');
 
       const result = await service.getPublicJob('valid-token');
 
@@ -72,12 +73,23 @@ describe('PublicApplicationsService', () => {
       expect(prisma.organization.findUnique).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: 'org-1' } }),
       );
+      expect(blobStorage.signIfOurs).toHaveBeenCalledWith('logos/acme.png');
       expect(result).toEqual({
         jobTitle: 'Backend',
         jobDescription: 'Build things',
         orgName: 'Acme',
-        orgLogo: 'logos/acme.png',
+        orgLogo: 'logos/acme.png?sig=abc',
       });
+    });
+
+    it('returns orgLogo: null and skips signing when the org has no logo', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ job: { findUnique: jest.fn().mockResolvedValue(openJob) } }));
+      prisma.organization.findUnique.mockResolvedValue({ name: 'Acme', logoPath: null });
+
+      const result = await service.getPublicJob('valid-token');
+
+      expect(blobStorage.signIfOurs).not.toHaveBeenCalled();
+      expect(result.orgLogo).toBeNull();
     });
   });
 

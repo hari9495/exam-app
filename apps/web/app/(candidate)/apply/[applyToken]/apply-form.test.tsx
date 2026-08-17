@@ -63,6 +63,39 @@ describe('ApplyPage', () => {
     expect(body.resumeBase64).not.toContain('data:');
   });
 
+  it('blocks submission and shows an inline error when name is blank', async () => {
+    mockFetch();
+    render(<ApplyPage />);
+
+    expect(await screen.findByText('Senior Backend Engineer')).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText('Email'), 'jane@example.com');
+    const file = new File([new Uint8Array([1, 2, 3])], 'cv.pdf', { type: 'application/pdf' });
+    await userEvent.upload(screen.getByLabelText(/Resume/), file);
+
+    await userEvent.click(screen.getByRole('button', { name: /Submit application/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Enter your name.');
+    expect((global.fetch as jest.Mock).mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
+  });
+
+  it('blocks submission and shows an inline error when email is invalid', async () => {
+    mockFetch();
+    render(<ApplyPage />);
+
+    expect(await screen.findByText('Senior Backend Engineer')).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText('Name'), 'Jane Candidate');
+    await userEvent.type(screen.getByLabelText('Email'), 'not-an-email');
+    const file = new File([new Uint8Array([1, 2, 3])], 'cv.pdf', { type: 'application/pdf' });
+    await userEvent.upload(screen.getByLabelText(/Resume/), file);
+
+    await userEvent.click(screen.getByRole('button', { name: /Submit application/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Enter a valid email address.');
+    expect((global.fetch as jest.Mock).mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
+  });
+
   it('shows a generic message when the job is not accepting applications', async () => {
     global.fetch = jest.fn(async () => new Response(JSON.stringify({}), { status: 404 })) as unknown as typeof fetch;
     render(<ApplyPage />);
