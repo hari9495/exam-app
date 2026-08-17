@@ -295,14 +295,30 @@ model Tag {
 }
 
 model WalkInGroup {
-  id             String   @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String   @map("organization_id") @db.UniqueIdentifier
+  id             String         @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String         @map("organization_id") @db.UniqueIdentifier
   name           String
-  createdAt      DateTime @default(now()) @map("created_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
   exams          Exam[]
+  driveSessions  DriveSession[]
 
   @@unique([organizationId, name])
   @@map("walk_in_groups")
+}
+
+model DriveSession {
+  id             String       @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String       @map("organization_id") @db.UniqueIdentifier
+  walkInGroupId  String       @map("walk_in_group_id") @db.UniqueIdentifier
+  name           String
+  startsAt       DateTime     @map("starts_at")
+  endsAt         DateTime     @map("ends_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  walkInGroup    WalkInGroup  @relation(fields: [walkInGroupId], references: [id], onUpdate: NoAction)
+  invitations    Invitation[]
+
+  @@index([walkInGroupId])
+  @@map("drive_sessions")
 }
 
 model QuestionTag {
@@ -461,8 +477,10 @@ model Invitation {
   expiresAt              DateTime                @map("expires_at")
   revokedAt              DateTime?               @map("revoked_at")
   activeSessionFamilyId  String?                 @map("active_session_family_id")
+  driveSessionId         String?                 @map("drive_session_id") @db.UniqueIdentifier
   exam                   Exam                    @relation(fields: [examId], references: [id], onDelete: Cascade)
   candidate              Candidate               @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  driveSession           DriveSession?           @relation(fields: [driveSessionId], references: [id], onDelete: SetNull)
   notifications          Notification[]
   attempt                Attempt?
   candidateRefreshTokens CandidateRefreshToken[]

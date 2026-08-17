@@ -332,6 +332,7 @@ export class InvitationsService {
           expiresAt: true,
           revokedAt: true,
           activeSessionFamilyId: true,
+          driveSessionId: true,
           candidate: true,
           attempt: { select: { id: true, status: true } },
         },
