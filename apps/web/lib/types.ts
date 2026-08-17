@@ -265,6 +265,19 @@ export interface JobListItem {
   stageCounts: Record<PipelineStage, number> & { rejected: number };
 }
 
+// GET /jobs/:id returns the Job row plus linkedExams -- no stageCounts (that's JobListItem,
+// from the list endpoint only). See pipeline.service.ts getJob.
+export interface JobDetail {
+  id: string;
+  title: string;
+  description: string | null;
+  status: JobStatus;
+  createdById: string;
+  createdAt: string;
+  closedAt: string | null;
+  linkedExams: { examId: string; title: string }[];
+}
+
 export interface EntryExamResult {
   examId: string;
   examTitle: string;

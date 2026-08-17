@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../api-client';
 import { useAuth } from '../auth-context';
-import { JobListItem, JobStatus, PipelineBoard, PipelineStage, FeedbackRow } from '../types';
+import { JobListItem, JobDetail, JobStatus, PipelineBoard, PipelineStage, FeedbackRow } from '../types';
 
 export function useJobs(status?: JobStatus) {
   const { accessToken } = useAuth();
@@ -14,7 +14,7 @@ export function useJobs(status?: JobStatus) {
 
 export function useJob(jobId: string) {
   const { accessToken } = useAuth();
-  return useQuery<JobListItem>({
+  return useQuery<JobDetail>({
     queryKey: ['jobs', jobId],
     queryFn: () => apiFetch(`/jobs/${jobId}`, {}, accessToken ?? undefined),
     enabled: Boolean(accessToken && jobId),
@@ -71,7 +71,7 @@ export function useAddEntry(jobId: string) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { candidateId: string }) =>
+    mutationFn: (input: { candidateId?: string; newCandidate?: { name: string; email: string; phone?: string } }) =>
       apiFetch(`/jobs/${jobId}/entries`, { method: 'POST', body: JSON.stringify(input) }, accessToken ?? undefined),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobs', jobId, 'pipeline'] }),
   });
@@ -81,7 +81,7 @@ export function usePatchEntry(jobId: string) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ entryId, ...input }: { entryId: string; stage?: PipelineStage }) =>
+    mutationFn: ({ entryId, ...input }: { entryId: string; stage?: PipelineStage; rejected?: boolean; reason?: string }) =>
       apiFetch(`/entries/${entryId}`, { method: 'PATCH', body: JSON.stringify(input) }, accessToken ?? undefined),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobs', jobId, 'pipeline'] }),
   });
