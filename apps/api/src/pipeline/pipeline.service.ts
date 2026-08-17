@@ -235,6 +235,69 @@ export class PipelineService {
     });
   }
 
+  async linkExam(context: TenantContext, actorUserId: string, jobId: string, examId: string): Promise<{ success: true }> {
+    await this.tenantPrisma.forTenant(context, async (tx) => {
+      const job = await tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } });
+      if (!job) throw new NotFoundException(`Job ${jobId} not found`);
+
+      await tx.jobExam.upsert({
+        where: { jobId_examId: { jobId, examId } },
+        create: { organizationId: context.organizationId as string, jobId, examId },
+        update: {},
+      });
+
+      // Backfill: every candidate already invited to this exam gets a stamp-if-absent entry.
+      const invitations = await tx.invitation.findMany({ where: { examId }, select: { candidateId: true } });
+      const candidateIds = invitations.map((i) => i.candidateId);
+      await this.syncEntriesForInvitations(tx, context, examId, candidateIds);
+
+      await this.audit.record(context, {
+        actorUserId,
+        action: 'job.exam_linked',
+        entityType: 'job',
+        entityId: jobId,
+        metadata: { examId },
+      });
+    });
+    return { success: true };
+  }
+
+  async unlinkExam(context: TenantContext, actorUserId: string, jobId: string, examId: string): Promise<{ success: true }> {
+    await this.tenantPrisma.forTenant(context, async (tx) => {
+      // deleteMany, not delete: the link may already be gone (double-click, already
+      // unlinked) and unlinking a non-existent link should be a no-op, not a 404/error.
+      await tx.jobExam.deleteMany({ where: { jobId, examId } });
+      await this.audit.record(context, {
+        actorUserId,
+        action: 'job.exam_unlinked',
+        entityType: 'job',
+        entityId: jobId,
+        metadata: { examId },
+      });
+    });
+    return { success: true };
+  }
+
+  /**
+   * Stamps an `enteredVia='exam'` pipeline entry for every (job linked to `examId`) x
+   * candidate pair. Runs inside the CALLER's transaction (e.g. invitations.bulkInvite's own
+   * forTenant, or linkExam's) rather than opening its own -- so entry creation is atomic with
+   * whatever triggered it (an invitation being sent, or a job being linked to an exam).
+   * Stamp-if-absent (update:{}): never resets an existing entry's stage/enteredVia.
+   */
+  async syncEntriesForInvitations(tx: any, context: TenantContext, examId: string, candidateIds: string[]): Promise<void> {
+    const links = await tx.jobExam.findMany({ where: { examId }, select: { jobId: true } });
+    for (const { jobId } of links) {
+      for (const candidateId of candidateIds) {
+        await tx.pipelineEntry.upsert({
+          where: { jobId_candidateId: { jobId, candidateId } },
+          create: { organizationId: context.organizationId as string, jobId, candidateId, stage: 'applied', enteredVia: 'exam' },
+          update: {},
+        });
+      }
+    }
+  }
+
   async deleteEntry(context: TenantContext, actorUserId: string, entryId: string): Promise<{ success: true }> {
     await this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: context.organizationId as string } });

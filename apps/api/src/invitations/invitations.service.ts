@@ -7,6 +7,7 @@ import { AuditService } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { WebhooksService } from '../webhooks/webhooks.service';
+import { PipelineService } from '../pipeline/pipeline.service';
 import {
   parseBulkInviteFile,
   detectFileKind,
@@ -128,6 +129,7 @@ export class InvitationsService {
     private readonly audit: AuditService,
     private readonly webhooks: WebhooksService,
     private readonly blobStorage: BlobStorageService,
+    private readonly pipeline: PipelineService,
   ) {}
 
   /**
@@ -193,6 +195,10 @@ export class InvitationsService {
         });
         createdWithCandidate.push({ invitation, candidate });
       }
+
+      // Stamp any job linked to this exam with a pipeline entry for every invited candidate,
+      // in the same transaction as the invitations themselves (see PipelineService.syncEntriesForInvitations).
+      await this.pipeline.syncEntriesForInvitations(tx, context, examId, uniqueCandidateIds);
 
       return { exam, createdWithCandidate, skipped };
     });

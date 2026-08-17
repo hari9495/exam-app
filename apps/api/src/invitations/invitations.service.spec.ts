@@ -4,6 +4,7 @@ import { InvitationsService, EMAIL_LOGO_SAS_TTL_MS } from './invitations.service
 import { TenantPrismaService, AuditService, BlobStorageService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { WebhooksService } from '../webhooks/webhooks.service';
+import { PipelineService } from '../pipeline/pipeline.service';
 
 describe('InvitationsService', () => {
   let service: InvitationsService;
@@ -12,6 +13,7 @@ describe('InvitationsService', () => {
   let audit: { record: jest.Mock };
   let webhooksService: { enqueue: jest.Mock };
   let blobStorage: { signIfOurs: jest.Mock };
+  let pipelineService: { syncEntriesForInvitations: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
@@ -23,6 +25,7 @@ describe('InvitationsService', () => {
     // null logoPath or an unconfigured storage account -- individual tests override this to
     // verify the signing itself.
     blobStorage = { signIfOurs: jest.fn((value) => Promise.resolve(value)) };
+    pipelineService = { syncEntriesForInvitations: jest.fn().mockResolvedValue(undefined) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         InvitationsService,
@@ -31,6 +34,7 @@ describe('InvitationsService', () => {
         { provide: AuditService, useValue: audit },
         { provide: WebhooksService, useValue: webhooksService },
         { provide: BlobStorageService, useValue: blobStorage },
+        { provide: PipelineService, useValue: pipelineService },
       ],
     }).compile();
     service = moduleRef.get(InvitationsService);
@@ -469,6 +473,28 @@ describe('InvitationsService', () => {
     await service.bulkInvite(context, 'exam-1', ['cand-1']);
 
     expect(webhooksService.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('calls PipelineService.syncEntriesForInvitations with the exam id and invited candidate ids inside the same tx', async () => {
+    const createTx = {
+      exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', title: 'Backend Round', status: 'published', durationMinutes: 60, schedulingEnabled: false, availabilityWindowStart: null }) },
+      candidate: { findMany: jest.fn().mockResolvedValue([{ id: 'cand-1', email: 'a@test.com', name: 'Alice', erasedAt: null }]) },
+      invitation: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited' }),
+      },
+    };
+    const orgTx = { organization: { findUnique: jest.fn().mockResolvedValue({ logoPath: null, name: 'Acme Hiring' }) } };
+    const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) }, invitation: { update: jest.fn() } };
+    tenantPrisma.forTenant
+      .mockImplementationOnce((_ctx, fn) => fn(createTx))
+      .mockImplementationOnce((_ctx, fn) => fn(orgTx))
+      .mockImplementationOnce((_ctx, fn) => fn(notifTx));
+
+    await service.bulkInvite(context, 'exam-1', ['cand-1']);
+
+    expect(pipelineService.syncEntriesForInvitations).toHaveBeenCalledWith(createTx, context, 'exam-1', ['cand-1']);
+    await new Promise((resolve) => setImmediate(resolve));
   });
 
   it('lists invitations for an exam, including extraTimePercent and whether an attempt exists', async () => {
