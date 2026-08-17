@@ -3,6 +3,17 @@ import { apiFetch } from '../api-client';
 import { useAuth } from '../auth-context';
 import { DriveListItem, DriveRoster } from '../types';
 
+// The single drive with its derived status -- lets the drive page choose the live board vs
+// the results table without the caller having to pass ?groupId= and refetch the whole list.
+export function useDrive(driveId: string) {
+  const { accessToken } = useAuth();
+  return useQuery<DriveListItem>({
+    queryKey: ['drives', driveId],
+    queryFn: () => apiFetch(`/drives/${driveId}`, {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken && driveId),
+  });
+}
+
 export function useGroupDrives(groupId: string) {
   const { accessToken } = useAuth();
   return useQuery<DriveListItem[]>({

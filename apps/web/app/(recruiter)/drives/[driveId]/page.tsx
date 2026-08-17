@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger, type StatusTone } from '../../../../components/ui';
 import { BackLink } from '../../../../components/BackLink';
 import { DriveLiveBoard } from '../../../../components/drives/DriveLiveBoard';
 import { DriveResults } from '../../../../components/drives/DriveResults';
-import { useGroupDrives } from '../../../../lib/hooks/useDrives';
+import { useDrive } from '../../../../lib/hooks/useDrives';
 import { DriveSessionStatus } from '../../../../lib/types';
 
 const STATUS_LABEL: Record<DriveSessionStatus, string> = { scheduled: 'Scheduled', live: 'Live', ended: 'Ended' };
@@ -14,15 +14,10 @@ const STATUS_TONE: Record<DriveSessionStatus, StatusTone> = { scheduled: 'info',
 
 export default function DrivePage() {
   const { driveId } = useParams<{ driveId: string }>();
-  const searchParams = useSearchParams();
-  // ponytail: there's no GET /drives/:id on the backend, only the group-scoped list --
-  // so the drive's own name/status is only knowable here if the caller links in with
-  // ?groupId=. Today's only linker (the walk-in-groups drives list) doesn't pass it, so
-  // this falls back to the manual tabs below. Add ?groupId= (or a real GET /drives/:id)
-  // to make the tab default itself instead of requiring a click.
-  const groupId = searchParams.get('groupId') ?? '';
-  const { data: groupDrives } = useGroupDrives(groupId);
-  const drive = groupId ? groupDrives?.find((item) => item.id === driveId) : undefined;
+  // GET /drives/:id gives us the drive's name + derived status directly, so the tab defaults
+  // itself (ended -> results, otherwise -> live). The manual tabs remain so a recruiter can
+  // flip between the live board and results whenever they like.
+  const { data: drive } = useDrive(driveId);
 
   const [tab, setTab] = useState<'live' | 'results'>('live');
   useEffect(() => {

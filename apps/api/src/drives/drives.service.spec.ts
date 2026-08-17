@@ -138,7 +138,7 @@ describe('DrivesService', () => {
 
     it('maps each invitation through deriveDriveState and returns grouped counts', async () => {
       const invitations = [
-        { id: 'inv-1', candidate: { name: 'Registered Only' }, exam: { title: 'Backend Round' }, attempt: null },
+        { id: 'inv-1', candidateId: 'cand-1', examId: 'exam-1', candidate: { name: 'Registered Only' }, exam: { title: 'Backend Round' }, attempt: null },
         {
           id: 'inv-2',
           candidate: { name: 'In Progress' },
@@ -184,7 +184,9 @@ describe('DrivesService', () => {
 
       expect(result.counts).toEqual({ registered: 1, inProgress: 1, submitted: 1, passed: 1, failed: 1 });
       expect(result.rows.find((r) => r.invitationId === 'inv-1')).toEqual(
-        expect.objectContaining({ candidateName: 'Registered Only', state: 'registered', startedAt: null, score: null }),
+        // candidateId + examId are what the per-candidate report link needs; the board is
+        // useless without a click-through, so assert they survive the mapping.
+        expect.objectContaining({ candidateId: 'cand-1', examId: 'exam-1', candidateName: 'Registered Only', state: 'registered', startedAt: null, score: null }),
       );
       expect(result.rows.find((r) => r.invitationId === 'inv-4')).toEqual(
         expect.objectContaining({ candidateName: 'Passed', state: 'passed', score: 88 }),
@@ -193,6 +195,26 @@ describe('DrivesService', () => {
         where: { driveSessionId: 'drive-1' },
         include: { candidate: true, attempt: { include: { result: true } }, exam: { select: { title: true } } },
       });
+    });
+  });
+
+  describe('getDrive', () => {
+    it('returns the drive with its derived status, org-scoped', async () => {
+      const past = new Date(Date.now() - 3_600_000);
+      const future = new Date(Date.now() + 3_600_000);
+      const tx = { driveSession: { findFirst: jest.fn().mockResolvedValue({ id: 'drive-1', name: 'Campus', startsAt: past, endsAt: future }) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getDrive(context, 'drive-1');
+
+      expect(result.status).toBe('live'); // now is between past and future
+      expect(tx.driveSession.findFirst).toHaveBeenCalledWith({ where: { id: 'drive-1', organizationId: context.organizationId } });
+    });
+
+    it('throws when the drive is not in this org', async () => {
+      const tx = { driveSession: { findFirst: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      await expect(service.getDrive(context, 'missing')).rejects.toThrow(NotFoundException);
     });
   });
 

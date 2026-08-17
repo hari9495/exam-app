@@ -272,19 +272,18 @@ export interface DriveListItem extends DriveSession {
 
 export type DriveRosterState = 'registered' | 'in_progress' | 'submitted' | 'passed' | 'failed';
 
-// candidateId/examId/attemptId are NOT part of the current GET /drives/:id/live|results
-// response (apps/api/src/drives/drives.service.ts's buildRoster only returns invitationId) --
-// left optional so a future backend addition lights up the report link without another
-// frontend change, while today's real payload (which omits them) still typechecks.
 export interface DriveRosterRow {
   invitationId: string;
+  // candidateId + examId back the per-candidate report link (/reports/[examId]/candidates/
+  // [candidateId]); the board's click-through needs both. attemptId stays optional -- the
+  // report route works without it and buildRoster does not return it.
+  candidateId: string;
+  examId: string;
   candidateName: string;
   examTitle: string;
   state: DriveRosterState;
   startedAt: string | null;
   score: number | null;
-  candidateId?: string;
-  examId?: string;
   attemptId?: string | null;
 }
 

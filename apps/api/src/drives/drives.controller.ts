@@ -30,6 +30,12 @@ export class DrivesController {
     return this.drivesService.listForGroup(tenant, groupId);
   }
 
+  @Get('drives/:id')
+  @RequirePermissions('results:view')
+  getDrive(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.drivesService.getDrive(tenant, id);
+  }
+
   @Get('drives/:id/live')
   @RequirePermissions('results:view')
   liveRoster(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {

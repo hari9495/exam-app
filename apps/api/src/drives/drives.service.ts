@@ -11,6 +11,11 @@ export interface DriveSessionWithStatus extends DriveSession {
 
 export interface DriveRosterRow {
   invitationId: string;
+  // candidateId + examId are what the per-candidate report route needs
+  // (/reports/[examId]/candidates/[candidateId]); without both, the board's promised
+  // click-through to a candidate's report cannot be built.
+  candidateId: string;
+  examId: string;
   candidateName: string;
   examTitle: string;
   state: DriveState;
@@ -25,6 +30,8 @@ export interface DriveRoster {
 
 interface InvitationForRoster {
   id: string;
+  candidateId: string;
+  examId: string;
   candidate: { name: string };
   exam: { title: string };
   attempt: {
@@ -49,6 +56,8 @@ function buildRoster(invitations: InvitationForRoster[]): DriveRoster {
     else counts[state]++;
     return {
       invitationId: inv.id,
+      candidateId: inv.candidateId,
+      examId: inv.examId,
       candidateName: inv.candidate.name,
       examTitle: inv.exam.title,
       state,
@@ -114,6 +123,18 @@ export class DrivesService {
     );
     const now = new Date();
     return sessions.map((session) => ({ ...session, status: deriveSessionStatus(session, now) }));
+  }
+
+  // The single drive, with its derived status -- so the drive page can pick the live board
+  // vs the results table without the caller having to carry the group's list around.
+  async getDrive(context: TenantContext, driveId: string): Promise<DriveSessionWithStatus> {
+    const drive = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.driveSession.findFirst({ where: { id: driveId, organizationId: context.organizationId as string } }),
+    );
+    if (!drive) {
+      throw new NotFoundException(`Drive ${driveId} not found`);
+    }
+    return { ...drive, status: deriveSessionStatus(drive, new Date()) };
   }
 
   async liveRoster(context: TenantContext, driveId: string): Promise<DriveRoster> {
