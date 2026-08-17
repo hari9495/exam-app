@@ -232,6 +232,47 @@ describe('BlobStorageService.signIfOurs', () => {
   });
 });
 
+describe('BlobStorageService.downloadToBuffer', () => {
+  let service: BlobStorageService;
+  let downloadToBuffer: jest.SpyInstance;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    const realContainer = new ContainerClient(CONTAINER_URL);
+    (BlobServiceClient.fromConnectionString as jest.Mock).mockReturnValue({
+      getContainerClient: () => realContainer,
+    });
+    process.env.AZURE_STORAGE_CONNECTION_STRING = 'UseDevelopmentStorage=true';
+    process.env.AZURE_STORAGE_CONTAINER = 'container';
+    service = new BlobStorageService();
+    downloadToBuffer = jest.spyOn(BlockBlobClient.prototype, 'downloadToBuffer');
+  });
+
+  afterEach(() => {
+    downloadToBuffer.mockRestore();
+  });
+
+  it('downloads the blob at the given path and resolves with its bytes', async () => {
+    const bytes = Buffer.from('%PDF-1.4 fake resume bytes');
+    let addressed = '';
+    downloadToBuffer.mockImplementation(async function (this: BlockBlobClient) {
+      addressed = this.url;
+      return bytes;
+    });
+
+    const result = await service.downloadToBuffer('resumes/cand-1.pdf');
+
+    expect(result).toBe(bytes);
+    expect(addressed).toBe(`${CONTAINER_URL}/resumes/cand-1.pdf`);
+  });
+
+  it('rejects when the underlying download fails', async () => {
+    downloadToBuffer.mockRejectedValue(new Error('storage unreachable'));
+
+    await expect(service.downloadToBuffer('resumes/cand-1.pdf')).rejects.toThrow('storage unreachable');
+  });
+});
+
 describe('BlobStorageService.uploadDataUri', () => {
   let service: BlobStorageService;
   let uploadData: jest.SpyInstance;

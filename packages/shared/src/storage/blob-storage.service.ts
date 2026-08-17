@@ -60,6 +60,13 @@ export class BlobStorageService {
     return blockBlobClient.url;
   }
 
+  // Bytes-in-hand for a caller that needs to process the blob itself (e.g. pdf-parse on a
+  // résumé) rather than hand the browser a signed URL to fetch. Trusts blobPath the same way
+  // upload() does -- callers only ever pass a path they themselves stored, never client input.
+  async downloadToBuffer(blobPath: string): Promise<Buffer> {
+    return this.getContainer().getBlockBlobClient(blobPath).downloadToBuffer();
+  }
+
   async uploadDataUri(blobPath: string, dataUri: string): Promise<string> {
     const parsed = extractBase64FromDataUri(dataUri);
     if (!parsed) {
