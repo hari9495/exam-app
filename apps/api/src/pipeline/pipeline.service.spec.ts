@@ -65,4 +65,26 @@ describe('PipelineService', () => {
     expect(board.rejected).toHaveLength(1);
     expect(board.rejected[0].entryId).toBe('en2');
   });
+
+  it('listJobs folds groupBy counts per job, keeping rejected out of its stage bucket', async () => {
+    const tx = {
+      job: { findMany: jest.fn().mockResolvedValue([{ id: 'job-1' }, { id: 'job-2' }]) },
+      pipelineEntry: {
+        groupBy: jest.fn().mockResolvedValue([
+          { jobId: 'job-1', stage: 'applied', rejected: false, _count: 3 },
+          { jobId: 'job-1', stage: 'interview', rejected: true, _count: 2 },
+        ]),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+    const jobs = await service.listJobs(context);
+
+    expect(jobs.find((j) => j.id === 'job-1')!.stageCounts).toEqual({
+      applied: 3, screened: 0, interview: 0, offer: 0, hired: 0, rejected: 2,
+    });
+    expect(jobs.find((j) => j.id === 'job-2')!.stageCounts).toEqual({
+      applied: 0, screened: 0, interview: 0, offer: 0, hired: 0, rejected: 0,
+    });
+  });
 });
