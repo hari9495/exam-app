@@ -598,6 +598,21 @@ describe('CandidatesService', () => {
 
       expect(result).toBeNull();
     });
+
+    it('returns null when the candidate profile belongs to a different org', async () => {
+      // The org-scoped findFirst where-clause is what a cross-org lookup fails on the DB side --
+      // mocking it to null is how pipeline.service.spec.ts proves "throws NotFoundException when
+      // not in org" for other services; getProfile's contract for this case is null, not a throw.
+      const tx = { candidateProfile: { findFirst: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getProfile(context, 'cand-1');
+
+      expect(tx.candidateProfile.findFirst).toHaveBeenCalledWith({
+        where: { candidateId: 'cand-1', organizationId: 'org-1' },
+      });
+      expect(result).toBeNull();
+    });
   });
 
   describe('getResumeUrl', () => {
@@ -627,6 +642,17 @@ describe('CandidatesService', () => {
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
       await expect(service.getResumeUrl(context, 'cand-1')).rejects.toThrow(NotFoundException);
+      expect(blobStorage.signIfOurs).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when the candidate profile belongs to a different org', async () => {
+      const tx = { candidateProfile: { findFirst: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.getResumeUrl(context, 'cand-1')).rejects.toThrow(NotFoundException);
+      expect(tx.candidateProfile.findFirst).toHaveBeenCalledWith({
+        where: { candidateId: 'cand-1', organizationId: 'org-1' },
+      });
       expect(blobStorage.signIfOurs).not.toHaveBeenCalled();
     });
   });
@@ -670,6 +696,7 @@ describe('CandidatesService', () => {
         },
         candidateProfile: {
           findFirst: jest.fn().mockResolvedValue(overrides.candidateProfile ?? null),
+          updateMany: jest.fn(),
         },
       };
     }
@@ -808,6 +835,29 @@ describe('CandidatesService', () => {
       });
       expect(blobStorage.deleteByUrl).toHaveBeenCalledWith('https://blob.test/container/resumes/cand-1.pdf');
       expect(blobStorage.deleteByUrl).toHaveBeenCalledTimes(2);
+    });
+
+    it('redacts the parsed-résumé PII columns on candidate_profiles, since the FK cascade never fires on an erase (it scrubs, not deletes)', async () => {
+      const tx = makeEraseTx({
+        candidateProfile: { resumePath: 'https://blob.test/container/resumes/cand-1.pdf' },
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.erase(context, 'user-1', 'cand-1');
+
+      expect(tx.candidateProfile.updateMany).toHaveBeenCalledWith({
+        where: { candidateId: 'cand-1' },
+        data: {
+          resumePath: null,
+          parsedSummary: null,
+          parsedSkills: null,
+          parsedTitle: null,
+          parsedYearsExperience: null,
+          parseStatus: 'unavailable',
+        },
+      });
+      // The blob is still collected from the path read before the redaction, and still deleted.
+      expect(blobStorage.deleteByUrl).toHaveBeenCalledWith('https://blob.test/container/resumes/cand-1.pdf');
     });
 
     it('does not attempt a résumé blob delete when the candidate has no profile or résumé on file', async () => {

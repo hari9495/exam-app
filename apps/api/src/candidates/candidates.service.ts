@@ -468,9 +468,9 @@ export class CandidatesService {
       await tx.faceEnrolment.deleteMany({ where: { attemptId: { in: attemptIds } } });
 
       // Same rule again: read the résumé blob's path before it's out of reach, and feed it into
-      // the same best-effort delete loop as the other evidence. The candidate_profiles row itself
-      // isn't touched here -- it cascades on candidate deletion via the FK -- this only reaches
-      // the blob the FK can't.
+      // the same best-effort delete loop as the other evidence. The candidate_profiles row's FK
+      // cascade never fires here -- erase scrubs the candidate row in place, it doesn't delete
+      // it -- so the parsed-résumé PII columns are redacted explicitly below instead.
       const profile = await tx.candidateProfile.findFirst({ where: { candidateId }, select: { resumePath: true } });
       if (profile?.resumePath) evidenceUrls.push(profile.resumePath);
 
@@ -489,6 +489,20 @@ export class CandidatesService {
       await tx.attemptInsight.updateMany({
         where: { attemptId: { in: attemptIds }, summary: { not: null } },
         data: { summary: '[redacted]' },
+      });
+      // Redact the parsed-résumé PII columns in place -- candidateId's FK cascade only fires on
+      // a genuine candidate row DELETE, and erase never deletes the candidate row (it scrubs it),
+      // so without this the summary/skills/title/years survive an erasure request indefinitely.
+      await tx.candidateProfile.updateMany({
+        where: { candidateId },
+        data: {
+          resumePath: null,
+          parsedSummary: null,
+          parsedSkills: null,
+          parsedTitle: null,
+          parsedYearsExperience: null,
+          parseStatus: 'unavailable',
+        },
       });
       await tx.candidateRefreshToken.deleteMany({ where: { invitationId: { in: invitationIds } } });
       await tx.invitation.updateMany({
