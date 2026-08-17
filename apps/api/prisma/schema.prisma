@@ -232,38 +232,38 @@ model SystemEvent {
 }
 
 model Question {
-  id               String                @id @default(uuid()) @db.UniqueIdentifier
-  organizationId   String                @map("organization_id") @db.UniqueIdentifier
-  type             String
-  text             String                @db.NVarChar(Max)
-  topic            String?
-  category         String?
-  difficulty       String
-  marks            Int
-  negativeMarks    Int                   @default(0) @map("negative_marks")
-  status           String                @default("active")
-  aiGenerated      Boolean               @default(false) @map("ai_generated")
-  aiJobId          String?               @map("ai_job_id") @db.UniqueIdentifier
-  languageMode     String                @default("fixed") @map("language_mode")
-  allowedLanguages String?               @map("allowed_languages") @db.NVarChar(Max)
-  starterCode      String?               @map("starter_code") @db.NVarChar(Max)
-  allowStdin       Boolean               @default(false) @map("allow_stdin")
-  snippetCode      String?               @map("snippet_code") @db.NVarChar(Max)
-  snippetLanguage  String?               @map("snippet_language")
-  imageUrl         String?               @map("image_url")
-  createdBy        String                @map("created_by") @db.UniqueIdentifier
-  createdAt        DateTime              @default(now()) @map("created_at")
+  id                 String                @id @default(uuid()) @db.UniqueIdentifier
+  organizationId     String                @map("organization_id") @db.UniqueIdentifier
+  type               String
+  text               String                @db.NVarChar(Max)
+  topic              String?
+  category           String?
+  difficulty         String
+  marks              Int
+  negativeMarks      Int                   @default(0) @map("negative_marks")
+  status             String                @default("active")
+  aiGenerated        Boolean               @default(false) @map("ai_generated")
+  aiJobId            String?               @map("ai_job_id") @db.UniqueIdentifier
+  languageMode       String                @default("fixed") @map("language_mode")
+  allowedLanguages   String?               @map("allowed_languages") @db.NVarChar(Max)
+  starterCode        String?               @map("starter_code") @db.NVarChar(Max)
+  allowStdin         Boolean               @default(false) @map("allow_stdin")
+  snippetCode        String?               @map("snippet_code") @db.NVarChar(Max)
+  snippetLanguage    String?               @map("snippet_language")
+  imageUrl           String?               @map("image_url")
+  createdBy          String                @map("created_by") @db.UniqueIdentifier
+  createdAt          DateTime              @default(now()) @map("created_at")
   // Stamped only when an edit actually changes WHICH answers are correct. Item analytics
   // discards responses submitted before this instant: those candidates answered a question
   // whose key was different, so pooling them measures two different items as one -- and it
   // is why a miskeyed question stayed flagged even after a recruiter fixed it.
   // Null means the key has never changed, so every response counts.
-  answerKeyChangedAt DateTime?           @map("answer_key_changed_at")
-  options          QuestionOption[]
-  examLinks        ExamSectionQuestion[]
-  answers          Answer[]
-  tags             QuestionTag[]
-  aiJob            AiJob?                @relation(fields: [aiJobId], references: [id], onDelete: SetNull)
+  answerKeyChangedAt DateTime?             @map("answer_key_changed_at")
+  options            QuestionOption[]
+  examLinks          ExamSectionQuestion[]
+  answers            Answer[]
+  tags               QuestionTag[]
+  aiJob              AiJob?                @relation(fields: [aiJobId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, topic, difficulty])
   @@map("questions")
@@ -440,19 +440,38 @@ model ExamSectionPoolTag {
 }
 
 model Candidate {
-  id             String       @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String       @map("organization_id") @db.UniqueIdentifier
-  email          String
-  name           String
-  phone          String?
-  status         String       @default("active")
-  createdAt      DateTime     @default(now()) @map("created_at")
-  erasedAt       DateTime?    @map("erased_at")
-  invitations    Invitation[]
+  id              String            @id @default(uuid()) @db.UniqueIdentifier
+  organizationId  String            @map("organization_id") @db.UniqueIdentifier
+  email           String
+  name            String
+  phone           String?
+  status          String            @default("active")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  erasedAt        DateTime?         @map("erased_at")
+  invitations     Invitation[]
   pipelineEntries PipelineEntry[]
+  profile         CandidateProfile?
 
   @@unique([organizationId, email])
   @@map("candidates")
+}
+
+model CandidateProfile {
+  id                    String    @id @default(uuid()) @db.UniqueIdentifier
+  organizationId        String    @map("organization_id") @db.UniqueIdentifier
+  candidateId           String    @unique @map("candidate_id") @db.UniqueIdentifier
+  resumePath            String?   @map("resume_path")
+  parseStatus           String    @default("pending") @map("parse_status")
+  parsedSummary         String?   @map("parsed_summary") @db.NVarChar(Max)
+  parsedSkills          String?   @map("parsed_skills") @db.NVarChar(Max)
+  parsedTitle           String?   @map("parsed_title")
+  parsedYearsExperience Int?      @map("parsed_years_experience")
+  parsedAt              DateTime? @map("parsed_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  candidate             Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("candidate_profiles")
 }
 
 model Invitation {
@@ -675,16 +694,16 @@ model IntegrityAnalysis {
 }
 
 model AiJob {
-  id             String   @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String   @map("organization_id") @db.UniqueIdentifier
+  id             String     @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String     @map("organization_id") @db.UniqueIdentifier
   type           String
-  status         String   @default("pending")
-  inputJson      String   @map("input_json") @db.NVarChar(Max)
-  outputJson     String?  @map("output_json") @db.NVarChar(Max)
-  error          String?  @db.NVarChar(Max)
-  createdBy      String   @map("created_by") @db.UniqueIdentifier
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  status         String     @default("pending")
+  inputJson      String     @map("input_json") @db.NVarChar(Max)
+  outputJson     String?    @map("output_json") @db.NVarChar(Max)
+  error          String?    @db.NVarChar(Max)
+  createdBy      String     @map("created_by") @db.UniqueIdentifier
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
   questions      Question[]
 
   @@index([organizationId, status])
@@ -715,36 +734,39 @@ model AiCreditUsage {
 }
 
 model Job {
-  id             String          @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String          @map("organization_id") @db.UniqueIdentifier
-  title          String
-  description    String?         @db.NVarChar(Max)
-  status         String          @default("open")
-  createdById    String          @map("created_by_id") @db.UniqueIdentifier
-  createdAt      DateTime        @default(now()) @map("created_at")
-  closedAt       DateTime?       @map("closed_at")
-  entries        PipelineEntry[]
-  examLinks      JobExam[]
+  id                 String          @id @default(uuid()) @db.UniqueIdentifier
+  organizationId     String          @map("organization_id") @db.UniqueIdentifier
+  title              String
+  description        String?         @db.NVarChar(Max)
+  status             String          @default("open")
+  createdById        String          @map("created_by_id") @db.UniqueIdentifier
+  createdAt          DateTime        @default(now()) @map("created_at")
+  closedAt           DateTime?       @map("closed_at")
+  publicApplyEnabled Boolean         @default(false) @map("public_apply_enabled")
+  applyToken         String?         @unique @map("apply_token")
+  entries            PipelineEntry[]
+  examLinks          JobExam[]
 
   @@index([organizationId, status])
   @@map("jobs")
 }
 
 model PipelineEntry {
-  id             String             @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String             @map("organization_id") @db.UniqueIdentifier
-  jobId          String             @map("job_id") @db.UniqueIdentifier
-  candidateId    String             @map("candidate_id") @db.UniqueIdentifier
-  stage          String             @default("applied")
-  rejected       Boolean            @default(false)
-  rejectedReason String?            @map("rejected_reason")
-  rejectedAt     DateTime?          @map("rejected_at")
-  enteredVia     String             @map("entered_via")
-  createdAt      DateTime           @default(now()) @map("created_at")
-  updatedAt      DateTime           @updatedAt @map("updated_at")
-  job            Job                @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  candidate      Candidate          @relation(fields: [candidateId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  feedback       PipelineFeedback[]
+  id               String             @id @default(uuid()) @db.UniqueIdentifier
+  organizationId   String             @map("organization_id") @db.UniqueIdentifier
+  jobId            String             @map("job_id") @db.UniqueIdentifier
+  candidateId      String             @map("candidate_id") @db.UniqueIdentifier
+  stage            String             @default("applied")
+  rejected         Boolean            @default(false)
+  rejectedReason   String?            @map("rejected_reason")
+  rejectedAt       DateTime?          @map("rejected_at")
+  enteredVia       String             @map("entered_via")
+  applicationToken String?            @unique @map("application_token")
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+  job              Job                @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  candidate        Candidate          @relation(fields: [candidateId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  feedback         PipelineFeedback[]
 
   @@unique([jobId, candidateId])
   @@index([jobId])
