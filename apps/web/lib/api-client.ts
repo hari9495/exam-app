@@ -1,6 +1,8 @@
 import { humanizeHttpError, NetworkError } from './http-error-message';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001/api/v1';
+// Exported for public, unauthenticated pages (e.g. the candidate apply/status pages) that hit
+// the backend with plain fetch instead of apiFetch -- there's no access token to attach.
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001/api/v1';
 
 let unauthorizedHandler: (() => Promise<string | null>) | null = null;
 

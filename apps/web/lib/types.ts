@@ -266,6 +266,21 @@ export const STAGE_LABEL: Record<PipelineStage, string> = {
   hired: 'Hired',
 };
 
+// Public, unauthenticated candidate-facing shapes -- served by /public/jobs/:applyToken and
+// /public/applications/:statusToken, consumed by the apply/status pages via plain fetch.
+export interface PublicJob {
+  jobTitle: string;
+  jobDescription: string | null;
+  orgName: string;
+  orgLogo: string | null;
+}
+
+export interface ApplicationStatus {
+  jobTitle: string;
+  appliedAt: string;
+  statusBucket: string;
+}
+
 export interface JobListItem {
   id: string;
   title: string;
