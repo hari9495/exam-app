@@ -186,6 +186,8 @@ export class PipelineService {
         candidateId = candidate.id;
       } else if (dto.candidateId) {
         candidateId = dto.candidateId;
+        const cand = await tx.candidate.findFirst({ where: { id: candidateId, organizationId: context.organizationId as string } });
+        if (!cand) throw new NotFoundException(`Candidate ${candidateId} not found`);
       } else {
         throw new BadRequestException('candidateId or newCandidate is required');
       }
@@ -220,9 +222,11 @@ export class PipelineService {
       } else if (dto.rejected === true) {
         data = { rejected: true, rejectedReason: dto.reason ?? null, rejectedAt: new Date() };
         action = 'entry.rejected';
-      } else {
+      } else if (dto.rejected === false) {
         data = { rejected: false, rejectedReason: null, rejectedAt: null };
         action = 'entry.unrejected';
+      } else {
+        throw new BadRequestException('patchEntry requires a stage or a rejected flag');
       }
 
       const entry = await tx.pipelineEntry.update({ where: { id: entryId }, data });
