@@ -254,6 +254,22 @@ export interface WalkInGroup {
   exams: WalkInGroupExamSummary[];
 }
 
+export type DriveSessionStatus = 'scheduled' | 'live' | 'ended';
+
+export interface DriveSession {
+  id: string;
+  organizationId: string;
+  walkInGroupId: string;
+  name: string;
+  startsAt: string;
+  endsAt: string;
+  createdAt: string;
+}
+
+export interface DriveListItem extends DriveSession {
+  status: DriveSessionStatus;
+}
+
 // Every walk-in-enabled exam in the org, whichever group it's currently in (or none) --
 // the pool a "manage members" picker offers, so an exam can be moved between groups.
 export interface EligibleWalkInExam {
