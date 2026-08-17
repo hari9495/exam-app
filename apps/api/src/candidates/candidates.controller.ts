@@ -71,6 +71,18 @@ export class CandidatesController {
     return this.candidatesService.exportData(tenant, userId, id);
   }
 
+  @Get(':id/profile')
+  @RequirePermissions('results:view')
+  getProfile(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.candidatesService.getProfile(tenant, id);
+  }
+
+  @Get(':id/resume')
+  @RequirePermissions('results:view')
+  getResumeUrl(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.candidatesService.getResumeUrl(tenant, id);
+  }
+
   @Post(':id/erase')
   @RequirePermissions('candidate:data_rights')
   erase(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {

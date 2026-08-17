@@ -576,6 +576,61 @@ describe('CandidatesService', () => {
     });
   });
 
+  describe('getProfile', () => {
+    it('returns the org-scoped candidate profile', async () => {
+      const profile = { id: 'profile-1', candidateId: 'cand-1', resumePath: 'resumes/cand-1.pdf' };
+      const tx = { candidateProfile: { findFirst: jest.fn().mockResolvedValue(profile) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getProfile(context, 'cand-1');
+
+      expect(tx.candidateProfile.findFirst).toHaveBeenCalledWith({
+        where: { candidateId: 'cand-1', organizationId: 'org-1' },
+      });
+      expect(result).toEqual(profile);
+    });
+
+    it('returns null (not a 404) when the candidate has no profile yet', async () => {
+      const tx = { candidateProfile: { findFirst: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.getProfile(context, 'cand-1');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('getResumeUrl', () => {
+    it('signs and returns the résumé blob URL', async () => {
+      const tx = {
+        candidateProfile: { findFirst: jest.fn().mockResolvedValue({ resumePath: 'resumes/cand-1.pdf' }) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      blobStorage.signIfOurs.mockResolvedValue('https://blob.test/container/resumes/cand-1.pdf?sig=abc');
+
+      const result = await service.getResumeUrl(context, 'cand-1');
+
+      expect(blobStorage.signIfOurs).toHaveBeenCalledWith('resumes/cand-1.pdf');
+      expect(result).toEqual({ url: 'https://blob.test/container/resumes/cand-1.pdf?sig=abc' });
+    });
+
+    it('throws NotFoundException when the candidate has no profile', async () => {
+      const tx = { candidateProfile: { findFirst: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.getResumeUrl(context, 'cand-1')).rejects.toThrow(NotFoundException);
+      expect(blobStorage.signIfOurs).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when the profile has no résumé on file', async () => {
+      const tx = { candidateProfile: { findFirst: jest.fn().mockResolvedValue({ resumePath: null }) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.getResumeUrl(context, 'cand-1')).rejects.toThrow(NotFoundException);
+      expect(blobStorage.signIfOurs).not.toHaveBeenCalled();
+    });
+  });
+
   describe('erase', () => {
     function makeEraseTx(
       overrides: {
@@ -583,6 +638,7 @@ describe('CandidatesService', () => {
         proctoringEvents?: { metadataJson: string | null }[];
         faceEnrolments?: { referenceImagePath: string | null }[];
         faceEnrolment?: { deleteMany?: jest.Mock };
+        candidateProfile?: { resumePath: string | null } | null;
       } = {},
     ) {
       return {
@@ -611,6 +667,9 @@ describe('CandidatesService', () => {
         faceEnrolment: {
           findMany: jest.fn().mockResolvedValue(overrides.faceEnrolments ?? []),
           deleteMany: overrides.faceEnrolment?.deleteMany ?? jest.fn(),
+        },
+        candidateProfile: {
+          findFirst: jest.fn().mockResolvedValue(overrides.candidateProfile ?? null),
         },
       };
     }
@@ -732,6 +791,32 @@ describe('CandidatesService', () => {
       await service.erase(context, 'user-1', 'cand-1');
 
       expect(blobStorage.deleteByUrl).toHaveBeenCalledTimes(1);
+    });
+
+    it("collects the candidate's résumé blob URL alongside the proctoring evidence and deletes it after the transaction commits", async () => {
+      const tx = makeEraseTx({
+        proctoringEvents: [{ metadataJson: JSON.stringify({ snapshot: 'https://blob.test/container/webcam-snapshots/a.jpg' }) }],
+        candidateProfile: { resumePath: 'https://blob.test/container/resumes/cand-1.pdf' },
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.erase(context, 'user-1', 'cand-1');
+
+      expect(tx.candidateProfile.findFirst).toHaveBeenCalledWith({
+        where: { candidateId: 'cand-1' },
+        select: { resumePath: true },
+      });
+      expect(blobStorage.deleteByUrl).toHaveBeenCalledWith('https://blob.test/container/resumes/cand-1.pdf');
+      expect(blobStorage.deleteByUrl).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not attempt a résumé blob delete when the candidate has no profile or résumé on file', async () => {
+      const tx = makeEraseTx({ candidateProfile: null });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.erase(context, 'user-1', 'cand-1');
+
+      expect(blobStorage.deleteByUrl).not.toHaveBeenCalled();
     });
 
     it('attempts every blob (deleteByUrl reports the skip itself) and logs a warn-level summary, rather than one log per blob, when blob storage is not configured', async () => {

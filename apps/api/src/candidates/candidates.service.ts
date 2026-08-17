@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Candidate } from '@prisma/client';
+import { Candidate, CandidateProfile } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
@@ -299,6 +299,24 @@ export class CandidatesService {
     });
   }
 
+  async getProfile(context: TenantContext, candidateId: string): Promise<CandidateProfile | null> {
+    return this.tenantPrisma.forTenant(context, (tx) =>
+      tx.candidateProfile.findFirst({ where: { candidateId, organizationId: context.organizationId as string } }),
+    );
+  }
+
+  async getResumeUrl(context: TenantContext, candidateId: string): Promise<{ url: string }> {
+    const resumePath = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const profile = await tx.candidateProfile.findFirst({
+        where: { candidateId, organizationId: context.organizationId as string },
+      });
+      return profile?.resumePath ?? null;
+    });
+    if (!resumePath) throw new NotFoundException(`No résumé on file for candidate ${candidateId}`);
+    const url = await this.blobStorage.signIfOurs(resumePath);
+    return { url: url as string };
+  }
+
   async exportData(context: TenantContext, actorUserId: string, candidateId: string): Promise<CandidateDataExport> {
     const exportPayload = await this.tenantPrisma.forTenant(context, async (tx) => {
       const candidate = await tx.candidate.findFirst({
@@ -448,6 +466,13 @@ export class CandidatesService {
         if (enrolment.referenceImagePath) evidenceUrls.push(enrolment.referenceImagePath);
       }
       await tx.faceEnrolment.deleteMany({ where: { attemptId: { in: attemptIds } } });
+
+      // Same rule again: read the résumé blob's path before it's out of reach, and feed it into
+      // the same best-effort delete loop as the other evidence. The candidate_profiles row itself
+      // isn't touched here -- it cascades on candidate deletion via the FK -- this only reaches
+      // the blob the FK can't.
+      const profile = await tx.candidateProfile.findFirst({ where: { candidateId }, select: { resumePath: true } });
+      if (profile?.resumePath) evidenceUrls.push(profile.resumePath);
 
       const now = new Date();
       await tx.candidate.update({

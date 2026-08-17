@@ -30,6 +30,97 @@ describe('PipelineService', () => {
     await expect(service.getJob(context, 'missing-job')).rejects.toThrow(NotFoundException);
   });
 
+  it('getJob surfaces publicApplyEnabled and applyToken from the row', async () => {
+    const tx = {
+      job: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'job-1', publicApplyEnabled: true, applyToken: 'tok-abc' }),
+      },
+      jobExam: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+    const job = await service.getJob(context, 'job-1');
+
+    expect(job.publicApplyEnabled).toBe(true);
+    expect(job.applyToken).toBe('tok-abc');
+  });
+
+  describe('updateJob publicApplyEnabled toggle', () => {
+    it('mints an applyToken via randomUUID when enabling for the first time', async () => {
+      const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
+      const tx = {
+        job: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'job-1', applyToken: null, publicApplyEnabled: false }),
+          update,
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.updateJob(context, 'user-1', 'job-1', { publicApplyEnabled: true });
+
+      expect(update).toHaveBeenCalledWith({
+        where: { id: 'job-1' },
+        data: expect.objectContaining({ publicApplyEnabled: true, applyToken: expect.any(String) }),
+      });
+      const mintedToken = update.mock.calls[0][0].data.applyToken;
+      expect(mintedToken).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+    });
+
+    it('is idempotent on re-enable: does not rotate an existing applyToken', async () => {
+      const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
+      const tx = {
+        job: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'job-1', applyToken: 'existing-token', publicApplyEnabled: false }),
+          update,
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.updateJob(context, 'user-1', 'job-1', { publicApplyEnabled: true });
+
+      expect(update).toHaveBeenCalledWith({
+        where: { id: 'job-1' },
+        data: expect.objectContaining({ publicApplyEnabled: true }),
+      });
+      expect(update.mock.calls[0][0].data.applyToken).toBeUndefined();
+    });
+
+    it('toggling off leaves the existing applyToken untouched (no clear, no rotate)', async () => {
+      const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
+      const tx = {
+        job: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'job-1', applyToken: 'existing-token', publicApplyEnabled: true }),
+          update,
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.updateJob(context, 'user-1', 'job-1', { publicApplyEnabled: false });
+
+      expect(update).toHaveBeenCalledWith({
+        where: { id: 'job-1' },
+        data: expect.objectContaining({ publicApplyEnabled: false }),
+      });
+      expect(update.mock.calls[0][0].data.applyToken).toBeUndefined();
+    });
+
+    it('leaves applyToken alone entirely when publicApplyEnabled is not part of the update', async () => {
+      const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
+      const tx = {
+        job: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'job-1', applyToken: null, publicApplyEnabled: false }),
+          update,
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.updateJob(context, 'user-1', 'job-1', { title: 'New Title' });
+
+      expect(update.mock.calls[0][0].data).not.toHaveProperty('publicApplyEnabled');
+      expect(update.mock.calls[0][0].data).not.toHaveProperty('applyToken');
+    });
+  });
+
   it('deleteJob deletes and audits job.deleted', async () => {
     const del = jest.fn().mockResolvedValue({ id: 'job-1' });
     const tx = { job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }), delete: del } };

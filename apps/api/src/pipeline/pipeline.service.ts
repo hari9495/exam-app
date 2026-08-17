@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Job, PipelineEntry, PipelineFeedback } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService } from '@exam-platform/shared';
@@ -103,18 +104,33 @@ export class PipelineService {
     context: TenantContext,
     actorUserId: string,
     jobId: string,
-    dto: { title?: string; description?: string; status?: 'open' | 'closed' },
+    dto: { title?: string; description?: string; status?: 'open' | 'closed'; publicApplyEnabled?: boolean },
   ): Promise<Job> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const job = await tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } });
       if (!job) throw new NotFoundException(`Job ${jobId} not found`);
-      const data: { title?: string; description?: string; status?: string; closedAt?: Date | null } = {
+      const data: {
+        title?: string;
+        description?: string;
+        status?: string;
+        closedAt?: Date | null;
+        publicApplyEnabled?: boolean;
+        applyToken?: string;
+      } = {
         title: dto.title,
         description: dto.description,
       };
       if (dto.status) {
         data.status = dto.status;
         data.closedAt = dto.status === 'closed' ? new Date() : null;
+      }
+      if (dto.publicApplyEnabled !== undefined) {
+        data.publicApplyEnabled = dto.publicApplyEnabled;
+        // Mint once, on first enable; never rotate an existing token and never clear it on
+        // toggle-off, so a re-enable reuses the same public URL recruiters may have already shared.
+        if (dto.publicApplyEnabled && !job.applyToken) {
+          data.applyToken = randomUUID();
+        }
       }
       const updated = await tx.job.update({ where: { id: jobId }, data });
       await this.audit.record(context, {
