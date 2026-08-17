@@ -34,6 +34,7 @@ import { AttemptsAdminModule } from './attempts-admin/attempts-admin.module';
 import { ReportsModule } from './reports/reports.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { JobsModule } from './jobs/jobs.module';
+import { PublicApplicationsModule } from './public-applications/public-applications.module';
 import { AuditQueryModule } from './audit/audit-query.module';
 import { SystemEventsQueryModule } from './system-events/system-events.module';
 import { PublicApiModule } from './public-api/public-api.module';
@@ -82,6 +83,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     ReportsModule,
     DashboardModule,
     JobsModule,
+    PublicApplicationsModule,
     PublicApiModule,
     FaceEnrolmentModule,
     ItemAnalyticsModule,
