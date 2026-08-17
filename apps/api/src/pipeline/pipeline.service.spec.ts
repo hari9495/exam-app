@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PipelineService } from './pipeline.service';
 
 describe('PipelineService', () => {
@@ -85,6 +85,135 @@ describe('PipelineService', () => {
     });
     expect(jobs.find((j) => j.id === 'job-2')!.stageCounts).toEqual({
       applied: 0, screened: 0, interview: 0, offer: 0, hired: 0, rejected: 0,
+    });
+  });
+
+  describe('addEntry', () => {
+    it('upserts at applied/manual, audits entry.added, and is idempotent on re-add (update:{})', async () => {
+      const upsert = jest.fn().mockResolvedValue({ id: 'en1', stage: 'applied', enteredVia: 'manual' });
+      const tx = { job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }) }, pipelineEntry: { upsert } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      const out = await service.addEntry(context, 'user-1', 'job-1', { candidateId: 'c1' });
+
+      expect(out).toEqual({ id: 'en1', stage: 'applied', enteredVia: 'manual' });
+      expect(upsert).toHaveBeenCalledWith({
+        where: { jobId_candidateId: { jobId: 'job-1', candidateId: 'c1' } },
+        create: { organizationId: 'org-1', jobId: 'job-1', candidateId: 'c1', stage: 'applied', enteredVia: 'manual' },
+        update: {}, // never overwrite stage/enteredVia on re-add
+      });
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({
+        actorUserId: 'user-1', action: 'entry.added', entityType: 'pipeline_entry', entityId: 'en1',
+        metadata: { jobId: 'job-1', candidateId: 'c1' },
+      }));
+    });
+
+    it('throws NotFoundException when the job is not in org', async () => {
+      const tx = { job: { findFirst: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.addEntry(context, 'user-1', 'missing-job', { candidateId: 'c1' })).rejects.toThrow(NotFoundException);
+    });
+
+    it('newCandidate creates the candidate first, then upserts the entry with its id', async () => {
+      const candidateUpsert = jest.fn().mockResolvedValue({ id: 'c-new' });
+      const upsert = jest.fn().mockResolvedValue({ id: 'en2', stage: 'applied', enteredVia: 'manual' });
+      const tx = {
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }) },
+        candidate: { upsert: candidateUpsert },
+        pipelineEntry: { upsert },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.addEntry(context, 'user-1', 'job-1', {
+        newCandidate: { name: 'Amy', email: 'amy@x.com', phone: '555' },
+      });
+
+      expect(candidateUpsert).toHaveBeenCalledWith(expect.objectContaining({
+        where: { organizationId_email: { organizationId: 'org-1', email: 'amy@x.com' } },
+        create: expect.objectContaining({ organizationId: 'org-1', email: 'amy@x.com', name: 'Amy', phone: '555' }),
+      }));
+      expect(upsert).toHaveBeenCalledWith(expect.objectContaining({
+        where: { jobId_candidateId: { jobId: 'job-1', candidateId: 'c-new' } },
+      }));
+    });
+  });
+
+  describe('patchEntry', () => {
+    it('stage move clears reject fields and audits entry.stage_changed', async () => {
+      const update = jest.fn().mockResolvedValue({ id: 'en1', stage: 'interview' });
+      const tx = { pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1' }), update } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.patchEntry(context, 'user-1', 'en1', { stage: 'interview' });
+
+      expect(update).toHaveBeenCalledWith({
+        where: { id: 'en1' },
+        data: { stage: 'interview', rejected: false, rejectedReason: null, rejectedAt: null },
+      });
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'entry.stage_changed', entityId: 'en1' }));
+    });
+
+    it('rejects an invalid stage with BadRequestException', async () => {
+      const tx = { pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1' }), update: jest.fn() } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.patchEntry(context, 'user-1', 'en1', { stage: 'bogus' })).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejected:true sets flag+reason+rejectedAt, leaves stage untouched, and audits entry.rejected', async () => {
+      const update = jest.fn().mockResolvedValue({ id: 'en1', rejected: true });
+      const tx = { pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1' }), update } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.patchEntry(context, 'user-1', 'en1', { rejected: true, reason: 'not a fit' });
+
+      expect(update).toHaveBeenCalledWith({
+        where: { id: 'en1' },
+        data: { rejected: true, rejectedReason: 'not a fit', rejectedAt: expect.any(Date) },
+      });
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'entry.rejected', entityId: 'en1' }));
+    });
+
+    it('rejected:false clears the reject fields', async () => {
+      const update = jest.fn().mockResolvedValue({ id: 'en1', rejected: false });
+      const tx = { pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1' }), update } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.patchEntry(context, 'user-1', 'en1', { rejected: false });
+
+      expect(update).toHaveBeenCalledWith({
+        where: { id: 'en1' },
+        data: { rejected: false, rejectedReason: null, rejectedAt: null },
+      });
+    });
+
+    it('throws NotFoundException for an unknown entry', async () => {
+      const tx = { pipelineEntry: { findFirst: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.patchEntry(context, 'user-1', 'missing', { stage: 'interview' })).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('deleteEntry', () => {
+    it('deletes the entry and audits entry.removed', async () => {
+      const del = jest.fn().mockResolvedValue({ id: 'en1' });
+      const tx = { pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1' }), delete: del } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      const result = await service.deleteEntry(context, 'user-1', 'en1');
+
+      expect(result).toEqual({ success: true });
+      expect(del).toHaveBeenCalledWith({ where: { id: 'en1' } });
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'entry.removed', entityId: 'en1' }));
+    });
+
+    it('throws NotFoundException for an unknown entry', async () => {
+      const tx = { pipelineEntry: { findFirst: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.deleteEntry(context, 'user-1', 'missing')).rejects.toThrow(NotFoundException);
     });
   });
 });

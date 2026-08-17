@@ -1,8 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { Job } from '@prisma/client';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Job, PipelineEntry } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService } from '@exam-platform/shared';
 import { PIPELINE_STAGES, PipelineStage, isValidStage } from './pipeline-stages';
 import { EntryExamResult, deriveEntryExamResults, averageRating } from './derive-entry-exam-results';
+import { AddEntryDto } from './dto/add-entry.dto';
+import { PatchEntryDto } from './dto/patch-entry.dto';
 
 export interface JobWithCounts extends Job {
   stageCounts: Record<PipelineStage, number> & { rejected: number };
@@ -162,5 +164,80 @@ export class PipelineService {
       }
       return { stages, rejected };
     });
+  }
+
+  async addEntry(context: TenantContext, actorUserId: string, jobId: string, dto: AddEntryDto): Promise<PipelineEntry> {
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const job = await tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } });
+      if (!job) throw new NotFoundException(`Job ${jobId} not found`);
+
+      let candidateId: string;
+      if (dto.newCandidate) {
+        const candidate = await tx.candidate.upsert({
+          where: { organizationId_email: { organizationId: context.organizationId as string, email: dto.newCandidate.email } },
+          create: {
+            organizationId: context.organizationId as string,
+            email: dto.newCandidate.email,
+            name: dto.newCandidate.name,
+            phone: dto.newCandidate.phone,
+          },
+          update: { name: dto.newCandidate.name, phone: dto.newCandidate.phone },
+        });
+        candidateId = candidate.id;
+      } else if (dto.candidateId) {
+        candidateId = dto.candidateId;
+      } else {
+        throw new BadRequestException('candidateId or newCandidate is required');
+      }
+
+      const entry = await tx.pipelineEntry.upsert({
+        where: { jobId_candidateId: { jobId, candidateId } },
+        create: { organizationId: context.organizationId as string, jobId, candidateId, stage: 'applied', enteredVia: 'manual' },
+        update: {}, // stamp-if-absent: never touch stage/enteredVia on re-add
+      });
+      await this.audit.record(context, {
+        actorUserId,
+        action: 'entry.added',
+        entityType: 'pipeline_entry',
+        entityId: entry.id,
+        metadata: { jobId, candidateId },
+      });
+      return entry;
+    });
+  }
+
+  async patchEntry(context: TenantContext, actorUserId: string, entryId: string, dto: PatchEntryDto): Promise<PipelineEntry> {
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const existing = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: context.organizationId as string } });
+      if (!existing) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
+
+      let data: { stage?: string; rejected: boolean; rejectedReason: string | null; rejectedAt: Date | null };
+      let action: string;
+      if (dto.stage !== undefined) {
+        if (!isValidStage(dto.stage)) throw new BadRequestException(`Invalid stage ${dto.stage}`);
+        data = { stage: dto.stage, rejected: false, rejectedReason: null, rejectedAt: null };
+        action = 'entry.stage_changed';
+      } else if (dto.rejected === true) {
+        data = { rejected: true, rejectedReason: dto.reason ?? null, rejectedAt: new Date() };
+        action = 'entry.rejected';
+      } else {
+        data = { rejected: false, rejectedReason: null, rejectedAt: null };
+        action = 'entry.unrejected';
+      }
+
+      const entry = await tx.pipelineEntry.update({ where: { id: entryId }, data });
+      await this.audit.record(context, { actorUserId, action, entityType: 'pipeline_entry', entityId: entryId, metadata: { ...dto } });
+      return entry;
+    });
+  }
+
+  async deleteEntry(context: TenantContext, actorUserId: string, entryId: string): Promise<{ success: true }> {
+    await this.tenantPrisma.forTenant(context, async (tx) => {
+      const existing = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: context.organizationId as string } });
+      if (!existing) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
+      await tx.pipelineEntry.delete({ where: { id: entryId } });
+      await this.audit.record(context, { actorUserId, action: 'entry.removed', entityType: 'pipeline_entry', entityId: entryId });
+    });
+    return { success: true };
   }
 }
