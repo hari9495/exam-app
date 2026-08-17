@@ -300,6 +300,19 @@ export interface JobDetail {
   createdAt: string;
   closedAt: string | null;
   linkedExams: { examId: string; title: string }[];
+  publicApplyEnabled: boolean;
+  applyToken: string | null;
+}
+
+export type CandidateParseStatus = 'pending' | 'parsing' | 'done' | 'failed' | 'unavailable';
+
+export interface CandidateProfile {
+  resumePath: string | null;
+  parseStatus: CandidateParseStatus;
+  parsedSummary: string | null;
+  parsedSkills: string | null;
+  parsedTitle: string | null;
+  parsedYearsExperience: number | null;
 }
 
 export interface EntryExamResult {

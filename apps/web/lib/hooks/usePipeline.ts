@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../api-client';
 import { useAuth } from '../auth-context';
-import { JobListItem, JobDetail, JobStatus, PipelineBoard, PipelineStage, FeedbackRow } from '../types';
+import { JobListItem, JobDetail, JobStatus, PipelineBoard, PipelineStage, FeedbackRow, CandidateProfile } from '../types';
 
 export function useJobs(status?: JobStatus) {
   const { accessToken } = useAuth();
@@ -49,7 +49,7 @@ export function useUpdateJob(jobId: string) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: Partial<CreateJobInput> & { status?: JobStatus }) =>
+    mutationFn: (input: Partial<CreateJobInput> & { status?: JobStatus; publicApplyEnabled?: boolean }) =>
       apiFetch(`/jobs/${jobId}`, { method: 'PATCH', body: JSON.stringify(input) }, accessToken ?? undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
@@ -119,6 +119,24 @@ export function useEntryFeedback(entryId: string) {
     queryKey: ['entries', entryId, 'feedback'],
     queryFn: () => apiFetch(`/entries/${entryId}/feedback`, {}, accessToken ?? undefined),
     enabled: Boolean(accessToken && entryId),
+  });
+}
+
+export function useCandidateProfile(candidateId: string) {
+  const { accessToken } = useAuth();
+  return useQuery<CandidateProfile | null>({
+    queryKey: ['candidates', candidateId, 'profile'],
+    queryFn: () => apiFetch(`/candidates/${candidateId}/profile`, {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken && candidateId),
+  });
+}
+
+// Résumé URLs are short-lived signed blob links -- fetched on demand at click time via
+// mutate(), never prefetched/cached alongside the profile.
+export function useCandidateResumeUrl(candidateId: string) {
+  const { accessToken } = useAuth();
+  return useMutation({
+    mutationFn: () => apiFetch(`/candidates/${candidateId}/resume`, {}, accessToken ?? undefined) as Promise<{ url: string }>,
   });
 }
 

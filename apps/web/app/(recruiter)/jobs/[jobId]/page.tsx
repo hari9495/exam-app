@@ -2,17 +2,67 @@
 
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
-import { Button, StatusBadge, useToast, type StatusTone } from '../../../../components/ui';
+import { Check, Copy } from 'lucide-react';
+import { Button, Checkbox, StatusBadge, useToast, type StatusTone } from '../../../../components/ui';
 import { BackLink } from '../../../../components/BackLink';
 import { LinkedExams } from '../../../../components/pipeline/LinkedExams';
 import { AddCandidateModal } from '../../../../components/pipeline/AddCandidateModal';
 import { PipelineBoard } from '../../../../components/pipeline/PipelineBoard';
 import { useJob, useUpdateJob } from '../../../../lib/hooks/usePipeline';
 import { useAuth } from '../../../../lib/auth-context';
-import { JobStatus } from '../../../../lib/types';
+import { JobDetail, JobStatus } from '../../../../lib/types';
 
 const STATUS_LABEL: Record<JobStatus, string> = { open: 'Open', closed: 'Closed' };
 const STATUS_TONE: Record<JobStatus, StatusTone> = { open: 'success', closed: 'neutral' };
+
+// Same copy-to-clipboard pattern as WalkInShareCard: navigator.clipboard.writeText, a
+// toast, and a 2s "Copied" icon swap.
+function PublicApplyControl({ job, jobId }: { job: JobDetail; jobId: string }) {
+  const updateJob = useUpdateJob(jobId);
+  const { toast } = useToast();
+  const [copied, setCopied] = useState(false);
+
+  const applyUrl = job.applyToken && typeof window !== 'undefined' ? `${window.location.origin}/apply/${job.applyToken}` : '';
+
+  function toggle(next: boolean) {
+    updateJob.mutate(
+      { publicApplyEnabled: next },
+      { onError: (error) => toast(error instanceof Error ? error.message : 'Failed to update job.', 'error') },
+    );
+  }
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(applyUrl);
+      setCopied(true);
+      toast('Link copied.');
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast('Failed to copy link.', 'error');
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Checkbox label="Public applications" checked={job.publicApplyEnabled} onChange={toggle} disabled={updateJob.isPending} />
+      {job.publicApplyEnabled && applyUrl && (
+        <div className="flex items-center gap-2">
+          <input
+            readOnly
+            value={applyUrl}
+            aria-label="Public apply link"
+            onFocus={(e) => e.target.select()}
+            className="min-w-0 flex-1 rounded border border-recruiter-border bg-recruiter-bg-subtle px-3 py-1.5 font-mono text-xs text-recruiter-text"
+          />
+          <Button type="button" variant="secondary" size="sm" onClick={handleCopy} className="inline-flex items-center gap-1.5">
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+            {copied ? 'Copied' : 'Copy link'}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function JobPage() {
   const { jobId } = useParams<{ jobId: string }>();
@@ -54,6 +104,7 @@ export default function JobPage() {
       </div>
 
       {job && <LinkedExams jobId={jobId} linkedExams={job.linkedExams} canManage={canManage} />}
+      {job && canManage && <PublicApplyControl job={job} jobId={jobId} />}
 
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-recruiter-text">Pipeline</h2>

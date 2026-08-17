@@ -3,8 +3,74 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { Modal, Button, useToast } from '../ui';
-import { useEntryFeedback, useAddFeedback } from '../../lib/hooks/usePipeline';
-import { BoardRow, EntryExamResult } from '../../lib/types';
+import { useEntryFeedback, useAddFeedback, useCandidateProfile, useCandidateResumeUrl } from '../../lib/hooks/usePipeline';
+import { BoardRow, EntryExamResult, CandidateProfile } from '../../lib/types';
+
+function parseSkills(parsedSkills: string | null): string[] {
+  if (!parsedSkills) return [];
+  try {
+    const parsed = JSON.parse(parsedSkills);
+    return Array.isArray(parsed) ? parsed.filter((skill): skill is string => typeof skill === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function statusHint(profile: CandidateProfile | null | undefined): string {
+  if (profile?.parseStatus === 'pending' || profile?.parseStatus === 'parsing') return 'Parsing…';
+  if (profile?.parseStatus === 'failed') return 'Résumé parse failed';
+  if (profile?.resumePath) return 'Résumé on file — parsing unavailable';
+  return 'No résumé on file';
+}
+
+function CandidateProfileSection({ candidateId }: { candidateId: string }) {
+  const { data: profile, isLoading } = useCandidateProfile(candidateId);
+  const resumeUrl = useCandidateResumeUrl(candidateId);
+  const { toast } = useToast();
+
+  function handleDownload() {
+    resumeUrl.mutate(undefined, {
+      onSuccess: (result) => window.open(result.url, '_blank'),
+      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to open résumé.', 'error'),
+    });
+  }
+
+  return (
+    <div>
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary">Profile</h3>
+      {isLoading ? (
+        <p className="text-sm text-recruiter-text-tertiary">Loading&hellip;</p>
+      ) : profile?.parseStatus === 'done' ? (
+        <div className="flex flex-col gap-2">
+          {profile.parsedTitle && <p className="text-sm font-medium text-recruiter-text">{profile.parsedTitle}</p>}
+          {profile.parsedYearsExperience !== null && (
+            <p className="text-sm text-recruiter-text-secondary">{profile.parsedYearsExperience} yrs experience</p>
+          )}
+          {profile.parsedSummary && <p className="text-sm text-recruiter-text">{profile.parsedSummary}</p>}
+          {parseSkills(profile.parsedSkills).length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {parseSkills(profile.parsedSkills).map((skill) => (
+                <span
+                  key={skill}
+                  className="rounded-full border border-recruiter-border bg-white px-2.5 py-0.5 text-xs font-medium text-recruiter-text"
+                >
+                  {skill}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <p className="text-sm text-recruiter-text-tertiary">{statusHint(profile)}</p>
+      )}
+      {profile?.resumePath && (
+        <Button variant="secondary" size="sm" className="mt-3" onClick={handleDownload} loading={resumeUrl.isPending}>
+          Download résumé
+        </Button>
+      )}
+    </div>
+  );
+}
 
 function chipLabel(result: EntryExamResult): string {
   if (result.passFail === null) return `${result.examTitle} · Pending`;
@@ -60,6 +126,8 @@ export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: B
     <Modal open title={row.candidateName} onClose={onClose} size="lg">
       <div className="flex flex-col gap-5">
         <p className="text-sm text-recruiter-text-secondary">{row.candidateEmail}</p>
+
+        <CandidateProfileSection candidateId={row.candidateId} />
 
         <div>
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary">Exam results</h3>
