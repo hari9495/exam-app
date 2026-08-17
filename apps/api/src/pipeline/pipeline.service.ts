@@ -1,10 +1,20 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Job, PipelineEntry } from '@prisma/client';
+import { Job, PipelineEntry, PipelineFeedback } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService } from '@exam-platform/shared';
 import { PIPELINE_STAGES, PipelineStage, isValidStage } from './pipeline-stages';
 import { EntryExamResult, deriveEntryExamResults, averageRating } from './derive-entry-exam-results';
 import { AddEntryDto } from './dto/add-entry.dto';
 import { PatchEntryDto } from './dto/patch-entry.dto';
+import { AddFeedbackDto } from './dto/add-feedback.dto';
+
+export interface FeedbackRow {
+  id: string;
+  authorUserId: string;
+  authorName: string | null;
+  note: string | null;
+  rating: number | null;
+  createdAt: Date;
+}
 
 export interface JobWithCounts extends Job {
   stageCounts: Record<PipelineStage, number> & { rejected: number };
@@ -306,5 +316,46 @@ export class PipelineService {
       await this.audit.record(context, { actorUserId, action: 'entry.removed', entityType: 'pipeline_entry', entityId: entryId });
     });
     return { success: true };
+  }
+
+  async addFeedback(context: TenantContext, userId: string, entryId: string, dto: AddFeedbackDto): Promise<PipelineFeedback> {
+    if (!dto.note?.trim() && dto.rating == null) throw new BadRequestException('note or rating required');
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const entry = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: context.organizationId as string } });
+      if (!entry) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
+
+      const created = await tx.pipelineFeedback.create({
+        data: { organizationId: context.organizationId as string, entryId, authorUserId: userId, note: dto.note ?? null, rating: dto.rating ?? null },
+      });
+      await this.audit.record(context, {
+        actorUserId: userId,
+        action: 'feedback.added',
+        entityType: 'pipeline_entry',
+        entityId: entryId,
+        metadata: { rating: dto.rating ?? null },
+      });
+      return created;
+    });
+  }
+
+  async listFeedback(context: TenantContext, entryId: string): Promise<FeedbackRow[]> {
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const entry = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: context.organizationId as string } });
+      if (!entry) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
+
+      const feedback = await tx.pipelineFeedback.findMany({ where: { entryId }, orderBy: { createdAt: 'desc' } });
+      const authorIds = [...new Set(feedback.map((f: PipelineFeedback) => f.authorUserId))];
+      const authors = await tx.user.findMany({ where: { id: { in: authorIds } }, select: { id: true, name: true } });
+      const nameById = new Map(authors.map((a: { id: string; name: string | null }) => [a.id, a.name]));
+
+      return feedback.map((f: PipelineFeedback) => ({
+        id: f.id,
+        authorUserId: f.authorUserId,
+        authorName: nameById.get(f.authorUserId) ?? null,
+        note: f.note,
+        rating: f.rating,
+        createdAt: f.createdAt,
+      }));
+    });
   }
 }

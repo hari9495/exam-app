@@ -340,4 +340,84 @@ describe('PipelineService', () => {
       await expect(service.deleteEntry(context, 'user-1', 'missing')).rejects.toThrow(NotFoundException);
     });
   });
+
+  describe('addFeedback', () => {
+    it('accepts a rating-only feedback, stores note as null, and audits feedback.added', async () => {
+      const create = jest.fn().mockResolvedValue({ id: 'fb1', entryId: 'en1', authorUserId: 'user-1', note: null, rating: 5 });
+      const tx = {
+        pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1' }) },
+        pipelineFeedback: { create },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      const out = await service.addFeedback(context, 'user-1', 'en1', { rating: 5 });
+
+      expect(out).toEqual({ id: 'fb1', entryId: 'en1', authorUserId: 'user-1', note: null, rating: 5 });
+      expect(create).toHaveBeenCalledWith({
+        data: { organizationId: 'org-1', entryId: 'en1', authorUserId: 'user-1', note: null, rating: 5 },
+      });
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({
+        actorUserId: 'user-1', action: 'feedback.added', entityType: 'pipeline_entry', entityId: 'en1',
+      }));
+    });
+
+    it('throws BadRequestException when neither note nor rating is given, and never calls create', async () => {
+      const create = jest.fn();
+      const tx = { pipelineEntry: { findFirst: jest.fn() }, pipelineFeedback: { create } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.addFeedback(context, 'user-1', 'en1', {})).rejects.toThrow(BadRequestException);
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when note is only whitespace and rating is absent', async () => {
+      const create = jest.fn();
+      const tx = { pipelineEntry: { findFirst: jest.fn() }, pipelineFeedback: { create } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.addFeedback(context, 'user-1', 'en1', { note: '   ' })).rejects.toThrow(BadRequestException);
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when the entry is not in org, and never calls create', async () => {
+      const create = jest.fn();
+      const tx = { pipelineEntry: { findFirst: jest.fn().mockResolvedValue(null) }, pipelineFeedback: { create } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.addFeedback(context, 'user-1', 'missing', { rating: 3 })).rejects.toThrow(NotFoundException);
+      expect(create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listFeedback', () => {
+    it('returns rows newest-first with authorName joined', async () => {
+      const tx = {
+        pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1' }) },
+        pipelineFeedback: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'fb2', entryId: 'en1', authorUserId: 'user-2', note: 'great', rating: 5, createdAt: new Date('2026-01-02') },
+            { id: 'fb1', entryId: 'en1', authorUserId: 'user-1', note: null, rating: 3, createdAt: new Date('2026-01-01') },
+          ]),
+        },
+        user: { findMany: jest.fn().mockResolvedValue([{ id: 'user-1', name: 'Amy' }, { id: 'user-2', name: 'Bo' }]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      const rows = await service.listFeedback(context, 'en1');
+
+      expect(tx.pipelineFeedback.findMany).toHaveBeenCalledWith({ where: { entryId: 'en1' }, orderBy: { createdAt: 'desc' } });
+      expect(tx.user.findMany).toHaveBeenCalledWith({ where: { id: { in: ['user-2', 'user-1'] } }, select: { id: true, name: true } });
+      expect(rows).toEqual([
+        { id: 'fb2', authorUserId: 'user-2', authorName: 'Bo', note: 'great', rating: 5, createdAt: new Date('2026-01-02') },
+        { id: 'fb1', authorUserId: 'user-1', authorName: 'Amy', note: null, rating: 3, createdAt: new Date('2026-01-01') },
+      ]);
+    });
+
+    it('throws NotFoundException when the entry is not in org', async () => {
+      const tx = { pipelineEntry: { findFirst: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.listFeedback(context, 'missing')).rejects.toThrow(NotFoundException);
+    });
+  });
 });
