@@ -24,7 +24,10 @@ describe('ResumeParseProcessor', () => {
   it('parses the résumé and writes parsedSummary/parsedSkills/parsedTitle/parsedYearsExperience with parseStatus=done', async () => {
     const findUnique = jest.fn().mockResolvedValue(profile);
     const update = jest.fn().mockResolvedValue({});
-    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ candidateProfile: { findUnique, update } }));
+    const create = jest.fn().mockResolvedValue({});
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
+      fn({ candidateProfile: { findUnique, update }, aiCreditUsage: { create } }),
+    );
     aiApiKeyResolver.resolve.mockResolvedValue(aiProvider);
     blobStorage.downloadToBuffer.mockResolvedValue(Buffer.from('%PDF-1.4 fake bytes'));
     (pdfParse as unknown as jest.Mock).mockResolvedValue({ text: 'John Doe. Senior Backend Engineer. 6 years experience. Skills: Node.js, SQL.' });
@@ -51,6 +54,9 @@ describe('ResumeParseProcessor', () => {
         parsedAt: expect.any(Date),
       },
     });
+    expect(create).toHaveBeenCalledWith({
+      data: { organizationId: 'org-1', source: 'resume_parse', credits: 1, sourceId: 'cand-1' },
+    });
   });
 
   it('sets parseStatus=failed and returns without touching blob storage or AI when the profile has no resumePath', async () => {
@@ -68,7 +74,10 @@ describe('ResumeParseProcessor', () => {
   it('sets parseStatus=unavailable and makes no AI call when the organization has no AI key configured, keeping the résumé stored', async () => {
     const findUnique = jest.fn().mockResolvedValue(profile);
     const update = jest.fn().mockResolvedValue({});
-    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ candidateProfile: { findUnique, update } }));
+    const create = jest.fn().mockResolvedValue({});
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
+      fn({ candidateProfile: { findUnique, update }, aiCreditUsage: { create } }),
+    );
     aiApiKeyResolver.resolve.mockRejectedValue(new AiNotConfiguredError('no key'));
 
     const result = await processor.process({ candidateId: 'cand-1' }, context, 'job-1');
@@ -77,6 +86,7 @@ describe('ResumeParseProcessor', () => {
     expect(update).toHaveBeenCalledWith({ where: { candidateId: 'cand-1' }, data: { parseStatus: 'unavailable' } });
     expect(blobStorage.downloadToBuffer).not.toHaveBeenCalled();
     expect(aiProvider.generateStructured).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
   });
 
   it('sets parseStatus=failed when pdf-parse throws, leaving the résumé downloadable', async () => {
@@ -96,7 +106,10 @@ describe('ResumeParseProcessor', () => {
   it('sets parseStatus=failed when the AI call errors', async () => {
     const findUnique = jest.fn().mockResolvedValue(profile);
     const update = jest.fn().mockResolvedValue({});
-    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ candidateProfile: { findUnique, update } }));
+    const create = jest.fn().mockResolvedValue({});
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
+      fn({ candidateProfile: { findUnique, update }, aiCreditUsage: { create } }),
+    );
     aiApiKeyResolver.resolve.mockResolvedValue(aiProvider);
     blobStorage.downloadToBuffer.mockResolvedValue(Buffer.from('%PDF-1.4 fake bytes'));
     (pdfParse as unknown as jest.Mock).mockResolvedValue({ text: 'Some résumé text' });
@@ -105,6 +118,7 @@ describe('ResumeParseProcessor', () => {
     await processor.process({ candidateId: 'cand-1' }, context, 'job-1');
 
     expect(update).toHaveBeenCalledWith({ where: { candidateId: 'cand-1' }, data: { parseStatus: 'failed' } });
+    expect(create).not.toHaveBeenCalled();
   });
 
   it('sets parseStatus=failed when the AI response is malformed (missing summary)', async () => {
@@ -124,7 +138,10 @@ describe('ResumeParseProcessor', () => {
   it('truncates extracted text to 40000 characters before sending it to the AI provider', async () => {
     const findUnique = jest.fn().mockResolvedValue(profile);
     const update = jest.fn().mockResolvedValue({});
-    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ candidateProfile: { findUnique, update } }));
+    const create = jest.fn().mockResolvedValue({});
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
+      fn({ candidateProfile: { findUnique, update }, aiCreditUsage: { create } }),
+    );
     aiApiKeyResolver.resolve.mockResolvedValue(aiProvider);
     blobStorage.downloadToBuffer.mockResolvedValue(Buffer.from('%PDF-1.4 fake bytes'));
     const longText = 'a'.repeat(50000);
@@ -141,7 +158,10 @@ describe('ResumeParseProcessor', () => {
   it('defaults skills to an empty array and title/yearsExperience to null when the AI omits them', async () => {
     const findUnique = jest.fn().mockResolvedValue(profile);
     const update = jest.fn().mockResolvedValue({});
-    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ candidateProfile: { findUnique, update } }));
+    const create = jest.fn().mockResolvedValue({});
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
+      fn({ candidateProfile: { findUnique, update }, aiCreditUsage: { create } }),
+    );
     aiApiKeyResolver.resolve.mockResolvedValue(aiProvider);
     blobStorage.downloadToBuffer.mockResolvedValue(Buffer.from('%PDF-1.4 fake bytes'));
     (pdfParse as unknown as jest.Mock).mockResolvedValue({ text: 'Some résumé text' });

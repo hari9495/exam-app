@@ -75,8 +75,8 @@ export class ResumeParseProcessor implements JobProcessor {
       const text = (await pdfParse(buf)).text.slice(0, MAX_RESUME_TEXT_CHARS);
       const parsed = await this.callAi(aiProvider, text);
 
-      await this.tenantPrisma.forTenant(context, (tx) =>
-        tx.candidateProfile.update({
+      await this.tenantPrisma.forTenant(context, async (tx) => {
+        await tx.candidateProfile.update({
           where: { candidateId },
           data: {
             parseStatus: 'done',
@@ -86,8 +86,16 @@ export class ResumeParseProcessor implements JobProcessor {
             parsedYearsExperience: parsed.yearsExperience ?? null,
             parsedAt: new Date(),
           },
-        }),
-      );
+        });
+        await tx.aiCreditUsage.create({
+          data: {
+            organizationId: context.organizationId as string,
+            source: 'resume_parse',
+            credits: 1,
+            sourceId: candidateId,
+          },
+        });
+      });
       return { ok: true };
     } catch (error) {
       this.logger.error(`Resume parse failed for candidate ${candidateId} (job ${aiJobId})`, error as Error);
