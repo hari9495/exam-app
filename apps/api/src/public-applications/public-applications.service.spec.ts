@@ -101,12 +101,16 @@ describe('PublicApplicationsService', () => {
         service.apply('valid-token', { name: 'A', email: 'a@x.com', resumeBase64: big.toString('base64') }),
       ).rejects.toThrow(BadRequestException);
       expect(blobStorage.upload).not.toHaveBeenCalled();
+      expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(1); // only the bootstrap read, no write tx
     });
 
     it('stores résumé, upserts candidate/profile/entry, enqueues parse, returns token', async () => {
       const bootstrapTx = { job: { findUnique: jest.fn().mockResolvedValue(openJob) } };
       const writeTx = {
-        candidate: { upsert: jest.fn().mockResolvedValue({ id: 'cand-1' }) },
+        candidate: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          upsert: jest.fn().mockResolvedValue({ id: 'cand-1' }),
+        },
         candidateProfile: { upsert: jest.fn().mockResolvedValue({ id: 'prof-1' }) },
         pipelineEntry: { upsert: jest.fn().mockResolvedValue({ id: 'en-1', applicationToken: 'tok-generated' }) },
       };
@@ -164,7 +168,10 @@ describe('PublicApplicationsService', () => {
     it('re-apply returns the existing token (upsert update: {} keeps the entry as-is)', async () => {
       const bootstrapTx = { job: { findUnique: jest.fn().mockResolvedValue(openJob) } };
       const writeTx = {
-        candidate: { upsert: jest.fn().mockResolvedValue({ id: 'cand-1' }) },
+        candidate: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          upsert: jest.fn().mockResolvedValue({ id: 'cand-1' }),
+        },
         candidateProfile: { upsert: jest.fn().mockResolvedValue({ id: 'prof-1' }) },
         pipelineEntry: { upsert: jest.fn().mockResolvedValue({ id: 'en-1', applicationToken: 'existing-token' }) },
       };
@@ -178,6 +185,35 @@ describe('PublicApplicationsService', () => {
       const out = await service.apply('valid-token', { name: 'A', email: 'a@x.com', resumeBase64: pdf });
 
       expect(out).toEqual({ statusToken: 'existing-token' });
+    });
+
+    it('does not let public input overwrite an existing candidate\'s stored name/phone', async () => {
+      const bootstrapTx = { job: { findUnique: jest.fn().mockResolvedValue(openJob) } };
+      const writeTx = {
+        candidate: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', name: 'Real Name', phone: '555-0000' }),
+          upsert: jest.fn().mockResolvedValue({ id: 'cand-1' }),
+        },
+        candidateProfile: { upsert: jest.fn().mockResolvedValue({ id: 'prof-1' }) },
+        pipelineEntry: { upsert: jest.fn().mockResolvedValue({ id: 'en-1', applicationToken: 'existing-token' }) },
+      };
+      tenantPrisma.forTenant
+        .mockImplementationOnce((_c, fn) => fn(bootstrapTx))
+        .mockImplementationOnce((_c, fn) => fn(writeTx));
+      blobStorage.upload.mockResolvedValue('candidates/org-1/attacker-upload.pdf');
+      jobsService.enqueue.mockResolvedValue({ id: 'aijob-3' });
+
+      const pdf = Buffer.from('%PDF-1.7 attacker').toString('base64');
+      await service.apply('valid-token', {
+        name: 'Attacker Supplied Name',
+        email: 'a@x.com',
+        phone: '999-9999',
+        resumeBase64: pdf,
+      });
+
+      // stored name is two words already -- expandedName's guard means no exception applies,
+      // so the update must leave name/phone untouched entirely (not even set to the submitted values).
+      expect(writeTx.candidate.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: {} }));
     });
   });
 

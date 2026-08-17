@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService, TenantPrismaService, BlobStorageService } from '@exam-platform/shared';
 import { JobsService } from '../jobs/jobs.service';
+import { expandedName } from '../walk-in/walk-in.service';
 import { applicationStatusBucket } from './application-status';
 import { validatePdfUpload } from './pdf-validation';
 import { ApplyDto } from './dto/apply.dto';
@@ -78,10 +79,18 @@ export class PublicApplicationsService {
 
     const context = { organizationId: job.organizationId, isSuperAdmin: true };
     const { entry, candidateId } = await this.tenantPrisma.forTenant(context, async (tx) => {
+      // Public, unauthenticated endpoint: an existing candidate match must NOT be overwritten
+      // with request-body name/phone -- anyone who knows a candidate's email could tamper with
+      // their stored details. Same rule as WalkInService.register; expandedName carries the one
+      // narrow exception (expanding a placeholder single-word stored name).
+      const existingCandidate = await tx.candidate.findUnique({
+        where: { organizationId_email: { organizationId: job.organizationId, email: dto.email } },
+      });
+      const nameUpdate = existingCandidate ? expandedName(existingCandidate.name, dto.name) : null;
       const candidate = await tx.candidate.upsert({
         where: { organizationId_email: { organizationId: job.organizationId, email: dto.email } },
         create: { organizationId: job.organizationId, email: dto.email, name: dto.name, phone: dto.phone ?? null },
-        update: { name: dto.name, phone: dto.phone ?? null },
+        update: nameUpdate ? { name: nameUpdate } : {},
       });
       await tx.candidateProfile.upsert({
         where: { candidateId: candidate.id },
