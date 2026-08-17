@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, BookOpen, Users, BarChart3, QrCode } from 'lucide-react';
+import { LayoutDashboard, FileText, BookOpen, Users, BarChart3, QrCode, Briefcase } from 'lucide-react';
 
 // The recruiter-scoped nav, shared by BOTH shells that can render it: the (recruiter) route group
 // and the (panel) group, which owns /reports and shows this same sidebar to a recruiter or
@@ -20,4 +20,5 @@ export const RECRUITER_NAV_ITEMS = [
   // reports console at all -- despite the recruiter role already holding results:view.
   { href: '/reports', label: 'Results', icon: BarChart3 },
   { href: '/walk-in-groups', label: 'Walk-in Groups', icon: QrCode },
+  { href: '/jobs', label: 'Jobs', icon: Briefcase },
 ];

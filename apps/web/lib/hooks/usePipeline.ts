@@ -1,0 +1,136 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiFetch } from '../api-client';
+import { useAuth } from '../auth-context';
+import { JobListItem, JobStatus, PipelineBoard, PipelineStage, FeedbackRow } from '../types';
+
+export function useJobs(status?: JobStatus) {
+  const { accessToken } = useAuth();
+  return useQuery<JobListItem[]>({
+    queryKey: ['jobs', { status }],
+    queryFn: () => apiFetch(`/jobs${status ? `?status=${status}` : ''}`, {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken),
+  });
+}
+
+export function useJob(jobId: string) {
+  const { accessToken } = useAuth();
+  return useQuery<JobListItem>({
+    queryKey: ['jobs', jobId],
+    queryFn: () => apiFetch(`/jobs/${jobId}`, {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken && jobId),
+  });
+}
+
+export function useJobPipeline(jobId: string) {
+  const { accessToken } = useAuth();
+  return useQuery<PipelineBoard>({
+    queryKey: ['jobs', jobId, 'pipeline'],
+    queryFn: () => apiFetch(`/jobs/${jobId}/pipeline`, {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken && jobId),
+  });
+}
+
+export interface CreateJobInput {
+  title: string;
+  description?: string;
+}
+
+export function useCreateJob() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateJobInput) =>
+      apiFetch('/jobs', { method: 'POST', body: JSON.stringify(input) }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobs'] }),
+  });
+}
+
+export function useUpdateJob(jobId: string) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Partial<CreateJobInput> & { status?: JobStatus }) =>
+      apiFetch(`/jobs/${jobId}`, { method: 'PATCH', body: JSON.stringify(input) }, accessToken ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['jobs', jobId] });
+    },
+  });
+}
+
+export function useDeleteJob() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (jobId: string) => apiFetch(`/jobs/${jobId}`, { method: 'DELETE' }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobs'] }),
+  });
+}
+
+export function useAddEntry(jobId: string) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { candidateId: string }) =>
+      apiFetch(`/jobs/${jobId}/entries`, { method: 'POST', body: JSON.stringify(input) }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobs', jobId, 'pipeline'] }),
+  });
+}
+
+export function usePatchEntry(jobId: string) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ entryId, ...input }: { entryId: string; stage?: PipelineStage }) =>
+      apiFetch(`/entries/${entryId}`, { method: 'PATCH', body: JSON.stringify(input) }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobs', jobId, 'pipeline'] }),
+  });
+}
+
+export function useLinkExam(jobId: string) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (examId: string) =>
+      apiFetch(`/jobs/${jobId}/exams`, { method: 'POST', body: JSON.stringify({ examId }) }, accessToken ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs', jobId] });
+      queryClient.invalidateQueries({ queryKey: ['jobs', jobId, 'pipeline'] });
+    },
+  });
+}
+
+export function useUnlinkExam(jobId: string) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (examId: string) =>
+      apiFetch(`/jobs/${jobId}/exams/${examId}`, { method: 'DELETE' }, accessToken ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs', jobId] });
+      queryClient.invalidateQueries({ queryKey: ['jobs', jobId, 'pipeline'] });
+    },
+  });
+}
+
+export function useEntryFeedback(entryId: string) {
+  const { accessToken } = useAuth();
+  return useQuery<FeedbackRow[]>({
+    queryKey: ['entries', entryId, 'feedback'],
+    queryFn: () => apiFetch(`/entries/${entryId}/feedback`, {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken && entryId),
+  });
+}
+
+export function useAddFeedback(entryId: string, jobId: string) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { note?: string; rating?: number }) =>
+      apiFetch(`/entries/${entryId}/feedback`, { method: 'POST', body: JSON.stringify(input) }, accessToken ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['entries', entryId, 'feedback'] });
+      queryClient.invalidateQueries({ queryKey: ['jobs', jobId, 'pipeline'] });
+    },
+  });
+}

@@ -254,6 +254,50 @@ export interface WalkInGroup {
   exams: WalkInGroupExamSummary[];
 }
 
+export type JobStatus = 'open' | 'closed';
+export type PipelineStage = 'applied' | 'screened' | 'interview' | 'offer' | 'hired';
+
+export interface JobListItem {
+  id: string;
+  title: string;
+  status: JobStatus;
+  createdAt: string;
+  stageCounts: Record<PipelineStage, number> & { rejected: number };
+}
+
+export interface EntryExamResult {
+  examId: string;
+  examTitle: string;
+  passFail: 'pass' | 'fail' | null;
+  score: number | null;
+}
+
+export interface BoardRow {
+  entryId: string;
+  candidateId: string;
+  candidateName: string;
+  candidateEmail: string;
+  stage: PipelineStage;
+  enteredVia: string;
+  examResults: EntryExamResult[];
+  avgRating: number | null;
+  feedbackCount: number;
+}
+
+export interface PipelineBoard {
+  stages: Record<PipelineStage, BoardRow[]>;
+  rejected: BoardRow[];
+}
+
+export interface FeedbackRow {
+  id: string;
+  authorUserId: string;
+  authorName: string;
+  note: string | null;
+  rating: number | null;
+  createdAt: string;
+}
+
 export type DriveSessionStatus = 'scheduled' | 'live' | 'ended';
 
 export interface DriveSession {
