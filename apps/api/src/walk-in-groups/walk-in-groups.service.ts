@@ -108,6 +108,12 @@ export class WalkInGroupsService {
     if (!existing) {
       throw new NotFoundException(`Walk-in group ${id} not found`);
     }
+    // Drives are the FK-non-cascading side of this group (unlike member exams, which just get
+    // ungrouped) -- block with a friendly message rather than letting the DB reject the delete.
+    const driveCount = await this.tenantPrisma.forTenant(context, (tx) => tx.driveSession.count({ where: { walkInGroupId: id } }));
+    if (driveCount > 0) {
+      throw new BadRequestException('This group has drives and cannot be deleted. Delete its drives first.');
+    }
     // onDelete: SetNull on Exam.walkInGroupId -- member exams simply become ungrouped,
     // still walk-in-enabled, still reachable via their own exam-specific link.
     await this.tenantPrisma.forTenant(context, (tx) => tx.walkInGroup.delete({ where: { id } }));

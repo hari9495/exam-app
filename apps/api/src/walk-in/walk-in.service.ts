@@ -123,10 +123,31 @@ export class WalkInService {
         }
       }
 
+      // A live drive session for this exam's walk-in group, if any -- decided once, up front,
+      // so both branches below (reuse an existing invitation or create a new one) stamp
+      // consistently rather than disagreeing on whether "now" counted as a drive.
+      const now = new Date();
+      const liveSession = exam.walkInGroupId
+        ? await tx.driveSession.findFirst({
+            where: { walkInGroupId: exam.walkInGroupId, startsAt: { lte: now }, endsAt: { gte: now } },
+          })
+        : null;
+
       const liveInvitation = await tx.invitation.findFirst({
         where: { examId: exam.id, candidateId: candidate.id, status: 'invited', expiresAt: { gt: new Date() } },
       });
       if (liveInvitation) {
+        // Decision: a live invitation created before the drive started gets stamped too, so it
+        // shows up under the drive's numbers -- it's still the same walk-in kiosk registration,
+        // just re-hitting an unexpired token. An invitation already stamped (from an earlier
+        // drive, or this one) is left alone rather than reassigned to whatever is live now.
+        if (liveSession && !liveInvitation.driveSessionId) {
+          const updated = await tx.invitation.update({
+            where: { id: liveInvitation.id },
+            data: { driveSessionId: liveSession.id },
+          });
+          return { invitation: updated, exam, candidate };
+        }
         return { invitation: liveInvitation, exam, candidate };
       }
       const created = await tx.invitation.create({
@@ -141,6 +162,7 @@ export class WalkInService {
           // Notification and can't be resent, so keep the row out of the recruiter-facing
           // email lifecycle: 'pending' here would show "In queue" until someone noticed.
           emailStatus: 'none',
+          driveSessionId: liveSession?.id ?? null,
         },
       });
       return { invitation: created, exam, candidate };

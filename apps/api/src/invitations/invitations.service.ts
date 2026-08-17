@@ -140,6 +140,7 @@ export class InvitationsService {
     examId: string,
     candidateIds: string[],
     advancedFromExamId?: string,
+    driveSessionId?: string,
   ): Promise<BulkInviteResult> {
     const uniqueCandidateIds = [...new Set(candidateIds)];
 
@@ -187,6 +188,7 @@ export class InvitationsService {
             token: generateToken(),
             expiresAt: resolveInvitationExpiry(exam),
             ...(advancedFromExamId ? { advancedFromExamId } : {}),
+            ...(driveSessionId ? { driveSessionId } : {}),
           },
         });
         createdWithCandidate.push({ invitation, candidate });

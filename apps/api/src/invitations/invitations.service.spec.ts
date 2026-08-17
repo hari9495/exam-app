@@ -60,6 +60,50 @@ describe('InvitationsService', () => {
     await new Promise((resolve) => setImmediate(resolve));
   });
 
+  it('stamps driveSessionId on every created invitation when passed through bulkInvite', async () => {
+    const create = jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited' });
+    const createTx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', title: 'Backend Round', status: 'published', durationMinutes: 60, schedulingEnabled: false, availabilityWindowStart: null }),
+      },
+      candidate: { findMany: jest.fn().mockResolvedValue([{ id: 'cand-1', email: 'a@test.com', name: 'Alice', erasedAt: null }]) },
+      invitation: { findMany: jest.fn().mockResolvedValue([]), create },
+    };
+    const orgTx = { organization: { findUnique: jest.fn().mockResolvedValue({ logoPath: null, name: 'Acme Hiring' }) } };
+    const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) }, invitation: { update: jest.fn() } };
+    tenantPrisma.forTenant
+      .mockImplementationOnce((_ctx, fn) => fn(createTx))
+      .mockImplementationOnce((_ctx, fn) => fn(orgTx))
+      .mockImplementationOnce((_ctx, fn) => fn(notifTx));
+
+    await service.bulkInvite(context, 'exam-1', ['cand-1'], undefined, 'drive-1');
+
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ driveSessionId: 'drive-1' }) }));
+    await new Promise((resolve) => setImmediate(resolve));
+  });
+
+  it('leaves driveSessionId unset when omitted -- existing call sites are unaffected', async () => {
+    const create = jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited' });
+    const createTx = {
+      exam: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', title: 'Backend Round', status: 'published', durationMinutes: 60, schedulingEnabled: false, availabilityWindowStart: null }),
+      },
+      candidate: { findMany: jest.fn().mockResolvedValue([{ id: 'cand-1', email: 'a@test.com', name: 'Alice', erasedAt: null }]) },
+      invitation: { findMany: jest.fn().mockResolvedValue([]), create },
+    };
+    const orgTx = { organization: { findUnique: jest.fn().mockResolvedValue({ logoPath: null, name: 'Acme Hiring' }) } };
+    const notifTx = { notification: { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) }, invitation: { update: jest.fn() } };
+    tenantPrisma.forTenant
+      .mockImplementationOnce((_ctx, fn) => fn(createTx))
+      .mockImplementationOnce((_ctx, fn) => fn(orgTx))
+      .mockImplementationOnce((_ctx, fn) => fn(notifTx));
+
+    await service.bulkInvite(context, 'exam-1', ['cand-1']);
+
+    expect(create.mock.calls[0][0].data).not.toHaveProperty('driveSessionId');
+    await new Promise((resolve) => setImmediate(resolve));
+  });
+
   it('leaves advancedFromExamId unset for an ordinary bulk invite', async () => {
     const create = jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited' });
     const createTx = {

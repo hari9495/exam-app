@@ -217,6 +217,163 @@ describe('WalkInService', () => {
       expect(result).toEqual({ token: 'existing-token' });
     });
 
+    it('stamps driveSessionId on a new invitation when a drive is live for the exam\'s group', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1', status: 'published', walkInEnabled: true, walkInGroupId: 'group-1', schedulingEnabled: false, availabilityWindowEnd: null,
+          }),
+        },
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
+        },
+        driveSession: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'drive-1' }),
+        },
+        invitation: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'raw-token' }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.register('demo-org', dto);
+
+      expect(tx.driveSession.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            walkInGroupId: 'group-1',
+            startsAt: { lte: expect.any(Date) },
+            endsAt: { gte: expect.any(Date) },
+          }),
+        }),
+      );
+      expect(tx.invitation.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ driveSessionId: 'drive-1' }) }),
+      );
+    });
+
+    it('leaves driveSessionId unset when no drive is currently live -- identical to pre-drives behaviour', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org', logoPath: null, name: 'Acme Hiring' });
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1', title: 'Backend Round', durationMinutes: 60, status: 'published', walkInEnabled: true, walkInGroupId: 'group-1', schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null,
+          }),
+        },
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
+        },
+        driveSession: {
+          findFirst: jest.fn().mockResolvedValue(null),
+        },
+        invitation: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'raw-token' }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.register('demo-org', dto);
+
+      expect(tx.invitation.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ driveSessionId: null }) }),
+      );
+    });
+
+    it('does not look up a drive session at all when the exam has no walk-in group -- today\'s behaviour, unchanged', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org', logoPath: null, name: 'Acme Hiring' });
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1', title: 'Backend Round', durationMinutes: 60, status: 'published', walkInEnabled: true, schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null,
+          }),
+        },
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
+        },
+        invitation: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'raw-token' }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.register('demo-org', dto);
+
+      // tx.driveSession is intentionally absent from this mock -- if the service touched it
+      // for a group-less exam, this test would throw rather than silently pass.
+      expect(tx.invitation.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ driveSessionId: null }) }),
+      );
+    });
+
+    it('stamps driveSessionId on a reused live invitation when it was not already stamped (decision: stamp on reuse too)', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1', status: 'published', walkInEnabled: true, walkInGroupId: 'group-1', schedulingEnabled: false, availabilityWindowEnd: null,
+          }),
+        },
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice Anderson' }),
+          update: jest.fn(),
+        },
+        driveSession: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'drive-1' }),
+        },
+        invitation: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'existing-token', driveSessionId: null }),
+          create: jest.fn(),
+          update: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'existing-token', driveSessionId: 'drive-1' }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.register('demo-org', dto);
+
+      expect(tx.invitation.update).toHaveBeenCalledWith({
+        where: { id: 'inv-1' },
+        data: { driveSessionId: 'drive-1' },
+      });
+      expect(tx.invitation.create).not.toHaveBeenCalled();
+      expect(result).toEqual({ token: 'existing-token' });
+    });
+
+    it('does not re-stamp a reused invitation that already carries a driveSessionId', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1', status: 'published', walkInEnabled: true, walkInGroupId: 'group-1', schedulingEnabled: false, availabilityWindowEnd: null,
+          }),
+        },
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice Anderson' }),
+          update: jest.fn(),
+        },
+        driveSession: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'drive-2' }),
+        },
+        invitation: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'existing-token', driveSessionId: 'drive-1' }),
+          create: jest.fn(),
+          update: jest.fn(),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.register('demo-org', dto);
+
+      expect(tx.invitation.update).not.toHaveBeenCalled();
+      expect(result).toEqual({ token: 'existing-token' });
+    });
+
     it('expands a stored one-word name with the fuller one the candidate just typed', async () => {
       // The registration form collects First/Middle/Last and sends them composed. A candidate
       // whose record was hand-created as just "Alice" would otherwise be greeted "Dear Alice"
