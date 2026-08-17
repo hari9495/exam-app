@@ -385,6 +385,7 @@ model Exam {
   createdAt                     DateTime      @default(now()) @map("created_at")
   sections                      ExamSection[]
   invitations                   Invitation[]
+  jobExams                      JobExam[]
 
   @@index([organizationId, status])
   @@map("exams")
@@ -448,6 +449,7 @@ model Candidate {
   createdAt      DateTime     @default(now()) @map("created_at")
   erasedAt       DateTime?    @map("erased_at")
   invitations    Invitation[]
+  pipelineEntries PipelineEntry[]
 
   @@unique([organizationId, email])
   @@map("candidates")
@@ -710,4 +712,69 @@ model AiCreditUsage {
 
   @@index([organizationId])
   @@map("ai_credit_usage")
+}
+
+model Job {
+  id             String          @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String          @map("organization_id") @db.UniqueIdentifier
+  title          String
+  description    String?         @db.NVarChar(Max)
+  status         String          @default("open")
+  createdById    String          @map("created_by_id") @db.UniqueIdentifier
+  createdAt      DateTime        @default(now()) @map("created_at")
+  closedAt       DateTime?       @map("closed_at")
+  entries        PipelineEntry[]
+  examLinks      JobExam[]
+
+  @@index([organizationId, status])
+  @@map("jobs")
+}
+
+model PipelineEntry {
+  id             String             @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String             @map("organization_id") @db.UniqueIdentifier
+  jobId          String             @map("job_id") @db.UniqueIdentifier
+  candidateId    String             @map("candidate_id") @db.UniqueIdentifier
+  stage          String             @default("applied")
+  rejected       Boolean            @default(false)
+  rejectedReason String?            @map("rejected_reason")
+  rejectedAt     DateTime?          @map("rejected_at")
+  enteredVia     String             @map("entered_via")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+  job            Job                @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  candidate      Candidate          @relation(fields: [candidateId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  feedback       PipelineFeedback[]
+
+  @@unique([jobId, candidateId])
+  @@index([jobId])
+  @@map("pipeline_entries")
+}
+
+model PipelineFeedback {
+  id             String        @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String        @map("organization_id") @db.UniqueIdentifier
+  entryId        String        @map("entry_id") @db.UniqueIdentifier
+  authorUserId   String        @map("author_user_id") @db.UniqueIdentifier
+  note           String?       @db.NVarChar(Max)
+  rating         Int?
+  createdAt      DateTime      @default(now()) @map("created_at")
+  entry          PipelineEntry @relation(fields: [entryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([entryId])
+  @@map("pipeline_feedback")
+}
+
+model JobExam {
+  id             String   @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String   @map("organization_id") @db.UniqueIdentifier
+  jobId          String   @map("job_id") @db.UniqueIdentifier
+  examId         String   @map("exam_id") @db.UniqueIdentifier
+  createdAt      DateTime @default(now()) @map("created_at")
+  job            Job      @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  exam           Exam     @relation(fields: [examId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([jobId, examId])
+  @@index([examId])
+  @@map("job_exams")
 }

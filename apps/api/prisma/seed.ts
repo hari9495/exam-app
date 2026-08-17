@@ -15,6 +15,7 @@ const PERMISSIONS = [
   { key: 'ai_jobs:view', description: 'Poll the status of AI background jobs' },
   { key: 'audit:view', description: 'View the audit log and role/permission mappings' },
   { key: 'candidate:data_rights', description: 'Process GDPR data subject requests: export or erase a candidate\'s personal data' },
+  { key: 'pipeline:manage', description: 'Create and manage hiring jobs and their candidate pipeline' },
 ];
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -32,8 +33,9 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'candidate:manage',
     'results:view',
     'ai_jobs:view',
+    'pipeline:manage',
   ],
-  recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view'],
+  recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage'],
   panel: ['org:view', 'results:view'],
 };
 
