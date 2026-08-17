@@ -257,6 +257,15 @@ export interface WalkInGroup {
 export type JobStatus = 'open' | 'closed';
 export type PipelineStage = 'applied' | 'screened' | 'interview' | 'offer' | 'hired';
 
+export const PIPELINE_STAGES: PipelineStage[] = ['applied', 'screened', 'interview', 'offer', 'hired'];
+export const STAGE_LABEL: Record<PipelineStage, string> = {
+  applied: 'Applied',
+  screened: 'Screened',
+  interview: 'Interview',
+  offer: 'Offer',
+  hired: 'Hired',
+};
+
 export interface JobListItem {
   id: string;
   title: string;

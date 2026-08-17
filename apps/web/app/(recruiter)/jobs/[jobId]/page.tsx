@@ -1,0 +1,68 @@
+'use client';
+
+import { useState } from 'react';
+import { useParams } from 'next/navigation';
+import { Button, StatusBadge, useToast, type StatusTone } from '../../../../components/ui';
+import { BackLink } from '../../../../components/BackLink';
+import { LinkedExams } from '../../../../components/pipeline/LinkedExams';
+import { AddCandidateModal } from '../../../../components/pipeline/AddCandidateModal';
+import { PipelineBoard } from '../../../../components/pipeline/PipelineBoard';
+import { useJob, useUpdateJob } from '../../../../lib/hooks/usePipeline';
+import { useAuth } from '../../../../lib/auth-context';
+import { JobStatus } from '../../../../lib/types';
+
+const STATUS_LABEL: Record<JobStatus, string> = { open: 'Open', closed: 'Closed' };
+const STATUS_TONE: Record<JobStatus, StatusTone> = { open: 'success', closed: 'neutral' };
+
+export default function JobPage() {
+  const { jobId } = useParams<{ jobId: string }>();
+  const { role } = useAuth();
+  const canManage = role !== 'panel';
+  const { toast } = useToast();
+  const { data: job } = useJob(jobId);
+  const updateJob = useUpdateJob(jobId);
+  const [addOpen, setAddOpen] = useState(false);
+
+  function toggleStatus() {
+    if (!job) return;
+    const nextStatus: JobStatus = job.status === 'open' ? 'closed' : 'open';
+    updateJob.mutate(
+      { status: nextStatus },
+      {
+        onSuccess: () => toast(nextStatus === 'closed' ? 'Job closed.' : 'Job reopened.'),
+        onError: (error) => toast(error instanceof Error ? error.message : 'Failed to update job.', 'error'),
+      },
+    );
+  }
+
+  return (
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+      <div>
+        <BackLink href="/jobs" label="Back to Jobs" />
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-semibold text-recruiter-text">{job?.title ?? 'Job'}</h1>
+            {job && <StatusBadge tone={STATUS_TONE[job.status]}>{STATUS_LABEL[job.status]}</StatusBadge>}
+          </div>
+          {canManage && job && (
+            <Button variant="secondary" size="sm" onClick={toggleStatus} loading={updateJob.isPending}>
+              {job.status === 'open' ? 'Close job' : 'Reopen job'}
+            </Button>
+          )}
+        </div>
+        {job?.description && <p className="mt-1 text-sm text-recruiter-text-secondary">{job.description}</p>}
+      </div>
+
+      {job && <LinkedExams jobId={jobId} linkedExams={job.linkedExams} canManage={canManage} />}
+
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-recruiter-text">Pipeline</h2>
+        {canManage && <Button onClick={() => setAddOpen(true)}>Add candidate</Button>}
+      </div>
+
+      <PipelineBoard jobId={jobId} />
+
+      {canManage && <AddCandidateModal jobId={jobId} open={addOpen} onClose={() => setAddOpen(false)} />}
+    </div>
+  );
+}
