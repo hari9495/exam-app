@@ -218,6 +218,32 @@ describe('DrivesService', () => {
     });
   });
 
+  describe('remove', () => {
+    it('deletes the drive org-scoped and audits it', async () => {
+      const del = jest.fn().mockResolvedValue({ id: 'drive-1' });
+      const tx = {
+        driveSession: { findFirst: jest.fn().mockResolvedValue({ id: 'drive-1' }), delete: del },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.remove(context, 'user-1', 'drive-1');
+
+      expect(result).toEqual({ success: true });
+      expect(tx.driveSession.findFirst).toHaveBeenCalledWith({ where: { id: 'drive-1', organizationId: context.organizationId } });
+      expect(del).toHaveBeenCalledWith({ where: { id: 'drive-1' } });
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'drive.deleted', entityId: 'drive-1' }));
+    });
+
+    it('throws and deletes nothing when the drive is not in this org', async () => {
+      const del = jest.fn();
+      const tx = { driveSession: { findFirst: jest.fn().mockResolvedValue(null), delete: del } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.remove(context, 'user-1', 'missing')).rejects.toThrow(NotFoundException);
+      expect(del).not.toHaveBeenCalled();
+    });
+  });
+
   describe('results', () => {
     it('returns the same roster as liveRoster, including candidates with no attempt', async () => {
       const invitations = [{ id: 'inv-1', candidate: { name: 'No Show' }, exam: { title: 'Backend Round' }, attempt: null }];

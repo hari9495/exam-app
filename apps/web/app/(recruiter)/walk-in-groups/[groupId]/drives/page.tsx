@@ -3,11 +3,11 @@
 import { useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { Button, Card, Input, Table, StatusBadge, useToast, type Column, type StatusTone } from '../../../../../components/ui';
 import { BackLink } from '../../../../../components/BackLink';
 import { useWalkInGroups } from '../../../../../lib/hooks/useWalkInGroups';
-import { useGroupDrives, useCreateDrive } from '../../../../../lib/hooks/useDrives';
+import { useGroupDrives, useCreateDrive, useDeleteDrive } from '../../../../../lib/hooks/useDrives';
 import { DriveListItem, DriveSessionStatus } from '../../../../../lib/types';
 
 const STATUS_LABEL: Record<DriveSessionStatus, string> = { scheduled: 'Scheduled', live: 'Live', ended: 'Ended' };
@@ -20,6 +20,15 @@ export default function GroupDrivesPage() {
   const group = groups?.find((g) => g.id === groupId) ?? null;
   const { data: drives, isLoading } = useGroupDrives(groupId);
   const createDrive = useCreateDrive(groupId);
+  const deleteDrive = useDeleteDrive(groupId);
+
+  function handleDelete(drive: DriveListItem) {
+    if (!confirm(`Delete drive "${drive.name}"? Registered candidates keep their attempts and revert to plain walk-ins.`)) return;
+    deleteDrive.mutate(drive.id, {
+      onSuccess: () => toast('Drive deleted.'),
+      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to delete drive.', 'error'),
+    });
+  }
 
   const [name, setName] = useState('');
   const [startsAt, setStartsAt] = useState('');
@@ -66,7 +75,22 @@ export default function GroupDrivesPage() {
         header: 'Status',
         render: (drive) => <StatusBadge tone={STATUS_TONE[drive.status]}>{STATUS_LABEL[drive.status]}</StatusBadge>,
       },
+      {
+        key: 'actions',
+        header: '',
+        render: (drive) => (
+          <button
+            type="button"
+            onClick={() => handleDelete(drive)}
+            className="text-recruiter-text-tertiary hover:text-red-600"
+            aria-label={`Delete ${drive.name}`}
+          >
+            <Trash2 size={16} />
+          </button>
+        ),
+      },
     ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 

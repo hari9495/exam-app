@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
@@ -34,6 +34,12 @@ export class DrivesController {
   @RequirePermissions('results:view')
   getDrive(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.drivesService.getDrive(tenant, id);
+  }
+
+  @Delete('drives/:id')
+  @RequirePermissions('exam:manage')
+  remove(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.drivesService.remove(tenant, userId, id);
   }
 
   @Get('drives/:id/live')

@@ -29,10 +29,8 @@ function CandidateChip({ row }: { row: DriveRosterRow }) {
       {row.candidateName}
     </span>
   );
-  // ponytail: GET /drives/:id/live doesn't return candidateId/examId today (see
-  // DriveRosterRow), so there's no real report URL to build for most rows -- render plain
-  // text instead of a fake link. Once the backend adds those two fields, this lights up
-  // on its own with no other change needed.
+  // The roster carries candidateId/examId, so the report link resolves. The guard below just
+  // falls back to the plain chip for any row missing them (e.g. an unattached historical walk-in).
   if (!row.candidateId || !row.examId) return chip;
   return (
     <Link

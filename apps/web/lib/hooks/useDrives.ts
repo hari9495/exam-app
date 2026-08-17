@@ -51,6 +51,18 @@ export function useDriveLive(driveId: string) {
   });
 }
 
+// Delete a mistaken/test drive. Its invitations' driveSessionId is SetNull server-side, so the
+// candidates revert to plain walk-in registrations -- deleting the drive never loses an attempt.
+export function useDeleteDrive(groupId: string) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (driveId: string) =>
+      apiFetch(`/drives/${driveId}`, { method: 'DELETE' }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['walk-in-groups', groupId, 'drives'] }),
+  });
+}
+
 export function useDriveResults(driveId: string) {
   const { accessToken } = useAuth();
   return useQuery<DriveRoster>({

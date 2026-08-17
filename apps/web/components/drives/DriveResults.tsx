@@ -94,8 +94,8 @@ export function DriveResults({ driveId }: { driveId: string }) {
       header: 'Candidate',
       sortValue: (row) => row.candidateName.toLowerCase(),
       render: (row) =>
-        // See DriveLiveBoard's CandidateChip comment -- candidateId/examId aren't in the
-        // current API response, so the link only renders once/if the backend adds them.
+        // candidateId/examId come from the roster; the guard just falls back to plain text for
+        // any row that predates them (e.g. an unattached historical walk-in).
         row.candidateId && row.examId ? (
           <Link
             href={`/reports/${row.examId}/candidates/${row.candidateId}?attemptId=${row.attemptId ?? ''}`}

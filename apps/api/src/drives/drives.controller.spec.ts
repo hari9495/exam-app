@@ -20,13 +20,15 @@ class RejectingGuard implements CanActivate {
 
 describe('DrivesController', () => {
   let controller: DrivesController;
-  let service: { create: jest.Mock; listForGroup: jest.Mock; liveRoster: jest.Mock; results: jest.Mock };
+  let service: { create: jest.Mock; listForGroup: jest.Mock; getDrive: jest.Mock; remove: jest.Mock; liveRoster: jest.Mock; results: jest.Mock };
   const tenant = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
   beforeEach(async () => {
     service = {
       create: jest.fn().mockResolvedValue({ id: 'drive-1' }),
       listForGroup: jest.fn().mockResolvedValue([{ id: 'drive-1', status: 'live' }]),
+      getDrive: jest.fn().mockResolvedValue({ id: 'drive-1', status: 'live' }),
+      remove: jest.fn().mockResolvedValue({ success: true }),
       liveRoster: jest.fn().mockResolvedValue({ rows: [], counts: {} }),
       results: jest.fn().mockResolvedValue({ rows: [], counts: {} }),
     };
@@ -61,6 +63,11 @@ describe('DrivesController', () => {
   it('results delegates to the service with the drive id', async () => {
     await controller.results(tenant, 'drive-1');
     expect(service.results).toHaveBeenCalledWith(tenant, 'drive-1');
+  });
+
+  it('remove delegates to the service with the actor and drive id', async () => {
+    await controller.remove(tenant, 'user-1', 'drive-1');
+    expect(service.remove).toHaveBeenCalledWith(tenant, 'user-1', 'drive-1');
   });
 
   // Routes must be mounted behind JwtAuthGuard, not simply absent -- an unauthenticated

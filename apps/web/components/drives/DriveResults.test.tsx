@@ -108,4 +108,29 @@ describe('DriveResults', () => {
 
     expect(screen.getByRole('button', { name: 'Export CSV' })).toBeEnabled();
   });
+
+  it('exports CSV with a header and the relabeled state for every row', async () => {
+    mockFetch();
+    renderResults();
+    await screen.findByText('Zed Never Started');
+
+    // jsdom's Blob.text() is unreliable, so capture the CSV straight from the Blob constructor args.
+    let csv = '';
+    const RealBlob = global.Blob;
+    global.Blob = jest.fn((parts: BlobPart[]) => {
+      csv = String(parts[0]);
+      return new RealBlob(parts);
+    }) as unknown as typeof Blob;
+    Object.assign(URL, { createObjectURL: jest.fn(() => 'blob:mock'), revokeObjectURL: jest.fn() });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
+    global.Blob = RealBlob;
+
+    const lines = csv.split('\n');
+    expect(lines[0]).toBe('"Candidate","Exam","State","Time","Score"');
+    // The registered no-show is relabeled in the export, same as on screen.
+    expect(csv).toContain('"Zed Never Started","Backend Round","Did not attempt","",""');
+    expect(csv).toContain('"Amy Passed","Backend Round","Passed"');
+    expect(csv).toContain('"88"');
+  });
 });

@@ -137,6 +137,27 @@ export class DrivesService {
     return { ...drive, status: deriveSessionStatus(drive, new Date()) };
   }
 
+  // Delete a drive (a mistaken or test one). Its invitations' driveSessionId is SetNull by the
+  // FK, so they revert to plain walk-in registrations rather than being deleted -- a candidate's
+  // attempt/result is never lost by removing the drive it happened to be grouped under. This is
+  // also what makes the group's "delete its drives first" guard an honest instruction.
+  async remove(context: TenantContext, actorUserId: string, driveId: string): Promise<{ success: true }> {
+    await this.tenantPrisma.forTenant(context, async (tx) => {
+      const drive = await tx.driveSession.findFirst({ where: { id: driveId, organizationId: context.organizationId as string } });
+      if (!drive) {
+        throw new NotFoundException(`Drive ${driveId} not found`);
+      }
+      await tx.driveSession.delete({ where: { id: driveId } });
+      await this.audit.record(context, {
+        actorUserId,
+        action: 'drive.deleted',
+        entityType: 'drive_session',
+        entityId: driveId,
+      });
+    });
+    return { success: true };
+  }
+
   async liveRoster(context: TenantContext, driveId: string): Promise<DriveRoster> {
     const invitations = await this.tenantPrisma.forTenant(context, async (tx) => {
       const drive = await tx.driveSession.findFirst({ where: { id: driveId, organizationId: context.organizationId as string } });
