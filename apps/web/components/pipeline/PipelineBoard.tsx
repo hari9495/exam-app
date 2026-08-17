@@ -170,9 +170,14 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
             {board.rejected.length === 0 && <p className="text-sm text-recruiter-text-tertiary">No rejected candidates.</p>}
             {board.rejected.map((row) => (
               <Card key={row.entryId} className="flex items-center justify-between gap-3">
-                <button type="button" onClick={() => setOpenRow(row)} className="text-left text-sm font-semibold text-primary hover:underline">
-                  {row.candidateName}
-                </button>
+                <div className="flex flex-col gap-1">
+                  <button type="button" onClick={() => setOpenRow(row)} className="text-left text-sm font-semibold text-primary hover:underline">
+                    {row.candidateName}
+                  </button>
+                  {row.rejectedReason && (
+                    <p className="text-xs text-recruiter-text-tertiary">Reason: {row.rejectedReason}</p>
+                  )}
+                </div>
                 {canManage && (
                   <button type="button" onClick={() => handleMoveBack(row.entryId)} className="text-xs font-medium text-primary hover:underline">
                     Move back

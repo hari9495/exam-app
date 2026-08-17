@@ -19,6 +19,7 @@ const BOARD = {
         candidateEmail: 'alice@x.com',
         stage: 'applied',
         enteredVia: 'manual',
+        rejectedReason: null,
         examResults: [{ examId: 'exam-1', examTitle: 'Backend', passFail: 'pass', score: 82 }],
         avgRating: 4.2,
         feedbackCount: 3,
@@ -37,6 +38,7 @@ const BOARD = {
       candidateEmail: 'bob@x.com',
       stage: 'applied',
       enteredVia: 'manual',
+      rejectedReason: 'failed screen',
       examResults: [],
       avgRating: null,
       feedbackCount: 0,
@@ -120,6 +122,7 @@ describe('PipelineBoard', () => {
 
     await userEvent.click(screen.getByRole('tab', { name: /rejected/i }));
     expect(await screen.findByText('Bob Rejected')).toBeInTheDocument();
+    expect(screen.getByText('Reason: failed screen')).toBeInTheDocument();
     expect(screen.queryByText('Alice Applicant')).not.toBeInTheDocument();
   });
 

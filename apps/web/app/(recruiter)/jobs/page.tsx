@@ -5,12 +5,10 @@ import Link from 'next/link';
 import { Plus, Trash2 } from 'lucide-react';
 import { Button, Card, Input, Select, Table, StatusBadge, useToast, type Column, type StatusTone } from '../../../components/ui';
 import { useJobs, useCreateJob, useDeleteJob } from '../../../lib/hooks/usePipeline';
-import { JobListItem, JobStatus, PipelineStage } from '../../../lib/types';
+import { JobListItem, JobStatus, PIPELINE_STAGES } from '../../../lib/types';
 
 const STATUS_LABEL: Record<JobStatus, string> = { open: 'Open', closed: 'Closed' };
 const STATUS_TONE: Record<JobStatus, StatusTone> = { open: 'success', closed: 'neutral' };
-
-const STAGE_ORDER: PipelineStage[] = ['applied', 'screened', 'interview', 'offer', 'hired'];
 
 const STATUS_FILTER_OPTIONS = [
   { value: 'all', label: 'All statuses' },
@@ -21,7 +19,7 @@ const STATUS_FILTER_OPTIONS = [
 // e.g. "4 applied · 2 interview · 1 offer" -- stages with zero candidates are dropped so the
 // summary stays short instead of listing every stage every time.
 function stageSummary(stageCounts: JobListItem['stageCounts']): string {
-  const parts = STAGE_ORDER.map((stage) => ({ stage, count: stageCounts[stage] })).filter((entry) => entry.count > 0);
+  const parts = PIPELINE_STAGES.map((stage) => ({ stage, count: stageCounts[stage] })).filter((entry) => entry.count > 0);
   if (parts.length === 0) return 'No candidates yet';
   return parts.map((entry) => `${entry.count} ${entry.stage}`).join(' · ');
 }

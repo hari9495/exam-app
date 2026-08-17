@@ -27,6 +27,7 @@ export interface BoardRow {
   candidateEmail: string;
   stage: PipelineStage;
   enteredVia: string;
+  rejectedReason: string | null;
   examResults: EntryExamResult[];
   avgRating: number | null;
   feedbackCount: number;
@@ -165,6 +166,7 @@ export class PipelineService {
           candidateEmail: e.candidate.email,
           stage: e.stage as PipelineStage,
           enteredVia: e.enteredVia,
+          rejectedReason: e.rejectedReason,
           examResults: deriveEntryExamResults(e.candidate.invitations as any, linkedExamIds),
           avgRating: averageRating(e.feedback.map((f: { rating: number | null }) => f.rating)),
           feedbackCount: e.feedback.length,

@@ -52,7 +52,7 @@ describe('PipelineService', () => {
             candidate: { name: 'Amy', email: 'amy@x.com',
               invitations: [{ examId: 'e1', exam: { title: 'Backend' }, attempt: { result: { passFail: 'pass', percentage: 82 } } }] },
             feedback: [{ rating: 4 }, { rating: null }] },
-          { id: 'en2', candidateId: 'c2', stage: 'interview', rejected: true, enteredVia: 'exam',
+          { id: 'en2', candidateId: 'c2', stage: 'interview', rejected: true, enteredVia: 'exam', rejectedReason: 'failed screen',
             candidate: { name: 'Bo', email: 'bo@x.com', invitations: [] }, feedback: [] },
         ]),
       },
@@ -64,6 +64,7 @@ describe('PipelineService', () => {
     expect(board.stages.interview).toHaveLength(0); // rejected -> not in stage bucket
     expect(board.rejected).toHaveLength(1);
     expect(board.rejected[0].entryId).toBe('en2');
+    expect(board.rejected[0].rejectedReason).toBe('failed screen');
   });
 
   it('listJobs folds groupBy counts per job, keeping rejected out of its stage bucket', async () => {

@@ -301,6 +301,7 @@ export interface BoardRow {
   candidateEmail: string;
   stage: PipelineStage;
   enteredVia: string;
+  rejectedReason: string | null;
   examResults: EntryExamResult[];
   avgRating: number | null;
   feedbackCount: number;
@@ -314,7 +315,7 @@ export interface PipelineBoard {
 export interface FeedbackRow {
   id: string;
   authorUserId: string;
-  authorName: string;
+  authorName: string | null;
   note: string | null;
   rating: number | null;
   createdAt: string;
