@@ -121,7 +121,7 @@ describe('CandidateDrawer', () => {
     const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null);
     await userEvent.click(await screen.findByRole('button', { name: 'Download résumé' }));
 
-    await waitFor(() => expect(openSpy).toHaveBeenCalledWith('https://blob.example/r.pdf', '_blank'));
+    await waitFor(() => expect(openSpy).toHaveBeenCalledWith('https://blob.example/r.pdf', '_blank', 'noopener,noreferrer'));
     openSpy.mockRestore();
   });
 

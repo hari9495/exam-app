@@ -61,10 +61,16 @@ export class BlobStorageService {
   }
 
   // Bytes-in-hand for a caller that needs to process the blob itself (e.g. pdf-parse on a
-  // résumé) rather than hand the browser a signed URL to fetch. Trusts blobPath the same way
-  // upload() does -- callers only ever pass a path they themselves stored, never client input.
-  async downloadToBuffer(blobPath: string): Promise<Buffer> {
-    return this.getContainer().getBlockBlobClient(blobPath).downloadToBuffer();
+  // résumé) rather than hand the browser a signed URL to fetch. blobUrl is a FULL blob URL --
+  // the same string upload() returned and callers persisted (e.g. candidate_profiles.resumePath)
+  // -- so resolve it through resolveOwnedBlob the same way deleteByUrl/signIfOurs do, rather than
+  // treating it as a container-relative blob name.
+  async downloadToBuffer(blobUrl: string): Promise<Buffer> {
+    const resolved = this.resolveOwnedBlob(blobUrl);
+    if (!resolved.blob) {
+      throw new Error(`Cannot download blob: URL is not one of ours (${resolved.reason}): ${blobUrl}`);
+    }
+    return resolved.blob.downloadToBuffer();
   }
 
   async uploadDataUri(blobPath: string, dataUri: string): Promise<string> {

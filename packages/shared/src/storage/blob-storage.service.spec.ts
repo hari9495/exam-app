@@ -252,7 +252,7 @@ describe('BlobStorageService.downloadToBuffer', () => {
     downloadToBuffer.mockRestore();
   });
 
-  it('downloads the blob at the given path and resolves with its bytes', async () => {
+  it('downloads the blob addressed by a full blob URL (what upload() returns and callers persist) and resolves with its bytes', async () => {
     const bytes = Buffer.from('%PDF-1.4 fake resume bytes');
     let addressed = '';
     downloadToBuffer.mockImplementation(async function (this: BlockBlobClient) {
@@ -260,7 +260,7 @@ describe('BlobStorageService.downloadToBuffer', () => {
       return bytes;
     });
 
-    const result = await service.downloadToBuffer('resumes/cand-1.pdf');
+    const result = await service.downloadToBuffer(`${CONTAINER_URL}/resumes/cand-1.pdf`);
 
     expect(result).toBe(bytes);
     expect(addressed).toBe(`${CONTAINER_URL}/resumes/cand-1.pdf`);
@@ -269,7 +269,15 @@ describe('BlobStorageService.downloadToBuffer', () => {
   it('rejects when the underlying download fails', async () => {
     downloadToBuffer.mockRejectedValue(new Error('storage unreachable'));
 
-    await expect(service.downloadToBuffer('resumes/cand-1.pdf')).rejects.toThrow('storage unreachable');
+    await expect(service.downloadToBuffer(`${CONTAINER_URL}/resumes/cand-1.pdf`)).rejects.toThrow('storage unreachable');
+  });
+
+  it('throws a clear error instead of attempting a download when the URL is not one of ours', async () => {
+    const otherUrl = 'https://fakeaccount.blob.core.windows.net/container-2/resumes/cand-1.pdf';
+
+    await expect(service.downloadToBuffer(otherUrl)).rejects.toThrow(/not one of ours/);
+
+    expect(downloadToBuffer).not.toHaveBeenCalled();
   });
 });
 

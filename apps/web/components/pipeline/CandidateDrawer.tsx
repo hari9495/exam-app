@@ -30,7 +30,7 @@ function CandidateProfileSection({ candidateId }: { candidateId: string }) {
 
   function handleDownload() {
     resumeUrl.mutate(undefined, {
-      onSuccess: (result) => window.open(result.url, '_blank'),
+      onSuccess: (result) => window.open(result.url, '_blank', 'noopener,noreferrer'),
       onError: (error) => toast(error instanceof Error ? error.message : 'Failed to open résumé.', 'error'),
     });
   }
