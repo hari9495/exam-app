@@ -26,6 +26,7 @@ describe('InterviewsController', () => {
     listForCandidate: jest.Mock;
     listMine: jest.Mock;
     cancel: jest.Mock;
+    sendInvite: jest.Mock;
   };
   const tenant = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
@@ -36,6 +37,7 @@ describe('InterviewsController', () => {
       listForCandidate: jest.fn().mockResolvedValue([{ id: 'interview-1' }]),
       listMine: jest.fn().mockResolvedValue([{ id: 'interview-1' }]),
       cancel: jest.fn().mockResolvedValue({ id: 'interview-1', status: 'cancelled' }),
+      sendInvite: jest.fn().mockResolvedValue({ id: 'interview-1', sentAt: new Date() }),
     };
     const moduleRef = await Test.createTestingModule({
       controllers: [InterviewsController],
@@ -73,6 +75,11 @@ describe('InterviewsController', () => {
   it('cancel delegates to the service with the actor and interview id', async () => {
     await controller.cancel(tenant, 'user-1', 'interview-1');
     expect(interviews.cancel).toHaveBeenCalledWith(tenant, 'user-1', 'interview-1');
+  });
+
+  it('sendInvite delegates to the service with the actor and interview id', async () => {
+    await controller.sendInvite(tenant, 'user-1', 'interview-1');
+    expect(interviews.sendInvite).toHaveBeenCalledWith(tenant, 'user-1', 'interview-1');
   });
 
   // Routes must be mounted behind JwtAuthGuard, not simply absent -- an unauthenticated

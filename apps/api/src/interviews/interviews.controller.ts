@@ -47,4 +47,10 @@ export class InterviewsController {
   cancel(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
     return this.interviews.cancel(tenant, userId, id);
   }
+
+  @Post('interviews/:id/send')
+  @RequirePermissions('pipeline:manage')
+  sendInvite(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.interviews.sendInvite(tenant, userId, id);
+  }
 }

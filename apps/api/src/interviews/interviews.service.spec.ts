@@ -4,11 +4,14 @@ import { InterviewsService } from './interviews.service';
 describe('InterviewsService', () => {
   let service: InterviewsService;
   let tenantPrisma: { forTenant: jest.Mock };
+  let emailService: { send: jest.Mock };
+  let blobStorage: { signIfOurs: jest.Mock };
   let audit: { record: jest.Mock };
   let tx: {
     pipelineEntry: Record<string, jest.Mock>;
     interview: Record<string, jest.Mock>;
     user: Record<string, jest.Mock>;
+    organization: Record<string, jest.Mock>;
   };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
@@ -25,11 +28,17 @@ describe('InterviewsService', () => {
       },
       user: {
         findMany: jest.fn().mockResolvedValue([{ id: 'panelist-1' }]),
+        findUnique: jest.fn().mockResolvedValue({ name: 'Priya' }),
+      },
+      organization: {
+        findUnique: jest.fn().mockResolvedValue({ name: 'Acme', logoPath: null }),
       },
     };
     tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
+    emailService = { send: jest.fn().mockResolvedValue({ success: true }) };
+    blobStorage = { signIfOurs: jest.fn().mockResolvedValue(null) };
     audit = { record: jest.fn() };
-    service = new InterviewsService(tenantPrisma as any, audit as any);
+    service = new InterviewsService(tenantPrisma as any, emailService as any, blobStorage as any, audit as any);
   });
 
   describe('createInterview', () => {
@@ -162,6 +171,139 @@ describe('InterviewsService', () => {
 
       await expect(service.cancel(context, 'user-1', 'interview-x')).rejects.toThrow(NotFoundException);
       expect(tx.interview.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('sendInvite', () => {
+    const baseInterview = () => ({
+      id: 'interview-1',
+      organizationId: 'org-1',
+      status: 'proposed',
+      interviewToken: null as string | null,
+      location: 'Room 1',
+      timeZone: 'UTC',
+      recruiterNote: null as string | null,
+      pipelineEntry: {
+        candidate: { id: 'cand-1', name: 'Asha Rao', email: 'asha@example.com', erasedAt: null as Date | null },
+        job: { id: 'job-1', title: 'Backend Engineer' },
+      },
+      slots: [{ id: 'slot-1', startsAt: new Date('2026-09-01T14:00:00.000Z'), endsAt: new Date('2026-09-01T15:00:00.000Z') }],
+      panelists: [{ id: 'panelist-row-1', userId: 'panelist-1' }],
+    });
+
+    beforeEach(() => {
+      tx.interview.findFirst.mockResolvedValue(baseInterview());
+      tx.user.findMany.mockResolvedValue([{ id: 'panelist-1', email: 'panelist@example.com', name: 'Jane' }]);
+    });
+
+    it('loads the interview org-scoped with candidate/job/slots(asc)/panelists', async () => {
+      await service.sendInvite(context, 'user-1', 'interview-1');
+
+      expect(tx.interview.findFirst).toHaveBeenCalledWith({
+        where: { id: 'interview-1', organizationId: 'org-1' },
+        include: {
+          pipelineEntry: { include: { candidate: true, job: true } },
+          slots: { orderBy: { startsAt: 'asc' } },
+          panelists: true,
+        },
+      });
+    });
+
+    it('sends the candidate invite + one email per panelist, sets sentAt, and audits interview.invited', async () => {
+      const out = await service.sendInvite(context, 'user-1', 'interview-1');
+
+      expect(emailService.send).toHaveBeenCalledTimes(2);
+      expect(emailService.send).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ to: 'asha@example.com', organizationId: 'org-1' }),
+      );
+      expect(emailService.send).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ to: 'panelist@example.com', organizationId: 'org-1' }),
+      );
+      expect(tx.interview.update).toHaveBeenCalledWith({
+        where: { id: 'interview-1' },
+        data: { sentAt: expect.any(Date), sentByUserId: 'user-1' },
+      });
+      expect(audit.record).toHaveBeenCalledWith(
+        context,
+        expect.objectContaining({ actorUserId: 'user-1', action: 'interview.invited', entityId: 'interview-1' }),
+      );
+      expect(out).toMatchObject({ sentByUserId: 'user-1' });
+    });
+
+    it('escapes candidate name/job title into the panelist email via buildCandidateEmailHtml (not raw HTML)', async () => {
+      tx.interview.findFirst.mockResolvedValue({
+        ...baseInterview(),
+        pipelineEntry: {
+          candidate: { id: 'cand-1', name: '<script>alert(1)</script>', email: 'asha@example.com', erasedAt: null },
+          job: { id: 'job-1', title: 'Backend Engineer' },
+        },
+      });
+
+      await service.sendInvite(context, 'user-1', 'interview-1');
+
+      const panelistCall = emailService.send.mock.calls[1][0];
+      expect(panelistCall.html).not.toContain('<script>alert(1)</script>');
+      expect(panelistCall.html).toContain('&lt;script&gt;');
+    });
+
+    it('runs the candidate + panelist email sends outside both forTenant calls (after the first, before the second)', async () => {
+      await service.sendInvite(context, 'user-1', 'interview-1');
+
+      const [firstTxOrder, secondTxOrder] = tenantPrisma.forTenant.mock.invocationCallOrder;
+      const sendOrders = emailService.send.mock.invocationCallOrder;
+      expect(sendOrders.length).toBe(2);
+      for (const order of sendOrders) {
+        expect(order).toBeGreaterThan(firstTxOrder);
+        expect(order).toBeLessThan(secondTxOrder);
+      }
+    });
+
+    it('mints an interviewToken when absent', async () => {
+      await service.sendInvite(context, 'user-1', 'interview-1');
+
+      expect(tx.interview.update).toHaveBeenCalledWith({
+        where: { id: 'interview-1' },
+        data: { interviewToken: expect.any(String) },
+      });
+    });
+
+    it('does not mint a new interviewToken when one already exists', async () => {
+      tx.interview.findFirst.mockResolvedValue({ ...baseInterview(), interviewToken: 'existing-token' });
+
+      await service.sendInvite(context, 'user-1', 'interview-1');
+
+      expect(tx.interview.update).not.toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ interviewToken: expect.any(String) }) }),
+      );
+    });
+
+    it('throws BadRequestException when the candidate has been erased, and sends no email', async () => {
+      tx.interview.findFirst.mockResolvedValue({
+        ...baseInterview(),
+        pipelineEntry: {
+          ...baseInterview().pipelineEntry,
+          candidate: { ...baseInterview().pipelineEntry.candidate, erasedAt: new Date() },
+        },
+      });
+
+      await expect(service.sendInvite(context, 'user-1', 'interview-1')).rejects.toThrow(BadRequestException);
+      expect(emailService.send).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when interview status is not proposed, and sends no email', async () => {
+      tx.interview.findFirst.mockResolvedValue({ ...baseInterview(), status: 'confirmed' });
+
+      await expect(service.sendInvite(context, 'user-1', 'interview-1')).rejects.toThrow(BadRequestException);
+      expect(emailService.send).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for an interview outside the org', async () => {
+      tx.interview.findFirst.mockResolvedValue(null);
+
+      await expect(service.sendInvite(context, 'user-1', 'interview-x')).rejects.toThrow(NotFoundException);
+      expect(emailService.send).not.toHaveBeenCalled();
     });
   });
 });
