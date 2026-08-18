@@ -37,7 +37,9 @@ export function ManageWalkInGroupModal({ group, orgSlug, onClose }: ManageWalkIn
   const setGroupJob = useSetGroupJob(group.id);
   const jobOptions = [
     { value: NO_JOB_SENTINEL, label: 'None' },
-    ...(openJobs ?? []).map((job) => ({ value: job.id, label: job.title })),
+    // Guard the shape, not just null: while the query is loading/erroring, data may be
+    // anything other than the Job[] we expect -- never let the picker crash the modal.
+    ...(Array.isArray(openJobs) ? openJobs : []).map((job) => ({ value: job.id, label: job.title })),
   ];
 
   function handleJobChange(value: string) {
