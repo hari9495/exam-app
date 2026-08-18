@@ -12,7 +12,13 @@ const GROUP: WalkInGroup = {
   name: 'Fresher Drive Hackathon',
   createdAt: '2026-08-01T00:00:00.000Z',
   exams: [{ id: 'exam-1', title: 'ServiceNow Fresher Drive Hackathon' }],
+  jobId: null,
 };
+
+const OPEN_JOBS = [
+  { id: 'job-1', title: 'Backend Engineer' },
+  { id: 'job-2', title: 'Frontend Engineer' },
+];
 
 const ELIGIBLE_EXAMS = [
   { id: 'exam-1', title: 'ServiceNow Fresher Drive Hackathon', walkInGroupId: 'group-1' },
@@ -45,6 +51,9 @@ function mockFetch(overrides: (url: string, options?: RequestInit) => Response |
     }
     if (urlStr.endsWith('/walk-in-groups')) {
       return new Response(JSON.stringify(ALL_GROUPS), { status: 200 });
+    }
+    if (urlStr.includes('/jobs?status=open')) {
+      return new Response(JSON.stringify(OPEN_JOBS), { status: 200 });
     }
     return new Response(JSON.stringify({}), { status: 200 });
   });
@@ -127,5 +136,69 @@ describe('ManageWalkInGroupModal', () => {
       expect(JSON.parse(String(putCall![1]?.body)).examIds.sort()).toEqual(['exam-1', 'exam-2']);
     });
     expect(await screen.findByText('Group members updated.')).toBeInTheDocument();
+  });
+
+  it('attaches a job to the group via the Attach job select', async () => {
+    const fetchMock = mockFetch((url, options) =>
+      url.endsWith('/walk-in-groups/group-1/job') && options?.method === 'PATCH'
+        ? new Response(JSON.stringify({ ...GROUP, jobId: 'job-1' }), { status: 200 })
+        : null,
+    );
+    renderModal();
+    await screen.findByLabelText('ServiceNow Fresher Drive Hackathon');
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Attach job' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'Backend Engineer' }));
+
+    await waitFor(() => {
+      const patchCall = fetchMock.mock.calls.find(
+        (call) => String(call[0]).endsWith('/walk-in-groups/group-1/job') && call[1]?.method === 'PATCH',
+      );
+      expect(patchCall).toBeDefined();
+      expect(JSON.parse(String(patchCall![1]?.body))).toEqual({ jobId: 'job-1' });
+    });
+    expect(await screen.findByText('Attached job updated.')).toBeInTheDocument();
+  });
+
+  it('unlinks a job by selecting None', async () => {
+    const fetchMock = mockFetch((url, options) =>
+      url.endsWith('/walk-in-groups/group-1/job') && options?.method === 'PATCH'
+        ? new Response(JSON.stringify({ ...GROUP, jobId: null }), { status: 200 })
+        : null,
+    );
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <ManageWalkInGroupModal group={{ ...GROUP, jobId: 'job-1' }} orgSlug="demo-org" onClose={jest.fn()} />
+        </ToastProvider>
+      </QueryProvider>,
+    );
+    await screen.findByLabelText('ServiceNow Fresher Drive Hackathon');
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Attach job' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'None' }));
+
+    await waitFor(() => {
+      const patchCall = fetchMock.mock.calls.find(
+        (call) => String(call[0]).endsWith('/walk-in-groups/group-1/job') && call[1]?.method === 'PATCH',
+      );
+      expect(patchCall).toBeDefined();
+      expect(JSON.parse(String(patchCall![1]?.body))).toEqual({ jobId: null });
+    });
+  });
+
+  it('shows the currently linked job title in the Attach job select', async () => {
+    mockFetch();
+    render(
+      <QueryProvider>
+        <ToastProvider>
+          <ManageWalkInGroupModal group={{ ...GROUP, jobId: 'job-2' }} orgSlug="demo-org" onClose={jest.fn()} />
+        </ToastProvider>
+      </QueryProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: 'Attach job' })).toHaveTextContent('Frontend Engineer');
+    });
   });
 });

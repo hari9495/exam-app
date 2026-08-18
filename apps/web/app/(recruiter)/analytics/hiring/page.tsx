@@ -17,6 +17,7 @@ const WINDOW_OPTIONS = [
 
 const STATUS_LABEL: Record<JobStatus, string> = { open: 'Open', closed: 'Closed' };
 const STATUS_TONE: Record<JobStatus, StatusTone> = { open: 'success', closed: 'neutral' };
+const SOURCE_LABEL: Record<string, string> = { manual: 'Manual', exam: 'Exam', application: 'Application', drive: 'Drive' };
 
 // The backend's status is a plain string (falls back to 'unknown' when a cohort entry's job
 // has no meta) -- these degrade any value outside JobStatus to a neutral tone / humanized
@@ -67,7 +68,7 @@ export default function HiringAnalyticsPage() {
   ];
 
   const sourceColumns: Column<HiringSourceRow>[] = [
-    { key: 'source', header: 'Source', render: (row) => row.source },
+    { key: 'source', header: 'Source', render: (row) => SOURCE_LABEL[row.source] ?? row.source },
     { key: 'entered', header: 'Entered', render: (row) => row.entered },
     { key: 'hired', header: 'Hired', render: (row) => row.hired },
     { key: 'hireRate', header: 'Hire Rate', render: (row) => `${Math.round(row.hireRate * 100)}%` },

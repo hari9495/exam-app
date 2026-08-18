@@ -1,10 +1,21 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Modal, Input, Button, Checkbox, useToast } from './ui';
+import { Modal, Input, Button, Checkbox, Select, useToast } from './ui';
 import { WalkInShareCard } from './WalkInShareCard';
-import { useEligibleWalkInExams, useWalkInGroups, useRenameWalkInGroup, useSetWalkInGroupExams } from '../lib/hooks/useWalkInGroups';
+import {
+  useEligibleWalkInExams,
+  useWalkInGroups,
+  useRenameWalkInGroup,
+  useSetWalkInGroupExams,
+  useSetGroupJob,
+} from '../lib/hooks/useWalkInGroups';
+import { useJobs } from '../lib/hooks/usePipeline';
 import { WalkInGroup } from '../lib/types';
+
+// Radix's Select treats value="" as its internal "nothing selected" sentinel -- see
+// AdvanceToNextRoundModal for the same workaround.
+const NO_JOB_SENTINEL = 'none';
 
 interface ManageWalkInGroupModalProps {
   group: WalkInGroup;
@@ -22,6 +33,19 @@ export function ManageWalkInGroupModal({ group, orgSlug, onClose }: ManageWalkIn
   const [selectedIds, setSelectedIds] = useState<string[]>(group.exams.map((exam) => exam.id));
   const renameGroup = useRenameWalkInGroup(group.id);
   const setExams = useSetWalkInGroupExams(group.id);
+  const { data: openJobs } = useJobs('open');
+  const setGroupJob = useSetGroupJob(group.id);
+  const jobOptions = [
+    { value: NO_JOB_SENTINEL, label: 'None' },
+    ...(openJobs ?? []).map((job) => ({ value: job.id, label: job.title })),
+  ];
+
+  function handleJobChange(value: string) {
+    setGroupJob.mutate(value === NO_JOB_SENTINEL ? null : value, {
+      onSuccess: () => toast('Attached job updated.'),
+      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to update attached job.', 'error'),
+    });
+  }
 
   // So the picker can say which OTHER group an exam is currently in, not just that it's
   // "already grouped" -- makes the one-group-per-exam move-not-copy behavior visible before
@@ -64,6 +88,13 @@ export function ManageWalkInGroupModal({ group, orgSlug, onClose }: ManageWalkIn
           <p className="mb-2 text-sm font-medium text-recruiter-text">Shared link for this group</p>
           <WalkInShareCard groupId={group.id} orgSlug={orgSlug} />
         </div>
+
+        <Select
+          label="Attach job"
+          value={group.jobId ?? NO_JOB_SENTINEL}
+          onChange={handleJobChange}
+          options={jobOptions}
+        />
 
         <div>
           <div className="mb-2 flex items-center justify-between">

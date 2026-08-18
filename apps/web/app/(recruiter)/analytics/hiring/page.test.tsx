@@ -33,7 +33,10 @@ const FIXTURE: HiringAnalytics = {
     { stage: 'hired', reached: 1, conversionFromPrev: 0.5 },
   ],
   timeToHire: { avgDays: 12.5, medianDays: 10, hiredCount: 1 },
-  sources: [{ source: 'referral', entered: 5, hired: 1, hireRate: 0.2 }],
+  sources: [
+    { source: 'referral', entered: 5, hired: 1, hireRate: 0.2 },
+    { source: 'drive', entered: 3, hired: 1, hireRate: 0.333 },
+  ],
   jobs: [{ jobId: 'job-1', title: 'Backend Engineer', status: 'open', entered: 10, hired: 1, conversionPct: 10, avgTimeToHireDays: 12.5 }],
 };
 
@@ -57,6 +60,8 @@ describe('HiringAnalyticsPage', () => {
 
     expect(screen.getByText('referral')).toBeInTheDocument();
     expect(screen.getByText('20%')).toBeInTheDocument();
+    expect(screen.getByText('Drive')).toBeInTheDocument();
+    expect(screen.queryByText('drive')).not.toBeInTheDocument();
 
     const jobLink = screen.getByRole('link', { name: 'Backend Engineer' });
     expect(jobLink).toHaveAttribute('href', '/jobs/job-1');
