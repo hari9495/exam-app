@@ -289,6 +289,39 @@ export interface JobListItem {
   stageCounts: Record<PipelineStage, number> & { rejected: number };
 }
 
+// Mirrors apps/api/src/analytics/pipeline-analytics.ts HiringAnalytics exactly.
+export interface HiringFunnelRow {
+  stage: PipelineStage;
+  reached: number;
+  conversionFromPrev: number | null;
+}
+export interface HiringTimeToHire {
+  avgDays: number | null;
+  medianDays: number | null;
+  hiredCount: number;
+}
+export interface HiringSourceRow {
+  source: string;
+  entered: number;
+  hired: number;
+  hireRate: number;
+}
+export interface HiringJobRow {
+  jobId: string;
+  title: string;
+  status: JobStatus;
+  entered: number;
+  hired: number;
+  conversionPct: number;
+  avgTimeToHireDays: number | null;
+}
+export interface HiringAnalytics {
+  funnel: HiringFunnelRow[];
+  timeToHire: HiringTimeToHire;
+  sources: HiringSourceRow[];
+  jobs: HiringJobRow[];
+}
+
 // GET /jobs/:id returns the Job row plus linkedExams -- no stageCounts (that's JobListItem,
 // from the list endpoint only). See pipeline.service.ts getJob.
 export interface JobDetail {
