@@ -141,16 +141,18 @@ degrades to the fallback stack rather than blocking render.
 order decides the winner — which is why per-call `className` overrides are unreliable (this bit us
 on the Refresh button, which had to match a sibling's markup rather than override it).
 
-The foundation makes this a real decision, not a workaround per call:
-
-- **Recommended:** change appearance at the *token and component* source, so call sites rarely need
-  to override. Keep `clsx`. Overrides that must differ go through a typed `variant`/`size` prop on
-  the component, not a raw `className`.
-- **Alternative:** adopt `tailwind-merge` in the kit's `cn()` helper so overrides compose
-  predictably. Lower discipline required, one dependency added, and a small risk of masking
-  genuinely conflicting intent. **Open decision — see below.**
+**Decision:** appearance changes at the *token and component* source; `clsx` stays. A call site
+varies a component only through typed `variant` / `size` / `tone` props, never a raw `className`
+that fights the defaults. No `tailwind-merge` dependency. Every variation a page needs must be a
+real, named prop on the component — which also documents the kit's supported surface.
 
 ## Rollout & test impact
+
+**Component-by-component, `main` always green.** The kit is rebuilt one component at a time, each
+change carrying its own updated tests, merged incrementally — not a single big swap. The invariant
+is that `main` stays green and deployable at every step; the product looks intentionally mixed
+while the rollout is in flight, which is acceptable. Sequencing follows blast radius: the tokens
+and the most-repeated primitives first (StatusBadge, Button, Card, Input), then the rest.
 
 - **This spec ships the tokens + the rebuilt kit only.** Because 53 files consume the kit, they
   pick up the new look automatically; per-page specs then handle layout/IA.
@@ -179,10 +181,9 @@ The foundation makes this a real decision, not a workaround per call:
 - The candidate flow's *screens* — this spec sets the tokens they'll use; their redesign is the
   next spec.
 
-## Open decisions for review
+## Decisions (resolved 2026-08-19)
 
-1. **clsx vs tailwind-merge** (above) — which override model for the kit?
-2. **Dark navy panel scope** — auth + public marketing only, or also empty-states/report covers?
-3. **Rollout shape** — one big kit-swap PR (whole product changes at once, larger review, bigger
-   test churn in one go), or component-by-component behind the existing tokens (slower, safer,
-   mixed look while in flight)?
+1. **Override model:** typed `variant`/`size`/`tone` props, `clsx` kept, no `tailwind-merge`.
+2. **Navy panel scope:** auth + public marketing surfaces only (login, forgot-password, landing);
+   consoles stay pure greyscale slate for the cleanest white-label canvas.
+3. **Rollout shape:** component-by-component, `main` green and deployable at every step.
