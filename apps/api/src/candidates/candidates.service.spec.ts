@@ -698,6 +698,7 @@ describe('CandidatesService', () => {
           findFirst: jest.fn().mockResolvedValue(overrides.candidateProfile ?? null),
           updateMany: jest.fn(),
         },
+        candidateEmail: { updateMany: jest.fn() },
       };
     }
     // Alias matching the brief's naming -- same helper, used by the face-data tests below.
@@ -738,6 +739,10 @@ describe('CandidatesService', () => {
       expect(tx.invitation.updateMany).toHaveBeenCalledWith({
         where: { id: { in: ['inv-1', 'inv-2'] }, status: 'invited' },
         data: { status: 'revoked', revokedAt: expect.any(Date) },
+      });
+      expect(tx.candidateEmail.updateMany).toHaveBeenCalledWith({
+        where: { candidateId: 'cand-1', organizationId: 'org-1' },
+        data: { toEmail: 'erased@redacted.invalid', subject: 'Redacted', renderedBody: 'Redacted', errorDetail: null },
       });
       expect(result.id).toBe('cand-1');
       expect(result.erasedAt).toEqual(expect.any(Date));

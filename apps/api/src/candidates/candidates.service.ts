@@ -504,6 +504,10 @@ export class CandidatesService {
           parseStatus: 'unavailable',
         },
       });
+      await tx.candidateEmail.updateMany({
+        where: { candidateId, organizationId: context.organizationId as string },
+        data: { toEmail: 'erased@redacted.invalid', subject: 'Redacted', renderedBody: 'Redacted', errorDetail: null },
+      });
       await tx.candidateRefreshToken.deleteMany({ where: { invitationId: { in: invitationIds } } });
       await tx.invitation.updateMany({
         where: { id: { in: invitationIds }, status: 'invited' },
