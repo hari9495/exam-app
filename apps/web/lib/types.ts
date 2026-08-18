@@ -479,6 +479,41 @@ export interface PublicOffer {
   pdfUrl: string | null;
 }
 
+export type InterviewStatus = 'proposed' | 'confirmed' | 'declined' | 'reschedule_requested' | 'cancelled';
+
+export interface InterviewSlot {
+  id: string;
+  startsAt: string;
+  endsAt: string;
+}
+
+// Mirrors apps/api's Interview row -- see interviews.service.ts.
+export interface Interview {
+  id: string;
+  status: InterviewStatus;
+  location: string;
+  timeZone: string;
+  recruiterNote?: string | null;
+  confirmedSlotId?: string | null;
+  sentAt?: string | null;
+  respondedAt?: string | null;
+  createdAt: string;
+  slots: InterviewSlot[];
+  panelists: { userId: string }[];
+}
+
+// GET /public/interviews/:token -- unauthenticated, mirrors InterviewsService.getPublicInterview.
+export interface PublicInterview {
+  jobTitle: string;
+  orgName: string;
+  slots: InterviewSlot[];
+  location: string;
+  timeZone: string;
+  panel: string[];
+  status: InterviewStatus;
+  confirmedSlotId: string | null;
+}
+
 export type DriveSessionStatus = 'scheduled' | 'live' | 'ended';
 
 export interface DriveSession {

@@ -16,6 +16,7 @@ const PERMISSIONS = [
   { key: 'audit:view', description: 'View the audit log and role/permission mappings' },
   { key: 'candidate:data_rights', description: 'Process GDPR data subject requests: export or erase a candidate\'s personal data' },
   { key: 'pipeline:manage', description: 'Create and manage hiring jobs and their candidate pipeline' },
+  { key: 'interview:view_assigned', description: 'View interviews you are assigned to as a panelist' },
 ];
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -34,9 +35,10 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'results:view',
     'ai_jobs:view',
     'pipeline:manage',
+    'interview:view_assigned',
   ],
-  recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage'],
-  panel: ['org:view', 'results:view'],
+  recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
+  panel: ['org:view', 'results:view', 'interview:view_assigned'],
 };
 
 async function main() {

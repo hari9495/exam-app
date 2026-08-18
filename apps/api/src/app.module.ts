@@ -43,6 +43,7 @@ import { FaceEnrolmentModule } from './face-enrolment/face-enrolment.module';
 import { ItemAnalyticsModule } from './analytics/item-analytics.module';
 import { PipelineAnalyticsModule } from './analytics/pipeline-analytics.module';
 import { OffersModule } from './offers/offers.module';
+import { InterviewsModule } from './interviews/interviews.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
 import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
 import { SentryShutdownFlush } from './sentry-shutdown.provider';
@@ -93,6 +94,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     ItemAnalyticsModule,
     PipelineAnalyticsModule,
     OffersModule,
+    InterviewsModule,
   ],
   controllers: [HealthController],
   providers: [

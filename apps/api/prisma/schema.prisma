@@ -781,6 +781,7 @@ model PipelineEntry {
   feedback         PipelineFeedback[]
   candidateEmails  CandidateEmail[]
   offers           Offer[]
+  interviews       Interview[]
 
   @@unique([jobId, candidateId])
   @@index([jobId])
@@ -866,6 +867,56 @@ model Offer {
   @@index([organizationId, pipelineEntryId])
   @@index([organizationId, candidateId])
   @@map("offers")
+}
+
+model Interview {
+  id                   String              @id @default(uuid()) @db.UniqueIdentifier
+  organizationId       String              @map("organization_id") @db.UniqueIdentifier
+  pipelineEntryId      String              @map("pipeline_entry_id") @db.UniqueIdentifier
+  candidateId          String              @map("candidate_id") @db.UniqueIdentifier
+  status               String              @default("proposed")
+  interviewToken       String?             @unique @map("interview_token")
+  location             String              @db.NVarChar(Max)
+  timeZone             String              @map("time_zone")
+  recruiterNote        String?             @map("recruiter_note") @db.NVarChar(Max)
+  confirmedSlotId      String?             @map("confirmed_slot_id") @db.UniqueIdentifier
+  candidateReschedNote String?             @map("candidate_resched_note") @db.NVarChar(Max)
+  sentByUserId         String?             @map("sent_by_user_id") @db.UniqueIdentifier
+  sentAt               DateTime?           @map("sent_at")
+  respondedAt          DateTime?           @map("responded_at")
+  createdAt            DateTime            @default(now()) @map("created_at")
+  updatedAt            DateTime            @updatedAt @map("updated_at")
+  pipelineEntry        PipelineEntry       @relation(fields: [pipelineEntryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  slots                InterviewSlot[]
+  panelists            InterviewPanelist[]
+
+  @@index([organizationId, pipelineEntryId])
+  @@index([organizationId, candidateId])
+  @@map("interviews")
+}
+
+model InterviewSlot {
+  id             String    @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String    @map("organization_id") @db.UniqueIdentifier
+  interviewId    String    @map("interview_id") @db.UniqueIdentifier
+  startsAt       DateTime  @map("starts_at")
+  endsAt         DateTime  @map("ends_at")
+  interview      Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([interviewId])
+  @@map("interview_slots")
+}
+
+model InterviewPanelist {
+  id             String    @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String    @map("organization_id") @db.UniqueIdentifier
+  interviewId    String    @map("interview_id") @db.UniqueIdentifier
+  userId         String    @map("user_id") @db.UniqueIdentifier
+  interview      Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([interviewId, userId])
+  @@index([organizationId, userId])
+  @@map("interview_panelists")
 }
 
 model OfferTemplate {

@@ -8,6 +8,18 @@ jest.mock('../../lib/auth-context', () => ({
   useAuth: () => ({ accessToken: 'test-token', organizationSlug: 'demo-org', role: 'recruiter' }),
 }));
 
+let mockInterviewsData: unknown[] = [];
+const mockCancelMutate = jest.fn();
+
+jest.mock('../../lib/hooks/useInterviews', () => ({
+  useCandidateInterviews: () => ({ data: mockInterviewsData, isLoading: false }),
+  useCancelInterview: () => ({ mutate: mockCancelMutate, isPending: false }),
+  // ScheduleInterviewModal (opened from the Interviews section) also imports these -- stubbed
+  // out here since this file never actually submits that modal's form.
+  useCreateInterview: () => ({ mutateAsync: jest.fn(), isPending: false }),
+  useSendInterview: () => ({ mutateAsync: jest.fn(), isPending: false }),
+}));
+
 const ROW = {
   entryId: 'entry-1',
   candidateId: 'cand-1',
@@ -99,8 +111,44 @@ function mockFetch(
   return fetchMock;
 }
 
+const INTERVIEWS = [
+  {
+    id: 'iv1',
+    status: 'proposed',
+    location: 'Zoom',
+    timeZone: 'UTC',
+    recruiterNote: null,
+    confirmedSlotId: null,
+    sentAt: null,
+    respondedAt: null,
+    createdAt: '2026-08-10T00:00:00.000Z',
+    slots: [{ id: 's1', startsAt: '2026-08-20T15:00:00.000Z', endsAt: '2026-08-20T16:00:00.000Z' }],
+    panelists: [{ userId: 'u1' }],
+  },
+  {
+    id: 'iv2',
+    status: 'confirmed',
+    location: 'Office HQ',
+    timeZone: 'UTC',
+    recruiterNote: null,
+    confirmedSlotId: 's3',
+    sentAt: '2026-08-11T00:00:00.000Z',
+    respondedAt: '2026-08-12T00:00:00.000Z',
+    createdAt: '2026-08-09T00:00:00.000Z',
+    slots: [
+      { id: 's2', startsAt: '2026-08-18T15:00:00.000Z', endsAt: '2026-08-18T16:00:00.000Z' },
+      { id: 's3', startsAt: '2026-08-19T15:00:00.000Z', endsAt: '2026-08-19T16:00:00.000Z' },
+    ],
+    panelists: [{ userId: 'u1' }, { userId: 'u2' }],
+  },
+];
+
 describe('CandidateDrawer', () => {
   const originalFetch = global.fetch;
+  beforeEach(() => {
+    mockInterviewsData = [];
+    mockCancelMutate.mockReset();
+  });
   afterEach(() => {
     global.fetch = originalFetch;
   });
@@ -297,5 +345,54 @@ describe('CandidateDrawer', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Create offer' }));
 
     expect(await screen.findByRole('heading', { name: 'Create offer' })).toBeInTheDocument();
+  });
+
+  it('renders interview rows from useCandidateInterviews with a status badge and formatted time', async () => {
+    mockInterviewsData = INTERVIEWS;
+    mockFetch();
+    renderDrawer();
+
+    const proposedLabel = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(
+      new Date('2026-08-20T15:00:00.000Z'),
+    );
+    const confirmedLabel = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(
+      new Date('2026-08-19T15:00:00.000Z'),
+    );
+
+    const proposedRow = (await screen.findByText(proposedLabel)).closest('li') as HTMLElement;
+    const confirmedRow = screen.getByText(confirmedLabel).closest('li') as HTMLElement;
+    expect(within(proposedRow).getByText('proposed')).toBeInTheDocument();
+    expect(within(proposedRow).getByText('Zoom')).toBeInTheDocument();
+    expect(within(confirmedRow).getByText('confirmed')).toBeInTheDocument();
+    expect(within(confirmedRow).getByText('Office HQ')).toBeInTheDocument();
+  });
+
+  it('shows "No interviews scheduled yet." when there are none', async () => {
+    mockFetch();
+    renderDrawer();
+
+    expect(await screen.findByText('No interviews scheduled yet.')).toBeInTheDocument();
+  });
+
+  it('shows Cancel only on the proposed interview and wires it to useCancelInterview', async () => {
+    mockInterviewsData = INTERVIEWS;
+    mockFetch();
+    renderDrawer();
+    await screen.findByText('Zoom');
+
+    expect(screen.getAllByRole('button', { name: 'Cancel' })).toHaveLength(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(mockCancelMutate).toHaveBeenCalledWith('iv1', expect.anything());
+  });
+
+  it('opens the schedule-interview modal from Schedule interview', async () => {
+    mockFetch();
+    renderDrawer();
+    await screen.findByText('$130,000/yr');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Schedule interview' }));
+
+    expect(await screen.findByRole('heading', { name: 'Schedule interview' })).toBeInTheDocument();
   });
 });

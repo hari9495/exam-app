@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { MotionConfig } from 'framer-motion';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, CalendarClock } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
 import { staffLandingPath } from '../../lib/staff-landing';
 import { SUPER_ADMIN_FULL_NAV } from '../../lib/super-admin-nav';
@@ -14,8 +14,11 @@ import { useCurrentUser } from '../../lib/hooks/useCurrentUser';
 import { StaffSidebar } from '../../components/StaffSidebar';
 import { StaffTopBar } from '../../components/StaffTopBar';
 
-// A plain panel member can only reach /reports; a one-item sidebar keeps the chrome consistent.
-const PANEL_NAV = [{ href: '/reports', label: 'Results', icon: BarChart3 }];
+// A plain panel member can reach /reports and their own assigned interviews.
+const PANEL_NAV = [
+  { href: '/reports', label: 'Results', icon: BarChart3 },
+  { href: '/interviews', label: 'Interviews', icon: CalendarClock },
+];
 
 // org_admin is a full org-scoped superuser and so is admitted to the panel/reports console too.
 const ALLOWED_ROLES = ['panel', 'recruiter', 'org_admin'];

@@ -522,6 +522,12 @@ export class CandidatesService {
         where: { candidateId, organizationId: context.organizationId as string },
         data: { compensation: 'Redacted', letterSubject: 'Redacted', letterBody: 'Redacted', pdfPath: null },
       });
+      // Interviews have no blobs of their own (location/notes are plain text, not blob paths),
+      // so this is a straight redact-in-place with no evidenceUrls to collect first.
+      await tx.interview.updateMany({
+        where: { candidateId, organizationId: context.organizationId as string },
+        data: { interviewToken: null, location: 'Redacted', recruiterNote: null, candidateReschedNote: null },
+      });
       await tx.candidateRefreshToken.deleteMany({ where: { invitationId: { in: invitationIds } } });
       await tx.invitation.updateMany({
         where: { id: { in: invitationIds }, status: 'invited' },
