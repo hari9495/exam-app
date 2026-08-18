@@ -47,6 +47,18 @@ describe('CandidateEmailTemplatesService', () => {
       expect(list.filter((t) => t.triggerEvent === 'interview')).toHaveLength(1);
     });
 
+    it('shows a saved DISABLED row for an event instead of the code default, and does not also emit the default', async () => {
+      tx.candidateEmailTemplate.findMany.mockResolvedValue([
+        { id: 's1', name: 'Custom offer', triggerEvent: 'offer', triggerMode: 'prompt', subject: 'S', body: 'B', enabled: false },
+      ]);
+
+      const list = await service.listWithDefaults(context);
+      const offerRows = list.filter((t) => t.triggerEvent === 'offer');
+
+      expect(offerRows).toHaveLength(1);
+      expect(offerRows[0]).toMatchObject({ id: 's1', enabled: false, isDefault: false });
+    });
+
     it('scopes the findMany read to the org', async () => {
       await service.listWithDefaults(context);
       expect(tx.candidateEmailTemplate.findMany).toHaveBeenCalledWith(
@@ -122,6 +134,49 @@ describe('CandidateEmailTemplatesService', () => {
       tx.candidateEmailTemplate.findFirst.mockResolvedValue(null);
       const dto = { id: 'missing', name: 'X', triggerEvent: 'offer', triggerMode: 'prompt', subject: 'S', body: 'B' } as any;
       await expect(service.upsert(context, 'user-1', dto)).rejects.toThrow(NotFoundException);
+    });
+
+    it('does not re-enable a disabled template on a content-only edit (enabled omitted from dto)', async () => {
+      tx.candidateEmailTemplate.findFirst.mockResolvedValue({ id: 's1', organizationId: 'org-1', enabled: false });
+      tx.candidateEmailTemplate.update.mockResolvedValue({ id: 's1', enabled: false });
+
+      const dto = { id: 's1', name: 'Offer v2', triggerEvent: 'offer', triggerMode: 'prompt', subject: 'S2', body: 'B2' } as any;
+      await service.upsert(context, 'user-1', dto);
+
+      const call = tx.candidateEmailTemplate.update.mock.calls[0][0];
+      expect(call.where).toEqual({ id: 's1' });
+      // must not have flipped enabled to true -- either omitted or explicitly preserved false
+      if (Object.prototype.hasOwnProperty.call(call.data, 'enabled')) {
+        expect(call.data.enabled).toBe(false);
+      }
+    });
+
+    it('upserts by triggerEvent: a second create-call (no id) for the same non-null triggerEvent updates the first row instead of creating a duplicate', async () => {
+      tx.candidateEmailTemplate.findFirst.mockResolvedValueOnce({ id: 'existing-1', organizationId: 'org-1', triggerEvent: 'offer', enabled: true });
+      tx.candidateEmailTemplate.update.mockResolvedValue({ id: 'existing-1' });
+
+      const dto = { name: 'Offer', triggerEvent: 'offer', triggerMode: 'prompt', subject: 'S', body: 'B' } as any;
+      await service.upsert(context, 'user-1', dto);
+
+      expect(tx.candidateEmailTemplate.create).not.toHaveBeenCalled();
+      expect(tx.candidateEmailTemplate.update).toHaveBeenCalledWith({
+        where: { id: 'existing-1' },
+        data: expect.objectContaining({ triggerEvent: 'offer', name: 'Offer' }),
+      });
+    });
+
+    it('does not dedupe manual-only templates (triggerEvent: null): two create-calls both create', async () => {
+      tx.candidateEmailTemplate.create
+        .mockResolvedValueOnce({ id: 'm1', triggerEvent: null })
+        .mockResolvedValueOnce({ id: 'm2', triggerEvent: null });
+
+      const dto = { name: 'Manual A', triggerEvent: null, triggerMode: 'manual', subject: 'S', body: 'B' } as any;
+      await service.upsert(context, 'user-1', dto);
+      await service.upsert(context, 'user-1', { ...dto, name: 'Manual B' });
+
+      expect(tx.candidateEmailTemplate.findFirst).not.toHaveBeenCalled();
+      expect(tx.candidateEmailTemplate.create).toHaveBeenCalledTimes(2);
+      expect(tx.candidateEmailTemplate.update).not.toHaveBeenCalled();
     });
   });
 

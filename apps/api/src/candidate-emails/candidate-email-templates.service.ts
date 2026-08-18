@@ -79,23 +79,35 @@ export class CandidateEmailTemplatesService {
 
   async upsert(context: TenantContext, actorUserId: string, dto: UpsertTemplateDto) {
     return this.tenantPrisma.forTenant(context, async (tx) => {
-      const data = {
+      const triggerEvent = dto.triggerEvent ?? null;
+      const baseData = {
         organizationId: context.organizationId as string,
         name: dto.name,
-        triggerEvent: dto.triggerEvent ?? null,
+        triggerEvent,
         triggerMode: dto.triggerMode,
         subject: dto.subject,
         body: dto.body,
-        enabled: dto.enabled ?? true,
       };
 
       let row;
       if (dto.id) {
         const existing = await tx.candidateEmailTemplate.findFirst({ where: { id: dto.id, organizationId: context.organizationId as string } });
         if (!existing) throw new NotFoundException(`Template ${dto.id} not found`);
+        // Content-only edits (e.g. subject/body from an edit form) omit `enabled` -- preserve
+        // the row's current enabled state instead of silently re-enabling a disabled template.
+        const data = { ...baseData, enabled: dto.enabled !== undefined ? dto.enabled : existing.enabled };
         row = await tx.candidateEmailTemplate.update({ where: { id: dto.id }, data });
       } else {
-        row = await tx.candidateEmailTemplate.create({ data });
+        // Upsert-by-event: at most one saved row per (org, triggerEvent) so a double-submit
+        // doesn't create a duplicate. Manual-only templates (triggerEvent: null) are exempt --
+        // a recruiter may have several of those.
+        const existingForEvent = triggerEvent
+          ? await tx.candidateEmailTemplate.findFirst({ where: { organizationId: context.organizationId as string, triggerEvent } })
+          : null;
+        const data = { ...baseData, enabled: dto.enabled ?? true };
+        row = existingForEvent
+          ? await tx.candidateEmailTemplate.update({ where: { id: existingForEvent.id }, data })
+          : await tx.candidateEmailTemplate.create({ data });
       }
 
       await this.audit.record(context, {
