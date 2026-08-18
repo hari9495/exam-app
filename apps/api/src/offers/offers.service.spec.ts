@@ -1,15 +1,18 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { OffersService } from './offers.service';
 
 describe('OffersService', () => {
   let service: OffersService;
   let tenantPrisma: { forTenant: jest.Mock };
   let offerTemplates: { getWithDefault: jest.Mock };
+  let email: { send: jest.Mock };
+  let blobStorage: { upload: jest.Mock; signIfOurs: jest.Mock };
   let audit: { record: jest.Mock };
   let tx: {
     pipelineEntry: Record<string, jest.Mock>;
     offer: Record<string, jest.Mock>;
     organization: Record<string, jest.Mock>;
+    user: Record<string, jest.Mock>;
   };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
@@ -22,17 +25,26 @@ describe('OffersService', () => {
         create: jest.fn(),
         findFirst: jest.fn(),
         findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn().mockImplementation(({ data }: any) => Promise.resolve({ id: 'offer-1', status: 'draft', ...data })),
       },
       organization: {
-        findUnique: jest.fn().mockResolvedValue({ name: 'Acme' }),
+        findUnique: jest.fn().mockResolvedValue({ name: 'Acme', logoPath: null }),
+      },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ name: 'Rita' }),
       },
     };
     tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
     offerTemplates = {
       getWithDefault: jest.fn().mockResolvedValue({ id: null, subject: 'Default subject', body: 'Default body' }),
     };
+    email = { send: jest.fn() };
+    blobStorage = {
+      upload: jest.fn().mockResolvedValue('https://blob.test/container/offers/org-1/tok-1.pdf'),
+      signIfOurs: jest.fn().mockResolvedValue(null),
+    };
     audit = { record: jest.fn() };
-    service = new OffersService(tenantPrisma as any, offerTemplates as any, audit as any);
+    service = new OffersService(tenantPrisma as any, offerTemplates as any, email as any, blobStorage as any, audit as any);
   });
 
   describe('createOffer', () => {
@@ -142,6 +154,154 @@ describe('OffersService', () => {
         where: { organizationId: 'org-1', candidateId: 'cand-1' },
         orderBy: { createdAt: 'desc' },
       });
+    });
+  });
+
+  describe('sendOffer', () => {
+    function baseOffer(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 'offer-1',
+        organizationId: 'org-1',
+        status: 'draft',
+        compensation: '100k',
+        letterSubject: 'Subj {{candidateName}}',
+        letterBody: 'Body {{candidateName}} {{jobTitle}} {{orgName}} {{offerLink}}',
+        startDate: new Date('2026-09-01'),
+        expiresAt: new Date('2026-09-15'),
+        pipelineEntry: {
+          candidate: { id: 'cand-1', name: 'Asha', email: 'asha@x.com', erasedAt: null },
+          job: { title: 'Backend Engineer' },
+        },
+        ...overrides,
+      };
+    }
+
+    it('runs a short tx to mint the offerToken, then sends OUTSIDE any tx, then a short tx to mark sent + audit offer.sent (with the PDF attached)', async () => {
+      tx.offer.findFirst.mockResolvedValue(baseOffer());
+      email.send.mockResolvedValue({ success: true });
+
+      const out = await service.sendOffer(context, 'user-1', 'offer-1');
+
+      expect(tx.offer.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ id: 'offer-1', organizationId: 'org-1' }) }),
+      );
+
+      // Phase 1: offerToken minted inside the first short tx.
+      const mintedToken = tx.offer.update.mock.calls[0][0].data.offerToken;
+      expect(mintedToken).toEqual(expect.any(String));
+
+      // Phase 2 (outside any tx): blob upload + SMTP send, with the PDF attached and the
+      // offer link embedded in the email body.
+      expect(blobStorage.upload).toHaveBeenCalledWith(
+        `offers/org-1/${mintedToken}.pdf`,
+        expect.any(Buffer),
+        'application/pdf',
+      );
+      expect(email.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'asha@x.com',
+          organizationId: 'org-1',
+          html: expect.stringContaining(`/offer/${mintedToken}`),
+          attachments: [{ filename: 'offer-letter.pdf', content: expect.any(Buffer) }],
+        }),
+      );
+
+      // Phase 3: second short tx marks the offer sent and audits offer.sent.
+      expect(tx.offer.update).toHaveBeenNthCalledWith(2, {
+        where: { id: 'offer-1' },
+        data: {
+          status: 'sent',
+          pdfPath: 'https://blob.test/container/offers/org-1/tok-1.pdf',
+          sentAt: expect.any(Date),
+          sentByUserId: 'user-1',
+        },
+      });
+      expect(audit.record).toHaveBeenCalledWith(
+        context,
+        expect.objectContaining({ actorUserId: 'user-1', action: 'offer.sent', entityId: 'offer-1', metadata: { to: 'asha@x.com' } }),
+      );
+      expect(out).toMatchObject({ status: 'sent', pdfPath: 'https://blob.test/container/offers/org-1/tok-1.pdf' });
+
+      // Ordering: the two forTenant calls bracket the send/upload -- neither runs inside a
+      // forTenant callback (the network call must stay outside the 5s interactive-tx timeout).
+      expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(2);
+      const [firstTxOrder, secondTxOrder] = tenantPrisma.forTenant.mock.invocationCallOrder;
+      const uploadOrder = blobStorage.upload.mock.invocationCallOrder[0];
+      const sendOrder = email.send.mock.invocationCallOrder[0];
+      expect(firstTxOrder).toBeLessThan(uploadOrder);
+      expect(firstTxOrder).toBeLessThan(sendOrder);
+      expect(uploadOrder).toBeLessThan(secondTxOrder);
+      expect(sendOrder).toBeLessThan(secondTxOrder);
+    });
+
+    it('on a delivery failure, leaves the offer in draft (no status flip) and audits offer.send_failed', async () => {
+      tx.offer.findFirst.mockResolvedValue(baseOffer());
+      email.send.mockResolvedValue({ success: false });
+
+      const out = await service.sendOffer(context, 'user-1', 'offer-1');
+
+      // Only the offerToken mint update happened -- no second update flipping status to sent.
+      expect(tx.offer.update).toHaveBeenCalledTimes(1);
+      expect(audit.record).toHaveBeenCalledWith(
+        context,
+        expect.objectContaining({ actorUserId: 'user-1', action: 'offer.send_failed', entityId: 'offer-1' }),
+      );
+      expect(out.status).toBe('draft');
+    });
+
+    it('throws BadRequestException and sends nothing when the candidate has been erased', async () => {
+      tx.offer.findFirst.mockResolvedValue(
+        baseOffer({ pipelineEntry: { candidate: { id: 'cand-1', name: 'Asha', email: 'asha@x.com', erasedAt: new Date() }, job: { title: 'BE' } } }),
+      );
+
+      await expect(service.sendOffer(context, 'user-1', 'offer-1')).rejects.toThrow(BadRequestException);
+      expect(tx.offer.update).not.toHaveBeenCalled();
+      expect(blobStorage.upload).not.toHaveBeenCalled();
+      expect(email.send).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException and sends nothing when the offer is not in draft status', async () => {
+      tx.offer.findFirst.mockResolvedValue(baseOffer({ status: 'sent' }));
+
+      await expect(service.sendOffer(context, 'user-1', 'offer-1')).rejects.toThrow(BadRequestException);
+      expect(tx.offer.update).not.toHaveBeenCalled();
+      expect(blobStorage.upload).not.toHaveBeenCalled();
+      expect(email.send).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for an offer outside the org', async () => {
+      tx.offer.findFirst.mockResolvedValue(null);
+
+      await expect(service.sendOffer(context, 'user-1', 'offer-x')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('withdraw', () => {
+    it('withdraws a sent offer and audits offer.withdrawn', async () => {
+      tx.offer.findFirst.mockResolvedValue({ id: 'offer-1', organizationId: 'org-1', status: 'sent' });
+      tx.offer.update.mockResolvedValue({ id: 'offer-1', status: 'withdrawn' });
+
+      const out = await service.withdraw(context, 'user-1', 'offer-1');
+
+      expect(tx.offer.update).toHaveBeenCalledWith({ where: { id: 'offer-1' }, data: { status: 'withdrawn' } });
+      expect(audit.record).toHaveBeenCalledWith(
+        context,
+        expect.objectContaining({ actorUserId: 'user-1', action: 'offer.withdrawn', entityId: 'offer-1' }),
+      );
+      expect(out).toEqual({ id: 'offer-1', status: 'withdrawn' });
+    });
+
+    it('throws BadRequestException when the offer is not sent', async () => {
+      tx.offer.findFirst.mockResolvedValue({ id: 'offer-1', organizationId: 'org-1', status: 'draft' });
+
+      await expect(service.withdraw(context, 'user-1', 'offer-1')).rejects.toThrow(BadRequestException);
+      expect(tx.offer.update).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for an offer outside the org', async () => {
+      tx.offer.findFirst.mockResolvedValue(null);
+
+      await expect(service.withdraw(context, 'user-1', 'offer-x')).rejects.toThrow(NotFoundException);
     });
   });
 });

@@ -54,6 +54,18 @@ export class OffersController {
     return new StreamableFile(buffer);
   }
 
+  @Post('offers/:id/send')
+  @RequirePermissions('pipeline:manage')
+  sendOffer(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.offers.sendOffer(tenant, userId, id);
+  }
+
+  @Post('offers/:id/withdraw')
+  @RequirePermissions('pipeline:manage')
+  withdraw(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.offers.withdraw(tenant, userId, id);
+  }
+
   @Get('offer-template')
   @RequirePermissions('pipeline:manage')
   getTemplate(@CurrentTenant() tenant: TenantContext) {
