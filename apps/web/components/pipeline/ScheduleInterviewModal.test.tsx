@@ -96,8 +96,11 @@ describe('ScheduleInterviewModal', () => {
       (call) => String(call[0]).endsWith('/pipeline/entries/entry-1/interviews') && call[1]?.method === 'POST',
     );
     expect(createCall).toBeDefined();
+    // Hardcoded expected UTC instants (10:00/11:00 IST = 04:30/05:30 UTC, UTC+5:30, no DST) --
+    // NOT computed via the component's helper, so this genuinely pins the timezone conversion
+    // regardless of the machine/CI runner's local timezone.
     expect(JSON.parse(String(createCall![1]?.body))).toMatchObject({
-      slots: [{ startsAt: new Date('2026-09-01T10:00').toISOString(), endsAt: new Date('2026-09-01T11:00').toISOString() }],
+      slots: [{ startsAt: '2026-09-01T04:30:00.000Z', endsAt: '2026-09-01T05:30:00.000Z' }],
       panelistUserIds: ['u1'],
       timeZone: 'Asia/Kolkata',
       location: 'Zoom link',

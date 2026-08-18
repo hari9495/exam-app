@@ -23,6 +23,19 @@ const TIME_ZONE_OPTIONS = [
   { value: 'UTC', label: 'UTC' },
 ];
 
+// Convert a bare 'YYYY-MM-DDTHH:mm' wall-clock (as produced by <input type="datetime-local">),
+// interpreted as local time in `timeZone`, to the corresponding UTC ISO instant.
+// Handles DST because the offset is computed at that specific date.
+export function zonedWallClockToUtcISO(local: string, timeZone: string): string {
+  // Treat the wall-clock as if it were UTC to get a stable reference instant...
+  const naiveUtc = new Date(local + (local.length === 16 ? ':00Z' : 'Z'));
+  // ...then measure how that same instant is displayed in the target zone vs UTC, and correct.
+  const inZone = new Date(naiveUtc.toLocaleString('en-US', { timeZone }));
+  const inUtc = new Date(naiveUtc.toLocaleString('en-US', { timeZone: 'UTC' }));
+  const offsetMs = inUtc.getTime() - inZone.getTime();
+  return new Date(naiveUtc.getTime() + offsetMs).toISOString();
+}
+
 interface SlotRow {
   key: number;
   start: string;
@@ -46,7 +59,7 @@ export function ScheduleInterviewModal({ entryId, candidateId, onClose }: Schedu
 
   const [slots, setSlots] = useState<SlotRow[]>([newSlotRow()]);
   const [panelistIds, setPanelistIds] = useState<string[]>([]);
-  const [timeZone, setTimeZone] = useState('UTC');
+  const [timeZone, setTimeZone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
   const [location, setLocation] = useState('');
   const [recruiterNote, setRecruiterNote] = useState('');
 
@@ -65,7 +78,10 @@ export function ScheduleInterviewModal({ entryId, candidateId, onClose }: Schedu
   async function handleSend() {
     try {
       const created = await createInterview.mutateAsync({
-        slots: completeSlots.map((slot) => ({ startsAt: new Date(slot.start).toISOString(), endsAt: new Date(slot.end).toISOString() })),
+        slots: completeSlots.map((slot) => ({
+          startsAt: zonedWallClockToUtcISO(slot.start, timeZone),
+          endsAt: zonedWallClockToUtcISO(slot.end, timeZone),
+        })),
         panelistUserIds: panelistIds,
         location: location.trim(),
         timeZone,
