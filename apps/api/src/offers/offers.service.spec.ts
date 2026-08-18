@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { OffersService } from './offers.service';
 
 describe('OffersService', () => {
@@ -20,10 +20,15 @@ describe('OffersService', () => {
     tx = {
       pipelineEntry: {
         findFirst: jest.fn().mockResolvedValue({ id: 'entry-1', candidateId: 'cand-1', organizationId: 'org-1' }),
+        findUnique: jest.fn().mockResolvedValue({
+          job: { title: 'Backend Engineer' },
+          candidate: { name: 'Asha' },
+        }),
       },
       offer: {
         create: jest.fn(),
         findFirst: jest.fn(),
+        findUnique: jest.fn(),
         findMany: jest.fn().mockResolvedValue([]),
         update: jest.fn().mockImplementation(({ data }: any) => Promise.resolve({ id: 'offer-1', status: 'draft', ...data })),
       },
@@ -31,7 +36,7 @@ describe('OffersService', () => {
         findUnique: jest.fn().mockResolvedValue({ name: 'Acme', logoPath: null }),
       },
       user: {
-        findUnique: jest.fn().mockResolvedValue({ name: 'Rita' }),
+        findUnique: jest.fn().mockResolvedValue({ name: 'Rita', email: 'rita@acme.test' }),
       },
     };
     tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
@@ -302,6 +307,166 @@ describe('OffersService', () => {
       tx.offer.findFirst.mockResolvedValue(null);
 
       await expect(service.withdraw(context, 'user-1', 'offer-x')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('getPublicOffer', () => {
+    function baseOffer(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 'offer-1',
+        organizationId: 'org-1',
+        pipelineEntryId: 'entry-1',
+        compensation: '100k',
+        startDate: new Date('2026-09-01'),
+        expiresAt: new Date('2026-09-15'),
+        status: 'sent',
+        pdfPath: 'offers/org-1/tok-1.pdf',
+        sentByUserId: 'user-1',
+        ...overrides,
+      };
+    }
+
+    it('resolves by offerToken and returns terms + a signed pdf URL', async () => {
+      tx.offer.findUnique.mockResolvedValue(baseOffer());
+      blobStorage.signIfOurs.mockResolvedValue('https://blob.test/signed.pdf');
+
+      const out = await service.getPublicOffer('offer-token-1');
+
+      expect(tx.offer.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { offerToken: 'offer-token-1' } }),
+      );
+      expect(blobStorage.signIfOurs).toHaveBeenCalledWith('offers/org-1/tok-1.pdf', expect.any(Number));
+      expect(out).toMatchObject({
+        jobTitle: 'Backend Engineer',
+        orgName: 'Acme',
+        compensation: '100k',
+        status: 'sent',
+        pdfUrl: 'https://blob.test/signed.pdf',
+      });
+    });
+
+    it('returns a null pdfUrl when the offer has no pdfPath', async () => {
+      tx.offer.findUnique.mockResolvedValue(baseOffer({ pdfPath: null }));
+
+      const out = await service.getPublicOffer('offer-token-1');
+
+      expect(blobStorage.signIfOurs).not.toHaveBeenCalled();
+      expect(out.pdfUrl).toBeNull();
+    });
+
+    it('throws a generic NotFoundException for an unknown token', async () => {
+      tx.offer.findUnique.mockResolvedValue(null);
+
+      await expect(service.getPublicOffer('bad-token')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('respondPublic', () => {
+    function baseOffer(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 'offer-1',
+        organizationId: 'org-1',
+        pipelineEntryId: 'entry-1',
+        compensation: '100k',
+        startDate: new Date('2026-09-01'),
+        expiresAt: new Date('2027-01-01'),
+        status: 'sent',
+        pdfPath: 'offers/org-1/tok-1.pdf',
+        sentByUserId: 'user-1',
+        ...overrides,
+      };
+    }
+
+    it('accepts a sent, unexpired offer: sets status + respondedAt, audits offer.accepted with a null actor, and notifies the recruiter OUTSIDE the tx', async () => {
+      tx.offer.findUnique.mockResolvedValue(baseOffer());
+      tx.offer.update.mockImplementation(({ data }: any) => Promise.resolve({ id: 'offer-1', ...data }));
+
+      const out = await service.respondPublic('offer-token-1', 'accept');
+
+      expect(tx.offer.update).toHaveBeenCalledWith({
+        where: { id: 'offer-1' },
+        data: { status: 'accepted', respondedAt: expect.any(Date) },
+      });
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: 'org-1' }),
+        expect.objectContaining({ actorUserId: null, action: 'offer.accepted', entityType: 'offer', entityId: 'offer-1' }),
+      );
+      expect(email.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'rita@acme.test',
+          organizationId: 'org-1',
+          html: expect.stringContaining('accepted'),
+        }),
+      );
+      expect(out).toMatchObject({ id: 'offer-1', status: 'accepted' });
+
+      // Ordering: the update tx runs, then the recruiter is notified -- and the send call
+      // itself never happens inside a forTenant callback.
+      const [updateTxOrder] = tenantPrisma.forTenant.mock.invocationCallOrder;
+      const sendOrder = email.send.mock.invocationCallOrder[0];
+      expect(updateTxOrder).toBeLessThan(sendOrder);
+      // Every forTenant call in this flow resolves before email.send fires, i.e. send is not
+      // itself part of any forTenant callback's synchronous execution.
+      for (const callOrder of tenantPrisma.forTenant.mock.invocationCallOrder) {
+        expect(callOrder).toBeLessThan(sendOrder);
+      }
+    });
+
+    it('declines a sent, unexpired offer symmetrically', async () => {
+      tx.offer.findUnique.mockResolvedValue(baseOffer());
+      tx.offer.update.mockImplementation(({ data }: any) => Promise.resolve({ id: 'offer-1', ...data }));
+
+      const out = await service.respondPublic('offer-token-1', 'decline');
+
+      expect(tx.offer.update).toHaveBeenCalledWith({
+        where: { id: 'offer-1' },
+        data: { status: 'declined', respondedAt: expect.any(Date) },
+      });
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: 'org-1' }),
+        expect.objectContaining({ actorUserId: null, action: 'offer.declined', entityId: 'offer-1' }),
+      );
+      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ html: expect.stringContaining('declined') }));
+      expect(out).toMatchObject({ status: 'declined' });
+    });
+
+    it('skips the recruiter email when the offer has no sentByUserId', async () => {
+      tx.offer.findUnique.mockResolvedValue(baseOffer({ sentByUserId: null }));
+      tx.offer.update.mockImplementation(({ data }: any) => Promise.resolve({ id: 'offer-1', ...data }));
+
+      await service.respondPublic('offer-token-1', 'accept');
+
+      expect(email.send).not.toHaveBeenCalled();
+    });
+
+    it('throws a generic ConflictException and makes no changes when the offer has expired', async () => {
+      tx.offer.findUnique.mockResolvedValue(baseOffer({ expiresAt: new Date('2020-01-01') }));
+
+      await expect(service.respondPublic('offer-token-1', 'accept')).rejects.toThrow(ConflictException);
+      expect(tx.offer.update).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(email.send).not.toHaveBeenCalled();
+    });
+
+    it('throws a generic ConflictException and makes no changes when the offer already has a response', async () => {
+      tx.offer.findUnique.mockResolvedValue(baseOffer({ status: 'accepted' }));
+
+      await expect(service.respondPublic('offer-token-1', 'decline')).rejects.toThrow(ConflictException);
+      expect(tx.offer.update).not.toHaveBeenCalled();
+      expect(email.send).not.toHaveBeenCalled();
+    });
+
+    it('throws a generic ConflictException for a draft (never-sent) offer', async () => {
+      tx.offer.findUnique.mockResolvedValue(baseOffer({ status: 'draft' }));
+
+      await expect(service.respondPublic('offer-token-1', 'accept')).rejects.toThrow(ConflictException);
+      expect(tx.offer.update).not.toHaveBeenCalled();
+    });
+
+    it('throws a generic NotFoundException for an unknown token', async () => {
+      tx.offer.findUnique.mockResolvedValue(null);
+
+      await expect(service.respondPublic('bad-token', 'accept')).rejects.toThrow(NotFoundException);
     });
   });
 });

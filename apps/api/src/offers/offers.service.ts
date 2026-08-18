@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Offer } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService, BlobStorageService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
@@ -10,9 +10,15 @@ import { buildOfferPdf } from './offer-pdf';
 import { renderOfferTemplate } from './offer-render';
 
 const LOGO_SIGN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+const PDF_SIGN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class OffersService {
+  // offers is RLS-protected and there is no org context until the offerToken resolves one. The
+  // super-admin flag on forTenant bypasses the RLS predicate entirely, same as
+  // PublicApplicationsService.LOOKUP_ORG -- this placeholder org is never used for filtering.
+  private readonly LOOKUP_ORG = '00000000-0000-0000-0000-000000000000';
+
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly offerTemplates: OfferTemplatesService,
@@ -226,5 +232,107 @@ export class OffersService {
       });
       return updated;
     });
+  }
+
+  private async resolveOfferByToken(token: string) {
+    const offer = await this.tenantPrisma.forTenant(
+      { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
+      (tx) =>
+        tx.offer.findUnique({
+          where: { offerToken: token },
+          select: {
+            id: true,
+            organizationId: true,
+            pipelineEntryId: true,
+            compensation: true,
+            startDate: true,
+            expiresAt: true,
+            status: true,
+            pdfPath: true,
+            sentByUserId: true,
+          },
+        }),
+    );
+    // Generic message regardless of which condition failed later (expired, already responded)
+    // -- distinguishing "no such token" from a state failure would give an outsider an oracle.
+    if (!offer) throw new NotFoundException('Offer not found');
+    return offer;
+  }
+
+  async getPublicOffer(token: string) {
+    const offer = await this.resolveOfferByToken(token);
+
+    const details = await this.tenantPrisma.forTenant(
+      { organizationId: offer.organizationId, isSuperAdmin: true },
+      async (tx) => {
+        const entry = await tx.pipelineEntry.findUnique({
+          where: { id: offer.pipelineEntryId },
+          select: { job: { select: { title: true } } },
+        });
+        const org = await tx.organization.findUnique({ where: { id: offer.organizationId }, select: { name: true } });
+        return { jobTitle: entry?.job.title ?? '', orgName: org?.name ?? '' };
+      },
+    );
+
+    const pdfUrl = offer.pdfPath ? ((await this.blobStorage.signIfOurs(offer.pdfPath, PDF_SIGN_TTL_MS)) as string | null) : null;
+
+    return {
+      jobTitle: details.jobTitle,
+      orgName: details.orgName,
+      compensation: offer.compensation,
+      startDate: offer.startDate,
+      expiresAt: offer.expiresAt,
+      status: offer.status,
+      pdfUrl,
+    };
+  }
+
+  async respondPublic(token: string, action: 'accept' | 'decline'): Promise<Offer> {
+    const offer = await this.resolveOfferByToken(token);
+    // Generic conflict messages -- same anti-oracle reasoning as the NotFound above, just
+    // surfaced as 409s once the token itself is known-good.
+    if (offer.status !== 'sent') throw new ConflictException('This offer is no longer available');
+    if (offer.expiresAt < new Date()) throw new ConflictException('This offer has expired');
+
+    const context = { organizationId: offer.organizationId, isSuperAdmin: true };
+    const newStatus = action === 'accept' ? 'accepted' : 'declined';
+
+    const updated = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const upd = await tx.offer.update({
+        where: { id: offer.id },
+        data: { status: newStatus, respondedAt: new Date() },
+      });
+      await this.audit.record(context, {
+        actorUserId: null,
+        action: action === 'accept' ? 'offer.accepted' : 'offer.declined',
+        entityType: 'offer',
+        entityId: offer.id,
+      });
+      return upd;
+    });
+
+    // Recruiter notification: OUTSIDE the tx above -- emailService.send is a network call and
+    // must never run inside a forTenant callback (same three-phase reasoning as sendOffer).
+    if (offer.sentByUserId) {
+      const notify = await this.tenantPrisma.forTenant(context, async (tx) => {
+        const recruiter = await tx.user.findUnique({ where: { id: offer.sentByUserId as string }, select: { email: true } });
+        const entry = await tx.pipelineEntry.findUnique({
+          where: { id: offer.pipelineEntryId },
+          select: { candidate: { select: { name: true } }, job: { select: { title: true } } },
+        });
+        return { recruiterEmail: recruiter?.email, candidateName: entry?.candidate.name ?? '', jobTitle: entry?.job.title ?? '' };
+      });
+      if (notify.recruiterEmail) {
+        const verb = action === 'accept' ? 'accepted' : 'declined';
+        await this.emailService.send({
+          to: notify.recruiterEmail,
+          subject: `Offer ${verb}: ${notify.candidateName}`,
+          html: `<p>Candidate ${notify.candidateName} has ${verb} the offer for ${notify.jobTitle}.</p>`,
+          organizationId: offer.organizationId,
+        });
+      }
+    }
+
+    return updated;
   }
 }
