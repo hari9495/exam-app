@@ -4,7 +4,7 @@
 
 **Goal:** Give recruiters templated, merge-field email to candidates — sent manually or triggered by pipeline stage moves — via the existing per-org SMTP, with a per-candidate send log.
 
-**Architecture:** Two new per-org tables (`CandidateMessageTemplate`, `CandidateMessage`). A pure render/HTML-shell module. A `CandidateMessageTemplatesService` (code-defaults + per-org overrides) and a reusable `CandidateMessagesService` (`sendMessage` server-renders raw `{{tokens}}` → `EmailService.send` → log row). `PipelineService.patchEntry` gets a post-commit hook that auto-sends or returns a `pendingMessage` draft. Frontend adds a Messages timeline + compose modal on the candidate drawer, a stage-move confirm modal, and a Message Templates admin page.
+**Architecture:** Two new per-org tables (`CandidateEmailTemplate`, `CandidateEmail`). A pure render/HTML-shell module. A `CandidateEmailTemplatesService` (code-defaults + per-org overrides) and a reusable `CandidateEmailsService` (`sendMessage` server-renders raw `{{tokens}}` → `EmailService.send` → log row). `PipelineService.patchEntry` gets a post-commit hook that auto-sends or returns a `pendingMessage` draft. Frontend adds a Messages timeline + compose modal on the candidate drawer, a stage-move confirm modal, and a Message Templates admin page.
 
 **Tech Stack:** NestJS 11 (apps/api), Next.js 16 (apps/web), Prisma + Azure SQL (SQL Server), Jest, React Query.
 
@@ -16,8 +16,8 @@
 - **Org-scoped, no Organization FK:** every new table has an `organizationId` **plain column** (NO Prisma relation to Organization — matches `PipelineEntry`, avoids SQL Server P1012 multiple-cascade-path). All writes go through `TenantPrismaService.forTenant(context, fn)` (RLS). RLS predicates are added in a **separate** migration (`ALTER SECURITY POLICY` can't run in the same batch as the `CREATE TABLE`).
 - **Permission:** every new route is gated `@RequirePermissions('pipeline:manage')`.
 - **Stages are strings:** `PIPELINE_STAGES = ['applied','screened','interview','offer','hired']` (`apps/api/src/pipeline/pipeline-stages.ts`). Trigger events = those 5 values plus `'rejected'`.
-- **GDPR:** never email a candidate with `erasedAt != null`; the erase flow (`apps/api/src/candidates/candidates.service.ts:423`) scrubs `CandidateMessage` PII in place.
-- **Candidate never hard-deleted:** erase scrubs in place, so `CandidateMessage.candidateId` FK is `onDelete: NoAction` (P1012-safe).
+- **GDPR:** never email a candidate with `erasedAt != null`; the erase flow (`apps/api/src/candidates/candidates.service.ts:423`) scrubs `CandidateEmail` PII in place.
+- **Candidate never hard-deleted:** erase scrubs in place, so `CandidateEmail.candidateId` FK is `onDelete: NoAction` (P1012-safe).
 - `FRONTEND_URL` (env, default `http://localhost:3000`) is the base for `{{statusLink}}`.
 - Tests: api `npx jest --config apps/api/jest.config.js <pattern>`; web `cd apps/web && npx jest <pattern>`. apps/web is a modified Next.js — read `apps/web/AGENTS.md` before touching it.
 
@@ -27,16 +27,16 @@
 
 **Files:**
 - Modify: `apps/api/prisma/schema.prisma` (add two models + back-relations)
-- Create: `apps/api/prisma/migrations/20260821090000_candidate_messages/migration.sql`
-- Create: `apps/api/prisma/migrations/20260821090001_candidate_messages_rls/migration.sql`
+- Create: `apps/api/prisma/migrations/20260821090000_candidate_emails/migration.sql`
+- Create: `apps/api/prisma/migrations/20260821090001_candidate_emails_rls/migration.sql`
 
 **Interfaces:**
-- Produces: Prisma models `CandidateMessageTemplate`, `CandidateMessage`; the `candidate_message_templates` / `candidate_messages` tables.
+- Produces: Prisma models `CandidateEmailTemplate`, `CandidateEmail`; the `candidate_email_templates` / `candidate_emails` tables.
 
 - [ ] **Step 1: Add the two models to `schema.prisma`** (place after `PipelineFeedback`). No `Organization` relation on either (org isolation is RLS, matching `PipelineEntry`).
 
 ```prisma
-model CandidateMessageTemplate {
+model CandidateEmailTemplate {
   id             String           @id @default(uuid()) @db.UniqueIdentifier
   organizationId String           @map("organization_id") @db.UniqueIdentifier
   name           String
@@ -49,13 +49,13 @@ model CandidateMessageTemplate {
   enabled        Boolean          @default(true)
   createdAt      DateTime         @default(now()) @map("created_at")
   updatedAt      DateTime         @updatedAt @map("updated_at")
-  messages       CandidateMessage[]
+  messages       CandidateEmail[]
 
   @@index([organizationId])
-  @@map("candidate_message_templates")
+  @@map("candidate_email_templates")
 }
 
-model CandidateMessage {
+model CandidateEmail {
   id              String                    @id @default(uuid()) @db.UniqueIdentifier
   organizationId  String                    @map("organization_id") @db.UniqueIdentifier
   candidateId     String                    @map("candidate_id") @db.UniqueIdentifier
@@ -71,21 +71,21 @@ model CandidateMessage {
   createdAt       DateTime                  @default(now()) @map("created_at")
   candidate       Candidate                 @relation(fields: [candidateId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   pipelineEntry   PipelineEntry?            @relation(fields: [pipelineEntryId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  template        CandidateMessageTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  template        CandidateEmailTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
   @@index([organizationId, candidateId])
   @@index([pipelineEntryId])
-  @@map("candidate_messages")
+  @@map("candidate_emails")
 }
 ```
 
-Add back-relations: on `Candidate` add `candidateMessages CandidateMessage[]`; on `PipelineEntry` add `candidateMessages CandidateMessage[]`. (No relation field is added for `sentByUserId` — it stays a bare column with no `User` relation, to avoid adding a cascade path through `users`; keep it a plain `@db.UniqueIdentifier` column WITHOUT a `@relation`, i.e. remove `sentByUserId` from any relation and do NOT reference `User`. It is written/read as a raw id.)
+Add back-relations: on `Candidate` add `candidateEmails CandidateEmail[]`; on `PipelineEntry` add `candidateEmails CandidateEmail[]`. (No relation field is added for `sentByUserId` — it stays a bare column with no `User` relation, to avoid adding a cascade path through `users`; keep it a plain `@db.UniqueIdentifier` column WITHOUT a `@relation`, i.e. remove `sentByUserId` from any relation and do NOT reference `User`. It is written/read as a raw id.)
 
-- [ ] **Step 2: Write the schema migration** `20260821090000_candidate_messages/migration.sql`. New tables via `CREATE TABLE` — inline nothing that needs EXEC (EXEC-wrapping is only for `ALTER TABLE ADD` + same-batch reference; `CREATE TABLE` + separate `CREATE INDEX` is fine here).
+- [ ] **Step 2: Write the schema migration** `20260821090000_candidate_emails/migration.sql`. New tables via `CREATE TABLE` — inline nothing that needs EXEC (EXEC-wrapping is only for `ALTER TABLE ADD` + same-batch reference; `CREATE TABLE` + separate `CREATE INDEX` is fine here).
 
 ```sql
 -- CreateTable
-CREATE TABLE [dbo].[candidate_message_templates] (
+CREATE TABLE [dbo].[candidate_email_templates] (
     [id] UNIQUEIDENTIFIER NOT NULL,
     [organization_id] UNIQUEIDENTIFIER NOT NULL,
     [name] NVARCHAR(1000) NOT NULL,
@@ -93,14 +93,14 @@ CREATE TABLE [dbo].[candidate_message_templates] (
     [trigger_mode] NVARCHAR(1000) NOT NULL,
     [subject] NVARCHAR(MAX) NOT NULL,
     [body] NVARCHAR(MAX) NOT NULL,
-    [enabled] BIT NOT NULL CONSTRAINT [candidate_message_templates_enabled_df] DEFAULT 1,
-    [created_at] DATETIME2 NOT NULL CONSTRAINT [candidate_message_templates_created_at_df] DEFAULT CURRENT_TIMESTAMP,
+    [enabled] BIT NOT NULL CONSTRAINT [candidate_email_templates_enabled_df] DEFAULT 1,
+    [created_at] DATETIME2 NOT NULL CONSTRAINT [candidate_email_templates_created_at_df] DEFAULT CURRENT_TIMESTAMP,
     [updated_at] DATETIME2 NOT NULL,
-    CONSTRAINT [candidate_message_templates_pkey] PRIMARY KEY CLUSTERED ([id])
+    CONSTRAINT [candidate_email_templates_pkey] PRIMARY KEY CLUSTERED ([id])
 );
 
 -- CreateTable
-CREATE TABLE [dbo].[candidate_messages] (
+CREATE TABLE [dbo].[candidate_emails] (
     [id] UNIQUEIDENTIFIER NOT NULL,
     [organization_id] UNIQUEIDENTIFIER NOT NULL,
     [candidate_id] UNIQUEIDENTIFIER NOT NULL,
@@ -113,34 +113,34 @@ CREATE TABLE [dbo].[candidate_messages] (
     [source] NVARCHAR(1000) NOT NULL,
     [sent_by_user_id] UNIQUEIDENTIFIER,
     [error_detail] NVARCHAR(MAX),
-    [created_at] DATETIME2 NOT NULL CONSTRAINT [candidate_messages_created_at_df] DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT [candidate_messages_pkey] PRIMARY KEY CLUSTERED ([id])
+    [created_at] DATETIME2 NOT NULL CONSTRAINT [candidate_emails_created_at_df] DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT [candidate_emails_pkey] PRIMARY KEY CLUSTERED ([id])
 );
 
 -- CreateIndex
-CREATE NONCLUSTERED INDEX [candidate_message_templates_organization_id_idx] ON [dbo].[candidate_message_templates]([organization_id]);
-CREATE NONCLUSTERED INDEX [candidate_messages_organization_id_candidate_id_idx] ON [dbo].[candidate_messages]([organization_id], [candidate_id]);
-CREATE NONCLUSTERED INDEX [candidate_messages_pipeline_entry_id_idx] ON [dbo].[candidate_messages]([pipeline_entry_id]);
+CREATE NONCLUSTERED INDEX [candidate_email_templates_organization_id_idx] ON [dbo].[candidate_email_templates]([organization_id]);
+CREATE NONCLUSTERED INDEX [candidate_emails_organization_id_candidate_id_idx] ON [dbo].[candidate_emails]([organization_id], [candidate_id]);
+CREATE NONCLUSTERED INDEX [candidate_emails_pipeline_entry_id_idx] ON [dbo].[candidate_emails]([pipeline_entry_id]);
 
 -- AddForeignKey
-ALTER TABLE [dbo].[candidate_messages] ADD CONSTRAINT [candidate_messages_candidate_id_fkey] FOREIGN KEY ([candidate_id]) REFERENCES [dbo].[candidates]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION;
-ALTER TABLE [dbo].[candidate_messages] ADD CONSTRAINT [candidate_messages_pipeline_entry_id_fkey] FOREIGN KEY ([pipeline_entry_id]) REFERENCES [dbo].[pipeline_entries]([id]) ON DELETE SET NULL ON UPDATE NO ACTION;
-ALTER TABLE [dbo].[candidate_messages] ADD CONSTRAINT [candidate_messages_template_id_fkey] FOREIGN KEY ([template_id]) REFERENCES [dbo].[candidate_message_templates]([id]) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE [dbo].[candidate_emails] ADD CONSTRAINT [candidate_emails_candidate_id_fkey] FOREIGN KEY ([candidate_id]) REFERENCES [dbo].[candidates]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION;
+ALTER TABLE [dbo].[candidate_emails] ADD CONSTRAINT [candidate_emails_pipeline_entry_id_fkey] FOREIGN KEY ([pipeline_entry_id]) REFERENCES [dbo].[pipeline_entries]([id]) ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE [dbo].[candidate_emails] ADD CONSTRAINT [candidate_emails_template_id_fkey] FOREIGN KEY ([template_id]) REFERENCES [dbo].[candidate_email_templates]([id]) ON DELETE SET NULL ON UPDATE NO ACTION;
 ```
 
-- [ ] **Step 3: Write the RLS migration** `20260821090001_candidate_messages_rls/migration.sql` (separate file — `ALTER SECURITY POLICY` can't reference same-batch-created tables; same pattern as `20260818090001_ats_pipeline_rls`).
+- [ ] **Step 3: Write the RLS migration** `20260821090001_candidate_emails_rls/migration.sql` (separate file — `ALTER SECURITY POLICY` can't reference same-batch-created tables; same pattern as `20260818090001_ats_pipeline_rls`).
 
 ```sql
 -- Extend the existing tenant isolation policy to cover the two candidate-comms
 -- tables. Reuses dbo.fn_tenant_access_predicate unchanged. Separate migration
 -- because ALTER SECURITY POLICY cannot run in the same batch as the CREATE TABLE.
 ALTER SECURITY POLICY dbo.TenantAccessPolicy
-ADD FILTER PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.candidate_message_templates,
-ADD BLOCK PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.candidate_message_templates AFTER INSERT,
-ADD BLOCK PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.candidate_message_templates AFTER UPDATE,
-ADD FILTER PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.candidate_messages,
-ADD BLOCK PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.candidate_messages AFTER INSERT,
-ADD BLOCK PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.candidate_messages AFTER UPDATE;
+ADD FILTER PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.candidate_email_templates,
+ADD BLOCK PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.candidate_email_templates AFTER INSERT,
+ADD BLOCK PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.candidate_email_templates AFTER UPDATE,
+ADD FILTER PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.candidate_emails,
+ADD BLOCK PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.candidate_emails AFTER INSERT,
+ADD BLOCK PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.candidate_emails AFTER UPDATE;
 ```
 
 - [ ] **Step 4: Regenerate client + validate**
@@ -151,8 +151,8 @@ Expected: generates with no P1012 (no Organization relation on the new tables; c
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/api/prisma/schema.prisma apps/api/prisma/migrations/20260821090000_candidate_messages apps/api/prisma/migrations/20260821090001_candidate_messages_rls
-git commit -m "feat(candidate-comms): CandidateMessage + CandidateMessageTemplate schema + RLS migration"
+git add apps/api/prisma/schema.prisma apps/api/prisma/migrations/20260821090000_candidate_emails apps/api/prisma/migrations/20260821090001_candidate_emails_rls
+git commit -m "feat(candidate-comms): CandidateEmail + CandidateEmailTemplate schema + RLS migration"
 ```
 
 ---
@@ -160,8 +160,8 @@ git commit -m "feat(candidate-comms): CandidateMessage + CandidateMessageTemplat
 ### Task 2: Pure render + branded HTML shell
 
 **Files:**
-- Create: `apps/api/src/candidate-messages/candidate-message-render.ts`
-- Test: `apps/api/src/candidate-messages/candidate-message-render.spec.ts`
+- Create: `apps/api/src/candidate-emails/candidate-email-render.ts`
+- Test: `apps/api/src/candidate-emails/candidate-email-render.spec.ts`
 
 **Interfaces:**
 - Produces:
@@ -170,10 +170,10 @@ git commit -m "feat(candidate-comms): CandidateMessage + CandidateMessageTemplat
   - `templateReferencesStatusLink(subject: string, body: string): boolean`
   - `buildCandidateEmailHtml(opts: { logoUrl: string | null; orgName: string | null; bodyText: string }): string`
 
-- [ ] **Step 1: Write the failing test** `candidate-message-render.spec.ts`
+- [ ] **Step 1: Write the failing test** `candidate-email-render.spec.ts`
 
 ```ts
-import { renderTemplate, templateReferencesStatusLink, buildCandidateEmailHtml } from './candidate-message-render';
+import { renderTemplate, templateReferencesStatusLink, buildCandidateEmailHtml } from './candidate-email-render';
 
 const ctx = { candidateName: 'Asha Rao', jobTitle: 'Backend Engineer', orgName: 'Acme', recruiterName: 'Priya', statusLink: 'https://x/application/tok' };
 
@@ -216,9 +216,9 @@ describe('buildCandidateEmailHtml', () => {
 
 - [ ] **Step 2: Run — expect FAIL** (module not found)
 
-Run: `cd "D:/exam app" && npx jest --config apps/api/jest.config.js candidate-message-render`
+Run: `cd "D:/exam app" && npx jest --config apps/api/jest.config.js candidate-email-render`
 
-- [ ] **Step 3: Implement** `candidate-message-render.ts`
+- [ ] **Step 3: Implement** `candidate-email-render.ts`
 
 ```ts
 export interface MergeContext {
@@ -259,12 +259,12 @@ export function buildCandidateEmailHtml(opts: { logoUrl: string | null; orgName:
 
 - [ ] **Step 4: Run — expect PASS**
 
-Run: `cd "D:/exam app" && npx jest --config apps/api/jest.config.js candidate-message-render`
+Run: `cd "D:/exam app" && npx jest --config apps/api/jest.config.js candidate-email-render`
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/api/src/candidate-messages/candidate-message-render.ts apps/api/src/candidate-messages/candidate-message-render.spec.ts
+git add apps/api/src/candidate-emails/candidate-email-render.ts apps/api/src/candidate-emails/candidate-email-render.spec.ts
 git commit -m "feat(candidate-comms): pure renderTemplate + branded email shell"
 ```
 
@@ -273,18 +273,18 @@ git commit -m "feat(candidate-comms): pure renderTemplate + branded email shell"
 ### Task 3: Templates service + code defaults + controller
 
 **Files:**
-- Create: `apps/api/src/candidate-messages/default-templates.ts`
-- Create: `apps/api/src/candidate-messages/candidate-message-templates.service.ts`
-- Create: `apps/api/src/candidate-messages/dto/upsert-template.dto.ts`
-- Create: `apps/api/src/candidate-messages/candidate-message-templates.controller.ts`
-- Test: `apps/api/src/candidate-messages/candidate-message-templates.service.spec.ts`
+- Create: `apps/api/src/candidate-emails/default-templates.ts`
+- Create: `apps/api/src/candidate-emails/candidate-email-templates.service.ts`
+- Create: `apps/api/src/candidate-emails/dto/upsert-template.dto.ts`
+- Create: `apps/api/src/candidate-emails/candidate-email-templates.controller.ts`
+- Test: `apps/api/src/candidate-emails/candidate-email-templates.service.spec.ts`
 
 **Interfaces:**
 - Consumes: `TenantPrismaService`, `TenantContext`, `AuditService`.
 - Produces:
   - `DEFAULT_TEMPLATES: Array<{ key: string; name: string; triggerEvent: string | null; triggerMode: 'manual'|'prompt'|'auto'; subject: string; body: string }>`
-  - `CandidateMessageTemplatesService.listWithDefaults(context): Promise<TemplateView[]>`
-  - `CandidateMessageTemplatesService.resolveForEvent(context, event): Promise<{ id: string|null; subject: string; body: string; triggerMode: string } | null>` — the enabled saved row for the event, else the code default, else null. Opens its own `forTenant` read (the stage-move caller in Task 5 runs this after its own tx has committed).
+  - `CandidateEmailTemplatesService.listWithDefaults(context): Promise<TemplateView[]>`
+  - `CandidateEmailTemplatesService.resolveForEvent(context, event): Promise<{ id: string|null; subject: string; body: string; triggerMode: string } | null>` — the enabled saved row for the event, else the code default, else null. Opens its own `forTenant` read (the stage-move caller in Task 5 runs this after its own tx has committed).
   - `upsert(context, actorUserId, dto)`, `setEnabled(context, actorUserId, id, enabled)`, `remove(context, actorUserId, id)`.
 
 - [ ] **Step 1: Write `default-templates.ts`** (no test needed — pure data)
@@ -315,13 +315,13 @@ export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
 ];
 ```
 
-- [ ] **Step 2: Write the failing test** `candidate-message-templates.service.spec.ts`. Mock `TenantPrismaService.forTenant` to run the callback with a `tx` whose `candidateMessageTemplate` methods are jest mocks; mock `AuditService.record`.
+- [ ] **Step 2: Write the failing test** `candidate-email-templates.service.spec.ts`. Mock `TenantPrismaService.forTenant` to run the callback with a `tx` whose `candidateEmailTemplate` methods are jest mocks; mock `AuditService.record`.
 
 ```ts
 // Key cases:
 // - listWithDefaults returns code defaults for events with no saved row, and the saved row where present (saved wins).
 it('listWithDefaults merges saved rows over code defaults', async () => {
-  tx.candidateMessageTemplate.findMany.mockResolvedValue([
+  tx.candidateEmailTemplate.findMany.mockResolvedValue([
     { id: 's1', name: 'Custom interview', triggerEvent: 'interview', triggerMode: 'prompt', subject: 'S', body: 'B', enabled: true },
   ]);
   const list = await service.listWithDefaults(context);
@@ -332,25 +332,25 @@ it('listWithDefaults merges saved rows over code defaults', async () => {
 });
 // - resolveForEvent returns the saved enabled row, else the default, else null for unknown.
 it('resolveForEvent returns saved enabled row over default', async () => {
-  tx.candidateMessageTemplate.findFirst.mockResolvedValue({ id: 's1', subject: 'S', body: 'B', triggerMode: 'auto', enabled: true });
+  tx.candidateEmailTemplate.findFirst.mockResolvedValue({ id: 's1', subject: 'S', body: 'B', triggerMode: 'auto', enabled: true });
   const r = await service.resolveForEvent(tx, 'org-1', 'offer');
   expect(r).toMatchObject({ id: 's1', triggerMode: 'auto' });
 });
 it('resolveForEvent falls back to the code default when no saved row', async () => {
-  tx.candidateMessageTemplate.findFirst.mockResolvedValue(null);
+  tx.candidateEmailTemplate.findFirst.mockResolvedValue(null);
   const r = await service.resolveForEvent(tx, 'org-1', 'offer');
   expect(r).toMatchObject({ id: null, triggerMode: 'prompt' }); // offer default is prompt
 });
 it('resolveForEvent returns null for an event with no default and no row', async () => {
-  tx.candidateMessageTemplate.findFirst.mockResolvedValue(null);
+  tx.candidateEmailTemplate.findFirst.mockResolvedValue(null);
   expect(await service.resolveForEvent(tx, 'org-1', 'screened')).toBeNull();
 });
-// - upsert creates then audits 'candidate_message_template.saved'.
+// - upsert creates then audits 'candidate_email_template.saved'.
 ```
 
 - [ ] **Step 3: Run — expect FAIL**
 
-Run: `cd "D:/exam app" && npx jest --config apps/api/jest.config.js candidate-message-templates.service`
+Run: `cd "D:/exam app" && npx jest --config apps/api/jest.config.js candidate-email-templates.service`
 
 - [ ] **Step 4: Implement** the DTO, service, controller.
 
@@ -372,14 +372,14 @@ export class UpsertTemplateDto {
 }
 ```
 
-`candidate-message-templates.service.ts` — `listWithDefaults` loads saved rows, and for every `DEFAULT_TEMPLATES` entry whose `triggerEvent` isn't covered by a saved row, appends the default with `{ id: null, isDefault: true }`; saved rows carry `isDefault: false`. `resolveForEvent(tx, orgId, event)` → `tx.candidateMessageTemplate.findFirst({ where: { organizationId: orgId, triggerEvent: event, enabled: true }, orderBy: { updatedAt: 'desc' } })`; if found return `{ id, subject, body, triggerMode }`; else find the `DEFAULT_TEMPLATES` entry with that `triggerEvent` and return `{ id: null, subject, body, triggerMode }`; else `null`. `upsert` → `tx.candidateMessageTemplate.upsert`/`update`/`create` (org-scoped), audit `candidate_message_template.saved`. `setEnabled` audits `candidate_message_template.enabled`/`.disabled`. `remove` deletes a saved row (reverts to default), audits `candidate_message_template.removed`.
+`candidate-email-templates.service.ts` — `listWithDefaults` loads saved rows, and for every `DEFAULT_TEMPLATES` entry whose `triggerEvent` isn't covered by a saved row, appends the default with `{ id: null, isDefault: true }`; saved rows carry `isDefault: false`. `resolveForEvent(tx, orgId, event)` → `tx.candidateEmailTemplate.findFirst({ where: { organizationId: orgId, triggerEvent: event, enabled: true }, orderBy: { updatedAt: 'desc' } })`; if found return `{ id, subject, body, triggerMode }`; else find the `DEFAULT_TEMPLATES` entry with that `triggerEvent` and return `{ id: null, subject, body, triggerMode }`; else `null`. `upsert` → `tx.candidateEmailTemplate.upsert`/`update`/`create` (org-scoped), audit `candidate_email_template.saved`. `setEnabled` audits `candidate_email_template.enabled`/`.disabled`. `remove` deletes a saved row (reverts to default), audits `candidate_email_template.removed`.
 
-`candidate-message-templates.controller.ts` — `@Controller('candidate-message-templates')`, guards `JwtAuthGuard, PermissionsGuard`, every route `@RequirePermissions('pipeline:manage')`: `GET /` → `listWithDefaults`; `POST /` / `PATCH /:id` → `upsert`; `PATCH /:id/enabled` → `setEnabled`; `DELETE /:id` → `remove`. Use the repo's `@CurrentTenant()` / `@CurrentUserId()` decorators (copy from `pipeline.controller.ts`).
+`candidate-email-templates.controller.ts` — `@Controller('candidate-email-templates')`, guards `JwtAuthGuard, PermissionsGuard`, every route `@RequirePermissions('pipeline:manage')`: `GET /` → `listWithDefaults`; `POST /` / `PATCH /:id` → `upsert`; `PATCH /:id/enabled` → `setEnabled`; `DELETE /:id` → `remove`. Use the repo's `@CurrentTenant()` / `@CurrentUserId()` decorators (copy from `pipeline.controller.ts`).
 
 - [ ] **Step 5: Run — expect PASS**, then commit
 
 ```bash
-git add apps/api/src/candidate-messages
+git add apps/api/src/candidate-emails
 git commit -m "feat(candidate-comms): templates service with code defaults + controller"
 ```
 
@@ -388,24 +388,24 @@ git commit -m "feat(candidate-comms): templates service with code defaults + con
 ### Task 4: Messages service (send/list/resend) + controller + module + GDPR scrub
 
 **Files:**
-- Create: `apps/api/src/candidate-messages/candidate-messages.service.ts`
-- Create: `apps/api/src/candidate-messages/dto/send-message.dto.ts`
-- Create: `apps/api/src/candidate-messages/candidate-messages.controller.ts`
-- Create: `apps/api/src/candidate-messages/candidate-messages.module.ts`
-- Modify: `apps/api/src/app.module.ts` (register `CandidateMessagesModule`)
+- Create: `apps/api/src/candidate-emails/candidate-emails.service.ts`
+- Create: `apps/api/src/candidate-emails/dto/send-message.dto.ts`
+- Create: `apps/api/src/candidate-emails/candidate-emails.controller.ts`
+- Create: `apps/api/src/candidate-emails/candidate-emails.module.ts`
+- Modify: `apps/api/src/app.module.ts` (register `CandidateEmailsModule`)
 - Modify: `apps/api/src/candidates/candidates.service.ts` (erase scrub, ~`:496`)
-- Test: `apps/api/src/candidate-messages/candidate-messages.service.spec.ts`
-- Test: `apps/api/src/candidate-messages/candidate-messages.controller.spec.ts`
+- Test: `apps/api/src/candidate-emails/candidate-emails.service.spec.ts`
+- Test: `apps/api/src/candidate-emails/candidate-emails.controller.spec.ts`
 
 **Interfaces:**
-- Consumes: `EmailService.send`, `CandidateMessageTemplatesService.resolveForEvent`, `renderTemplate`, `templateReferencesStatusLink`, `buildCandidateEmailHtml`, `BlobStorageService.signIfOurs`, `TenantPrismaService`, `AuditService`.
+- Consumes: `EmailService.send`, `CandidateEmailTemplatesService.resolveForEvent`, `renderTemplate`, `templateReferencesStatusLink`, `buildCandidateEmailHtml`, `BlobStorageService.signIfOurs`, `TenantPrismaService`, `AuditService`.
 - Produces:
-  - `CandidateMessagesService.sendMessage(context, actorUserId: string | null, entryId: string, input: { templateId?: string | null; subject: string; body: string; source: 'manual'|'stage_prompt'|'stage_auto' }): Promise<CandidateMessage>`
-  - `CandidateMessagesService.listMessages(context, candidateId): Promise<CandidateMessage[]>`
-  - `CandidateMessagesService.resend(context, actorUserId, messageId): Promise<CandidateMessage>`
-  - `CandidateMessagesModule` exports `CandidateMessagesService` and `CandidateMessageTemplatesService`.
+  - `CandidateEmailsService.sendMessage(context, actorUserId: string | null, entryId: string, input: { templateId?: string | null; subject: string; body: string; source: 'manual'|'stage_prompt'|'stage_auto' }): Promise<CandidateEmail>`
+  - `CandidateEmailsService.listMessages(context, candidateId): Promise<CandidateEmail[]>`
+  - `CandidateEmailsService.resend(context, actorUserId, messageId): Promise<CandidateEmail>`
+  - `CandidateEmailsModule` exports `CandidateEmailsService` and `CandidateEmailTemplatesService`.
 
-- [ ] **Step 1: Write the failing test** `candidate-messages.service.spec.ts`. Mock `forTenant` (runs cb with `tx`), `EmailService.send`, `blobStorage.signIfOurs`, `audit.record`. `tx.pipelineEntry.findFirst` returns `{ id, candidateId, applicationToken, candidate: { name, email, erasedAt: null }, job: { title } }`; `tx.organization.findUnique` returns `{ name, logoPath }`.
+- [ ] **Step 1: Write the failing test** `candidate-emails.service.spec.ts`. Mock `forTenant` (runs cb with `tx`), `EmailService.send`, `blobStorage.signIfOurs`, `audit.record`. `tx.pipelineEntry.findFirst` returns `{ id, candidateId, applicationToken, candidate: { name, email, erasedAt: null }, job: { title } }`; `tx.organization.findUnique` returns `{ name, logoPath }`.
 
 ```ts
 it('renders raw tokens, sends, and logs a sent row', async () => {
@@ -413,7 +413,7 @@ it('renders raw tokens, sends, and logs a sent row', async () => {
   const msg = await service.sendMessage(context, 'user-1', 'entry-1',
     { templateId: null, subject: 'Hi {{candidateName}}', body: 'See {{statusLink}}', source: 'manual' });
   expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'asha@x.com', subject: 'Hi Asha', organizationId: 'org-1' }));
-  expect(tx.candidateMessage.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'sent', source: 'manual', toEmail: 'asha@x.com' }) }));
+  expect(tx.candidateEmail.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'sent', source: 'manual', toEmail: 'asha@x.com' }) }));
 });
 it('mints applicationToken when body references statusLink and entry has none', async () => {
   tx.pipelineEntry.findFirst.mockResolvedValue({ id: 'entry-1', candidateId: 'c1', applicationToken: null, candidate: { name: 'Asha', email: 'asha@x.com', erasedAt: null }, job: { title: 'BE' } });
@@ -424,7 +424,7 @@ it('mints applicationToken when body references statusLink and entry has none', 
 it('logs a failed row (not throw) when send fails', async () => {
   email.send.mockResolvedValue({ success: false });
   const msg = await service.sendMessage(context, 'user-1', 'entry-1', { subject: 's', body: 'b', source: 'manual' });
-  expect(tx.candidateMessage.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'failed' }) }));
+  expect(tx.candidateEmail.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'failed' }) }));
 });
 it('refuses to send to an erased candidate', async () => {
   tx.pipelineEntry.findFirst.mockResolvedValue({ id: 'entry-1', candidateId: 'c1', applicationToken: 't', candidate: { name: 'X', email: 'e', erasedAt: new Date() }, job: { title: 'BE' } });
@@ -445,7 +445,7 @@ export class SendMessageDto {
 }
 ```
 
-`candidate-messages.service.ts` `sendMessage`:
+`candidate-emails.service.ts` `sendMessage`:
 ```ts
 async sendMessage(context, actorUserId, entryId, input) {
   return this.tenantPrisma.forTenant(context, async (tx) => {
@@ -472,42 +472,42 @@ async sendMessage(context, actorUserId, entryId, input) {
     const logoUrl = org?.logoPath ? await this.blobStorage.signIfOurs(org.logoPath, 90 * 24 * 60 * 60 * 1000) : null;
     const html = buildCandidateEmailHtml({ logoUrl, orgName: org?.name ?? null, bodyText: rendered.body });
     const result = await this.emailService.send({ to: entry.candidate.email, subject: rendered.subject, html, organizationId: orgId });
-    const created = await tx.candidateMessage.create({ data: {
+    const created = await tx.candidateEmail.create({ data: {
       organizationId: orgId, candidateId: entry.candidateId, pipelineEntryId: entry.id, templateId: input.templateId ?? null,
       toEmail: entry.candidate.email, subject: rendered.subject, renderedBody: rendered.body,
       status: result.success ? 'sent' : 'failed', source: input.source, sentByUserId: actorUserId,
       errorDetail: result.success ? null : 'delivery failed',
     } });
-    await this.audit.record(context, { actorUserId, action: result.success ? 'candidate_message.sent' : 'candidate_message.failed', entityType: 'candidate_message', entityId: created.id, metadata: { to: entry.candidate.email, source: input.source } });
+    await this.audit.record(context, { actorUserId, action: result.success ? 'candidate_email.sent' : 'candidate_email.failed', entityType: 'candidate_email', entityId: created.id, metadata: { to: entry.candidate.email, source: input.source } });
     return created;
   });
 }
 ```
-`listMessages` → `tx.candidateMessage.findMany({ where: { organizationId, candidateId }, orderBy: { createdAt: 'desc' } })`. `resend(context, actorUserId, messageId)` → load the failed row, re-`sendMessage` with its snapshot subject/renderedBody (source 'manual'). Import `randomUUID` from `crypto`, `NotFoundException`/`BadRequestException` from `@nestjs/common`.
+`listMessages` → `tx.candidateEmail.findMany({ where: { organizationId, candidateId }, orderBy: { createdAt: 'desc' } })`. `resend(context, actorUserId, messageId)` → load the failed row, re-`sendMessage` with its snapshot subject/renderedBody (source 'manual'). Import `randomUUID` from `crypto`, `NotFoundException`/`BadRequestException` from `@nestjs/common`.
 
-`candidate-messages.controller.ts` (guards + `@RequirePermissions('pipeline:manage')`): `POST /pipeline/entries/:id/messages` → `sendMessage(..., source:'manual')`; `GET /candidates/:id/messages` → `listMessages`; `POST /candidate-messages/:id/resend` → `resend`. (Three routes across two path prefixes — use one controller with explicit `@Post('pipeline/entries/:id/messages')` etc., or split; keep them in this controller with full paths.)
+`candidate-emails.controller.ts` (guards + `@RequirePermissions('pipeline:manage')`): `POST /pipeline/entries/:id/messages` → `sendMessage(..., source:'manual')`; `GET /candidates/:id/messages` → `listMessages`; `POST /candidate-emails/:id/resend` → `resend`. (Three routes across two path prefixes — use one controller with explicit `@Post('pipeline/entries/:id/messages')` etc., or split; keep them in this controller with full paths.)
 
-`candidate-messages.module.ts`: `imports: [EmailModule]`, providers `[CandidateMessagesService, CandidateMessageTemplatesService]`, controllers both, `exports: [CandidateMessagesService, CandidateMessageTemplatesService]`. (`TenantPrismaService`, `AuditService`, `BlobStorageService` come from their global/shared modules as in `PipelineModule` — mirror `pipeline.module.ts`'s provider list.) Register `CandidateMessagesModule` in `app.module.ts`.
+`candidate-emails.module.ts`: `imports: [EmailModule]`, providers `[CandidateEmailsService, CandidateEmailTemplatesService]`, controllers both, `exports: [CandidateEmailsService, CandidateEmailTemplatesService]`. (`TenantPrismaService`, `AuditService`, `BlobStorageService` come from their global/shared modules as in `PipelineModule` — mirror `pipeline.module.ts`'s provider list.) Register `CandidateEmailsModule` in `app.module.ts`.
 
 - [ ] **Step 4: GDPR erase scrub** — in `candidates.service.ts` `erase()`, inside the `forTenant` tx alongside the existing `candidateProfile.updateMany` scrub (~`:496`), add:
 ```ts
-await tx.candidateMessage.updateMany({
+await tx.candidateEmail.updateMany({
   where: { candidateId, organizationId: context.organizationId as string },
   data: { toEmail: 'erased@redacted.invalid', subject: 'Redacted', renderedBody: 'Redacted', errorDetail: null },
 });
 ```
-Add a test in `candidates.service.spec.ts` asserting `candidateMessage.updateMany` is called during erase.
+Add a test in `candidates.service.spec.ts` asserting `candidateEmail.updateMany` is called during erase.
 
-- [ ] **Step 5: Write the controller test** `candidate-messages.controller.spec.ts` — mirror `pipeline.controller.spec.ts`: 401 when `JwtAuthGuard` rejects (RejectingGuard throws `UnauthorizedException`), and delegation to the service with parsed params.
+- [ ] **Step 5: Write the controller test** `candidate-emails.controller.spec.ts` — mirror `pipeline.controller.spec.ts`: 401 when `JwtAuthGuard` rejects (RejectingGuard throws `UnauthorizedException`), and delegation to the service with parsed params.
 
 - [ ] **Step 6: Run api unit suite for the module + typecheck**
 
-Run: `cd "D:/exam app" && npx jest --config apps/api/jest.config.js candidate-messages src/candidates/candidates.service && npx tsc -p apps/api/tsconfig.json --noEmit`
+Run: `cd "D:/exam app" && npx jest --config apps/api/jest.config.js candidate-emails src/candidates/candidates.service && npx tsc -p apps/api/tsconfig.json --noEmit`
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add apps/api/src/candidate-messages apps/api/src/app.module.ts apps/api/src/candidates/candidates.service.ts apps/api/src/candidates/candidates.service.spec.ts
+git add apps/api/src/candidate-emails apps/api/src/app.module.ts apps/api/src/candidates/candidates.service.ts apps/api/src/candidates/candidates.service.spec.ts
 git commit -m "feat(candidate-comms): send/list/resend service + controller + module + GDPR scrub"
 ```
 
@@ -517,15 +517,15 @@ git commit -m "feat(candidate-comms): send/list/resend service + controller + mo
 
 **Files:**
 - Modify: `apps/api/src/pipeline/pipeline.service.ts` (`patchEntry`, `:239`)
-- Modify: `apps/api/src/pipeline/pipeline.module.ts` (import `CandidateMessagesModule`)
+- Modify: `apps/api/src/pipeline/pipeline.module.ts` (import `CandidateEmailsModule`)
 - Modify: `apps/api/src/pipeline/pipeline.controller.ts` (return type passthrough)
 - Test: `apps/api/src/pipeline/pipeline.service.spec.ts` (extend)
 
 **Interfaces:**
-- Consumes: `CandidateMessagesService.sendMessage`, `CandidateMessageTemplatesService.resolveForEvent`.
+- Consumes: `CandidateEmailsService.sendMessage`, `CandidateEmailTemplatesService.resolveForEvent`.
 - Produces: `patchEntry` now returns `{ entry: PipelineEntry; pendingMessage?: { templateId: string | null; subject: string; body: string } }`.
 
-- [ ] **Step 1: Write the failing test** (extend `pipeline.service.spec.ts`). Inject mock `CandidateMessagesService` + `CandidateMessageTemplatesService`.
+- [ ] **Step 1: Write the failing test** (extend `pipeline.service.spec.ts`). Inject mock `CandidateEmailsService` + `CandidateEmailTemplatesService`.
 
 ```ts
 it('auto-sends when the target event resolves an auto template', async () => {
@@ -561,7 +561,7 @@ it('does nothing when no template resolves', async () => {
 
   **Note:** changing `resolveForEvent` to open its own tx means Task 3's tests must pass `context` not `tx`. Update Task 3 Step 2 tests and the interface to `resolveForEvent(context, event)`. (Reconcile at implementation time — the hook is the real caller.)
 
-  `pipeline.module.ts`: add `imports: [CandidateMessagesModule]`. **Guard circular dep:** `CandidateMessagesModule` must NOT import `PipelineModule`. If Nest reports a cycle, STOP and report BLOCKED (do not forwardRef without flagging).
+  `pipeline.module.ts`: add `imports: [CandidateEmailsModule]`. **Guard circular dep:** `CandidateEmailsModule` must NOT import `PipelineModule`. If Nest reports a cycle, STOP and report BLOCKED (do not forwardRef without flagging).
 
   `pipeline.controller.ts`: `patchEntry` handler returns the service result unchanged (now `{ entry, pendingMessage? }`) — update its return type.
 
@@ -582,28 +582,28 @@ git commit -m "feat(candidate-comms): patchEntry stage-move hook (auto send + pe
 
 **Files:**
 - Modify: `apps/web/lib/types.ts` (message + template types; `PatchEntryResult`)
-- Create: `apps/web/lib/hooks/useCandidateMessages.ts`
+- Create: `apps/web/lib/hooks/useCandidateEmails.ts`
 - Modify: `apps/web/components/pipeline/CandidateDrawer.tsx` (Messages section + compose modal)
 - Create: `apps/web/components/pipeline/SendMessageModal.tsx`
 - Test: `apps/web/components/pipeline/CandidateDrawer.test.tsx` (extend), `apps/web/components/pipeline/SendMessageModal.test.tsx`
 
 **Interfaces:**
-- Consumes: `POST /pipeline/entries/:id/messages`, `GET /candidates/:id/messages`, `POST /candidate-messages/:id/resend`.
-- Produces: `useCandidateMessages(candidateId)`, `useSendMessage(entryId)`, `useResendMessage()`; `SendMessageModal` component.
+- Consumes: `POST /pipeline/entries/:id/messages`, `GET /candidates/:id/messages`, `POST /candidate-emails/:id/resend`.
+- Produces: `useCandidateEmails(candidateId)`, `useSendMessage(entryId)`, `useResendMessage()`; `SendMessageModal` component.
 
 - [ ] **Step 1: Read `apps/web/AGENTS.md`.** Then locate how `CandidateDrawer` gets its `entry`/`candidateId` and how existing pipeline hooks call `apiFetch` (`apps/web/lib/hooks/usePipeline.ts`).
 
 - [ ] **Step 2: Add web types** to `lib/types.ts`:
 ```ts
-export interface CandidateMessage { id: string; toEmail: string; subject: string; renderedBody: string; status: 'sent' | 'failed'; source: string; sentByUserId: string | null; createdAt: string; }
-export interface CandidateMessageTemplate { id: string | null; name: string; triggerEvent: string | null; triggerMode: 'manual' | 'prompt' | 'auto'; subject: string; body: string; enabled: boolean; isDefault: boolean; }
+export interface CandidateEmail { id: string; toEmail: string; subject: string; renderedBody: string; status: 'sent' | 'failed'; source: string; sentByUserId: string | null; createdAt: string; }
+export interface CandidateEmailTemplate { id: string | null; name: string; triggerEvent: string | null; triggerMode: 'manual' | 'prompt' | 'auto'; subject: string; body: string; enabled: boolean; isDefault: boolean; }
 export interface PendingMessage { templateId: string | null; subject: string; body: string; }
 ```
 Update the patch-entry mutation's result type to `{ entry: PipelineEntry; pendingMessage?: PendingMessage }`.
 
-- [ ] **Step 3: Write the failing test** `SendMessageModal.test.tsx` — mock `useCandidateMessages`/templates + `useSendMessage`; assert: template picker fills subject/body (raw, with tokens), editing then Send calls the mutation with the edited subject/body; a live preview area shows tokens replaced with sample values.
+- [ ] **Step 3: Write the failing test** `SendMessageModal.test.tsx` — mock `useCandidateEmails`/templates + `useSendMessage`; assert: template picker fills subject/body (raw, with tokens), editing then Send calls the mutation with the edited subject/body; a live preview area shows tokens replaced with sample values.
 
-- [ ] **Step 4: Implement** `useCandidateMessages.ts` (React Query: list query keyed `['candidate-messages', candidateId]`; `useSendMessage` invalidates it on success; `useResendMessage`; a `useMessageTemplates()` query on `['candidate-message-templates']`). Then `SendMessageModal.tsx` (template `<Select>` → fills raw subject/body into editable fields; a preview panel calling a small client-side token substitution with placeholder sample values; Send button → `useSendMessage`). Add to `CandidateDrawer.tsx`: a **Messages** section listing `useCandidateMessages` rows (subject, status badge, time; Resend on failed) + a **Send message** button opening `SendMessageModal`.
+- [ ] **Step 4: Implement** `useCandidateEmails.ts` (React Query: list query keyed `['candidate-emails', candidateId]`; `useSendMessage` invalidates it on success; `useResendMessage`; a `useMessageTemplates()` query on `['candidate-email-templates']`). Then `SendMessageModal.tsx` (template `<Select>` → fills raw subject/body into editable fields; a preview panel calling a small client-side token substitution with placeholder sample values; Send button → `useSendMessage`). Add to `CandidateDrawer.tsx`: a **Messages** section listing `useCandidateEmails` rows (subject, status badge, time; Resend on failed) + a **Send message** button opening `SendMessageModal`.
 
 - [ ] **Step 5: Run — expect PASS**
 
@@ -612,7 +612,7 @@ Run: `cd "D:/exam app/apps/web" && npx jest CandidateDrawer SendMessageModal`
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/web/lib/types.ts apps/web/lib/hooks/useCandidateMessages.ts apps/web/components/pipeline/CandidateDrawer.tsx apps/web/components/pipeline/SendMessageModal.tsx apps/web/components/pipeline/CandidateDrawer.test.tsx apps/web/components/pipeline/SendMessageModal.test.tsx
+git add apps/web/lib/types.ts apps/web/lib/hooks/useCandidateEmails.ts apps/web/components/pipeline/CandidateDrawer.tsx apps/web/components/pipeline/SendMessageModal.tsx apps/web/components/pipeline/CandidateDrawer.test.tsx apps/web/components/pipeline/SendMessageModal.test.tsx
 git commit -m "feat(candidate-comms): candidate messages timeline + compose modal"
 ```
 
@@ -628,7 +628,7 @@ git commit -m "feat(candidate-comms): candidate messages timeline + compose moda
 - Test: `apps/web/app/(recruiter)/settings/message-templates/page.test.tsx`, extend `PipelineBoard.test.tsx`
 
 **Interfaces:**
-- Consumes: `GET/POST/PATCH/DELETE /candidate-message-templates`, the org SMTP-configured flag (reuse the existing org-settings query that exposes whether SMTP host/user are set; if none exists, read from the org profile query already used by settings).
+- Consumes: `GET/POST/PATCH/DELETE /candidate-email-templates`, the org SMTP-configured flag (reuse the existing org-settings query that exposes whether SMTP host/user are set; if none exists, read from the org profile query already used by settings).
 - Produces: Message Templates admin page; `pendingMessage` wired into the board.
 
 - [ ] **Step 1: Write the failing tests.** `PipelineBoard.test.tsx`: moving a candidate whose patch response includes `pendingMessage` opens the compose modal pre-filled with that subject/body. `message-templates/page.test.tsx`: renders templates (defaults + saved), editing subject/body + Save calls the upsert mutation; toggling enabled calls the enabled mutation; restore-default (DELETE) on a saved row.
@@ -684,6 +684,6 @@ Run: `cd "D:/exam app/apps/web" && npx jest --maxWorkers=2 && npx tsc --noEmit`
 
 **Placeholder scan:** no TBD/TODO; every code step carries real code. Two integration seams are called out explicitly rather than hand-waved: (a) `resolveForEvent` signature is `(context, event)` and opens its own `forTenant` — Task 3 tests and Task 5 caller agree on this; (b) the org SMTP-configured flag reuses the existing org-settings query (Task 7 Step-1 note).
 
-**Type consistency:** `sendMessage(context, actorUserId, entryId, { templateId?, subject, body, source })`, `resolveForEvent(context, event) → { id: string|null, subject, body, triggerMode } | null`, `patchEntry → { entry, pendingMessage? }`, `CandidateMessage`/`CandidateMessageTemplate`/`PendingMessage` web types — used identically across tasks. `source` values `'manual'|'stage_prompt'|'stage_auto'` and trigger modes `'manual'|'prompt'|'auto'` are consistent throughout.
+**Type consistency:** `sendMessage(context, actorUserId, entryId, { templateId?, subject, body, source })`, `resolveForEvent(context, event) → { id: string|null, subject, body, triggerMode } | null`, `patchEntry → { entry, pendingMessage? }`, `CandidateEmail`/`CandidateEmailTemplate`/`PendingMessage` web types — used identically across tasks. `source` values `'manual'|'stage_prompt'|'stage_auto'` and trigger modes `'manual'|'prompt'|'auto'` are consistent throughout.
 
-**Circular-dep note:** Task 5 imports `CandidateMessagesModule` into `PipelineModule`; `CandidateMessagesModule` must not import `PipelineModule` (it doesn't need pipeline logic — it takes `entryId` and queries the entry directly). STOP-and-report if Nest reports a cycle.
+**Circular-dep note:** Task 5 imports `CandidateEmailsModule` into `PipelineModule`; `CandidateEmailsModule` must not import `PipelineModule` (it doesn't need pipeline logic — it takes `entryId` and queries the entry directly). STOP-and-report if Nest reports a cycle.
