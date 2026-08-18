@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Modal, Button, Select, Input, useToast } from '../ui';
 import { useMessageTemplates, useSendMessage } from '../../lib/hooks/useCandidateMessages';
+import { useIntegrations } from '../../lib/hooks/useIntegrations';
 import { CandidateEmailTemplate } from '../../lib/types';
 
 // Readable stand-ins for the tokens the server would otherwise fill from live data (see
@@ -47,6 +48,9 @@ interface SendMessageModalProps {
 export function SendMessageModal({ entryId, candidateId, candidateName, onClose, initial }: SendMessageModalProps) {
   const { data: templates } = useMessageTemplates();
   const sendMessage = useSendMessage(entryId, candidateId);
+  // Best-effort, same as the templates admin page: a plain recruiter gets a 403 on this org-admin
+  // endpoint, so isSuccess just stays false and the banner quietly doesn't render.
+  const { data: integrations, isSuccess: integrationsLoaded } = useIntegrations();
   const { toast } = useToast();
   const [selectValue, setSelectValue] = useState(initial?.templateId ?? '');
   const [subject, setSubject] = useState(initial?.subject ?? '');
@@ -98,6 +102,11 @@ export function SendMessageModal({ entryId, candidateId, candidateName, onClose,
       }
     >
       <div className="flex flex-col gap-4">
+        {integrationsLoaded && integrations?.smtpConfigured === false && (
+          <div className="rounded-md bg-status-warning-bg p-3 text-sm text-status-warning">
+            Candidate emails won&apos;t send until SMTP is configured in Organization settings.
+          </div>
+        )}
         <Select
           label="Template"
           value={selectValue}

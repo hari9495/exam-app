@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, BookOpen, Users, BarChart3, QrCode, Briefcase, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, FileText, BookOpen, Users, BarChart3, QrCode, Briefcase, TrendingUp, Mail } from 'lucide-react';
 
 // The recruiter-scoped nav, shared by BOTH shells that can render it: the (recruiter) route group
 // and the (panel) group, which owns /reports and shows this same sidebar to a recruiter or
@@ -22,4 +22,5 @@ export const RECRUITER_NAV_ITEMS = [
   { href: '/walk-in-groups', label: 'Walk-in Groups', icon: QrCode },
   { href: '/jobs', label: 'Jobs', icon: Briefcase },
   { href: '/analytics/hiring', label: 'Hiring Analytics', icon: TrendingUp },
+  { href: '/message-templates', label: 'Message Templates', icon: Mail },
 ];

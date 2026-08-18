@@ -49,3 +49,54 @@ export function useMessageTemplates() {
     enabled: Boolean(accessToken),
   });
 }
+
+export interface UpsertTemplateInput {
+  id?: string;
+  name: string;
+  triggerEvent: string | null;
+  triggerMode: 'manual' | 'prompt' | 'auto';
+  subject: string;
+  body: string;
+  enabled?: boolean;
+}
+
+// No id -> POST (create/override-by-event); id present -> PATCH :id (update). Both are the same
+// upsert-by-triggerEvent server-side (see candidate-email-templates.controller.ts), so this just
+// picks the route the id implies.
+export function useUpsertTemplate() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation<CandidateEmailTemplate, Error, UpsertTemplateInput>({
+    mutationFn: ({ id, ...input }) =>
+      apiFetch(
+        id ? `/candidate-email-templates/${id}` : '/candidate-email-templates',
+        { method: id ? 'PATCH' : 'POST', body: JSON.stringify(input) },
+        accessToken ?? undefined,
+      ) as Promise<CandidateEmailTemplate>,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['candidate-email-templates'] }),
+  });
+}
+
+export function useSetTemplateEnabled() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation<CandidateEmailTemplate, Error, { id: string; enabled: boolean }>({
+    mutationFn: ({ id, enabled }) =>
+      apiFetch(
+        `/candidate-email-templates/${id}/enabled`,
+        { method: 'PATCH', body: JSON.stringify({ enabled }) },
+        accessToken ?? undefined,
+      ) as Promise<CandidateEmailTemplate>,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['candidate-email-templates'] }),
+  });
+}
+
+// Deletes the org's saved override for a template, which reverts it to the built-in default.
+export function useDeleteTemplate() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation<unknown, Error, string>({
+    mutationFn: (id) => apiFetch(`/candidate-email-templates/${id}`, { method: 'DELETE' }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['candidate-email-templates'] }),
+  });
+}
