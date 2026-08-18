@@ -298,17 +298,25 @@ export class OffersService {
     const newStatus = action === 'accept' ? 'accepted' : 'declined';
 
     const updated = await this.tenantPrisma.forTenant(context, async (tx) => {
-      const upd = await tx.offer.update({
-        where: { id: offer.id },
-        data: { status: newStatus, respondedAt: new Date() },
+      // Compound-precondition write, not a pre-tx-guarded update: two concurrent public
+      // requests (double-click, retry) can both pass the reads above, but only one can
+      // flip status:'sent' -> newStatus here. The loser gets count:0 and must not write
+      // an audit row or trigger a recruiter email -- same generic message, no oracle.
+      const respondedAt = new Date();
+      const result = await tx.offer.updateMany({
+        where: { id: offer.id, organizationId: offer.organizationId, status: 'sent' },
+        data: { status: newStatus, respondedAt },
       });
+      if (result.count === 0) {
+        throw new ConflictException('This offer is no longer available');
+      }
       await this.audit.record(context, {
         actorUserId: null,
         action: action === 'accept' ? 'offer.accepted' : 'offer.declined',
         entityType: 'offer',
         entityId: offer.id,
       });
-      return upd;
+      return { ...offer, status: newStatus, respondedAt } as Offer;
     });
 
     // Recruiter notification: OUTSIDE the tx above -- emailService.send is a network call and

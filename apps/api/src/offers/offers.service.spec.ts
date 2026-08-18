@@ -31,6 +31,7 @@ describe('OffersService', () => {
         findUnique: jest.fn(),
         findMany: jest.fn().mockResolvedValue([]),
         update: jest.fn().mockImplementation(({ data }: any) => Promise.resolve({ id: 'offer-1', status: 'draft', ...data })),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       organization: {
         findUnique: jest.fn().mockResolvedValue({ name: 'Acme', logoPath: null }),
@@ -379,12 +380,12 @@ describe('OffersService', () => {
 
     it('accepts a sent, unexpired offer: sets status + respondedAt, audits offer.accepted with a null actor, and notifies the recruiter OUTSIDE the tx', async () => {
       tx.offer.findUnique.mockResolvedValue(baseOffer());
-      tx.offer.update.mockImplementation(({ data }: any) => Promise.resolve({ id: 'offer-1', ...data }));
+      tx.offer.updateMany.mockResolvedValue({ count: 1 });
 
       const out = await service.respondPublic('offer-token-1', 'accept');
 
-      expect(tx.offer.update).toHaveBeenCalledWith({
-        where: { id: 'offer-1' },
+      expect(tx.offer.updateMany).toHaveBeenCalledWith({
+        where: { id: 'offer-1', organizationId: 'org-1', status: 'sent' },
         data: { status: 'accepted', respondedAt: expect.any(Date) },
       });
       expect(audit.record).toHaveBeenCalledWith(
@@ -414,12 +415,12 @@ describe('OffersService', () => {
 
     it('declines a sent, unexpired offer symmetrically', async () => {
       tx.offer.findUnique.mockResolvedValue(baseOffer());
-      tx.offer.update.mockImplementation(({ data }: any) => Promise.resolve({ id: 'offer-1', ...data }));
+      tx.offer.updateMany.mockResolvedValue({ count: 1 });
 
       const out = await service.respondPublic('offer-token-1', 'decline');
 
-      expect(tx.offer.update).toHaveBeenCalledWith({
-        where: { id: 'offer-1' },
+      expect(tx.offer.updateMany).toHaveBeenCalledWith({
+        where: { id: 'offer-1', organizationId: 'org-1', status: 'sent' },
         data: { status: 'declined', respondedAt: expect.any(Date) },
       });
       expect(audit.record).toHaveBeenCalledWith(
@@ -432,7 +433,7 @@ describe('OffersService', () => {
 
     it('skips the recruiter email when the offer has no sentByUserId', async () => {
       tx.offer.findUnique.mockResolvedValue(baseOffer({ sentByUserId: null }));
-      tx.offer.update.mockImplementation(({ data }: any) => Promise.resolve({ id: 'offer-1', ...data }));
+      tx.offer.updateMany.mockResolvedValue({ count: 1 });
 
       await service.respondPublic('offer-token-1', 'accept');
 
@@ -443,7 +444,7 @@ describe('OffersService', () => {
       tx.offer.findUnique.mockResolvedValue(baseOffer({ expiresAt: new Date('2020-01-01') }));
 
       await expect(service.respondPublic('offer-token-1', 'accept')).rejects.toThrow(ConflictException);
-      expect(tx.offer.update).not.toHaveBeenCalled();
+      expect(tx.offer.updateMany).not.toHaveBeenCalled();
       expect(audit.record).not.toHaveBeenCalled();
       expect(email.send).not.toHaveBeenCalled();
     });
@@ -452,7 +453,7 @@ describe('OffersService', () => {
       tx.offer.findUnique.mockResolvedValue(baseOffer({ status: 'accepted' }));
 
       await expect(service.respondPublic('offer-token-1', 'decline')).rejects.toThrow(ConflictException);
-      expect(tx.offer.update).not.toHaveBeenCalled();
+      expect(tx.offer.updateMany).not.toHaveBeenCalled();
       expect(email.send).not.toHaveBeenCalled();
     });
 
@@ -460,13 +461,26 @@ describe('OffersService', () => {
       tx.offer.findUnique.mockResolvedValue(baseOffer({ status: 'draft' }));
 
       await expect(service.respondPublic('offer-token-1', 'accept')).rejects.toThrow(ConflictException);
-      expect(tx.offer.update).not.toHaveBeenCalled();
+      expect(tx.offer.updateMany).not.toHaveBeenCalled();
     });
 
     it('throws a generic NotFoundException for an unknown token', async () => {
       tx.offer.findUnique.mockResolvedValue(null);
 
       await expect(service.respondPublic('bad-token', 'accept')).rejects.toThrow(NotFoundException);
+    });
+
+    it('loses the race to a concurrent responder: updateMany count:0 throws ConflictException with no audit row and no recruiter email', async () => {
+      tx.offer.findUnique.mockResolvedValue(baseOffer());
+      tx.offer.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.respondPublic('offer-token-1', 'accept')).rejects.toThrow(ConflictException);
+      expect(tx.offer.updateMany).toHaveBeenCalledWith({
+        where: { id: 'offer-1', organizationId: 'org-1', status: 'sent' },
+        data: { status: 'accepted', respondedAt: expect.any(Date) },
+      });
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(email.send).not.toHaveBeenCalled();
     });
   });
 });
