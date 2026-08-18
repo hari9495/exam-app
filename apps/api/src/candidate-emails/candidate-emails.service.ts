@@ -108,7 +108,10 @@ export class CandidateEmailsService {
       if (!row) throw new NotFoundException(`Message ${messageId} not found`);
       return row;
     });
-    return this.sendMessage(context, actorUserId, existing.pipelineEntryId as string, {
+    if (existing.pipelineEntryId == null) {
+      throw new BadRequestException('Cannot resend a message that is no longer linked to a pipeline entry');
+    }
+    return this.sendMessage(context, actorUserId, existing.pipelineEntryId, {
       templateId: existing.templateId,
       subject: existing.subject,
       body: existing.renderedBody,

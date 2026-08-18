@@ -57,6 +57,9 @@ describe('CandidateEmailsService', () => {
         source: 'manual',
       });
 
+      expect(tx.pipelineEntry.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ id: 'entry-1', organizationId: 'org-1' }) }),
+      );
       expect(email.send).toHaveBeenCalledWith(
         expect.objectContaining({ to: 'asha@x.com', subject: 'Hi Asha', organizationId: 'org-1' }),
       );
@@ -178,6 +181,12 @@ describe('CandidateEmailsService', () => {
 
       await service.resend(context, 'user-1', 'msg-1');
 
+      expect(tx.candidateEmail.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ id: 'msg-1', organizationId: 'org-1' }) }),
+      );
+      expect(tx.pipelineEntry.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ id: 'entry-1', organizationId: 'org-1' }) }),
+      );
       expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ subject: 'Old subject' }));
       expect(tx.candidateEmail.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ source: 'manual', subject: 'Old subject' }) }),
@@ -188,6 +197,19 @@ describe('CandidateEmailsService', () => {
       tx.candidateEmail.findFirst.mockResolvedValue(null);
 
       await expect(service.resend(context, 'user-1', 'msg-x')).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects with BadRequest when the message has no linked pipeline entry', async () => {
+      tx.candidateEmail.findFirst.mockResolvedValue({
+        id: 'msg-2',
+        pipelineEntryId: null,
+        templateId: null,
+        subject: 'Old subject',
+        renderedBody: 'Old body',
+      });
+
+      await expect(service.resend(context, 'user-1', 'msg-2')).rejects.toThrow(BadRequestException);
+      expect(email.send).not.toHaveBeenCalled();
     });
   });
 });
