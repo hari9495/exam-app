@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, WalkInGroup } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService } from '@exam-platform/shared';
+import { PipelineService } from '../pipeline/pipeline.service';
 
 export interface WalkInGroupExamSummary {
   id: string;
@@ -20,6 +21,7 @@ export class WalkInGroupsService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly audit: AuditService,
+    private readonly pipeline: PipelineService,
   ) {}
 
   async list(context: TenantContext): Promise<WalkInGroupWithExams[]> {
@@ -163,5 +165,34 @@ export class WalkInGroupsService {
       });
       return tx.walkInGroup.findFirstOrThrow({ where: { id }, include: { exams: { select: { id: true, title: true } } } });
     });
+  }
+
+  async setJob(context: TenantContext, actorUserId: string, groupId: string, jobId: string | null): Promise<{ success: true }> {
+    await this.tenantPrisma.forTenant(context, async (tx) => {
+      const orgId = context.organizationId as string;
+      const group = await tx.walkInGroup.findFirst({ where: { id: groupId, organizationId: orgId } });
+      if (!group) throw new NotFoundException(`Walk-in group ${groupId} not found`);
+      if (jobId) {
+        const job = await tx.job.findFirst({ where: { id: jobId, organizationId: orgId } });
+        if (!job) throw new NotFoundException(`Job ${jobId} not found`);
+      }
+      await tx.walkInGroup.update({ where: { id: groupId }, data: { jobId } });
+      if (jobId) {
+        // Backfill: everyone already registered via this group (invitations to the group's exams).
+        const invitations = await tx.invitation.findMany({ where: { exam: { walkInGroupId: groupId } }, select: { candidateId: true } });
+        const candidateIds = [...new Set(invitations.map((i) => i.candidateId))];
+        for (const candidateId of candidateIds) {
+          await this.pipeline.upsertDriveEntry(tx, context, jobId, candidateId);
+        }
+      }
+      await this.audit.record(context, {
+        actorUserId,
+        action: jobId ? 'walk_in_group.job_linked' : 'walk_in_group.job_unlinked',
+        entityType: 'walk_in_group',
+        entityId: groupId,
+        metadata: { jobId },
+      });
+    });
+    return { success: true };
   }
 }
