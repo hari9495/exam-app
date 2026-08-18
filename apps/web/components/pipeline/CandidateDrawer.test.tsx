@@ -35,9 +35,15 @@ function renderDrawer(onClose = jest.fn()) {
   );
 }
 
+const MESSAGES = [
+  { id: 'm2', toEmail: 'alice@x.com', subject: 'Moving to interview', renderedBody: 'Hi Alice…', status: 'sent', source: 'manual', sentByUserId: 'u1', createdAt: '2026-08-16T00:00:00.000Z' },
+  { id: 'm1', toEmail: 'alice@x.com', subject: 'Application received', renderedBody: 'Hi Alice…', status: 'failed', source: 'manual', sentByUserId: 'u1', createdAt: '2026-08-10T00:00:00.000Z' },
+];
+
 function mockFetch(
   overrides: (url: string, options?: RequestInit) => Response | null = () => null,
   profile: unknown = null,
+  messages: unknown = MESSAGES,
 ) {
   const fetchMock = jest.fn(async (url, options) => {
     const urlStr = String(url);
@@ -48,6 +54,12 @@ function mockFetch(
     }
     if (urlStr.endsWith('/candidates/cand-1/profile')) {
       return new Response(JSON.stringify(profile), { status: 200 });
+    }
+    if (urlStr.endsWith('/candidates/cand-1/messages')) {
+      return new Response(JSON.stringify(messages), { status: 200 });
+    }
+    if (urlStr.endsWith('/candidate-email-templates')) {
+      return new Response(JSON.stringify([]), { status: 200 });
     }
     return new Response(JSON.stringify({}), { status: 200 });
   });
@@ -145,6 +157,52 @@ describe('CandidateDrawer', () => {
 
     expect(await screen.findByText('No résumé on file')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Download résumé' })).not.toBeInTheDocument();
+  });
+
+  it('renders the messages timeline with a status badge on each row', async () => {
+    mockFetch();
+    renderDrawer();
+
+    expect(await screen.findByText('Moving to interview')).toBeInTheDocument();
+    expect(screen.getByText('Application received')).toBeInTheDocument();
+    expect(screen.getByText('sent')).toBeInTheDocument();
+    expect(screen.getByText('failed')).toBeInTheDocument();
+  });
+
+  it('shows "No messages sent yet." when there are none', async () => {
+    mockFetch(() => null, null, []);
+    renderDrawer();
+
+    expect(await screen.findByText('No messages sent yet.')).toBeInTheDocument();
+  });
+
+  it('shows a Resend button only on the failed row and it calls the resend endpoint', async () => {
+    const fetchMock = mockFetch((url, options) =>
+      url.endsWith('/candidate-emails/m1/resend') && options?.method === 'POST'
+        ? new Response(JSON.stringify({ ...MESSAGES[1], status: 'sent' }), { status: 200 })
+        : null,
+    );
+    renderDrawer();
+    await screen.findByText('Application received');
+
+    expect(screen.getAllByRole('button', { name: 'Resend' })).toHaveLength(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Resend' }));
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some((call) => String(call[0]).endsWith('/candidate-emails/m1/resend') && call[1]?.method === 'POST')).toBe(
+        true,
+      ),
+    );
+  });
+
+  it('opens the compose modal from Send message', async () => {
+    mockFetch();
+    renderDrawer();
+    await screen.findByText('Moving to interview');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Send message' }));
+
+    expect(await screen.findByRole('heading', { name: 'Send message' })).toBeInTheDocument();
   });
 
   it('does not crash and renders no chips when parsedSkills is malformed JSON', async () => {

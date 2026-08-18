@@ -5,7 +5,7 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
-import { PipelineService } from './pipeline.service';
+import { PipelineService, PatchEntryResult } from './pipeline.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
 import { AddEntryDto } from './dto/add-entry.dto';
@@ -77,7 +77,7 @@ export class PipelineController {
     @CurrentUserId() userId: string,
     @Param('id') id: string,
     @Body() dto: PatchEntryDto,
-  ) {
+  ): Promise<PatchEntryResult> {
     return this.pipelineService.patchEntry(tenant, userId, id, dto);
   }
 

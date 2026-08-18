@@ -385,6 +385,67 @@ export interface FeedbackRow {
   createdAt: string;
 }
 
+// Mirrors apps/api/src/pipeline/pipeline.service.ts's Prisma PipelineEntry -- only the fields
+// the web app needs off the raw row (the patch-entry response embeds the full row, not a
+// trimmed view like BoardRow).
+export interface PipelineEntry {
+  id: string;
+  jobId: string;
+  candidateId: string;
+  stage: PipelineStage;
+  rejected: boolean;
+  rejectedReason: string | null;
+  rejectedAt: string | null;
+  enteredVia: string;
+  applicationToken: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// A stage move can trigger a 'prompt' template -- the server renders nothing and instead hands
+// back the raw (token-filled) subject/body for a recruiter to review/edit in SendMessageModal
+// before it actually sends. Mirrors apps/api/src/pipeline/pipeline.service.ts PendingMessage.
+export interface PendingMessage {
+  templateId: string | null;
+  subject: string;
+  body: string;
+}
+
+// PATCH /entries/:id's response shape -- changed from a bare PipelineEntry to this envelope so
+// a stage move can carry an optional pendingMessage alongside the updated entry.
+export interface PatchEntryResult {
+  entry: PipelineEntry;
+  pendingMessage?: PendingMessage;
+}
+
+// Mirrors apps/api/prisma/schema.prisma CandidateEmail -- only the fields the web app renders
+// (the raw row also carries organizationId/candidateId/pipelineEntryId/templateId/errorDetail,
+// which the timeline UI doesn't need).
+export interface CandidateEmail {
+  id: string;
+  toEmail: string;
+  subject: string;
+  renderedBody: string;
+  status: 'sent' | 'failed';
+  source: string;
+  sentByUserId: string | null;
+  createdAt: string;
+}
+
+// GET /candidate-email-templates -- saved templates plus code defaults for triggerEvents with
+// no saved override. Mirrors apps/api/src/candidate-emails/candidate-email-templates.service.ts
+// TemplateView.
+export interface CandidateEmailTemplate {
+  id: string | null;
+  name: string;
+  triggerEvent: string | null;
+  triggerMode: 'manual' | 'prompt' | 'auto';
+  subject: string;
+  body: string;
+  enabled: boolean;
+  isDefault: boolean;
+}
+
 export type DriveSessionStatus = 'scheduled' | 'live' | 'ended';
 
 export interface DriveSession {

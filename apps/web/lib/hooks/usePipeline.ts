@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../api-client';
 import { useAuth } from '../auth-context';
-import { JobListItem, JobDetail, JobStatus, PipelineBoard, PipelineStage, FeedbackRow, CandidateProfile } from '../types';
+import { JobListItem, JobDetail, JobStatus, PipelineBoard, PipelineStage, FeedbackRow, CandidateProfile, PatchEntryResult } from '../types';
 
 export function useJobs(status?: JobStatus) {
   const { accessToken } = useAuth();
@@ -77,12 +77,16 @@ export function useAddEntry(jobId: string) {
   });
 }
 
+// Response shape changed from a bare PipelineEntry to { entry, pendingMessage? } -- see
+// PatchEntryResult in types.ts. Nothing here reads the resolved data today (PipelineBoard just
+// fires the mutation), but Task 7 wires pendingMessage into a prompt to send a message, so the
+// mutation is typed for that consumer now via result.entry / result.pendingMessage.
 export function usePatchEntry(jobId: string) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ entryId, ...input }: { entryId: string; stage?: PipelineStage; rejected?: boolean; reason?: string }) =>
-      apiFetch(`/entries/${entryId}`, { method: 'PATCH', body: JSON.stringify(input) }, accessToken ?? undefined),
+  return useMutation<PatchEntryResult, Error, { entryId: string; stage?: PipelineStage; rejected?: boolean; reason?: string }>({
+    mutationFn: ({ entryId, ...input }) =>
+      apiFetch(`/entries/${entryId}`, { method: 'PATCH', body: JSON.stringify(input) }, accessToken ?? undefined) as Promise<PatchEntryResult>,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobs', jobId, 'pipeline'] }),
   });
 }

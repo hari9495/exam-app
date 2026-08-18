@@ -151,4 +151,42 @@ describe('PipelineBoard', () => {
     expect(screen.queryByLabelText('Stage for Alice Applicant')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Reject' })).not.toBeInTheDocument();
   });
+
+  it('opens the compose modal pre-filled when a stage move returns a pendingMessage', async () => {
+    mockFetch((url, options) => {
+      if (url.includes('/entries/e1') && options?.method === 'PATCH') {
+        return new Response(
+          JSON.stringify({
+            entry: { id: 'e1' },
+            pendingMessage: { templateId: 'tmpl-1', subject: 'Moving to interview', body: 'Hi Alice, next steps...' },
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith('/candidate-email-templates')) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      return null;
+    });
+    renderBoard();
+    await screen.findByText('Alice Applicant');
+
+    await userEvent.selectOptions(screen.getByLabelText('Stage for Alice Applicant'), 'interview');
+
+    expect(await screen.findByRole('heading', { name: 'Send message' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Subject')).toHaveValue('Moving to interview');
+  });
+
+  it('does not open the compose modal when a stage move has no pendingMessage', async () => {
+    mockFetch((url, options) =>
+      url.includes('/entries/e1') && options?.method === 'PATCH' ? new Response(JSON.stringify({ entry: { id: 'e1' } }), { status: 200 }) : null,
+    );
+    renderBoard();
+    await screen.findByText('Alice Applicant');
+
+    await userEvent.selectOptions(screen.getByLabelText('Stage for Alice Applicant'), 'interview');
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByRole('heading', { name: 'Send message' })).not.toBeInTheDocument();
+  });
 });

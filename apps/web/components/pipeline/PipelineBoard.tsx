@@ -4,9 +4,10 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Card, Tabs, TabsList, TabsTrigger, TabsContent, useToast } from '../ui';
 import { useJobPipeline, usePatchEntry } from '../../lib/hooks/usePipeline';
-import { BoardRow, EntryExamResult, PIPELINE_STAGES, PipelineStage, STAGE_LABEL } from '../../lib/types';
+import { BoardRow, EntryExamResult, PatchEntryResult, PIPELINE_STAGES, PipelineStage, STAGE_LABEL } from '../../lib/types';
 import { useAuth } from '../../lib/auth-context';
 import { CandidateDrawer } from './CandidateDrawer';
+import { SendMessageModal, SendMessageInitial } from './SendMessageModal';
 
 function chipLabel(result: EntryExamResult): string {
   if (result.passFail === null) return `${result.examTitle} · Pending`;
@@ -92,11 +93,28 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
   const { toast } = useToast();
   const [tab, setTab] = useState<'board' | 'rejected'>('board');
   const [openRow, setOpenRow] = useState<BoardRow | null>(null);
+  const [composeFor, setComposeFor] = useState<{ entryId: string; candidateId: string; candidateName: string; initial: SendMessageInitial } | null>(
+    null,
+  );
+
+  // A stage move (or reject/un-reject) can carry back a pendingMessage -- the recruiter reviews
+  // it in SendMessageModal before it actually sends. Row lookup happens here (not passed in by
+  // the caller) so all three move paths share one place that knows how to open the composer.
+  function openComposeIfPending(entryId: string, result: PatchEntryResult) {
+    if (!result.pendingMessage || !board) return;
+    const row = PIPELINE_STAGES.flatMap((stage) => board.stages[stage]).find((r) => r.entryId === entryId) ??
+      board.rejected.find((r) => r.entryId === entryId);
+    if (!row) return;
+    setComposeFor({ entryId, candidateId: row.candidateId, candidateName: row.candidateName, initial: result.pendingMessage });
+  }
 
   function handleStageChange(entryId: string, stage: PipelineStage) {
     patchEntry.mutate(
       { entryId, stage },
-      { onError: (error) => toast(error instanceof Error ? error.message : 'Failed to move candidate.', 'error') },
+      {
+        onSuccess: (result) => openComposeIfPending(entryId, result),
+        onError: (error) => toast(error instanceof Error ? error.message : 'Failed to move candidate.', 'error'),
+      },
     );
   }
 
@@ -105,14 +123,20 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
     if (reason === null) return;
     patchEntry.mutate(
       { entryId, rejected: true, reason: reason.trim() || undefined },
-      { onError: (error) => toast(error instanceof Error ? error.message : 'Failed to reject candidate.', 'error') },
+      {
+        onSuccess: (result) => openComposeIfPending(entryId, result),
+        onError: (error) => toast(error instanceof Error ? error.message : 'Failed to reject candidate.', 'error'),
+      },
     );
   }
 
   function handleMoveBack(entryId: string) {
     patchEntry.mutate(
       { entryId, stage: 'applied' },
-      { onError: (error) => toast(error instanceof Error ? error.message : 'Failed to move candidate back.', 'error') },
+      {
+        onSuccess: (result) => openComposeIfPending(entryId, result),
+        onError: (error) => toast(error instanceof Error ? error.message : 'Failed to move candidate back.', 'error'),
+      },
     );
   }
 
@@ -190,6 +214,16 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
       </Tabs>
 
       {openRow && <CandidateDrawer jobId={jobId} row={openRow} onClose={() => setOpenRow(null)} />}
+
+      {composeFor && (
+        <SendMessageModal
+          entryId={composeFor.entryId}
+          candidateId={composeFor.candidateId}
+          candidateName={composeFor.candidateName}
+          initial={composeFor.initial}
+          onClose={() => setComposeFor(null)}
+        />
+      )}
     </div>
   );
 }

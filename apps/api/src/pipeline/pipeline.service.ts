@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Job, PipelineEntry, PipelineFeedback } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService } from '@exam-platform/shared';
 import { PIPELINE_STAGES, PipelineStage, isValidStage } from './pipeline-stages';
@@ -7,6 +7,8 @@ import { EntryExamResult, deriveEntryExamResults, averageRating } from './derive
 import { AddEntryDto } from './dto/add-entry.dto';
 import { PatchEntryDto } from './dto/patch-entry.dto';
 import { AddFeedbackDto } from './dto/add-feedback.dto';
+import { CandidateEmailTemplatesService } from '../candidate-emails/candidate-email-templates.service';
+import { CandidateEmailsService } from '../candidate-emails/candidate-emails.service';
 
 export interface FeedbackRow {
   id: string;
@@ -44,11 +46,26 @@ function emptyStageCounts(): Record<PipelineStage, number> & { rejected: number 
   return { ...counts, rejected: 0 };
 }
 
+export interface PendingMessage {
+  templateId: string | null;
+  subject: string;
+  body: string;
+}
+
+export interface PatchEntryResult {
+  entry: PipelineEntry;
+  pendingMessage?: PendingMessage;
+}
+
 @Injectable()
 export class PipelineService {
+  private readonly logger = new Logger(PipelineService.name);
+
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly audit: AuditService,
+    private readonly templates: CandidateEmailTemplatesService,
+    private readonly messages: CandidateEmailsService,
   ) {}
 
   async createJob(context: TenantContext, actorUserId: string, dto: { title: string; description?: string }): Promise<Job> {
@@ -236,8 +253,8 @@ export class PipelineService {
     });
   }
 
-  async patchEntry(context: TenantContext, actorUserId: string, entryId: string, dto: PatchEntryDto): Promise<PipelineEntry> {
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+  async patchEntry(context: TenantContext, actorUserId: string, entryId: string, dto: PatchEntryDto): Promise<PatchEntryResult> {
+    const entry = await this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: context.organizationId as string } });
       if (!existing) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
 
@@ -257,10 +274,32 @@ export class PipelineService {
         throw new BadRequestException('patchEntry requires a stage or a rejected flag');
       }
 
-      const entry = await tx.pipelineEntry.update({ where: { id: entryId }, data });
+      const updated = await tx.pipelineEntry.update({ where: { id: entryId }, data });
       await this.audit.record(context, { actorUserId, action, entityType: 'pipeline_entry', entityId: entryId, metadata: { ...dto } });
-      return entry;
+      return updated;
     });
+
+    // Stage-move comms hook: runs AFTER the tx above has committed. dto.stage takes priority
+    // over rejected (patchEntry only ever sets one or the other -- see the branch above).
+    // Wrapped so a transient failure here (e.g. resolveForEvent hitting a starved pool) can
+    // never surface as an error for a stage move that already persisted.
+    try {
+      const event = dto.stage ? dto.stage : dto.rejected === true ? 'rejected' : null;
+      if (event) {
+        const tpl = await this.templates.resolveForEvent(context, event);
+        if (tpl?.triggerMode === 'auto') {
+          // Fire-and-forget: the stage-move response must not block on email delivery.
+          this.messages
+            .sendMessage(context, null, entryId, { templateId: tpl.id, subject: tpl.subject, body: tpl.body, source: 'stage_auto' })
+            .catch((e) => this.logger.error(`Auto-send candidate email failed for entry ${entryId}`, e));
+        } else if (tpl?.triggerMode === 'prompt') {
+          return { entry, pendingMessage: { templateId: tpl.id, subject: tpl.subject, body: tpl.body } };
+        }
+      }
+    } catch (e) {
+      this.logger.error(`Post-commit comms resolution failed for entry ${entryId}`, e as Error);
+    }
+    return { entry };
   }
 
   async linkExam(context: TenantContext, actorUserId: string, jobId: string, examId: string): Promise<{ success: true }> {

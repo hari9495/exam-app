@@ -24,7 +24,7 @@ ATS-depth features (offer letters, interview scheduling) reuse.
    code and work day one; editing one materializes an editable per-org row.
    No per-org seed migration.
 3. **Fire-and-forget send + per-send log + manual resend.** Each send writes a
-   `CandidateMessage` row (status `sent`/`failed`), shown as a per-candidate
+   `CandidateEmail` row (status `sent`/`failed`), shown as a per-candidate
    comms timeline; failures can be resent. Matches the existing
    invitation-email pattern.
 
@@ -52,7 +52,7 @@ ATS-depth features (offer letters, interview scheduling) reuse.
   `['applied','screened','interview','offer','hired']`. `rejected` is an
   orthogonal boolean, surfaced as a pseudo trigger event `'rejected'`.
 - **GDPR:** never email a candidate with `erasedAt != null` (invitations
-  already excludes these); the `CandidateMessage` log is scrubbed on erase
+  already excludes these); the `CandidateEmail` log is scrubbed on erase
   alongside other candidate PII.
 - `FRONTEND_URL` (env, default `http://localhost:3000`) is the base for
   candidate-facing links, matching invitation/reset links.
@@ -62,7 +62,7 @@ ATS-depth features (offer letters, interview scheduling) reuse.
 Two new per-org tables. `stage`/trigger values are unconstrained strings (no
 new Prisma enum), consistent with `PipelineEntry.stage`.
 
-### `CandidateMessageTemplate`
+### `CandidateEmailTemplate`
 
 | field | type | notes |
 |---|---|---|
@@ -90,7 +90,7 @@ with the code defaults for events the org hasn't customized; editing a default
 upserts a real row. So defaults are present and editable day one with no seed
 migration.
 
-### `CandidateMessage` (send log)
+### `CandidateEmail` (send log)
 
 | field | type | notes |
 |---|---|---|
@@ -98,7 +98,7 @@ migration.
 | organizationId | uuid FK → Organization | RLS-scoped |
 | candidateId | uuid FK → Candidate | onDelete Cascade (with candidate) |
 | pipelineEntryId | uuid? FK → PipelineEntry | onDelete SetNull |
-| templateId | uuid? FK → CandidateMessageTemplate | null for ad-hoc/default sends; onDelete SetNull |
+| templateId | uuid? FK → CandidateEmailTemplate | null for ad-hoc/default sends; onDelete SetNull |
 | toEmail | string | snapshot of the address sent to |
 | subject | string | rendered |
 | renderedBody | string (text) | rendered (pre-shell) body, for the timeline |
@@ -121,36 +121,36 @@ send's tenant tx).
 
 ### Backend
 
-- **`candidate-message-render.ts`** (pure) — `renderTemplate(subject, body,
+- **`candidate-email-render.ts`** (pure) — `renderTemplate(subject, body,
   ctx): { subject, body }` replacing the fixed token set
   (`{{candidateName}}`, `{{jobTitle}}`, `{{orgName}}`, `{{recruiterName}}`,
   `{{statusLink}}`). Unknown tokens are left as-is (visible, not blanked, so a
   typo is obvious). Plus `buildCandidateEmailHtml({ logoUrl, orgName,
   bodyHtml })` — the branded shell generalized from `buildAssessmentEmailHtml`
   (converts the rendered plain-text body's newlines to `<br>` / paragraphs).
-- **`CandidateMessagesService`** — the reusable send layer:
+- **`CandidateEmailsService`** — the reusable send layer:
   - `sendMessage(context, actorUserId, entryId, { templateId?, subject, body,
-    source }): Promise<CandidateMessage>` — `subject`/`body` arrive as **raw
+    source }): Promise<CandidateEmail>` — `subject`/`body` arrive as **raw
     template text (may still contain `{{tokens}}`)**; the server is the single
     source of truth for rendering. Loads entry+candidate+job+org (RLS), guards
     `candidate.erasedAt == null`, mints `applicationToken` if the raw
     subject/body references `{{statusLink}}` and it's absent, calls
     `renderTemplate` (idempotent — rendered output has no tokens left), wraps in
-    the shell, `EmailService.send`, writes the `CandidateMessage` row (storing
+    the shell, `EmailService.send`, writes the `CandidateEmail` row (storing
     the **rendered** subject + body) with the resulting status, audits
-    `candidate_message.sent`/`.failed`.
-  - `resolveTemplateForEvent(context, event): CandidateMessageTemplate | null`
+    `candidate_email.sent`/`.failed`.
+  - `resolveTemplateForEvent(context, event): CandidateEmailTemplate | null`
     — the org's enabled template for a stage/`rejected` event, else the code
     default, else null.
   - `listMessages(context, candidateId)`, `resend(context, actorUserId,
     messageId)` (re-sends a `failed` row's snapshot).
-- **`CandidateMessageTemplatesService`** — CRUD (list-with-defaults, upsert,
+- **`CandidateEmailTemplatesService`** — CRUD (list-with-defaults, upsert,
   enable/disable, delete-reverts-to-default).
 - **Controllers** (all `pipeline:manage`):
   - `POST /pipeline/entries/:id/messages` (manual/confirm send)
   - `GET /candidates/:id/messages` (timeline)
-  - `POST /candidate-messages/:id/resend`
-  - `GET/POST/PATCH/DELETE /candidate-message-templates`
+  - `POST /candidate-emails/:id/resend`
+  - `GET/POST/PATCH/DELETE /candidate-email-templates`
 - **`patchEntry` hook:** after the tx commits, if the stage/`rejected` change
   resolves a template: `auto` → `sendMessage(..., source:'stage_auto',
   actorUserId:null)` fire-and-forget; `prompt` → include `pendingMessage
@@ -163,7 +163,7 @@ send's tenant tx).
 ### Frontend
 
 - **Candidate drawer** (existing `CandidateDrawer`): a **Messages** section —
-  the `CandidateMessage` timeline (subject, status badge, sent-by, time; resend
+  the `CandidateEmail` timeline (subject, status badge, sent-by, time; resend
   on failed) + a **Send message** button opening a compose modal (template
   picker → editable **raw** subject/body with merge-token insert buttons and a
   live rendered preview → send; the server renders authoritatively).
@@ -183,7 +183,7 @@ send's tenant tx).
    (`prompt`) → returns `pendingMessage`.
 2. Web opens the compose modal pre-filled; recruiter tweaks and sends →
    `POST /pipeline/entries/:id/messages` → render → `EmailService.send` → log
-   row `status:sent, source:stage_prompt` → audit `candidate_message.sent`.
+   row `status:sent, source:stage_prompt` → audit `candidate_email.sent`.
 3. Candidate receives a branded email with a `{{statusLink}}` to their status
    page.
 4. The send appears in the candidate drawer's Messages timeline.
@@ -195,7 +195,7 @@ send fires from the hook, logged `source:stage_auto`.
 
 - `EmailService.send` returns `{ success:false }` on transporter failure or the
   deliverability guard (no org SMTP + no platform SMTP) → log
-  `status:'failed'`, `errorDetail`, audit `candidate_message.failed`; the
+  `status:'failed'`, `errorDetail`, audit `candidate_email.failed`; the
   timeline shows a failed badge with **Resend**. The move itself is never
   rolled back by a failed email (send is post-commit, fire-and-forget).
 - Missing candidate email or `erasedAt != null` → no send; surfaced as a
@@ -212,7 +212,7 @@ send fires from the hook, logged `source:stage_auto`.
   `resolveTemplateForEvent` (org row wins over default, disabled excluded,
   none→null); `patchEntry` hook (auto sends, prompt returns `pendingMessage`,
   none/manual does nothing); permission gate (`pipeline:manage`, 401/403); GDPR
-  erase scrubs `CandidateMessage` PII.
+  erase scrubs `CandidateEmail` PII.
 - **Frontend unit:** compose modal renders template + sends with edits;
   timeline renders sent/failed + resend; stage-move `pendingMessage` opens the
   modal; templates page edits + restore-default; no-SMTP banner shows.
