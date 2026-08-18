@@ -36,4 +36,12 @@ describe('buildCandidateEmailHtml', () => {
   it('omits the logo block when logoUrl is null', () => {
     expect(buildCandidateEmailHtml({ logoUrl: null, orgName: null, bodyText: 'Hi' })).not.toContain('<img');
   });
+  it('escapes HTML in the recruiter-authored body so it cannot inject markup', () => {
+    const html = buildCandidateEmailHtml({ logoUrl: null, orgName: 'Acme', bodyText: 'Hi <script>alert(1)</script> & <b>x</b>' });
+    // the raw tags/ampersand must be neutralized to entities, never rendered as markup
+    expect(html).not.toContain('<script>');
+    expect(html).not.toContain('<b>x</b>');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(html).toContain('&amp;');
+  });
 });
