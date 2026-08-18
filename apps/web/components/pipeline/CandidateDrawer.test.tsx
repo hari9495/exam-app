@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { CandidateDrawer } from './CandidateDrawer';
 import { QueryProvider } from '../../lib/query-provider';
@@ -40,10 +40,36 @@ const MESSAGES = [
   { id: 'm1', toEmail: 'alice@x.com', subject: 'Application received', renderedBody: 'Hi Alice…', status: 'failed', source: 'manual', sentByUserId: 'u1', createdAt: '2026-08-10T00:00:00.000Z' },
 ];
 
+const OFFERS = [
+  {
+    id: 'o2',
+    status: 'sent',
+    compensation: '$130,000/yr',
+    startDate: '2026-09-01T00:00:00.000Z',
+    expiresAt: '2026-09-15T00:00:00.000Z',
+    sentAt: '2026-08-17T00:00:00.000Z',
+    respondedAt: null,
+    pdfPath: 'offers/o2.pdf',
+    createdAt: '2026-08-16T00:00:00.000Z',
+  },
+  {
+    id: 'o1',
+    status: 'withdrawn',
+    compensation: '$120,000/yr',
+    startDate: '2026-08-01T00:00:00.000Z',
+    expiresAt: '2026-08-10T00:00:00.000Z',
+    sentAt: '2026-07-16T00:00:00.000Z',
+    respondedAt: null,
+    pdfPath: 'offers/o1.pdf',
+    createdAt: '2026-07-15T00:00:00.000Z',
+  },
+];
+
 function mockFetch(
   overrides: (url: string, options?: RequestInit) => Response | null = () => null,
   profile: unknown = null,
   messages: unknown = MESSAGES,
+  offers: unknown = OFFERS,
 ) {
   const fetchMock = jest.fn(async (url, options) => {
     const urlStr = String(url);
@@ -60,6 +86,12 @@ function mockFetch(
     }
     if (urlStr.endsWith('/candidate-email-templates')) {
       return new Response(JSON.stringify([]), { status: 200 });
+    }
+    if (urlStr.endsWith('/candidates/cand-1/offers')) {
+      return new Response(JSON.stringify(offers), { status: 200 });
+    }
+    if (urlStr.endsWith('/offer-template')) {
+      return new Response(JSON.stringify({ id: null, subject: 'Offer', body: 'Body' }), { status: 200 });
     }
     return new Response(JSON.stringify({}), { status: 200 });
   });
@@ -163,10 +195,10 @@ describe('CandidateDrawer', () => {
     mockFetch();
     renderDrawer();
 
-    expect(await screen.findByText('Moving to interview')).toBeInTheDocument();
-    expect(screen.getByText('Application received')).toBeInTheDocument();
-    expect(screen.getByText('sent')).toBeInTheDocument();
-    expect(screen.getByText('failed')).toBeInTheDocument();
+    const sentRow = (await screen.findByText('Moving to interview')).closest('li') as HTMLElement;
+    const failedRow = screen.getByText('Application received').closest('li') as HTMLElement;
+    expect(within(sentRow).getByText('sent')).toBeInTheDocument();
+    expect(within(failedRow).getByText('failed')).toBeInTheDocument();
   });
 
   it('shows "No messages sent yet." when there are none', async () => {
@@ -219,5 +251,51 @@ describe('CandidateDrawer', () => {
     expect(await screen.findByText('Some summary')).toBeInTheDocument();
     // No skill chips rendered (malformed JSON parses to an empty list, not a crash).
     expect(container.querySelectorAll('.rounded-full')).toHaveLength(0);
+  });
+
+  it('renders the offers list with a status badge on each row', async () => {
+    mockFetch();
+    renderDrawer();
+
+    const sentRow = (await screen.findByText('$130,000/yr')).closest('li') as HTMLElement;
+    const withdrawnRow = screen.getByText('$120,000/yr').closest('li') as HTMLElement;
+    expect(within(sentRow).getByText('sent')).toBeInTheDocument();
+    expect(within(withdrawnRow).getByText('withdrawn')).toBeInTheDocument();
+  });
+
+  it('shows "No offers yet." when there are none', async () => {
+    mockFetch(() => null, null, MESSAGES, []);
+    renderDrawer();
+
+    expect(await screen.findByText('No offers yet.')).toBeInTheDocument();
+  });
+
+  it('shows Withdraw only on the sent offer and wires it to the withdraw endpoint', async () => {
+    const fetchMock = mockFetch((url, options) =>
+      url.endsWith('/offers/o2/withdraw') && options?.method === 'POST'
+        ? new Response(JSON.stringify({ ...OFFERS[0], status: 'withdrawn' }), { status: 200 })
+        : null,
+    );
+    renderDrawer();
+    await screen.findByText('$130,000/yr');
+
+    expect(screen.getAllByRole('button', { name: 'Withdraw' })).toHaveLength(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Withdraw' }));
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some((call) => String(call[0]).endsWith('/offers/o2/withdraw') && call[1]?.method === 'POST')).toBe(
+        true,
+      ),
+    );
+  });
+
+  it('opens the create-offer modal from Create offer', async () => {
+    mockFetch();
+    renderDrawer();
+    await screen.findByText('$130,000/yr');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create offer' }));
+
+    expect(await screen.findByRole('heading', { name: 'Create offer' })).toBeInTheDocument();
   });
 });

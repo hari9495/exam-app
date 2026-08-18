@@ -446,6 +446,28 @@ export interface CandidateEmailTemplate {
   isDefault: boolean;
 }
 
+export type OfferStatus = 'draft' | 'sent' | 'accepted' | 'declined' | 'expired' | 'withdrawn';
+
+// Mirrors apps/api's Offer row -- see offers.service.ts.
+export interface Offer {
+  id: string;
+  status: OfferStatus;
+  compensation: string;
+  startDate: string;
+  expiresAt: string;
+  sentAt: string | null;
+  respondedAt: string | null;
+  pdfPath: string | null;
+  createdAt: string;
+}
+
+// GET /offer-template -- the org's saved offer letter override, or the code default (id: null).
+export interface OfferTemplate {
+  id: string | null;
+  subject: string;
+  body: string;
+}
+
 export type DriveSessionStatus = 'scheduled' | 'live' | 'ended';
 
 export interface DriveSession {
