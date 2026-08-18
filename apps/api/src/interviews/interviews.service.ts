@@ -45,6 +45,9 @@ export class InterviewsService {
     dto: CreateInterviewDto,
   ): Promise<Interview> {
     if (!dto.slots?.length) throw new BadRequestException('At least one slot is required');
+    if (dto.slots.some((s) => new Date(s.endsAt).getTime() <= new Date(s.startsAt).getTime())) {
+      throw new BadRequestException('Each slot must end after it starts');
+    }
 
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const orgId = context.organizationId as string;
@@ -320,7 +323,10 @@ export class InterviewsService {
     };
   }
 
-  async respondPublic(token: string, dto: RespondInterviewDto): Promise<Interview> {
+  async respondPublic(
+    token: string,
+    dto: RespondInterviewDto,
+  ): Promise<{ status: string; confirmedSlotId: string | null; candidateReschedNote: string | null; respondedAt: Date }> {
     const interview = await this.resolveInterviewByToken(token);
     // Generic conflict message -- same anti-oracle reasoning as the NotFound above, just
     // surfaced as a 409 once the token itself is known-good.
@@ -371,7 +377,15 @@ export class InterviewsService {
         entityType: 'interview',
         entityId: interview.id,
       });
-      return { ...interview, ...data } as unknown as Interview;
+      // Public endpoint: return only candidate-safe fields. Never spread the resolved `interview`
+      // (it carries organizationId, pipelineEntryId, sentByUserId) back to an unauthenticated
+      // caller -- same shaping discipline as getPublicInterview.
+      return {
+        status: data.status as string,
+        confirmedSlotId: (data.confirmedSlotId as string | undefined) ?? interview.confirmedSlotId ?? null,
+        candidateReschedNote: (data.candidateReschedNote as string | null | undefined) ?? null,
+        respondedAt: data.respondedAt as Date,
+      };
     });
 
     // Notifications: OUTSIDE the tx above -- emailService.send is a network call and must never

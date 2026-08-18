@@ -110,6 +110,14 @@ describe('InterviewsService', () => {
       expect(tx.interview.create).not.toHaveBeenCalled();
     });
 
+    it('throws BadRequestException when a slot ends at or before it starts, and creates nothing', async () => {
+      const badSlot = { startsAt: '2026-09-01T11:00:00.000Z', endsAt: '2026-09-01T10:00:00.000Z' };
+      await expect(
+        service.createInterview(context, 'user-1', 'entry-1', { ...dto, slots: [badSlot] } as any),
+      ).rejects.toThrow(BadRequestException);
+      expect(tx.interview.create).not.toHaveBeenCalled();
+    });
+
     it('throws BadRequestException when a panelist is not in this org', async () => {
       tx.user.findMany.mockResolvedValue([]);
 
