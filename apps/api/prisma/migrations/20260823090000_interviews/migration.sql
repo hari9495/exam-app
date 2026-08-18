@@ -16,9 +16,14 @@ CREATE TABLE [dbo].[interviews] (
     [responded_at] DATETIME2,
     [created_at] DATETIME2 NOT NULL CONSTRAINT [interviews_created_at_df] DEFAULT GETUTCDATE(),
     [updated_at] DATETIME2 NOT NULL,
-    CONSTRAINT [interviews_pkey] PRIMARY KEY CLUSTERED ([id]),
-    CONSTRAINT [interviews_interview_token_key] UNIQUE NONCLUSTERED ([interview_token])
+    CONSTRAINT [interviews_pkey] PRIMARY KEY CLUSTERED ([id])
 );
+
+-- Filtered unique index on the nullable interview_token: a plain UNIQUE constraint on a
+-- nullable column permits only ONE NULL row table-wide on SQL Server, which would fail the
+-- 2nd un-sent (token=NULL) interview. Filter to non-null so many un-sent interviews coexist.
+-- Same pattern as 20260819090000_candidate_experience (pipeline_entries.application_token).
+CREATE UNIQUE NONCLUSTERED INDEX [interviews_interview_token_key] ON [dbo].[interviews]([interview_token]) WHERE [interview_token] IS NOT NULL;
 
 -- CreateTable
 CREATE TABLE [dbo].[interview_slots] (
