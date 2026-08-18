@@ -5,12 +5,16 @@ describe('PipelineService', () => {
   let service: PipelineService;
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
+  let templates: { resolveForEvent: jest.Mock };
+  let messages: { sendMessage: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
   beforeEach(() => {
     tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
-    service = new PipelineService(tenantPrisma as any, audit as any);
+    templates = { resolveForEvent: jest.fn().mockResolvedValue(null) };
+    messages = { sendMessage: jest.fn().mockResolvedValue({ id: 'email-1' }) };
+    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any);
   });
 
   it('createJob writes org-scoped and audits', async () => {
@@ -312,6 +316,55 @@ describe('PipelineService', () => {
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
       await expect(service.patchEntry(context, 'user-1', 'missing', { stage: 'interview' })).rejects.toThrow(NotFoundException);
+    });
+
+    describe('stage-move comms hook', () => {
+      const tx = { pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'entry-1', jobId: 'job-1' }), update: jest.fn().mockResolvedValue({ id: 'entry-1', stage: 'offer' }) } };
+      beforeEach(() => {
+        tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      });
+
+      it('auto-sends when the target event resolves an auto template', async () => {
+        templates.resolveForEvent.mockResolvedValue({ id: 't1', subject: 's', body: 'b', triggerMode: 'auto' });
+
+        const result = await service.patchEntry(context, 'user-1', 'entry-1', { stage: 'offer' });
+
+        expect(messages.sendMessage).toHaveBeenCalledWith(context, null, 'entry-1', expect.objectContaining({ source: 'stage_auto', templateId: 't1', subject: 's', body: 'b' }));
+        expect(result.pendingMessage).toBeUndefined();
+      });
+
+      it('returns a pendingMessage (does not send) for a prompt template', async () => {
+        templates.resolveForEvent.mockResolvedValue({ id: 't1', subject: 's', body: 'b', triggerMode: 'prompt' });
+
+        const r = await service.patchEntry(context, 'user-1', 'entry-1', { stage: 'interview' });
+
+        expect(r.pendingMessage).toMatchObject({ templateId: 't1', subject: 's', body: 'b' });
+        expect(messages.sendMessage).not.toHaveBeenCalled();
+      });
+
+      it('maps a rejection to the rejected event', async () => {
+        templates.resolveForEvent.mockResolvedValue(null);
+
+        await service.patchEntry(context, 'user-1', 'entry-1', { rejected: true });
+
+        expect(templates.resolveForEvent).toHaveBeenCalledWith(context, 'rejected');
+      });
+
+      it('does nothing when no template resolves', async () => {
+        templates.resolveForEvent.mockResolvedValue(null);
+
+        const r = await service.patchEntry(context, 'user-1', 'entry-1', { stage: 'screened' });
+
+        expect(r.pendingMessage).toBeUndefined();
+        expect(messages.sendMessage).not.toHaveBeenCalled();
+      });
+
+      it('does not resolve a template (or send) when neither stage nor rejected:true is set', async () => {
+        await service.patchEntry(context, 'user-1', 'entry-1', { rejected: false });
+
+        expect(templates.resolveForEvent).not.toHaveBeenCalled();
+        expect(messages.sendMessage).not.toHaveBeenCalled();
+      });
     });
   });
 
