@@ -52,6 +52,16 @@ export function useDeleteWalkInGroup() {
   });
 }
 
+export function useSetGroupJob(id: string) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (jobId: string | null) =>
+      apiFetch(`/walk-in-groups/${id}/job`, { method: 'PATCH', body: JSON.stringify({ jobId }) }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['walk-in-groups'] }),
+  });
+}
+
 export function useSetWalkInGroupExams(id: string) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();

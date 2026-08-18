@@ -3,21 +3,25 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { Prisma } from '@prisma/client';
 import { WalkInGroupsService } from './walk-in-groups.service';
 import { TenantPrismaService, AuditService } from '@exam-platform/shared';
+import { PipelineService } from '../pipeline/pipeline.service';
 
 describe('WalkInGroupsService', () => {
   let service: WalkInGroupsService;
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
+  let pipeline: { upsertDriveEntry: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
+    pipeline = { upsertDriveEntry: jest.fn().mockResolvedValue(undefined) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         WalkInGroupsService,
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: AuditService, useValue: audit },
+        { provide: PipelineService, useValue: pipeline },
       ],
     }).compile();
     service = moduleRef.get(WalkInGroupsService);
@@ -217,6 +221,68 @@ describe('WalkInGroupsService', () => {
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
       await expect(service.setExams(context, 'user-1', 'group-1', ['not-real'])).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('setJob', () => {
+    it('setJob links a job and backfills existing group registrants', async () => {
+      const update = jest.fn().mockResolvedValue({ id: 'group-1', jobId: 'job-1' });
+      const tx = {
+        walkInGroup: { findFirst: jest.fn().mockResolvedValue({ id: 'group-1' }), update },
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }) },
+        invitation: { findMany: jest.fn().mockResolvedValue([{ candidateId: 'c1' }, { candidateId: 'c1' }, { candidateId: 'c2' }]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      await service.setJob(context, 'user-1', 'group-1', 'job-1');
+      expect(update).toHaveBeenCalledWith({ where: { id: 'group-1' }, data: { jobId: 'job-1' } });
+      // distinct candidates c1, c2 backfilled
+      expect(pipeline.upsertDriveEntry).toHaveBeenCalledTimes(2);
+      expect(pipeline.upsertDriveEntry).toHaveBeenCalledWith(tx, context, 'job-1', 'c1');
+      expect(pipeline.upsertDriveEntry).toHaveBeenCalledWith(tx, context, 'job-1', 'c2');
+      expect(audit.record).toHaveBeenCalledWith(
+        context,
+        expect.objectContaining({ action: 'walk_in_group.job_linked', entityType: 'walk_in_group', entityId: 'group-1', metadata: { jobId: 'job-1' } }),
+      );
+    });
+
+    it('setJob with null clears the job, does no backfill, and audits unlink', async () => {
+      const update = jest.fn().mockResolvedValue({ id: 'group-1', jobId: null });
+      const tx = {
+        walkInGroup: { findFirst: jest.fn().mockResolvedValue({ id: 'group-1' }), update },
+        job: { findFirst: jest.fn() },
+        invitation: { findMany: jest.fn() },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.setJob(context, 'user-1', 'group-1', null);
+
+      expect(update).toHaveBeenCalledWith({ where: { id: 'group-1' }, data: { jobId: null } });
+      expect(tx.job.findFirst).not.toHaveBeenCalled();
+      expect(tx.invitation.findMany).not.toHaveBeenCalled();
+      expect(pipeline.upsertDriveEntry).not.toHaveBeenCalled();
+      expect(audit.record).toHaveBeenCalledWith(
+        context,
+        expect.objectContaining({ action: 'walk_in_group.job_unlinked', entityType: 'walk_in_group', entityId: 'group-1', metadata: { jobId: null } }),
+      );
+    });
+
+    it('throws when the group does not exist', async () => {
+      const tx = { walkInGroup: { findFirst: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.setJob(context, 'user-1', 'missing', 'job-1')).rejects.toThrow(NotFoundException);
+      expect(pipeline.upsertDriveEntry).not.toHaveBeenCalled();
+    });
+
+    it('throws when the job does not belong to the org', async () => {
+      const tx = {
+        walkInGroup: { findFirst: jest.fn().mockResolvedValue({ id: 'group-1' }) },
+        job: { findFirst: jest.fn().mockResolvedValue(null) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.setJob(context, 'user-1', 'group-1', 'missing-job')).rejects.toThrow(NotFoundException);
+      expect(pipeline.upsertDriveEntry).not.toHaveBeenCalled();
     });
   });
 });

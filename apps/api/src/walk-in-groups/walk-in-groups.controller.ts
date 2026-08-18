@@ -9,6 +9,7 @@ import { WalkInGroupsService } from './walk-in-groups.service';
 import { CreateWalkInGroupDto } from './dto/create-walk-in-group.dto';
 import { RenameWalkInGroupDto } from './dto/rename-walk-in-group.dto';
 import { SetWalkInGroupExamsDto } from './dto/set-walk-in-group-exams.dto';
+import { SetGroupJobDto } from './dto/set-group-job.dto';
 
 @Controller('walk-in-groups')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -61,5 +62,11 @@ export class WalkInGroupsController {
     @Body() dto: SetWalkInGroupExamsDto,
   ) {
     return this.walkInGroupsService.setExams(tenant, userId, id, dto.examIds);
+  }
+
+  @Patch(':id/job')
+  @RequirePermissions('pipeline:manage')
+  setJob(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string, @Body() dto: SetGroupJobDto) {
+    return this.walkInGroupsService.setJob(tenant, userId, id, dto.jobId);
   }
 }

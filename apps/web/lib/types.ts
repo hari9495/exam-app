@@ -252,6 +252,7 @@ export interface WalkInGroup {
   name: string;
   createdAt: string;
   exams: WalkInGroupExamSummary[];
+  jobId: string | null;
 }
 
 export type JobStatus = 'open' | 'closed';

@@ -412,6 +412,17 @@ describe('PipelineService', () => {
     });
   });
 
+  it('upsertDriveEntry upserts a drive entry stamp-if-absent using the caller tx', async () => {
+    const upsert = jest.fn().mockResolvedValue({ id: 'en-1' });
+    const tx = { pipelineEntry: { upsert } };
+    await service.upsertDriveEntry(tx as any, context, 'job-1', 'cand-1');
+    expect(upsert).toHaveBeenCalledWith({
+      where: { jobId_candidateId: { jobId: 'job-1', candidateId: 'cand-1' } },
+      create: { organizationId: 'org-1', jobId: 'job-1', candidateId: 'cand-1', stage: 'applied', enteredVia: 'drive' },
+      update: {},
+    });
+  });
+
   describe('deleteEntry', () => {
     it('deletes the entry and audits entry.removed', async () => {
       const del = jest.fn().mockResolvedValue({ id: 'en1' });

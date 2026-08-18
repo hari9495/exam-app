@@ -299,10 +299,13 @@ model WalkInGroup {
   organizationId String         @map("organization_id") @db.UniqueIdentifier
   name           String
   createdAt      DateTime       @default(now()) @map("created_at")
+  jobId          String?        @map("job_id") @db.UniqueIdentifier
+  job            Job?           @relation(fields: [jobId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   exams          Exam[]
   driveSessions  DriveSession[]
 
   @@unique([organizationId, name])
+  @@index([jobId])
   @@map("walk_in_groups")
 }
 
@@ -355,7 +358,14 @@ model Exam {
   // exactly its member exams regardless of walkInListed, which only governs the
   // org-wide default picker.
   walkInGroupId                 String?       @map("walk_in_group_id") @db.UniqueIdentifier
-  walkInGroup                   WalkInGroup?  @relation(fields: [walkInGroupId], references: [id], onDelete: SetNull)
+  // onDelete/onUpdate declared NoAction here only to satisfy Prisma's client-generation
+  // cyclic-referential-actions check (adding WalkInGroup.jobId in 20260820090000 created a
+  // second path Job -> WalkInGroup -> Exam -> JobExam alongside the direct Job -> JobExam
+  // cascade, which Prisma's validator rejects even though SQL Server itself accepted the
+  // new FK). The REAL deployed constraint (20260805020000_walk_in_groups) is still
+  // ON DELETE SET NULL ON UPDATE CASCADE -- this annotation doesn't change DB behavior,
+  // it only breaks the graph Prisma walks at generate time.
+  walkInGroup                   WalkInGroup?  @relation(fields: [walkInGroupId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   allowedIpRange                String?       @map("allowed_ip_range")
   // Master switch for every anti-cheating measure below. Off forces webcam/screen-capture/
   // lockdown to false and every browser-behavior signal disabled at write time (exams.service's
@@ -746,6 +756,7 @@ model Job {
   applyToken         String?         @unique @map("apply_token")
   entries            PipelineEntry[]
   examLinks          JobExam[]
+  walkInGroups       WalkInGroup[]
 
   @@index([organizationId, status])
   @@map("jobs")
