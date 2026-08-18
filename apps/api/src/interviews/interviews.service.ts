@@ -1,11 +1,13 @@
 import { randomUUID } from 'crypto';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Interview } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService, BlobStorageService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { buildCandidateEmailHtml } from '../candidate-emails/candidate-email-render';
 import { CreateInterviewDto } from './dto/create-interview.dto';
+import { RespondInterviewDto } from './dto/respond-interview.dto';
 import { renderInterviewTemplate, formatSlot } from './interview-render';
+import { buildInterviewIcs } from './interview-ics';
 
 const LOGO_SIGN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
@@ -23,6 +25,12 @@ const DEFAULT_INVITE_BODY =
 
 @Injectable()
 export class InterviewsService {
+  // interviews is RLS-protected and there is no org context until the interviewToken resolves
+  // one. The super-admin flag on forTenant bypasses the RLS predicate entirely -- same pattern
+  // as OffersService.LOOKUP_ORG / PublicApplicationsService.LOOKUP_ORG; this placeholder org is
+  // never used for filtering.
+  private readonly LOOKUP_ORG = '00000000-0000-0000-0000-000000000000';
+
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly emailService: EmailService,
@@ -250,4 +258,228 @@ export class InterviewsService {
       return updated;
     });
   }
+
+  private async resolveInterviewByToken(token: string) {
+    const interview = await this.tenantPrisma.forTenant(
+      { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
+      (tx) =>
+        tx.interview.findUnique({
+          where: { interviewToken: token },
+          select: {
+            id: true,
+            organizationId: true,
+            pipelineEntryId: true,
+            status: true,
+            location: true,
+            timeZone: true,
+            recruiterNote: true,
+            confirmedSlotId: true,
+            sentByUserId: true,
+            slots: { select: { id: true, startsAt: true, endsAt: true } },
+          },
+        }),
+    );
+    // Generic message regardless of which condition failed later (already responded, unknown
+    // slot) -- distinguishing "no such token" from a state failure would give an outsider an
+    // oracle. Same reasoning as OffersService.resolveOfferByToken.
+    if (!interview) throw new NotFoundException('Interview not found');
+    return interview;
+  }
+
+  async getPublicInterview(token: string) {
+    const interview = await this.resolveInterviewByToken(token);
+
+    const details = await this.tenantPrisma.forTenant(
+      { organizationId: interview.organizationId, isSuperAdmin: true },
+      async (tx) => {
+        const entry = await tx.pipelineEntry.findUnique({
+          where: { id: interview.pipelineEntryId },
+          select: { job: { select: { title: true } } },
+        });
+        const org = await tx.organization.findUnique({ where: { id: interview.organizationId }, select: { name: true } });
+        const panelistRows = await tx.interviewPanelist.findMany({
+          where: { interviewId: interview.id },
+          select: { userId: true },
+        });
+        const panelUsers = panelistRows.length
+          ? await tx.user.findMany({ where: { id: { in: panelistRows.map((p) => p.userId) } }, select: { name: true } })
+          : [];
+        return { jobTitle: entry?.job.title ?? '', orgName: org?.name ?? '', panel: panelUsers.map((u) => firstName(u.name)) };
+      },
+    );
+
+    return {
+      jobTitle: details.jobTitle,
+      orgName: details.orgName,
+      slots: interview.slots.map((s) => ({ id: s.id, startsAt: s.startsAt, endsAt: s.endsAt })),
+      location: interview.location,
+      timeZone: interview.timeZone,
+      panel: details.panel,
+      status: interview.status,
+      confirmedSlotId: interview.confirmedSlotId,
+    };
+  }
+
+  async respondPublic(token: string, dto: RespondInterviewDto): Promise<Interview> {
+    const interview = await this.resolveInterviewByToken(token);
+    // Generic conflict message -- same anti-oracle reasoning as the NotFound above, just
+    // surfaced as a 409 once the token itself is known-good.
+    if (interview.status !== 'proposed') {
+      throw new ConflictException('This interview invitation is no longer available');
+    }
+
+    let chosenSlot: { id: string; startsAt: Date; endsAt: Date } | undefined;
+    if (dto.action === 'confirm') {
+      chosenSlot = interview.slots.find((s) => s.id === dto.slotId);
+      // A missing/unknown slotId gets the same generic message as any other conflict -- it
+      // must not tell the caller whether the slot exists on some *other* interview.
+      if (!chosenSlot) throw new ConflictException('This interview invitation is no longer available');
+    }
+
+    const context = { organizationId: interview.organizationId, isSuperAdmin: true };
+    const statusByAction = {
+      confirm: 'confirmed',
+      decline: 'declined',
+      reschedule: 'reschedule_requested',
+    } as const;
+    const auditActionByAction = {
+      confirm: 'interview.confirmed',
+      decline: 'interview.declined',
+      reschedule: 'interview.reschedule_requested',
+    } as const;
+
+    const updated = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const respondedAt = new Date();
+      const data: Record<string, unknown> = { status: statusByAction[dto.action], respondedAt };
+      if (dto.action === 'confirm') data.confirmedSlotId = chosenSlot!.id;
+      if (dto.action === 'reschedule') data.candidateReschedNote = dto.note ?? null;
+
+      // Compound-precondition write, not a pre-tx-guarded update: two concurrent public
+      // requests (double-click, retry) can both pass the status check above, but only one can
+      // flip status:'proposed' -> the new status here. The loser gets count:0 and must not
+      // write an audit row or trigger any notification -- same generic message, no oracle.
+      const result = await tx.interview.updateMany({
+        where: { id: interview.id, organizationId: interview.organizationId, status: 'proposed' },
+        data,
+      });
+      if (result.count === 0) {
+        throw new ConflictException('This interview invitation is no longer available');
+      }
+      await this.audit.record(context, {
+        actorUserId: null,
+        action: auditActionByAction[dto.action],
+        entityType: 'interview',
+        entityId: interview.id,
+      });
+      return { ...interview, ...data } as unknown as Interview;
+    });
+
+    // Notifications: OUTSIDE the tx above -- emailService.send is a network call and must never
+    // run inside a forTenant callback (same three-phase reasoning as sendInvite/OffersService).
+    const notify = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const entry = await tx.pipelineEntry.findUnique({
+        where: { id: interview.pipelineEntryId },
+        select: { candidate: { select: { name: true, email: true } }, job: { select: { title: true } } },
+      });
+      const org = await tx.organization.findUnique({ where: { id: interview.organizationId }, select: { name: true } });
+      const recruiter = interview.sentByUserId
+        ? await tx.user.findUnique({ where: { id: interview.sentByUserId }, select: { email: true } })
+        : null;
+
+      let panelists: { email: string; name: string | null }[] = [];
+      if (dto.action === 'confirm') {
+        const panelistRows = await tx.interviewPanelist.findMany({
+          where: { interviewId: interview.id },
+          select: { userId: true },
+        });
+        panelists = panelistRows.length
+          ? await tx.user.findMany({ where: { id: { in: panelistRows.map((p) => p.userId) } }, select: { email: true, name: true } })
+          : [];
+      }
+
+      return {
+        candidateName: entry?.candidate.name ?? '',
+        candidateEmail: entry?.candidate.email ?? '',
+        jobTitle: entry?.job.title ?? '',
+        orgName: org?.name ?? '',
+        recruiterEmail: recruiter?.email,
+        panelists,
+      };
+    });
+
+    if (dto.action === 'confirm') {
+      // candidateName/jobTitle are attacker-controlled (candidate name comes from the public
+      // apply form) so they are only ever interpolated into plain bodyText and rendered via
+      // buildCandidateEmailHtml, which HTML-escapes it -- never hand-built into raw HTML. The
+      // ICS text fields are separately escaped by buildInterviewIcs.
+      const ics = buildInterviewIcs({
+        uid: interview.id,
+        startsAt: chosenSlot!.startsAt,
+        endsAt: chosenSlot!.endsAt,
+        summary: `Interview: ${notify.candidateName} — ${notify.jobTitle}`,
+        location: interview.location,
+        description: interview.recruiterNote ?? '',
+      });
+      const icsAttachment = { filename: 'interview.ics', content: Buffer.from(ics) };
+      const when = formatSlot(chosenSlot!.startsAt, chosenSlot!.endsAt, interview.timeZone);
+
+      await this.emailService.send({
+        to: notify.candidateEmail,
+        subject: `Interview confirmed: ${notify.jobTitle}`,
+        html: buildCandidateEmailHtml({
+          logoUrl: null,
+          orgName: notify.orgName || null,
+          bodyText: `Your interview for ${notify.jobTitle} at ${notify.orgName} is confirmed for ${when}.\n\nLocation: ${interview.location}`,
+        }),
+        organizationId: interview.organizationId,
+        attachments: [icsAttachment],
+      });
+
+      for (const panelist of notify.panelists) {
+        await this.emailService.send({
+          to: panelist.email,
+          subject: `Interview confirmed: ${notify.candidateName} for ${notify.jobTitle}`,
+          html: buildCandidateEmailHtml({
+            logoUrl: null,
+            orgName: null,
+            bodyText: `${notify.candidateName} confirmed for ${when}.\n\nLocation: ${interview.location}`,
+          }),
+          organizationId: interview.organizationId,
+          attachments: [icsAttachment],
+        });
+      }
+
+      if (notify.recruiterEmail) {
+        await this.emailService.send({
+          to: notify.recruiterEmail,
+          subject: `Interview confirmed: ${notify.candidateName}`,
+          html: buildCandidateEmailHtml({
+            logoUrl: null,
+            orgName: null,
+            bodyText: `${notify.candidateName} confirmed the interview for ${notify.jobTitle} (${when}).`,
+          }),
+          organizationId: interview.organizationId,
+        });
+      }
+    } else if (notify.recruiterEmail) {
+      const verb = dto.action === 'decline' ? 'declined' : 'requested a reschedule for';
+      const noteText = dto.action === 'reschedule' && dto.note ? `\n\nCandidate's note: ${dto.note}` : '';
+      await this.emailService.send({
+        to: notify.recruiterEmail,
+        subject: `Interview ${dto.action === 'decline' ? 'declined' : 'reschedule requested'}: ${notify.candidateName}`,
+        html: buildCandidateEmailHtml({
+          logoUrl: null,
+          orgName: null,
+          bodyText: `${notify.candidateName} ${verb} the interview for ${notify.jobTitle}.${noteText}`,
+        }),
+        organizationId: interview.organizationId,
+      });
+    }
+
+    return updated;
+  }
+}
+
+function firstName(name: string | null): string {
+  return (name ?? '').trim().split(/\s+/)[0] ?? '';
 }

@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { InterviewsService } from './interviews.service';
 
 describe('InterviewsService', () => {
@@ -10,6 +10,7 @@ describe('InterviewsService', () => {
   let tx: {
     pipelineEntry: Record<string, jest.Mock>;
     interview: Record<string, jest.Mock>;
+    interviewPanelist: Record<string, jest.Mock>;
     user: Record<string, jest.Mock>;
     organization: Record<string, jest.Mock>;
   };
@@ -19,12 +20,21 @@ describe('InterviewsService', () => {
     tx = {
       pipelineEntry: {
         findFirst: jest.fn().mockResolvedValue({ id: 'entry-1', candidateId: 'cand-1', organizationId: 'org-1' }),
+        findUnique: jest.fn().mockResolvedValue({
+          job: { title: 'Backend Engineer' },
+          candidate: { name: 'Asha Rao', email: 'asha@example.com' },
+        }),
       },
       interview: {
         create: jest.fn(),
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn(),
+        findUnique: jest.fn(),
         update: jest.fn().mockImplementation(({ data }: any) => Promise.resolve({ id: 'interview-1', ...data })),
+        updateMany: jest.fn(),
+      },
+      interviewPanelist: {
+        findMany: jest.fn().mockResolvedValue([]),
       },
       user: {
         findMany: jest.fn().mockResolvedValue([{ id: 'panelist-1' }]),
@@ -303,6 +313,260 @@ describe('InterviewsService', () => {
       tx.interview.findFirst.mockResolvedValue(null);
 
       await expect(service.sendInvite(context, 'user-1', 'interview-x')).rejects.toThrow(NotFoundException);
+      expect(emailService.send).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getPublicInterview', () => {
+    function baseResolvedInterview(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 'interview-1',
+        organizationId: 'org-1',
+        pipelineEntryId: 'entry-1',
+        status: 'proposed',
+        location: 'Room 1',
+        timeZone: 'UTC',
+        recruiterNote: 'Bring photo ID',
+        confirmedSlotId: null,
+        sentByUserId: 'recruiter-1',
+        slots: [
+          { id: 'slot-1', startsAt: new Date('2026-09-01T14:00:00.000Z'), endsAt: new Date('2026-09-01T15:00:00.000Z') },
+          { id: 'slot-2', startsAt: new Date('2026-09-02T14:00:00.000Z'), endsAt: new Date('2026-09-02T15:00:00.000Z') },
+        ],
+        ...overrides,
+      };
+    }
+
+    beforeEach(() => {
+      tx.interview.findUnique.mockResolvedValue(baseResolvedInterview());
+      tx.pipelineEntry.findUnique.mockResolvedValue({ job: { title: 'Backend Engineer' } });
+      tx.organization.findUnique.mockResolvedValue({ name: 'Acme' });
+      tx.interviewPanelist.findMany.mockResolvedValue([{ userId: 'panelist-1' }]);
+      tx.user.findMany.mockResolvedValue([{ name: 'Priya Singh' }]);
+    });
+
+    it('resolves by interviewToken (LOOKUP_ORG) and returns only safe public fields, including panel first names', async () => {
+      const out = await service.getPublicInterview('interview-token-1');
+
+      expect(tx.interview.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { interviewToken: 'interview-token-1' } }),
+      );
+      expect(tx.interviewPanelist.findMany).toHaveBeenCalledWith({ where: { interviewId: 'interview-1' }, select: { userId: true } });
+      expect(out).toMatchObject({
+        jobTitle: 'Backend Engineer',
+        orgName: 'Acme',
+        slots: [
+          { id: 'slot-1', startsAt: new Date('2026-09-01T14:00:00.000Z'), endsAt: new Date('2026-09-01T15:00:00.000Z') },
+          { id: 'slot-2', startsAt: new Date('2026-09-02T14:00:00.000Z'), endsAt: new Date('2026-09-02T15:00:00.000Z') },
+        ],
+        location: 'Room 1',
+        timeZone: 'UTC',
+        panel: ['Priya'],
+        status: 'proposed',
+        confirmedSlotId: null,
+      });
+    });
+
+    it('throws a generic NotFoundException for an unknown token', async () => {
+      tx.interview.findUnique.mockResolvedValue(null);
+
+      await expect(service.getPublicInterview('bad-token')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('respondPublic', () => {
+    function baseResolvedInterview(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 'interview-1',
+        organizationId: 'org-1',
+        pipelineEntryId: 'entry-1',
+        status: 'proposed',
+        location: 'Room 1',
+        timeZone: 'UTC',
+        recruiterNote: 'Bring photo ID',
+        confirmedSlotId: null,
+        sentByUserId: 'recruiter-1',
+        slots: [
+          { id: 'slot-1', startsAt: new Date('2026-09-01T14:00:00.000Z'), endsAt: new Date('2026-09-01T15:00:00.000Z') },
+          { id: 'slot-2', startsAt: new Date('2026-09-02T14:00:00.000Z'), endsAt: new Date('2026-09-02T15:00:00.000Z') },
+        ],
+        ...overrides,
+      };
+    }
+
+    beforeEach(() => {
+      tx.interview.findUnique.mockResolvedValue(baseResolvedInterview());
+      tx.interview.updateMany.mockResolvedValue({ count: 1 });
+      tx.pipelineEntry.findUnique.mockResolvedValue({
+        job: { title: 'Backend Engineer' },
+        candidate: { name: 'Asha Rao', email: 'asha@example.com' },
+      });
+      tx.organization.findUnique.mockResolvedValue({ name: 'Acme' });
+      tx.user.findUnique.mockResolvedValue({ email: 'recruiter@example.com' });
+      tx.interviewPanelist.findMany.mockResolvedValue([{ userId: 'panelist-1' }]);
+      tx.user.findMany.mockResolvedValue([{ email: 'panelist@example.com', name: 'Jane Doe' }]);
+    });
+
+    it('confirm: sets status/confirmedSlotId/respondedAt, audits interview.confirmed with a null actor, and emails candidate + panelist (with the ICS attached) + recruiter, all OUTSIDE the tx', async () => {
+      const out = await service.respondPublic('interview-token-1', { action: 'confirm', slotId: 'slot-1' } as any);
+
+      expect(tx.interview.updateMany).toHaveBeenCalledWith({
+        where: { id: 'interview-1', organizationId: 'org-1', status: 'proposed' },
+        data: { status: 'confirmed', respondedAt: expect.any(Date), confirmedSlotId: 'slot-1' },
+      });
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: 'org-1' }),
+        expect.objectContaining({ actorUserId: null, action: 'interview.confirmed', entityType: 'interview', entityId: 'interview-1' }),
+      );
+
+      expect(emailService.send).toHaveBeenCalledTimes(3);
+      expect(emailService.send).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          to: 'asha@example.com',
+          organizationId: 'org-1',
+          attachments: [{ filename: 'interview.ics', content: expect.any(Buffer) }],
+        }),
+      );
+      expect(emailService.send).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          to: 'panelist@example.com',
+          attachments: [{ filename: 'interview.ics', content: expect.any(Buffer) }],
+        }),
+      );
+      expect(emailService.send).toHaveBeenNthCalledWith(3, expect.objectContaining({ to: 'recruiter@example.com' }));
+      expect(emailService.send.mock.calls[2][0].attachments).toBeUndefined();
+
+      const ics = emailService.send.mock.calls[0][0].attachments[0].content.toString('utf8');
+      expect(ics).toContain('BEGIN:VEVENT');
+      expect(ics).toContain('SUMMARY:Interview: Asha Rao');
+
+      expect(out).toMatchObject({ status: 'confirmed', confirmedSlotId: 'slot-1' });
+    });
+
+    it('runs every notify send OUTSIDE all forTenant calls', async () => {
+      await service.respondPublic('interview-token-1', { action: 'confirm', slotId: 'slot-1' } as any);
+
+      const forTenantOrders = tenantPrisma.forTenant.mock.invocationCallOrder;
+      const sendOrders = emailService.send.mock.invocationCallOrder;
+      expect(sendOrders.length).toBe(3);
+      for (const forTenantOrder of forTenantOrders) {
+        for (const sendOrder of sendOrders) {
+          expect(sendOrder).toBeGreaterThan(forTenantOrder);
+        }
+      }
+    });
+
+    it('escapes an HTML-injecting candidate name / job title in the confirm emails via buildCandidateEmailHtml', async () => {
+      tx.pipelineEntry.findUnique.mockResolvedValue({
+        job: { title: '<b>Evil</b> Engineer' },
+        candidate: { name: '<script>alert(1)</script>', email: 'asha@example.com' },
+      });
+
+      await service.respondPublic('interview-token-1', { action: 'confirm', slotId: 'slot-1' } as any);
+
+      // The candidate's own confirmation email only echoes the job title back to them; the
+      // panelist email is the one that echoes the candidate's (attacker-controlled) name.
+      const candidateHtml = emailService.send.mock.calls[0][0].html as string;
+      expect(candidateHtml).not.toContain('<b>Evil</b>');
+      expect(candidateHtml).toContain('&lt;b&gt;Evil&lt;/b&gt;');
+
+      const panelistHtml = emailService.send.mock.calls[1][0].html as string;
+      expect(panelistHtml).not.toContain('<script>');
+      expect(panelistHtml).toContain('&lt;script&gt;');
+    });
+
+    it('confirm: throws a generic ConflictException when slotId does not belong to this interview, and makes no changes', async () => {
+      await expect(
+        service.respondPublic('interview-token-1', { action: 'confirm', slotId: 'not-a-real-slot' } as any),
+      ).rejects.toThrow(ConflictException);
+      expect(tx.interview.updateMany).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(emailService.send).not.toHaveBeenCalled();
+    });
+
+    it('confirm: throws a generic ConflictException when slotId is missing', async () => {
+      await expect(service.respondPublic('interview-token-1', { action: 'confirm' } as any)).rejects.toThrow(ConflictException);
+      expect(tx.interview.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('decline: sets status declined + respondedAt, audits interview.declined, and notifies the recruiter with no ICS', async () => {
+      const out = await service.respondPublic('interview-token-1', { action: 'decline' } as any);
+
+      expect(tx.interview.updateMany).toHaveBeenCalledWith({
+        where: { id: 'interview-1', organizationId: 'org-1', status: 'proposed' },
+        data: { status: 'declined', respondedAt: expect.any(Date) },
+      });
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: 'org-1' }),
+        expect.objectContaining({ actorUserId: null, action: 'interview.declined', entityType: 'interview', entityId: 'interview-1' }),
+      );
+      expect(emailService.send).toHaveBeenCalledTimes(1);
+      expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'recruiter@example.com' }));
+      expect(emailService.send.mock.calls[0][0].attachments).toBeUndefined();
+      expect(out).toMatchObject({ status: 'declined' });
+    });
+
+    it('reschedule: sets status reschedule_requested + candidateReschedNote + respondedAt, audits interview.reschedule_requested, and includes the note in the recruiter notify', async () => {
+      const out = await service.respondPublic('interview-token-1', { action: 'reschedule', note: 'Can we do next week?' } as any);
+
+      expect(tx.interview.updateMany).toHaveBeenCalledWith({
+        where: { id: 'interview-1', organizationId: 'org-1', status: 'proposed' },
+        data: { status: 'reschedule_requested', respondedAt: expect.any(Date), candidateReschedNote: 'Can we do next week?' },
+      });
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: 'org-1' }),
+        expect.objectContaining({ actorUserId: null, action: 'interview.reschedule_requested', entityId: 'interview-1' }),
+      );
+      const html = emailService.send.mock.calls[0][0].html as string;
+      expect(html).toContain('Can we do next week?');
+      expect(out).toMatchObject({ status: 'reschedule_requested', candidateReschedNote: 'Can we do next week?' });
+    });
+
+    it('reschedule without a note stores candidateReschedNote as null', async () => {
+      await service.respondPublic('interview-token-1', { action: 'reschedule' } as any);
+
+      expect(tx.interview.updateMany).toHaveBeenCalledWith({
+        where: { id: 'interview-1', organizationId: 'org-1', status: 'proposed' },
+        data: { status: 'reschedule_requested', respondedAt: expect.any(Date), candidateReschedNote: null },
+      });
+    });
+
+    it('skips the recruiter email when the interview has no sentByUserId', async () => {
+      tx.interview.findUnique.mockResolvedValue(baseResolvedInterview({ sentByUserId: null }));
+
+      await service.respondPublic('interview-token-1', { action: 'decline' } as any);
+
+      expect(emailService.send).not.toHaveBeenCalled();
+    });
+
+    it('throws a generic ConflictException and makes no changes when the interview is not in the proposed state', async () => {
+      tx.interview.findUnique.mockResolvedValue(baseResolvedInterview({ status: 'confirmed' }));
+
+      await expect(service.respondPublic('interview-token-1', { action: 'decline' } as any)).rejects.toThrow(ConflictException);
+      expect(tx.interview.updateMany).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(emailService.send).not.toHaveBeenCalled();
+    });
+
+    it('throws a generic NotFoundException for an unknown token', async () => {
+      tx.interview.findUnique.mockResolvedValue(null);
+
+      await expect(service.respondPublic('bad-token', { action: 'decline' } as any)).rejects.toThrow(NotFoundException);
+    });
+
+    it('loses the race to a concurrent responder: updateMany count:0 throws ConflictException with no audit row and no notifications', async () => {
+      tx.interview.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.respondPublic('interview-token-1', { action: 'confirm', slotId: 'slot-1' } as any),
+      ).rejects.toThrow(ConflictException);
+      expect(tx.interview.updateMany).toHaveBeenCalledWith({
+        where: { id: 'interview-1', organizationId: 'org-1', status: 'proposed' },
+        data: { status: 'confirmed', respondedAt: expect.any(Date), confirmedSlotId: 'slot-1' },
+      });
+      expect(audit.record).not.toHaveBeenCalled();
       expect(emailService.send).not.toHaveBeenCalled();
     });
   });

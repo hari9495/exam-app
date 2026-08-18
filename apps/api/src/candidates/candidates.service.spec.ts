@@ -666,6 +666,7 @@ describe('CandidatesService', () => {
         faceEnrolment?: { deleteMany?: jest.Mock };
         candidateProfile?: { resumePath: string | null } | null;
         offers?: { pdfPath: string | null }[];
+        interview?: { updateMany?: jest.Mock };
       } = {},
     ) {
       return {
@@ -703,6 +704,9 @@ describe('CandidatesService', () => {
         offer: {
           findMany: jest.fn().mockResolvedValue(overrides.offers ?? []),
           updateMany: jest.fn(),
+        },
+        interview: {
+          updateMany: overrides.interview?.updateMany ?? jest.fn(),
         },
       };
     }
@@ -749,6 +753,10 @@ describe('CandidatesService', () => {
         where: { candidateId: 'cand-1', organizationId: 'org-1' },
         data: { toEmail: 'erased@redacted.invalid', subject: 'Redacted', renderedBody: 'Redacted', errorDetail: null },
       });
+      expect(tx.interview.updateMany).toHaveBeenCalledWith({
+        where: { candidateId: 'cand-1', organizationId: 'org-1' },
+        data: { interviewToken: null, location: 'Redacted', recruiterNote: null, candidateReschedNote: null },
+      });
       expect(result.id).toBe('cand-1');
       expect(result.erasedAt).toEqual(expect.any(Date));
       expect(audit.record).toHaveBeenCalledWith(context, {
@@ -768,6 +776,7 @@ describe('CandidatesService', () => {
       expect(result).toEqual({ id: 'cand-1', erasedAt: previouslyErasedAt });
       expect(tx.candidate.update).not.toHaveBeenCalled();
       expect(tx.candidateRefreshToken.deleteMany).not.toHaveBeenCalled();
+      expect(tx.interview.updateMany).not.toHaveBeenCalled();
       expect(audit.record).not.toHaveBeenCalled();
     });
 
