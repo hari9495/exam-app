@@ -6,9 +6,11 @@ import { Modal, Button, StatusBadge, StatusTone, useToast } from '../ui';
 import { useEntryFeedback, useAddFeedback, useCandidateProfile, useCandidateResumeUrl } from '../../lib/hooks/usePipeline';
 import { useCandidateMessages, useResendMessage } from '../../lib/hooks/useCandidateMessages';
 import { useCandidateOffers, useWithdrawOffer } from '../../lib/hooks/useOffers';
-import { BoardRow, EntryExamResult, CandidateProfile, Offer, OfferStatus } from '../../lib/types';
+import { useCandidateInterviews, useCancelInterview } from '../../lib/hooks/useInterviews';
+import { BoardRow, EntryExamResult, CandidateProfile, Offer, OfferStatus, Interview, InterviewStatus } from '../../lib/types';
 import { SendMessageModal } from './SendMessageModal';
 import { CreateOfferModal } from './CreateOfferModal';
+import { ScheduleInterviewModal } from './ScheduleInterviewModal';
 
 function parseSkills(parsedSkills: string | null): string[] {
   if (!parsedSkills) return [];
@@ -203,6 +205,79 @@ function OffersSection({ entryId, candidateId }: { entryId: string; candidateId:
   );
 }
 
+const INTERVIEW_STATUS_TONE: Record<InterviewStatus, StatusTone> = {
+  proposed: 'info',
+  confirmed: 'success',
+  declined: 'danger',
+  reschedule_requested: 'warning',
+  cancelled: 'neutral',
+};
+
+function interviewTimeLabel(interview: Interview): string | null {
+  const slot = interview.confirmedSlotId
+    ? interview.slots.find((s) => s.id === interview.confirmedSlotId)
+    : interview.slots[0];
+  if (!slot) return null;
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone: interview.timeZone }).format(
+    new Date(slot.startsAt),
+  );
+}
+
+function InterviewsSection({ entryId, candidateId }: { entryId: string; candidateId: string }) {
+  const { data: interviews, isLoading } = useCandidateInterviews(candidateId);
+  const cancelInterview = useCancelInterview(candidateId);
+  const { toast } = useToast();
+  const [scheduling, setScheduling] = useState(false);
+
+  function handleCancel(interviewId: string) {
+    cancelInterview.mutate(interviewId, {
+      onSuccess: () => toast('Interview cancelled.'),
+      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to cancel interview.', 'error'),
+    });
+  }
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary">Interviews</h3>
+        <Button size="sm" variant="secondary" onClick={() => setScheduling(true)}>
+          Schedule interview
+        </Button>
+      </div>
+      {isLoading ? (
+        <p className="text-sm text-recruiter-text-tertiary">Loading&hellip;</p>
+      ) : (interviews ?? []).length === 0 ? (
+        <p className="text-sm text-recruiter-text-tertiary">No interviews scheduled yet.</p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {(interviews ?? []).map((interview) => (
+            <li key={interview.id} className="rounded border border-recruiter-border p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-recruiter-text">{interviewTimeLabel(interview) ?? 'No time proposed'}</span>
+                <StatusBadge tone={INTERVIEW_STATUS_TONE[interview.status]}>{interview.status}</StatusBadge>
+              </div>
+              <div className="mt-1 flex items-center justify-between gap-2 text-xs text-recruiter-text-tertiary">
+                <span>{interview.location}</span>
+                {interview.status === 'proposed' && (
+                  <button
+                    type="button"
+                    onClick={() => handleCancel(interview.id)}
+                    disabled={cancelInterview.isPending}
+                    className="font-medium text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {scheduling && <ScheduleInterviewModal entryId={entryId} candidateId={candidateId} onClose={() => setScheduling(false)} />}
+    </div>
+  );
+}
+
 function chipLabel(result: EntryExamResult): string {
   if (result.passFail === null) return `${result.examTitle} · Pending`;
   const label = result.passFail === 'pass' ? 'Passed' : 'Failed';
@@ -327,6 +402,8 @@ export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: B
         <MessagesSection entryId={row.entryId} candidateId={row.candidateId} candidateName={row.candidateName} />
 
         <OffersSection entryId={row.entryId} candidateId={row.candidateId} />
+
+        <InterviewsSection entryId={row.entryId} candidateId={row.candidateId} />
       </div>
     </Modal>
   );
