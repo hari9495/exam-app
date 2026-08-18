@@ -41,6 +41,17 @@ export function useSendInterview(candidateId: string) {
   });
 }
 
+// The caller's own assigned interviews (panel console). listMine only includes slots -- no
+// candidate/job -- so the panel page renders time/location/status only.
+export function useMyInterviews() {
+  const { accessToken } = useAuth();
+  return useQuery<Interview[]>({
+    queryKey: ['my-interviews'],
+    queryFn: () => apiFetch('/interviews/mine', {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken),
+  });
+}
+
 export function useCancelInterview(candidateId: string) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
