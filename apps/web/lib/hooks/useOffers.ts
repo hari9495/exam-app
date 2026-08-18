@@ -59,6 +59,16 @@ export function useOfferTemplate() {
   });
 }
 
+export function useUpdateOfferTemplate() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation<OfferTemplate, Error, { subject: string; body: string }>({
+    mutationFn: (input) =>
+      apiFetch('/offer-template', { method: 'PUT', body: JSON.stringify(input) }, accessToken ?? undefined) as Promise<OfferTemplate>,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['offer-template'] }),
+  });
+}
+
 // Fetches the offer's PDF as a blob and opens it in a new tab. A mutation (not a plain function)
 // so CreateOfferModal gets isPending/error handling for free, matching every other write in this
 // hook file even though the PDF fetch is a GET.

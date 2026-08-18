@@ -468,6 +468,17 @@ export interface OfferTemplate {
   body: string;
 }
 
+// GET /public/offers/:token -- unauthenticated, deliberately thin (no offer id, no org internals).
+export interface PublicOffer {
+  jobTitle: string;
+  orgName: string;
+  compensation: string;
+  startDate: string;
+  expiresAt: string;
+  status: OfferStatus;
+  pdfUrl: string | null;
+}
+
 export type DriveSessionStatus = 'scheduled' | 'live' | 'ended';
 
 export interface DriveSession {
