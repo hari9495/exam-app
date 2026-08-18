@@ -365,6 +365,15 @@ describe('PipelineService', () => {
         expect(templates.resolveForEvent).not.toHaveBeenCalled();
         expect(messages.sendMessage).not.toHaveBeenCalled();
       });
+
+      it('still returns the moved entry when the post-commit comms resolution throws', async () => {
+        templates.resolveForEvent.mockRejectedValue(new Error('pool exhausted'));
+
+        const result = await service.patchEntry(context, 'user-1', 'entry-1', { stage: 'offer' });
+
+        expect(result.entry).toEqual({ id: 'entry-1', stage: 'offer' });
+        expect(result.pendingMessage).toBeUndefined();
+      });
     });
   });
 

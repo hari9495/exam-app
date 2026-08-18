@@ -70,6 +70,15 @@ describe('CandidateEmailsService', () => {
         context,
         expect.objectContaining({ action: 'candidate_email.sent', actorUserId: 'user-1' }),
       );
+      // Phase structure: forTenant opens two short transactions (prep, then log-write),
+      // with the SMTP send happening between them, outside of either.
+      expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(2);
+      const sendOrder = email.send.mock.invocationCallOrder[0];
+      const [firstTxOrder, secondTxOrder] = tenantPrisma.forTenant.mock.invocationCallOrder;
+      const createOrder = tx.candidateEmail.create.mock.invocationCallOrder[0];
+      expect(firstTxOrder).toBeLessThan(sendOrder);
+      expect(sendOrder).toBeLessThan(secondTxOrder);
+      expect(sendOrder).toBeLessThan(createOrder);
     });
 
     it('mints applicationToken when body references statusLink and entry has none', async () => {

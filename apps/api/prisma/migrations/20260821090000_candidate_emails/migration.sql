@@ -8,7 +8,7 @@ CREATE TABLE [dbo].[candidate_email_templates] (
     [subject] NVARCHAR(MAX) NOT NULL,
     [body] NVARCHAR(MAX) NOT NULL,
     [enabled] BIT NOT NULL CONSTRAINT [candidate_email_templates_enabled_df] DEFAULT 1,
-    [created_at] DATETIME2 NOT NULL CONSTRAINT [candidate_email_templates_created_at_df] DEFAULT CURRENT_TIMESTAMP,
+    [created_at] DATETIME2 NOT NULL CONSTRAINT [candidate_email_templates_created_at_df] DEFAULT GETUTCDATE(),
     [updated_at] DATETIME2 NOT NULL,
     CONSTRAINT [candidate_email_templates_pkey] PRIMARY KEY CLUSTERED ([id])
 );
@@ -27,7 +27,7 @@ CREATE TABLE [dbo].[candidate_emails] (
     [source] NVARCHAR(1000) NOT NULL,
     [sent_by_user_id] UNIQUEIDENTIFIER,
     [error_detail] NVARCHAR(MAX),
-    [created_at] DATETIME2 NOT NULL CONSTRAINT [candidate_emails_created_at_df] DEFAULT CURRENT_TIMESTAMP,
+    [created_at] DATETIME2 NOT NULL CONSTRAINT [candidate_emails_created_at_df] DEFAULT GETUTCDATE(),
     CONSTRAINT [candidate_emails_pkey] PRIMARY KEY CLUSTERED ([id])
 );
 

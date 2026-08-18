@@ -281,17 +281,23 @@ export class PipelineService {
 
     // Stage-move comms hook: runs AFTER the tx above has committed. dto.stage takes priority
     // over rejected (patchEntry only ever sets one or the other -- see the branch above).
-    const event = dto.stage ? dto.stage : dto.rejected === true ? 'rejected' : null;
-    if (event) {
-      const tpl = await this.templates.resolveForEvent(context, event);
-      if (tpl?.triggerMode === 'auto') {
-        // Fire-and-forget: the stage-move response must not block on email delivery.
-        this.messages
-          .sendMessage(context, null, entryId, { templateId: tpl.id, subject: tpl.subject, body: tpl.body, source: 'stage_auto' })
-          .catch((e) => this.logger.error(`Auto-send candidate email failed for entry ${entryId}`, e));
-      } else if (tpl?.triggerMode === 'prompt') {
-        return { entry, pendingMessage: { templateId: tpl.id, subject: tpl.subject, body: tpl.body } };
+    // Wrapped so a transient failure here (e.g. resolveForEvent hitting a starved pool) can
+    // never surface as an error for a stage move that already persisted.
+    try {
+      const event = dto.stage ? dto.stage : dto.rejected === true ? 'rejected' : null;
+      if (event) {
+        const tpl = await this.templates.resolveForEvent(context, event);
+        if (tpl?.triggerMode === 'auto') {
+          // Fire-and-forget: the stage-move response must not block on email delivery.
+          this.messages
+            .sendMessage(context, null, entryId, { templateId: tpl.id, subject: tpl.subject, body: tpl.body, source: 'stage_auto' })
+            .catch((e) => this.logger.error(`Auto-send candidate email failed for entry ${entryId}`, e));
+        } else if (tpl?.triggerMode === 'prompt') {
+          return { entry, pendingMessage: { templateId: tpl.id, subject: tpl.subject, body: tpl.body } };
+        }
       }
+    } catch (e) {
+      this.logger.error(`Post-commit comms resolution failed for entry ${entryId}`, e as Error);
     }
     return { entry };
   }

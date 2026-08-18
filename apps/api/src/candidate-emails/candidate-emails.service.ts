@@ -29,8 +29,12 @@ export class CandidateEmailsService {
     entryId: string,
     input: SendMessageInput,
   ): Promise<CandidateEmail> {
-    return this.tenantPrisma.forTenant(context, async (tx) => {
-      const orgId = context.organizationId as string;
+    const orgId = context.organizationId as string;
+
+    // Phase 1 (short tx): org-scoped reads + the applicationToken mint. No network calls here --
+    // forTenant uses Prisma's default 5s interactive-transaction timeout, and SMTP can take longer
+    // than that on a cold start (see sendEmail below, which runs outside any tx).
+    const prepared = await this.tenantPrisma.forTenant(context, async (tx) => {
       const entry = await tx.pipelineEntry.findFirst({
         where: { id: entryId, organizationId: orgId },
         include: { candidate: true, job: true },
@@ -47,25 +51,33 @@ export class CandidateEmailsService {
       const actorName = actorUserId
         ? ((await tx.user.findUnique({ where: { id: actorUserId }, select: { name: true } }))?.name ?? '')
         : '';
-      const statusLink = applicationToken
-        ? `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/application/${applicationToken}`
-        : '';
-      const rendered = renderTemplate(input.subject, input.body, {
-        candidateName: entry.candidate.name,
-        jobTitle: entry.job.title,
-        orgName: org?.name ?? '',
-        recruiterName: actorName,
-        statusLink,
-      });
-      const logoUrl = org?.logoPath ? await this.blobStorage.signIfOurs(org.logoPath, LOGO_SIGN_TTL_MS) : null;
-      const html = buildCandidateEmailHtml({ logoUrl: logoUrl as string | null, orgName: org?.name ?? null, bodyText: rendered.body });
-      const result = await this.emailService.send({
-        to: entry.candidate.email,
-        subject: rendered.subject,
-        html,
-        organizationId: orgId,
-      });
-      const created = await tx.candidateEmail.create({
+      return { entry, applicationToken, org, actorName };
+    });
+    const { entry, applicationToken, org, actorName } = prepared;
+
+    // Phase 2 (outside any tx): rendering + network calls (blob signing, SMTP send).
+    const statusLink = applicationToken
+      ? `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/application/${applicationToken}`
+      : '';
+    const rendered = renderTemplate(input.subject, input.body, {
+      candidateName: entry.candidate.name,
+      jobTitle: entry.job.title,
+      orgName: org?.name ?? '',
+      recruiterName: actorName,
+      statusLink,
+    });
+    const logoUrl = org?.logoPath ? await this.blobStorage.signIfOurs(org.logoPath, LOGO_SIGN_TTL_MS) : null;
+    const html = buildCandidateEmailHtml({ logoUrl: logoUrl as string | null, orgName: org?.name ?? null, bodyText: rendered.body });
+    const result = await this.emailService.send({
+      to: entry.candidate.email,
+      subject: rendered.subject,
+      html,
+      organizationId: orgId,
+    });
+
+    // Phase 3 (short tx): log the outcome, whatever it was.
+    const created = await this.tenantPrisma.forTenant(context, async (tx) =>
+      tx.candidateEmail.create({
         data: {
           organizationId: orgId,
           candidateId: entry.candidateId,
@@ -79,16 +91,16 @@ export class CandidateEmailsService {
           sentByUserId: actorUserId,
           errorDetail: result.success ? null : 'delivery failed',
         },
-      });
-      await this.audit.record(context, {
-        actorUserId,
-        action: result.success ? 'candidate_email.sent' : 'candidate_email.failed',
-        entityType: 'candidate_email',
-        entityId: created.id,
-        metadata: { to: entry.candidate.email, source: input.source },
-      });
-      return created;
+      }),
+    );
+    await this.audit.record(context, {
+      actorUserId,
+      action: result.success ? 'candidate_email.sent' : 'candidate_email.failed',
+      entityType: 'candidate_email',
+      entityId: created.id,
+      metadata: { to: entry.candidate.email, source: input.source },
     });
+    return created;
   }
 
   async listMessages(context: TenantContext, candidateId: string): Promise<CandidateEmail[]> {
