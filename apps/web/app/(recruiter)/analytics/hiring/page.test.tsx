@@ -62,6 +62,39 @@ describe('HiringAnalyticsPage', () => {
     expect(jobLink).toHaveAttribute('href', '/jobs/job-1');
   });
 
+  it('renders a humanized, non-blank status badge for a job whose status is outside open/closed', () => {
+    useHiringAnalyticsMock.mockReturnValueOnce({
+      data: { ...FIXTURE, jobs: [{ ...FIXTURE.jobs[0], status: 'unknown' }] },
+      isLoading: false,
+    });
+
+    render(<HiringAnalyticsPage />);
+
+    expect(screen.getByText('Unknown')).toBeInTheDocument();
+  });
+
+  it('renders an em dash, not "null"/"NaN", for null time-to-hire values', () => {
+    useHiringAnalyticsMock.mockReturnValueOnce({
+      data: {
+        ...FIXTURE,
+        timeToHire: { avgDays: null, medianDays: null, hiredCount: 0 },
+        jobs: [{ ...FIXTURE.jobs[0], avgTimeToHireDays: null }],
+      },
+      isLoading: false,
+    });
+
+    render(<HiringAnalyticsPage />);
+
+    expect(screen.getByText('Avg time to hire').nextElementSibling).toHaveTextContent('—');
+    expect(screen.getByText('Median time to hire').nextElementSibling).toHaveTextContent('—');
+    expect(screen.queryByText(/null/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
+
+    const jobRowCells = screen.getAllByRole('cell');
+    const avgTimeToHireCell = jobRowCells.find((cell) => cell.textContent === '—');
+    expect(avgTimeToHireCell).toBeInTheDocument();
+  });
+
   it('refetches with the new jobId when the job dropdown changes', async () => {
     render(<HiringAnalyticsPage />);
 

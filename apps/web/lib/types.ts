@@ -309,7 +309,9 @@ export interface HiringSourceRow {
 export interface HiringJobRow {
   jobId: string;
   title: string;
-  status: JobStatus;
+  // Mirrors the backend's actual (wider) type: pipeline-analytics.ts falls back to 'unknown'
+  // when a cohort entry's job has no meta, so this is not narrowed to JobStatus.
+  status: string;
   entered: number;
   hired: number;
   conversionPct: number;

@@ -18,6 +18,16 @@ const WINDOW_OPTIONS = [
 const STATUS_LABEL: Record<JobStatus, string> = { open: 'Open', closed: 'Closed' };
 const STATUS_TONE: Record<JobStatus, StatusTone> = { open: 'success', closed: 'neutral' };
 
+// The backend's status is a plain string (falls back to 'unknown' when a cohort entry's job
+// has no meta) -- these degrade any value outside JobStatus to a neutral tone / humanized
+// label instead of an undefined (blank) badge.
+function statusTone(status: string): StatusTone {
+  return status in STATUS_TONE ? STATUS_TONE[status as JobStatus] : 'neutral';
+}
+function statusLabel(status: string): string {
+  return status in STATUS_LABEL ? STATUS_LABEL[status as JobStatus] : status.charAt(0).toUpperCase() + status.slice(1);
+}
+
 function fmtDays(value: number | null) {
   return value === null ? '—' : value.toFixed(1);
 }
@@ -49,7 +59,7 @@ export default function HiringAnalyticsPage() {
         </Link>
       ),
     },
-    { key: 'status', header: 'Status', render: (row) => <StatusBadge tone={STATUS_TONE[row.status]}>{STATUS_LABEL[row.status]}</StatusBadge> },
+    { key: 'status', header: 'Status', render: (row) => <StatusBadge tone={statusTone(row.status)}>{statusLabel(row.status)}</StatusBadge> },
     { key: 'entered', header: 'Entered', render: (row) => row.entered },
     { key: 'hired', header: 'Hired', render: (row) => row.hired },
     { key: 'conversion', header: 'Conversion', render: (row) => `${Math.round(row.conversionPct)}%` },
