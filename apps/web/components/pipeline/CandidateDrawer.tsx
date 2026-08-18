@@ -2,9 +2,11 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Modal, Button, useToast } from '../ui';
+import { Modal, Button, StatusBadge, useToast } from '../ui';
 import { useEntryFeedback, useAddFeedback, useCandidateProfile, useCandidateResumeUrl } from '../../lib/hooks/usePipeline';
+import { useCandidateMessages, useResendMessage } from '../../lib/hooks/useCandidateMessages';
 import { BoardRow, EntryExamResult, CandidateProfile } from '../../lib/types';
+import { SendMessageModal } from './SendMessageModal';
 
 function parseSkills(parsedSkills: string | null): string[] {
   if (!parsedSkills) return [];
@@ -67,6 +69,63 @@ function CandidateProfileSection({ candidateId }: { candidateId: string }) {
         <Button variant="secondary" size="sm" className="mt-3" onClick={handleDownload} loading={resumeUrl.isPending}>
           Download résumé
         </Button>
+      )}
+    </div>
+  );
+}
+
+function MessagesSection({ entryId, candidateId, candidateName }: { entryId: string; candidateId: string; candidateName: string }) {
+  const { data: messages, isLoading } = useCandidateMessages(candidateId);
+  const resendMessage = useResendMessage(candidateId);
+  const { toast } = useToast();
+  const [composing, setComposing] = useState(false);
+
+  function handleResend(messageId: string) {
+    resendMessage.mutate(messageId, {
+      onSuccess: () => toast('Message resent.'),
+      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to resend message.', 'error'),
+    });
+  }
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary">Messages</h3>
+        <Button size="sm" variant="secondary" onClick={() => setComposing(true)}>
+          Send message
+        </Button>
+      </div>
+      {isLoading ? (
+        <p className="text-sm text-recruiter-text-tertiary">Loading&hellip;</p>
+      ) : (messages ?? []).length === 0 ? (
+        <p className="text-sm text-recruiter-text-tertiary">No messages sent yet.</p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {(messages ?? []).map((message) => (
+            <li key={message.id} className="rounded border border-recruiter-border p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-recruiter-text">{message.subject}</span>
+                <StatusBadge tone={message.status === 'sent' ? 'success' : 'danger'}>{message.status}</StatusBadge>
+              </div>
+              <div className="mt-1 flex items-center justify-between gap-2 text-xs text-recruiter-text-tertiary">
+                <span>{new Date(message.createdAt).toLocaleString()}</span>
+                {message.status === 'failed' && (
+                  <button
+                    type="button"
+                    onClick={() => handleResend(message.id)}
+                    disabled={resendMessage.isPending}
+                    className="font-medium text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Resend
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {composing && (
+        <SendMessageModal entryId={entryId} candidateId={candidateId} candidateName={candidateName} onClose={() => setComposing(false)} />
       )}
     </div>
   );
@@ -192,6 +251,8 @@ export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: B
             </div>
           </div>
         </div>
+
+        <MessagesSection entryId={row.entryId} candidateId={row.candidateId} candidateName={row.candidateName} />
       </div>
     </Modal>
   );
