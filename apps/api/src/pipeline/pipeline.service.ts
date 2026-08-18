@@ -326,6 +326,17 @@ export class PipelineService {
     }
   }
 
+  // Called from within an existing forTenant transaction (walk-in register, or setJob's backfill)
+  // so entry creation is atomic with whatever triggered it. Stamp-if-absent: never resets an
+  // existing entry's stage/enteredVia (a candidate already at 'interview' isn't yanked back).
+  async upsertDriveEntry(tx: any, context: TenantContext, jobId: string, candidateId: string): Promise<void> {
+    await tx.pipelineEntry.upsert({
+      where: { jobId_candidateId: { jobId, candidateId } },
+      create: { organizationId: context.organizationId as string, jobId, candidateId, stage: 'applied', enteredVia: 'drive' },
+      update: {},
+    });
+  }
+
   async deleteEntry(context: TenantContext, actorUserId: string, entryId: string): Promise<{ success: true }> {
     await this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: context.organizationId as string } });

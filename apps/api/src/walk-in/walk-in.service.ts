@@ -3,6 +3,7 @@ import { Candidate, Invitation } from '@prisma/client';
 import { PrismaService, TenantPrismaService, AuditService, BlobStorageService } from '@exam-platform/shared';
 import { WebhooksService } from '../webhooks/webhooks.service';
 import { EmailService } from '../email/email.service';
+import { PipelineService } from '../pipeline/pipeline.service';
 import { buildAssessmentEmailHtml, generateToken, resolveInvitationExpiry, EMAIL_LOGO_SAS_TTL_MS } from '../invitations/invitations.service';
 import { RegisterWalkInDto } from './dto/register-walk-in.dto';
 
@@ -58,6 +59,7 @@ export class WalkInService {
     private readonly webhooks: WebhooksService,
     private readonly emailService: EmailService,
     private readonly blobStorage: BlobStorageService,
+    private readonly pipeline: PipelineService,
   ) {}
 
   private async resolveOrg(orgSlug: string): Promise<{ id: string }> {
@@ -120,6 +122,17 @@ export class WalkInService {
           // Built locally rather than from the update's return value: the only field that can
           // have changed is the one just written, and the greeting below reads candidate.name.
           candidate = { ...existingCandidate, name: expanded };
+        }
+      }
+
+      // Drive-sourced ATS entry: if this exam's walk-in group is linked to a job, the registrant
+      // enters that job's pipeline. Any registration to a linked group counts (not gated on a live
+      // drive). Stamp-if-absent via PipelineService. Placed once, ahead of the live/create
+      // invitation branching below, so both return branches include it.
+      if (exam.walkInGroupId) {
+        const group = await tx.walkInGroup.findUnique({ where: { id: exam.walkInGroupId }, select: { jobId: true } });
+        if (group?.jobId) {
+          await this.pipeline.upsertDriveEntry(tx, context, group.jobId, candidate.id);
         }
       }
 

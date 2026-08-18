@@ -4,6 +4,7 @@ import { WalkInService } from './walk-in.service';
 import { PrismaService, TenantPrismaService, AuditService, BlobStorageService } from '@exam-platform/shared';
 import { WebhooksService } from '../webhooks/webhooks.service';
 import { EmailService } from '../email/email.service';
+import { PipelineService } from '../pipeline/pipeline.service';
 import { EMAIL_LOGO_SAS_TTL_MS } from '../invitations/invitations.service';
 
 describe('WalkInService', () => {
@@ -14,6 +15,7 @@ describe('WalkInService', () => {
   let webhooksService: { enqueue: jest.Mock };
   let emailService: { send: jest.Mock };
   let blobStorage: { signIfOurs: jest.Mock };
+  let pipelineService: { upsertDriveEntry: jest.Mock };
 
   beforeEach(async () => {
     prisma = { organization: { findUnique: jest.fn() } };
@@ -24,6 +26,7 @@ describe('WalkInService', () => {
     // Passes the value through unchanged by default, matching signIfOurs' real behavior for a
     // null logoPath or an unconfigured storage account.
     blobStorage = { signIfOurs: jest.fn((value) => Promise.resolve(value)) };
+    pipelineService = { upsertDriveEntry: jest.fn().mockResolvedValue(undefined) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         WalkInService,
@@ -33,6 +36,7 @@ describe('WalkInService', () => {
         { provide: WebhooksService, useValue: webhooksService },
         { provide: EmailService, useValue: emailService },
         { provide: BlobStorageService, useValue: blobStorage },
+        { provide: PipelineService, useValue: pipelineService },
       ],
     }).compile();
     service = moduleRef.get(WalkInService);
@@ -229,6 +233,7 @@ describe('WalkInService', () => {
           findFirst: jest.fn().mockResolvedValue(null),
           create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
         },
+        walkInGroup: { findUnique: jest.fn().mockResolvedValue({ jobId: null }) },
         driveSession: {
           findFirst: jest.fn().mockResolvedValue({ id: 'drive-1' }),
         },
@@ -267,6 +272,7 @@ describe('WalkInService', () => {
           findFirst: jest.fn().mockResolvedValue(null),
           create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
         },
+        walkInGroup: { findUnique: jest.fn().mockResolvedValue({ jobId: null }) },
         driveSession: {
           findFirst: jest.fn().mockResolvedValue(null),
         },
@@ -324,6 +330,7 @@ describe('WalkInService', () => {
           findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice Anderson' }),
           update: jest.fn(),
         },
+        walkInGroup: { findUnique: jest.fn().mockResolvedValue({ jobId: null }) },
         driveSession: {
           findFirst: jest.fn().mockResolvedValue({ id: 'drive-1' }),
         },
@@ -357,6 +364,7 @@ describe('WalkInService', () => {
           findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice Anderson' }),
           update: jest.fn(),
         },
+        walkInGroup: { findUnique: jest.fn().mockResolvedValue({ jobId: null }) },
         driveSession: {
           findFirst: jest.fn().mockResolvedValue({ id: 'drive-2' }),
         },
@@ -460,6 +468,113 @@ describe('WalkInService', () => {
       );
       expect(tx.candidate.update).not.toHaveBeenCalled();
       expect(result).toEqual({ token: 'fresh-token' });
+    });
+
+    describe('drive-sourced pipeline entry', () => {
+      it('upserts a pipeline entry with the group\'s jobId + candidate id when the walk-in group is linked to a job', async () => {
+        prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
+        const tx = {
+          exam: {
+            findFirst: jest.fn().mockResolvedValue({
+              id: 'exam-1', status: 'published', walkInEnabled: true, walkInGroupId: 'group-1', schedulingEnabled: false, availabilityWindowEnd: null,
+            }),
+          },
+          candidate: {
+            findFirst: jest.fn().mockResolvedValue(null),
+            create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
+          },
+          walkInGroup: { findUnique: jest.fn().mockResolvedValue({ jobId: 'job-1' }) },
+          driveSession: { findFirst: jest.fn().mockResolvedValue(null) },
+          invitation: {
+            findFirst: jest.fn().mockResolvedValue(null),
+            create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'raw-token' }),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+        await service.register('demo-org', dto);
+
+        expect(tx.walkInGroup.findUnique).toHaveBeenCalledWith({ where: { id: 'group-1' }, select: { jobId: true } });
+        expect(pipelineService.upsertDriveEntry).toHaveBeenCalledWith(tx, expect.objectContaining({ organizationId: 'org-1' }), 'job-1', 'cand-1');
+      });
+
+      it('also fires on the reuse-existing-invitation branch', async () => {
+        prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
+        const tx = {
+          exam: {
+            findFirst: jest.fn().mockResolvedValue({
+              id: 'exam-1', status: 'published', walkInEnabled: true, walkInGroupId: 'group-1', schedulingEnabled: false, availabilityWindowEnd: null,
+            }),
+          },
+          candidate: {
+            findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice Anderson' }),
+            update: jest.fn(),
+          },
+          walkInGroup: { findUnique: jest.fn().mockResolvedValue({ jobId: 'job-1' }) },
+          driveSession: { findFirst: jest.fn().mockResolvedValue(null) },
+          invitation: {
+            findFirst: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'existing-token' }),
+            create: jest.fn(),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+        await service.register('demo-org', dto);
+
+        expect(pipelineService.upsertDriveEntry).toHaveBeenCalledWith(tx, expect.objectContaining({ organizationId: 'org-1' }), 'job-1', 'cand-1');
+      });
+
+      it('does not call upsertDriveEntry when the walk-in group has no linked job', async () => {
+        prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
+        const tx = {
+          exam: {
+            findFirst: jest.fn().mockResolvedValue({
+              id: 'exam-1', status: 'published', walkInEnabled: true, walkInGroupId: 'group-1', schedulingEnabled: false, availabilityWindowEnd: null,
+            }),
+          },
+          candidate: {
+            findFirst: jest.fn().mockResolvedValue(null),
+            create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
+          },
+          walkInGroup: { findUnique: jest.fn().mockResolvedValue({ jobId: null }) },
+          driveSession: { findFirst: jest.fn().mockResolvedValue(null) },
+          invitation: {
+            findFirst: jest.fn().mockResolvedValue(null),
+            create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'raw-token' }),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+        await service.register('demo-org', dto);
+
+        expect(pipelineService.upsertDriveEntry).not.toHaveBeenCalled();
+      });
+
+      it('does not look up the walk-in group or call upsertDriveEntry when the exam has no walk-in group', async () => {
+        prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
+        const tx = {
+          exam: {
+            findFirst: jest.fn().mockResolvedValue({
+              id: 'exam-1', status: 'published', walkInEnabled: true, schedulingEnabled: false, availabilityWindowEnd: null,
+            }),
+          },
+          candidate: {
+            findFirst: jest.fn().mockResolvedValue(null),
+            create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
+          },
+          invitation: {
+            findFirst: jest.fn().mockResolvedValue(null),
+            create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'raw-token' }),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+        // tx.walkInGroup is intentionally absent -- if the service touched it for a group-less
+        // exam, this test would throw rather than silently pass.
+        await service.register('demo-org', dto);
+
+        expect(pipelineService.upsertDriveEntry).not.toHaveBeenCalled();
+      });
     });
   });
 });
