@@ -780,6 +780,7 @@ model PipelineEntry {
   candidate        Candidate          @relation(fields: [candidateId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   feedback         PipelineFeedback[]
   candidateEmails  CandidateEmail[]
+  offers           Offer[]
 
   @@unique([jobId, candidateId])
   @@index([jobId])
@@ -840,6 +841,42 @@ model CandidateEmail {
   @@index([organizationId, candidateId])
   @@index([pipelineEntryId])
   @@map("candidate_emails")
+}
+
+model Offer {
+  id              String        @id @default(uuid()) @db.UniqueIdentifier
+  organizationId  String        @map("organization_id") @db.UniqueIdentifier
+  pipelineEntryId String        @map("pipeline_entry_id") @db.UniqueIdentifier
+  candidateId     String        @map("candidate_id") @db.UniqueIdentifier
+  compensation    String        @db.NVarChar(Max)
+  startDate       DateTime      @map("start_date")
+  expiresAt       DateTime      @map("expires_at")
+  status          String        @default("draft")
+  offerToken      String?       @unique @map("offer_token")
+  pdfPath         String?       @map("pdf_path")
+  letterSubject   String        @map("letter_subject") @db.NVarChar(Max)
+  letterBody      String        @map("letter_body") @db.NVarChar(Max)
+  sentByUserId    String?       @map("sent_by_user_id") @db.UniqueIdentifier
+  sentAt          DateTime?     @map("sent_at")
+  respondedAt     DateTime?     @map("responded_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  pipelineEntry   PipelineEntry @relation(fields: [pipelineEntryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([organizationId, pipelineEntryId])
+  @@index([organizationId, candidateId])
+  @@map("offers")
+}
+
+model OfferTemplate {
+  id             String   @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String   @map("organization_id") @db.UniqueIdentifier
+  subject        String   @db.NVarChar(Max)
+  body           String   @db.NVarChar(Max)
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([organizationId])
+  @@map("offer_templates")
 }
 
 model JobExam {

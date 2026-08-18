@@ -2,11 +2,13 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Modal, Button, StatusBadge, useToast } from '../ui';
+import { Modal, Button, StatusBadge, StatusTone, useToast } from '../ui';
 import { useEntryFeedback, useAddFeedback, useCandidateProfile, useCandidateResumeUrl } from '../../lib/hooks/usePipeline';
 import { useCandidateMessages, useResendMessage } from '../../lib/hooks/useCandidateMessages';
-import { BoardRow, EntryExamResult, CandidateProfile } from '../../lib/types';
+import { useCandidateOffers, useWithdrawOffer } from '../../lib/hooks/useOffers';
+import { BoardRow, EntryExamResult, CandidateProfile, Offer, OfferStatus } from '../../lib/types';
 import { SendMessageModal } from './SendMessageModal';
+import { CreateOfferModal } from './CreateOfferModal';
 
 function parseSkills(parsedSkills: string | null): string[] {
   if (!parsedSkills) return [];
@@ -127,6 +129,76 @@ function MessagesSection({ entryId, candidateId, candidateName }: { entryId: str
       {composing && (
         <SendMessageModal entryId={entryId} candidateId={candidateId} candidateName={candidateName} onClose={() => setComposing(false)} />
       )}
+    </div>
+  );
+}
+
+const OFFER_STATUS_TONE: Record<OfferStatus, StatusTone> = {
+  draft: 'neutral',
+  sent: 'info',
+  accepted: 'success',
+  declined: 'danger',
+  expired: 'warning',
+  withdrawn: 'neutral',
+};
+
+function offerTimestampLabel(offer: Offer): string {
+  if (offer.respondedAt) return `Responded ${new Date(offer.respondedAt).toLocaleString()}`;
+  if (offer.sentAt) return `Sent ${new Date(offer.sentAt).toLocaleString()}`;
+  return `Created ${new Date(offer.createdAt).toLocaleString()}`;
+}
+
+function OffersSection({ entryId, candidateId }: { entryId: string; candidateId: string }) {
+  const { data: offers, isLoading } = useCandidateOffers(candidateId);
+  const withdrawOffer = useWithdrawOffer(candidateId);
+  const { toast } = useToast();
+  const [creating, setCreating] = useState(false);
+
+  function handleWithdraw(offerId: string) {
+    withdrawOffer.mutate(offerId, {
+      onSuccess: () => toast('Offer withdrawn.'),
+      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to withdraw offer.', 'error'),
+    });
+  }
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary">Offers</h3>
+        <Button size="sm" variant="secondary" onClick={() => setCreating(true)}>
+          Create offer
+        </Button>
+      </div>
+      {isLoading ? (
+        <p className="text-sm text-recruiter-text-tertiary">Loading&hellip;</p>
+      ) : (offers ?? []).length === 0 ? (
+        <p className="text-sm text-recruiter-text-tertiary">No offers yet.</p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {(offers ?? []).map((offer) => (
+            <li key={offer.id} className="rounded border border-recruiter-border p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-recruiter-text">{offer.compensation}</span>
+                <StatusBadge tone={OFFER_STATUS_TONE[offer.status]}>{offer.status}</StatusBadge>
+              </div>
+              <div className="mt-1 flex items-center justify-between gap-2 text-xs text-recruiter-text-tertiary">
+                <span>{offerTimestampLabel(offer)}</span>
+                {offer.status === 'sent' && (
+                  <button
+                    type="button"
+                    onClick={() => handleWithdraw(offer.id)}
+                    disabled={withdrawOffer.isPending}
+                    className="font-medium text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Withdraw
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {creating && <CreateOfferModal entryId={entryId} candidateId={candidateId} onClose={() => setCreating(false)} />}
     </div>
   );
 }
@@ -253,6 +325,8 @@ export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: B
         </div>
 
         <MessagesSection entryId={row.entryId} candidateId={row.candidateId} candidateName={row.candidateName} />
+
+        <OffersSection entryId={row.entryId} candidateId={row.candidateId} />
       </div>
     </Modal>
   );

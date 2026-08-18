@@ -665,6 +665,7 @@ describe('CandidatesService', () => {
         faceEnrolments?: { referenceImagePath: string | null }[];
         faceEnrolment?: { deleteMany?: jest.Mock };
         candidateProfile?: { resumePath: string | null } | null;
+        offers?: { pdfPath: string | null }[];
       } = {},
     ) {
       return {
@@ -699,6 +700,10 @@ describe('CandidatesService', () => {
           updateMany: jest.fn(),
         },
         candidateEmail: { updateMany: jest.fn() },
+        offer: {
+          findMany: jest.fn().mockResolvedValue(overrides.offers ?? []),
+          updateMany: jest.fn(),
+        },
       };
     }
     // Alias matching the brief's naming -- same helper, used by the face-data tests below.
@@ -840,6 +845,29 @@ describe('CandidatesService', () => {
       });
       expect(blobStorage.deleteByUrl).toHaveBeenCalledWith('https://blob.test/container/resumes/cand-1.pdf');
       expect(blobStorage.deleteByUrl).toHaveBeenCalledTimes(2);
+    });
+
+    it("collects and redacts the candidate's offer letters, deleting the PDF blobs after the transaction commits", async () => {
+      const tx = makeEraseTx({
+        offers: [
+          { pdfPath: 'https://blob.test/container/offers/org-1/tok-1.pdf' },
+          { pdfPath: null },
+        ],
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.erase(context, 'user-1', 'cand-1');
+
+      expect(tx.offer.findMany).toHaveBeenCalledWith({
+        where: { candidateId: 'cand-1', organizationId: 'org-1' },
+        select: { pdfPath: true },
+      });
+      expect(tx.offer.updateMany).toHaveBeenCalledWith({
+        where: { candidateId: 'cand-1', organizationId: 'org-1' },
+        data: { compensation: 'Redacted', letterSubject: 'Redacted', letterBody: 'Redacted', pdfPath: null },
+      });
+      expect(blobStorage.deleteByUrl).toHaveBeenCalledWith('https://blob.test/container/offers/org-1/tok-1.pdf');
+      expect(blobStorage.deleteByUrl).toHaveBeenCalledTimes(1);
     });
 
     it('redacts the parsed-résumé PII columns on candidate_profiles, since the FK cascade never fires on an erase (it scrubs, not deletes)', async () => {

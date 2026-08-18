@@ -474,6 +474,16 @@ export class CandidatesService {
       const profile = await tx.candidateProfile.findFirst({ where: { candidateId }, select: { resumePath: true } });
       if (profile?.resumePath) evidenceUrls.push(profile.resumePath);
 
+      // Same rule again: read each offer letter's PDF blob path before pdfPath is nulled below,
+      // and feed it into the same best-effort delete loop as the other evidence.
+      const offers = await tx.offer.findMany({
+        where: { candidateId, organizationId: context.organizationId as string },
+        select: { pdfPath: true },
+      });
+      for (const offer of offers) {
+        if (offer.pdfPath) evidenceUrls.push(offer.pdfPath);
+      }
+
       const now = new Date();
       await tx.candidate.update({
         where: { id: candidateId },
@@ -507,6 +517,10 @@ export class CandidatesService {
       await tx.candidateEmail.updateMany({
         where: { candidateId, organizationId: context.organizationId as string },
         data: { toEmail: 'erased@redacted.invalid', subject: 'Redacted', renderedBody: 'Redacted', errorDetail: null },
+      });
+      await tx.offer.updateMany({
+        where: { candidateId, organizationId: context.organizationId as string },
+        data: { compensation: 'Redacted', letterSubject: 'Redacted', letterBody: 'Redacted', pdfPath: null },
       });
       await tx.candidateRefreshToken.deleteMany({ where: { invitationId: { in: invitationIds } } });
       await tx.invitation.updateMany({
