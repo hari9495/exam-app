@@ -150,6 +150,30 @@ describe('EmailService', () => {
     });
   });
 
+  describe('attachments', () => {
+    afterEach(() => {
+      delete process.env.ALLOW_UNDELIVERABLE_EMAIL;
+    });
+
+    it('passes attachments through to sendMail when provided', async () => {
+      process.env.ALLOW_UNDELIVERABLE_EMAIL = 'true';
+      const attachments = [{ filename: 'offer.pdf', content: Buffer.from('x') }];
+
+      await service.send({ to: 'a@b.com', subject: 'Test', html: '<p>Test</p>', attachments });
+
+      expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({ attachments }));
+    });
+
+    it('omits the attachments key from sendMail when none are given', async () => {
+      process.env.ALLOW_UNDELIVERABLE_EMAIL = 'true';
+
+      await service.send({ to: 'a@b.com', subject: 'Test', html: '<p>Test</p>' });
+
+      const callArgs = mockSendMail.mock.calls[0][0] as Record<string, unknown>;
+      expect(callArgs).not.toHaveProperty('attachments');
+    });
+  });
+
   it('caches the platform transporter across multiple sends (built only once)', async () => {
     process.env.ALLOW_UNDELIVERABLE_EMAIL = 'true';
     try {

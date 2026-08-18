@@ -9,6 +9,7 @@ export interface SendEmailInput {
   subject: string;
   html: string;
   organizationId?: string;
+  attachments?: { filename: string; content: Buffer }[];
 }
 
 export interface SendEmailResult {
@@ -94,6 +95,7 @@ export class EmailService {
         to: input.to,
         subject: input.subject,
         html: input.html,
+        ...(input.attachments ? { attachments: input.attachments } : {}),
       });
       const previewUrl = nodemailer.getTestMessageUrl(info) || undefined;
       if (previewUrl) {
