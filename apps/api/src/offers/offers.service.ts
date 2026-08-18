@@ -332,10 +332,15 @@ export class OffersService {
       });
       if (notify.recruiterEmail) {
         const verb = action === 'accept' ? 'accepted' : 'declined';
+        const html = buildCandidateEmailHtml({
+          logoUrl: null,
+          orgName: null,
+          bodyText: `Candidate ${notify.candidateName} has ${verb} the offer for ${notify.jobTitle}.`,
+        });
         await this.emailService.send({
           to: notify.recruiterEmail,
           subject: `Offer ${verb}: ${notify.candidateName}`,
-          html: `<p>Candidate ${notify.candidateName} has ${verb} the offer for ${notify.jobTitle}.</p>`,
+          html,
           organizationId: offer.organizationId,
         });
       }

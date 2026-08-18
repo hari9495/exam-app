@@ -413,6 +413,23 @@ describe('OffersService', () => {
       }
     });
 
+    it('escapes an HTML-injecting candidate name in the recruiter-notify email', async () => {
+      tx.offer.findUnique.mockResolvedValue(baseOffer());
+      tx.offer.updateMany.mockResolvedValue({ count: 1 });
+      tx.pipelineEntry.findUnique.mockResolvedValue({
+        job: { title: 'Backend Engineer' },
+        candidate: { name: '<img src=x onerror=alert(1)><script>alert(1)</script>' },
+      });
+
+      await service.respondPublic('offer-token-1', 'accept');
+
+      const html = email.send.mock.calls[0][0].html as string;
+      expect(html).not.toContain('<script>');
+      expect(html).not.toContain('<img');
+      expect(html).toContain('&lt;script&gt;');
+      expect(html).toContain('&lt;img');
+    });
+
     it('declines a sent, unexpired offer symmetrically', async () => {
       tx.offer.findUnique.mockResolvedValue(baseOffer());
       tx.offer.updateMany.mockResolvedValue({ count: 1 });
