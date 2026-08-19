@@ -14,6 +14,18 @@ describe('CollapsibleSection', () => {
     expect(screen.getByLabelText('Title')).toBeInTheDocument();
   });
 
+  it('sits on the paper surface with a rule hairline and no drop-shadow', () => {
+    render(
+      <CollapsibleSection title="Basic details">
+        <input aria-label="Title" />
+      </CollapsibleSection>,
+    );
+    const container = screen.getByRole('button', { name: 'Basic details' }).parentElement as HTMLElement;
+    expect(container.className).toContain('border-rule');
+    expect(container.className).toContain('bg-paper');
+    expect(container.className).not.toContain('shadow');
+  });
+
   it('hides its children when defaultOpen is false', () => {
     render(
       <CollapsibleSection title="Basic details" defaultOpen={false}>

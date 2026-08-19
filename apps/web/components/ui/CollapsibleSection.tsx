@@ -22,18 +22,18 @@ interface CollapsibleSectionProps {
 export function CollapsibleSection({ title, children, defaultOpen = true, locked = false, alwaysEditable }: CollapsibleSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="overflow-hidden rounded-lg border border-recruiter-border bg-white shadow-sm">
+    <div className="overflow-hidden rounded-lg border border-rule bg-paper">
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
         aria-expanded={open}
-        className="flex w-full items-center gap-2 bg-recruiter-bg-subtle px-4 py-2.5 text-left"
+        className="flex w-full items-center gap-2 bg-ground px-4 py-2.5 text-left"
       >
         <ChevronDown
           size={16}
-          className={clsx('shrink-0 text-recruiter-text-secondary transition-transform', !open && '-rotate-90')}
+          className={clsx('shrink-0 text-muted transition-transform', !open && '-rotate-90')}
         />
-        <h2 className="text-sm font-semibold text-recruiter-text">{title}</h2>
+        <h2 className="font-body text-sm font-semibold text-ink">{title}</h2>
       </button>
       {open && (
         <div className="grid grid-cols-1 gap-x-6 gap-y-4 p-4 sm:grid-cols-2">

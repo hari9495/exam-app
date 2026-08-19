@@ -26,7 +26,7 @@ export function CardGrid<T>({ items, cardKey, renderCard, emptyMessage = 'No res
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   if (items.length === 0) {
-    return <p className="py-8 text-center text-sm text-recruiter-text-tertiary">{emptyMessage}</p>;
+    return <p className="py-8 text-center font-body text-sm text-muted">{emptyMessage}</p>;
   }
 
   const activeSort = sortOptions?.find((option) => option.key === sortKey);
@@ -57,7 +57,7 @@ export function CardGrid<T>({ items, cardKey, renderCard, emptyMessage = 'No res
             aria-label={sortDir === 'asc' ? 'Sort ascending' : 'Sort descending'}
             disabled={!activeSort}
             onClick={() => setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'))}
-            className="rounded border border-recruiter-border p-2 text-recruiter-text-tertiary transition-colors hover:bg-recruiter-bg-subtle disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-lg border border-rule p-2 text-muted transition-colors hover:bg-ground disabled:cursor-not-allowed disabled:opacity-40"
           >
             {sortDir === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
           </button>
@@ -71,7 +71,9 @@ export function CardGrid<T>({ items, cardKey, renderCard, emptyMessage = 'No res
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: Math.min(index, 8) * 0.04, ease: 'easeOut' }}
             whileHover={{ y: -3 }}
-            className="group rounded-2xl border border-recruiter-border bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
+            // Depth without a soft shadow: the whileHover lift + a border that warms to primary
+            // on hover. Matches Card's hairline-on-paper language.
+            className="group rounded-lg border border-rule bg-paper p-4 transition-colors hover:border-primary/30"
           >
             {renderCard(item)}
           </motion.div>

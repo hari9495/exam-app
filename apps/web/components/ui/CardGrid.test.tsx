@@ -16,6 +16,15 @@ describe('CardGrid', () => {
     expect(screen.getByText('Beta')).toBeInTheDocument();
   });
 
+  it('renders cards on a hairline surface, not a soft-shadow card', () => {
+    const items: Item[] = [{ id: '1', name: 'Alpha' }];
+    render(<CardGrid items={items} cardKey={(item) => item.id} renderCard={(item) => <span>{item.name}</span>} />);
+    const card = screen.getByText('Alpha').parentElement as HTMLElement;
+    expect(card.className).toContain('border-rule');
+    expect(card.className).toContain('bg-paper');
+    expect(card.className).not.toContain('shadow');
+  });
+
   it('shows the empty message when there are no items', () => {
     render(<CardGrid items={[]} cardKey={(item: Item) => item.id} renderCard={(item: Item) => <span>{item.name}</span>} emptyMessage="No results yet." />);
 
