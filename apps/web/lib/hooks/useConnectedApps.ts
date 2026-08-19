@@ -59,9 +59,11 @@ export function useDeleteConnectedApp() {
 
 export function useTestConnectedApp() {
   const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string): Promise<{ queued: true }> =>
       apiFetch(`/organizations/integrations/connected-apps/${id}/test`, { method: 'POST' }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['connected-apps'] }),
   });
 }
 

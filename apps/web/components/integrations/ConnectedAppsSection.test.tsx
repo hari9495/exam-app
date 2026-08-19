@@ -63,6 +63,12 @@ describe('ConnectedAppsSection', () => {
     expect(screen.getByText('Offer accepted')).toBeInTheDocument();
   });
 
+  it('renders the urlHint for each row', () => {
+    renderSection();
+
+    expect(screen.getAllByText('****')).toHaveLength(2);
+  });
+
   it('opens the Add modal with all 8 event checkboxes', async () => {
     renderSection();
 

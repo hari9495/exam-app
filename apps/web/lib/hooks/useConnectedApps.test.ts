@@ -1,5 +1,5 @@
 import { createElement, ReactNode } from 'react';
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryProvider } from '../query-provider';
 import { AuthProvider } from '../auth-context';
 import {
@@ -115,6 +115,28 @@ describe('useConnectedApps hooks', () => {
       ([u, opts]) => String(u).endsWith('/organizations/integrations/connected-apps/ca-1/test') && (opts as RequestInit)?.method === 'POST',
     );
     expect(call).toBeDefined();
+  });
+
+  it('useTestConnectedApp invalidates the connected-apps list on success', async () => {
+    const fetchMock = mockFetch((path) => (path.endsWith('/organizations/integrations/connected-apps') ? [ROW] : { queued: true }));
+
+    const { result } = renderHook(
+      () => ({ list: useConnectedApps(), test: useTestConnectedApp() }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.list.data?.[0]?.label).toBe('Recruiting channel'));
+    const listCallsBefore = fetchMock.mock.calls.filter(([u]) => String(u).endsWith('/organizations/integrations/connected-apps')).length;
+
+    act(() => {
+      result.current.test.mutate('ca-1');
+    });
+
+    await waitFor(() => expect(result.current.test.isSuccess).toBe(true));
+    await waitFor(() => {
+      const listCallsAfter = fetchMock.mock.calls.filter(([u]) => String(u).endsWith('/organizations/integrations/connected-apps')).length;
+      expect(listCallsAfter).toBeGreaterThan(listCallsBefore);
+    });
   });
 
   it('useConnectedAppDeliveries GETs /organizations/integrations/connected-apps/:id/deliveries', async () => {

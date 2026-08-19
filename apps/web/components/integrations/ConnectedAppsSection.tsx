@@ -139,7 +139,10 @@ export function ConnectedAppsSection() {
   }
 
   function handleToggleStatus(row: ConnectedAppRow) {
-    updateApp.mutate({ id: row.id, status: row.status === 'active' ? 'disabled' : 'active' });
+    updateApp.mutate(
+      { id: row.id, status: row.status === 'active' ? 'disabled' : 'active' },
+      { onError: (err) => toast(err instanceof Error ? err.message : 'Failed to update connected app') },
+    );
   }
 
   function handleTest(row: ConnectedAppRow) {
@@ -151,12 +154,25 @@ export function ConnectedAppsSection() {
 
   function handleRemove(row: ConnectedAppRow) {
     if (!confirm(`Remove ${row.label}? This cannot be undone.`)) return;
-    deleteApp.mutate(row.id, { onSuccess: () => toast(`Removed ${row.label}.`) });
+    deleteApp.mutate(row.id, {
+      onSuccess: () => toast(`Removed ${row.label}.`),
+      onError: (err) => toast(err instanceof Error ? err.message : 'Failed to remove connected app'),
+    });
   }
 
   const columns: Column<ConnectedAppRow>[] = [
     { key: 'type', header: 'Type', render: (row) => <Badge>{APP_TYPE_LABEL[row.type]}</Badge>, sortValue: (row) => row.type },
-    { key: 'label', header: 'Name', render: (row) => row.label, sortValue: (row) => row.label },
+    {
+      key: 'label',
+      header: 'Name',
+      render: (row) => (
+        <div className="flex flex-col">
+          <span>{row.label}</span>
+          <span className="text-xs text-muted">{row.urlHint}</span>
+        </div>
+      ),
+      sortValue: (row) => row.label,
+    },
     {
       key: 'events',
       header: 'Events',
