@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TenantPrismaService, AiApiKeyResolverService, AiNotConfiguredError, AI_NOT_CONFIGURED_STATUS } from '@exam-platform/shared';
+import { QuotaService } from '../billing/quota.service';
 import { ProctoringRiskClient } from './proctoring-risk.client';
 
 const CLEAN_SUMMARY = 'No proctoring events were recorded during this attempt.';
@@ -12,6 +13,7 @@ export class AttemptAnalysisService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly proctoringRiskClient: ProctoringRiskClient,
     private readonly aiApiKeyResolver: AiApiKeyResolverService,
+    private readonly quota: QuotaService,
   ) {}
 
   async analyze(attemptId: string): Promise<void> {
@@ -55,6 +57,7 @@ export class AttemptAnalysisService {
         }));
 
         try {
+          await this.quota.assertAiCredits({ organizationId, isSuperAdmin: false });
           // A MISSING key is recorded distinctly from a provider error -- see attempt-insight
           // for the same guard and the reason (audit finding F2).
           const aiProvider = await this.aiApiKeyResolver.resolve(organizationId).catch((error) => {
@@ -73,13 +76,18 @@ export class AttemptAnalysisService {
         }
       }
 
-      await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
-        tx.proctoringAnalysis.upsert({
+      await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+        await tx.proctoringAnalysis.upsert({
           where: { attemptId },
           create: { attemptId, ...result },
           update: { ...result, analyzedAt: new Date() },
-        }),
-      );
+        });
+        if (result.status === 'completed') {
+          await tx.aiCreditUsage.create({
+            data: { organizationId, source: 'proctoring_analysis', credits: 1, sourceId: attemptId },
+          });
+        }
+      });
     } catch (error) {
       this.logger.error(`Proctoring analysis could not run for attempt ${attemptId}`, error as Error);
     }
