@@ -29,6 +29,7 @@ model Organization {
   primaryColor           String?           @map("primary_color")
   accentColor            String?           @map("accent_color")
   textColor              String?           @map("text_color")
+  loginWatermarkEnabled  Boolean           @default(false) @map("login_watermark_enabled")
   smtpHost               String?           @map("smtp_host")
   smtpPort               Int?              @map("smtp_port")
   smtpUser               String?           @map("smtp_user")

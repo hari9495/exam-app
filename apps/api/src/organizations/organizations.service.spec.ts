@@ -788,6 +788,29 @@ describe('OrganizationsService', () => {
       });
       expect(result.textColor).toBe('#000000');
     });
+
+    it('persists and returns the loginWatermarkEnabled flag', async () => {
+      prisma.organization.update.mockResolvedValue({
+        id: 'org-1',
+        name: 'Acme Corp',
+        logoPath: null,
+        primaryColor: null,
+        accentColor: null,
+        loginWatermarkEnabled: true,
+      });
+
+      const result = await service.updateBrandingColors(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        'user-1',
+        { loginWatermarkEnabled: true },
+      );
+
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { loginWatermarkEnabled: true },
+      });
+      expect(result.loginWatermarkEnabled).toBe(true);
+    });
   });
 
   describe('uploadLogo', () => {

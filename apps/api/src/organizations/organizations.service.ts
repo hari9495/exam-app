@@ -29,6 +29,10 @@ export interface BrandingResponse {
   primaryColor: string | null;
   accentColor: string | null;
   textColor: string | null;
+  // When true (and a logo is set), the login page renders the org logo as a tone-on-tone
+  // watermark on the navy panel. Exposed on the public branding endpoint too -- it's just a
+  // boolean, safe pre-login.
+  loginWatermarkEnabled: boolean;
 }
 
 // The platform-admin list is the ONLY consumer of the organizations table that
@@ -378,6 +382,7 @@ export class OrganizationsService {
         ...(dto.primaryColor !== undefined && { primaryColor: dto.primaryColor }),
         ...(dto.accentColor !== undefined && { accentColor: dto.accentColor }),
         ...(dto.textColor !== undefined && { textColor: dto.textColor }),
+        ...(dto.loginWatermarkEnabled !== undefined && { loginWatermarkEnabled: dto.loginWatermarkEnabled }),
       },
     });
     await this.audit.record(context, {
@@ -718,7 +723,7 @@ export class OrganizationsService {
   // Signing on the PUBLIC by-slug endpoint is intended: a login page has to show
   // the organisation's logo before anyone has authenticated.
   private async toBrandingResponse(
-    org: Pick<Organization, 'name' | 'logoPath' | 'primaryColor' | 'accentColor' | 'textColor'>,
+    org: Pick<Organization, 'name' | 'logoPath' | 'primaryColor' | 'accentColor' | 'textColor' | 'loginWatermarkEnabled'>,
   ): Promise<BrandingResponse> {
     return {
       name: org.name,
@@ -726,6 +731,7 @@ export class OrganizationsService {
       primaryColor: org.primaryColor,
       accentColor: org.accentColor,
       textColor: org.textColor,
+      loginWatermarkEnabled: org.loginWatermarkEnabled,
     };
   }
 }
