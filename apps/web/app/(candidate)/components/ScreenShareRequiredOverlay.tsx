@@ -10,11 +10,11 @@ interface ScreenShareRequiredOverlayProps {
 export function ScreenShareRequiredOverlay({ error, onShare, pending }: ScreenShareRequiredOverlayProps) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-candidate-bg p-4">
-      <div className="w-full max-w-sm rounded-lg bg-white p-6 text-center shadow-lg">
+      <div className="w-full max-w-sm rounded-lg border border-candidate-border bg-white p-6 text-center">
         <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-candidate-review-bg text-candidate-review">
           <ScreenShare className="h-5 w-5" aria-hidden="true" />
         </div>
-        <h1 className="mb-1 text-base font-bold text-candidate-text">Screen Sharing Required</h1>
+        <h1 className="mb-1 font-display text-base font-bold text-candidate-text">Screen Sharing Required</h1>
         <p className="mb-3 text-sm text-candidate-text-secondary">
           This exam records your screen for integrity review. Please share your entire screen to continue.
         </p>

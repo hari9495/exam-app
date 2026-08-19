@@ -111,7 +111,7 @@ export function FaceEnrolmentStep({ policy, onSettled }: Props) {
   if (phase === 'consent') {
     return (
       <div className="rounded-lg border border-candidate-border p-4 text-sm">
-        <h3 className="mb-2 font-medium">Photo check before you start</h3>
+        <h3 className="mb-2 font-display font-medium">Photo check before you start</h3>
         <p>
           We&apos;ll take a photo of your face and use it only to check that it&apos;s still you
           during this exam. It&apos;s kept for 90 days and deleted when your data is deleted.

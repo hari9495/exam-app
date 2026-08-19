@@ -65,8 +65,8 @@ export function QuestionNavigator({ sections, answers, currentIndex, onSelect }:
   }, [currentGroupIndex]);
 
   return (
-    <div className="rounded-lg border border-candidate-border bg-white p-4 shadow-sm">
-      <p className="mb-3 text-sm font-bold uppercase tracking-wide text-candidate-text-tertiary">Questions</p>
+    <div className="rounded-lg border border-candidate-border bg-white p-4">
+      <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-candidate-text-tertiary">Questions</p>
 
       <div className="flex flex-col gap-4">
         {groups.map((group, groupIndex) => {

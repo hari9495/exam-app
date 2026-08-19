@@ -446,11 +446,11 @@ export default function CandidateExamPage() {
           (isPaused || isBlocked) && 'pointer-events-none blur-sm select-none',
         )}
       >
-      <div className="mb-4 shrink-0 rounded-lg border border-candidate-border bg-white px-4 py-3 shadow-sm">
+      <div className="mb-4 shrink-0 rounded-lg border border-candidate-border bg-white px-4 py-3">
         <div className="mb-2 flex items-center justify-between">
           <button
             onClick={() => setNavigatorOpen((open) => !open)}
-            className="rounded-full bg-candidate-primary-light px-3 py-1 text-xs font-bold text-candidate-primary lg:hidden"
+            className="rounded bg-candidate-primary-light px-3 py-1 text-xs font-bold text-candidate-primary lg:hidden"
           >
             <span className="inline-flex items-center gap-1">
               Q{currentIndex + 1}/{questions.length}
@@ -461,7 +461,7 @@ export default function CandidateExamPage() {
               lg:hidden, so this block is the row's only child and justify-between leaves it
               at the start; on mobile the button takes the left slot and this sits opposite. */}
           <div className="flex flex-col items-start text-left">
-            <span className="hidden text-sm font-bold text-candidate-text lg:inline">{attemptState.exam.title}</span>
+            <span className="hidden font-display text-sm font-bold text-candidate-text lg:inline">{attemptState.exam.title}</span>
             <span className="text-xs text-candidate-text-tertiary">{attemptState.candidateName}</span>
           </div>
         </div>
@@ -521,21 +521,21 @@ export default function CandidateExamPage() {
       ) : null}
 
       <div className="flex min-h-0 flex-1 gap-4 overflow-hidden xl:gap-6">
-        <div className="flex-1 overflow-y-auto rounded-lg bg-white p-4 shadow-sm">
+        <div className="flex-1 overflow-y-auto rounded-lg border border-candidate-border bg-white p-4">
           <div className="mb-3 flex items-start justify-between gap-3">
             <div className="flex min-w-0 flex-col gap-1.5">
               {/* Where the candidate is in the paper. The word "Section" and the position are
                   what carry the meaning for a first-timer -- the title itself is whatever the
                   recruiter typed ("test", "S1"), so it is shown as a suffix, not on its own.
                   The position is only added when there is more than one section to move between. */}
-              <span className="w-fit max-w-full truncate rounded-md bg-candidate-primary-light px-2.5 py-1 text-xs font-semibold text-candidate-primary">
+              <span className="w-fit max-w-full truncate rounded-md bg-candidate-primary-light px-2.5 py-1 font-display text-xs font-semibold text-candidate-primary">
                 Section{attemptState.sections.length > 1 ? ` ${question.sectionIndex + 1} of ${attemptState.sections.length}` : ''}
                 {question.sectionTitle ? `: ${question.sectionTitle}` : ''}
                 {question.sectionRequiredCount != null
                   ? ` — answer any ${question.sectionRequiredCount} of ${question.sectionQuestionCount}`
                   : ''}
               </span>
-              <span className="text-xs font-semibold uppercase tracking-wide text-candidate-text-tertiary">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-candidate-text-tertiary">
                 Question {currentIndex + 1} of {questions.length} ·{' '}
                 {question.type === 'code' ? 'Code' : question.type === 'multi_mcq' ? 'Multiple choice' : 'Single choice'} ·{' '}
                 {question.marks} marks
@@ -548,7 +548,7 @@ export default function CandidateExamPage() {
               </span>
             </button>
           </div>
-          <p className="mb-4 text-sm text-candidate-text">{question.text}</p>
+          <p className="mb-4 font-display text-sm text-candidate-text">{question.text}</p>
           {question.imageUrl ? (
             <img src={question.imageUrl} alt="Question illustration" className="mb-4 max-h-64 rounded-lg object-contain" />
           ) : null}
@@ -592,7 +592,7 @@ export default function CandidateExamPage() {
                 </div>
               ) : (
                 <>
-                  <div className="overflow-hidden rounded-lg border border-[#2D2D2D] shadow-sm">
+                  <div className="overflow-hidden rounded-lg border border-[#2D2D2D]">
                     <div className="flex items-center justify-between bg-[#1E1E1E] px-3 py-2">
                       <span className="inline-flex items-center gap-1.5" aria-hidden="true">
                         <span className="h-2.5 w-2.5 rounded-full bg-[#FF5F56]" />

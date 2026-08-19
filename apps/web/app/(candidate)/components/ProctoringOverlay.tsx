@@ -37,11 +37,11 @@ export function ProctoringWarningOverlay({ strike, strikeLimit, reason, onContin
   const { heading, body } = (reason && MESSAGES_BY_REASON[reason]) || DEFAULT_MESSAGE;
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-candidate-text/40 p-4">
-      <div className="w-full max-w-sm rounded-lg bg-white p-6 text-center shadow-lg">
+      <div className="w-full max-w-sm rounded-lg border border-candidate-border bg-white p-6 text-center">
         <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-candidate-review-bg text-candidate-review">
           <AlertTriangle className="h-5 w-5" aria-hidden="true" />
         </div>
-        <h1 className="mb-1 text-base font-bold text-candidate-text">{heading}</h1>
+        <h1 className="mb-1 font-display text-base font-bold text-candidate-text">{heading}</h1>
         <p className="mb-4 text-sm text-candidate-text-secondary">{body}</p>
         <p className="mb-4 text-xs text-candidate-text-faint">Warning {strike}/{strikeLimit}</p>
         <CandidateButton onClick={onContinue} disabled={continuePending}>
@@ -56,11 +56,11 @@ export function ProctoringWarningOverlay({ strike, strikeLimit, reason, onContin
 export function ProctoringBlockOverlay() {
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-candidate-text/55 p-4">
-      <div className="w-full max-w-sm rounded-lg bg-white p-6 text-center shadow-lg">
+      <div className="w-full max-w-sm rounded-lg border border-candidate-border bg-white p-6 text-center">
         <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-candidate-danger-bg text-candidate-danger">
           <ShieldAlert className="h-5 w-5" aria-hidden="true" />
         </div>
-        <h1 className="mb-1 text-base font-bold text-candidate-text">Exam Paused</h1>
+        <h1 className="mb-1 font-display text-base font-bold text-candidate-text">Exam Paused</h1>
         <p className="mb-3 text-sm text-candidate-text-secondary">
           Your exam has been paused after repeated policy violations. A recruiter needs to unblock your session before you
           can continue.

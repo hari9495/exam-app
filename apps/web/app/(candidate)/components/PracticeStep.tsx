@@ -11,9 +11,9 @@ export function PracticeStep({ onDone }: { onDone: () => void }) {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
 
   return (
-    <div className="rounded-lg border border-candidate-border bg-white p-6 shadow-sm">
+    <div className="rounded-lg border border-candidate-border bg-white p-6">
       <p className="mb-1 text-xs font-bold uppercase tracking-wide text-candidate-primary">Practice</p>
-      <h1 className="mb-3 text-xl font-bold text-candidate-text">Try The Interface Before You Start</h1>
+      <h1 className="mb-3 font-display text-xl font-bold text-candidate-text">Try The Interface Before You Start</h1>
       <p className="mb-4 text-sm text-candidate-text-secondary">
         These two questions aren&apos;t scored or saved — they&apos;re just here so the interface feels familiar
         once the timed exam begins.
@@ -45,7 +45,7 @@ export function PracticeStep({ onDone }: { onDone: () => void }) {
         {/* Matches the real exam's code-question chrome (traffic lights, language badge, dark
             theme) -- this step exists so the interface "feels familiar" once the timed exam
             starts, which wasn't true while this box looked nothing like the real one. */}
-        <div className="overflow-hidden rounded-lg border border-[#2D2D2D] shadow-sm">
+        <div className="overflow-hidden rounded-lg border border-[#2D2D2D]">
           <div className="flex items-center justify-between bg-[#1E1E1E] px-3 py-2">
             <span className="inline-flex items-center gap-1.5" aria-hidden="true">
               <span className="h-2.5 w-2.5 rounded-full bg-[#FF5F56]" />

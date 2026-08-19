@@ -116,7 +116,7 @@ export default function ApplyPage() {
 
   return (
     <div className="mx-auto flex flex-1 max-w-xl flex-col justify-center gap-6 p-4 sm:p-8">
-      <div className="rounded-lg border border-candidate-border bg-white p-6 shadow-sm">
+      <div className="rounded-lg border border-candidate-border bg-white p-6">
         <div className="mb-4 flex items-center gap-3">
           {job.orgLogo ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -124,7 +124,7 @@ export default function ApplyPage() {
           ) : null}
           <p className="text-sm font-semibold text-candidate-text-secondary">{job.orgName}</p>
         </div>
-        <h1 className="mb-2 text-xl font-bold text-candidate-text">{job.jobTitle}</h1>
+        <h1 className="mb-2 font-display text-xl font-bold text-candidate-text">{job.jobTitle}</h1>
         {job.jobDescription ? (
           <p className="mb-6 whitespace-pre-wrap text-sm text-candidate-text-secondary">{job.jobDescription}</p>
         ) : null}
