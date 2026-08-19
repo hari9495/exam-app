@@ -12,6 +12,7 @@ import { PrudentMark } from '../../components/PrudentMark';
 
 const NAV_LINKS = [
   { href: '/organizations', label: 'Organizations' },
+  { href: '/plans', label: 'Plans' },
   { href: '/platform-admins', label: 'Platform Admins' },
   { href: '/all-users', label: 'All Users' },
 ];

@@ -631,6 +631,19 @@ export interface OrgUsage {
   proctoringMinutes: DimensionUsage;
 }
 
+// Mirrors apps/api/src/billing/dto/plan.dto.ts UpsertPlanDto + the Prisma Plan model, as returned
+// by GET/POST/PATCH /platform/plans (super-admin plan catalog).
+export interface Plan {
+  id: string;
+  name: string;
+  seatLimit: number;
+  candidateLimit: number;
+  aiCreditLimit: number;
+  proctoringMinutesLimit: number;
+  priceLabel: string | null;
+  isPublic: boolean;
+}
+
 export interface SsoSettingsResponse {
   samlEnabled: boolean;
   samlIdpEntityId: string | null;

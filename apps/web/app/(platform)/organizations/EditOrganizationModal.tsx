@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useUpdateOrganization } from '../../../lib/hooks/useOrganizations';
+import { usePlans, useAssignPlan } from '../../../lib/hooks/usePlans';
 import { Modal, Input, Select, Button, useToast } from '../../../components/ui';
 import { Organization } from '../../../lib/types';
 
@@ -18,10 +19,14 @@ export function EditOrganizationModal({
   onClose: () => void;
 }) {
   const updateOrganization = useUpdateOrganization();
+  const { data: plans } = usePlans();
+  const assignPlan = useAssignPlan();
   const { toast } = useToast();
   const [name, setName] = useState(organization?.name ?? '');
   const [region, setRegion] = useState(organization?.region ?? 'us');
   const [error, setError] = useState<string | null>(null);
+  const [planId, setPlanId] = useState('');
+  const [planError, setPlanError] = useState<string | null>(null);
 
   // The modal stays mounted across row selections, so the fields must re-seed
   // when a different organization is chosen. Without this the second row opened
@@ -31,7 +36,25 @@ export function EditOrganizationModal({
     setName(organization?.name ?? '');
     setRegion(organization?.region ?? 'us');
     setError(null);
+    // The organizations list doesn't carry the org's current plan, so this can't be
+    // pre-seeded from `organization` -- it starts blank and the operator picks one.
+    setPlanId('');
+    setPlanError(null);
   }, [organization]);
+
+  const planOptions = useMemo(() => (plans ?? []).map((plan) => ({ value: plan.id, label: plan.name })), [plans]);
+
+  function handleAssignPlan() {
+    if (!organization || !planId) return;
+    setPlanError(null);
+    assignPlan.mutate(
+      { id: organization.id, planId },
+      {
+        onSuccess: () => toast(`Assigned plan to ${organization.name}.`),
+        onError: (err) => setPlanError(err instanceof Error ? err.message : 'Failed to assign plan'),
+      },
+    );
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -72,6 +95,24 @@ export function EditOrganizationModal({
               {error}
             </p>
           )}
+
+          <div className="mt-4 flex flex-col gap-3 border-t border-rule pt-4">
+            <Select label="Plan" value={planId} onChange={setPlanId} options={planOptions} />
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleAssignPlan}
+              disabled={!planId}
+              loading={assignPlan.isPending}
+            >
+              Assign plan
+            </Button>
+            {planError && (
+              <p role="alert" className="text-sm text-status-danger">
+                {planError}
+              </p>
+            )}
+          </div>
         </>
       )}
     </Modal>

@@ -12,6 +12,7 @@ import { useDocumentBranding } from '../../lib/hooks/useDocumentBranding';
 import { useCurrentUser } from '../../lib/hooks/useCurrentUser';
 import { StaffSidebar } from '../../components/StaffSidebar';
 import { StaffTopBar } from '../../components/StaffTopBar';
+import { OverLimitBanner } from '../../components/billing/OverLimitBanner';
 
 
 // A super_admin acting into an org sees the complete feature nav (SUPER_ADMIN_FULL_NAV), not this
@@ -91,6 +92,7 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
       />
       <div className="flex flex-1 flex-col">
         <StaffTopBar displayName={displayName} initials={initials} roleLabel={roleLabel} avatarUrl={currentUser?.avatarUrl} onLogout={handleLogout} />
+        <OverLimitBanner />
         <main className="flex-1 p-8">{children}</main>
       </div>
     </div>
