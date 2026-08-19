@@ -149,7 +149,7 @@ export function NumberFilterHeader({
               {OPERATOR_LABEL[operator]}
             </DropdownMenuItem>
           ))}
-          <div className="my-1 border-t border-recruiter-border" />
+          <div className="my-1 border-t border-rule" />
           <DropdownMenuItem
             onSelect={() => onChange({ operator: 'above_average' })}
             className={value.operator === 'above_average' ? 'font-semibold text-primary' : ''}
@@ -164,7 +164,7 @@ export function NumberFilterHeader({
           </DropdownMenuItem>
           {active && (
             <>
-              <div className="my-1 border-t border-recruiter-border" />
+              <div className="my-1 border-t border-rule" />
               <DropdownMenuItem onSelect={() => onChange(NO_NUMBER_FILTER)}>Clear Filter</DropdownMenuItem>
             </>
           )}

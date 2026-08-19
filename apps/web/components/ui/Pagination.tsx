@@ -19,7 +19,7 @@ export function Pagination({ page, totalPages, onPageChange }: PaginationProps) 
         type="button"
         onClick={() => onPageChange(page - 1)}
         disabled={page === 1}
-        className="rounded-md border border-recruiter-border px-2.5 py-1.5 text-sm text-recruiter-text disabled:cursor-not-allowed disabled:opacity-40"
+        className="rounded-md border border-rule px-2.5 py-1.5 text-sm text-ink disabled:cursor-not-allowed disabled:opacity-40"
       >
         Prev
       </button>
@@ -31,7 +31,7 @@ export function Pagination({ page, totalPages, onPageChange }: PaginationProps) 
           aria-current={p === page ? 'page' : undefined}
           className={clsx(
             'min-w-[2rem] rounded-md px-2.5 py-1.5 text-sm',
-            p === page ? 'border border-recruiter-border bg-primary text-on-primary' : 'text-recruiter-text hover:bg-recruiter-bg-subtle',
+            p === page ? 'border border-rule bg-primary text-on-primary' : 'text-ink hover:bg-ground',
           )}
         >
           {p}
@@ -41,7 +41,7 @@ export function Pagination({ page, totalPages, onPageChange }: PaginationProps) 
         type="button"
         onClick={() => onPageChange(page + 1)}
         disabled={page === totalPages}
-        className="rounded-md border border-recruiter-border px-2.5 py-1.5 text-sm text-recruiter-text disabled:cursor-not-allowed disabled:opacity-40"
+        className="rounded-md border border-rule px-2.5 py-1.5 text-sm text-ink disabled:cursor-not-allowed disabled:opacity-40"
       >
         Next
       </button>

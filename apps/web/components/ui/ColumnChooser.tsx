@@ -48,7 +48,7 @@ export function useColumnVisibility<T>(storageKey: string, columns: Column<T>[],
 
   const chooser = (
     <DropdownMenu>
-      <DropdownMenuTrigger aria-label="Choose Columns" className="rounded border border-recruiter-border p-2">
+      <DropdownMenuTrigger aria-label="Choose Columns" className="rounded-lg border border-rule bg-paper p-2 text-ink">
         <Settings2 size={16} />
       </DropdownMenuTrigger>
       <DropdownMenuContent>
@@ -70,7 +70,7 @@ export function useColumnVisibility<T>(storageKey: string, columns: Column<T>[],
                 aria-checked={visible}
                 aria-label={label}
                 onClick={() => toggleColumn(column.key)}
-                className="flex w-full cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-recruiter-bg-subtle"
+                className="flex w-full cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-ink hover:bg-ground"
               >
                 <Check size={14} className={visible ? 'opacity-100' : 'opacity-0'} aria-hidden="true" />
                 {column.header}

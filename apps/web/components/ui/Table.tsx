@@ -60,7 +60,7 @@ export function Table<T>({ columns, rows, rowKey, emptyMessage = 'No results.', 
   }
 
   if (rows.length === 0) {
-    return <p className="py-8 text-center text-sm text-recruiter-text-tertiary">{emptyMessage}</p>;
+    return <p className="py-8 text-center text-sm text-muted">{emptyMessage}</p>;
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLTableCellElement>, column: Column<T>) {
@@ -74,13 +74,13 @@ export function Table<T>({ columns, rows, rowKey, emptyMessage = 'No results.', 
     <div className="overflow-x-auto">
       <table className={clsx('w-full border-collapse text-sm', columns.some((c) => c.width) && 'table-fixed')}>
         <thead>
-          <tr className="border-b border-recruiter-border bg-recruiter-bg-subtle text-left">
+          <tr className="border-b border-rule bg-ground text-left">
             {columns.map((column) => (
               <th
                 key={column.key}
                 style={column.width ? { width: column.width } : undefined}
                 className={clsx(
-                  'px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary',
+                  'px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted',
                   column.sortValue && 'cursor-pointer select-none',
                 )}
                 onClick={column.sortValue ? () => handleSort(column) : undefined}
@@ -102,9 +102,9 @@ export function Table<T>({ columns, rows, rowKey, emptyMessage = 'No results.', 
         </thead>
         <tbody>
           {sorted.map((row, index) => (
-            <tr key={rowKey(row)} className="group border-b border-recruiter-border/60 last:border-0 hover:bg-recruiter-bg-subtle">
+            <tr key={rowKey(row)} className="group border-b border-rule/60 last:border-0 hover:bg-ground">
               {columns.map((column) => (
-                <td key={column.key} className="px-3 py-2.5 text-recruiter-text">
+                <td key={column.key} className="px-3 py-2.5 text-ink">
                   {column.render(row, index)}
                 </td>
               ))}

@@ -23,7 +23,7 @@ export function Tabs({
 }
 
 export function TabsList({ children }: { children: ReactNode }) {
-  return <RadixTabs.List className="flex gap-1 border-b border-gray-200">{children}</RadixTabs.List>;
+  return <RadixTabs.List className="flex gap-1 border-b border-rule">{children}</RadixTabs.List>;
 }
 
 export function TabsTrigger({ value, children }: { value: string; children: ReactNode }) {
@@ -31,7 +31,7 @@ export function TabsTrigger({ value, children }: { value: string; children: Reac
     <RadixTabs.Trigger
       value={value}
       className={clsx(
-        'px-3 py-2 text-sm font-medium text-gray-600 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary',
+        'px-3 py-2 text-sm font-medium text-muted data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary',
       )}
     >
       {children}
