@@ -6,7 +6,7 @@ import { TenantContext } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
-import { WebhooksService } from '../webhooks/webhooks.service';
+import { IntegrationEventsService } from '../integrations/integration-events.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import {
   parseBulkInviteFile,
@@ -127,7 +127,7 @@ export class InvitationsService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly emailService: EmailService,
     private readonly audit: AuditService,
-    private readonly webhooks: WebhooksService,
+    private readonly integrationEvents: IntegrationEventsService,
     private readonly blobStorage: BlobStorageService,
     private readonly pipeline: PipelineService,
   ) {}
@@ -222,12 +222,15 @@ export class InvitationsService {
         entityType: 'invitation',
         metadata: { count: createdWithCandidate.length, examTitle: exam.title },
       });
-      for (const { invitation } of createdWithCandidate) {
-        await this.webhooks.enqueue(context.organizationId as string, 'invitation.created', {
+      for (const { invitation, candidate } of createdWithCandidate) {
+        await this.integrationEvents.emit(context.organizationId as string, 'invitation.created', {
           id: invitation.id,
           examId: invitation.examId,
           candidateId: invitation.candidateId,
           status: invitation.status,
+          subject: candidate.email,
+          examTitle: exam.title,
+          linkPath: '/candidates',
         });
       }
     }
