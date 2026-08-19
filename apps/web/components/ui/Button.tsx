@@ -5,7 +5,7 @@ import clsx from 'clsx';
 type Variant = 'primary' | 'secondary' | 'danger';
 type Size = 'md' | 'sm';
 
-interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'ref'> {
+interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'ref' | 'onDrag' | 'onDragStart' | 'onDragEnd' | 'onAnimationStart'> {
   variant?: Variant;
   size?: Size;
   loading?: boolean;
