@@ -6,7 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
 import { useQuestions, useArchiveQuestion, useRestoreQuestion, useFlaggedQuestions } from '../../../lib/hooks/useQuestions';
-import { Select, Button, Checkbox, Modal, Pagination, StatusBadge, Table, useToast, useColumnVisibility, FilterableHeader, type Column } from '../../../components/ui';
+import { Select, Button, Checkbox, Modal, Pagination, StatusBadge, Table, useToast, useColumnVisibility, FilterableHeader, TableSkeleton, EmptyState, type Column } from '../../../components/ui';
 import { PageHeader, PageSurface } from '../../../components/PageChrome';
 import { GenerateQuestionsModal } from '../../../components/GenerateQuestionsModal';
 import { groupQuestions, type GroupBy } from '../../../lib/question-grouping';
@@ -406,7 +406,9 @@ export default function QuestionsPage() {
     return (
       <div>
         <PageHeader eyebrow="CONTENT" title="Question Bank" />
-        <p className="text-sm text-muted">Loading…</p>
+        <PageSurface>
+          <TableSkeleton />
+        </PageSurface>
       </div>
     );
   }
@@ -515,9 +517,9 @@ export default function QuestionsPage() {
       )}
 
       {rows.length === 0 ? (
-        <div className="py-8 text-center text-sm text-muted">
-          <p>
-            {needsReviewOnly
+        <EmptyState
+          title={
+            needsReviewOnly
               ? // The generic copy below would otherwise sit right under a "Needs review (N)"
                 // control still showing N > 0 -- a flagged question can sit outside the current
                 // view (a different status, page, or excluded by search) even though the flagged
@@ -529,25 +531,27 @@ export default function QuestionsPage() {
                 ? 'No archived questions.'
                 : status === 'draft'
                   ? 'No drafts to review.'
-                  : 'No questions yet.'}
-          </p>
-          {/* The Status filter lives inside the Table's column header, which never renders when
-              there are no rows -- without this, draining a non-active view (the designed happy
-              path once Discard/Publish empty the Drafts list) leaves status stuck with no way
-              back except a page reload. */}
-          {status !== 'active' && (
-            <button
-              type="button"
-              onClick={() => {
-                setStatus('active');
-                setPage(1);
-              }}
-              className="mt-2 font-medium text-primary hover:underline"
-            >
-              Back to Active
-            </button>
-          )}
-        </div>
+                  : 'No questions yet.'
+          }
+          action={
+            // The Status filter lives inside the Table's column header, which never renders when
+            // there are no rows -- without this, draining a non-active view (the designed happy
+            // path once Discard/Publish empty the Drafts list) leaves status stuck with no way
+            // back except a page reload.
+            status !== 'active' ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setStatus('active');
+                  setPage(1);
+                }}
+                className="font-medium text-primary hover:underline"
+              >
+                Back to Active
+              </button>
+            ) : undefined
+          }
+        />
       ) : (
         <div className="flex flex-col gap-3">
           {groups.map((group) => {

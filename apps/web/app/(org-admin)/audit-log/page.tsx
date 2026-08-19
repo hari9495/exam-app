@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Download, X } from 'lucide-react';
 import { useAuditLogs, useAuditLogExport, type AuditLogFilters } from '../../../lib/hooks/useAuditLogs';
-import { Button, Modal, Table, StatusBadge, Select, FilterableHeader, type StatusTone, type Column } from '../../../components/ui';
+import { Button, Modal, Table, StatusBadge, Select, FilterableHeader, TableSkeleton, type StatusTone, type Column } from '../../../components/ui';
 import { PageHeader, PageSurface } from '../../../components/PageChrome';
 import { AuditActorFilter } from '../../../components/AuditActorFilter';
 import { AuditLogEntry } from '../../../lib/types';
@@ -282,7 +282,7 @@ export default function AuditLogPage() {
           </p>
         )}
         {isLoading && entries.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-muted">Loading…</p>
+          <TableSkeleton />
         ) : (
           !isError && (
             <>

@@ -33,7 +33,7 @@ const C = {
 function ChartTooltip({ active, payload, label, suffix }: { active?: boolean; payload?: { value: number }[]; label?: string; suffix?: string }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-md border border-rule bg-white px-2.5 py-1.5 text-xs shadow-sm">
+    <div className="rounded-md border border-rule bg-paper px-2.5 py-1.5 text-xs">
       <span className="font-semibold text-ink">{label}</span>
       <span className="ml-2 tabular-nums text-muted">
         {payload[0].value}

@@ -20,6 +20,7 @@ import {
   useColumnVisibility,
   Pagination,
   FilterableHeader,
+  TableSkeleton,
   type Column,
 } from '../../../components/ui';
 import { Candidate } from '../../../lib/types';
@@ -210,7 +211,9 @@ export default function CandidatesPage() {
     return (
       <div>
         <PageHeader eyebrow="PEOPLE" title="Candidates" />
-        <p className="text-sm text-muted">Loading…</p>
+        <PageSurface>
+          <TableSkeleton />
+        </PageSurface>
       </div>
     );
   }

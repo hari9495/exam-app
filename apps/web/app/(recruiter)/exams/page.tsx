@@ -19,6 +19,7 @@ import {
   DropdownMenuItem,
   Pagination,
   FilterableHeader,
+  TableSkeleton,
   type StatusTone,
   type Column,
 } from '../../../components/ui';
@@ -176,7 +177,9 @@ export default function ExamsPage() {
     return (
       <div>
         <PageHeader eyebrow="Assessments" title="Exams" />
-        <p className="text-sm text-muted">Loading…</p>
+        <PageSurface>
+          <TableSkeleton />
+        </PageSurface>
       </div>
     );
   }

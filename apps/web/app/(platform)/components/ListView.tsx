@@ -110,18 +110,17 @@ export function ListView<T>({
           </div>
         </div>
 
-        {isLoading && <p className="px-4 py-4 text-sm text-muted">Loading…</p>}
-        {isError && (
+        {isError ? (
           <p role="alert" className="px-4 py-4 text-sm text-status-danger">
             Failed to load {title}.
           </p>
-        )}
-        {!isLoading && !isError && (
+        ) : (
           <Table
             columns={[indexColumn, ...visibleColumns]}
             rows={visibleRows}
             rowKey={rowKey}
             emptyMessage={query ? 'No matches.' : emptyMessage}
+            isLoading={isLoading}
             onSortChange={setSort}
           />
         )}

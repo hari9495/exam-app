@@ -2,7 +2,9 @@
 
 import { ReactNode, useState } from 'react';
 import clsx from 'clsx';
-import { ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowUp, ArrowDown, Inbox } from 'lucide-react';
+import { EmptyState } from './EmptyState';
+import { TableSkeleton } from './Skeleton';
 
 export interface Column<T> {
   key: string;
@@ -31,12 +33,26 @@ interface TableProps<T> {
   rows: T[];
   rowKey: (row: T) => string;
   emptyMessage?: string;
+  /** Optional icon + action for the empty state, e.g. a "New exam" button. */
+  emptyIcon?: ReactNode;
+  emptyAction?: ReactNode;
+  /** When true, renders a row-shaped shimmer placeholder instead of the table or empty state. */
+  isLoading?: boolean;
   /** Fires whenever the user changes the sort. Sort state stays owned here; this
    *  only reports it, so a caller can label the active sort without lifting it. */
   onSortChange?: (sort: { key: string; header: string; direction: 'asc' | 'desc' }) => void;
 }
 
-export function Table<T>({ columns, rows, rowKey, emptyMessage = 'No results.', onSortChange }: TableProps<T>) {
+export function Table<T>({
+  columns,
+  rows,
+  rowKey,
+  emptyMessage = 'No results.',
+  emptyIcon,
+  emptyAction,
+  isLoading = false,
+  onSortChange,
+}: TableProps<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
@@ -59,8 +75,12 @@ export function Table<T>({ columns, rows, rowKey, emptyMessage = 'No results.', 
     onSortChange?.({ key: column.key, header, direction: nextDir });
   }
 
+  if (isLoading) {
+    return <TableSkeleton cols={columns.length || 5} />;
+  }
+
   if (rows.length === 0) {
-    return <p className="py-8 text-center text-sm text-muted">{emptyMessage}</p>;
+    return <EmptyState icon={emptyIcon ?? <Inbox size={20} />} title={emptyMessage} action={emptyAction} />;
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLTableCellElement>, column: Column<T>) {

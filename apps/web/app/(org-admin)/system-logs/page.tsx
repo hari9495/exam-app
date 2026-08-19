@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useSystemEvents, type SystemEventEntry, type SystemEventFilters } from '../../../lib/hooks/useSystemEvents';
-import { Button, Modal, Table, StatusBadge, FilterableHeader, type StatusTone, type Column } from '../../../components/ui';
+import { Button, Modal, Table, StatusBadge, FilterableHeader, TableSkeleton, EmptyState, type StatusTone, type Column } from '../../../components/ui';
 import { PageHeader, PageSurface } from '../../../components/PageChrome';
 import { formatAuditTimestamp, formatRelativeTime } from '../../../lib/audit-display';
 import { plainEnglish } from '../../../lib/system-event-message';
@@ -190,9 +190,9 @@ export default function SystemLogsPage() {
         </div>
 
         {isLoading && allEntries.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-gray-500">Loading…</p>
+          <TableSkeleton />
         ) : allEntries.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-gray-500">No events in this range — nothing has failed. 🎉</p>
+          <EmptyState title="No events in this range — nothing has failed. 🎉" />
         ) : (
           <>
             <p className="px-4 pt-3 text-xs text-muted">

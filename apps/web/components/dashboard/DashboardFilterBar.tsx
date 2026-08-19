@@ -110,7 +110,7 @@ export function DashboardFilterBar({ value, onChange, exams, candidates }: Filte
   const monthOptions: SelectOption[] = MONTHS.map((m, i) => ({ value: String(i), label: m }));
 
   return (
-    <div className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-rule bg-white p-3 shadow-sm">
+    <div className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-rule bg-paper p-3">
       <div className="min-w-[160px] flex-1"><Select label="Exam" value={value.examId} onChange={(v) => set({ examId: v })} options={examOptions} /></div>
       <div className="min-w-[160px] flex-1"><Select label="Candidate" value={value.candidateId} onChange={(v) => set({ candidateId: v })} options={candidateOptions} /></div>
       <div className="min-w-[130px]"><Select label="Period" value={value.timeMode} onChange={(v) => set({ timeMode: v as TimeMode })} options={TIME_MODE_OPTIONS} /></div>

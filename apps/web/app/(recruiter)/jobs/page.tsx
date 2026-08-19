@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Plus, Trash2 } from 'lucide-react';
-import { Button, Card, Input, Select, Table, StatusBadge, useToast, type Column, type StatusTone } from '../../../components/ui';
+import { Button, Card, Input, Select, Table, StatusBadge, TableSkeleton, useToast, type Column, type StatusTone } from '../../../components/ui';
 import { PageHeader, PageSurface } from '../../../components/PageChrome';
 import { useJobs, useCreateJob, useDeleteJob } from '../../../lib/hooks/usePipeline';
 import { JobListItem, JobStatus, PIPELINE_STAGES } from '../../../lib/types';
@@ -135,7 +135,7 @@ export default function JobsPage() {
           <Select label="Status" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTER_OPTIONS} />
         </div>
         {isLoading ? (
-          <p className="p-4 text-sm text-muted">Loading&hellip;</p>
+          <TableSkeleton />
         ) : (
           <Table columns={columns} rows={jobs ?? []} rowKey={(job) => job.id} emptyMessage="No jobs yet." />
         )}

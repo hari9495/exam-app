@@ -181,9 +181,9 @@ describe('ListView', () => {
     expect(screen.queryByText('Acme')).not.toBeInTheDocument();
   });
 
-  it('shows a loading message instead of the table when isLoading', () => {
-    renderListView({ isLoading: true });
-    expect(screen.getByText('Loading…')).toBeInTheDocument();
+  it('shows a loading skeleton instead of the table when isLoading', () => {
+    const { container } = renderListView({ isLoading: true });
+    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
     expect(screen.queryByText('Acme')).not.toBeInTheDocument();
   });
 

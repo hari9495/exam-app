@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
-import { Button, Input, Table, Modal, useToast, type Column } from '../../../components/ui';
+import { Button, Input, Table, Modal, TableSkeleton, useToast, type Column } from '../../../components/ui';
 import { useAuth } from '../../../lib/auth-context';
 import { useWalkInGroups, useCreateWalkInGroup, useDeleteWalkInGroup } from '../../../lib/hooks/useWalkInGroups';
 import { ManageWalkInGroupModal } from '../../../components/ManageWalkInGroupModal';
@@ -80,7 +80,11 @@ export default function WalkInGroupsPage() {
   ];
 
   if (isLoading) {
-    return <p className="text-sm text-muted">Loading&hellip;</p>;
+    return (
+      <PageSurface>
+        <TableSkeleton />
+      </PageSurface>
+    );
   }
 
   return (

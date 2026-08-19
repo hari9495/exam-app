@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Input, Select, Checkbox, Table, Modal, useToast, type Column, type SelectOption } from '../../../components/ui';
+import { Button, Input, Select, Checkbox, Table, Modal, TableSkeleton, useToast, type Column, type SelectOption } from '../../../components/ui';
 import { PageHeader, PageSurface } from '../../../components/PageChrome';
 import { useAuth } from '../../../lib/auth-context';
 import { useMessageTemplates, useUpsertTemplate, useSetTemplateEnabled, useDeleteTemplate } from '../../../lib/hooks/useCandidateMessages';
@@ -186,7 +186,11 @@ export default function MessageTemplatesPage() {
   }
 
   if (isLoading) {
-    return <p className="text-sm text-muted">Loading&hellip;</p>;
+    return (
+      <PageSurface>
+        <TableSkeleton />
+      </PageSurface>
+    );
   }
 
   return (
