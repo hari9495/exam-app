@@ -17,6 +17,7 @@ import {
 } from '@exam-platform/shared';
 import { FaceEmbedderService } from '../face/face-embedder.service';
 import { FaceVerificationService } from '../face/face-verification.service';
+import { QuotaService } from '../billing/quota.service';
 import { AttemptSettlementService, PauseReason, SettlementExam } from '../grading/attempt-settlement.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { LeaderboardService, AUTO_GRADABLE_QUESTION_TYPES, CandidateLeaderboardResponse } from '../leaderboard/leaderboard.service';
@@ -254,6 +255,7 @@ export class AttemptService {
     private readonly faceEmbedder: FaceEmbedderService,
     private readonly crypto: OrgSecretsCryptoService,
     private readonly faceVerification: FaceVerificationService,
+    private readonly quota: QuotaService,
   ) {}
 
   // ponytail: in-memory per-attempt floor between AI screen analyses -- single pm2 process, so a
@@ -1028,6 +1030,7 @@ export class AttemptService {
     // analysis is best-effort, the violation-triggered capture pipeline is unaffected.
     let flagged: { eventType: 'remote_access_suspected' | 'background_app_detected'; toolName: string; reasoning: string } | null = null;
     try {
+      await this.quota.assertAiCredits(context);
       const aiProvider = await this.aiApiKeyResolver.resolve(organizationId);
       const verdict = await aiProvider.generateStructured({
         modelTier: 'fast',

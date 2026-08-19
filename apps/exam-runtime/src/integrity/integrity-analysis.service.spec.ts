@@ -2,12 +2,14 @@ import { Test } from '@nestjs/testing';
 import { IntegrityAnalysisService } from './integrity-analysis.service';
 import { IntegrityNarrativeClient } from './integrity-narrative.client';
 import { TenantPrismaService, AiApiKeyResolverService } from '@exam-platform/shared';
+import { QuotaService } from '../billing/quota.service';
 
 describe('IntegrityAnalysisService', () => {
   let service: IntegrityAnalysisService;
   let tenantPrisma: { forTenant: jest.Mock };
   let integrityNarrativeClient: { writeNarrative: jest.Mock };
   let aiApiKeyResolver: { resolve: jest.Mock };
+  let quota: { assertAiCredits: jest.Mock };
 
   const attemptWithExam = {
     id: 'attempt-1',
@@ -38,12 +40,14 @@ describe('IntegrityAnalysisService', () => {
     tenantPrisma = { forTenant: jest.fn() };
     integrityNarrativeClient = { writeNarrative: jest.fn() };
     aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue(fakeAiProvider) };
+    quota = { assertAiCredits: jest.fn().mockResolvedValue(undefined) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         IntegrityAnalysisService,
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: IntegrityNarrativeClient, useValue: integrityNarrativeClient },
         { provide: AiApiKeyResolverService, useValue: aiApiKeyResolver },
+        { provide: QuotaService, useValue: quota },
       ],
     }).compile();
     service = moduleRef.get(IntegrityAnalysisService);
@@ -284,6 +288,25 @@ describe('IntegrityAnalysisService', () => {
 
     await expect(service.analyze('attempt-1')).resolves.toBeUndefined();
 
+    expect(write.integrityAnalysis.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ status: 'completed', level: 'review', narrative: null }),
+      }),
+    );
+    expect(write.aiCreditUsage.create).not.toHaveBeenCalled();
+  });
+
+  it('quota-exceeded path: skips the narrative call and records no credit when the org is over its AI-credit quota', async () => {
+    const write = persistTx();
+    tenantPrisma.forTenant
+      .mockResolvedValueOnce({ ...attemptWithExam, webcamViolationCount: 1 })
+      .mockImplementationOnce((_ctx, fn) => fn(readTxWith([])))
+      .mockImplementationOnce((_ctx, fn) => fn(write));
+    quota.assertAiCredits.mockRejectedValue(new Error('quota_exceeded'));
+
+    await expect(service.analyze('attempt-1')).resolves.toBeUndefined();
+
+    expect(integrityNarrativeClient.writeNarrative).not.toHaveBeenCalled();
     expect(write.integrityAnalysis.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({ status: 'completed', level: 'review', narrative: null }),

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TenantPrismaService, AiApiKeyResolverService } from '@exam-platform/shared';
+import { QuotaService } from '../billing/quota.service';
 import { IntegrityNarrativeClient } from './integrity-narrative.client';
 import { deriveTelemetryFlags, deriveAttemptFlags, deriveLevel, IntegrityFlag, AnswerTelemetry } from './integrity-rules';
 import { normalizeCode, similarityScore, MIN_NORMALIZED_LENGTH, SIMILARITY_THRESHOLD, SIMILARITY_HIGH } from './similarity';
@@ -26,6 +27,7 @@ export class IntegrityAnalysisService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly integrityNarrativeClient: IntegrityNarrativeClient,
     private readonly aiApiKeyResolver: AiApiKeyResolverService,
+    private readonly quota: QuotaService,
   ) {}
 
   async analyze(attemptId: string, options?: { preserveNarrative?: boolean }): Promise<void> {
@@ -149,6 +151,7 @@ export class IntegrityAnalysisService {
         // null over an explanation a recruiter has already read.
       } else {
         try {
+          await this.quota.assertAiCredits({ organizationId, isSuperAdmin: false });
           const aiProvider = await this.aiApiKeyResolver.resolve(organizationId);
           narrative = await this.integrityNarrativeClient.writeNarrative(flags, { examTitle, level }, aiProvider);
           narrativeSucceeded = true;

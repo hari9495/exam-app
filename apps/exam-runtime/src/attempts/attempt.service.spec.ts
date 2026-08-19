@@ -21,6 +21,7 @@ import { PistonRuntimesService } from '../code-execution/piston-runtimes.service
 import { RunLimiter } from '../code-execution/run-limiter';
 import { FaceEmbedderService } from '../face/face-embedder.service';
 import { FaceVerificationService } from '../face/face-verification.service';
+import { QuotaService } from '../billing/quota.service';
 
 // The cap-count query folds case AND width (see sanitize-metadata.ts / scc-task-5-report.md),
 // so a plain `.toContain('"screenshot":')` assertion is case- and width-sensitive in JS and
@@ -73,6 +74,7 @@ describe('AttemptService', () => {
   let faceEmbedder: { embed: jest.Mock; isAvailable: jest.Mock };
   let crypto: { encrypt: jest.Mock; decrypt: jest.Mock };
   let faceVerification: { verifySnapshot: jest.Mock; forgetAttempt: jest.Mock };
+  let quota: { assertAiCredits: jest.Mock };
   const session = { invitationId: 'inv-1' };
   const exam = {
     id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false,
@@ -127,6 +129,7 @@ describe('AttemptService', () => {
       verifySnapshot: jest.fn().mockResolvedValue({ verdict: 'skipped', score: null, confirmed: false }),
       forgetAttempt: jest.fn(),
     };
+    quota = { assertAiCredits: jest.fn().mockResolvedValue(undefined) };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -145,6 +148,7 @@ describe('AttemptService', () => {
         { provide: FaceEmbedderService, useValue: faceEmbedder },
         { provide: OrgSecretsCryptoService, useValue: crypto },
         { provide: FaceVerificationService, useValue: faceVerification },
+        { provide: QuotaService, useValue: quota },
       ],
     }).compile();
     service = moduleRef.get(AttemptService);
@@ -3929,6 +3933,19 @@ describe('AttemptService', () => {
       const result = await service.analyzeScreenCapture(session, { screenshot: SHOT });
 
       expect(result).toEqual({ status: 'skipped' });
+      expect(tx.aiCreditUsage.create).not.toHaveBeenCalled();
+      expect(tx.proctoringEvent.create).not.toHaveBeenCalled();
+    });
+
+    it('skips when the org is over its AI-credit quota, without calling the AI or recording an event or credit', async () => {
+      quota.assertAiCredits.mockRejectedValue(new Error('quota_exceeded'));
+      const tx = scopedTxFor(attemptFixture());
+      mockBootstrapThenAllScoped(tx);
+
+      const result = await service.analyzeScreenCapture(session, { screenshot: SHOT });
+
+      expect(result).toEqual({ status: 'skipped' });
+      expect(generateStructured).not.toHaveBeenCalled();
       expect(tx.aiCreditUsage.create).not.toHaveBeenCalled();
       expect(tx.proctoringEvent.create).not.toHaveBeenCalled();
     });
