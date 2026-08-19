@@ -338,6 +338,8 @@ export interface JobDetail {
   linkedExams: { examId: string; title: string }[];
   publicApplyEnabled: boolean;
   applyToken: string | null;
+  fitCriteria?: string | null;
+  fitRubric?: string | null;
 }
 
 export type CandidateParseStatus = 'pending' | 'parsing' | 'done' | 'failed' | 'unavailable';
@@ -369,6 +371,27 @@ export interface BoardRow {
   examResults: EntryExamResult[];
   avgRating: number | null;
   feedbackCount: number;
+  fitScore: number | null;
+  fitStatus: string | null;
+  fitStale: boolean;
+}
+
+export interface RubricDimension {
+  label: string;
+  weight: number;
+}
+
+export interface FitAssessment {
+  entryId: string;
+  status: string;
+  overallScore: number | null;
+  summary: string | null;
+  strengths: string[];
+  concerns: string[];
+  dimensionScores: { label: string; weight: number; score: number }[] | null;
+  scoredAt: string | null;
+  error: string | null;
+  stale: boolean;
 }
 
 export interface PipelineBoard {
