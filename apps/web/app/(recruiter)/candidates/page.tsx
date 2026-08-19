@@ -129,13 +129,13 @@ export default function CandidatesPage() {
     {
       key: 'name',
       header: 'Name',
-      render: (candidate) => <span className="font-medium text-recruiter-text">{candidate.name}</span>,
+      render: (candidate) => <span className="font-medium text-ink">{candidate.name}</span>,
       sortValue: (candidate) => candidate.name.toLowerCase(),
     },
     {
       key: 'email',
       header: 'Email',
-      render: (candidate) => <span className="text-recruiter-text-secondary">{candidate.email}</span>,
+      render: (candidate) => <span className="text-muted">{candidate.email}</span>,
       sortValue: (candidate) => candidate.email,
     },
     {
@@ -184,7 +184,7 @@ export default function CandidatesPage() {
               type="button"
               onClick={() => handleToggleStatus(candidate)}
               disabled={updateCandidate.isPending}
-              className="font-medium text-recruiter-text-secondary hover:underline disabled:opacity-50"
+              className="font-medium text-muted hover:underline disabled:opacity-50"
             >
               {isInactive ? 'Reactivate' : 'Deactivate'}
             </button>
@@ -208,8 +208,8 @@ export default function CandidatesPage() {
   if (isLoading) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-semibold text-recruiter-text">Candidates</h1>
-        <p className="text-sm text-recruiter-text-tertiary">Loading…</p>
+        <h1 className="mb-6 text-2xl font-semibold text-ink">Candidates</h1>
+        <p className="text-sm text-muted">Loading…</p>
       </div>
     );
   }
@@ -217,7 +217,7 @@ export default function CandidatesPage() {
   if (isError) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-semibold text-recruiter-text">Candidates</h1>
+        <h1 className="mb-6 text-2xl font-semibold text-ink">Candidates</h1>
         <p role="alert" className="text-sm text-status-danger">
           Failed to load candidates.
         </p>
@@ -228,7 +228,7 @@ export default function CandidatesPage() {
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-recruiter-text">Candidates</h1>
+        <h1 className="text-2xl font-semibold text-ink">Candidates</h1>
         <div className="flex items-center gap-2">
           <CandidateInviteForm
             onSubmit={async (input) => {
@@ -243,7 +243,7 @@ export default function CandidatesPage() {
       </div>
       <div className="mb-3 flex items-end gap-2">
         <div className="relative max-w-xs flex-1">
-          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-recruiter-text-tertiary" />
+          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
           <input
             type="search"
             value={search}
@@ -253,7 +253,7 @@ export default function CandidatesPage() {
             }}
             placeholder="Search candidates…"
             aria-label="Search Candidates"
-            className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
+            className="w-full rounded-md border border-rule py-1.5 pl-8 pr-3 text-sm"
           />
         </div>
         <Select
@@ -282,7 +282,7 @@ export default function CandidatesPage() {
 
       {candidatePendingDelete && (
         <Modal open title="Delete Candidate" onClose={() => setCandidatePendingDelete(null)}>
-          <p className="mb-4 text-sm text-recruiter-text-secondary">
+          <p className="mb-4 text-sm text-muted">
             Permanently delete &ldquo;{candidatePendingDelete.name}&rdquo;? They have never been invited to an exam, so nothing else
             is affected. This can&apos;t be undone.
           </p>

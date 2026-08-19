@@ -98,7 +98,7 @@ export function Sparkline({ data, color, unit }: SparklineProps) {
       </svg>
       {hovered && (
         <div
-          className="pointer-events-none absolute -top-6 z-10 whitespace-nowrap rounded bg-recruiter-text px-1.5 py-0.5 text-[10px] text-white shadow-md"
+          className="pointer-events-none absolute -top-6 z-10 whitespace-nowrap rounded bg-ink px-1.5 py-0.5 text-[10px] text-white shadow-md"
           style={{ left: `${(hoveredX / WIDTH) * 100}%`, transform: 'translateX(-50%)' }}
         >
           {formatDate(hovered.date)}: {hovered.value} {unit ?? ''}

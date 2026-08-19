@@ -17,9 +17,9 @@ const SEVERITY_STYLES: Record<Severity, string> = {
 export function QuestionStatisticsPanel({ analytics }: { analytics: QuestionAnalytics }) {
   if (!analytics.hasEnoughData) {
     return (
-      <section className="rounded-md border border-recruiter-border p-4">
+      <section className="rounded-md border border-rule p-4">
         <h2 className="text-sm font-medium">Question statistics</h2>
-        <p className="mt-2 text-sm text-recruiter-text-secondary">
+        <p className="mt-2 text-sm text-muted">
           Not enough responses yet ({analytics.responses} of 20). Statistics appear once this question has been answered 20 times.
         </p>
       </section>
@@ -27,7 +27,7 @@ export function QuestionStatisticsPanel({ analytics }: { analytics: QuestionAnal
   }
 
   return (
-    <section className="rounded-md border border-recruiter-border p-4">
+    <section className="rounded-md border border-rule p-4">
       <h2 className="text-sm font-medium">Question statistics</h2>
 
       {analytics.flags.map((flag) => (
@@ -42,16 +42,16 @@ export function QuestionStatisticsPanel({ analytics }: { analytics: QuestionAnal
 
       <dl className="mt-4 grid grid-cols-3 gap-4 text-sm">
         <div>
-          <dt className="text-recruiter-text-secondary">% correct</dt>
+          <dt className="text-muted">% correct</dt>
           <dd className="text-lg">{analytics.percentCorrect === null ? '—' : `${Math.round(analytics.percentCorrect * 100)}%`}</dd>
         </div>
         <div>
-          <dt className="text-recruiter-text-secondary">Discrimination</dt>
+          <dt className="text-muted">Discrimination</dt>
           {/* Em dash, never 0 -- an undefined correlation is not a weak one. */}
           <dd className="text-lg" data-testid="discrimination">{analytics.discrimination === null ? '—' : analytics.discrimination.toFixed(2)}</dd>
         </div>
         <div>
-          <dt className="text-recruiter-text-secondary">Responses</dt>
+          <dt className="text-muted">Responses</dt>
           <dd className="text-lg">{analytics.responses}</dd>
         </div>
       </dl>
@@ -62,7 +62,7 @@ export function QuestionStatisticsPanel({ analytics }: { analytics: QuestionAnal
             {analytics.options.map((o) => (
               <tr key={o.optionId}>
                 <td className="py-1">
-                  <span className={o.isCorrect ? 'font-medium text-recruiter-text' : 'text-recruiter-text-secondary'}>
+                  <span className={o.isCorrect ? 'font-medium text-ink' : 'text-muted'}>
                     {o.isCorrect ? 'Correct answer: ' : 'Distractor: '}
                     {o.text}
                   </span>
@@ -76,7 +76,7 @@ export function QuestionStatisticsPanel({ analytics }: { analytics: QuestionAnal
         </table>
       )}
 
-      <p className="mt-4 text-xs text-recruiter-text-secondary">
+      <p className="mt-4 text-xs text-muted">
         Includes every submitted attempt, which may contain internal test attempts.
       </p>
     </section>

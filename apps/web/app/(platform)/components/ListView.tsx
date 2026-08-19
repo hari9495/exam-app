@@ -71,8 +71,8 @@ export function ListView<T>({
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-recruiter-border pb-2">
-        <p data-testid="list-view-meta" className="text-xs text-recruiter-text-tertiary">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-rule pb-2">
+        <p data-testid="list-view-meta" className="text-xs text-muted">
           {visibleRows.length} {visibleRows.length === 1 ? 'item' : 'items'}
           {sort ? ` • Sorted by ${sort.header}` : ''}
           {/* Two different warnings, because the advice differs. With no search

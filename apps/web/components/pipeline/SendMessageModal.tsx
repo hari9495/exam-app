@@ -128,10 +128,10 @@ export function SendMessageModal({ entryId, candidateId, candidateName, onClose,
           />
         </div>
         <div>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary">Preview</h3>
-          <div className="rounded border border-recruiter-border bg-recruiter-bg-subtle p-3 text-sm">
-            <p className="font-medium text-recruiter-text">{renderPreview(subject, candidateName)}</p>
-            <p className="mt-2 whitespace-pre-wrap text-recruiter-text-secondary">{renderPreview(body, candidateName)}</p>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Preview</h3>
+          <div className="rounded border border-rule bg-ground p-3 text-sm">
+            <p className="font-medium text-ink">{renderPreview(subject, candidateName)}</p>
+            <p className="mt-2 whitespace-pre-wrap text-muted">{renderPreview(body, candidateName)}</p>
           </div>
         </div>
       </div>

@@ -72,7 +72,7 @@ function PoolPreviewModal({ examId, sectionId, sectionTitle, onClose }: { examId
         <p className="text-sm text-status-danger">Failed to load the pool preview.</p>
       ) : (
         <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-1.5 text-sm text-recruiter-text-secondary">
+          <div className="flex flex-wrap items-center gap-1.5 text-sm text-muted">
             <span>Criteria:</span>
             {data.poolDifficulty && <StatusBadge tone="neutral">{DIFFICULTY_LABEL[data.poolDifficulty] ?? data.poolDifficulty}</StatusBadge>}
             {data.poolTags.map((tag) => (
@@ -80,23 +80,23 @@ function PoolPreviewModal({ examId, sectionId, sectionTitle, onClose }: { examId
                 {tag.name}
               </StatusBadge>
             ))}
-            {!data.poolDifficulty && data.poolTags.length === 0 && <span className="text-recruiter-text-tertiary">none</span>}
+            {!data.poolDifficulty && data.poolTags.length === 0 && <span className="text-muted">none</span>}
           </div>
-          <p className={`text-sm font-medium ${shortfall ? 'text-status-danger' : 'text-recruiter-text'}`}>
+          <p className={`text-sm font-medium ${shortfall ? 'text-status-danger' : 'text-ink'}`}>
             {data.totalMatching} question{data.totalMatching === 1 ? '' : 's'} currently match{data.totalMatching === 1 ? 'es' : ''} this pool
             {shortfall
               ? ` — fewer than the configured pool size of ${data.poolSize}. Candidates will get a shorter section than intended.`
               : ` (configured pool size: ${data.poolSize}).`}
           </p>
           {data.questions.length === 0 ? (
-            <p className="text-sm text-recruiter-text-tertiary">No active questions currently match this pool&apos;s criteria.</p>
+            <p className="text-sm text-muted">No active questions currently match this pool&apos;s criteria.</p>
           ) : (
             <>
               <div className="max-h-96 overflow-y-auto">
                 <Table columns={POOL_PREVIEW_COLUMNS} rows={data.questions} rowKey={(question) => question.id} />
               </div>
               {data.totalMatching > data.questions.length && (
-                <p className="text-xs text-recruiter-text-tertiary">
+                <p className="text-xs text-muted">
                   Showing the first {data.questions.length} of {data.totalMatching} matching questions.
                 </p>
               )}
@@ -160,14 +160,14 @@ function SectionQuestionList({ examId, section, locked }: { examId: string; sect
     {
       key: 'number',
       header: '#',
-      render: (q) => <span className="text-recruiter-text-tertiary">{q.number}</span>,
+      render: (q) => <span className="text-muted">{q.number}</span>,
       sortValue: (q) => q.number,
     },
     {
       key: 'text',
       header: 'Question',
       render: (q) => (
-        <span className="block max-w-xl truncate font-medium text-recruiter-text" title={q.question?.text}>
+        <span className="block max-w-xl truncate font-medium text-ink" title={q.question?.text}>
           {q.question?.text ?? q.questionId}
         </span>
       ),
@@ -215,19 +215,19 @@ function SectionQuestionList({ examId, section, locked }: { examId: string; sect
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-end gap-2">
         <div className="relative max-w-xs flex-1">
-          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-recruiter-text-tertiary" />
+          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
           <input
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search this section's questions…"
             aria-label="Search this section's questions"
-            className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
+            className="w-full rounded-md border border-rule py-1.5 pl-8 pr-3 text-sm"
           />
         </div>
       </div>
       {visible.length === 0 ? (
-        <p className="py-4 text-center text-sm text-recruiter-text-tertiary">No questions match your search.</p>
+        <p className="py-4 text-center text-sm text-muted">No questions match your search.</p>
       ) : (
         <Table columns={columns} rows={visible} rowKey={(q) => q.questionId} />
       )}
@@ -241,7 +241,7 @@ function SectionWeightInput({ examId, section, locked }: { examId: string; secti
   const [value, setValue] = useState(String(section.weightPercent));
 
   if (locked) {
-    return <span className="text-sm text-recruiter-text-secondary">{section.weightPercent}% weight</span>;
+    return <span className="text-sm text-muted">{section.weightPercent}% weight</span>;
   }
 
   // Saved on blur rather than per-keystroke: typing "70" passes through "7", and a PATCH per
@@ -264,7 +264,7 @@ function SectionWeightInput({ examId, section, locked }: { examId: string; secti
   }
 
   return (
-    <label className="flex items-center gap-1 text-sm text-recruiter-text-secondary">
+    <label className="flex items-center gap-1 text-sm text-muted">
       Weight
       <input
         type="number"
@@ -274,7 +274,7 @@ function SectionWeightInput({ examId, section, locked }: { examId: string; secti
         onChange={(event) => setValue(event.target.value)}
         onBlur={handleBlur}
         aria-label={`Weight % for ${section.title}`}
-        className="w-16 rounded border border-recruiter-border px-1.5 py-0.5 text-right"
+        className="w-16 rounded border border-rule px-1.5 py-0.5 text-right"
       />
       %
     </label>
@@ -289,7 +289,7 @@ function SectionRequiredCountInput({ examId, section, locked }: { examId: string
 
   if (locked) {
     return section.requiredCount == null ? null : (
-      <span className="text-sm text-recruiter-text-secondary">answer any {section.requiredCount} of {total}</span>
+      <span className="text-sm text-muted">answer any {section.requiredCount} of {total}</span>
     );
   }
 
@@ -314,7 +314,7 @@ function SectionRequiredCountInput({ examId, section, locked }: { examId: string
   }
 
   return (
-    <label className="flex items-center gap-1 text-sm text-recruiter-text-secondary">
+    <label className="flex items-center gap-1 text-sm text-muted">
       Required
       <input
         type="number"
@@ -325,7 +325,7 @@ function SectionRequiredCountInput({ examId, section, locked }: { examId: string
         onChange={(event) => setValue(event.target.value)}
         onBlur={handleBlur}
         aria-label={`Required answers for ${section.title}`}
-        className="w-16 rounded border border-recruiter-border px-1.5 py-0.5 text-right"
+        className="w-16 rounded border border-rule px-1.5 py-0.5 text-right"
       />
       of {total}
     </label>
@@ -406,7 +406,7 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
 
   return (
     <div className="flex flex-col gap-3">
-      {locked && <p className="text-sm text-recruiter-text-secondary">{lockedMessage}</p>}
+      {locked && <p className="text-sm text-muted">{lockedMessage}</p>}
       {showRescoreNotice && (
         <p className="text-sm font-medium text-status-warning">
           Candidates have already started this exam, but section weight can still be changed to adjust the pass/fail
@@ -445,7 +445,7 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
                   onClick={() => setExpandedSectionId(isOpen ? null : section.id)}
                   aria-expanded={isOpen}
                   aria-label={isOpen ? `Collapse ${section.title}` : `Expand ${section.title}`}
-                  className="rounded p-0.5 text-recruiter-text-tertiary hover:bg-recruiter-bg-subtle"
+                  className="rounded p-0.5 text-muted hover:bg-ground"
                 >
                   <ChevronDown size={16} className={isOpen ? '' : '-rotate-90'} />
                 </button>
@@ -470,7 +470,7 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       aria-label="More Actions"
-                      className="rounded p-1.5 text-recruiter-text-tertiary hover:bg-recruiter-bg-subtle"
+                      className="rounded p-1.5 text-muted hover:bg-ground"
                     >
                       <MoreHorizontal size={16} />
                     </DropdownMenuTrigger>
@@ -486,12 +486,12 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
             </div>
             {isOpen &&
               (section.selectionMode === 'pool' ? (
-                <p className="text-sm text-recruiter-text-secondary">
+                <p className="text-sm text-muted">
                   Pool of {section.poolSize ?? 0} question{section.poolSize === 1 ? '' : 's'}
                   {section.poolDifficulty ? ` (${section.poolDifficulty})` : ''}
                 </p>
               ) : section.questions.length === 0 ? (
-                <p className="text-sm text-recruiter-text-tertiary">No questions added yet.</p>
+                <p className="text-sm text-muted">No questions added yet.</p>
               ) : (
                 <SectionQuestionList examId={examId} section={section} locked={locked} />
               ))}
@@ -517,7 +517,7 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
       )}
       {sectionPendingDelete && (
         <Modal open title="Delete Section" onClose={() => setSectionPendingDelete(null)}>
-          <p className="mb-4 text-sm text-recruiter-text-secondary">
+          <p className="mb-4 text-sm text-muted">
             Delete &ldquo;{sectionPendingDelete.title}&rdquo; and remove its questions from this exam?
           </p>
           <div className="flex justify-end gap-2">

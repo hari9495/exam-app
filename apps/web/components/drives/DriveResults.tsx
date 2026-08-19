@@ -73,7 +73,7 @@ export function DriveResults({ driveId }: { driveId: string }) {
   if (isLoading) {
     return (
       <Card>
-        <p className="text-sm text-recruiter-text-tertiary">Loading&hellip;</p>
+        <p className="text-sm text-muted">Loading&hellip;</p>
       </Card>
     );
   }
@@ -104,7 +104,7 @@ export function DriveResults({ driveId }: { driveId: string }) {
             {row.candidateName}
           </Link>
         ) : (
-          <span className="font-medium text-recruiter-text">{row.candidateName}</span>
+          <span className="font-medium text-ink">{row.candidateName}</span>
         ),
     },
     { key: 'exam', header: 'Exam', sortValue: (row) => row.examTitle.toLowerCase(), render: (row) => row.examTitle },
@@ -132,14 +132,14 @@ export function DriveResults({ driveId }: { driveId: string }) {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
         <div className="relative max-w-xs flex-1">
-          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-recruiter-text-tertiary" />
+          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
           <input
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search candidates…"
             aria-label="Search candidates"
-            className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
+            className="w-full rounded-md border border-rule py-1.5 pl-8 pr-3 text-sm"
           />
         </div>
         <Button variant="secondary" onClick={handleExport} disabled={data.rows.length === 0}>

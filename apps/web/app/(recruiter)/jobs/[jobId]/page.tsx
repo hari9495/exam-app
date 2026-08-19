@@ -53,7 +53,7 @@ function PublicApplyControl({ job, jobId }: { job: JobDetail; jobId: string }) {
             value={applyUrl}
             aria-label="Public apply link"
             onFocus={(e) => e.target.select()}
-            className="min-w-0 flex-1 rounded border border-recruiter-border bg-recruiter-bg-subtle px-3 py-1.5 font-mono text-xs text-recruiter-text"
+            className="min-w-0 flex-1 rounded border border-rule bg-ground px-3 py-1.5 font-mono text-xs text-ink"
           />
           <Button type="button" variant="secondary" size="sm" onClick={handleCopy} className="inline-flex items-center gap-1.5">
             {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -92,7 +92,7 @@ export default function JobPage() {
         <BackLink href="/jobs" label="Back to Jobs" />
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold text-recruiter-text">{job?.title ?? 'Job'}</h1>
+            <h1 className="text-2xl font-semibold text-ink">{job?.title ?? 'Job'}</h1>
             {job && <StatusBadge tone={STATUS_TONE[job.status]}>{STATUS_LABEL[job.status]}</StatusBadge>}
           </div>
           {canManage && job && (
@@ -101,7 +101,7 @@ export default function JobPage() {
             </Button>
           )}
         </div>
-        {job?.description && <p className="mt-1 text-sm text-recruiter-text-secondary">{job.description}</p>}
+        {job?.description && <p className="mt-1 text-sm text-muted">{job.description}</p>}
       </div>
 
       {job && <LinkedExams jobId={jobId} linkedExams={job.linkedExams} canManage={canManage} />}
@@ -109,7 +109,7 @@ export default function JobPage() {
       {job && canManage && <FitCriteriaEditor job={job} jobId={jobId} />}
 
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-recruiter-text">Pipeline</h2>
+        <h2 className="text-lg font-semibold text-ink">Pipeline</h2>
         {canManage && <Button onClick={() => setAddOpen(true)}>Add candidate</Button>}
       </div>
 

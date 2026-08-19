@@ -62,7 +62,7 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
   }
 
   if (isLoading || !accessToken || (role !== null && role !== 'org_admin' && !actingSuperAdmin)) {
-    return <p className="p-8 text-sm text-recruiter-text-tertiary">Loading…</p>;
+    return <p className="p-8 text-sm text-muted">Loading…</p>;
   }
 
   // org_admin is a full org-scoped superuser: it sees the complete feature nav (recruiter/panel
@@ -98,7 +98,7 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
       />
       <div className="flex flex-1 flex-col">
         <StaffTopBar displayName={displayName} initials={initials} roleLabel={roleLabel} avatarUrl={currentUser?.avatarUrl} onLogout={handleLogout} />
-        <main className="flex-1 p-8">{children}</main>
+        <main className="flex-1 bg-ground p-8">{children}</main>
       </div>
     </div>
     </MotionConfig>

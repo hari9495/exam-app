@@ -126,7 +126,7 @@ describe('DashboardPage', () => {
     const flatBadges = screen.getAllByText('– 0%');
     expect(flatBadges).toHaveLength(4);
     flatBadges.forEach((badge) => {
-      expect(badge).toHaveClass('text-recruiter-text-tertiary');
+      expect(badge).toHaveClass('text-muted');
       expect(badge).not.toHaveClass('text-status-success');
     });
   });

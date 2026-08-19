@@ -79,7 +79,7 @@ export default function JobsPage() {
       {
         key: 'pipeline',
         header: 'Pipeline',
-        render: (job) => <span className="text-recruiter-text-secondary">{stageSummary(job.stageCounts)}</span>,
+        render: (job) => <span className="text-muted">{stageSummary(job.stageCounts)}</span>,
       },
       {
         key: 'createdAt',
@@ -94,7 +94,7 @@ export default function JobsPage() {
           <button
             type="button"
             onClick={() => handleDelete(job)}
-            className="text-recruiter-text-tertiary hover:text-red-600"
+            className="text-muted hover:text-red-600"
             aria-label={`Delete ${job.title}`}
           >
             <Trash2 size={16} />
@@ -109,8 +109,8 @@ export default function JobsPage() {
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold text-recruiter-text">Jobs</h1>
-        <p className="mt-1 text-sm text-recruiter-text-secondary">
+        <h1 className="text-2xl font-semibold text-ink">Jobs</h1>
+        <p className="mt-1 text-sm text-muted">
           Open a job to track candidates through applied, screened, interview, offer, and hired.
         </p>
       </div>
@@ -135,7 +135,7 @@ export default function JobsPage() {
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-recruiter-text-tertiary">Loading&hellip;</p>
+        <p className="text-sm text-muted">Loading&hellip;</p>
       ) : (
         <Table columns={columns} rows={jobs ?? []} rowKey={(job) => job.id} emptyMessage="No jobs yet." />
       )}

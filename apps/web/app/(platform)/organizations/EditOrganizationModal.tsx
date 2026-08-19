@@ -56,9 +56,9 @@ export function EditOrganizationModal({
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
             <Input label="Name" value={name} onChange={setName} required />
             <div className="text-sm">
-              <span className="block text-xs font-medium text-recruiter-text-tertiary">Slug</span>
+              <span className="block text-xs font-medium text-muted">Slug</span>
               <span className="text-gray-900">{organization.slug}</span>
-              <p className="mt-1 text-xs text-recruiter-text-tertiary">
+              <p className="mt-1 text-xs text-muted">
                 The slug cannot be changed — it appears in invitation links and SSO configuration.
               </p>
             </div>

@@ -56,7 +56,7 @@ export default function ForgotPasswordPage() {
       >
         {submitted ? (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: 'easeOut' }}>
-            <p className="mb-6 text-sm text-recruiter-text-secondary">
+            <p className="mb-6 text-sm text-muted">
               If an account with that organization and email exists, we&apos;ve sent a reset link to that email.
             </p>
             <Link href="/login" className="text-sm font-medium text-primary hover:underline">
@@ -65,7 +65,7 @@ export default function ForgotPasswordPage() {
           </motion.div>
         ) : (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: 'easeOut' }}>
-            <p className="mb-6 text-sm text-recruiter-text-secondary">
+            <p className="mb-6 text-sm text-muted">
               Enter your organization slug and email, and we&apos;ll send you a link to reset your password.
             </p>
             <form onSubmit={handleSubmit} className="flex flex-col gap-3">

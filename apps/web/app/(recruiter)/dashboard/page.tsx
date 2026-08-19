@@ -71,14 +71,14 @@ function StatCard({ icon: Icon, value, label, metric, color, delay, range }: Sta
                 overstated a change that didn't happen. */}
             <span
               className={`text-xs font-semibold ${
-                changePercent > 0 ? 'text-status-success' : changePercent < 0 ? 'text-status-danger' : 'text-recruiter-text-tertiary'
+                changePercent > 0 ? 'text-status-success' : changePercent < 0 ? 'text-status-danger' : 'text-muted'
               }`}
             >
               {changePercent > 0 ? '▲' : changePercent < 0 ? '▼' : '–'} {Math.abs(changePercent)}%
             </span>
           </div>
-          <p className="text-2xl font-bold text-recruiter-text">{value}</p>
-          <p className="text-xs text-recruiter-text-tertiary">{label}</p>
+          <p className="text-2xl font-bold text-ink">{value}</p>
+          <p className="text-xs text-muted">{label}</p>
           <div className="mt-2 h-10 w-full">
             <Sparkline data={points} color={color} unit={TREND_UNIT_LABELS[metric]} />
           </div>
@@ -111,8 +111,8 @@ export default function DashboardPage() {
   if (isLoading && !summary) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-semibold text-recruiter-text">Dashboard</h1>
-        <p className="text-sm text-recruiter-text-tertiary">Loading…</p>
+        <h1 className="mb-6 text-2xl font-semibold text-ink">Dashboard</h1>
+        <p className="text-sm text-muted">Loading…</p>
       </div>
     );
   }
@@ -120,7 +120,7 @@ export default function DashboardPage() {
   if (isError || !summary) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-semibold text-recruiter-text">Dashboard</h1>
+        <h1 className="mb-6 text-2xl font-semibold text-ink">Dashboard</h1>
         <p role="alert" className="text-sm text-status-danger">
           Failed to load dashboard.
         </p>
@@ -133,7 +133,7 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <h1 className="mb-4 text-2xl font-semibold text-recruiter-text">Dashboard</h1>
+      <h1 className="mb-4 text-2xl font-semibold text-ink">Dashboard</h1>
 
       <DashboardFilterBar value={filters} onChange={setFilters} exams={exams} candidates={candidates} />
 
@@ -163,15 +163,15 @@ export default function DashboardPage() {
       {/* Only worth a line when it says something the filter bar above doesn't already --
           i.e. once a filter has actually been narrowed from "everything, last 14 days". */}
       {!isDefaultFilterState(filters) && (
-        <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-recruiter-text-tertiary">
+        <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
           <span className="font-semibold uppercase tracking-wide">Analysis</span>
           {filters.examId !== 'all' && (
-            <span className="rounded-full bg-recruiter-bg-subtle px-2 py-0.5">{exams.find((e) => e.id === filters.examId)?.title ?? 'Exam'}</span>
+            <span className="rounded-full bg-ground px-2 py-0.5">{exams.find((e) => e.id === filters.examId)?.title ?? 'Exam'}</span>
           )}
           {filters.candidateId !== 'all' && (
-            <span className="rounded-full bg-recruiter-bg-subtle px-2 py-0.5">{candidates.find((c) => c.id === filters.candidateId)?.name ?? 'Candidate'}</span>
+            <span className="rounded-full bg-ground px-2 py-0.5">{candidates.find((c) => c.id === filters.candidateId)?.name ?? 'Candidate'}</span>
           )}
-          <span className="rounded-full bg-recruiter-bg-subtle px-2 py-0.5">{describeTimeFilter(filters)}</span>
+          <span className="rounded-full bg-ground px-2 py-0.5">{describeTimeFilter(filters)}</span>
         </div>
       )}
 
@@ -186,7 +186,7 @@ export default function DashboardPage() {
           </Card>
         ) : (
           <Card>
-            <p className="py-8 text-center text-sm text-recruiter-text-tertiary">Loading analytics…</p>
+            <p className="py-8 text-center text-sm text-muted">Loading analytics…</p>
           </Card>
         )}
         {/* Fetches on its own; must not depend on the analytics gate above. */}
@@ -197,16 +197,16 @@ export default function DashboardPage() {
         <div className="mb-5">
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.2 }}>
             <Card>
-              <h2 className="mb-3 flex items-center gap-1.5 text-sm font-bold text-recruiter-text">
+              <h2 className="mb-3 flex items-center gap-1.5 text-sm font-bold text-ink">
                 <CalendarClock size={14} />
                 Upcoming exams
               </h2>
               <ul>
                 {summary.upcomingExams.map((exam) => (
-                  <li key={exam.examId} className="border-b border-recruiter-border last:border-0">
-                    <Link href={`/exams/${exam.examId}/edit`} className="flex items-center gap-2.5 py-2.5 text-sm hover:bg-recruiter-bg-subtle">
-                      <span className="flex-1 text-recruiter-text">{exam.examTitle}</span>
-                      <span className="text-xs text-recruiter-text-tertiary">{new Date(exam.availabilityWindowStart).toLocaleDateString()}</span>
+                  <li key={exam.examId} className="border-b border-rule last:border-0">
+                    <Link href={`/exams/${exam.examId}/edit`} className="flex items-center gap-2.5 py-2.5 text-sm hover:bg-ground">
+                      <span className="flex-1 text-ink">{exam.examTitle}</span>
+                      <span className="text-xs text-muted">{new Date(exam.availabilityWindowStart).toLocaleDateString()}</span>
                     </Link>
                   </li>
                 ))}
@@ -219,40 +219,40 @@ export default function DashboardPage() {
       <div className="grid grid-cols-[1.3fr_1fr] gap-4">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.24 }}>
           <Card>
-            <h2 className="mb-3 text-sm font-bold text-recruiter-text">Needs your attention</h2>
+            <h2 className="mb-3 text-sm font-bold text-ink">Needs your attention</h2>
             {!hasAttention ? (
-              <p className="text-sm text-recruiter-text-tertiary">Nothing needs attention right now.</p>
+              <p className="text-sm text-muted">Nothing needs attention right now.</p>
             ) : (
               <ul>
                 {summary.attention.pendingGrading.map((item) => (
-                  <li key={item.examId} className="border-b border-recruiter-border last:border-0">
-                    <Link href={`/exams/${item.examId}/edit`} className="flex items-center gap-2.5 py-2.5 text-sm hover:bg-recruiter-bg-subtle">
+                  <li key={item.examId} className="border-b border-rule last:border-0">
+                    <Link href={`/exams/${item.examId}/edit`} className="flex items-center gap-2.5 py-2.5 text-sm hover:bg-ground">
                       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-status-danger" />
-                      <span className="flex-1 text-recruiter-text">
+                      <span className="flex-1 text-ink">
                         {item.examTitle}{' '}
-                        <span className="text-recruiter-text-tertiary">has {item.count} answer{item.count === 1 ? '' : 's'} awaiting manual grading</span>
+                        <span className="text-muted">has {item.count} answer{item.count === 1 ? '' : 's'} awaiting manual grading</span>
                       </span>
-                      <span className="rounded-full bg-recruiter-bg-subtle px-2 py-0.5 text-xs font-bold text-recruiter-text-secondary">{item.count}</span>
+                      <span className="rounded-full bg-ground px-2 py-0.5 text-xs font-bold text-muted">{item.count}</span>
                     </Link>
                   </li>
                 ))}
                 {summary.attention.recentProctoringFlags.map((flag, index) => (
-                  <li key={`${flag.examId}-${index}`} className="border-b border-recruiter-border last:border-0">
-                    <Link href={`/exams/${flag.examId}/edit`} className="flex items-center gap-2.5 py-2.5 text-sm hover:bg-recruiter-bg-subtle">
+                  <li key={`${flag.examId}-${index}`} className="border-b border-rule last:border-0">
+                    <Link href={`/exams/${flag.examId}/edit`} className="flex items-center gap-2.5 py-2.5 text-sm hover:bg-ground">
                       <AlertTriangle size={13} className="shrink-0 text-status-warning" />
-                      <span className="flex-1 text-recruiter-text">
-                        {flag.examTitle} <span className="text-recruiter-text-tertiary">flagged a proctoring violation</span>
+                      <span className="flex-1 text-ink">
+                        {flag.examTitle} <span className="text-muted">flagged a proctoring violation</span>
                       </span>
                     </Link>
                   </li>
                 ))}
                 {summary.attention.staleInvitationCount > 0 && (
                   <li className="flex items-center gap-2.5 py-2.5 text-sm">
-                    <Clock size={13} className="shrink-0 text-recruiter-text-tertiary" />
-                    <span className="flex-1 text-recruiter-text">
-                      Candidates <span className="text-recruiter-text-tertiary">invited 5+ days ago, haven&apos;t started</span>
+                    <Clock size={13} className="shrink-0 text-muted" />
+                    <span className="flex-1 text-ink">
+                      Candidates <span className="text-muted">invited 5+ days ago, haven&apos;t started</span>
                     </span>
-                    <span className="rounded-full bg-recruiter-bg-subtle px-2 py-0.5 text-xs font-bold text-recruiter-text-secondary">
+                    <span className="rounded-full bg-ground px-2 py-0.5 text-xs font-bold text-muted">
                       {summary.attention.staleInvitationCount}
                     </span>
                   </li>
@@ -279,21 +279,21 @@ export default function DashboardPage() {
 
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.28 }}>
           <Card>
-            <h2 className="mb-3 text-sm font-bold text-recruiter-text">Recent activity</h2>
+            <h2 className="mb-3 text-sm font-bold text-ink">Recent activity</h2>
             {summary.activity.length === 0 ? (
-              <p className="text-sm text-recruiter-text-tertiary">No recent activity.</p>
+              <p className="text-sm text-muted">No recent activity.</p>
             ) : (
               <ul>
                 {summary.activity.map((item) => {
                   const Icon = activityIconFor(item.description);
                   return (
-                    <li key={item.id} className="flex items-start gap-2.5 border-b border-recruiter-border py-2.5 text-sm last:border-0">
+                    <li key={item.id} className="flex items-start gap-2.5 border-b border-rule py-2.5 text-sm last:border-0">
                       <span className="mt-0.5 flex h-5.5 w-5.5 shrink-0 items-center justify-center rounded-full bg-status-success-bg text-status-success">
                         <Icon size={12} />
                       </span>
                       <div>
-                        <p className="text-recruiter-text">{item.description}</p>
-                        <p className="text-xs text-recruiter-text-tertiary">{new Date(item.occurredAt).toLocaleString()}</p>
+                        <p className="text-ink">{item.description}</p>
+                        <p className="text-xs text-muted">{new Date(item.occurredAt).toLocaleString()}</p>
                       </div>
                     </li>
                   );

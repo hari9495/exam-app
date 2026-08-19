@@ -18,7 +18,7 @@ export function RowActions({ actions, label }: { actions: RowAction[]; label: st
     <DropdownMenu>
       {/* `label` names this row's menu ("Actions for Acme") so one row's menu is
           distinguishable from another's, to screen readers and to tests alike. */}
-      <DropdownMenuTrigger aria-label={label} className="rounded border border-recruiter-border p-1.5">
+      <DropdownMenuTrigger aria-label={label} className="rounded border border-rule p-1.5">
         <ChevronDown size={14} />
       </DropdownMenuTrigger>
       <DropdownMenuContent>

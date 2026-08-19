@@ -19,7 +19,7 @@ function chipLabel(result: EntryExamResult): string {
 function chipColor(score: number): string {
   if (score >= 75) return 'text-status-success';
   if (score >= 50) return 'text-status-warning';
-  return 'text-recruiter-text-tertiary';
+  return 'text-muted';
 }
 
 function sortByFitScore(rows: BoardRow[]): BoardRow[] {
@@ -33,13 +33,13 @@ function sortByFitScore(rows: BoardRow[]): BoardRow[] {
 
 function RatingStars({ avgRating }: { avgRating: number | null }) {
   if (avgRating === null) {
-    return <span className="text-xs text-recruiter-text-tertiary">No ratings</span>;
+    return <span className="text-xs text-muted">No ratings</span>;
   }
   const rounded = Math.round(avgRating);
   return (
     <span className="text-sm text-amber-500">
       {'★'.repeat(rounded)}
-      {'☆'.repeat(5 - rounded)} <span className="text-xs text-recruiter-text-tertiary">{avgRating.toFixed(1)}</span>
+      {'☆'.repeat(5 - rounded)} <span className="text-xs text-muted">{avgRating.toFixed(1)}</span>
     </span>
   );
 }
@@ -63,36 +63,36 @@ function PipelineCard({ row, canManage, onOpen, onStageChange, onReject }: Pipel
           <Link
             key={result.examId}
             href={`/reports/${result.examId}/candidates/${row.candidateId}`}
-            className="inline-flex items-center rounded-full border border-recruiter-border bg-white px-2 py-0.5 text-xs text-recruiter-text hover:bg-recruiter-bg-subtle hover:underline"
+            className="inline-flex items-center rounded-full border border-rule bg-white px-2 py-0.5 text-xs text-ink hover:bg-ground hover:underline"
           >
             {chipLabel(result)}
           </Link>
         ))}
         {row.fitScore != null ? (
           <span
-            className={`inline-flex items-center gap-1 rounded-full border border-recruiter-border bg-white px-2 py-0.5 text-xs font-semibold ${chipColor(row.fitScore)}`}
+            className={`inline-flex items-center gap-1 rounded-full border border-rule bg-white px-2 py-0.5 text-xs font-semibold ${chipColor(row.fitScore)}`}
           >
             {row.fitScore}
             {row.fitStale && <span title="Stale — candidate updated since last score">⚠</span>}
           </span>
         ) : (
-          <span className="text-xs text-recruiter-text-tertiary">—</span>
+          <span className="text-xs text-muted">—</span>
         )}
       </div>
       <div className="flex items-center justify-between">
         <RatingStars avgRating={row.avgRating} />
-        <span className="text-xs text-recruiter-text-tertiary">
+        <span className="text-xs text-muted">
           {row.feedbackCount} {row.feedbackCount === 1 ? 'note' : 'notes'}
         </span>
       </div>
-      <p className="text-xs text-recruiter-text-tertiary">Added via {row.enteredVia}</p>
+      <p className="text-xs text-muted">Added via {row.enteredVia}</p>
       {canManage && (
-        <div className="flex items-center justify-between gap-2 border-t border-recruiter-border pt-2">
+        <div className="flex items-center justify-between gap-2 border-t border-rule pt-2">
           <select
             aria-label={`Stage for ${row.candidateName}`}
             value={row.stage}
             onChange={(e) => onStageChange(row.entryId, e.target.value as PipelineStage)}
-            className="rounded border border-recruiter-border px-2 py-1 text-xs"
+            className="rounded border border-rule px-2 py-1 text-xs"
           >
             {PIPELINE_STAGES.map((stage) => (
               <option key={stage} value={stage}>
@@ -169,7 +169,7 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
   if (isLoading) {
     return (
       <Card>
-        <p className="text-sm text-recruiter-text-tertiary">Loading&hellip;</p>
+        <p className="text-sm text-muted">Loading&hellip;</p>
       </Card>
     );
   }
@@ -193,7 +193,7 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
         </TabsList>
         <TabsContent value="board">
           <div className="mb-4 flex items-center justify-between gap-3">
-            <label className="flex items-center gap-1.5 text-xs font-medium text-recruiter-text-tertiary">
+            <label className="flex items-center gap-1.5 text-xs font-medium text-muted">
               <input type="checkbox" checked={sortByFit} onChange={(e) => setSortByFit(e.target.checked)} />
               Sort by fit
             </label>
@@ -201,7 +201,7 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
               type="button"
               onClick={() => scoreJob.mutate()}
               disabled={scoreJob.isPending}
-              className="rounded-md border border-recruiter-border bg-white px-3 py-1.5 text-xs font-medium text-recruiter-text hover:bg-recruiter-bg-subtle disabled:opacity-50"
+              className="rounded-md border border-rule bg-white px-3 py-1.5 text-xs font-medium text-ink hover:bg-ground disabled:opacity-50"
             >
               {scoreJob.isPending ? 'Scoring…' : 'Score candidates'}
             </button>
@@ -209,7 +209,7 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
             {PIPELINE_STAGES.map((stage) => (
               <div key={stage} className="flex flex-col gap-3">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
                   {STAGE_LABEL[stage]} ({board.stages[stage].length})
                 </h3>
                 <div className="flex flex-col gap-3">
@@ -223,7 +223,7 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
                       onReject={handleReject}
                     />
                   ))}
-                  {board.stages[stage].length === 0 && <p className="text-xs text-recruiter-text-tertiary">No candidates.</p>}
+                  {board.stages[stage].length === 0 && <p className="text-xs text-muted">No candidates.</p>}
                 </div>
               </div>
             ))}
@@ -231,7 +231,7 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
         </TabsContent>
         <TabsContent value="rejected">
           <div className="flex flex-col gap-3">
-            {board.rejected.length === 0 && <p className="text-sm text-recruiter-text-tertiary">No rejected candidates.</p>}
+            {board.rejected.length === 0 && <p className="text-sm text-muted">No rejected candidates.</p>}
             {board.rejected.map((row) => (
               <Card key={row.entryId} className="flex items-center justify-between gap-3">
                 <div className="flex flex-col gap-1">
@@ -239,7 +239,7 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
                     {row.candidateName}
                   </button>
                   {row.rejectedReason && (
-                    <p className="text-xs text-recruiter-text-tertiary">Reason: {row.rejectedReason}</p>
+                    <p className="text-xs text-muted">Reason: {row.rejectedReason}</p>
                   )}
                 </div>
                 {canManage && (

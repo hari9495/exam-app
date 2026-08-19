@@ -43,7 +43,7 @@ function ColorSwatch({ label, value, onChange }: { label: string; value: string;
           value={value}
           onChange={(e) => onChange(e.target.value)}
           aria-label={label}
-          className="h-10 w-10 shrink-0 cursor-pointer rounded-md border border-recruiter-border p-0.5"
+          className="h-10 w-10 shrink-0 cursor-pointer rounded-md border border-rule p-0.5"
         />
         <input
           type="text"
@@ -53,8 +53,8 @@ function ColorSwatch({ label, value, onChange }: { label: string; value: string;
           spellCheck={false}
           maxLength={7}
           className={clsx(
-            'w-28 rounded border bg-gray-50 px-2 py-1.5 font-mono text-sm uppercase text-recruiter-text-secondary focus:outline-none focus:ring-1',
-            isValid ? 'border-recruiter-border focus:ring-primary' : 'border-status-danger focus:ring-status-danger',
+            'w-28 rounded border bg-gray-50 px-2 py-1.5 font-mono text-sm uppercase text-muted focus:outline-none focus:ring-1',
+            isValid ? 'border-rule focus:ring-primary' : 'border-status-danger focus:ring-status-danger',
           )}
         />
       </div>
@@ -135,7 +135,7 @@ export default function BrandingSettingsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-      <h1 className="text-center text-2xl font-semibold text-recruiter-text">Branding Settings</h1>
+      <h1 className="text-center text-2xl font-semibold text-ink">Branding Settings</h1>
 
       {isError && (
         <p role="alert" className="rounded-md bg-status-danger-bg px-3 py-2 text-sm text-status-danger">
@@ -146,7 +146,7 @@ export default function BrandingSettingsPage() {
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0, ease: 'easeOut' }}>
         <CollapsibleSection title="Colors">
-          <p className="text-sm text-recruiter-text-secondary sm:col-span-2">
+          <p className="text-sm text-muted sm:col-span-2">
             Used to theme the candidate exam experience and staff console for your organization. Font Color is the
             text/label color shown on top of buttons and highlights that use your Primary Color -- pick one that
             stays readable against it.
@@ -182,29 +182,29 @@ export default function BrandingSettingsPage() {
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.05, ease: 'easeOut' }}>
         <CollapsibleSection title="Logo">
-          <p className="text-sm text-recruiter-text-secondary sm:col-span-2">
+          <p className="text-sm text-muted sm:col-span-2">
             Shown on the login page, invitation emails, and the candidate exam header.
           </p>
-          <div className="flex h-24 w-full items-center justify-center rounded-md border border-dashed border-recruiter-border bg-gray-50 sm:col-span-2">
+          <div className="flex h-24 w-full items-center justify-center rounded-md border border-dashed border-rule bg-gray-50 sm:col-span-2">
             {isLoading ? (
-              <span className="text-sm text-recruiter-text-tertiary">Loading…</span>
+              <span className="text-sm text-muted">Loading…</span>
             ) : branding?.logoUrl ? (
               <img src={branding.logoUrl} alt="Organization logo" className="max-h-20 max-w-full object-contain" />
             ) : (
-              <div className="flex flex-col items-center gap-1 text-recruiter-text-tertiary">
+              <div className="flex flex-col items-center gap-1 text-muted">
                 <ImageIcon size={22} />
                 <span className="text-xs">No logo uploaded</span>
               </div>
             )}
           </div>
           <form onSubmit={handleLogoSubmit} className="contents">
-            <label className="text-sm font-medium text-recruiter-text-secondary sm:col-span-2">
+            <label className="text-sm font-medium text-muted sm:col-span-2">
               Upload new logo (PNG, JPEG, or SVG, max 2MB)
               <input
                 type="file"
                 accept="image/png,image/jpeg,image/svg+xml"
                 onChange={(e) => setLogoFile(e.target.files?.[0] ?? null)}
-                className="mt-1 block w-full rounded-md border border-recruiter-border p-1.5 text-sm text-recruiter-text-secondary file:mr-3 file:rounded file:border file:border-recruiter-border file:bg-primary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-on-primary hover:file:opacity-90"
+                className="mt-1 block w-full rounded-md border border-rule p-1.5 text-sm text-muted file:mr-3 file:rounded file:border file:border-rule file:bg-primary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-on-primary hover:file:opacity-90"
               />
             </label>
             {/* Gated on the FILE, not on the branding fetch: uploading a logo does not

@@ -257,7 +257,7 @@ export default function QuestionsPage() {
       key: 'number',
       header: '#',
       width: '3%',
-      render: (question) => <span className="text-recruiter-text-tertiary">{question.number}</span>,
+      render: (question) => <span className="text-muted">{question.number}</span>,
       sortValue: (question) => question.number,
     },
     {
@@ -404,8 +404,8 @@ export default function QuestionsPage() {
   if (isLoading) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-semibold text-recruiter-text">Question Bank</h1>
-        <p className="text-sm text-recruiter-text-tertiary">Loading…</p>
+        <h1 className="mb-6 text-2xl font-semibold text-ink">Question Bank</h1>
+        <p className="text-sm text-muted">Loading…</p>
       </div>
     );
   }
@@ -413,7 +413,7 @@ export default function QuestionsPage() {
   if (isError) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-semibold text-recruiter-text">Question Bank</h1>
+        <h1 className="mb-6 text-2xl font-semibold text-ink">Question Bank</h1>
         <p role="alert" className="text-sm text-status-danger">
           Failed to load questions.
         </p>
@@ -424,7 +424,7 @@ export default function QuestionsPage() {
   return (
     <div>
       <div className="mb-4.5 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-recruiter-text">Question Bank</h1>
+        <h1 className="text-2xl font-semibold text-ink">Question Bank</h1>
         <div className="flex gap-2">
           <Link href="/questions/bulk-upload">
             <Button variant="secondary">Bulk upload</Button>
@@ -456,7 +456,7 @@ export default function QuestionsPage() {
 
       <div className="mb-3 flex flex-wrap items-end gap-2">
         <div className="relative max-w-xs flex-1">
-          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-recruiter-text-tertiary" />
+          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
           <input
             type="search"
             value={search}
@@ -466,7 +466,7 @@ export default function QuestionsPage() {
             }}
             placeholder="Search questions…"
             aria-label="Search Questions"
-            className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
+            className="w-full rounded-md border border-rule py-1.5 pl-8 pr-3 text-sm"
           />
         </div>
 
@@ -492,8 +492,8 @@ export default function QuestionsPage() {
       </div>
 
       {status === 'draft' && selectedVisibleIds.length > 0 && (
-        <div className="mb-3 flex items-center gap-2 rounded-md border border-recruiter-border bg-recruiter-bg-subtle px-3 py-2">
-          <span className="text-sm text-recruiter-text-secondary">{selectedVisibleIds.length} selected</span>
+        <div className="mb-3 flex items-center gap-2 rounded-md border border-rule bg-ground px-3 py-2">
+          <span className="text-sm text-muted">{selectedVisibleIds.length} selected</span>
           <Button type="button" size="sm" loading={bulkActionPending} onClick={() => handleBulkAction('publish')}>
             {`Publish selected (${selectedVisibleIds.length})`}
           </Button>
@@ -504,13 +504,13 @@ export default function QuestionsPage() {
       )}
 
       {hiddenFlaggedCount > 0 && rows.length > 0 && (
-        <p className="mb-3 text-sm text-recruiter-text-secondary">
+        <p className="mb-3 text-sm text-muted">
           {`Showing ${rows.length} of ${flaggedQuestions?.length ?? 0} flagged questions. The rest sit outside this view — a different status, or beyond the first 100 questions.`}
         </p>
       )}
 
       {rows.length === 0 ? (
-        <div className="py-8 text-center text-sm text-recruiter-text-tertiary">
+        <div className="py-8 text-center text-sm text-muted">
           <p>
             {needsReviewOnly
               ? // The generic copy below would otherwise sit right under a "Needs review (N)"
@@ -550,21 +550,21 @@ export default function QuestionsPage() {
             const numberedQuestions: NumberedQuestion[] = group.questions.map((question, index) => ({ ...question, number: index + 1 }));
             const expanded = groupBy === 'none' || expandedGroups.has(group.label);
             return (
-              <section key={group.label} className={groupBy !== 'none' ? 'overflow-hidden rounded-lg border border-recruiter-border' : undefined}>
+              <section key={group.label} className={groupBy !== 'none' ? 'overflow-hidden rounded-lg border border-rule' : undefined}>
                 {groupBy !== 'none' && (
                   <button
                     type="button"
                     onClick={() => toggleGroup(group.label)}
                     aria-expanded={expanded}
-                    className="flex w-full flex-wrap items-baseline gap-2 bg-recruiter-bg-subtle px-3 py-2 text-left"
+                    className="flex w-full flex-wrap items-baseline gap-2 bg-ground px-3 py-2 text-left"
                   >
                     <ChevronDown
                       size={14}
-                      className={clsx('shrink-0 self-center text-recruiter-text-secondary transition-transform', !expanded && '-rotate-90')}
+                      className={clsx('shrink-0 self-center text-muted transition-transform', !expanded && '-rotate-90')}
                       aria-hidden="true"
                     />
-                    <h2 className="text-sm font-semibold text-recruiter-text">{group.label}</h2>
-                    <span className="text-xs text-recruiter-text-tertiary">
+                    <h2 className="text-sm font-semibold text-ink">{group.label}</h2>
+                    <span className="text-xs text-muted">
                       {group.questions.length} {group.questions.length === 1 ? 'question' : 'questions'} · {totalMarks}{' '}
                       {totalMarks === 1 ? 'mark' : 'marks'}
                     </span>
@@ -590,10 +590,10 @@ export default function QuestionsPage() {
 
       {questionPendingDelete && (
         <Modal open title="Delete Question" onClose={() => setQuestionPendingDelete(null)}>
-          <p className="mb-4 text-sm text-recruiter-text-secondary">
+          <p className="mb-4 text-sm text-muted">
             Delete this question? It will be removed from the question bank. Exams that already use it keep their copy.
           </p>
-          <p className="mb-4 truncate text-sm font-medium text-recruiter-text" title={questionPendingDelete.text}>
+          <p className="mb-4 truncate text-sm font-medium text-ink" title={questionPendingDelete.text}>
             {questionPendingDelete.text}
           </p>
           <div className="flex justify-end gap-2">

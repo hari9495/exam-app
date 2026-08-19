@@ -15,7 +15,7 @@ export function BackLink({ href, label, className }: BackLinkProps) {
   return (
     <Link
       href={href}
-      className={`mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-recruiter-text-secondary hover:text-recruiter-text ${className ?? ''}`}
+      className={`mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted hover:text-ink ${className ?? ''}`}
     >
       <ArrowLeft size={16} />
       {label}

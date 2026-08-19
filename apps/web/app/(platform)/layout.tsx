@@ -41,7 +41,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="min-h-screen bg-recruiter-bg-subtle">
+      <div className="min-h-screen bg-ground">
         <div className="flex items-center justify-between bg-brand-navy px-6 py-4">
           <div className="flex items-center gap-8">
             <div className="flex items-center gap-2.5">

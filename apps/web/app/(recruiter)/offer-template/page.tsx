@@ -41,23 +41,23 @@ export default function OfferTemplatePage() {
   const canSave = Boolean(subject.trim() && body.trim());
 
   if (!canManage) {
-    return <p className="text-sm text-recruiter-text-tertiary">You don&apos;t have access to this page.</p>;
+    return <p className="text-sm text-muted">You don&apos;t have access to this page.</p>;
   }
 
   if (isLoading) {
-    return <p className="text-sm text-recruiter-text-tertiary">Loading&hellip;</p>;
+    return <p className="text-sm text-muted">Loading&hellip;</p>;
   }
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold text-recruiter-text">Offer Template</h1>
-        <p className="mt-1 text-sm text-recruiter-text-secondary">
+        <h1 className="text-2xl font-semibold text-ink">Offer Template</h1>
+        <p className="mt-1 text-sm text-muted">
           Control the subject and body of the offer letter email sent to candidates.
         </p>
       </div>
 
-      <div className="flex flex-col gap-4 rounded-lg border border-recruiter-border bg-white p-6">
+      <div className="flex flex-col gap-4 rounded-lg border border-rule bg-white p-6">
         <Input label="Subject" value={subject} onChange={setSubject} required />
 
         <div className="flex flex-col gap-1">
@@ -70,7 +70,7 @@ export default function OfferTemplatePage() {
                 key={token}
                 type="button"
                 onClick={() => insertToken(token)}
-                className="rounded border border-recruiter-border px-2 py-0.5 text-xs text-recruiter-text hover:bg-recruiter-bg-subtle"
+                className="rounded border border-rule px-2 py-0.5 text-xs text-ink hover:bg-ground"
               >
                 {`{{${token}}}`}
               </button>

@@ -58,14 +58,14 @@ export default function GetStartedPage() {
         {submitted ? (
           <div className="flex flex-col items-center gap-3 py-4 text-center">
             <CheckCircle2 size={32} className="text-status-success" aria-hidden="true" />
-            <p className="text-sm font-semibold text-recruiter-text">Thanks — we got it.</p>
-            <p className="text-sm text-recruiter-text-secondary">
+            <p className="text-sm font-semibold text-ink">Thanks — we got it.</p>
+            <p className="text-sm text-muted">
               Someone from our team will reach out to {workEmail} shortly to set up your organization.
             </p>
           </div>
         ) : (
           <>
-            <p className="mb-4 text-sm text-recruiter-text-secondary">
+            <p className="mb-4 text-sm text-muted">
               Tell us about your team and we&apos;ll set up your organization.
             </p>
             {error && (

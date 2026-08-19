@@ -51,7 +51,7 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
   }
 
   if (isLoading || !accessToken || (role !== null && role !== 'recruiter' && role !== 'org_admin' && !actingSuperAdmin)) {
-    return <p className="p-8 text-sm text-recruiter-text-tertiary">Loading…</p>;
+    return <p className="p-8 text-sm text-muted">Loading…</p>;
   }
 
   // org_admin is a full org-scoped superuser, so it sees the complete feature nav everywhere,
@@ -91,7 +91,7 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
       />
       <div className="flex flex-1 flex-col">
         <StaffTopBar displayName={displayName} initials={initials} roleLabel={roleLabel} avatarUrl={currentUser?.avatarUrl} onLogout={handleLogout} />
-        <main className="flex-1 p-8">{children}</main>
+        <main className="flex-1 bg-ground p-8">{children}</main>
       </div>
     </div>
     </MotionConfig>

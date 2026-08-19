@@ -85,14 +85,14 @@ function AccommodationCell({ invitation, onSave, isPending }: { invitation: Invi
         value={value}
         onChange={(e) => setValue(e.target.value)}
         aria-label={`Extra time (%) for ${invitation.candidate.name}`}
-        className="w-16 rounded border border-recruiter-border px-2 py-1 text-sm"
+        className="w-16 rounded border border-rule px-2 py-1 text-sm"
       />
       <span className="text-sm text-gray-500">%</span>
       <button
         type="button"
         disabled={isPending}
         onClick={() => onSave(Number(value))}
-        className="rounded border border-recruiter-border px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        className="rounded border border-rule px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
       >
         Save
       </button>
@@ -175,7 +175,7 @@ export function CandidatesPanel({ examId }: { examId: string }) {
                 onError: (error) => toast(error instanceof Error ? error.message : 'Failed to resend invite.', 'error'),
               })
             }
-            className="text-xs font-medium text-primary hover:underline disabled:cursor-not-allowed disabled:text-recruiter-text-tertiary disabled:no-underline disabled:opacity-70"
+            className="text-xs font-medium text-primary hover:underline disabled:cursor-not-allowed disabled:text-muted disabled:no-underline disabled:opacity-70"
           >
             Resend invite
           </button>

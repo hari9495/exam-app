@@ -173,7 +173,7 @@ export function ExamDetailsForm({
       className="flex max-w-3xl min-w-0 flex-col gap-6"
     >
       {locked && (
-        <p className="rounded-md border border-recruiter-border bg-recruiter-bg-subtle p-3 text-sm text-recruiter-text-secondary">
+        <p className="rounded-md border border-rule bg-ground p-3 text-sm text-muted">
           {lockedMessage ??
             'This exam is locked because a candidate has already started it. Nothing here can be changed anymore — you can still invite new candidates and manage live monitoring from their respective tabs.'}
         </p>
@@ -298,7 +298,7 @@ export function ExamDetailsForm({
             (ExamsService.resolveProctoringFields) forces them all off in that case
             regardless, so nothing here can end up silently active while hidden. */}
         {enableAntiCheating && (
-          <div className="flex flex-col gap-4 border-l-2 border-recruiter-border pl-4 sm:col-span-2">
+          <div className="flex flex-col gap-4 border-l-2 border-rule pl-4 sm:col-span-2">
             <div>
               <Checkbox label="Require Webcam Proctoring" checked={webcamProctoringEnabled} onChange={setWebcamProctoringEnabled} />
               {webcamProctoringEnabled && (
@@ -308,7 +308,7 @@ export function ExamDetailsForm({
                     checked={webcamRecordOnly}
                     onChange={setWebcamRecordOnly}
                   />
-                  <p className="pt-1 text-xs text-recruiter-text-secondary">
+                  <p className="pt-1 text-xs text-muted">
                     Webcam violations (no face, multiple faces, head turned) are still detected and recorded as
                     evidence, but never pause or block the exam. The rules below still pause/block as configured.
                   </p>
@@ -361,7 +361,7 @@ export function ExamDetailsForm({
                 onChange={setScreenCaptureEnabled}
               />
               {screenCaptureEnabled ? (
-                <p className="pl-6 pt-1 text-xs text-recruiter-text-secondary">
+                <p className="pl-6 pt-1 text-xs text-muted">
                   Candidates must share their whole screen to start, and cannot use a phone or tablet. Their screen is captured
                   only when a rule is broken.
                 </p>
@@ -374,7 +374,7 @@ export function ExamDetailsForm({
                 onChange={setLockdownRequired}
               />
               {lockdownRequired ? (
-                <p className="pl-6 pt-1 text-xs text-recruiter-text-secondary">
+                <p className="pl-6 pt-1 text-xs text-muted">
                   Candidates must install Safe Exam Browser and open the exam inside it. SEB refuses to start while
                   remote-access tools or other apps are running, closes background applications, and locks the machine to the
                   exam until submission.
@@ -383,7 +383,7 @@ export function ExamDetailsForm({
             </div>
           </div>
         )}
-        <div className="flex flex-col gap-1.5 border-t border-recruiter-border pt-4 sm:col-span-2">
+        <div className="flex flex-col gap-1.5 border-t border-rule pt-4 sm:col-span-2">
           <Checkbox
             label="Require a face photo before starting"
             checked={faceVerificationEnabled}
@@ -413,7 +413,7 @@ export function ExamDetailsForm({
                     { value: 'block', label: 'Record and block the exam' },
                   ]}
                 />
-                <p className="pt-1 text-xs text-recruiter-text-secondary">
+                <p className="pt-1 text-xs text-muted">
                   Thresholds are not yet calibrated. Leave this on &quot;Record only&quot; until calibration and the
                   fairness check are complete.
                 </p>

@@ -357,7 +357,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
              *  shrinks the rendered image on BOTH axes and centers it, instead of the
              *  browser's default flush-left alignment dumping all the resulting slack
              *  as blank space on one side. object-contain never crops the evidence. */}
-            <div className="flex h-[60vh] items-center justify-center overflow-hidden rounded bg-recruiter-bg-subtle">
+            <div className="flex h-[60vh] items-center justify-center overflow-hidden rounded bg-ground">
               <img src={selectedScreenshot} alt="Screen capture" className="max-h-full max-w-full object-contain" />
             </div>
           </div>

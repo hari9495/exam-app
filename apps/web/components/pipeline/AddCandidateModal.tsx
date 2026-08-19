@@ -94,14 +94,14 @@ export function AddCandidateModal({ jobId, open, onClose }: { jobId: string; ope
                   onClick={() => setSelectedCandidateId(candidate.id)}
                   className={clsx(
                     'rounded border px-3 py-2 text-left text-sm',
-                    selectedCandidateId === candidate.id ? 'border-primary bg-recruiter-bg-subtle' : 'border-recruiter-border',
+                    selectedCandidateId === candidate.id ? 'border-primary bg-ground' : 'border-rule',
                   )}
                 >
-                  <div className="font-medium text-recruiter-text">{candidate.name}</div>
-                  <div className="text-xs text-recruiter-text-tertiary">{candidate.email}</div>
+                  <div className="font-medium text-ink">{candidate.name}</div>
+                  <div className="text-xs text-muted">{candidate.email}</div>
                 </button>
               ))}
-              {(candidates?.data ?? []).length === 0 && <p className="text-xs text-recruiter-text-tertiary">No candidates found.</p>}
+              {(candidates?.data ?? []).length === 0 && <p className="text-xs text-muted">No candidates found.</p>}
             </div>
           </div>
         </TabsContent>

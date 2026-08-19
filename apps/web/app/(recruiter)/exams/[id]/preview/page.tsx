@@ -29,23 +29,23 @@ export default function PreviewPage() {
     <div className="mx-auto max-w-4xl xl:max-w-5xl 2xl:max-w-6xl">
       <BackLink href={`/exams/${exam.id}/edit`} label="Back To Exam" className="print:hidden" />
       <div className="mb-2 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-recruiter-text">{exam.title}</h1>
+        <h1 className="text-2xl font-semibold text-ink">{exam.title}</h1>
         <Button variant="secondary" onClick={() => window.print()} className="inline-flex items-center print:hidden">
           <Printer size={16} className="mr-1.5" />
           Print
         </Button>
       </div>
-      {exam.instructions && <p className="mb-6 text-sm text-recruiter-text-secondary">{exam.instructions}</p>}
+      {exam.instructions && <p className="mb-6 text-sm text-muted">{exam.instructions}</p>}
       <div className="flex flex-col gap-6">
         {exam.sections
           .slice()
           .sort((a, b) => a.orderIndex - b.orderIndex)
           .map((section) => (
             <div key={section.id} className="flex flex-col gap-3">
-              <h2 className="text-lg font-semibold text-recruiter-text">{section.title}</h2>
+              <h2 className="text-lg font-semibold text-ink">{section.title}</h2>
               {section.selectionMode === 'pool' ? (
                 <Card>
-                  <p className="text-sm text-recruiter-text-secondary">
+                  <p className="text-sm text-muted">
                     Randomly selects {section.poolSize ?? section.questions.length} of {section.questions.length} question
                     {section.questions.length === 1 ? '' : 's'} per candidate
                     {section.poolDifficulty ? ` (difficulty: ${section.poolDifficulty})` : ''}.
@@ -53,7 +53,7 @@ export default function PreviewPage() {
                 </Card>
               ) : section.questions.length === 0 ? (
                 <Card>
-                  <p className="text-sm text-recruiter-text-secondary">No questions added to this section yet.</p>
+                  <p className="text-sm text-muted">No questions added to this section yet.</p>
                 </Card>
               ) : (
                 // question comes straight off the exam's own section data (the same
@@ -77,10 +77,10 @@ function PreviewQuestion({ question, index }: { question: Question; index: numbe
     // paginates for print/PDF -- without it a long question splits across two pages
     // wherever it happens to cross the page boundary.
     <Card className="break-inside-avoid">
-      <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary">
+      <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted">
         Q{index + 1} · {QUESTION_TYPE_LABEL[question.type]} · {question.marks} marks
       </span>
-      <p className="mb-3 text-sm text-recruiter-text">{question.text}</p>
+      <p className="mb-3 text-sm text-ink">{question.text}</p>
       {question.imageUrl ? (
         <img src={question.imageUrl} alt="Question illustration" className="mb-3 max-h-64 rounded-lg object-contain" />
       ) : null}
@@ -108,10 +108,10 @@ function PreviewQuestion({ question, index }: { question: Question; index: numbe
       ) : (
         <div className="flex flex-col gap-2">
           {question.options.map((option) => (
-            <div key={option.id} className="flex items-center gap-2 rounded-md border border-recruiter-border px-3 py-2">
-              <span className="inline-block h-3.5 w-3.5 flex-shrink-0 rounded-full border-2 border-recruiter-text-tertiary" aria-hidden="true" />
+            <div key={option.id} className="flex items-center gap-2 rounded-md border border-rule px-3 py-2">
+              <span className="inline-block h-3.5 w-3.5 flex-shrink-0 rounded-full border-2 border-muted" aria-hidden="true" />
               {option.imageUrl ? <img src={option.imageUrl} alt="Option illustration" className="h-10 w-10 rounded object-cover" /> : null}
-              <span className="text-sm text-recruiter-text">{option.text}</span>
+              <span className="text-sm text-ink">{option.text}</span>
             </div>
           ))}
         </div>

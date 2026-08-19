@@ -101,7 +101,7 @@ function EditTemplateModal({ template, onClose }: { template: CandidateEmailTemp
                 key={token}
                 type="button"
                 onClick={() => insertToken(token)}
-                className="rounded border border-recruiter-border px-2 py-0.5 text-xs text-recruiter-text hover:bg-recruiter-bg-subtle"
+                className="rounded border border-rule px-2 py-0.5 text-xs text-ink hover:bg-ground"
               >
                 {`{{${token}}}`}
               </button>
@@ -181,18 +181,18 @@ export default function MessageTemplatesPage() {
   ];
 
   if (!canManage) {
-    return <p className="text-sm text-recruiter-text-tertiary">You don&apos;t have access to this page.</p>;
+    return <p className="text-sm text-muted">You don&apos;t have access to this page.</p>;
   }
 
   if (isLoading) {
-    return <p className="text-sm text-recruiter-text-tertiary">Loading&hellip;</p>;
+    return <p className="text-sm text-muted">Loading&hellip;</p>;
   }
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold text-recruiter-text">Message Templates</h1>
-        <p className="mt-1 text-sm text-recruiter-text-secondary">
+        <h1 className="text-2xl font-semibold text-ink">Message Templates</h1>
+        <p className="mt-1 text-sm text-muted">
           Control what candidates are emailed at each pipeline stage. Edit a default template to override it for your
           organization, or restore it to fall back to the built-in copy.
         </p>

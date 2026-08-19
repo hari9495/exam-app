@@ -59,7 +59,7 @@ export function FitCriteriaEditor({ job, jobId }: { job: JobDetail; jobId: strin
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <label htmlFor="fit-criteria" className="text-sm font-medium text-recruiter-text">
+        <label htmlFor="fit-criteria" className="text-sm font-medium text-ink">
           What you&apos;re looking for
         </label>
         <textarea
@@ -68,12 +68,12 @@ export function FitCriteriaEditor({ job, jobId }: { job: JobDetail; jobId: strin
           onChange={(e) => setFitCriteria(e.target.value)}
           rows={3}
           placeholder="Describe the ideal candidate for this role…"
-          className="w-full rounded border border-recruiter-border px-3 py-2 text-sm focus:border-primary focus:outline-none"
+          className="w-full rounded border border-rule px-3 py-2 text-sm focus:border-primary focus:outline-none"
         />
       </div>
 
       <div className="flex flex-col gap-2">
-        <span className="text-sm font-medium text-recruiter-text">Weighted rubric (optional)</span>
+        <span className="text-sm font-medium text-ink">Weighted rubric (optional)</span>
         {rubric.map((row, index) => (
           <div key={index} className="flex items-center gap-2">
             <input
@@ -82,16 +82,16 @@ export function FitCriteriaEditor({ job, jobId }: { job: JobDetail; jobId: strin
               onChange={(e) => updateRow(index, { label: e.target.value })}
               aria-label={`Rubric dimension ${index + 1} label`}
               placeholder="e.g. Communication"
-              className="min-w-0 flex-1 rounded border border-recruiter-border px-2 py-1 text-sm"
+              className="min-w-0 flex-1 rounded border border-rule px-2 py-1 text-sm"
             />
             <input
               type="number"
               value={row.weight}
               onChange={(e) => updateRow(index, { weight: Number(e.target.value) })}
               aria-label={`Rubric dimension ${index + 1} weight`}
-              className="w-20 rounded border border-recruiter-border px-2 py-1 text-right text-sm"
+              className="w-20 rounded border border-rule px-2 py-1 text-right text-sm"
             />
-            <span className="text-sm text-recruiter-text-secondary">%</span>
+            <span className="text-sm text-muted">%</span>
             <button
               type="button"
               onClick={() => removeRow(index)}

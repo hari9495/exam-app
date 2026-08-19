@@ -78,7 +78,7 @@ function NextRoundCell({ nextRound }: { nextRound: ExamResultRow['nextRound'] })
   const email = NEXT_ROUND_EMAIL[nextRound.emailStatus] ?? { label: nextRound.emailStatus, tone: 'neutral' as const };
   return (
     <span className="flex min-w-0 items-center gap-1.5" title={`Advanced to ${nextRound.examTitle}`}>
-      <span className="max-w-[10rem] truncate text-recruiter-text-secondary">{nextRound.examTitle}</span>
+      <span className="max-w-[10rem] truncate text-muted">{nextRound.examTitle}</span>
       <StatusBadge tone={email.tone}>{email.label}</StatusBadge>
     </span>
   );

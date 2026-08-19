@@ -150,7 +150,7 @@ export default function ExamsPage() {
             <DropdownMenuTrigger
               disabled={duplicateExam.isPending}
               aria-label="More Actions"
-              className="rounded p-1 text-recruiter-text-tertiary hover:bg-recruiter-bg-subtle"
+              className="rounded p-1 text-muted hover:bg-ground"
             >
               <MoreHorizontal size={16} />
             </DropdownMenuTrigger>
@@ -174,8 +174,8 @@ export default function ExamsPage() {
   if (isLoading) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-semibold text-recruiter-text">Exams</h1>
-        <p className="text-sm text-recruiter-text-tertiary">Loading…</p>
+        <h1 className="mb-6 text-2xl font-semibold text-ink">Exams</h1>
+        <p className="text-sm text-muted">Loading…</p>
       </div>
     );
   }
@@ -183,7 +183,7 @@ export default function ExamsPage() {
   if (isError) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-semibold text-recruiter-text">Exams</h1>
+        <h1 className="mb-6 text-2xl font-semibold text-ink">Exams</h1>
         <p role="alert" className="text-sm text-status-danger">
           Failed to load exams.
         </p>
@@ -194,7 +194,7 @@ export default function ExamsPage() {
   return (
     <div>
       <div className="mb-4.5 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-recruiter-text">Exams</h1>
+        <h1 className="text-2xl font-semibold text-ink">Exams</h1>
         <Link href="/exams/new">
           <Button className="inline-flex items-center gap-1.5">
             <Plus size={14} />
@@ -204,7 +204,7 @@ export default function ExamsPage() {
       </div>
       <div className="mb-3 flex items-center gap-2">
         <div className="relative max-w-xs flex-1">
-          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-recruiter-text-tertiary" />
+          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
           <input
             type="search"
             value={search}
@@ -214,7 +214,7 @@ export default function ExamsPage() {
             }}
             placeholder="Search exams…"
             aria-label="Search Exams"
-            className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
+            className="w-full rounded-md border border-rule py-1.5 pl-8 pr-3 text-sm"
           />
         </div>
         {chooser}
@@ -229,7 +229,7 @@ export default function ExamsPage() {
 
       {examPendingDelete && (
         <Modal open title="Delete Exam" onClose={() => setExamPendingDelete(null)}>
-          <p className="mb-4 text-sm text-recruiter-text-secondary">
+          <p className="mb-4 text-sm text-muted">
             Delete &ldquo;{examPendingDelete.title}&rdquo;? Candidates and results already collected for this exam are kept, but it
             will no longer appear in your exam list.
           </p>

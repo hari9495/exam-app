@@ -170,7 +170,7 @@ export function ScheduleInterviewModal({ entryId, candidateId, onClose }: Schedu
         <div className="flex flex-col gap-2">
           <span className="text-sm font-medium text-gray-700">Panel</span>
           {staff.length === 0 ? (
-            <p className="text-sm text-recruiter-text-tertiary">No staff available.</p>
+            <p className="text-sm text-muted">No staff available.</p>
           ) : (
             <div className="flex flex-col gap-1.5">
               {staff.map((user) => (

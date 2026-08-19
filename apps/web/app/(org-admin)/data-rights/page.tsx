@@ -44,8 +44,8 @@ function AttemptRecord({ attempt }: { attempt: ExportAttempt }) {
     <Card>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="font-medium text-recruiter-text">{attempt.examTitle}</p>
-          <p className="text-xs text-recruiter-text-tertiary">
+          <p className="font-medium text-ink">{attempt.examTitle}</p>
+          <p className="text-xs text-muted">
             Started {new Date(attempt.startedAt).toLocaleString()}
             {attempt.submittedAt ? ` · Submitted ${new Date(attempt.submittedAt).toLocaleString()}` : ''}
           </p>
@@ -61,7 +61,7 @@ function AttemptRecord({ attempt }: { attempt: ExportAttempt }) {
       </div>
 
       {attempt.proctoringAnalysis?.riskLevel && (
-        <div className="mt-2.5 flex items-start gap-1.5 text-sm text-recruiter-text-secondary">
+        <div className="mt-2.5 flex items-start gap-1.5 text-sm text-muted">
           <StatusBadge tone={RISK_TONE[attempt.proctoringAnalysis.riskLevel] ?? 'neutral'}>
             Proctoring risk: {attempt.proctoringAnalysis.riskLevel}
           </StatusBadge>
@@ -70,22 +70,22 @@ function AttemptRecord({ attempt }: { attempt: ExportAttempt }) {
       )}
 
       {attempt.insight?.summary && (
-        <p className="mt-2 text-sm text-recruiter-text-secondary">
-          <span className="font-medium text-recruiter-text">AI insight: </span>
+        <p className="mt-2 text-sm text-muted">
+          <span className="font-medium text-ink">AI insight: </span>
           {attempt.insight.summary}
         </p>
       )}
 
-      {attempt.deviceFingerprint && <p className="mt-2 text-xs text-recruiter-text-tertiary">Device: {attempt.deviceFingerprint}</p>}
+      {attempt.deviceFingerprint && <p className="mt-2 text-xs text-muted">Device: {attempt.deviceFingerprint}</p>}
 
       {attempt.answers.length > 0 && (
         <details className="mt-3">
           <summary className="cursor-pointer text-sm font-medium text-primary">Answers ({attempt.answers.length})</summary>
-          <ul className="mt-2 flex flex-col gap-2 border-l-2 border-recruiter-border pl-3">
+          <ul className="mt-2 flex flex-col gap-2 border-l-2 border-rule pl-3">
             {attempt.answers.map((answer, index) => (
               <li key={index} className="text-sm">
-                <p className="text-recruiter-text">{answer.questionText}</p>
-                <p className="text-xs text-recruiter-text-secondary">
+                <p className="text-ink">{answer.questionText}</p>
+                <p className="text-xs text-muted">
                   {answer.selectedOptions.join(', ') || '—'}
                   {answer.isCorrect !== null ? (answer.isCorrect ? ' · Correct' : ' · Incorrect') : ''}
                   {answer.marksAwarded !== null ? ` · ${answer.marksAwarded} marks` : ''}
@@ -101,7 +101,7 @@ function AttemptRecord({ attempt }: { attempt: ExportAttempt }) {
           <summary className="cursor-pointer text-sm font-medium text-primary">
             Proctoring events ({attempt.proctoringEvents.length})
           </summary>
-          <ul className="mt-2 flex flex-col gap-1 border-l-2 border-recruiter-border pl-3 text-xs text-recruiter-text-secondary">
+          <ul className="mt-2 flex flex-col gap-1 border-l-2 border-rule pl-3 text-xs text-muted">
             {attempt.proctoringEvents.map((event, index) => (
               <li key={index}>
                 {new Date(event.occurredAt).toLocaleString()} · {event.eventType} ({event.severity})
@@ -114,7 +114,7 @@ function AttemptRecord({ attempt }: { attempt: ExportAttempt }) {
       {attempt.messages.length > 0 && (
         <details className="mt-2">
           <summary className="cursor-pointer text-sm font-medium text-primary">Messages ({attempt.messages.length})</summary>
-          <ul className="mt-2 flex flex-col gap-1 border-l-2 border-recruiter-border pl-3 text-xs text-recruiter-text-secondary">
+          <ul className="mt-2 flex flex-col gap-1 border-l-2 border-rule pl-3 text-xs text-muted">
             {attempt.messages.map((message, index) => (
               <li key={index}>
                 {new Date(message.sentAt).toLocaleString()}: {message.body}
@@ -201,8 +201,8 @@ export default function DataRightsPage() {
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold text-recruiter-text">Candidate Data Rights</h1>
-        <p className="mt-1 text-sm text-recruiter-text-secondary">
+        <h1 className="text-2xl font-semibold text-ink">Candidate Data Rights</h1>
+        <p className="mt-1 text-sm text-muted">
           Look up a candidate by email to export their full record or permanently erase their personal data, for a data
           subject access or deletion request (e.g. GDPR Article 15/17).
         </p>
@@ -225,7 +225,7 @@ export default function DataRightsPage() {
       </Card>
 
       {!candidate && (
-        <div className="flex flex-col items-center gap-2 py-10 text-center text-recruiter-text-tertiary">
+        <div className="flex flex-col items-center gap-2 py-10 text-center text-muted">
           <UserSearch size={28} />
           <p className="text-sm">Look up a candidate above to view or manage their data.</p>
         </div>
@@ -237,14 +237,14 @@ export default function DataRightsPage() {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <div className="flex items-center gap-2">
-                  <p className="font-medium text-recruiter-text">{candidate.name}</p>
+                  <p className="font-medium text-ink">{candidate.name}</p>
                   {candidate.erasedAt && <StatusBadge tone="neutral">Erased</StatusBadge>}
                 </div>
-                <p className="text-sm text-recruiter-text-secondary">{candidate.email}</p>
-                {candidate.phone && <p className="text-sm text-recruiter-text-secondary">{candidate.phone}</p>}
+                <p className="text-sm text-muted">{candidate.email}</p>
+                {candidate.phone && <p className="text-sm text-muted">{candidate.phone}</p>}
               </div>
               {candidate.erasedAt ? (
-                <p className="text-sm text-recruiter-text-tertiary">Erased at {new Date(candidate.erasedAt).toLocaleString()}</p>
+                <p className="text-sm text-muted">Erased at {new Date(candidate.erasedAt).toLocaleString()}</p>
               ) : (
                 <div className="flex gap-2">
                   <Button onClick={handleExport} loading={exportCandidate.isPending} className="inline-flex items-center gap-1.5">
@@ -267,20 +267,20 @@ export default function DataRightsPage() {
           <div className="flex flex-col gap-4">
             <Card>
               <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-recruiter-text">Export Data</h2>
+                <h2 className="text-lg font-semibold text-ink">Export Data</h2>
                 <Button variant="secondary" onClick={handleDownload} className="inline-flex items-center gap-1.5">
                   <Download size={14} />
                   Download JSON
                 </Button>
               </div>
               <section className="mb-4">
-                <h3 className="font-medium text-recruiter-text">Profile</h3>
-                <p className="text-sm text-recruiter-text-secondary">
+                <h3 className="font-medium text-ink">Profile</h3>
+                <p className="text-sm text-muted">
                   {exportData.candidate.name} — {exportData.candidate.email}
                 </p>
               </section>
               <section>
-                <h3 className="mb-1.5 font-medium text-recruiter-text">Invitations ({exportData.invitations.length})</h3>
+                <h3 className="mb-1.5 font-medium text-ink">Invitations ({exportData.invitations.length})</h3>
                 <Table
                   columns={INVITATION_COLUMNS}
                   rows={exportData.invitations}
@@ -291,9 +291,9 @@ export default function DataRightsPage() {
             </Card>
 
             <div className="flex flex-col gap-3">
-              <h3 className="font-medium text-recruiter-text">Attempts ({exportData.attempts.length})</h3>
+              <h3 className="font-medium text-ink">Attempts ({exportData.attempts.length})</h3>
               {exportData.attempts.length === 0 ? (
-                <p className="text-sm text-recruiter-text-tertiary">No attempts.</p>
+                <p className="text-sm text-muted">No attempts.</p>
               ) : (
                 exportData.attempts.map((attempt) => <AttemptRecord key={attempt.id} attempt={attempt} />)
               )}

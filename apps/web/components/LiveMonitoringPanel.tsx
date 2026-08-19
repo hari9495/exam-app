@@ -135,13 +135,13 @@ const SEVERITY_ICON: Record<string, typeof AlertTriangle> = {
 const SEVERITY_BORDER: Record<string, string> = {
   high: 'border-l-status-danger',
   medium: 'border-l-status-warning',
-  low: 'border-l-recruiter-border',
+  low: 'border-l-rule',
 };
 
 const SEVERITY_ICON_COLOR: Record<string, string> = {
   high: 'text-status-danger',
   medium: 'text-status-warning',
-  low: 'text-recruiter-text-tertiary',
+  low: 'text-muted',
 };
 
 // metadataJson is untrusted text from a column: a malformed row must render the
@@ -467,32 +467,32 @@ export function LiveMonitoringPanel({
       <div className="mb-4 flex items-center justify-between gap-4">
         <div className="grid flex-1 grid-cols-4 gap-4">
           <Card className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-1.5 text-recruiter-text-tertiary">
+            <div className="flex items-center gap-1.5 text-muted">
               <Users size={14} />
               <p className="text-xs font-medium uppercase tracking-wide">Online now</p>
             </div>
-            <p className="text-2xl font-semibold text-recruiter-text">{onlineCount}</p>
+            <p className="text-2xl font-semibold text-ink">{onlineCount}</p>
           </Card>
           <Card className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-1.5 text-recruiter-text-tertiary">
+            <div className="flex items-center gap-1.5 text-muted">
               <Activity size={14} />
               <p className="text-xs font-medium uppercase tracking-wide">In progress</p>
             </div>
-            <p className="text-2xl font-semibold text-recruiter-text">{inProgressCount}</p>
+            <p className="text-2xl font-semibold text-ink">{inProgressCount}</p>
           </Card>
           <Card className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-1.5 text-recruiter-text-tertiary">
+            <div className="flex items-center gap-1.5 text-muted">
               <CheckCircle2 size={14} />
               <p className="text-xs font-medium uppercase tracking-wide">Submitted</p>
             </div>
-            <p className="text-2xl font-semibold text-recruiter-text">{submittedCount}</p>
+            <p className="text-2xl font-semibold text-ink">{submittedCount}</p>
           </Card>
           <Card className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-1.5 text-recruiter-text-tertiary">
+            <div className="flex items-center gap-1.5 text-muted">
               <BellRing size={14} />
               <p className="text-xs font-medium uppercase tracking-wide">Alerts (last 5 min)</p>
             </div>
-            <p className={`text-2xl font-semibold ${recentAlertsCount > 0 ? 'text-status-danger' : 'text-recruiter-text'}`}>
+            <p className={`text-2xl font-semibold ${recentAlertsCount > 0 ? 'text-status-danger' : 'text-ink'}`}>
               {recentAlertsCount}
             </p>
           </Card>
@@ -541,14 +541,14 @@ export function LiveMonitoringPanel({
             </Tabs>
             <div className="mb-2 mt-3 flex items-end gap-2">
               <div className="relative max-w-xs flex-1">
-                <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-recruiter-text-tertiary" />
+                <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
                 <input
                   type="search"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search candidates…"
                   aria-label="Search candidates"
-                  className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
+                  className="w-full rounded-md border border-rule py-1.5 pl-8 pr-3 text-sm"
                 />
               </div>
               {rosterColumnChooser}
@@ -568,7 +568,7 @@ export function LiveMonitoringPanel({
                   type="button"
                   onClick={onRefresh}
                   disabled={connectionStatus !== 'connected'}
-                  className="flex items-center gap-1.5 rounded border border-recruiter-border p-2 text-sm font-medium leading-none text-recruiter-text transition-colors hover:bg-recruiter-bg-subtle disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex items-center gap-1.5 rounded border border-rule p-2 text-sm font-medium leading-none text-ink transition-colors hover:bg-ground disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <RefreshCw size={16} />
                   Refresh
@@ -596,11 +596,11 @@ export function LiveMonitoringPanel({
           <Card className="flex h-fit flex-col gap-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
-                <ShieldAlert size={16} className="text-recruiter-text-tertiary" />
-                <h3 className="text-sm font-semibold text-recruiter-text">Proctoring Alerts</h3>
+                <ShieldAlert size={16} className="text-muted" />
+                <h3 className="text-sm font-semibold text-ink">Proctoring Alerts</h3>
               </div>
               {alerts.length > 0 && (
-                <span className="rounded-full bg-recruiter-bg-subtle px-2 py-0.5 text-xs font-medium text-recruiter-text-secondary">
+                <span className="rounded-full bg-ground px-2 py-0.5 text-xs font-medium text-muted">
                   {alerts.length}
                 </span>
               )}
@@ -608,7 +608,7 @@ export function LiveMonitoringPanel({
             {alerts.length === 0 ? (
               <div className="flex flex-col items-center gap-2 py-8 text-center">
                 <ShieldCheck size={28} className="text-status-success" />
-                <p className="text-sm text-recruiter-text-secondary">No proctoring alerts yet.</p>
+                <p className="text-sm text-muted">No proctoring alerts yet.</p>
               </div>
             ) : (
               <ul className="flex max-h-[32rem] flex-col gap-2 overflow-y-auto">
@@ -618,24 +618,24 @@ export function LiveMonitoringPanel({
                   return (
                     <li
                       key={`${alert.attemptId}-${alert.occurredAt}-${index}`}
-                      className={`flex flex-col gap-1 rounded-md border border-recruiter-border border-l-[3px] bg-white p-2.5 text-sm ${SEVERITY_BORDER[alert.severity] ?? 'border-l-recruiter-border'}`}
+                      className={`flex flex-col gap-1 rounded-md border border-rule border-l-[3px] bg-white p-2.5 text-sm ${SEVERITY_BORDER[alert.severity] ?? 'border-l-rule'}`}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="flex min-w-0 items-center gap-1.5 font-medium text-recruiter-text">
-                          <SeverityIcon size={13} className={`shrink-0 ${SEVERITY_ICON_COLOR[alert.severity] ?? 'text-recruiter-text-tertiary'}`} />
+                        <span className="flex min-w-0 items-center gap-1.5 font-medium text-ink">
+                          <SeverityIcon size={13} className={`shrink-0 ${SEVERITY_ICON_COLOR[alert.severity] ?? 'text-muted'}`} />
                           <span className="truncate">{candidate?.candidateName ?? 'Unknown candidate'}</span>
                         </span>
                         <Badge variant={alert.severity === 'high' ? 'danger' : alert.severity === 'medium' ? 'warning' : 'default'}>{alert.severity}</Badge>
                       </div>
-                      <p className="text-recruiter-text-secondary">{formatEventType(alert.eventType)}</p>
-                      <p className="text-xs text-recruiter-text-tertiary">{formatRelativeTime(alert.occurredAt)}</p>
+                      <p className="text-muted">{formatEventType(alert.eventType)}</p>
+                      <p className="text-xs text-muted">{formatRelativeTime(alert.occurredAt)}</p>
                     </li>
                   );
                 })}
               </ul>
             )}
             {alerts.length > SIDEBAR_ALERT_LIMIT && (
-              <p className="text-center text-xs text-recruiter-text-tertiary">Showing the latest {SIDEBAR_ALERT_LIMIT} of {alerts.length} alerts.</p>
+              <p className="text-center text-xs text-muted">Showing the latest {SIDEBAR_ALERT_LIMIT} of {alerts.length} alerts.</p>
             )}
           </Card>
         </div>
@@ -645,7 +645,7 @@ export function LiveMonitoringPanel({
 
       {bypassAttemptId ? (
         <Modal open title="Relax Proctoring For This Candidate" onClose={() => { setBypassAttemptId(null); setBypassReason(''); }}>
-          <p className="mb-3 text-sm text-recruiter-text-secondary">
+          <p className="mb-3 text-sm text-muted">
             Violations will still be recorded, but this candidate will no longer be paused or blocked. Only this candidate is
             affected.
           </p>

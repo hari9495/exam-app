@@ -160,12 +160,12 @@ export default function IntegrationsSettingsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-      <h1 className="text-center text-2xl font-semibold text-recruiter-text">Integrations</h1>
+      <h1 className="text-center text-2xl font-semibold text-ink">Integrations</h1>
       <RequiredFieldsNote />
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0, ease: 'easeOut' }}>
         <CollapsibleSection title="Email (SMTP)">
-          <p className="text-sm text-recruiter-text-secondary sm:col-span-2">
+          <p className="text-sm text-muted sm:col-span-2">
             {integrations?.smtpConfigured
               ? `Configured — ${integrations.smtpHost}:${integrations.smtpPort}${integrations.emailFromAddress ? `, from ${integrations.emailFromAddress}` : ''}`
               : 'Not configured — invites and password resets currently use the platform default.'}
@@ -219,7 +219,7 @@ export default function IntegrationsSettingsPage() {
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.05, ease: 'easeOut' }}>
         <CollapsibleSection title="AI API Key">
-          <p className="text-sm text-recruiter-text-secondary sm:col-span-2">
+          <p className="text-sm text-muted sm:col-span-2">
             {integrations?.aiKeyConfigured
               ? `Configured — AI features use this organization's ${integrations.aiProvider === 'openai-compatible' ? 'Azure OpenAI / OpenAI-compatible' : 'Anthropic'} endpoint.`
               : 'Not configured — AI features currently use the platform default key.'}
@@ -227,7 +227,7 @@ export default function IntegrationsSettingsPage() {
           {integrations?.aiKeyConfigured && !aiEditing ? (
             <>
               {integrations.aiProvider === 'openai-compatible' && integrations.aiBaseUrl && (
-                <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm text-recruiter-text-secondary sm:col-span-2">
+                <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm text-muted sm:col-span-2">
                   <dt className="font-medium">Base URL</dt>
                   <dd className="break-all">{integrations.aiBaseUrl}</dd>
                   <dt className="font-medium">Fast-tier model</dt>
@@ -289,7 +289,7 @@ export default function IntegrationsSettingsPage() {
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.1, ease: 'easeOut' }}>
         <CollapsibleSection title="Public API">
-          <p className="text-sm text-recruiter-text-secondary sm:col-span-2">
+          <p className="text-sm text-muted sm:col-span-2">
             {integrations?.apiKeyConfigured
               ? `Active key: ${integrations.apiKeyPrefix}… (created ${new Date(integrations.apiKeyCreatedAt as string).toLocaleDateString()})`
               : 'No API key generated'}
@@ -357,7 +357,7 @@ export default function IntegrationsSettingsPage() {
           )}
 
           <div className="sm:col-span-2">
-            <h3 className="mb-2 mt-2 text-sm font-semibold text-recruiter-text">Recent Deliveries</h3>
+            <h3 className="mb-2 mt-2 text-sm font-semibold text-ink">Recent Deliveries</h3>
             <Table columns={DELIVERY_COLUMNS} rows={deliveries ?? []} rowKey={(row) => row.id} emptyMessage="No deliveries yet." />
           </div>
         </CollapsibleSection>

@@ -37,7 +37,7 @@ export function StaffSidebar({ navItems, pathname, orgName, orgLogoUrl, orgIniti
             {orgInitial}
           </div>
         )}
-        <span className="truncate text-sm font-medium text-white">{orgName}</span>
+        <span className="truncate font-display text-sm font-bold text-white">{orgName}</span>
       </div>
       <ul className="flex flex-1 flex-col gap-0.5 p-2.5">
         {navItems.map((item) => {
@@ -48,10 +48,10 @@ export function StaffSidebar({ navItems, pathname, orgName, orgLogoUrl, orgIniti
               <Link
                 href={item.href}
                 className={clsx(
-                  'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors duration-150',
+                  'flex items-center gap-2.5 rounded-md px-2.5 py-2 font-body text-sm font-medium transition-colors duration-150',
                   isActive
                     ? 'border-l-[3px] border-primary pl-[7px] font-semibold text-primary'
-                    : 'text-white/60 hover:bg-white/5 hover:text-white',
+                    : 'text-[#a7b3c8] hover:bg-white/5 hover:text-white',
                 )}
                 style={
                   isActive

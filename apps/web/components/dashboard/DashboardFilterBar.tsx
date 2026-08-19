@@ -94,7 +94,7 @@ function DateInput({ label, value, onChange }: { label: string; value: string; o
         aria-label={label}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="rounded border border-recruiter-border px-3 py-2 text-sm text-recruiter-text"
+        className="rounded border border-rule px-3 py-2 text-sm text-ink"
       />
     </label>
   );
@@ -110,7 +110,7 @@ export function DashboardFilterBar({ value, onChange, exams, candidates }: Filte
   const monthOptions: SelectOption[] = MONTHS.map((m, i) => ({ value: String(i), label: m }));
 
   return (
-    <div className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-recruiter-border bg-white p-3 shadow-sm">
+    <div className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-rule bg-white p-3 shadow-sm">
       <div className="min-w-[160px] flex-1"><Select label="Exam" value={value.examId} onChange={(v) => set({ examId: v })} options={examOptions} /></div>
       <div className="min-w-[160px] flex-1"><Select label="Candidate" value={value.candidateId} onChange={(v) => set({ candidateId: v })} options={candidateOptions} /></div>
       <div className="min-w-[130px]"><Select label="Period" value={value.timeMode} onChange={(v) => set({ timeMode: v as TimeMode })} options={TIME_MODE_OPTIONS} /></div>
@@ -138,7 +138,7 @@ export function DashboardFilterBar({ value, onChange, exams, candidates }: Filte
         <button
           type="button"
           onClick={() => onChange(defaultFilterState())}
-          className="flex items-center gap-1.5 rounded-md px-2.5 py-2 text-sm text-recruiter-text-tertiary hover:bg-recruiter-bg-subtle hover:text-recruiter-text"
+          className="flex items-center gap-1.5 rounded-md px-2.5 py-2 text-sm text-muted hover:bg-ground hover:text-ink"
         >
           <RotateCcw size={13} /> Reset
         </button>

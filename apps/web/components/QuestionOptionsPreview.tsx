@@ -14,14 +14,14 @@ export function QuestionOptionsPreview({ question }: { question: Question }) {
 
   if (question.type === 'code') {
     return (
-      <p className="rounded-md bg-recruiter-bg-subtle px-2.5 py-2 text-xs text-recruiter-text-secondary">
+      <p className="rounded-md bg-ground px-2.5 py-2 text-xs text-muted">
         Code answer{languages.length > 0 ? ` · ${languages.join(', ')}` : ''}
       </p>
     );
   }
 
   if (options.length === 0) {
-    return <p className="text-xs text-recruiter-text-tertiary">No answer options added yet.</p>;
+    return <p className="text-xs text-muted">No answer options added yet.</p>;
   }
 
   return (
@@ -33,7 +33,7 @@ export function QuestionOptionsPreview({ question }: { question: Question }) {
             'flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-xs',
             option.isCorrect
               ? 'border-status-success bg-status-success-bg font-medium text-status-success'
-              : 'border-recruiter-border text-recruiter-text-secondary',
+              : 'border-rule text-muted',
           )}
         >
           <span>

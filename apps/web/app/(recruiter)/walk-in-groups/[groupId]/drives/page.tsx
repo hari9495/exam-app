@@ -82,7 +82,7 @@ export default function GroupDrivesPage() {
           <button
             type="button"
             onClick={() => handleDelete(drive)}
-            className="text-recruiter-text-tertiary hover:text-red-600"
+            className="text-muted hover:text-red-600"
             aria-label={`Delete ${drive.name}`}
           >
             <Trash2 size={16} />
@@ -98,8 +98,8 @@ export default function GroupDrivesPage() {
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
       <div>
         <BackLink href="/walk-in-groups" label="Back to Walk-In Groups" />
-        <h1 className="text-2xl font-semibold text-recruiter-text">Drives{group ? ` — ${group.name}` : ''}</h1>
-        <p className="mt-1 text-sm text-recruiter-text-secondary">
+        <h1 className="text-2xl font-semibold text-ink">Drives{group ? ` — ${group.name}` : ''}</h1>
+        <p className="mt-1 text-sm text-muted">
           Schedule a time-boxed hiring drive for this group. Candidates who register while a drive is live are
           attributed to it.
         </p>
@@ -135,7 +135,7 @@ export default function GroupDrivesPage() {
       </Card>
 
       {isLoading ? (
-        <p className="text-sm text-recruiter-text-tertiary">Loading&hellip;</p>
+        <p className="text-sm text-muted">Loading&hellip;</p>
       ) : (
         <Table columns={columns} rows={drives ?? []} rowKey={(drive) => drive.id} emptyMessage="No drives scheduled yet." />
       )}

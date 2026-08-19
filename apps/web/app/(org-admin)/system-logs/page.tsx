@@ -91,7 +91,7 @@ export default function SystemLogsPage() {
       key: 'occurredAt',
       header: 'When',
       render: (entry) => (
-        <span title={formatAuditTimestamp(entry.occurredAt)} className="whitespace-nowrap text-recruiter-text-secondary">
+        <span title={formatAuditTimestamp(entry.occurredAt)} className="whitespace-nowrap text-muted">
           {formatRelativeTime(entry.occurredAt)}
         </span>
       ),
@@ -107,7 +107,7 @@ export default function SystemLogsPage() {
           options={SERVICE_OPTIONS}
         />
       ),
-      render: (entry) => <span className="whitespace-nowrap text-recruiter-text">{SERVICE_LABELS[entry.service] ?? entry.service}</span>,
+      render: (entry) => <span className="whitespace-nowrap text-ink">{SERVICE_LABELS[entry.service] ?? entry.service}</span>,
     },
     {
       key: 'severity',
@@ -127,7 +127,7 @@ export default function SystemLogsPage() {
       // The stored message is engineering shorthand; org admins read this page. The raw
       // form stays on hover and in full in the detail modal.
       render: (entry) => (
-        <span className="text-recruiter-text" title={entry.message}>
+        <span className="text-ink" title={entry.message}>
           {plainEnglish(entry).summary}
         </span>
       ),
@@ -139,9 +139,9 @@ export default function SystemLogsPage() {
       render: (entry) => {
         const summary = contextSummary(entry);
         return summary ? (
-          <span className="break-all text-xs text-recruiter-text-secondary">{summary}</span>
+          <span className="break-all text-xs text-muted">{summary}</span>
         ) : (
-          <span className="text-recruiter-text-tertiary">—</span>
+          <span className="text-muted">—</span>
         );
       },
       sortValue: (entry) => contextSummary(entry),
@@ -163,7 +163,7 @@ export default function SystemLogsPage() {
         <TerminalSquare size={22} className="text-primary" aria-hidden="true" />
         <h1 className="text-2xl font-semibold">System Logs</h1>
       </div>
-      <p className="mb-6 text-sm text-recruiter-text-secondary">
+      <p className="mb-6 text-sm text-muted">
         Production errors from the servers and candidates&apos; browsers — what failed and why, without needing server access.
       </p>
 
@@ -180,8 +180,8 @@ export default function SystemLogsPage() {
               onClick={() => selectRange(preset.days, preset.label)}
               className={
                 range.label === preset.label
-                  ? 'rounded-md border border-recruiter-border bg-primary px-3 py-2 text-sm font-medium text-on-primary'
-                  : 'rounded-md border border-gray-300 px-3 py-2 text-sm text-recruiter-text-secondary hover:bg-gray-50'
+                  ? 'rounded-md border border-rule bg-primary px-3 py-2 text-sm font-medium text-on-primary'
+                  : 'rounded-md border border-gray-300 px-3 py-2 text-sm text-muted hover:bg-gray-50'
               }
             >
               {preset.label}
@@ -196,7 +196,7 @@ export default function SystemLogsPage() {
         <p className="text-sm text-gray-500">No events in this range — nothing has failed. 🎉</p>
       ) : (
         <>
-          <p className="mb-2 text-xs text-recruiter-text-secondary">
+          <p className="mb-2 text-xs text-muted">
             Showing {allEntries.length} of {total} events
           </p>
           <Table columns={columns} rows={allEntries} rowKey={(entry) => entry.id} />
@@ -213,14 +213,14 @@ export default function SystemLogsPage() {
       <Modal open={selected !== null} title={selected ? `${SERVICE_LABELS[selected.service] ?? selected.service} — ${selected.severity}` : ''} onClose={() => setSelected(null)}>
         {selected && (
           <div className="flex flex-col gap-3 text-sm">
-            <p className="font-medium text-recruiter-text">{plainEnglish(selected).summary}</p>
-            <p className="text-recruiter-text-secondary">{plainEnglish(selected).meaning}</p>
+            <p className="font-medium text-ink">{plainEnglish(selected).summary}</p>
+            <p className="text-muted">{plainEnglish(selected).meaning}</p>
             <div className="rounded-md bg-gray-50 p-3">
-              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-recruiter-text-tertiary">What to do</p>
-              <p className="text-recruiter-text">{plainEnglish(selected).whatToDo}</p>
+              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">What to do</p>
+              <p className="text-ink">{plainEnglish(selected).whatToDo}</p>
             </div>
-            <p className="text-xs text-recruiter-text-secondary">{formatAuditTimestamp(selected.occurredAt)}</p>
-            <details className="text-xs text-recruiter-text-secondary">
+            <p className="text-xs text-muted">{formatAuditTimestamp(selected.occurredAt)}</p>
+            <details className="text-xs text-muted">
               <summary className="cursor-pointer select-none">Technical details</summary>
               <p className="mt-2 break-all font-mono">{selected.message}</p>
               {selected.context && (

@@ -77,8 +77,8 @@ export default function HiringAnalyticsPage() {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-2xl font-semibold text-recruiter-text">Hiring Analytics</h1>
-        <p className="mt-1 text-sm text-recruiter-text-secondary">Funnel, time-to-hire, and source performance across your pipeline.</p>
+        <h1 className="text-2xl font-semibold text-ink">Hiring Analytics</h1>
+        <p className="mt-1 text-sm text-muted">Funnel, time-to-hire, and source performance across your pipeline.</p>
       </div>
 
       <div className="flex items-center gap-3">
@@ -87,43 +87,43 @@ export default function HiringAnalyticsPage() {
       </div>
 
       {isLoading || !data ? (
-        <p className="text-sm text-recruiter-text-tertiary">Loading&hellip;</p>
+        <p className="text-sm text-muted">Loading&hellip;</p>
       ) : (
         <>
           <Card>
-            <h2 className="mb-3 text-sm font-bold text-recruiter-text">Funnel</h2>
+            <h2 className="mb-3 text-sm font-bold text-ink">Funnel</h2>
             <FunnelChart stages={data.funnel.map((row) => ({ label: STAGE_LABEL[row.stage], value: row.reached }))} />
           </Card>
 
           <div className="grid grid-cols-3 gap-3">
             <Card>
-              <p className="text-xs text-recruiter-text-tertiary">Avg time to hire</p>
-              <p className="text-2xl font-bold text-recruiter-text">
+              <p className="text-xs text-muted">Avg time to hire</p>
+              <p className="text-2xl font-bold text-ink">
                 {fmtDays(data.timeToHire.avgDays)}
-                {data.timeToHire.avgDays !== null && <span className="ml-1 text-sm font-normal text-recruiter-text-tertiary">days</span>}
+                {data.timeToHire.avgDays !== null && <span className="ml-1 text-sm font-normal text-muted">days</span>}
               </p>
             </Card>
             <Card>
-              <p className="text-xs text-recruiter-text-tertiary">Median time to hire</p>
-              <p className="text-2xl font-bold text-recruiter-text">
+              <p className="text-xs text-muted">Median time to hire</p>
+              <p className="text-2xl font-bold text-ink">
                 {fmtDays(data.timeToHire.medianDays)}
-                {data.timeToHire.medianDays !== null && <span className="ml-1 text-sm font-normal text-recruiter-text-tertiary">days</span>}
+                {data.timeToHire.medianDays !== null && <span className="ml-1 text-sm font-normal text-muted">days</span>}
               </p>
             </Card>
             <Card>
-              <p className="text-xs text-recruiter-text-tertiary">Hired</p>
-              <p className="text-2xl font-bold text-recruiter-text">{data.timeToHire.hiredCount}</p>
+              <p className="text-xs text-muted">Hired</p>
+              <p className="text-2xl font-bold text-ink">{data.timeToHire.hiredCount}</p>
             </Card>
           </div>
 
           <Card>
-            <h2 className="mb-3 text-sm font-bold text-recruiter-text">Sources</h2>
+            <h2 className="mb-3 text-sm font-bold text-ink">Sources</h2>
             <Table columns={sourceColumns} rows={data.sources} rowKey={(row) => row.source} emptyMessage="No applications in this window." />
           </Card>
 
           {jobId === 'all' && (
             <Card>
-              <h2 className="mb-3 text-sm font-bold text-recruiter-text">Jobs</h2>
+              <h2 className="mb-3 text-sm font-bold text-ink">Jobs</h2>
               <Table columns={jobColumns} rows={data.jobs} rowKey={(row) => row.jobId} emptyMessage="No jobs in this window." />
             </Card>
           )}

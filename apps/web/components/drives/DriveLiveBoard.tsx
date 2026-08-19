@@ -25,7 +25,7 @@ const STATE_TONE: Record<DriveRosterState, StatusTone> = {
 
 function CandidateChip({ row }: { row: DriveRosterRow }) {
   const chip = (
-    <span className="inline-flex items-center rounded-full border border-recruiter-border bg-white px-3 py-1 text-xs font-medium text-recruiter-text">
+    <span className="inline-flex items-center rounded-full border border-rule bg-white px-3 py-1 text-xs font-medium text-ink">
       {row.candidateName}
     </span>
   );
@@ -35,7 +35,7 @@ function CandidateChip({ row }: { row: DriveRosterRow }) {
   return (
     <Link
       href={`/reports/${row.examId}/candidates/${row.candidateId}?attemptId=${row.attemptId ?? ''}`}
-      className="inline-flex items-center rounded-full border border-recruiter-border bg-white px-3 py-1 text-xs font-medium text-primary hover:bg-recruiter-bg-subtle hover:underline"
+      className="inline-flex items-center rounded-full border border-rule bg-white px-3 py-1 text-xs font-medium text-primary hover:bg-ground hover:underline"
     >
       {row.candidateName}
     </Link>
@@ -48,7 +48,7 @@ export function DriveLiveBoard({ driveId }: { driveId: string }) {
   if (isLoading) {
     return (
       <Card>
-        <p className="text-sm text-recruiter-text-tertiary">Loading&hellip;</p>
+        <p className="text-sm text-muted">Loading&hellip;</p>
       </Card>
     );
   }
@@ -70,20 +70,20 @@ export function DriveLiveBoard({ driveId }: { driveId: string }) {
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Card className="flex flex-col gap-1.5">
-          <p className="text-xs font-medium uppercase tracking-wide text-recruiter-text-tertiary">Registered</p>
-          <p className="text-2xl font-semibold text-recruiter-text">{counts.registered}</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted">Registered</p>
+          <p className="text-2xl font-semibold text-ink">{counts.registered}</p>
         </Card>
         <Card className="flex flex-col gap-1.5">
-          <p className="text-xs font-medium uppercase tracking-wide text-recruiter-text-tertiary">In progress</p>
-          <p className="text-2xl font-semibold text-recruiter-text">{counts.inProgress}</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted">In progress</p>
+          <p className="text-2xl font-semibold text-ink">{counts.inProgress}</p>
         </Card>
         <Card className="flex flex-col gap-1.5">
-          <p className="text-xs font-medium uppercase tracking-wide text-recruiter-text-tertiary">Submitted</p>
-          <p className="text-2xl font-semibold text-recruiter-text">{counts.submitted}</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted">Submitted</p>
+          <p className="text-2xl font-semibold text-ink">{counts.submitted}</p>
         </Card>
         <Card className="flex flex-col gap-1.5">
-          <p className="text-xs font-medium uppercase tracking-wide text-recruiter-text-tertiary">Passed</p>
-          <p className="text-2xl font-semibold text-recruiter-text">{counts.passed}</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted">Passed</p>
+          <p className="text-2xl font-semibold text-ink">{counts.passed}</p>
         </Card>
       </div>
 
@@ -92,10 +92,10 @@ export function DriveLiveBoard({ driveId }: { driveId: string }) {
           <Card key={group.state}>
             <div className="mb-2 flex items-center gap-2">
               <StatusBadge tone={STATE_TONE[group.state]}>{STATE_LABEL[group.state]}</StatusBadge>
-              <span className="text-xs text-recruiter-text-tertiary">{group.rows.length}</span>
+              <span className="text-xs text-muted">{group.rows.length}</span>
             </div>
             {group.rows.length === 0 ? (
-              <p className="text-xs text-recruiter-text-tertiary">None yet.</p>
+              <p className="text-xs text-muted">None yet.</p>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {group.rows.map((row) => (

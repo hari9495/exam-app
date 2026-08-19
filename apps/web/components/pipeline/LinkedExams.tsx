@@ -41,13 +41,13 @@ export function LinkedExams({
 
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary">Linked exams</h3>
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Linked exams</h3>
       <div className="flex flex-wrap gap-2">
-        {linkedExams.length === 0 && <p className="text-xs text-recruiter-text-tertiary">No exams linked.</p>}
+        {linkedExams.length === 0 && <p className="text-xs text-muted">No exams linked.</p>}
         {linkedExams.map((exam) => (
           <span
             key={exam.examId}
-            className="inline-flex items-center gap-1.5 rounded-full border border-recruiter-border bg-white px-3 py-1 text-xs font-medium text-recruiter-text"
+            className="inline-flex items-center gap-1.5 rounded-full border border-rule bg-white px-3 py-1 text-xs font-medium text-ink"
           >
             {exam.title}
             {canManage && (
@@ -55,7 +55,7 @@ export function LinkedExams({
                 type="button"
                 aria-label={`Unlink ${exam.title}`}
                 onClick={() => handleUnlink(exam.examId)}
-                className="text-recruiter-text-tertiary hover:text-red-600"
+                className="text-muted hover:text-red-600"
               >
                 <X size={12} />
               </button>

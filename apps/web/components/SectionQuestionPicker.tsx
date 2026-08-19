@@ -182,7 +182,7 @@ export function SectionQuestionPicker({ examId, sectionId, open, onClose, existi
       }
     >
       {bankEmpty ? (
-        <p className="text-sm text-recruiter-text-secondary">No questions yet. Add questions to your question bank first.</p>
+        <p className="text-sm text-muted">No questions yet. Add questions to your question bank first.</p>
       ) : (
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-end gap-2">
@@ -212,15 +212,15 @@ export function SectionQuestionPicker({ examId, sectionId, open, onClose, existi
           )}
 
           {allAlreadyAdded ? (
-            <p className="py-6 text-center text-sm text-recruiter-text-secondary">
+            <p className="py-6 text-center text-sm text-muted">
               Every question in your bank is already in this section.
             </p>
           ) : visible.length === 0 ? (
-            <p className="py-6 text-center text-sm text-recruiter-text-secondary">
+            <p className="py-6 text-center text-sm text-muted">
               {filtersActive ? 'No questions match your search and filters.' : 'No questions to add.'}
             </p>
           ) : (
-            <ul className="flex flex-col divide-y divide-recruiter-border">
+            <ul className="flex flex-col divide-y divide-rule">
               {visible.map((question) => (
                 <li key={question.id} className="flex items-start justify-between gap-3 py-3">
                   <div className="min-w-0 flex-1">
@@ -233,15 +233,15 @@ export function SectionQuestionPicker({ examId, sectionId, open, onClose, existi
                       <Badge>{TYPE_LABELS[question.type]}</Badge>
                       <Badge variant={DIFFICULTY_VARIANT[question.difficulty]}>{question.difficulty}</Badge>
                       {question.category && <Badge>{question.category}</Badge>}
-                      {question.topic && <span className="text-xs text-recruiter-text-tertiary">{question.topic}</span>}
+                      {question.topic && <span className="text-xs text-muted">{question.topic}</span>}
                       {(question.tags ?? []).map((tag) => (
-                        <span key={tag.id} className="text-xs text-recruiter-text-tertiary">
+                        <span key={tag.id} className="text-xs text-muted">
                           #{tag.name}
                         </span>
                       ))}
                     </div>
                   </div>
-                  <span className="shrink-0 whitespace-nowrap pt-0.5 text-xs font-medium text-recruiter-text-secondary">
+                  <span className="shrink-0 whitespace-nowrap pt-0.5 text-xs font-medium text-muted">
                     {question.marks} {question.marks === 1 ? 'mark' : 'marks'}
                   </span>
                 </li>

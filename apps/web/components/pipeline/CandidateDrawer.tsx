@@ -50,22 +50,22 @@ function CandidateProfileSection({ candidateId }: { candidateId: string }) {
 
   return (
     <div>
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary">Profile</h3>
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Profile</h3>
       {isLoading ? (
-        <p className="text-sm text-recruiter-text-tertiary">Loading&hellip;</p>
+        <p className="text-sm text-muted">Loading&hellip;</p>
       ) : profile?.parseStatus === 'done' ? (
         <div className="flex flex-col gap-2">
-          {profile.parsedTitle && <p className="text-sm font-medium text-recruiter-text">{profile.parsedTitle}</p>}
+          {profile.parsedTitle && <p className="text-sm font-medium text-ink">{profile.parsedTitle}</p>}
           {profile.parsedYearsExperience !== null && (
-            <p className="text-sm text-recruiter-text-secondary">{profile.parsedYearsExperience} yrs experience</p>
+            <p className="text-sm text-muted">{profile.parsedYearsExperience} yrs experience</p>
           )}
-          {profile.parsedSummary && <p className="text-sm text-recruiter-text">{profile.parsedSummary}</p>}
+          {profile.parsedSummary && <p className="text-sm text-ink">{profile.parsedSummary}</p>}
           {parseSkills(profile.parsedSkills).length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {parseSkills(profile.parsedSkills).map((skill) => (
                 <span
                   key={skill}
-                  className="rounded-full border border-recruiter-border bg-white px-2.5 py-0.5 text-xs font-medium text-recruiter-text"
+                  className="rounded-full border border-rule bg-white px-2.5 py-0.5 text-xs font-medium text-ink"
                 >
                   {skill}
                 </span>
@@ -74,7 +74,7 @@ function CandidateProfileSection({ candidateId }: { candidateId: string }) {
           )}
         </div>
       ) : (
-        <p className="text-sm text-recruiter-text-tertiary">{statusHint(profile)}</p>
+        <p className="text-sm text-muted">{statusHint(profile)}</p>
       )}
       {profile?.resumePath && (
         <Button variant="secondary" size="sm" className="mt-3" onClick={handleDownload} loading={resumeUrl.isPending}>
@@ -99,11 +99,11 @@ function FitSpinner() {
 function FitDimensionBar({ dimension }: { dimension: { label: string; weight: number; score: number } }) {
   return (
     <div>
-      <div className="flex items-center justify-between text-xs text-recruiter-text-secondary">
+      <div className="flex items-center justify-between text-xs text-muted">
         <span>
           {dimension.label} — {dimension.score}/100
         </span>
-        <span className="text-recruiter-text-tertiary">weight {dimension.weight}</span>
+        <span className="text-muted">weight {dimension.weight}</span>
       </div>
       <div className="mt-1 h-1.5 rounded-full bg-gray-100">
         <div className="h-1.5 rounded-full bg-primary" style={{ width: `${dimension.score}%` }} />
@@ -134,11 +134,11 @@ function FitSection({ entryId, jobId }: { entryId: string; jobId: string }) {
 
   return (
     <div>
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary">AI Fit</h3>
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">AI Fit</h3>
 
       {!status && (
         <div className="flex items-center justify-between gap-2">
-          <p className="text-sm text-recruiter-text-tertiary">No fit assessment yet.</p>
+          <p className="text-sm text-muted">No fit assessment yet.</p>
           <Button size="sm" variant="secondary" onClick={handleScore} loading={scoreEntry.isPending}>
             Assess fit
           </Button>
@@ -146,21 +146,21 @@ function FitSection({ entryId, jobId }: { entryId: string; jobId: string }) {
       )}
 
       {(status === 'pending' || status === 'processing') && (
-        <div className="flex items-center gap-2 text-sm text-recruiter-text-tertiary">
+        <div className="flex items-center gap-2 text-sm text-muted">
           <FitSpinner />
           Scoring&hellip;
         </div>
       )}
 
-      {status === 'skipped_no_resume' && <p className="text-sm text-recruiter-text-tertiary">Add a résumé to assess fit.</p>}
+      {status === 'skipped_no_resume' && <p className="text-sm text-muted">Add a résumé to assess fit.</p>}
 
       {status === 'skipped_no_ai_key' && (
-        <p className="text-sm text-recruiter-text-tertiary">Configure an AI provider in settings to use AI fit scoring.</p>
+        <p className="text-sm text-muted">Configure an AI provider in settings to use AI fit scoring.</p>
       )}
 
       {status === 'failed' && (
         <div className="flex items-center justify-between gap-2">
-          <p className="text-sm text-recruiter-text-tertiary">Scoring failed.</p>
+          <p className="text-sm text-muted">Scoring failed.</p>
           <Button size="sm" variant="secondary" onClick={handleScore} loading={scoreEntry.isPending}>
             Retry
           </Button>
@@ -170,16 +170,16 @@ function FitSection({ entryId, jobId }: { entryId: string; jobId: string }) {
       {status === 'done' && fit.data && (
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <span className="text-3xl font-semibold text-recruiter-text">{fit.data.overallScore}</span>
+            <span className="text-3xl font-semibold text-ink">{fit.data.overallScore}</span>
             <Button size="sm" variant="secondary" onClick={handleScore} loading={scoreEntry.isPending}>
               Re-score
             </Button>
           </div>
-          {fit.data.summary && <p className="text-sm text-recruiter-text">{fit.data.summary}</p>}
+          {fit.data.summary && <p className="text-sm text-ink">{fit.data.summary}</p>}
           {fit.data.strengths.length > 0 && (
             <div>
-              <h4 className="text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary">Strengths</h4>
-              <ul className="list-disc pl-5 text-sm text-recruiter-text">
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">Strengths</h4>
+              <ul className="list-disc pl-5 text-sm text-ink">
                 {fit.data.strengths.map((strength, i) => (
                   <li key={i}>{strength}</li>
                 ))}
@@ -188,8 +188,8 @@ function FitSection({ entryId, jobId }: { entryId: string; jobId: string }) {
           )}
           {fit.data.concerns.length > 0 && (
             <div>
-              <h4 className="text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary">Concerns</h4>
-              <ul className="list-disc pl-5 text-sm text-recruiter-text">
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">Concerns</h4>
+              <ul className="list-disc pl-5 text-sm text-ink">
                 {fit.data.concerns.map((concern, i) => (
                   <li key={i}>{concern}</li>
                 ))}
@@ -207,7 +207,7 @@ function FitSection({ entryId, jobId }: { entryId: string; jobId: string }) {
         </div>
       )}
 
-      <p className="mt-3 text-xs text-recruiter-text-tertiary">{FIT_ADVISORY}</p>
+      <p className="mt-3 text-xs text-muted">{FIT_ADVISORY}</p>
     </div>
   );
 }
@@ -228,24 +228,24 @@ function MessagesSection({ entryId, candidateId, candidateName }: { entryId: str
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary">Messages</h3>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Messages</h3>
         <Button size="sm" variant="secondary" onClick={() => setComposing(true)}>
           Send message
         </Button>
       </div>
       {isLoading ? (
-        <p className="text-sm text-recruiter-text-tertiary">Loading&hellip;</p>
+        <p className="text-sm text-muted">Loading&hellip;</p>
       ) : (messages ?? []).length === 0 ? (
-        <p className="text-sm text-recruiter-text-tertiary">No messages sent yet.</p>
+        <p className="text-sm text-muted">No messages sent yet.</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {(messages ?? []).map((message) => (
-            <li key={message.id} className="rounded border border-recruiter-border p-3">
+            <li key={message.id} className="rounded border border-rule p-3">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium text-recruiter-text">{message.subject}</span>
+                <span className="text-sm font-medium text-ink">{message.subject}</span>
                 <StatusBadge tone={message.status === 'sent' ? 'success' : 'danger'}>{message.status}</StatusBadge>
               </div>
-              <div className="mt-1 flex items-center justify-between gap-2 text-xs text-recruiter-text-tertiary">
+              <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted">
                 <span>{new Date(message.createdAt).toLocaleString()}</span>
                 {message.status === 'failed' && (
                   <button
@@ -300,24 +300,24 @@ function OffersSection({ entryId, candidateId }: { entryId: string; candidateId:
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary">Offers</h3>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Offers</h3>
         <Button size="sm" variant="secondary" onClick={() => setCreating(true)}>
           Create offer
         </Button>
       </div>
       {isLoading ? (
-        <p className="text-sm text-recruiter-text-tertiary">Loading&hellip;</p>
+        <p className="text-sm text-muted">Loading&hellip;</p>
       ) : (offers ?? []).length === 0 ? (
-        <p className="text-sm text-recruiter-text-tertiary">No offers yet.</p>
+        <p className="text-sm text-muted">No offers yet.</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {(offers ?? []).map((offer) => (
-            <li key={offer.id} className="rounded border border-recruiter-border p-3">
+            <li key={offer.id} className="rounded border border-rule p-3">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium text-recruiter-text">{offer.compensation}</span>
+                <span className="text-sm font-medium text-ink">{offer.compensation}</span>
                 <StatusBadge tone={OFFER_STATUS_TONE[offer.status]}>{offer.status}</StatusBadge>
               </div>
-              <div className="mt-1 flex items-center justify-between gap-2 text-xs text-recruiter-text-tertiary">
+              <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted">
                 <span>{offerTimestampLabel(offer)}</span>
                 {offer.status === 'sent' && (
                   <button
@@ -373,24 +373,24 @@ function InterviewsSection({ entryId, candidateId }: { entryId: string; candidat
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary">Interviews</h3>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Interviews</h3>
         <Button size="sm" variant="secondary" onClick={() => setScheduling(true)}>
           Schedule interview
         </Button>
       </div>
       {isLoading ? (
-        <p className="text-sm text-recruiter-text-tertiary">Loading&hellip;</p>
+        <p className="text-sm text-muted">Loading&hellip;</p>
       ) : (interviews ?? []).length === 0 ? (
-        <p className="text-sm text-recruiter-text-tertiary">No interviews scheduled yet.</p>
+        <p className="text-sm text-muted">No interviews scheduled yet.</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {(interviews ?? []).map((interview) => (
-            <li key={interview.id} className="rounded border border-recruiter-border p-3">
+            <li key={interview.id} className="rounded border border-rule p-3">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium text-recruiter-text">{interviewTimeLabel(interview) ?? 'No time proposed'}</span>
+                <span className="text-sm font-medium text-ink">{interviewTimeLabel(interview) ?? 'No time proposed'}</span>
                 <StatusBadge tone={INTERVIEW_STATUS_TONE[interview.status]}>{interview.status}</StatusBadge>
               </div>
-              <div className="mt-1 flex items-center justify-between gap-2 text-xs text-recruiter-text-tertiary">
+              <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted">
                 <span>{interview.location}</span>
                 {interview.status === 'proposed' && (
                   <button
@@ -465,16 +465,16 @@ export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: B
   return (
     <Modal open title={row.candidateName} onClose={onClose} size="lg">
       <div className="flex flex-col gap-5">
-        <p className="text-sm text-recruiter-text-secondary">{row.candidateEmail}</p>
+        <p className="text-sm text-muted">{row.candidateEmail}</p>
 
         <CandidateProfileSection candidateId={row.candidateId} />
 
         <FitSection entryId={row.entryId} jobId={jobId} />
 
         <div>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary">Exam results</h3>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Exam results</h3>
           {row.examResults.length === 0 ? (
-            <p className="text-sm text-recruiter-text-tertiary">No linked exam results yet.</p>
+            <p className="text-sm text-muted">No linked exam results yet.</p>
           ) : (
             <ul className="flex flex-col gap-1">
               {row.examResults.map((result) => (
@@ -489,16 +489,16 @@ export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: B
         </div>
 
         <div>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary">Feedback</h3>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Feedback</h3>
           {isLoading ? (
-            <p className="text-sm text-recruiter-text-tertiary">Loading&hellip;</p>
+            <p className="text-sm text-muted">Loading&hellip;</p>
           ) : (feedback ?? []).length === 0 ? (
-            <p className="text-sm text-recruiter-text-tertiary">No feedback yet.</p>
+            <p className="text-sm text-muted">No feedback yet.</p>
           ) : (
             <ul className="flex flex-col gap-3">
               {(feedback ?? []).map((entry) => (
-                <li key={entry.id} className="rounded border border-recruiter-border p-3">
-                  <div className="flex items-center justify-between text-xs text-recruiter-text-tertiary">
+                <li key={entry.id} className="rounded border border-rule p-3">
+                  <div className="flex items-center justify-between text-xs text-muted">
                     <span>{entry.authorName ?? 'Unknown'}</span>
                     <span>{new Date(entry.createdAt).toLocaleString()}</span>
                   </div>
@@ -508,13 +508,13 @@ export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: B
                       {'☆'.repeat(5 - entry.rating)}
                     </p>
                   )}
-                  {entry.note && <p className="mt-1 text-sm text-recruiter-text">{entry.note}</p>}
+                  {entry.note && <p className="mt-1 text-sm text-ink">{entry.note}</p>}
                 </li>
               ))}
             </ul>
           )}
 
-          <div className="mt-4 flex flex-col gap-2 border-t border-recruiter-border pt-4">
+          <div className="mt-4 flex flex-col gap-2 border-t border-rule pt-4">
             <label htmlFor="feedback-note" className="text-sm font-medium text-gray-700">
               Add feedback
             </label>

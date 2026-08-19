@@ -178,25 +178,25 @@ export default function PanelExamResultsPage() {
         <div className="mb-6 grid grid-cols-4 gap-4">
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0, ease: 'easeOut' }}>
             <Card className="flex flex-col gap-1.5">
-              <div className="flex items-center gap-1.5 text-recruiter-text-tertiary">
+              <div className="flex items-center gap-1.5 text-muted">
                 <Users size={14} />
                 <p className="text-xs font-medium uppercase tracking-wide">Total candidates</p>
               </div>
-              <p className="text-2xl font-semibold text-recruiter-text">{summary.totalCandidates}</p>
+              <p className="text-2xl font-semibold text-ink">{summary.totalCandidates}</p>
             </Card>
           </motion.div>
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.05, ease: 'easeOut' }}>
             <Card className="flex flex-col gap-1.5">
-              <div className="flex items-center gap-1.5 text-recruiter-text-tertiary">
+              <div className="flex items-center gap-1.5 text-muted">
                 <CheckCircle2 size={14} />
                 <p className="text-xs font-medium uppercase tracking-wide">Settled</p>
               </div>
-              <p className="text-2xl font-semibold text-recruiter-text">{summary.settledCount}</p>
+              <p className="text-2xl font-semibold text-ink">{summary.settledCount}</p>
             </Card>
           </motion.div>
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.1, ease: 'easeOut' }}>
             <Card className="flex flex-col gap-1.5">
-              <div className="flex items-center gap-1.5 text-recruiter-text-tertiary">
+              <div className="flex items-center gap-1.5 text-muted">
                 <Target size={14} />
                 <p className="text-xs font-medium uppercase tracking-wide">Pass rate</p>
               </div>
@@ -205,7 +205,7 @@ export default function PanelExamResultsPage() {
           </motion.div>
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.15, ease: 'easeOut' }}>
             <Card className="flex flex-col gap-1.5">
-              <div className="flex items-center gap-1.5 text-recruiter-text-tertiary">
+              <div className="flex items-center gap-1.5 text-muted">
                 <BarChart3 size={14} />
                 <p className="text-xs font-medium uppercase tracking-wide">Average score</p>
               </div>
@@ -236,14 +236,14 @@ export default function PanelExamResultsPage() {
         <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
           <div className="flex flex-wrap items-end gap-2">
             <div className="relative max-w-xs flex-1">
-              <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-recruiter-text-tertiary" />
+              <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
               <input
                 type="search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search candidates…"
                 aria-label="Search candidates"
-                className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
+                className="w-full rounded-md border border-rule py-1.5 pl-8 pr-3 text-sm"
               />
             </div>
             <Select

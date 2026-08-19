@@ -52,22 +52,22 @@ export default function SsoSettingsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-      <h1 className="text-center text-2xl font-semibold text-recruiter-text">Single Sign-On</h1>
+      <h1 className="text-center text-2xl font-semibold text-ink">Single Sign-On</h1>
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: 'easeOut' }}>
         <CollapsibleSection title="SAML Configuration">
-          <p className="text-sm text-recruiter-text-secondary sm:col-span-2">
+          <p className="text-sm text-muted sm:col-span-2">
             {sso?.samlEnabled ? 'Configured and enabled — staff can log in via SSO.' : 'Not configured — staff use password login only.'}
           </p>
 
-          <div className="rounded-md bg-recruiter-bg-subtle p-3 sm:col-span-2">
-            <p className="mb-1 text-xs font-semibold text-recruiter-text-secondary">Give this to your IdP admin</p>
-            <p className="break-all font-mono text-xs text-recruiter-text">{metadataUrl}</p>
+          <div className="rounded-md bg-ground p-3 sm:col-span-2">
+            <p className="mb-1 text-xs font-semibold text-muted">Give this to your IdP admin</p>
+            <p className="break-all font-mono text-xs text-ink">{metadataUrl}</p>
           </div>
 
           {idpConfigured && !editing ? (
             <>
-              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm text-recruiter-text-secondary sm:col-span-2">
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm text-muted sm:col-span-2">
                 <dt className="font-medium">Microsoft Entra Identifier</dt>
                 <dd className="break-all">{sso?.samlIdpEntityId ?? '—'}</dd>
                 <dt className="font-medium">SSO Url</dt>
@@ -89,14 +89,14 @@ export default function SsoSettingsPage() {
               <form onSubmit={handleSave} className="contents">
                 <Input label="Microsoft Entra Identifier" value={entityId} onChange={setEntityId} required />
                 <Input label="SSO Url" value={ssoUrl} onChange={setSsoUrl} required />
-                <label className="flex flex-col gap-1 text-sm font-medium text-recruiter-text after:ml-0.5 after:text-status-danger after:content-['*'] sm:col-span-2">
+                <label className="flex flex-col gap-1 text-sm font-medium text-ink after:ml-0.5 after:text-status-danger after:content-['*'] sm:col-span-2">
                   IdP Certificate
                   <textarea
                     value={certificate}
                     onChange={(e) => setCertificate(e.target.value)}
                     required
                     rows={6}
-                    className="rounded border border-recruiter-border p-2 font-mono text-xs"
+                    className="rounded border border-rule p-2 font-mono text-xs"
                     placeholder="-----BEGIN CERTIFICATE-----"
                   />
                 </label>

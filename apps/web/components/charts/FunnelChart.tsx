@@ -31,8 +31,8 @@ export function FunnelChart({ stages }: FunnelChartProps) {
         return (
           <div key={stage.label} className="relative">
             <div className="mb-1 flex items-center justify-between text-xs">
-              <span className="font-medium text-recruiter-text">{stage.label}</span>
-              <span className="text-recruiter-text-tertiary">
+              <span className="font-medium text-ink">{stage.label}</span>
+              <span className="text-muted">
                 {stage.value}
                 {dropPercent !== null && dropPercent > 0 && <span className="ml-1 text-status-danger">-{dropPercent}%</span>}
               </span>
@@ -46,7 +46,7 @@ export function FunnelChart({ stages }: FunnelChartProps) {
               aria-label={`${stage.label}: ${stage.value}`}
             >
               {hoveredIndex === index && (
-                <div className="absolute -top-8 left-0 whitespace-nowrap rounded bg-recruiter-text px-2 py-1 text-xs text-white shadow-md">
+                <div className="absolute -top-8 left-0 whitespace-nowrap rounded bg-ink px-2 py-1 text-xs text-white shadow-md">
                   {stage.label}: {stage.value}
                 </div>
               )}

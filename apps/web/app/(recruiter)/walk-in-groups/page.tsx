@@ -53,7 +53,7 @@ export default function WalkInGroupsPage() {
       header: 'Exams',
       render: (group) =>
         group.exams.length === 0 ? (
-          <span className="text-recruiter-text-tertiary">No exams yet</span>
+          <span className="text-muted">No exams yet</span>
         ) : (
           group.exams.map((exam) => exam.title).join(', ')
         ),
@@ -79,14 +79,14 @@ export default function WalkInGroupsPage() {
   ];
 
   if (isLoading) {
-    return <p className="text-sm text-recruiter-text-tertiary">Loading&hellip;</p>;
+    return <p className="text-sm text-muted">Loading&hellip;</p>;
   }
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold text-recruiter-text">Walk-In Groups</h1>
-        <p className="mt-1 text-sm text-recruiter-text-secondary">
+        <h1 className="text-2xl font-semibold text-ink">Walk-In Groups</h1>
+        <p className="mt-1 text-sm text-muted">
           Bundle a subset of your walk-in-enabled exams behind their own shared link/QR code, separate from the
           default org-wide walk-in page. Each exam belongs to at most one group.
         </p>
@@ -111,7 +111,7 @@ export default function WalkInGroupsPage() {
       {deleting && (
         <Modal open title={`Delete "${deleting.name}"?`} onClose={() => setDeleting(null)}>
           <div className="flex flex-col gap-4">
-            <p className="text-sm text-recruiter-text-secondary">
+            <p className="text-sm text-muted">
               Its {deleting.exams.length} exam{deleting.exams.length === 1 ? '' : 's'} will stay walk-in-enabled and
               simply become ungrouped — reachable via their own exam-specific link, just not this group&apos;s.
             </p>

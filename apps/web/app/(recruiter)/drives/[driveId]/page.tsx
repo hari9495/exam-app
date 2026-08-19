@@ -29,7 +29,7 @@ export default function DrivePage() {
       <div>
         <BackLink href="/walk-in-groups" label="Back to Walk-In Groups" />
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold text-recruiter-text">{drive?.name ?? 'Drive'}</h1>
+          <h1 className="text-2xl font-semibold text-ink">{drive?.name ?? 'Drive'}</h1>
           {drive && <StatusBadge tone={STATUS_TONE[drive.status]}>{STATUS_LABEL[drive.status]}</StatusBadge>}
         </div>
       </div>

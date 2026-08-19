@@ -47,7 +47,7 @@ export function InviteCandidatesModal({ examId, open, onClose, existingCandidate
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Search candidates…"
         aria-label="Search Candidates"
-        className="mb-3 w-full rounded-md border border-recruiter-border px-3 py-1.5 text-sm"
+        className="mb-3 w-full rounded-md border border-rule px-3 py-1.5 text-sm"
       />
       <div className="flex max-h-80 flex-col gap-2 overflow-y-auto">
         {candidates.length === 0 && <p className="text-sm text-gray-500">No candidates available to invite.</p>}

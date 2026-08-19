@@ -112,14 +112,14 @@ export default function WalkInPage() {
             className="flex flex-col items-center gap-3 rounded-md bg-status-success-bg px-4 py-6 text-center"
           >
             <MailCheck size={28} className="text-status-success" />
-            <p className="text-sm text-recruiter-text-secondary">
+            <p className="text-sm text-muted">
               Check your email — we&apos;ve sent your exam link to <strong>{email}</strong>. Open it on the device
               you&apos;ll use to take the exam.
             </p>
           </motion.div>
         ) : (
           <>
-            {isLoading && <p className="text-sm text-recruiter-text-tertiary">Loading&hellip;</p>}
+            {isLoading && <p className="text-sm text-muted">Loading&hellip;</p>}
 
             {isError && (
               <p role="alert" className="text-sm text-status-danger">
@@ -128,7 +128,7 @@ export default function WalkInPage() {
             )}
 
             {!isLoading && !isError && exams && !preselectedExamId && listedExams.length === 0 && (
-              <p className="text-sm text-recruiter-text-secondary">
+              <p className="text-sm text-muted">
                 No exams are currently open for walk-in registration.
               </p>
             )}
