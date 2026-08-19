@@ -595,6 +595,7 @@ export interface BrandingResponse {
   primaryColor: string | null;
   accentColor: string | null;
   textColor: string | null;
+  loginWatermarkEnabled: boolean;
 }
 
 export interface IntegrationsResponse {

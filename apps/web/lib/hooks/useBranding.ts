@@ -41,6 +41,7 @@ interface UpdateBrandingInput {
   primaryColor?: string;
   accentColor?: string;
   textColor?: string;
+  loginWatermarkEnabled?: boolean;
 }
 
 export function useUpdateBranding() {

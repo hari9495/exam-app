@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { ImageIcon } from 'lucide-react';
 import clsx from 'clsx';
 import { useOrgBranding, useUpdateBranding, useUpdateBrandingLogo } from '../../../../lib/hooks/useBranding';
-import { Button, Input, CollapsibleSection, useToast } from '../../../../components/ui';
+import { Button, Input, Checkbox, CollapsibleSection, useToast } from '../../../../components/ui';
 import { motion } from 'framer-motion';
 
 // Prudent's own brand colors (Science Blue / Lightning Yellow / white text) -- what an
@@ -72,6 +72,7 @@ export default function BrandingSettingsPage() {
   const [accentColor, setAccentColor] = useState(PRUDENT_ACCENT_COLOR);
   const [textColor, setTextColor] = useState(PRUDENT_TEXT_COLOR);
   const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [watermarkEnabled, setWatermarkEnabled] = useState(false);
   const [colorsError, setColorsError] = useState<string | null>(null);
   const [logoError, setLogoError] = useState<string | null>(null);
 
@@ -82,7 +83,24 @@ export default function BrandingSettingsPage() {
     if (branding?.primaryColor) setPrimaryColor(branding.primaryColor);
     if (branding?.accentColor) setAccentColor(branding.accentColor);
     if (branding?.textColor) setTextColor(branding.textColor);
+    if (branding) setWatermarkEnabled(branding.loginWatermarkEnabled);
   }, [branding]);
+
+  function handleWatermarkToggle(next: boolean) {
+    // Optimistic: flip immediately, revert if the save fails. The change is small enough
+    // to save on toggle rather than behind a separate button.
+    setWatermarkEnabled(next);
+    updateBranding.mutate(
+      { loginWatermarkEnabled: next },
+      {
+        onSuccess: () => toast(next ? 'Logo watermark enabled.' : 'Logo watermark disabled.'),
+        onError: (err) => {
+          setWatermarkEnabled(!next);
+          setLogoError(err instanceof Error ? err.message : 'Failed to update watermark setting');
+        },
+      },
+    );
+  }
 
   function handleUsePrudentDefaults() {
     setPrimaryColor(PRUDENT_PRIMARY_COLOR);
@@ -203,6 +221,23 @@ export default function BrandingSettingsPage() {
               {logoError}
             </p>
           )}
+
+          {/* Watermark opt-in. Gated on a logo existing -- with no logo there is nothing to
+              render as the watermark. The hint sets the transparent-background expectation,
+              since an opaque logo silhouettes to a faint block rather than the mark. */}
+          <div className="flex flex-col gap-1.5 border-t border-rule pt-4 sm:col-span-2">
+            <Checkbox
+              label="Show our logo as a watermark on the login page"
+              checked={watermarkEnabled}
+              onChange={handleWatermarkToggle}
+              disabled={!branding?.logoUrl || updateBranding.isPending}
+            />
+            <p className="pl-6 text-xs text-muted">
+              {branding?.logoUrl
+                ? 'Renders your logo as a large tone-on-tone silhouette on the login panel. Works best with a transparent-background logo.'
+                : 'Upload a logo first to enable the login watermark.'}
+            </p>
+          </div>
         </CollapsibleSection>
       </motion.div>
     </div>

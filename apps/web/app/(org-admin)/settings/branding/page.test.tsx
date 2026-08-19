@@ -156,4 +156,39 @@ describe('BrandingSettingsPage (org-admin)', () => {
       expect(called(fetchMock, (u, o) => u.endsWith('/organizations/branding') && o?.method === 'PATCH')).toBe(true),
     );
   });
+
+  it('toggles the login watermark, PATCHing loginWatermarkEnabled', async () => {
+    const withLogo = { ...BRANDING, logoUrl: 'https://blob.test/logo.png', loginWatermarkEnabled: false };
+    const fetchMock = jest.fn(async (url: string, options?: RequestInit) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ accessToken: 'token-1' }), { status: 200 });
+      }
+      if (String(url).endsWith('/organizations/branding') && options?.method === 'PATCH') {
+        return new Response(JSON.stringify({ ...withLogo, loginWatermarkEnabled: true }), { status: 200 });
+      }
+      if (String(url).endsWith('/organizations/branding')) {
+        return new Response(JSON.stringify(withLogo), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    renderPage();
+
+    const toggle = await screen.findByRole('checkbox', { name: /watermark on the login page/i });
+    await waitFor(() => expect(toggle).toBeEnabled());
+    await userEvent.click(toggle);
+
+    await waitFor(() =>
+      expect(
+        called(
+          fetchMock,
+          (u, o) =>
+            u.endsWith('/organizations/branding') &&
+            o?.method === 'PATCH' &&
+            String(o?.body).includes('"loginWatermarkEnabled":true'),
+        ),
+      ).toBe(true),
+    );
+  });
 });
