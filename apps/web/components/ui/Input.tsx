@@ -21,7 +21,7 @@ export function Input({ label, value, onChange, error, icon, className, id, hide
       <label
         htmlFor={inputId}
         className={clsx(
-          'text-sm font-medium text-gray-700',
+          'font-body text-sm font-medium text-ink',
           hideLabel && 'sr-only',
           // CSS-generated content, not real text -- deliberately: a real "*" character in the
           // label's textContent would break every getByLabelText('Email')-style exact-text
@@ -34,7 +34,7 @@ export function Input({ label, value, onChange, error, icon, className, id, hide
       </label>
       <div className="relative">
         {icon && (
-          <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400">{icon}</span>
+          <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted">{icon}</span>
         )}
         <input
           id={inputId}
@@ -44,14 +44,14 @@ export function Input({ label, value, onChange, error, icon, className, id, hide
           className={clsx(
             'w-full rounded-lg border border-rule bg-paper px-3 py-2.5 font-body text-sm text-ink focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15',
             icon && 'pl-9',
-            error && 'border-red-500',
+            error && 'border-status-danger',
             className,
           )}
           aria-invalid={Boolean(error)}
           {...props}
         />
       </div>
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className="font-body text-xs text-status-danger">{error}</p>}
     </div>
   );
 }
