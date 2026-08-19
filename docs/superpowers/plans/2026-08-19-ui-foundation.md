@@ -55,9 +55,9 @@ Every task's requirements implicitly include these (verbatim from `docs/superpow
 - [ ] **Step 1: Confirm the font files exist**
 
 Run: `ls apps/web/public/fonts/`
-Expected output includes: `bricolage-grotesque-500.woff2 bricolage-grotesque-700.woff2 hanken-grotesk-400.woff2 hanken-grotesk-500.woff2 hanken-grotesk-600.woff2`
+Expected output includes: `bricolage-grotesque.woff2 hanken-grotesk.woff2`
 
-If any are missing, they were fetched during prototyping into `apps/web/public/lab-fonts/` — copy them: `cp apps/web/public/lab-fonts/*.woff2 apps/web/public/fonts/`.
+Both faces are VARIABLE fonts, so ONE woff2 per family carries the whole weight axis. If they are missing, they are already staged in this worktree's `apps/web/public/fonts/` (carried over from prototyping); confirm with the `ls`.
 
 - [ ] **Step 2: Write the failing config test**
 
@@ -67,7 +67,6 @@ Create `apps/web/tailwind.config.test.ts`:
 import config from './tailwind.config';
 
 describe('tailwind foundation tokens', () => {
-  const colors = (config.theme?.extend?.colors ?? {}) as Record<string, unknown>;
   const fonts = (config.theme?.extend?.fontFamily ?? {}) as Record<string, string[]>;
 
   it('registers the Bricolage display family and Hanken body family', () => {
@@ -106,16 +105,14 @@ Expected: PASS.
 At the top of `apps/web/app/globals.css`, immediately after the `@tailwind` lines, add:
 
 ```css
-@font-face { font-family:'Bricolage Grotesque'; font-weight:500; font-display:swap;
-  src:url('/fonts/bricolage-grotesque-500.woff2') format('woff2'); }
-@font-face { font-family:'Bricolage Grotesque'; font-weight:700; font-display:swap;
-  src:url('/fonts/bricolage-grotesque-700.woff2') format('woff2'); }
-@font-face { font-family:'Hanken Grotesk'; font-weight:400; font-display:swap;
-  src:url('/fonts/hanken-grotesk-400.woff2') format('woff2'); }
-@font-face { font-family:'Hanken Grotesk'; font-weight:500; font-display:swap;
-  src:url('/fonts/hanken-grotesk-500.woff2') format('woff2'); }
-@font-face { font-family:'Hanken Grotesk'; font-weight:600; font-display:swap;
-  src:url('/fonts/hanken-grotesk-600.woff2') format('woff2'); }
+/* Both faces are VARIABLE fonts: one woff2 per family carries the whole weight axis, and the
+   font-weight RANGE lets the browser interpolate any weight (e.g. bold titles at 700). A
+   single-weight @font-face against a variable file pins every weight to one rendering, so bold
+   never looks bold -- do not split these into per-weight blocks. */
+@font-face { font-family:'Bricolage Grotesque'; font-weight:200 800; font-display:swap;
+  src:url('/fonts/bricolage-grotesque.woff2') format('woff2'); }
+@font-face { font-family:'Hanken Grotesk'; font-weight:100 900; font-display:swap;
+  src:url('/fonts/hanken-grotesk.woff2') format('woff2'); }
 ```
 
 Then, inside the existing `:root { ... }` block, this is the one deliberately global change — set the product body font:
@@ -131,8 +128,8 @@ Then, inside the existing `:root { ... }` block, this is the one deliberately gl
 Run: `cd apps/web && npm run build 2>&1 | tail -3`
 Expected: build completes without error (the `postbuild` copy log is the last line).
 
-Run: `grep -c "Bricolage Grotesque" apps/web/app/globals.css`
-Expected: `2` (the two Bricolage weights).
+Run: `grep -c "@font-face" apps/web/app/globals.css`
+Expected: `2` (one variable face per family).
 
 - [ ] **Step 8: Run the full web suite to confirm nothing regressed**
 
@@ -160,9 +157,11 @@ git commit -m "feat(ui): self-host Bricolage Grotesque + Hanken Grotesk, set bod
 
 - [ ] **Step 1: Extend the config test (failing)**
 
-In `apps/web/tailwind.config.test.ts`, add inside the `describe`:
+In `apps/web/tailwind.config.test.ts`, add inside the `describe` (declare `colors` here, where it is first used):
 
 ```ts
+  const colors = (config.theme?.extend?.colors ?? {}) as Record<string, unknown>;
+
   it('exposes slate neutral tokens backed by CSS variables', () => {
     expect(colors.ink).toBe('var(--slate-ink, #1b2530)');
     expect(colors.muted).toBe('var(--slate-muted, #5c6875)');
