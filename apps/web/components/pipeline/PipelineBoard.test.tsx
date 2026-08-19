@@ -9,6 +9,12 @@ jest.mock('../../lib/auth-context', () => ({
   useAuth: () => ({ accessToken: 'test-token', organizationSlug: 'demo-org', role: mockRole }),
 }));
 
+const mockScoreJobMutate = jest.fn();
+jest.mock('../../lib/hooks/usePipeline', () => ({
+  ...jest.requireActual('../../lib/hooks/usePipeline'),
+  useScoreJob: () => ({ mutate: mockScoreJobMutate, isPending: false }),
+}));
+
 const BOARD = {
   stages: {
     applied: [
@@ -23,6 +29,9 @@ const BOARD = {
         examResults: [{ examId: 'exam-1', examTitle: 'Backend', passFail: 'pass', score: 82 }],
         avgRating: 4.2,
         feedbackCount: 3,
+        fitScore: null,
+        fitStatus: null,
+        fitStale: false,
       },
     ],
     screened: [],
@@ -75,6 +84,7 @@ describe('PipelineBoard', () => {
   afterEach(() => {
     global.fetch = originalFetch;
     mockRole = 'recruiter';
+    mockScoreJobMutate.mockReset();
   });
 
   it('renders five stage columns', async () => {
@@ -188,5 +198,78 @@ describe('PipelineBoard', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.queryByRole('heading', { name: 'Send message' })).not.toBeInTheDocument();
+  });
+
+  it('shows a fit-score chip on a scored row and a dash on an unscored row', async () => {
+    mockFetch((url) =>
+      url.endsWith('/jobs/job-1/pipeline')
+        ? new Response(
+            JSON.stringify({
+              stages: {
+                applied: [
+                  { ...BOARD.stages.applied[0], entryId: 'e1', candidateName: 'Alice Applicant', fitScore: 82, fitStatus: 'done', fitStale: false },
+                  { ...BOARD.stages.applied[0], entryId: 'e3', candidateName: 'Carl Unscored', fitScore: null, fitStatus: null, fitStale: false },
+                ],
+                screened: [],
+                interview: [],
+                offer: [],
+                hired: [],
+              },
+              rejected: [],
+            }),
+            { status: 200 },
+          )
+        : null,
+    );
+    renderBoard();
+
+    await screen.findByText('Alice Applicant');
+    expect(screen.getByText('82')).toBeInTheDocument();
+    await screen.findByText('Carl Unscored');
+    expect(screen.getByText('—')).toBeInTheDocument();
+  });
+
+  it('"Sort by fit" reorders a stage column by fitScore descending with nulls last', async () => {
+    mockFetch((url) =>
+      url.endsWith('/jobs/job-1/pipeline')
+        ? new Response(
+            JSON.stringify({
+              stages: {
+                applied: [
+                  { ...BOARD.stages.applied[0], entryId: 'e1', candidateName: 'Low Fit', fitScore: 40, fitStatus: 'done', fitStale: false },
+                  { ...BOARD.stages.applied[0], entryId: 'e2', candidateName: 'High Fit', fitScore: 90, fitStatus: 'done', fitStale: false },
+                  { ...BOARD.stages.applied[0], entryId: 'e3', candidateName: 'No Fit', fitScore: null, fitStatus: null, fitStale: false },
+                ],
+                screened: [],
+                interview: [],
+                offer: [],
+                hired: [],
+              },
+              rejected: [],
+            }),
+            { status: 200 },
+          )
+        : null,
+    );
+    renderBoard();
+
+    await screen.findByText('Low Fit');
+    const namesBefore = screen.getAllByRole('button', { name: /Fit$/ }).map((el) => el.textContent);
+    expect(namesBefore).toEqual(['Low Fit', 'High Fit', 'No Fit']);
+
+    await userEvent.click(screen.getByLabelText('Sort by fit'));
+
+    const namesAfter = screen.getAllByRole('button', { name: /Fit$/ }).map((el) => el.textContent);
+    expect(namesAfter).toEqual(['High Fit', 'Low Fit', 'No Fit']);
+  });
+
+  it('"Score candidates" calls useScoreJob mutate', async () => {
+    mockFetch();
+    renderBoard();
+    await screen.findByText('Alice Applicant');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Score candidates' }));
+
+    expect(mockScoreJobMutate).toHaveBeenCalledTimes(1);
   });
 });

@@ -9,6 +9,7 @@ import { PatchEntryDto } from './dto/patch-entry.dto';
 import { AddFeedbackDto } from './dto/add-feedback.dto';
 import { CandidateEmailTemplatesService } from '../candidate-emails/candidate-email-templates.service';
 import { CandidateEmailsService } from '../candidate-emails/candidate-emails.service';
+import { computeCriteriaHash, validateRubricInput } from '../candidate-fit/candidate-fit.core';
 
 export interface FeedbackRow {
   id: string;
@@ -34,6 +35,9 @@ export interface BoardRow {
   examResults: EntryExamResult[];
   avgRating: number | null;
   feedbackCount: number;
+  fitScore: number | null;
+  fitStatus: string | null;
+  fitStale: boolean;
 }
 
 export interface PipelineBoard {
@@ -121,7 +125,14 @@ export class PipelineService {
     context: TenantContext,
     actorUserId: string,
     jobId: string,
-    dto: { title?: string; description?: string; status?: 'open' | 'closed'; publicApplyEnabled?: boolean },
+    dto: {
+      title?: string;
+      description?: string;
+      status?: 'open' | 'closed';
+      publicApplyEnabled?: boolean;
+      fitCriteria?: string | null;
+      fitRubric?: { label: string; weight: number }[] | null;
+    },
   ): Promise<Job> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const job = await tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } });
@@ -133,6 +144,8 @@ export class PipelineService {
         closedAt?: Date | null;
         publicApplyEnabled?: boolean;
         applyToken?: string;
+        fitCriteria?: string | null;
+        fitRubric?: string | null;
       } = {
         title: dto.title,
         description: dto.description,
@@ -148,6 +161,18 @@ export class PipelineService {
         if (dto.publicApplyEnabled && !job.applyToken) {
           data.applyToken = randomUUID();
         }
+      }
+      if (dto.fitCriteria !== undefined) {
+        data.fitCriteria = dto.fitCriteria?.trim() || null;
+      }
+      if (dto.fitRubric !== undefined) {
+        let dims;
+        try {
+          dims = validateRubricInput(dto.fitRubric ?? []);
+        } catch (e) {
+          throw new BadRequestException((e as Error).message);
+        }
+        data.fitRubric = dims.length ? JSON.stringify(dims) : null;
       }
       const updated = await tx.job.update({ where: { id: jobId }, data });
       await this.audit.record(context, {
@@ -187,7 +212,11 @@ export class PipelineService {
         include: {
           candidate: { include: { invitations: { include: { exam: { select: { title: true } }, attempt: { include: { result: true } } } } } },
           feedback: { select: { rating: true } },
+          fitAssessment: true,
         },
+      });
+      const currentHash = computeCriteriaHash({
+        title: job.title, description: job.description, fitCriteria: job.fitCriteria, fitRubric: job.fitRubric,
       });
       const stages = Object.fromEntries(PIPELINE_STAGES.map((s) => [s, [] as BoardRow[]])) as Record<PipelineStage, BoardRow[]>;
       const rejected: BoardRow[] = [];
@@ -203,6 +232,9 @@ export class PipelineService {
           examResults: deriveEntryExamResults(e.candidate.invitations as any, linkedExamIds),
           avgRating: averageRating(e.feedback.map((f: { rating: number | null }) => f.rating)),
           feedbackCount: e.feedback.length,
+          fitScore: e.fitAssessment?.overallScore ?? null,
+          fitStatus: e.fitAssessment?.status ?? null,
+          fitStale: e.fitAssessment?.status === 'done' && e.fitAssessment.criteriaHash !== currentHash,
         };
         if (e.rejected) rejected.push(row);
         else if (isValidStage(e.stage)) stages[e.stage].push(row);

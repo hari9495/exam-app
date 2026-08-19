@@ -1,5 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PipelineService } from './pipeline.service';
+import { computeCriteriaHash } from '../candidate-fit/candidate-fit.core';
 
 describe('PipelineService', () => {
   let service: PipelineService;
@@ -125,6 +126,41 @@ describe('PipelineService', () => {
     });
   });
 
+  describe('updateJob fit criteria', () => {
+    let tx: any;
+    beforeEach(() => {
+      const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
+      tx = {
+        job: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'job-1', applyToken: null, publicApplyEnabled: false }),
+          update,
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+    });
+
+    it('persists fitCriteria and a valid rubric (as JSON string)', async () => {
+      await service.updateJob(context, 'user-1', 'job-1', {
+        fitCriteria: 'Must ship fast',
+        fitRubric: [{ label: 'Python', weight: 60 }, { label: 'AWS', weight: 40 }],
+      } as any);
+      const data = tx.job.update.mock.calls.at(-1)[0].data;
+      expect(data.fitCriteria).toBe('Must ship fast');
+      expect(JSON.parse(data.fitRubric)).toEqual([{ label: 'Python', weight: 60 }, { label: 'AWS', weight: 40 }]);
+    });
+
+    it('clears the rubric when passed null / empty array', async () => {
+      await service.updateJob(context, 'user-1', 'job-1', { fitRubric: [] } as any);
+      expect(tx.job.update.mock.calls.at(-1)[0].data.fitRubric).toBeNull();
+    });
+
+    it('rejects a rubric whose weights do not sum to 100', async () => {
+      await expect(
+        service.updateJob(context, 'user-1', 'job-1', { fitRubric: [{ label: 'A', weight: 50 }] } as any),
+      ).rejects.toThrow(/sum to 100/i);
+    });
+  });
+
   it('deleteJob deletes and audits job.deleted', async () => {
     const del = jest.fn().mockResolvedValue({ id: 'job-1' });
     const tx = { job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }), delete: del } };
@@ -160,6 +196,67 @@ describe('PipelineService', () => {
     expect(board.rejected).toHaveLength(1);
     expect(board.rejected[0].entryId).toBe('en2');
     expect(board.rejected[0].rejectedReason).toBe('failed screen');
+  });
+
+  it('getPipeline includes fit fields per entry (score, status, stale)', async () => {
+    // Job's current criteria hash is computed from these fields (see computeCriteriaHash).
+    const job = { id: 'job-1', title: 'Backend Eng', description: 'desc', fitCriteria: 'crit', fitRubric: null };
+    const currentHash = computeCriteriaHash({
+      title: job.title, description: job.description, fitCriteria: job.fitCriteria, fitRubric: job.fitRubric,
+    });
+    const tx = {
+      job: { findFirst: jest.fn().mockResolvedValue(job) },
+      jobExam: { findMany: jest.fn().mockResolvedValue([]) },
+      pipelineEntry: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'en1', candidateId: 'c1', stage: 'applied', rejected: false, enteredVia: 'manual',
+            candidate: { name: 'Amy', email: 'amy@x.com', invitations: [] },
+            feedback: [],
+            fitAssessment: { status: 'done', overallScore: 77, criteriaHash: 'H' } }, // stale: 'H' !== currentHash
+          { id: 'en2', candidateId: 'c2', stage: 'applied', rejected: false, enteredVia: 'manual',
+            candidate: { name: 'Bo', email: 'bo@x.com', invitations: [] },
+            feedback: [],
+            fitAssessment: null },
+        ]),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+    const board = await service.getPipeline(context, 'job-1');
+
+    const scored = board.stages.applied.find((r) => r.entryId === 'en1')!;
+    expect(scored.fitScore).toBe(77);
+    expect(scored.fitStatus).toBe('done');
+    expect(scored.fitStale).toBe(true); // stored hash 'H' !== currentHash
+
+    const unscored = board.stages.applied.find((r) => r.entryId === 'en2')!;
+    expect(unscored.fitScore).toBeNull();
+    expect(unscored.fitStatus).toBeNull();
+    expect(unscored.fitStale).toBe(false);
+  });
+
+  it('getPipeline marks fitStale false when the stored criteriaHash matches the current hash', async () => {
+    const job = { id: 'job-1', title: 'Backend Eng', description: 'desc', fitCriteria: 'crit', fitRubric: null };
+    const currentHash = computeCriteriaHash({
+      title: job.title, description: job.description, fitCriteria: job.fitCriteria, fitRubric: job.fitRubric,
+    });
+    const tx = {
+      job: { findFirst: jest.fn().mockResolvedValue(job) },
+      jobExam: { findMany: jest.fn().mockResolvedValue([]) },
+      pipelineEntry: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'en1', candidateId: 'c1', stage: 'applied', rejected: false, enteredVia: 'manual',
+            candidate: { name: 'Amy', email: 'amy@x.com', invitations: [] },
+            feedback: [],
+            fitAssessment: { status: 'done', overallScore: 90, criteriaHash: currentHash } },
+        ]),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+    const board = await service.getPipeline(context, 'job-1');
+
+    expect(board.stages.applied[0].fitStale).toBe(false);
   });
 
   it('listJobs folds groupBy counts per job, keeping rejected out of its stage bucket', async () => {

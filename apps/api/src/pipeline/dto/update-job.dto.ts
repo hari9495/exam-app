@@ -1,4 +1,4 @@
-import { IsBoolean, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class UpdateJobDto {
   @IsOptional() @IsString() @MinLength(1) @MaxLength(200)
@@ -12,4 +12,10 @@ export class UpdateJobDto {
 
   @IsOptional() @IsBoolean()
   publicApplyEnabled?: boolean;
+
+  @IsOptional() @IsString() @MaxLength(5000)
+  fitCriteria?: string;
+
+  @IsOptional() @IsArray()
+  fitRubric?: { label: string; weight: number }[];
 }

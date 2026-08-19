@@ -1,7 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../api-client';
 import { useAuth } from '../auth-context';
-import { JobListItem, JobDetail, JobStatus, PipelineBoard, PipelineStage, FeedbackRow, CandidateProfile, PatchEntryResult } from '../types';
+import {
+  JobListItem,
+  JobDetail,
+  JobStatus,
+  PipelineBoard,
+  PipelineStage,
+  FeedbackRow,
+  CandidateProfile,
+  PatchEntryResult,
+  FitAssessment,
+  RubricDimension,
+} from '../types';
 
 export function useJobs(status?: JobStatus) {
   const { accessToken } = useAuth();
@@ -49,8 +60,14 @@ export function useUpdateJob(jobId: string) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: Partial<CreateJobInput> & { status?: JobStatus; publicApplyEnabled?: boolean }) =>
-      apiFetch(`/jobs/${jobId}`, { method: 'PATCH', body: JSON.stringify(input) }, accessToken ?? undefined),
+    mutationFn: (
+      input: Partial<CreateJobInput> & {
+        status?: JobStatus;
+        publicApplyEnabled?: boolean;
+        fitCriteria?: string | null;
+        fitRubric?: RubricDimension[] | null;
+      },
+    ) => apiFetch(`/jobs/${jobId}`, { method: 'PATCH', body: JSON.stringify(input) }, accessToken ?? undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
       queryClient.invalidateQueries({ queryKey: ['jobs', jobId] });
@@ -154,5 +171,42 @@ export function useAddFeedback(entryId: string, jobId: string) {
       queryClient.invalidateQueries({ queryKey: ['entries', entryId, 'feedback'] });
       queryClient.invalidateQueries({ queryKey: ['jobs', jobId, 'pipeline'] });
     },
+  });
+}
+
+export function useFitAssessment(entryId: string, opts: { poll: boolean }) {
+  const { accessToken } = useAuth();
+  return useQuery<FitAssessment | null>({
+    queryKey: ['entries', entryId, 'fit'],
+    queryFn: () => apiFetch(`/pipeline/entries/${entryId}/fit-assessment`, {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken && entryId),
+    // Poll while a scoring run is in flight so the drawer/board update when it finishes.
+    refetchInterval: opts.poll ? 2500 : false,
+  });
+}
+
+export function useScoreEntry(jobId: string) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (entryId: string) =>
+      apiFetch(`/pipeline/entries/${entryId}/fit-assessment/score`, { method: 'POST' }, accessToken ?? undefined),
+    onSuccess: (_data, entryId) => {
+      queryClient.invalidateQueries({ queryKey: ['entries', entryId, 'fit'] });
+      queryClient.invalidateQueries({ queryKey: ['jobs', jobId, 'pipeline'] });
+    },
+  });
+}
+
+export function useScoreJob(jobId: string) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation<{ queued: number; skipped: number }, Error, void>({
+    mutationFn: () =>
+      apiFetch(`/jobs/${jobId}/fit-assessments/score`, { method: 'POST' }, accessToken ?? undefined) as Promise<{
+        queued: number;
+        skipped: number;
+      }>,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobs', jobId, 'pipeline'] }),
   });
 }

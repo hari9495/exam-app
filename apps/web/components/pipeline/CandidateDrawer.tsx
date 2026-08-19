@@ -1,9 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Modal, Button, StatusBadge, StatusTone, useToast } from '../ui';
-import { useEntryFeedback, useAddFeedback, useCandidateProfile, useCandidateResumeUrl } from '../../lib/hooks/usePipeline';
+import {
+  useEntryFeedback,
+  useAddFeedback,
+  useCandidateProfile,
+  useCandidateResumeUrl,
+  useFitAssessment,
+  useScoreEntry,
+} from '../../lib/hooks/usePipeline';
 import { useCandidateMessages, useResendMessage } from '../../lib/hooks/useCandidateMessages';
 import { useCandidateOffers, useWithdrawOffer } from '../../lib/hooks/useOffers';
 import { useCandidateInterviews, useCancelInterview } from '../../lib/hooks/useInterviews';
@@ -74,6 +81,133 @@ function CandidateProfileSection({ candidateId }: { candidateId: string }) {
           Download résumé
         </Button>
       )}
+    </div>
+  );
+}
+
+const FIT_ADVISORY = 'AI-generated guidance — a hiring aid, not a decision. Review the candidate yourself.';
+
+function FitSpinner() {
+  return (
+    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+    </svg>
+  );
+}
+
+function FitDimensionBar({ dimension }: { dimension: { label: string; weight: number; score: number } }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between text-xs text-recruiter-text-secondary">
+        <span>
+          {dimension.label} — {dimension.score}/100
+        </span>
+        <span className="text-recruiter-text-tertiary">weight {dimension.weight}</span>
+      </div>
+      <div className="mt-1 h-1.5 rounded-full bg-gray-100">
+        <div className="h-1.5 rounded-full bg-primary" style={{ width: `${dimension.score}%` }} />
+      </div>
+    </div>
+  );
+}
+
+// Polls while a scoring run is in flight (see useFitAssessment's opts.poll), driven off state
+// updated in an effect keyed on status -- a ref would update in place without forcing the
+// re-render that's needed to actually arm the query's refetchInterval.
+function FitSection({ entryId, jobId }: { entryId: string; jobId: string }) {
+  const [poll, setPoll] = useState(false);
+  const fit = useFitAssessment(entryId, { poll });
+  const status = fit.data?.status;
+  useEffect(() => {
+    setPoll(status === 'pending' || status === 'processing');
+  }, [status]);
+
+  const scoreEntry = useScoreEntry(jobId);
+  const { toast } = useToast();
+
+  function handleScore() {
+    scoreEntry.mutate(entryId, {
+      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to start scoring.', 'error'),
+    });
+  }
+
+  return (
+    <div>
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary">AI Fit</h3>
+
+      {!status && (
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm text-recruiter-text-tertiary">No fit assessment yet.</p>
+          <Button size="sm" variant="secondary" onClick={handleScore} loading={scoreEntry.isPending}>
+            Assess fit
+          </Button>
+        </div>
+      )}
+
+      {(status === 'pending' || status === 'processing') && (
+        <div className="flex items-center gap-2 text-sm text-recruiter-text-tertiary">
+          <FitSpinner />
+          Scoring&hellip;
+        </div>
+      )}
+
+      {status === 'skipped_no_resume' && <p className="text-sm text-recruiter-text-tertiary">Add a résumé to assess fit.</p>}
+
+      {status === 'skipped_no_ai_key' && (
+        <p className="text-sm text-recruiter-text-tertiary">Configure an AI provider in settings to use AI fit scoring.</p>
+      )}
+
+      {status === 'failed' && (
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm text-recruiter-text-tertiary">Scoring failed.</p>
+          <Button size="sm" variant="secondary" onClick={handleScore} loading={scoreEntry.isPending}>
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {status === 'done' && fit.data && (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <span className="text-3xl font-semibold text-recruiter-text">{fit.data.overallScore}</span>
+            <Button size="sm" variant="secondary" onClick={handleScore} loading={scoreEntry.isPending}>
+              Re-score
+            </Button>
+          </div>
+          {fit.data.summary && <p className="text-sm text-recruiter-text">{fit.data.summary}</p>}
+          {fit.data.strengths.length > 0 && (
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary">Strengths</h4>
+              <ul className="list-disc pl-5 text-sm text-recruiter-text">
+                {fit.data.strengths.map((strength, i) => (
+                  <li key={i}>{strength}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {fit.data.concerns.length > 0 && (
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary">Concerns</h4>
+              <ul className="list-disc pl-5 text-sm text-recruiter-text">
+                {fit.data.concerns.map((concern, i) => (
+                  <li key={i}>{concern}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {fit.data.dimensionScores && fit.data.dimensionScores.length > 0 && (
+            <div className="flex flex-col gap-2">
+              {fit.data.dimensionScores.map((dimension) => (
+                <FitDimensionBar key={dimension.label} dimension={dimension} />
+              ))}
+            </div>
+          )}
+          {fit.data.stale && <p className="text-xs text-amber-600">Job criteria changed — re-score.</p>}
+        </div>
+      )}
+
+      <p className="mt-3 text-xs text-recruiter-text-tertiary">{FIT_ADVISORY}</p>
     </div>
   );
 }
@@ -334,6 +468,8 @@ export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: B
         <p className="text-sm text-recruiter-text-secondary">{row.candidateEmail}</p>
 
         <CandidateProfileSection candidateId={row.candidateId} />
+
+        <FitSection entryId={row.entryId} jobId={jobId} />
 
         <div>
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-recruiter-text-tertiary">Exam results</h3>

@@ -20,6 +20,19 @@ jest.mock('../../lib/hooks/useInterviews', () => ({
   useSendInterview: () => ({ mutateAsync: jest.fn(), isPending: false }),
 }));
 
+let mockFitData: unknown = null;
+const mockScoreEntryMutate = jest.fn();
+const mockUseFitAssessment = jest.fn((_entryId: string, opts?: { poll?: boolean }) => {
+  void opts;
+  return { data: mockFitData, isLoading: false };
+});
+
+jest.mock('../../lib/hooks/usePipeline', () => ({
+  ...jest.requireActual('../../lib/hooks/usePipeline'),
+  useFitAssessment: (entryId: string, opts?: { poll?: boolean }) => mockUseFitAssessment(entryId, opts),
+  useScoreEntry: () => ({ mutate: mockScoreEntryMutate, isPending: false }),
+}));
+
 const ROW = {
   entryId: 'entry-1',
   candidateId: 'cand-1',
@@ -148,6 +161,9 @@ describe('CandidateDrawer', () => {
   beforeEach(() => {
     mockInterviewsData = [];
     mockCancelMutate.mockReset();
+    mockFitData = null;
+    mockScoreEntryMutate.mockReset();
+    mockUseFitAssessment.mockClear();
   });
   afterEach(() => {
     global.fetch = originalFetch;
@@ -394,5 +410,107 @@ describe('CandidateDrawer', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Schedule interview' }));
 
     expect(await screen.findByRole('heading', { name: 'Schedule interview' })).toBeInTheDocument();
+  });
+
+  it('shows the score, summary, strengths and concerns when the assessment is done', async () => {
+    mockFitData = {
+      entryId: 'entry-1',
+      status: 'done',
+      overallScore: 78,
+      summary: 'Strong backend fit for this role.',
+      strengths: ['Deep Node.js experience'],
+      concerns: ['No AWS experience'],
+      dimensionScores: null,
+      scoredAt: '2026-08-18T00:00:00.000Z',
+      error: null,
+      stale: false,
+    };
+    mockFetch();
+    renderDrawer();
+
+    expect(await screen.findByText('78')).toBeInTheDocument();
+    expect(screen.getByText('Strong backend fit for this role.')).toBeInTheDocument();
+    expect(screen.getByText('Deep Node.js experience')).toBeInTheDocument();
+    expect(screen.getByText('No AWS experience')).toBeInTheDocument();
+    expect(
+      screen.getByText('AI-generated guidance — a hiring aid, not a decision. Review the candidate yourself.'),
+    ).toBeInTheDocument();
+  });
+
+  it('shows an "Assess fit" button and calls scoreEntry when there is no assessment yet', async () => {
+    mockFitData = null;
+    mockFetch();
+    renderDrawer();
+
+    const assessButton = await screen.findByRole('button', { name: 'Assess fit' });
+    await userEvent.click(assessButton);
+
+    expect(mockScoreEntryMutate).toHaveBeenCalledWith('entry-1', expect.anything());
+  });
+
+  it('shows the no-résumé hint when status is skipped_no_resume', async () => {
+    mockFitData = {
+      entryId: 'entry-1',
+      status: 'skipped_no_resume',
+      overallScore: null,
+      summary: null,
+      strengths: [],
+      concerns: [],
+      dimensionScores: null,
+      scoredAt: null,
+      error: null,
+      stale: false,
+    };
+    mockFetch();
+    renderDrawer();
+
+    expect(await screen.findByText('Add a résumé to assess fit.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Assess fit' })).not.toBeInTheDocument();
+  });
+
+  it('arms polling (poll: true) once status is pending/processing, and disarms it (poll: false) once done', async () => {
+    mockFitData = {
+      entryId: 'entry-1',
+      status: 'pending',
+      overallScore: null,
+      summary: null,
+      strengths: [],
+      concerns: [],
+      dimensionScores: null,
+      scoredAt: null,
+      error: null,
+      stale: false,
+    };
+    mockFetch();
+    renderDrawer();
+
+    expect(await screen.findByText('Scoring…')).toBeInTheDocument();
+    // The initial render necessarily calls the hook with the old (false) poll value -- the bug
+    // is that it *stays* false. Assert a later call, after the status-driven effect flushes,
+    // was actually made with poll: true.
+    await waitFor(() => {
+      expect(mockUseFitAssessment.mock.calls.some(([, opts]) => opts?.poll === true)).toBe(true);
+    });
+
+    mockUseFitAssessment.mockClear();
+    mockFitData = {
+      entryId: 'entry-1',
+      status: 'done',
+      overallScore: 78,
+      summary: 'Strong backend fit for this role.',
+      strengths: [],
+      concerns: [],
+      dimensionScores: null,
+      scoredAt: '2026-08-18T00:00:00.000Z',
+      error: null,
+      stale: false,
+    };
+    renderDrawer();
+
+    expect(await screen.findByText('78')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(mockUseFitAssessment.mock.calls.length).toBeGreaterThan(0);
+    });
+    expect(mockUseFitAssessment.mock.calls.every(([, opts]) => opts?.poll === false)).toBe(true);
   });
 });

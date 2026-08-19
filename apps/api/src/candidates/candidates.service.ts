@@ -514,6 +514,11 @@ export class CandidatesService {
           parseStatus: 'unavailable',
         },
       });
+      // Scrub AI fit-assessment narrative PII the same way as the parsed profile above.
+      await tx.candidateFitAssessment.updateMany({
+        where: { candidateId },
+        data: { summary: null, strengths: null, concerns: null, dimensionScores: null },
+      });
       await tx.candidateEmail.updateMany({
         where: { candidateId, organizationId: context.organizationId as string },
         data: { toEmail: 'erased@redacted.invalid', subject: 'Redacted', renderedBody: 'Redacted', errorDetail: null },

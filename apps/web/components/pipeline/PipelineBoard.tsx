@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { Card, Tabs, TabsList, TabsTrigger, TabsContent, useToast } from '../ui';
-import { useJobPipeline, usePatchEntry } from '../../lib/hooks/usePipeline';
+import { useJobPipeline, usePatchEntry, useScoreJob } from '../../lib/hooks/usePipeline';
 import { BoardRow, EntryExamResult, PatchEntryResult, PIPELINE_STAGES, PipelineStage, STAGE_LABEL } from '../../lib/types';
 import { useAuth } from '../../lib/auth-context';
 import { CandidateDrawer } from './CandidateDrawer';
@@ -13,6 +13,22 @@ function chipLabel(result: EntryExamResult): string {
   if (result.passFail === null) return `${result.examTitle} · Pending`;
   const label = result.passFail === 'pass' ? 'Passed' : 'Failed';
   return `${result.examTitle} · ${label}${result.score !== null ? ` ${result.score}%` : ''}`;
+}
+
+// ponytail: fixed thresholds, no config -- revisit if recruiters ever want the bands tuned per org.
+function chipColor(score: number): string {
+  if (score >= 75) return 'text-status-success';
+  if (score >= 50) return 'text-status-warning';
+  return 'text-recruiter-text-tertiary';
+}
+
+function sortByFitScore(rows: BoardRow[]): BoardRow[] {
+  return [...rows].sort((a, b) => {
+    if (a.fitScore == null && b.fitScore == null) return 0;
+    if (a.fitScore == null) return 1;
+    if (b.fitScore == null) return -1;
+    return b.fitScore - a.fitScore;
+  });
 }
 
 function RatingStars({ avgRating }: { avgRating: number | null }) {
@@ -42,19 +58,27 @@ function PipelineCard({ row, canManage, onOpen, onStageChange, onReject }: Pipel
       <button type="button" onClick={() => onOpen(row)} className="text-left text-sm font-semibold text-primary hover:underline">
         {row.candidateName}
       </button>
-      {row.examResults.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {row.examResults.map((result) => (
-            <Link
-              key={result.examId}
-              href={`/reports/${result.examId}/candidates/${row.candidateId}`}
-              className="inline-flex items-center rounded-full border border-recruiter-border bg-white px-2 py-0.5 text-xs text-recruiter-text hover:bg-recruiter-bg-subtle hover:underline"
-            >
-              {chipLabel(result)}
-            </Link>
-          ))}
-        </div>
-      )}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {row.examResults.map((result) => (
+          <Link
+            key={result.examId}
+            href={`/reports/${result.examId}/candidates/${row.candidateId}`}
+            className="inline-flex items-center rounded-full border border-recruiter-border bg-white px-2 py-0.5 text-xs text-recruiter-text hover:bg-recruiter-bg-subtle hover:underline"
+          >
+            {chipLabel(result)}
+          </Link>
+        ))}
+        {row.fitScore != null ? (
+          <span
+            className={`inline-flex items-center gap-1 rounded-full border border-recruiter-border bg-white px-2 py-0.5 text-xs font-semibold ${chipColor(row.fitScore)}`}
+          >
+            {row.fitScore}
+            {row.fitStale && <span title="Stale — candidate updated since last score">⚠</span>}
+          </span>
+        ) : (
+          <span className="text-xs text-recruiter-text-tertiary">—</span>
+        )}
+      </div>
       <div className="flex items-center justify-between">
         <RatingStars avgRating={row.avgRating} />
         <span className="text-xs text-recruiter-text-tertiary">
@@ -90,8 +114,10 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
   const { role } = useAuth();
   const canManage = role !== 'panel';
   const patchEntry = usePatchEntry(jobId);
+  const scoreJob = useScoreJob(jobId);
   const { toast } = useToast();
   const [tab, setTab] = useState<'board' | 'rejected'>('board');
+  const [sortByFit, setSortByFit] = useState(false);
   const [openRow, setOpenRow] = useState<BoardRow | null>(null);
   const [composeFor, setComposeFor] = useState<{ entryId: string; candidateId: string; candidateName: string; initial: SendMessageInitial } | null>(
     null,
@@ -166,6 +192,20 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
           <TabsTrigger value="rejected">Rejected ({board.rejected.length})</TabsTrigger>
         </TabsList>
         <TabsContent value="board">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <label className="flex items-center gap-1.5 text-xs font-medium text-recruiter-text-tertiary">
+              <input type="checkbox" checked={sortByFit} onChange={(e) => setSortByFit(e.target.checked)} />
+              Sort by fit
+            </label>
+            <button
+              type="button"
+              onClick={() => scoreJob.mutate()}
+              disabled={scoreJob.isPending}
+              className="rounded-md border border-recruiter-border bg-white px-3 py-1.5 text-xs font-medium text-recruiter-text hover:bg-recruiter-bg-subtle disabled:opacity-50"
+            >
+              {scoreJob.isPending ? 'Scoring…' : 'Score candidates'}
+            </button>
+          </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
             {PIPELINE_STAGES.map((stage) => (
               <div key={stage} className="flex flex-col gap-3">
@@ -173,7 +213,7 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
                   {STAGE_LABEL[stage]} ({board.stages[stage].length})
                 </h3>
                 <div className="flex flex-col gap-3">
-                  {board.stages[stage].map((row) => (
+                  {(sortByFit ? sortByFitScore(board.stages[stage]) : board.stages[stage]).map((row) => (
                     <PipelineCard
                       key={row.entryId}
                       row={row}

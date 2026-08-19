@@ -8,6 +8,7 @@ import { BackLink } from '../../../../components/BackLink';
 import { LinkedExams } from '../../../../components/pipeline/LinkedExams';
 import { AddCandidateModal } from '../../../../components/pipeline/AddCandidateModal';
 import { PipelineBoard } from '../../../../components/pipeline/PipelineBoard';
+import { FitCriteriaEditor } from '../../../../components/pipeline/FitCriteriaEditor';
 import { useJob, useUpdateJob } from '../../../../lib/hooks/usePipeline';
 import { useAuth } from '../../../../lib/auth-context';
 import { JobDetail, JobStatus } from '../../../../lib/types';
@@ -105,6 +106,7 @@ export default function JobPage() {
 
       {job && <LinkedExams jobId={jobId} linkedExams={job.linkedExams} canManage={canManage} />}
       {job && canManage && <PublicApplyControl job={job} jobId={jobId} />}
+      {job && canManage && <FitCriteriaEditor job={job} jobId={jobId} />}
 
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-recruiter-text">Pipeline</h2>
