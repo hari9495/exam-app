@@ -20,6 +20,15 @@ jest.mock('../../lib/hooks/useInterviews', () => ({
   useSendInterview: () => ({ mutateAsync: jest.fn(), isPending: false }),
 }));
 
+let mockFitData: unknown = null;
+const mockScoreEntryMutate = jest.fn();
+
+jest.mock('../../lib/hooks/usePipeline', () => ({
+  ...jest.requireActual('../../lib/hooks/usePipeline'),
+  useFitAssessment: () => ({ data: mockFitData, isLoading: false }),
+  useScoreEntry: () => ({ mutate: mockScoreEntryMutate, isPending: false }),
+}));
+
 const ROW = {
   entryId: 'entry-1',
   candidateId: 'cand-1',
@@ -148,6 +157,8 @@ describe('CandidateDrawer', () => {
   beforeEach(() => {
     mockInterviewsData = [];
     mockCancelMutate.mockReset();
+    mockFitData = null;
+    mockScoreEntryMutate.mockReset();
   });
   afterEach(() => {
     global.fetch = originalFetch;
@@ -394,5 +405,61 @@ describe('CandidateDrawer', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Schedule interview' }));
 
     expect(await screen.findByRole('heading', { name: 'Schedule interview' })).toBeInTheDocument();
+  });
+
+  it('shows the score, summary, strengths and concerns when the assessment is done', async () => {
+    mockFitData = {
+      entryId: 'entry-1',
+      status: 'done',
+      overallScore: 78,
+      summary: 'Strong backend fit for this role.',
+      strengths: ['Deep Node.js experience'],
+      concerns: ['No AWS experience'],
+      dimensionScores: null,
+      scoredAt: '2026-08-18T00:00:00.000Z',
+      error: null,
+      stale: false,
+    };
+    mockFetch();
+    renderDrawer();
+
+    expect(await screen.findByText('78')).toBeInTheDocument();
+    expect(screen.getByText('Strong backend fit for this role.')).toBeInTheDocument();
+    expect(screen.getByText('Deep Node.js experience')).toBeInTheDocument();
+    expect(screen.getByText('No AWS experience')).toBeInTheDocument();
+    expect(
+      screen.getByText('AI-generated guidance — a hiring aid, not a decision. Review the candidate yourself.'),
+    ).toBeInTheDocument();
+  });
+
+  it('shows an "Assess fit" button and calls scoreEntry when there is no assessment yet', async () => {
+    mockFitData = null;
+    mockFetch();
+    renderDrawer();
+
+    const assessButton = await screen.findByRole('button', { name: 'Assess fit' });
+    await userEvent.click(assessButton);
+
+    expect(mockScoreEntryMutate).toHaveBeenCalledWith('entry-1', expect.anything());
+  });
+
+  it('shows the no-résumé hint when status is skipped_no_resume', async () => {
+    mockFitData = {
+      entryId: 'entry-1',
+      status: 'skipped_no_resume',
+      overallScore: null,
+      summary: null,
+      strengths: [],
+      concerns: [],
+      dimensionScores: null,
+      scoredAt: null,
+      error: null,
+      stale: false,
+    };
+    mockFetch();
+    renderDrawer();
+
+    expect(await screen.findByText('Add a résumé to assess fit.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Assess fit' })).not.toBeInTheDocument();
   });
 });
