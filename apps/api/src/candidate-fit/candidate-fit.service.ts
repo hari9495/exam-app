@@ -53,7 +53,12 @@ export class CandidateFitService {
 
   async scoreJob(context: TenantContext, userId: string, jobId: string): Promise<{ queued: number; skipped: number }> {
     const orgId = context.organizationId as string;
-    const toQueue = await this.tenantPrisma.forTenant(context, async (tx) => {
+
+    // Phase 1: one short read-only tx -- gather what's needed to decide eligibility.
+    // No upserts here: a 100+-candidate loop inside forTenant's single interactive
+    // tx blows past Prisma's 5s default timeout against cross-region SQL (P2028),
+    // rolling back the whole batch. See WRITE_CHUNK below for the write-side fix.
+    const { entries, parsedByCandidate, inFlightByEntry } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const job = await tx.job.findFirst({ where: { id: jobId, organizationId: orgId } });
       if (!job) throw new NotFoundException(`Job ${jobId} not found`);
 
@@ -66,35 +71,60 @@ export class CandidateFitService {
       const existing = await tx.candidateFitAssessment.findMany({ where: { jobId, organizationId: orgId } });
       const inFlightByEntry = new Set(existing.filter((a) => IN_FLIGHT.includes(a.status)).map((a) => a.entryId));
 
-      const queue: string[] = [];
-      let skipped = 0;
-      for (const e of entries) {
-        if (inFlightByEntry.has(e.id)) continue; // leave in-flight assessments alone
-        const hasResume = parsedByCandidate.get(e.candidateId) === true;
-        if (!hasResume) {
-          await tx.candidateFitAssessment.upsert({
-            where: { entryId: e.id },
-            create: { organizationId: orgId, entryId: e.id, jobId, candidateId: e.candidateId, status: 'skipped_no_resume' },
-            update: { status: 'skipped_no_resume', error: null },
-          });
-          skipped += 1;
-          continue;
-        }
-        await tx.candidateFitAssessment.upsert({
-          where: { entryId: e.id },
-          create: { organizationId: orgId, entryId: e.id, jobId, candidateId: e.candidateId, status: 'pending' },
-          update: { status: 'pending', error: null },
-        });
-        queue.push(e.id);
-      }
-      return { queue, skipped };
+      return {
+        entries: entries.map((e) => ({ id: e.id, candidateId: e.candidateId })),
+        parsedByCandidate,
+        inFlightByEntry,
+      };
     });
 
-    // Enqueue OUTSIDE the tx (queue.add is network I/O to Redis).
-    for (const entryId of toQueue.queue) {
+    // Phase 2: decide in plain JS, then persist in small chunks -- each chunk its
+    // own short tx, so no single interactive tx holds all N upserts.
+    const toEnqueue: string[] = [];
+    const toSkip: { entryId: string; candidateId: string }[] = [];
+    for (const e of entries) {
+      if (inFlightByEntry.has(e.id)) continue; // leave in-flight assessments alone
+      const hasResume = parsedByCandidate.get(e.candidateId) === true;
+      if (hasResume) toEnqueue.push(e.id);
+      else toSkip.push({ entryId: e.id, candidateId: e.candidateId });
+    }
+
+    // ponytail: 25 upserts/tx keeps a chunk well under Prisma's 5s interactive-tx
+    // timeout even at ~50ms/round-trip cross-region; raise only if that RTT figure moves.
+    const WRITE_CHUNK = 25;
+
+    for (let i = 0; i < toEnqueue.length; i += WRITE_CHUNK) {
+      const batch = toEnqueue.slice(i, i + WRITE_CHUNK);
+      await this.tenantPrisma.forTenant(context, async (tx) => {
+        for (const entryId of batch) {
+          const e = entries.find((x) => x.id === entryId)!;
+          await tx.candidateFitAssessment.upsert({
+            where: { entryId },
+            create: { organizationId: orgId, entryId, jobId, candidateId: e.candidateId, status: 'pending' },
+            update: { status: 'pending', error: null },
+          });
+        }
+      });
+    }
+
+    for (let i = 0; i < toSkip.length; i += WRITE_CHUNK) {
+      const batch = toSkip.slice(i, i + WRITE_CHUNK);
+      await this.tenantPrisma.forTenant(context, async (tx) => {
+        for (const { entryId, candidateId } of batch) {
+          await tx.candidateFitAssessment.upsert({
+            where: { entryId },
+            create: { organizationId: orgId, entryId, jobId, candidateId, status: 'skipped_no_resume' },
+            update: { status: 'skipped_no_resume', error: null },
+          });
+        }
+      });
+    }
+
+    // Phase 3: enqueue OUTSIDE any tx (queue.add is network I/O to Redis).
+    for (const entryId of toEnqueue) {
       await this.jobs.enqueue(context, 'candidate_fit', JSON.stringify({ entryId }), userId);
     }
-    return { queued: toQueue.queue.length, skipped: toQueue.skipped };
+    return { queued: toEnqueue.length, skipped: toSkip.length };
   }
 
   async getForEntry(context: TenantContext, entryId: string): Promise<FitAssessmentView | null> {

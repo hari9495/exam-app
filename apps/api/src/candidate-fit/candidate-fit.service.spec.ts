@@ -73,6 +73,24 @@ describe('CandidateFitService', () => {
       // e2 gets a skipped_no_resume row, e3 is left alone
       expect(out).toEqual({ queued: 1, skipped: 1 });
     });
+
+    it('chunks bulk writes across multiple short txs instead of one giant interactive tx (avoids 5s P2028 on large pipelines)', async () => {
+      const N = 60; // > WRITE_CHUNK (25), so this needs 3 write-chunk txs
+      const entries = Array.from({ length: N }, (_, i) => ({ id: `e${i}`, candidateId: `c${i}`, jobId: 'job-1' }));
+      const profiles = entries.map((e) => ({ candidateId: e.candidateId, parseStatus: 'done' }));
+      tx.pipelineEntry.findMany.mockResolvedValue(entries);
+      tx.candidateProfile.findMany.mockResolvedValue(profiles);
+      tx.candidateFitAssessment.findMany.mockResolvedValue([]);
+
+      const out = await service.scoreJob(context, 'user-1', 'job-1');
+
+      expect(out).toEqual({ queued: N, skipped: 0 });
+      expect(jobsService.enqueue).toHaveBeenCalledTimes(N);
+      // 1 read tx + 3 write-chunk txs (25 + 25 + 10) = 4 total forTenant calls,
+      // proving no single interactive tx holds all N upserts.
+      expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(4);
+      expect(tx.candidateFitAssessment.upsert).toHaveBeenCalledTimes(N);
+    });
   });
 
   describe('getForEntry', () => {
