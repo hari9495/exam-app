@@ -13,6 +13,7 @@ import {
 } from '../../../../lib/hooks/useIntegrations';
 import { Input, Button, CollapsibleSection, Table, StatusBadge, Select, RequiredFieldsNote, type SelectOption, type Column, type StatusTone, useToast } from '../../../../components/ui';
 import { WebhookDeliveryRow } from '../../../../lib/types';
+import { ConnectedAppsSection } from '../../../../components/integrations/ConnectedAppsSection';
 
 function deliveryTone(status: string): StatusTone {
   if (status === 'delivered' || status === 'success') return 'success';
@@ -361,6 +362,10 @@ export default function IntegrationsSettingsPage() {
             <Table columns={DELIVERY_COLUMNS} rows={deliveries ?? []} rowKey={(row) => row.id} emptyMessage="No deliveries yet." />
           </div>
         </CollapsibleSection>
+      </motion.div>
+
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.2, ease: 'easeOut' }}>
+        <ConnectedAppsSection />
       </motion.div>
     </div>
   );

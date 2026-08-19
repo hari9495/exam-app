@@ -660,6 +660,29 @@ export interface WebhookDeliveryRow {
   createdAt: string;
 }
 
+// Mirrors apps/api/src/integrations/connected-apps.service.ts ConnectedAppView -- what
+// GET/POST/PATCH /organizations/integrations/connected-apps(/:id) returns (Slack/Teams
+// chat-notification channels, distinct from the generic Webhooks integration above).
+export interface ConnectedAppRow {
+  id: string;
+  type: 'slack' | 'msteams';
+  label: string;
+  events: string[];
+  status: 'active' | 'disabled';
+  lastDeliveryAt: string | null;
+  lastError: string | null;
+  urlHint: string;
+}
+
+export interface ConnectedAppDeliveryRow {
+  id: string;
+  eventType: string;
+  status: string;
+  httpStatusCode: number | null;
+  createdAt: string;
+  lastAttemptAt: string | null;
+}
+
 export type ProctoringEventType =
   | 'tab_switch'
   | 'fullscreen_exit'
