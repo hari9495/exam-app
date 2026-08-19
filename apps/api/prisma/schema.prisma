@@ -758,6 +758,8 @@ model Job {
   entries            PipelineEntry[]
   examLinks          JobExam[]
   walkInGroups       WalkInGroup[]
+  fitCriteria        String?         @map("fit_criteria") @db.NVarChar(Max)
+  fitRubric          String?         @map("fit_rubric") @db.NVarChar(Max)
 
   @@index([organizationId, status])
   @@map("jobs")
@@ -782,10 +784,38 @@ model PipelineEntry {
   candidateEmails  CandidateEmail[]
   offers           Offer[]
   interviews       Interview[]
+  fitAssessment    CandidateFitAssessment?
 
   @@unique([jobId, candidateId])
   @@index([jobId])
   @@map("pipeline_entries")
+}
+
+model CandidateFitAssessment {
+  id              String    @id @default(uuid()) @db.UniqueIdentifier
+  organizationId  String    @map("organization_id") @db.UniqueIdentifier
+  entryId         String    @unique @map("entry_id") @db.UniqueIdentifier
+  jobId           String    @map("job_id") @db.UniqueIdentifier
+  candidateId     String    @map("candidate_id") @db.UniqueIdentifier
+  status          String    @default("pending")
+  overallScore    Int?      @map("overall_score")
+  summary         String?   @db.NVarChar(Max)
+  strengths       String?   @db.NVarChar(Max)
+  concerns        String?   @db.NVarChar(Max)
+  dimensionScores String?   @map("dimension_scores") @db.NVarChar(Max)
+  criteriaHash    String?   @map("criteria_hash")
+  modelUsed       String?   @map("model_used")
+  scoredByUserId  String?   @map("scored_by_user_id") @db.UniqueIdentifier
+  scoredAt        DateTime? @map("scored_at")
+  aiJobId         String?   @map("ai_job_id") @db.UniqueIdentifier
+  error           String?   @db.NVarChar(Max)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  entry PipelineEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, jobId])
+  @@map("candidate_fit_assessments")
 }
 
 model PipelineFeedback {
