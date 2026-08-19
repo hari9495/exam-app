@@ -302,4 +302,62 @@ describe('LoginPage', () => {
 
     expect(screen.queryByRole('link', { name: /log in with sso/i })).not.toBeInTheDocument();
   });
+
+  it('shows the Prudent mark watermark by default, not an org silhouette', () => {
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ message: 'no session' }), { status: 401 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const { container } = render(
+      <QueryProvider>
+        <AuthProvider>
+          <LoginPage />
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    expect(container.querySelector('.inv-watermark-mark')).not.toBeNull();
+    expect(container.querySelector('.inv-watermark')).toBeNull();
+  });
+
+  it('swaps in the org logo silhouette when the org opted into the watermark', async () => {
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return new Response(JSON.stringify({ message: 'no session' }), { status: 401 });
+      }
+      if (String(url).endsWith('/organizations/by-slug/acme/branding')) {
+        return new Response(
+          JSON.stringify({
+            name: 'Acme',
+            logoUrl: 'https://blob.test/logo.png',
+            primaryColor: null,
+            accentColor: null,
+            textColor: null,
+            loginWatermarkEnabled: true,
+          }),
+          { status: 200 },
+        );
+      }
+      if (String(url).includes('/auth/saml/')) {
+        return new Response(JSON.stringify({ enabled: false }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const { container } = render(
+      <QueryProvider>
+        <AuthProvider>
+          <LoginPage />
+        </AuthProvider>
+      </QueryProvider>,
+    );
+
+    await userEvent.type(screen.getByLabelText(/organization slug/i), 'acme');
+
+    await waitFor(() => expect(container.querySelector('.inv-watermark')).not.toBeNull());
+    expect(container.querySelector('.inv-watermark-mark')).toBeNull();
+  });
 });

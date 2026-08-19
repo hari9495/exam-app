@@ -201,6 +201,18 @@ export default function LoginPage() {
           </div>
 
           <aside className="inv-aside hidden flex-col justify-center gap-7 px-16 py-12 md:flex">
+            {/* Decorative corner watermark: the org's own logo as a tone-on-tone silhouette when
+                the org opted in and has a logo, else Prudent's mark. Sits behind the copy
+                (isolate + z-index in CSS), cropped by the panel's overflow. */}
+            {branding?.loginWatermarkEnabled && branding.logoUrl ? (
+              <div
+                className="inv-watermark"
+                aria-hidden="true"
+                style={{ ['--wm' as string]: `url("${branding.logoUrl}")` }}
+              />
+            ) : (
+              <PrudentMark className="inv-watermark-mark" />
+            )}
             <div>
               <div className="inv-eyebrow mb-3">Assessment platform</div>
               <h2 className="inv-headline max-w-md">Automate early screens.</h2>

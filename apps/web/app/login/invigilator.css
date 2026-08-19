@@ -60,7 +60,20 @@
    which is what stops the restraint from reading as empty. This is Prudent's own marketing surface
    (the org's branding lives on the form side), so the brand colour belongs here. A 1px lit hairline
    along the top edge reads like the lit edge of a board rather than a flat fill. */
-.inv .inv-aside { background:#001E60; box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); }
+.inv .inv-aside { background:#001E60; box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+  position:relative; overflow:hidden; isolation:isolate; }
+
+/* Corner watermark. isolate on the panel makes z-index:-1 land above the navy fill but below the
+   copy, so no per-child z-index juggling is needed. Oversized and bleeding off the bottom-right,
+   cropped by the panel's overflow -- the mark reads as a large tone-on-tone brand emboss. */
+.inv .inv-watermark, .inv .inv-watermark-mark {
+  position:absolute; right:-4%; bottom:-12%; z-index:-1; pointer-events:none;
+  width:min(70%,520px); height:auto; }
+.inv .inv-watermark { aspect-ratio:1;
+  -webkit-mask:var(--wm) no-repeat right bottom / contain;
+          mask:var(--wm) no-repeat right bottom / contain;
+  background:rgba(255,255,255,0.06); }
+.inv .inv-watermark-mark { color:rgba(255,255,255,0.05); }
 .inv .inv-headline { font-family:var(--display); font-weight:700; font-size:42px; line-height:1.03;
   letter-spacing:-0.03em; color:#f4f7fb; }
 .inv .inv-sub { font-size:16px; line-height:1.62; color:#a7b3c8; }
