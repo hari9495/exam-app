@@ -30,11 +30,11 @@ export function RadioGroupItem({ value, label }: RadioGroupItemProps) {
         id={id}
         value={value}
         aria-label={label}
-        className="h-4 w-4 rounded-full border border-gray-400 data-[state=checked]:border-primary"
+        className="h-4 w-4 rounded-full border border-rule data-[state=checked]:border-primary"
       >
         <RadixRadioGroup.Indicator className="flex h-full w-full items-center justify-center after:h-2 after:w-2 after:rounded-full after:bg-primary" />
       </RadixRadioGroup.Item>
-      <label htmlFor={id} className="text-sm text-gray-700">
+      <label htmlFor={id} className="font-body text-sm text-ink">
         {label}
       </label>
     </div>
