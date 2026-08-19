@@ -4,6 +4,13 @@ const config: Config = {
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
   theme: {
     extend: {
+      fontFamily: {
+        // Self-hosted variable fonts (see globals.css @font-face). Display carries titles, the
+        // exam clock, and large numerals; body carries everything else. system-ui is the graceful
+        // fallback if a woff2 fails to load, which is why @font-face uses font-display: swap.
+        display: ['Bricolage Grotesque', 'Hanken Grotesk', 'system-ui', 'sans-serif'],
+        body: ['Hanken Grotesk', 'system-ui', 'sans-serif'],
+      },
       colors: {
         primary: 'var(--color-primary, #0053e2)',
         accent: 'var(--color-accent, #ffc220)',

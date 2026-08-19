@@ -2,10 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Both faces are VARIABLE fonts: one woff2 per family carries the whole weight axis, and the
+   font-weight RANGE descriptor lets the browser interpolate any weight the design asks for
+   (e.g. bold titles at 700). Declaring single-weight faces against a variable file pins every
+   weight to the same rendering, so bold never looks bold. */
+@font-face { font-family:'Bricolage Grotesque'; font-weight:200 800; font-display:swap;
+  src:url('/fonts/bricolage-grotesque.woff2') format('woff2'); }
+@font-face { font-family:'Hanken Grotesk'; font-weight:100 900; font-display:swap;
+  src:url('/fonts/hanken-grotesk.woff2') format('woff2'); }
+
 :root {
   --color-primary: #0053e2;
   --color-accent: #ffc220;
   --color-primary-text: #ffffff;
+  /* One deliberately global change: the product body font. Display font is applied per-component
+     as primitives migrate. */
+  font-family: 'Hanken Grotesk', system-ui, sans-serif;
 }
 
 /* Printed output should match what's on screen -- badge colors, code-block
