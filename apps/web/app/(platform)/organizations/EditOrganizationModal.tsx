@@ -42,7 +42,10 @@ export function EditOrganizationModal({
     setPlanError(null);
   }, [organization]);
 
-  const planOptions = useMemo(() => (plans ?? []).map((plan) => ({ value: plan.id, label: plan.name })), [plans]);
+  const planOptions = useMemo(
+    () => (Array.isArray(plans) ? plans : []).map((plan) => ({ value: plan.id, label: plan.name })),
+    [plans],
+  );
 
   function handleAssignPlan() {
     if (!organization || !planId) return;
