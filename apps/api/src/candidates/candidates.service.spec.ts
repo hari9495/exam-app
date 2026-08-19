@@ -700,6 +700,7 @@ describe('CandidatesService', () => {
           findFirst: jest.fn().mockResolvedValue(overrides.candidateProfile ?? null),
           updateMany: jest.fn(),
         },
+        candidateFitAssessment: { updateMany: jest.fn().mockResolvedValue({}) },
         candidateEmail: { updateMany: jest.fn() },
         offer: {
           findMany: jest.fn().mockResolvedValue(overrides.offers ?? []),
@@ -900,6 +901,18 @@ describe('CandidatesService', () => {
       });
       // The blob is still collected from the path read before the redaction, and still deleted.
       expect(blobStorage.deleteByUrl).toHaveBeenCalledWith('https://blob.test/container/resumes/cand-1.pdf');
+    });
+
+    it('erase scrubs candidate fit assessment PII', async () => {
+      const tx = makeEraseTx();
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.erase(context, 'user-1', 'cand-1');
+
+      expect(tx.candidateFitAssessment.updateMany).toHaveBeenCalledWith({
+        where: { candidateId: 'cand-1' },
+        data: { summary: null, strengths: null, concerns: null, dimensionScores: null },
+      });
     });
 
     it('does not attempt a résumé blob delete when the candidate has no profile or résumé on file', async () => {
