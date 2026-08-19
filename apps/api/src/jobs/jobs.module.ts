@@ -7,6 +7,7 @@ import { EchoProcessor } from './processors/echo.processor';
 import { QuestionGenerationClient } from './processors/question-generation.client';
 import { AiQuestionGenerationProcessor } from './processors/ai-question-generation.processor';
 import { ResumeParseProcessor } from './processors/resume-parse.processor';
+import { CandidateFitProcessor } from './processors/candidate-fit.processor';
 import { AiJobsWorkerService } from './ai-jobs.worker.service';
 import { WEBHOOK_DELIVERIES_QUEUE, createWebhookDeliveriesQueue } from './webhook-deliveries.queue';
 import { WebhookDeliveryWorkerService } from './webhook-delivery.worker.service';
@@ -25,14 +26,16 @@ import { JobsController } from './jobs.controller';
     QuestionGenerationClient,
     AiQuestionGenerationProcessor,
     ResumeParseProcessor,
+    CandidateFitProcessor,
     {
       provide: AI_JOB_PROCESSORS,
-      useFactory: (echo: EchoProcessor, aiQuestionGeneration: AiQuestionGenerationProcessor, resumeParse: ResumeParseProcessor) => [
-        echo,
-        aiQuestionGeneration,
-        resumeParse,
-      ],
-      inject: [EchoProcessor, AiQuestionGenerationProcessor, ResumeParseProcessor],
+      useFactory: (
+        echo: EchoProcessor,
+        aiQuestionGeneration: AiQuestionGenerationProcessor,
+        resumeParse: ResumeParseProcessor,
+        candidateFit: CandidateFitProcessor,
+      ) => [echo, aiQuestionGeneration, resumeParse, candidateFit],
+      inject: [EchoProcessor, AiQuestionGenerationProcessor, ResumeParseProcessor, CandidateFitProcessor],
     },
     AiJobsWorkerService,
     WebhookDeliveryWorkerService,
