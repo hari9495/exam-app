@@ -31,4 +31,17 @@ describe('Modal', () => {
     );
     expect(screen.getByRole('dialog')).toHaveClass('max-w-5xl');
   });
+
+  it('uses the paper surface + rule hairline (not raw white), keeping its overlay shadow', () => {
+    render(
+      <Modal open title="Add question" onClose={() => {}}>
+        <p>Modal body</p>
+      </Modal>,
+    );
+    const panel = screen.getByRole('dialog');
+    expect(panel.className).toContain('bg-paper');
+    expect(panel.className).toContain('border-rule');
+    expect(panel.className).toContain('shadow-xl');
+    expect(panel.className).not.toContain('bg-white');
+  });
 });

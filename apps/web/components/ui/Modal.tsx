@@ -43,20 +43,22 @@ export function Modal({ open, title, onClose, children, footer, size = 'md', clo
          *  DOM-sibling-based on Overlay, so this nesting doesn't change it. */}
         <Dialog.Overlay className="fixed inset-0 flex items-center justify-center overflow-y-auto bg-black/40 px-6 pb-6 pt-24">
           <Dialog.Content
-            className={clsx('flex max-h-full w-full flex-col overflow-hidden rounded-lg bg-white shadow-xl', SIZE_CLASSES[size])}
+            // Floating layer over the scrim: a deliberate shadow-xl + a rule hairline. The
+            // "no drop-shadow" rule is for cards sitting on the page, not true overlays.
+            className={clsx('flex max-h-full w-full flex-col overflow-hidden rounded-lg border border-rule bg-paper shadow-xl', SIZE_CLASSES[size])}
           >
-            <div className="flex items-center justify-between gap-4 border-b border-recruiter-border px-6 py-4">
-              <Dialog.Title className="text-lg font-bold text-recruiter-text">{title}</Dialog.Title>
+            <div className="flex items-center justify-between gap-4 border-b border-rule px-6 py-4">
+              <Dialog.Title className="font-display text-lg font-bold text-ink">{title}</Dialog.Title>
               <Dialog.Close
                 aria-label={closeAriaLabel}
-                className="rounded p-1 text-recruiter-text-tertiary transition-colors hover:bg-recruiter-bg-subtle hover:text-recruiter-text"
+                className="rounded p-1 text-muted transition-colors hover:bg-ground hover:text-ink"
               >
                 <X size={18} />
               </Dialog.Close>
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
             {footer && (
-              <div className="flex justify-end gap-2 border-t border-recruiter-border bg-recruiter-bg-subtle px-6 py-3">
+              <div className="flex justify-end gap-2 border-t border-rule bg-ground px-6 py-3">
                 {footer}
               </div>
             )}

@@ -14,7 +14,7 @@ export function DropdownMenuTrigger({ children, className, ...props }: DropdownM
   return (
     <RadixDropdown.Trigger
       asChild={false}
-      className={className ?? 'rounded border border-recruiter-border px-3 py-2 text-sm'}
+      className={className ?? 'rounded-lg border border-rule bg-paper px-3 py-2 font-body text-sm text-ink'}
       {...props}
     >
       {children}
@@ -25,7 +25,7 @@ export function DropdownMenuTrigger({ children, className, ...props }: DropdownM
 export function DropdownMenuContent({ children }: { children: ReactNode }) {
   return (
     <RadixDropdown.Portal>
-      <RadixDropdown.Content className="rounded border border-recruiter-border bg-white p-1 shadow-md" sideOffset={4}>
+      <RadixDropdown.Content className="rounded-lg border border-rule bg-paper p-1 shadow-md" sideOffset={4}>
         {children}
       </RadixDropdown.Content>
     </RadixDropdown.Portal>
@@ -44,7 +44,7 @@ export function DropdownMenuItem({
   return (
     <RadixDropdown.Item
       onSelect={onSelect}
-      className={clsx('cursor-pointer rounded px-3 py-2 text-sm outline-none data-[highlighted]:bg-gray-100', className)}
+      className={clsx('cursor-pointer rounded px-3 py-2 font-body text-sm text-ink outline-none data-[highlighted]:bg-ground', className)}
     >
       {children}
     </RadixDropdown.Item>

@@ -40,8 +40,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             duration={4000}
             onOpenChange={(open) => !open && dismiss(item.id)}
             className={clsx(
-              'rounded px-4 py-3 text-sm shadow-md',
-              item.variant === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white',
+              'rounded-lg px-4 py-3 font-body text-sm shadow-md',
+              item.variant === 'success' ? 'bg-status-success text-white' : 'bg-status-danger text-white',
             )}
           >
             <RadixToast.Description>{item.message}</RadixToast.Description>
