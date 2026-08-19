@@ -15,6 +15,7 @@ import { WebhookDeliveryWorkerService } from './webhook-delivery.worker.service'
 import { INTEGRATION_DELIVERIES_QUEUE, createIntegrationDeliveriesQueue } from './integration-deliveries.queue';
 import { IntegrationDeliveryWorkerService } from './integration-delivery.worker.service';
 import { WebhooksService } from '../webhooks/webhooks.service';
+import { IntegrationEventsService } from '../integrations/integration-events.service';
 import { JobsService } from './jobs.service';
 import { JobsController } from './jobs.controller';
 
@@ -49,7 +50,8 @@ import { JobsController } from './jobs.controller';
     IntegrationDeliveryWorkerService,
     JobsService,
     WebhooksService,
+    IntegrationEventsService,
   ],
-  exports: [JobsService, WebhooksService],
+  exports: [JobsService, WebhooksService, IntegrationEventsService],
 })
 export class JobsModule {}
