@@ -7,6 +7,7 @@ import { TenantPrismaService } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
+import { QuotaService } from '../billing/quota.service';
 
 describe('UsersService', () => {
   let service: UsersService;
@@ -15,6 +16,7 @@ describe('UsersService', () => {
   let jwt: { verify: jest.Mock };
   let emailService: { send: jest.Mock };
   let blobStorage: { upload: jest.Mock; signIfOurs: jest.Mock };
+  let quota: { checkSoftLimit: jest.Mock };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
@@ -26,6 +28,7 @@ describe('UsersService', () => {
       // Stands in for the real SAS signing: returns the path with a token appended.
       signIfOurs: jest.fn(async (value: unknown) => (value == null ? null : `${value as string}?sig=abc`)),
     };
+    quota = { checkSoftLimit: jest.fn().mockResolvedValue({ warn: false, threshold: null, used: 0, limit: 0 }) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         UsersService,
@@ -34,6 +37,7 @@ describe('UsersService', () => {
         { provide: JwtService, useValue: jwt },
         { provide: EmailService, useValue: emailService },
         { provide: BlobStorageService, useValue: blobStorage },
+        { provide: QuotaService, useValue: quota },
       ],
     }).compile();
     service = moduleRef.get(UsersService);
@@ -105,6 +109,42 @@ describe('UsersService', () => {
     );
 
     expect(result).toHaveProperty('name', null);
+  });
+
+  it('checks the soft seat limit after a successful create', async () => {
+    tenantPrisma.forTenant.mockResolvedValue({
+      id: 'user-1',
+      email: 'a@b.com',
+      organizationId: 'org-1',
+      role: 'recruiter',
+      status: 'active',
+      lastLoginAt: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    await service.create({ organizationId: 'org-1', isSuperAdmin: false }, { email: 'a@b.com', password: 'password1', role: 'recruiter' });
+
+    expect(quota.checkSoftLimit).toHaveBeenCalledWith({ organizationId: 'org-1', isSuperAdmin: false }, 'seats');
+  });
+
+  it('still returns the created user when the soft seat-limit check rejects', async () => {
+    tenantPrisma.forTenant.mockResolvedValue({
+      id: 'user-1',
+      email: 'a@b.com',
+      organizationId: 'org-1',
+      role: 'recruiter',
+      status: 'active',
+      lastLoginAt: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+    quota.checkSoftLimit.mockRejectedValueOnce(new Error('billing DB unreachable'));
+
+    const result = await service.create(
+      { organizationId: 'org-1', isSuperAdmin: false },
+      { email: 'a@b.com', password: 'password1', role: 'recruiter' },
+    );
+
+    expect(result.id).toBe('user-1');
   });
 
   describe('create - SSO-enabled org', () => {
@@ -742,6 +782,38 @@ describe('UsersService', () => {
       expect(result.skipped).toEqual([{ email: 'exists@b.com', reason: 'already exists' }]);
       expect(emailService.send).toHaveBeenCalledTimes(1);
       expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'new@b.com', organizationId: 'org1' }));
+      // Fired once for the whole batch, not once per created user.
+      expect(quota.checkSoftLimit).toHaveBeenCalledTimes(1);
+      expect(quota.checkSoftLimit).toHaveBeenCalledWith(ctx, 'seats');
+    });
+
+    it('does not check the soft seat limit when nothing was created', async () => {
+      const tx = {
+        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
+        user: { findFirst: jest.fn().mockResolvedValue({ id: 'dup' }) },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+
+      const result = await service.bulkCreate(ctx, { emails: ['exists@b.com'], role: 'recruiter' }, 'admin1');
+
+      expect(result.created).toHaveLength(0);
+      expect(quota.checkSoftLimit).not.toHaveBeenCalled();
+    });
+
+    it('still returns created users when the soft seat-limit check rejects', async () => {
+      const created = { id: 'n1', email: 'new@b.com', role: 'recruiter', name: null, organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date() };
+      const tx = {
+        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
+        user: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(created) },
+        passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'tok' }) },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      quota.checkSoftLimit.mockRejectedValueOnce(new Error('billing DB unreachable'));
+
+      const result = await service.bulkCreate(ctx, { emails: ['new@b.com'], role: 'recruiter' }, 'admin1');
+
+      expect(result.created).toHaveLength(1);
+      expect(result.created[0].id).toBe('n1');
     });
 
     it('creates users but sends no set-password email when the org has SSO enabled', async () => {
