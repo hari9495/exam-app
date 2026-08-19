@@ -354,6 +354,12 @@ export class AttemptService {
     // outside the transaction -- pure hashing, no I/O.
     this.enforceSebLockdown(exam, invitation.token, seb);
 
+    // Hard quota: block STARTING a new proctored attempt when the org has exhausted its monthly
+    // proctoring minutes. Never checked mid-exam -- a candidate already testing is never interrupted.
+    if (exam.enableAntiCheating) {
+      await this.quota.assertProctoringMinutes({ organizationId, isSuperAdmin: false });
+    }
+
     return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
       const existing = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
       if (existing) {

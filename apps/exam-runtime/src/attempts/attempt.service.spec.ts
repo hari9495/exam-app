@@ -74,7 +74,7 @@ describe('AttemptService', () => {
   let faceEmbedder: { embed: jest.Mock; isAvailable: jest.Mock };
   let crypto: { encrypt: jest.Mock; decrypt: jest.Mock };
   let faceVerification: { verifySnapshot: jest.Mock; forgetAttempt: jest.Mock };
-  let quota: { assertAiCredits: jest.Mock };
+  let quota: { assertAiCredits: jest.Mock; assertProctoringMinutes: jest.Mock };
   const session = { invitationId: 'inv-1' };
   const exam = {
     id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false,
@@ -129,7 +129,7 @@ describe('AttemptService', () => {
       verifySnapshot: jest.fn().mockResolvedValue({ verdict: 'skipped', score: null, confirmed: false }),
       forgetAttempt: jest.fn(),
     };
-    quota = { assertAiCredits: jest.fn().mockResolvedValue(undefined) };
+    quota = { assertAiCredits: jest.fn().mockResolvedValue(undefined), assertProctoringMinutes: jest.fn().mockResolvedValue(undefined) };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -1310,6 +1310,45 @@ describe('AttemptService', () => {
 
       const snapshot = JSON.parse(tx.attempt.create.mock.calls[0][0].data.sectionSnapshotJson);
       expect(snapshot[0]).toHaveProperty('requiredCount', null);
+    });
+
+    // Hard proctoring-minutes quota: block STARTING a new proctored attempt when the org is over
+    // its monthly proctoring minutes. Checked before the create tx opens, so an over-limit org
+    // never gets a half-created attempt row -- and a candidate already mid-exam is never touched,
+    // since this only runs on the start() path.
+    it('throws and does not create an attempt when proctoring minutes quota is exceeded for a proctored exam', async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn(), create: jest.fn() },
+      };
+      mockBootstrapThenScoped(tx);
+      const quotaError = new ForbiddenException({ error: 'quota_exceeded', dimension: 'proctoring_minutes', used: 500, limit: 500 });
+      quota.assertProctoringMinutes.mockRejectedValue(quotaError);
+
+      await expect(service.start(session, { consent: true })).rejects.toThrow(ForbiddenException);
+
+      expect(quota.assertProctoringMinutes).toHaveBeenCalledWith({ organizationId: 'org-1', isSuperAdmin: false });
+      expect(tx.attempt.create).not.toHaveBeenCalled();
+    });
+
+    it('does not check the proctoring quota and creates the attempt for a non-proctored exam', async () => {
+      const nonProctoredExam = { ...exam, enableAntiCheating: false };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
+        examSection: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'section-1', title: 'Section One', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: null, poolTags: [], questions: [{ questionId: 'q1' }] },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: nonProctoredExam }))
+        .mockImplementationOnce((_ctx, fn) => fn(tx));
+
+      const result = await service.start(session, { consent: true });
+
+      expect(result).toEqual({ id: 'attempt-1', status: 'in_progress' });
+      expect(quota.assertProctoringMinutes).not.toHaveBeenCalled();
+      expect(tx.attempt.create).toHaveBeenCalled();
     });
   });
 

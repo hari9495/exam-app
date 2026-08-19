@@ -29,3 +29,35 @@ describe('exam-runtime QuotaService.assertAiCredits', () => {
     expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
   });
 });
+
+describe('exam-runtime QuotaService.assertProctoringMinutes', () => {
+  const ctx = { organizationId: 'org-1', isSuperAdmin: false };
+  let tx: any;
+  let tenantPrisma: any;
+  let service: QuotaService;
+
+  beforeEach(() => {
+    tx = {
+      organization: { findFirst: jest.fn().mockResolvedValue({ plan: { proctoringMinutesLimit: 500 } }) },
+      $queryRaw: jest.fn().mockResolvedValue([{ minutes: 500 }]),
+    };
+    tenantPrisma = { forTenant: jest.fn(async (_c: any, fn: any) => fn(tx)) };
+    service = new QuotaService(tenantPrisma);
+  });
+
+  it('throws at/over the limit', async () => {
+    await expect(service.assertProctoringMinutes(ctx as any)).rejects.toMatchObject({
+      response: expect.objectContaining({ error: 'quota_exceeded', dimension: 'proctoring_minutes', used: 500, limit: 500 }),
+    });
+  });
+
+  it('passes under', async () => {
+    tx.$queryRaw.mockResolvedValue([{ minutes: 499 }]);
+    await expect(service.assertProctoringMinutes(ctx as any)).resolves.toBeUndefined();
+  });
+
+  it('bypasses super-admin', async () => {
+    await expect(service.assertProctoringMinutes({ organizationId: null, isSuperAdmin: true } as any)).resolves.toBeUndefined();
+    expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+  });
+});
