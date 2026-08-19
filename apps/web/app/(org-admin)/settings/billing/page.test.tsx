@@ -35,10 +35,23 @@ describe('BillingSettingsPage', () => {
     expect(screen.getByText('40 / 100')).toBeInTheDocument();
     expect(screen.getByText('3 / 10')).toBeInTheDocument();
     expect(screen.getByText('30 / 60')).toBeInTheDocument();
-    // periodStart 2026-08-01 -> next reset is the first of September (locale-formatted, so
-    // build the expectation the same way the page does rather than hardcoding a date format).
-    const expectedReset = new Date(2026, 8, 1).toLocaleDateString();
-    expect(screen.getByText(new RegExp(expectedReset.replace(/\//g, '\\/')))).toBeInTheDocument();
+    // periodStart is UTC midnight on 2026-08-01 -> next reset must be September 2026 for
+    // EVERY viewer regardless of local timezone. Assert on the rendered text (not a re-derived
+    // Date, which could carry the same local-getter bug) so this fails on the old local-getter
+    // implementation when run on a negative-UTC-offset machine. Check for month + year
+    // substrings rather than a fixed day/month/year ordering, since that depends on locale.
+    const resetText = screen.getByText(/Usage resets on/i).textContent;
+    expect(resetText).toContain('September');
+    expect(resetText).toContain('2026');
+  });
+
+  it('rolls the reset date over to January of the next year for a December periodStart', () => {
+    mockedUseOrgUsage.mockReturnValue({ data: usage({ periodStart: '2026-12-01T00:00:00.000Z' }) });
+    render(<BillingSettingsPage />);
+
+    const resetText = screen.getByText(/Usage resets on/i).textContent;
+    expect(resetText).toContain('January');
+    expect(resetText).toContain('2027');
   });
 
   it('flags a dimension as over limit with a warning icon when used >= limit', () => {

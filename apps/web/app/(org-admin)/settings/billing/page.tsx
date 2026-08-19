@@ -35,7 +35,7 @@ function UsageBar({ label, used, limit }: { label: string } & DimensionUsage) {
 // month after periodStart, regardless of which day of the month periodStart itself falls on.
 function nextResetDate(periodStart: string): Date {
   const start = new Date(periodStart);
-  return new Date(start.getFullYear(), start.getMonth() + 1, 1);
+  return new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
 }
 
 export default function BillingSettingsPage() {
@@ -64,7 +64,9 @@ export default function BillingSettingsPage() {
           <UsageBar label="Proctoring Minutes" used={usage.proctoringMinutes.used} limit={usage.proctoringMinutes.limit} />
         </div>
 
-        <p className="text-sm text-recruiter-text-tertiary">Usage resets on {resetDate.toLocaleDateString()}.</p>
+        <p className="text-sm text-recruiter-text-tertiary">
+          Usage resets on {resetDate.toLocaleDateString(undefined, { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric' })}.
+        </p>
       </Card>
 
       <p className="text-center text-sm text-recruiter-text-secondary">Need a different plan? Contact us.</p>
