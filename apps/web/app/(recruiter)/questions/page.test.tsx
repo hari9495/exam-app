@@ -93,10 +93,10 @@ describe('QuestionsPage', () => {
       </QueryProvider>,
     );
 
-    await waitFor(() => expect(screen.getByText('Loading…')).toBeInTheDocument(), { timeout: 2000 });
+    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).not.toBeNull(), { timeout: 2000 });
     resolveQuestions!(null);
 
-    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument());
+    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeNull());
   });
 
   it('shows error state when question fetch fails', async () => {

@@ -113,10 +113,10 @@ describe('ExamsPage', () => {
       </QueryProvider>,
     );
 
-    await waitFor(() => expect(screen.getByText('Loading…')).toBeInTheDocument(), { timeout: 2000 });
+    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).not.toBeNull(), { timeout: 2000 });
     resolveExams!(null);
 
-    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument());
+    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeNull());
   });
 
   it('shows error state when exam fetch fails', async () => {
