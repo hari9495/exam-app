@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConnectedAppsService } from './connected-apps.service';
 
 describe('ConnectedAppsService', () => {
@@ -66,6 +66,14 @@ describe('ConnectedAppsService', () => {
           targetUrl: 'https://evil.example.com',
           events: ['attempt.settled'],
         }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service().create(ctx, 'user-1', {
+          type: 'slack',
+          label: 'x',
+          targetUrl: 'https://evil.example.com',
+          events: ['attempt.settled'],
+        }),
       ).rejects.toThrow(/not an allowed/i);
       expect(tx.orgIntegration.create).not.toHaveBeenCalled();
       expect(audit.record).not.toHaveBeenCalled();
@@ -79,7 +87,7 @@ describe('ConnectedAppsService', () => {
           targetUrl: 'http://webhook.office.com/x',
           events: ['attempt.settled'],
         }),
-      ).rejects.toThrow(/not an allowed/i);
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -123,7 +131,9 @@ describe('ConnectedAppsService', () => {
 
     it('rejects an off-allowlist replacement URL and does not persist', async () => {
       tx.orgIntegration.findUnique.mockResolvedValue({ id: 'i1', type: 'msteams' });
-      await expect(service().update(ctx, 'user-1', 'i1', { targetUrl: 'https://evil.example.com' })).rejects.toThrow(/not an allowed/i);
+      await expect(service().update(ctx, 'user-1', 'i1', { targetUrl: 'https://evil.example.com' })).rejects.toThrow(
+        BadRequestException,
+      );
       expect(tx.orgIntegration.update).not.toHaveBeenCalled();
     });
 
@@ -143,10 +153,18 @@ describe('ConnectedAppsService', () => {
   });
 
   describe('test', () => {
-    it('enqueues a test delivery for the org + integration', async () => {
+    it('enqueues a test delivery when the integration is found for the tenant', async () => {
+      tx.orgIntegration.findUnique.mockResolvedValue({ id: 'i1', type: 'slack' });
       const result = await service().test(ctx, 'i1');
+      expect(tx.orgIntegration.findUnique).toHaveBeenCalledWith({ where: { id: 'i1' } });
       expect(integrationEvents.enqueueTest).toHaveBeenCalledWith('org-1', 'i1');
       expect(result).toEqual({ queued: true });
+    });
+
+    it('throws NotFoundException and does not enqueue when the id does not resolve under the tenant (cross-tenant IDOR guard)', async () => {
+      tx.orgIntegration.findUnique.mockResolvedValue(null);
+      await expect(service().test(ctx, 'other-org-integration')).rejects.toThrow(NotFoundException);
+      expect(integrationEvents.enqueueTest).not.toHaveBeenCalled();
     });
   });
 

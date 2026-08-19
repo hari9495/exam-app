@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { TenantContext, TenantPrismaService, AuditService, OrgSecretsCryptoService } from '@exam-platform/shared';
 import { assertAllowedWebhookUrl, IntegrationType } from './webhook-url-allowlist';
 import { IntegrationEventsService } from './integration-events.service';
@@ -43,7 +43,7 @@ export class ConnectedAppsService {
   }
 
   async create(context: TenantContext, actorUserId: string, dto: CreateConnectedAppDto): Promise<ConnectedAppView> {
-    assertAllowedWebhookUrl(dto.type, dto.targetUrl);
+    assertAllowedWebhookUrlOrBadRequest(dto.type, dto.targetUrl);
     const organizationId = requireOrganizationId(context);
     const row = await this.tenantPrisma.forTenant(context, (tx) =>
       tx.orgIntegration.create({
@@ -69,7 +69,7 @@ export class ConnectedAppsService {
     if (dto.targetUrl !== undefined) {
       const existing = await this.tenantPrisma.forTenant(context, (tx) => tx.orgIntegration.findUnique({ where: { id } }));
       if (!existing) throw new NotFoundException('Connected app not found');
-      assertAllowedWebhookUrl(existing.type as IntegrationType, dto.targetUrl);
+      assertAllowedWebhookUrlOrBadRequest(existing.type as IntegrationType, dto.targetUrl);
       data.targetUrlEncrypted = this.crypto.encrypt(dto.targetUrl);
     }
     const row = await this.tenantPrisma.forTenant(context, (tx) => tx.orgIntegration.update({ where: { id }, data }));
@@ -85,6 +85,8 @@ export class ConnectedAppsService {
 
   async test(context: TenantContext, id: string): Promise<{ queued: true }> {
     const organizationId = requireOrganizationId(context);
+    const existing = await this.tenantPrisma.forTenant(context, (tx) => tx.orgIntegration.findUnique({ where: { id } }));
+    if (!existing) throw new NotFoundException('Connected app not found');
     await this.integrationEvents.enqueueTest(organizationId, id);
     return { queued: true };
   }
@@ -93,6 +95,14 @@ export class ConnectedAppsService {
     return this.tenantPrisma.forTenant(context, (tx) =>
       tx.integrationDelivery.findMany({ where: { integrationId: id }, orderBy: { createdAt: 'desc' }, take: 20 }),
     );
+  }
+}
+
+function assertAllowedWebhookUrlOrBadRequest(type: IntegrationType, targetUrl: string): void {
+  try {
+    assertAllowedWebhookUrl(type, targetUrl);
+  } catch {
+    throw new BadRequestException(`targetUrl is not an allowed ${type} webhook endpoint`);
   }
 }
 
