@@ -22,10 +22,14 @@ jest.mock('../../lib/hooks/useInterviews', () => ({
 
 let mockFitData: unknown = null;
 const mockScoreEntryMutate = jest.fn();
+const mockUseFitAssessment = jest.fn((_entryId: string, opts?: { poll?: boolean }) => {
+  void opts;
+  return { data: mockFitData, isLoading: false };
+});
 
 jest.mock('../../lib/hooks/usePipeline', () => ({
   ...jest.requireActual('../../lib/hooks/usePipeline'),
-  useFitAssessment: () => ({ data: mockFitData, isLoading: false }),
+  useFitAssessment: (entryId: string, opts?: { poll?: boolean }) => mockUseFitAssessment(entryId, opts),
   useScoreEntry: () => ({ mutate: mockScoreEntryMutate, isPending: false }),
 }));
 
@@ -159,6 +163,7 @@ describe('CandidateDrawer', () => {
     mockCancelMutate.mockReset();
     mockFitData = null;
     mockScoreEntryMutate.mockReset();
+    mockUseFitAssessment.mockClear();
   });
   afterEach(() => {
     global.fetch = originalFetch;
@@ -461,5 +466,51 @@ describe('CandidateDrawer', () => {
 
     expect(await screen.findByText('Add a résumé to assess fit.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Assess fit' })).not.toBeInTheDocument();
+  });
+
+  it('arms polling (poll: true) once status is pending/processing, and disarms it (poll: false) once done', async () => {
+    mockFitData = {
+      entryId: 'entry-1',
+      status: 'pending',
+      overallScore: null,
+      summary: null,
+      strengths: [],
+      concerns: [],
+      dimensionScores: null,
+      scoredAt: null,
+      error: null,
+      stale: false,
+    };
+    mockFetch();
+    renderDrawer();
+
+    expect(await screen.findByText('Scoring…')).toBeInTheDocument();
+    // The initial render necessarily calls the hook with the old (false) poll value -- the bug
+    // is that it *stays* false. Assert a later call, after the status-driven effect flushes,
+    // was actually made with poll: true.
+    await waitFor(() => {
+      expect(mockUseFitAssessment.mock.calls.some(([, opts]) => opts?.poll === true)).toBe(true);
+    });
+
+    mockUseFitAssessment.mockClear();
+    mockFitData = {
+      entryId: 'entry-1',
+      status: 'done',
+      overallScore: 78,
+      summary: 'Strong backend fit for this role.',
+      strengths: [],
+      concerns: [],
+      dimensionScores: null,
+      scoredAt: '2026-08-18T00:00:00.000Z',
+      error: null,
+      stale: false,
+    };
+    renderDrawer();
+
+    expect(await screen.findByText('78')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(mockUseFitAssessment.mock.calls.length).toBeGreaterThan(0);
+    });
+    expect(mockUseFitAssessment.mock.calls.every(([, opts]) => opts?.poll === false)).toBe(true);
   });
 });

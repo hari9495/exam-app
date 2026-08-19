@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Modal, Button, StatusBadge, StatusTone, useToast } from '../ui';
 import {
@@ -112,14 +112,16 @@ function FitDimensionBar({ dimension }: { dimension: { label: string; weight: nu
   );
 }
 
-// Polls while a scoring run is in flight (see useFitAssessment's opts.poll), driven off this
-// component's own last-seen status rather than the query hook's internals -- a ref instead of
-// state so the poll flag updates in place without forcing an extra render.
+// Polls while a scoring run is in flight (see useFitAssessment's opts.poll), driven off state
+// updated in an effect keyed on status -- a ref would update in place without forcing the
+// re-render that's needed to actually arm the query's refetchInterval.
 function FitSection({ entryId, jobId }: { entryId: string; jobId: string }) {
-  const fitInFlightRef = useRef(false);
-  const fit = useFitAssessment(entryId, { poll: fitInFlightRef.current });
+  const [poll, setPoll] = useState(false);
+  const fit = useFitAssessment(entryId, { poll });
   const status = fit.data?.status;
-  fitInFlightRef.current = status === 'pending' || status === 'processing';
+  useEffect(() => {
+    setPoll(status === 'pending' || status === 'processing');
+  }, [status]);
 
   const scoreEntry = useScoreEntry(jobId);
   const { toast } = useToast();
