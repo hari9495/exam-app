@@ -356,8 +356,17 @@ export class AttemptService {
 
     // Hard quota: block STARTING a new proctored attempt when the org has exhausted its monthly
     // proctoring minutes. Never checked mid-exam -- a candidate already testing is never interrupted.
+    // Only a genuinely NEW attempt consumes minutes, so a resume must skip the gate entirely: read
+    // existence first (outside the write tx, so the quota check stays read-only and out of any
+    // $transaction), and only assert when there is nothing to resume.
     if (exam.enableAntiCheating) {
-      await this.quota.assertProctoringMinutes({ organizationId, isSuperAdmin: false });
+      const existingAttempt = await this.tenantPrisma.forTenant(
+        { organizationId, isSuperAdmin: false },
+        (tx) => tx.attempt.findUnique({ where: { invitationId: invitation.id }, select: { id: true } }),
+      );
+      if (!existingAttempt) {
+        await this.quota.assertProctoringMinutes({ organizationId, isSuperAdmin: false });
+      }
     }
 
     return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
