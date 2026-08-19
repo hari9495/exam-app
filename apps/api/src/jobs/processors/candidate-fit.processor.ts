@@ -8,6 +8,7 @@ import {
   AuditService,
 } from '@exam-platform/shared';
 import { JobProcessor } from './job-processor.interface';
+import { QuotaService } from '../../billing/quota.service';
 import {
   parseRubric,
   buildFitToolSchema,
@@ -30,6 +31,7 @@ export class CandidateFitProcessor implements JobProcessor {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly aiApiKeyResolver: AiApiKeyResolverService,
     private readonly audit: AuditService,
+    private readonly quota: QuotaService,
   ) {}
 
   async process(input: unknown, context: TenantContext, aiJobId: string): Promise<unknown> {
@@ -66,6 +68,12 @@ export class CandidateFitProcessor implements JobProcessor {
       await this.setStatus(context, entryId, 'skipped_no_ai_key');
       return { ok: false, status: 'skipped_no_ai_key' };
     }
+
+    // Hard quota: block the AI spend when the org has exhausted its monthly AI credits.
+    // Deliberately outside the try/catch below so QuotaExceededException propagates as-is to the
+    // worker (which fails the AiJob with the 402 message) instead of being folded into the
+    // generic candidateFitAssessment `failed` status.
+    await this.quota.assertWithinLimit(context, 'ai_credits');
 
     try {
       const rubric = parseRubric(job.fitRubric);

@@ -1,4 +1,5 @@
 import { CandidateFitProcessor } from './candidate-fit.processor';
+import { QuotaExceededException } from '../../billing/quota-exceeded.exception';
 
 describe('CandidateFitProcessor', () => {
   const context = { organizationId: 'org-1', isSuperAdmin: false };
@@ -8,6 +9,7 @@ describe('CandidateFitProcessor', () => {
   let aiResolver: any;
   let audit: any;
   let provider: any;
+  let quota: any;
   let processor: CandidateFitProcessor;
   const callOrder: string[] = [];
 
@@ -39,7 +41,8 @@ describe('CandidateFitProcessor', () => {
     };
     aiResolver = { resolve: jest.fn().mockResolvedValue(provider) };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
-    processor = new CandidateFitProcessor(tenantPrisma, aiResolver, audit);
+    quota = { assertWithinLimit: jest.fn().mockResolvedValue(undefined) };
+    processor = new CandidateFitProcessor(tenantPrisma, aiResolver, audit, quota);
   });
 
   it('has type candidate_fit', () => {
@@ -91,5 +94,11 @@ describe('CandidateFitProcessor', () => {
     provider.generateStructured.mockResolvedValue({ overallScore: 50 }); // missing summary
     await processor.process({ entryId: 'entry-1' }, context, aiJobId);
     expect(tx.candidateFitAssessment.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'failed' }) }));
+  });
+
+  it('does not call the AI provider when the AI-credit quota is exceeded', async () => {
+    quota.assertWithinLimit.mockRejectedValue(new QuotaExceededException('ai_credits', 50, 50));
+    await processor.process({ entryId: 'entry-1' }, context, aiJobId).catch(() => {});
+    expect(provider.generateStructured).not.toHaveBeenCalled();
   });
 });
