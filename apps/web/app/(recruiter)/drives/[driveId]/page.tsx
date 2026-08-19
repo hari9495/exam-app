@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger, type StatusTone } from '../../../../components/ui';
 import { BackLink } from '../../../../components/BackLink';
+import { PageHeader } from '../../../../components/PageChrome';
 import { DriveLiveBoard } from '../../../../components/drives/DriveLiveBoard';
 import { DriveResults } from '../../../../components/drives/DriveResults';
 import { useDrive } from '../../../../lib/hooks/useDrives';
@@ -28,10 +29,11 @@ export default function DrivePage() {
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
       <div>
         <BackLink href="/walk-in-groups" label="Back to Walk-In Groups" />
-        <div className="flex items-center gap-3">
-          <h1 className="font-display text-2xl font-bold text-ink">{drive?.name ?? 'Drive'}</h1>
-          {drive && <StatusBadge tone={STATUS_TONE[drive.status]}>{STATUS_LABEL[drive.status]}</StatusBadge>}
-        </div>
+        <PageHeader
+          eyebrow="INTAKE"
+          title={String(drive?.name ?? 'Drive')}
+          actions={drive ? <StatusBadge tone={STATUS_TONE[drive.status]}>{STATUS_LABEL[drive.status]}</StatusBadge> : undefined}
+        />
       </div>
 
       <Tabs value={tab} onValueChange={(value) => setTab(value as 'live' | 'results')}>

@@ -3,6 +3,7 @@
 import { useParams, useSearchParams } from 'next/navigation';
 import { useCandidateComparison } from '../../../../../lib/hooks/usePanelReports';
 import { IntegrityBadge } from '../../../../../components/ui';
+import { PageHeader, PageSurface } from '../../../../../components/PageChrome';
 import { BackLink } from '../../../../../components/BackLink';
 
 export default function PanelComparePage() {
@@ -15,7 +16,7 @@ export default function PanelComparePage() {
   const header = (
     <>
       <BackLink href={`/reports/${examId}`} label="Back To Results" />
-      <h1 className="mb-6 font-display text-2xl font-bold">Compare Candidates</h1>
+      <PageHeader eyebrow="REPORTING" title="Compare Candidates" />
     </>
   );
 
@@ -42,7 +43,7 @@ export default function PanelComparePage() {
   return (
     <div>
       {header}
-      <div className="overflow-x-auto">
+      <PageSurface className="overflow-x-auto">
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-gray-200 text-left">
@@ -94,7 +95,7 @@ export default function PanelComparePage() {
             ))}
           </tbody>
         </table>
-      </div>
+      </PageSurface>
     </div>
   );
 }

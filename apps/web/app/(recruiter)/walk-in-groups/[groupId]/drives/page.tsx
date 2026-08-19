@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Plus, Trash2 } from 'lucide-react';
 import { Button, Card, Input, Table, StatusBadge, useToast, type Column, type StatusTone } from '../../../../../components/ui';
 import { BackLink } from '../../../../../components/BackLink';
+import { PageHeader } from '../../../../../components/PageChrome';
 import { useWalkInGroups } from '../../../../../lib/hooks/useWalkInGroups';
 import { useGroupDrives, useCreateDrive, useDeleteDrive } from '../../../../../lib/hooks/useDrives';
 import { DriveListItem, DriveSessionStatus } from '../../../../../lib/types';
@@ -98,11 +99,11 @@ export default function GroupDrivesPage() {
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
       <div>
         <BackLink href="/walk-in-groups" label="Back to Walk-In Groups" />
-        <h1 className="font-display text-2xl font-bold text-ink">Drives{group ? ` — ${group.name}` : ''}</h1>
-        <p className="mt-1 text-sm text-muted">
-          Schedule a time-boxed hiring drive for this group. Candidates who register while a drive is live are
-          attributed to it.
-        </p>
+        <PageHeader
+          eyebrow="INTAKE"
+          title={`Drives${group ? ` — ${group.name}` : ''}`}
+          subtitle="Schedule a time-boxed hiring drive for this group. Candidates who register while a drive is live are attributed to it."
+        />
       </div>
 
       <Card>

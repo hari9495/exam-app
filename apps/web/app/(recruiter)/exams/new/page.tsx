@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { ExamDetailsForm } from '../../../../components/ExamDetailsForm';
 import { BackLink } from '../../../../components/BackLink';
+import { PageHeader } from '../../../../components/PageChrome';
 import { useCreateExam } from '../../../../lib/hooks/useExams';
 import { useToast } from '../../../../components/ui';
 
@@ -14,7 +15,7 @@ export default function NewExamPage() {
   return (
     <div className="mx-auto max-w-3xl">
       <BackLink href="/exams" label="Back To Exams" />
-      <h1 className="mb-6 font-display text-2xl font-bold">New Exam</h1>
+      <PageHeader eyebrow="ASSESSMENT" title="New Exam" />
       <ExamDetailsForm
         submitLabel="Create exam"
         onSubmit={(input) =>

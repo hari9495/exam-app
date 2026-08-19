@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import { Search, Users, CheckCircle2, Target, BarChart3 } from 'lucide-react';
 import { useExam, useExams } from '../../../../lib/hooks/useExams';
 import { useResultsSummary, useQuestionAccuracy, useResultsList, useResultsExport } from '../../../../lib/hooks/usePanelReports';
+import { PageHeader } from '../../../../components/PageChrome';
 import {
   Table,
   Checkbox,
@@ -170,7 +171,7 @@ export default function PanelExamResultsPage() {
 
   return (
     <div>
-      <h1 className="mb-6 font-display text-2xl font-bold">{exam?.title ?? 'Exam Results'}</h1>
+      <PageHeader eyebrow="REPORTING" title={String(exam?.title ?? 'Exam Results')} />
 
       {summaryLoading ? (
         <p className="mb-6 text-sm text-gray-500">Loading summary…</p>

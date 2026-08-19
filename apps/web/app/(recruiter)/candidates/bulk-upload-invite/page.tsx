@@ -9,6 +9,7 @@ import {
 import { useExams } from '../../../../lib/hooks/useExams';
 import { Button, Select, RequiredFieldsNote, useToast } from '../../../../components/ui';
 import { BackLink } from '../../../../components/BackLink';
+import { PageHeader, PageSurface } from '../../../../components/PageChrome';
 
 export default function BulkUploadInviteCandidatesPage() {
   const [examId, setExamId] = useState('');
@@ -60,7 +61,8 @@ export default function BulkUploadInviteCandidatesPage() {
   return (
     <div className="max-w-2xl">
       <BackLink href="/candidates" label="Back To Candidates" />
-      <h1 className="mb-6 font-display text-2xl font-bold">Bulk Upload &amp; Invite Candidates</h1>
+      <PageHeader eyebrow="PEOPLE" title="Bulk Upload & Invite Candidates" />
+      <PageSurface className="p-6">
       <RequiredFieldsNote />
       <div className="mb-4 mt-2">
         <Select
@@ -126,6 +128,7 @@ export default function BulkUploadInviteCandidatesPage() {
           )}
         </div>
       )}
+      </PageSurface>
     </div>
   );
 }

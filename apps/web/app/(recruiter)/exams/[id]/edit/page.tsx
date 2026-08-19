@@ -26,6 +26,7 @@ import { useAttentionNotifications } from '../../../../../lib/hooks/useAttention
 import { flaggedAttemptIds } from '../../../../../lib/attention-alert';
 import { Tabs, TabsList, TabsTrigger, TabsContent, Button, Checkbox, useToast } from '../../../../../components/ui';
 import { BackLink } from '../../../../../components/BackLink';
+import { PageHeader } from '../../../../../components/PageChrome';
 
 export default function EditExamPage() {
   const params = useParams<{ id: string }>();
@@ -87,52 +88,55 @@ export default function EditExamPage() {
   return (
     <div>
       <BackLink href="/exams" label="Back To Exams" />
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="font-display text-2xl font-bold">{exam.title}</h1>
+      <PageHeader
+        eyebrow="ASSESSMENT"
+        title={String(exam.title ?? 'Exam')}
+        subtitle={
           <AuditHistoryLink
             entityType="exam"
             entityId={exam.id}
             entityName={exam.title}
             className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
           />
-        </div>
-        <div className="flex gap-2">
-          <Link href={`/exams/${exam.id}/preview`}>
-            <Button variant="secondary">Preview</Button>
-          </Link>
-          {exam.status === 'draft' && (
-            <Button
-              onClick={() =>
-                publishExam.mutate(undefined, {
-                  onSuccess: () => toast('Exam published.'),
-                  onError: (error) => {
-                    toast(error instanceof Error ? error.message : 'Failed to publish exam.', 'error');
-                  },
-                })
-              }
-            >
-              Publish
-            </Button>
-          )}
-          {exam.status === 'published' && !exam.hasStartedAttempts && (
-            <Button
-              variant="secondary"
-              loading={unpublishExam.isPending}
-              onClick={() =>
-                unpublishExam.mutate(undefined, {
-                  onSuccess: () => toast('Exam unpublished — you can edit it now.'),
-                  onError: (error) => {
-                    toast(error instanceof Error ? error.message : 'Failed to unpublish exam.', 'error');
-                  },
-                })
-              }
-            >
-              Unpublish
-            </Button>
-          )}
-        </div>
-      </div>
+        }
+        actions={
+          <>
+            <Link href={`/exams/${exam.id}/preview`}>
+              <Button variant="secondary">Preview</Button>
+            </Link>
+            {exam.status === 'draft' && (
+              <Button
+                onClick={() =>
+                  publishExam.mutate(undefined, {
+                    onSuccess: () => toast('Exam published.'),
+                    onError: (error) => {
+                      toast(error instanceof Error ? error.message : 'Failed to publish exam.', 'error');
+                    },
+                  })
+                }
+              >
+                Publish
+              </Button>
+            )}
+            {exam.status === 'published' && !exam.hasStartedAttempts && (
+              <Button
+                variant="secondary"
+                loading={unpublishExam.isPending}
+                onClick={() =>
+                  unpublishExam.mutate(undefined, {
+                    onSuccess: () => toast('Exam unpublished — you can edit it now.'),
+                    onError: (error) => {
+                      toast(error instanceof Error ? error.message : 'Failed to unpublish exam.', 'error');
+                    },
+                  })
+                }
+              >
+                Unpublish
+              </Button>
+            )}
+          </>
+        }
+      />
       <Tabs defaultValue="details">
         <TabsList>
           <TabsTrigger value="details">Details</TabsTrigger>

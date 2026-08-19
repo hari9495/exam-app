@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useBulkUploadQuestions, useDownloadBulkUploadTemplate, BulkUploadResult } from '../../../../lib/hooks/useQuestions';
 import { Button, useToast } from '../../../../components/ui';
 import { BackLink } from '../../../../components/BackLink';
+import { PageHeader, PageSurface } from '../../../../components/PageChrome';
 
 export default function BulkUploadQuestionsPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -43,8 +44,9 @@ export default function BulkUploadQuestionsPage() {
   return (
     <div className="max-w-2xl">
       <BackLink href="/questions" label="Back To Question Bank" />
-      <h1 className="mb-6 font-display text-2xl font-bold">Bulk Upload Questions</h1>
-      <Button variant="secondary" onClick={handleDownloadTemplate} disabled={downloadTemplate.isPending}>
+      <PageHeader eyebrow="CONTENT" title="Bulk Upload Questions" />
+      <PageSurface className="p-6">
+        <Button variant="secondary" onClick={handleDownloadTemplate} disabled={downloadTemplate.isPending}>
         Download template
       </Button>
       <form onSubmit={handleUpload} className="mt-6 flex flex-col gap-3">
@@ -87,6 +89,7 @@ export default function BulkUploadQuestionsPage() {
           )}
         </div>
       )}
+      </PageSurface>
     </div>
   );
 }

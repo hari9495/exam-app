@@ -5,6 +5,7 @@ import { Printer } from 'lucide-react';
 import { useExam } from '../../../../../lib/hooks/useExams';
 import { Card, Button } from '../../../../../components/ui';
 import { BackLink } from '../../../../../components/BackLink';
+import { PageHeader } from '../../../../../components/PageChrome';
 import type { Question } from '../../../../../lib/types';
 
 const QUESTION_TYPE_LABEL: Record<Question['type'], string> = {
@@ -28,14 +29,17 @@ export default function PreviewPage() {
     // full-bleed prose across a 2560px screen is harder to review, not easier.
     <div className="mx-auto max-w-4xl xl:max-w-5xl 2xl:max-w-6xl">
       <BackLink href={`/exams/${exam.id}/edit`} label="Back To Exam" className="print:hidden" />
-      <div className="mb-2 flex items-center justify-between">
-        <h1 className="font-display text-2xl font-bold text-ink">{exam.title}</h1>
-        <Button variant="secondary" onClick={() => window.print()} className="inline-flex items-center print:hidden">
-          <Printer size={16} className="mr-1.5" />
-          Print
-        </Button>
-      </div>
-      {exam.instructions && <p className="mb-6 text-sm text-muted">{exam.instructions}</p>}
+      <PageHeader
+        eyebrow="PREVIEW"
+        title={String(exam.title ?? 'Exam')}
+        subtitle={exam.instructions || undefined}
+        actions={
+          <Button variant="secondary" onClick={() => window.print()} className="inline-flex items-center print:hidden">
+            <Printer size={16} className="mr-1.5" />
+            Print
+          </Button>
+        }
+      />
       <div className="flex flex-col gap-6">
         {exam.sections
           .slice()
