@@ -12,6 +12,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuditService } from '@exam-platform/shared';
 import { randomBytes, createHash } from 'crypto';
 import { EmailService } from '../email/email.service';
+import { QuotaService } from '../billing/quota.service';
 import { SuperAdminEmailDto } from './dto/super-admin-email.dto';
 import { BulkCreateUsersDto } from './dto/bulk-create-users.dto';
 import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
@@ -72,6 +73,7 @@ export class UsersService {
     private readonly jwt: JwtService,
     private readonly emailService: EmailService,
     private readonly blobStorage: BlobStorageService,
+    private readonly quota: QuotaService,
   ) {}
 
   async create(context: TenantContext, dto: CreateUserDto): Promise<SafeUser> {
@@ -118,7 +120,19 @@ export class UsersService {
       entityType: 'user',
       entityId: user.id,
     });
+    await this.warnSoftSeatLimit(context);
     return user;
+  }
+
+  // Soft limit: never blocks creating the user; warns + emails admins once per threshold/period.
+  // Fired after the create's tx has committed (checkSoftLimit does its own reads + email), and
+  // never allowed to fail the create -- a notification hiccup is not the caller's problem.
+  private async warnSoftSeatLimit(context: TenantContext): Promise<void> {
+    try {
+      await this.quota.checkSoftLimit(context, 'seats');
+    } catch (error) {
+      this.logger.error('Soft seat-limit check failed', error as Error);
+    }
   }
 
   async list(context: TenantContext, filters: { page?: string; pageSize?: string; search?: string } = {}): Promise<PaginatedResponse<SafeUser>> {
@@ -544,6 +558,9 @@ export class UsersService {
       } else {
         skipped.push(outcome.skipped);
       }
+    }
+    if (created.length > 0) {
+      await this.warnSoftSeatLimit(context);
     }
     return { created, skipped };
   }

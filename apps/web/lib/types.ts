@@ -615,6 +615,36 @@ export interface IntegrationsResponse {
   webhookUrl: string | null;
 }
 
+// Mirrors apps/api/src/billing/usage.service.ts OrgUsage -- what GET /organizations/billing/usage
+// returns for the org-admin Billing page (plan name, per-dimension used/limit, and the period
+// this usage was accrued in).
+export interface DimensionUsage {
+  used: number;
+  limit: number;
+}
+
+export interface OrgUsage {
+  planName: string;
+  periodStart: string;
+  seats: DimensionUsage;
+  candidates: DimensionUsage;
+  aiCredits: DimensionUsage;
+  proctoringMinutes: DimensionUsage;
+}
+
+// Mirrors apps/api/src/billing/dto/plan.dto.ts UpsertPlanDto + the Prisma Plan model, as returned
+// by GET/POST/PATCH /platform/plans (super-admin plan catalog).
+export interface Plan {
+  id: string;
+  name: string;
+  seatLimit: number;
+  candidateLimit: number;
+  aiCreditLimit: number;
+  proctoringMinutesLimit: number;
+  priceLabel: string | null;
+  isPublic: boolean;
+}
+
 export interface SsoSettingsResponse {
   samlEnabled: boolean;
   samlIdpEntityId: string | null;

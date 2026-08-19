@@ -15,15 +15,27 @@ const ACME: Organization = {
 
 const BETA: Organization = { ...ACME, id: 'org-2', name: 'Beta', slug: 'beta', region: 'eu' };
 
-function renderModal({ organization = ACME as Organization | null, onClose = jest.fn(), patchResponse }: {
+const PLANS = [
+  { id: 'plan-1', name: 'Starter', seatLimit: 5, candidateLimit: 50, aiCreditLimit: 100, proctoringMinutesLimit: 60, priceLabel: '$49/mo', isPublic: true },
+  { id: 'plan-2', name: 'Pro', seatLimit: 20, candidateLimit: 500, aiCreditLimit: 1000, proctoringMinutesLimit: 600, priceLabel: '$199/mo', isPublic: true },
+];
+
+function renderModal({ organization = ACME as Organization | null, onClose = jest.fn(), patchResponse, assignResponse }: {
   organization?: Organization | null;
   onClose?: jest.Mock;
   patchResponse?: Response;
+  assignResponse?: Response;
 } = {}) {
   const token = fakeJwt({ sub: 'u1', organizationId: null, role: 'super_admin' });
   global.fetch = jest.fn(async (url: unknown, options?: RequestInit) => {
     if (String(url).endsWith('/auth/refresh')) {
       return new Response(JSON.stringify({ accessToken: token }), { status: 200 });
+    }
+    if (String(url).endsWith('/platform/plans')) {
+      return new Response(JSON.stringify(PLANS), { status: 200 });
+    }
+    if (String(url).includes('/plan') && options?.method === 'PATCH') {
+      return assignResponse ?? new Response(JSON.stringify({ ...ACME, planId: 'plan-2' }), { status: 200 });
     }
     if (options?.method === 'PATCH') {
       return patchResponse ?? new Response(JSON.stringify({ ...ACME, name: 'Acme Inc' }), { status: 200 });
@@ -108,5 +120,34 @@ describe('EditOrganizationModal', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Name already in use'));
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByLabelText('Name')).toHaveValue('Acme Inc');
+  });
+
+  it('assigns the selected plan to the organization via useAssignPlan, independent of the name/region form', async () => {
+    renderModal();
+
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Plan' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'Pro' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Assign plan' }));
+
+    await waitFor(() => {
+      const assign = (global.fetch as jest.Mock).mock.calls.find(
+        ([url, options]) => String(url).endsWith('/platform/organizations/org-1/plan') && options?.method === 'PATCH',
+      );
+      expect(assign).toBeDefined();
+      expect(JSON.parse(assign[1].body)).toEqual({ planId: 'plan-2' });
+    });
+  });
+
+  it('shows the plan-assign error and does not close the modal on failure', async () => {
+    const { onClose } = renderModal({
+      assignResponse: new Response(JSON.stringify({ message: 'Plan not found' }), { status: 404 }),
+    });
+
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Plan' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'Pro' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Assign plan' }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Plan not found'));
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

@@ -12,6 +12,7 @@ import { useDocumentBranding } from '../../lib/hooks/useDocumentBranding';
 import { useCurrentUser } from '../../lib/hooks/useCurrentUser';
 import { StaffSidebar } from '../../components/StaffSidebar';
 import { StaffTopBar } from '../../components/StaffTopBar';
+import { OverLimitBanner } from '../../components/billing/OverLimitBanner';
 
 const BASE_NAV_ITEMS = [
   { href: '/users', label: 'Staff Users', icon: Users },
@@ -98,6 +99,7 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
       />
       <div className="flex flex-1 flex-col">
         <StaffTopBar displayName={displayName} initials={initials} roleLabel={roleLabel} avatarUrl={currentUser?.avatarUrl} onLogout={handleLogout} />
+        <OverLimitBanner />
         <main className="flex-1 bg-ground p-8">{children}</main>
       </div>
     </div>

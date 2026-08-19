@@ -3,6 +3,7 @@ import { TenantContext, TenantPrismaService, AiApiKeyResolverService } from '@ex
 import { JobProcessor } from './job-processor.interface';
 import { QuestionGenerationClient, GeneratedQuestion } from './question-generation.client';
 import { validateQuestionPayload } from '../../questions/question-validation';
+import { QuotaService } from '../../billing/quota.service';
 
 interface AiQuestionGenerationInput {
   topic: string;
@@ -35,6 +36,7 @@ export class AiQuestionGenerationProcessor implements JobProcessor {
     private readonly questionGenerationClient: QuestionGenerationClient,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly aiApiKeyResolver: AiApiKeyResolverService,
+    private readonly quota: QuotaService,
   ) {}
 
   async process(input: unknown, context: TenantContext, aiJobId: string): Promise<AiQuestionGenerationOutput> {
@@ -53,6 +55,10 @@ export class AiQuestionGenerationProcessor implements JobProcessor {
     } = input as AiQuestionGenerationInput;
 
     const aiProvider = await this.aiApiKeyResolver.resolve(context.organizationId as string);
+
+    // Hard quota: block the AI spend when the org has exhausted its monthly AI credits.
+    await this.quota.assertWithinLimit(context, 'ai_credits');
+
     const generated = (await this.questionGenerationClient.generate(topic, difficulty, questionTypes, count, aiProvider)).slice(0, count);
 
     const valid: GeneratedQuestion[] = [];

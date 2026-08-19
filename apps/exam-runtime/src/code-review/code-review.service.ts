@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TenantPrismaService, AiApiKeyResolverService, AiNotConfiguredError, AI_NOT_CONFIGURED_STATUS } from '@exam-platform/shared';
+import { QuotaService } from '../billing/quota.service';
 import { CodeReviewClient } from './code-review.client';
 
 @Injectable()
@@ -10,6 +11,7 @@ export class CodeReviewService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly codeReviewClient: CodeReviewClient,
     private readonly aiApiKeyResolver: AiApiKeyResolverService,
+    private readonly quota: QuotaService,
   ) {}
 
   async analyze(answerId: string): Promise<void> {
@@ -43,6 +45,7 @@ export class CodeReviewService {
       result = { status: 'completed', suggestedMarks: 0, summary: 'No code was submitted for this question.' };
     } else {
       try {
+        await this.quota.assertAiCredits({ organizationId, isSuperAdmin: false });
         // A MISSING key is recorded distinctly from a provider error -- see attempt-insight
         // for the same guard and the reason (audit finding F2).
         const aiProvider = await this.aiApiKeyResolver.resolve(organizationId).catch((error) => {
