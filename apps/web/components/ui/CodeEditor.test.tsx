@@ -19,4 +19,12 @@ describe('CodeEditor', () => {
     await userEvent.type(screen.getByLabelText('Code Snippet'), 'x');
     expect(onChange).toHaveBeenCalledWith('x');
   });
+
+  it('drops the page-elevation shadow but keeps the round traffic-light dots', () => {
+    const { container } = render(<CodeEditor ariaLabel="Code Snippet" language="python" value="" onChange={jest.fn()} />);
+    const chrome = container.firstElementChild as HTMLElement;
+    expect(chrome.className).not.toContain('shadow');
+    // The three macOS-style dots are decorative and legitimately round.
+    expect(container.querySelectorAll('.rounded-full')).toHaveLength(3);
+  });
 });

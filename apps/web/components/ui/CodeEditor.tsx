@@ -17,7 +17,7 @@ interface CodeEditorProps {
 // exam page's code editor, so recruiters preview a snippet the way candidates see it.
 export function CodeEditor({ language, value, onChange, ariaLabel, height = '200px' }: CodeEditorProps) {
   return (
-    <div className="overflow-hidden rounded-lg border border-[#2D2D2D] shadow-sm">
+    <div className="overflow-hidden rounded-lg border border-[#2D2D2D]">
       <div className="flex items-center justify-between bg-[#1E1E1E] px-3 py-2">
         <span className="inline-flex items-center gap-1.5" aria-hidden="true">
           <span className="h-2.5 w-2.5 rounded-full bg-[#FF5F56]" />
