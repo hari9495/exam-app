@@ -3,7 +3,7 @@
 // the same convention as Salesforce's "* = Required Information".
 export function RequiredFieldsNote() {
   return (
-    <p className="text-xs text-gray-500">
+    <p className="font-body text-xs text-muted">
       <span className="text-status-danger" aria-hidden="true">
         *
       </span>{' '}

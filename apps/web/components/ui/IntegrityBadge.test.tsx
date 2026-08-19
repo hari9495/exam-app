@@ -34,4 +34,11 @@ describe('IntegrityBadge', () => {
     render(<IntegrityBadge level={undefined} />);
     expect(screen.getByText('Integrity: —')).toBeInTheDocument();
   });
+
+  // Wave 2: IntegrityBadge delegates to StatusBadge, so it inherited the squared tag + filled
+  // marker from Wave 1 with no change of its own. Guard that delegation.
+  it('inherits the StatusBadge marker', () => {
+    const { container } = render(<IntegrityBadge level="clear" />);
+    expect(container.querySelector('[data-status-marker]')).not.toBeNull();
+  });
 });
