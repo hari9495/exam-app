@@ -5,6 +5,7 @@ import { ImageIcon } from 'lucide-react';
 import clsx from 'clsx';
 import { useOrgBranding, useUpdateBranding, useUpdateBrandingLogo } from '../../../../lib/hooks/useBranding';
 import { Button, Input, Checkbox, CollapsibleSection, useToast } from '../../../../components/ui';
+import { PageHeader } from '../../../../components/PageChrome';
 import { motion } from 'framer-motion';
 
 // Prudent's own brand colors (Science Blue / Lightning Yellow / white text) -- what an
@@ -135,7 +136,7 @@ export default function BrandingSettingsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-      <h1 className="text-center text-2xl font-semibold text-ink">Branding Settings</h1>
+      <PageHeader eyebrow="BRANDING" title="Branding Settings" />
 
       {isError && (
         <p role="alert" className="rounded-md bg-status-danger-bg px-3 py-2 text-sm text-status-danger">

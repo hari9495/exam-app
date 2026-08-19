@@ -60,7 +60,7 @@ export default function BulkUploadInviteCandidatesPage() {
   return (
     <div className="max-w-2xl">
       <BackLink href="/candidates" label="Back To Candidates" />
-      <h1 className="mb-6 text-2xl font-semibold">Bulk Upload &amp; Invite Candidates</h1>
+      <h1 className="mb-6 font-display text-2xl font-bold">Bulk Upload &amp; Invite Candidates</h1>
       <RequiredFieldsNote />
       <div className="mb-4 mt-2">
         <Select

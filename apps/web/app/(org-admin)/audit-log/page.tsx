@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ScrollText, Download, X } from 'lucide-react';
+import { Download, X } from 'lucide-react';
 import { useAuditLogs, useAuditLogExport, type AuditLogFilters } from '../../../lib/hooks/useAuditLogs';
 import { Button, Modal, Table, StatusBadge, Select, FilterableHeader, type StatusTone, type Column } from '../../../components/ui';
+import { PageHeader, PageSurface } from '../../../components/PageChrome';
 import { AuditActorFilter } from '../../../components/AuditActorFilter';
 import { AuditLogEntry } from '../../../lib/types';
 import {
@@ -177,21 +178,21 @@ export default function AuditLogPage() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="flex items-center gap-2 text-2xl font-semibold text-ink">
-          <ScrollText size={22} aria-hidden="true" />
-          Audit Log
-        </h1>
-        <Button
-          variant="secondary"
-          onClick={handleExport}
-          loading={exportMutation.isPending}
-          className="inline-flex items-center gap-1.5"
-        >
-          <Download size={16} />
-          Export CSV
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow="SECURITY"
+        title="Audit Log"
+        actions={
+          <Button
+            variant="secondary"
+            onClick={handleExport}
+            loading={exportMutation.isPending}
+            className="inline-flex items-center gap-1.5"
+          >
+            <Download size={16} />
+            Export CSV
+          </Button>
+        }
+      />
 
       {linkedEntityType && linkedEntityId && filters.entityId === linkedEntityId && (
         <p className="mb-4 flex items-center gap-2 rounded-md border border-rule bg-ground px-3 py-2 text-sm text-ink">
@@ -202,100 +203,104 @@ export default function AuditLogPage() {
         </p>
       )}
 
-      <div className="mb-4 flex flex-wrap items-center gap-1.5">
-        <span className="mr-1 text-xs font-medium text-muted">Quick range:</span>
-        {[
-          { label: 'Today', days: 0 },
-          { label: 'Last 7 days', days: 7 },
-          { label: 'Last 30 days', days: 30 },
-        ].map((preset) => (
-          <button
-            key={preset.label}
-            type="button"
-            onClick={() => applyFilters({ ...formFilters, ...presetRange(preset.days) })}
-            className="rounded-full border border-rule px-3 py-1 text-xs font-medium text-ink hover:bg-ground"
-          >
-            {preset.label}
-          </button>
-        ))}
-        <div className="ml-2 flex overflow-hidden rounded-md border border-rule">
-          {CATEGORY_OPTIONS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => applyFilters({ ...formFilters, category: option.value })}
-              className={`px-3 py-1 text-xs font-medium ${
-                (formFilters.category ?? 'all') === option.value
-                  ? 'bg-primary text-on-primary'
-                  : 'bg-white text-ink hover:bg-ground'
-              }`}
-            >
-              {option.label}
-            </button>
-          ))}
+      <PageSurface>
+        <div className="border-b border-rule px-4 py-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-xs font-medium text-muted">Quick range:</span>
+            {[
+              { label: 'Today', days: 0 },
+              { label: 'Last 7 days', days: 7 },
+              { label: 'Last 30 days', days: 30 },
+            ].map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={() => applyFilters({ ...formFilters, ...presetRange(preset.days) })}
+                className="rounded-full border border-rule px-3 py-1 text-xs font-medium text-ink hover:bg-ground"
+              >
+                {preset.label}
+              </button>
+            ))}
+            <div className="ml-2 flex overflow-hidden rounded-md border border-rule">
+              {CATEGORY_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => applyFilters({ ...formFilters, category: option.value })}
+                  className={`px-3 py-1 text-xs font-medium ${
+                    (formFilters.category ?? 'all') === option.value
+                      ? 'bg-primary text-on-primary'
+                      : 'bg-white text-ink hover:bg-ground'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <form onSubmit={handleApplyFilters} className="mt-3 flex flex-wrap items-end gap-2">
+            <AuditActorFilter
+              actorUserId={formFilters.actorUserId}
+              actorLabel={actorLabel}
+              onChange={(actorUserId, label) => {
+                setActorLabel(label);
+                setFormFilters((f) => ({ ...f, actorUserId }));
+              }}
+            />
+            <Select
+              label="Entity Type"
+              value={formFilters.entityType ?? 'all'}
+              onChange={(value) => setFormFilters((f) => ({ ...f, entityType: value === 'all' ? undefined : value }))}
+              options={ENTITY_TYPE_SELECT_OPTIONS}
+            />
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium text-gray-700">From</span>
+              <input
+                type="date"
+                value={formFilters.from ?? ''}
+                onChange={(e) => setFormFilters((f) => ({ ...f, from: e.target.value || undefined }))}
+                className="rounded border border-rule px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium text-gray-700">To</span>
+              <input
+                type="date"
+                value={formFilters.to ?? ''}
+                onChange={(e) => setFormFilters((f) => ({ ...f, to: e.target.value || undefined }))}
+                className="rounded border border-rule px-3 py-2 text-sm"
+              />
+            </label>
+            <Button type="submit">Apply filters</Button>
+          </form>
         </div>
-      </div>
 
-      <form onSubmit={handleApplyFilters} className="mb-6 flex flex-wrap items-end gap-2">
-        <AuditActorFilter
-          actorUserId={formFilters.actorUserId}
-          actorLabel={actorLabel}
-          onChange={(actorUserId, label) => {
-            setActorLabel(label);
-            setFormFilters((f) => ({ ...f, actorUserId }));
-          }}
-        />
-        <Select
-          label="Entity Type"
-          value={formFilters.entityType ?? 'all'}
-          onChange={(value) => setFormFilters((f) => ({ ...f, entityType: value === 'all' ? undefined : value }))}
-          options={ENTITY_TYPE_SELECT_OPTIONS}
-        />
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-gray-700">From</span>
-          <input
-            type="date"
-            value={formFilters.from ?? ''}
-            onChange={(e) => setFormFilters((f) => ({ ...f, from: e.target.value || undefined }))}
-            className="rounded border border-rule px-3 py-2 text-sm"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-gray-700">To</span>
-          <input
-            type="date"
-            value={formFilters.to ?? ''}
-            onChange={(e) => setFormFilters((f) => ({ ...f, to: e.target.value || undefined }))}
-            className="rounded border border-rule px-3 py-2 text-sm"
-          />
-        </label>
-        <Button type="submit">Apply filters</Button>
-      </form>
-
-      {isError && (
-        <p role="alert" className="text-sm text-status-danger">
-          Failed to load audit log.
-        </p>
-      )}
-      {isLoading && entries.length === 0 ? (
-        <p className="text-sm text-muted">Loading…</p>
-      ) : (
-        !isError && (
-          <>
-            <p className="mb-2 text-xs text-muted">
-              Showing {entries.length} of {total} event{total === 1 ? '' : 's'}
-            </p>
-            <Table columns={columns} rows={entries} rowKey={(entry) => entry.id} emptyMessage="No audit events found." />
-            {entries.length > 0 && entries.length < total && (
-              <div className="mt-4">
-                <Button variant="secondary" onClick={handleLoadMore} disabled={isLoading}>
-                  Load more
-                </Button>
-              </div>
-            )}
-          </>
-        )
-      )}
+        {isError && (
+          <p role="alert" className="px-4 py-3 text-sm text-status-danger">
+            Failed to load audit log.
+          </p>
+        )}
+        {isLoading && entries.length === 0 ? (
+          <p className="px-4 py-3 text-sm text-muted">Loading…</p>
+        ) : (
+          !isError && (
+            <>
+              <p className="px-4 pt-3 text-xs text-muted">
+                Showing {entries.length} of {total} event{total === 1 ? '' : 's'}
+              </p>
+              <Table columns={columns} rows={entries} rowKey={(entry) => entry.id} emptyMessage="No audit events found." />
+              {entries.length > 0 && entries.length < total && (
+                <div className="px-4 py-3">
+                  <Button variant="secondary" onClick={handleLoadMore} disabled={isLoading}>
+                    Load more
+                  </Button>
+                </div>
+              )}
+            </>
+          )
+        )}
+      </PageSurface>
 
       {selected && (
         <Modal open title="Audit Event" onClose={() => setSelected(null)}>

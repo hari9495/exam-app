@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Plus, Search, MoreHorizontal } from 'lucide-react';
 import { useExams, useDuplicateExam, useArchiveExam } from '../../../lib/hooks/useExams';
+import { PageHeader, PageSurface } from '../../../components/PageChrome';
 import {
   Table,
   StatusBadge,
@@ -174,7 +175,7 @@ export default function ExamsPage() {
   if (isLoading) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-semibold text-ink">Exams</h1>
+        <PageHeader eyebrow="Assessments" title="Exams" />
         <p className="text-sm text-muted">Loading…</p>
       </div>
     );
@@ -183,7 +184,7 @@ export default function ExamsPage() {
   if (isError) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-semibold text-ink">Exams</h1>
+        <PageHeader eyebrow="Assessments" title="Exams" />
         <p role="alert" className="text-sm text-status-danger">
           Failed to load exams.
         </p>
@@ -193,39 +194,46 @@ export default function ExamsPage() {
 
   return (
     <div>
-      <div className="mb-4.5 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-ink">Exams</h1>
-        <Link href="/exams/new">
-          <Button className="inline-flex items-center gap-1.5">
-            <Plus size={14} />
-            New exam
-          </Button>
-        </Link>
-      </div>
-      <div className="mb-3 flex items-center gap-2">
-        <div className="relative max-w-xs flex-1">
-          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
-              setPage(1);
-            }}
-            placeholder="Search exams…"
-            aria-label="Search Exams"
-            className="w-full rounded-md border border-rule py-1.5 pl-8 pr-3 text-sm"
-          />
-        </div>
-        {chooser}
-      </div>
-      <Table
-        columns={[indexColumn, ...visibleColumns]}
-        rows={examsResponse?.data ?? []}
-        rowKey={(exam) => exam.id}
-        emptyMessage="No exams yet."
+      <PageHeader
+        eyebrow="Assessments"
+        title="Exams"
+        actions={
+          <Link href="/exams/new">
+            <Button className="inline-flex items-center gap-1.5">
+              <Plus size={14} />
+              New exam
+            </Button>
+          </Link>
+        }
       />
-      <Pagination page={examsResponse?.page ?? 1} totalPages={examsResponse?.totalPages ?? 1} onPageChange={setPage} />
+      <PageSurface>
+        <div className="flex items-center gap-2 border-b border-rule px-4 py-3">
+          <div className="relative max-w-xs flex-1">
+            <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
+              placeholder="Search exams…"
+              aria-label="Search Exams"
+              className="w-full rounded-lg border border-rule py-2 pl-9 pr-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
+            />
+          </div>
+          {chooser}
+        </div>
+        <Table
+          columns={[indexColumn, ...visibleColumns]}
+          rows={examsResponse?.data ?? []}
+          rowKey={(exam) => exam.id}
+          emptyMessage="No exams yet."
+        />
+        <div className="px-4 py-3">
+          <Pagination page={examsResponse?.page ?? 1} totalPages={examsResponse?.totalPages ?? 1} onPageChange={setPage} />
+        </div>
+      </PageSurface>
 
       {examPendingDelete && (
         <Modal open title="Delete Exam" onClose={() => setExamPendingDelete(null)}>

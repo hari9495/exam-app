@@ -170,7 +170,7 @@ export default function PanelExamResultsPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-semibold">{exam?.title ?? 'Exam Results'}</h1>
+      <h1 className="mb-6 font-display text-2xl font-bold">{exam?.title ?? 'Exam Results'}</h1>
 
       {summaryLoading ? (
         <p className="mb-6 text-sm text-gray-500">Loading summary…</p>
@@ -182,7 +182,7 @@ export default function PanelExamResultsPage() {
                 <Users size={14} />
                 <p className="text-xs font-medium uppercase tracking-wide">Total candidates</p>
               </div>
-              <p className="text-2xl font-semibold text-ink">{summary.totalCandidates}</p>
+              <p className="font-display text-2xl font-bold text-ink">{summary.totalCandidates}</p>
             </Card>
           </motion.div>
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.05, ease: 'easeOut' }}>
@@ -191,7 +191,7 @@ export default function PanelExamResultsPage() {
                 <CheckCircle2 size={14} />
                 <p className="text-xs font-medium uppercase tracking-wide">Settled</p>
               </div>
-              <p className="text-2xl font-semibold text-ink">{summary.settledCount}</p>
+              <p className="font-display text-2xl font-bold text-ink">{summary.settledCount}</p>
             </Card>
           </motion.div>
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.1, ease: 'easeOut' }}>
@@ -200,7 +200,7 @@ export default function PanelExamResultsPage() {
                 <Target size={14} />
                 <p className="text-xs font-medium uppercase tracking-wide">Pass rate</p>
               </div>
-              <p className={`text-2xl font-semibold ${scoreTone(summary.passRate)}`}>{summary.passRate.toFixed(1)}%</p>
+              <p className={`font-display text-2xl font-bold ${scoreTone(summary.passRate)}`}>{summary.passRate.toFixed(1)}%</p>
             </Card>
           </motion.div>
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.15, ease: 'easeOut' }}>
@@ -209,7 +209,7 @@ export default function PanelExamResultsPage() {
                 <BarChart3 size={14} />
                 <p className="text-xs font-medium uppercase tracking-wide">Average score</p>
               </div>
-              <p className={`text-2xl font-semibold ${scoreTone(summary.averagePercentage)}`}>{summary.averagePercentage.toFixed(1)}%</p>
+              <p className={`font-display text-2xl font-bold ${scoreTone(summary.averagePercentage)}`}>{summary.averagePercentage.toFixed(1)}%</p>
             </Card>
           </motion.div>
         </div>

@@ -92,7 +92,7 @@ export default function JobPage() {
         <BackLink href="/jobs" label="Back to Jobs" />
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold text-ink">{job?.title ?? 'Job'}</h1>
+            <h1 className="font-display text-2xl font-bold text-ink">{job?.title ?? 'Job'}</h1>
             {job && <StatusBadge tone={STATUS_TONE[job.status]}>{STATUS_LABEL[job.status]}</StatusBadge>}
           </div>
           {canManage && job && (
@@ -109,7 +109,7 @@ export default function JobPage() {
       {job && canManage && <FitCriteriaEditor job={job} jobId={jobId} />}
 
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-ink">Pipeline</h2>
+        <h2 className="font-display text-lg font-semibold text-ink">Pipeline</h2>
         {canManage && <Button onClick={() => setAddOpen(true)}>Add candidate</Button>}
       </div>
 

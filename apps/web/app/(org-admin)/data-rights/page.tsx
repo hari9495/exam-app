@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { Download, ShieldAlert, Trash2, UserSearch } from 'lucide-react';
 import { useLookupCandidate, useExportCandidate, useEraseCandidate } from '../../../lib/hooks/useCandidateDataRights';
 import { Button, Input, Card, Modal, Table, StatusBadge, useToast, type Column, type StatusTone } from '../../../components/ui';
+import { PageHeader } from '../../../components/PageChrome';
 import { Candidate, CandidateDataExport } from '../../../lib/types';
 
 type ExportInvitation = CandidateDataExport['invitations'][number];
@@ -200,13 +201,11 @@ export default function DataRightsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-ink">Candidate Data Rights</h1>
-        <p className="mt-1 text-sm text-muted">
-          Look up a candidate by email to export their full record or permanently erase their personal data, for a data
-          subject access or deletion request (e.g. GDPR Article 15/17).
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="PRIVACY"
+        title="Candidate Data Rights"
+        subtitle="Look up a candidate by email to export their full record or permanently erase their personal data, for a data subject access or deletion request (e.g. GDPR Article 15/17)."
+      />
 
       <Card>
         <form onSubmit={handleLookup} className="flex items-end gap-2">
@@ -267,7 +266,7 @@ export default function DataRightsPage() {
           <div className="flex flex-col gap-4">
             <Card>
               <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-ink">Export Data</h2>
+                <h2 className="font-display text-lg font-semibold text-ink">Export Data</h2>
                 <Button variant="secondary" onClick={handleDownload} className="inline-flex items-center gap-1.5">
                   <Download size={14} />
                   Download JSON

@@ -71,19 +71,19 @@ export function DriveLiveBoard({ driveId }: { driveId: string }) {
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Card className="flex flex-col gap-1.5">
           <p className="text-xs font-medium uppercase tracking-wide text-muted">Registered</p>
-          <p className="text-2xl font-semibold text-ink">{counts.registered}</p>
+          <p className="font-display text-2xl font-bold text-ink">{counts.registered}</p>
         </Card>
         <Card className="flex flex-col gap-1.5">
           <p className="text-xs font-medium uppercase tracking-wide text-muted">In progress</p>
-          <p className="text-2xl font-semibold text-ink">{counts.inProgress}</p>
+          <p className="font-display text-2xl font-bold text-ink">{counts.inProgress}</p>
         </Card>
         <Card className="flex flex-col gap-1.5">
           <p className="text-xs font-medium uppercase tracking-wide text-muted">Submitted</p>
-          <p className="text-2xl font-semibold text-ink">{counts.submitted}</p>
+          <p className="font-display text-2xl font-bold text-ink">{counts.submitted}</p>
         </Card>
         <Card className="flex flex-col gap-1.5">
           <p className="text-xs font-medium uppercase tracking-wide text-muted">Passed</p>
-          <p className="text-2xl font-semibold text-ink">{counts.passed}</p>
+          <p className="font-display text-2xl font-bold text-ink">{counts.passed}</p>
         </Card>
       </div>
 

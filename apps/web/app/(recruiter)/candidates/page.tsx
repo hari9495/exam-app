@@ -8,6 +8,7 @@ import { useExams } from '../../../lib/hooks/useExams';
 import { useBulkInvite } from '../../../lib/hooks/useInvitations';
 import { CandidateInviteForm } from '../../../components/CandidateInviteForm';
 import { CandidateEditModal } from '../../../components/CandidateEditModal';
+import { PageHeader, PageSurface } from '../../../components/PageChrome';
 import {
   Table,
   Checkbox,
@@ -208,7 +209,7 @@ export default function CandidatesPage() {
   if (isLoading) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-semibold text-ink">Candidates</h1>
+        <PageHeader eyebrow="PEOPLE" title="Candidates" />
         <p className="text-sm text-muted">Loading…</p>
       </div>
     );
@@ -217,7 +218,7 @@ export default function CandidatesPage() {
   if (isError) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-semibold text-ink">Candidates</h1>
+        <PageHeader eyebrow="PEOPLE" title="Candidates" />
         <p role="alert" className="text-sm text-status-danger">
           Failed to load candidates.
         </p>
@@ -227,21 +228,25 @@ export default function CandidatesPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-ink">Candidates</h1>
-        <div className="flex items-center gap-2">
-          <CandidateInviteForm
-            onSubmit={async (input) => {
-              await createCandidate.mutateAsync(input);
-              toast('Candidate added.');
-            }}
-          />
-          <Link href="/candidates/bulk-upload-invite">
-            <Button variant="secondary">Upload &amp; invite</Button>
-          </Link>
-        </div>
-      </div>
-      <div className="mb-3 flex items-end gap-2">
+      <PageHeader
+        eyebrow="PEOPLE"
+        title="Candidates"
+        actions={
+          <>
+            <CandidateInviteForm
+              onSubmit={async (input) => {
+                await createCandidate.mutateAsync(input);
+                toast('Candidate added.');
+              }}
+            />
+            <Link href="/candidates/bulk-upload-invite">
+              <Button variant="secondary">Upload &amp; invite</Button>
+            </Link>
+          </>
+        }
+      />
+      <PageSurface>
+        <div className="flex items-end gap-2 border-b border-rule px-4 py-3">
         <div className="relative max-w-xs flex-1">
           <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
           <input
@@ -268,13 +273,16 @@ export default function CandidatesPage() {
         </Button>
         {chooser}
       </div>
-      <Table
-        columns={[selectColumn, indexColumn, ...visibleColumns]}
-        rows={candidatesResponse?.data ?? []}
-        rowKey={(candidate) => candidate.id}
-        emptyMessage="No candidates yet."
-      />
-      <Pagination page={candidatesResponse?.page ?? 1} totalPages={candidatesResponse?.totalPages ?? 1} onPageChange={setPage} />
+        <Table
+          columns={[selectColumn, indexColumn, ...visibleColumns]}
+          rows={candidatesResponse?.data ?? []}
+          rowKey={(candidate) => candidate.id}
+          emptyMessage="No candidates yet."
+        />
+        <div className="px-4 py-3">
+          <Pagination page={candidatesResponse?.page ?? 1} totalPages={candidatesResponse?.totalPages ?? 1} onPageChange={setPage} />
+        </div>
+      </PageSurface>
 
       {candidateBeingEdited && (
         <CandidateEditModal candidate={candidateBeingEdited} onClose={() => setCandidateBeingEdited(null)} />

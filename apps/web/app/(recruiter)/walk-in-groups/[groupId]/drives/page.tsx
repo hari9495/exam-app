@@ -98,7 +98,7 @@ export default function GroupDrivesPage() {
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
       <div>
         <BackLink href="/walk-in-groups" label="Back to Walk-In Groups" />
-        <h1 className="text-2xl font-semibold text-ink">Drives{group ? ` — ${group.name}` : ''}</h1>
+        <h1 className="font-display text-2xl font-bold text-ink">Drives{group ? ` — ${group.name}` : ''}</h1>
         <p className="mt-1 text-sm text-muted">
           Schedule a time-boxed hiring drive for this group. Candidates who register while a drive is live are
           attributed to it.

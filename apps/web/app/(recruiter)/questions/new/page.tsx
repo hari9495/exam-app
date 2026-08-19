@@ -15,7 +15,7 @@ export default function NewQuestionPage() {
   return (
     <div className="mx-auto max-w-2xl">
       <BackLink href="/questions" label="Back To Question Bank" />
-      <h1 className="mb-6 text-2xl font-semibold">New Question</h1>
+      <h1 className="mb-6 font-display text-2xl font-bold">New Question</h1>
       <QuestionForm
         tags={tags ?? []}
         submitLabel="Create question"

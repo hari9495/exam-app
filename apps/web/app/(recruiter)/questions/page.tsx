@@ -7,6 +7,7 @@ import { Plus, Search, ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
 import { useQuestions, useArchiveQuestion, useRestoreQuestion, useFlaggedQuestions } from '../../../lib/hooks/useQuestions';
 import { Select, Button, Checkbox, Modal, Pagination, StatusBadge, Table, useToast, useColumnVisibility, FilterableHeader, type Column } from '../../../components/ui';
+import { PageHeader, PageSurface } from '../../../components/PageChrome';
 import { GenerateQuestionsModal } from '../../../components/GenerateQuestionsModal';
 import { groupQuestions, type GroupBy } from '../../../lib/question-grouping';
 import { TYPE_TONE, TYPE_LABEL, DIFFICULTY_LABEL, DIFFICULTY_LEVEL } from '../../../lib/question-display';
@@ -404,7 +405,7 @@ export default function QuestionsPage() {
   if (isLoading) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-semibold text-ink">Question Bank</h1>
+        <PageHeader eyebrow="CONTENT" title="Question Bank" />
         <p className="text-sm text-muted">Loading…</p>
       </div>
     );
@@ -413,7 +414,7 @@ export default function QuestionsPage() {
   if (isError) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-semibold text-ink">Question Bank</h1>
+        <PageHeader eyebrow="CONTENT" title="Question Bank" />
         <p role="alert" className="text-sm text-status-danger">
           Failed to load questions.
         </p>
@@ -423,23 +424,26 @@ export default function QuestionsPage() {
 
   return (
     <div>
-      <div className="mb-4.5 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-ink">Question Bank</h1>
-        <div className="flex gap-2">
-          <Link href="/questions/bulk-upload">
-            <Button variant="secondary">Bulk upload</Button>
-          </Link>
-          <Button type="button" variant="secondary" onClick={() => setGenerateModalOpen(true)}>
-            Generate with AI
-          </Button>
-          <Link href="/questions/new">
-            <Button className="inline-flex items-center gap-1.5">
-              <Plus size={14} />
-              New question
+      <PageHeader
+        eyebrow="CONTENT"
+        title="Question Bank"
+        actions={
+          <>
+            <Link href="/questions/bulk-upload">
+              <Button variant="secondary">Bulk upload</Button>
+            </Link>
+            <Button type="button" variant="secondary" onClick={() => setGenerateModalOpen(true)}>
+              Generate with AI
             </Button>
-          </Link>
-        </div>
-      </div>
+            <Link href="/questions/new">
+              <Button className="inline-flex items-center gap-1.5">
+                <Plus size={14} />
+                New question
+              </Button>
+            </Link>
+          </>
+        }
+      />
 
       {pendingDrafts > 0 && (
         <button
@@ -454,6 +458,7 @@ export default function QuestionsPage() {
         </button>
       )}
 
+      <PageSurface className="p-4">
       <div className="mb-3 flex flex-wrap items-end gap-2">
         <div className="relative max-w-xs flex-1">
           <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
@@ -587,6 +592,7 @@ export default function QuestionsPage() {
       {!widenPage && (
         <Pagination page={questions?.page ?? 1} totalPages={questions?.totalPages ?? 1} onPageChange={setPage} />
       )}
+      </PageSurface>
 
       {questionPendingDelete && (
         <Modal open title="Delete Question" onClose={() => setQuestionPendingDelete(null)}>

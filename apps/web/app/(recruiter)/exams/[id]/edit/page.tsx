@@ -89,7 +89,7 @@ export default function EditExamPage() {
       <BackLink href="/exams" label="Back To Exams" />
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">{exam.title}</h1>
+          <h1 className="font-display text-2xl font-bold">{exam.title}</h1>
           <AuditHistoryLink
             entityType="exam"
             entityId={exam.id}

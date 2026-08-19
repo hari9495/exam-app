@@ -43,7 +43,7 @@ export default function BulkUploadQuestionsPage() {
   return (
     <div className="max-w-2xl">
       <BackLink href="/questions" label="Back To Question Bank" />
-      <h1 className="mb-6 text-2xl font-semibold">Bulk Upload Questions</h1>
+      <h1 className="mb-6 font-display text-2xl font-bold">Bulk Upload Questions</h1>
       <Button variant="secondary" onClick={handleDownloadTemplate} disabled={downloadTemplate.isPending}>
         Download template
       </Button>

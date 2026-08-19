@@ -9,6 +9,7 @@ import { useExams } from '../../../lib/hooks/useExams';
 import { useCandidates } from '../../../lib/hooks/useCandidates';
 import { DashboardTrendMetric, DashboardWindow } from '../../../lib/types';
 import { Card, Button } from '../../../components/ui';
+import { PageHeader } from '../../../components/PageChrome';
 import { Sparkline } from '../../../components/charts/Sparkline';
 import { AnalyticsPanels, QuestionHealthPanel } from '../../../components/dashboard/AnalyticsPanels';
 import {
@@ -111,7 +112,7 @@ export default function DashboardPage() {
   if (isLoading && !summary) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-semibold text-ink">Dashboard</h1>
+        <PageHeader eyebrow="OVERVIEW" title="Dashboard" />
         <p className="text-sm text-muted">Loading…</p>
       </div>
     );
@@ -120,7 +121,7 @@ export default function DashboardPage() {
   if (isError || !summary) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-semibold text-ink">Dashboard</h1>
+        <PageHeader eyebrow="OVERVIEW" title="Dashboard" />
         <p role="alert" className="text-sm text-status-danger">
           Failed to load dashboard.
         </p>
@@ -133,7 +134,7 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <h1 className="mb-4 text-2xl font-semibold text-ink">Dashboard</h1>
+      <PageHeader eyebrow="OVERVIEW" title="Dashboard" />
 
       <DashboardFilterBar value={filters} onChange={setFilters} exams={exams} candidates={candidates} />
 

@@ -15,7 +15,7 @@ export default function PanelComparePage() {
   const header = (
     <>
       <BackLink href={`/reports/${examId}`} label="Back To Results" />
-      <h1 className="mb-6 text-2xl font-semibold">Compare Candidates</h1>
+      <h1 className="mb-6 font-display text-2xl font-bold">Compare Candidates</h1>
     </>
   );
 

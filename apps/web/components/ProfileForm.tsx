@@ -183,7 +183,7 @@ export function ProfileForm() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-xl font-semibold text-ink">My Profile</h1>
+      <h1 className="font-display text-xl font-bold text-ink">My Profile</h1>
       {!user && <p className="text-sm text-muted">Loading…</p>}
 
       <motion.div

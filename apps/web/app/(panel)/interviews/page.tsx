@@ -50,6 +50,7 @@ export default function PanelInterviewsPage() {
 
   return (
     <ListView<Interview>
+      eyebrow="SCHEDULING"
       title="Interviews"
       icon={<CalendarClock size={20} />}
       columns={columns}

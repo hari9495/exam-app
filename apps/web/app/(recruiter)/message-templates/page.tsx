@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Button, Input, Select, Checkbox, Table, Modal, useToast, type Column, type SelectOption } from '../../../components/ui';
+import { PageHeader, PageSurface } from '../../../components/PageChrome';
 import { useAuth } from '../../../lib/auth-context';
 import { useMessageTemplates, useUpsertTemplate, useSetTemplateEnabled, useDeleteTemplate } from '../../../lib/hooks/useCandidateMessages';
 import { useIntegrations } from '../../../lib/hooks/useIntegrations';
@@ -190,13 +191,11 @@ export default function MessageTemplatesPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-ink">Message Templates</h1>
-        <p className="mt-1 text-sm text-muted">
-          Control what candidates are emailed at each pipeline stage. Edit a default template to override it for your
-          organization, or restore it to fall back to the built-in copy.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="COMMUNICATION"
+        title="Message Templates"
+        subtitle="Control what candidates are emailed at each pipeline stage. Edit a default template to override it for your organization, or restore it to fall back to the built-in copy."
+      />
 
       {showNoSmtpBanner && (
         <div className="rounded-md bg-status-warning-bg p-3 text-sm text-status-warning">
@@ -204,7 +203,9 @@ export default function MessageTemplatesPage() {
         </div>
       )}
 
-      <Table columns={columns} rows={templates ?? []} rowKey={(t) => t.id ?? `default-${t.triggerEvent ?? 'none'}`} emptyMessage="No templates." />
+      <PageSurface className="p-4">
+        <Table columns={columns} rows={templates ?? []} rowKey={(t) => t.id ?? `default-${t.triggerEvent ?? 'none'}`} emptyMessage="No templates." />
+      </PageSurface>
 
       {editing && <EditTemplateModal template={editing} onClose={() => setEditing(null)} />}
     </div>

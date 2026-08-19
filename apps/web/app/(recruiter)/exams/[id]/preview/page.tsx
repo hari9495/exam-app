@@ -29,7 +29,7 @@ export default function PreviewPage() {
     <div className="mx-auto max-w-4xl xl:max-w-5xl 2xl:max-w-6xl">
       <BackLink href={`/exams/${exam.id}/edit`} label="Back To Exam" className="print:hidden" />
       <div className="mb-2 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-ink">{exam.title}</h1>
+        <h1 className="font-display text-2xl font-bold text-ink">{exam.title}</h1>
         <Button variant="secondary" onClick={() => window.print()} className="inline-flex items-center print:hidden">
           <Printer size={16} className="mr-1.5" />
           Print
@@ -42,7 +42,7 @@ export default function PreviewPage() {
           .sort((a, b) => a.orderIndex - b.orderIndex)
           .map((section) => (
             <div key={section.id} className="flex flex-col gap-3">
-              <h2 className="text-lg font-semibold text-ink">{section.title}</h2>
+              <h2 className="font-display text-lg font-semibold text-ink">{section.title}</h2>
               {section.selectionMode === 'pool' ? (
                 <Card>
                   <p className="text-sm text-muted">

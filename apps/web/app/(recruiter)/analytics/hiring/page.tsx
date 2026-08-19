@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Card, Select, Table, StatusBadge, type Column, type StatusTone } from '../../../../components/ui';
+import { PageHeader } from '../../../../components/PageChrome';
 import { FunnelChart } from '../../../../components/charts/FunnelChart';
 import { useHiringAnalytics } from '../../../../lib/hooks/useHiringAnalytics';
 import { useJobs } from '../../../../lib/hooks/usePipeline';
@@ -76,10 +77,11 @@ export default function HiringAnalyticsPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <h1 className="text-2xl font-semibold text-ink">Hiring Analytics</h1>
-        <p className="mt-1 text-sm text-muted">Funnel, time-to-hire, and source performance across your pipeline.</p>
-      </div>
+      <PageHeader
+        eyebrow="ANALYTICS"
+        title="Hiring Analytics"
+        subtitle="Funnel, time-to-hire, and source performance across your pipeline."
+      />
 
       <div className="flex items-center gap-3">
         <Select label="Window" value={windowDays} onChange={setWindowDays} options={WINDOW_OPTIONS} />

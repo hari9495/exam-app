@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { TerminalSquare } from 'lucide-react';
 import { useSystemEvents, type SystemEventEntry, type SystemEventFilters } from '../../../lib/hooks/useSystemEvents';
 import { Button, Modal, Table, StatusBadge, FilterableHeader, type StatusTone, type Column } from '../../../components/ui';
+import { PageHeader, PageSurface } from '../../../components/PageChrome';
 import { formatAuditTimestamp, formatRelativeTime } from '../../../lib/audit-display';
 import { plainEnglish } from '../../../lib/system-event-message';
 
@@ -159,56 +159,56 @@ export default function SystemLogsPage() {
 
   return (
     <div>
-      <div className="mb-1 flex items-center gap-2">
-        <TerminalSquare size={22} className="text-primary" aria-hidden="true" />
-        <h1 className="text-2xl font-semibold">System Logs</h1>
-      </div>
-      <p className="mb-6 text-sm text-muted">
-        Production errors from the servers and candidates&apos; browsers — what failed and why, without needing server access.
-      </p>
+      <PageHeader
+        eyebrow="SECURITY"
+        title="System Logs"
+        subtitle="Production errors from the servers and candidates’ browsers — what failed and why, without needing server access."
+      />
 
-      <div className="mb-4 flex flex-wrap items-end gap-3">
-        <div className="flex items-center gap-1" role="group" aria-label="Time range">
-          {[
-            { days: 1, label: '24h' },
-            { days: 7, label: '7 days' },
-            { days: 30, label: '30 days' },
-          ].map((preset) => (
-            <button
-              key={preset.label}
-              type="button"
-              onClick={() => selectRange(preset.days, preset.label)}
-              className={
-                range.label === preset.label
-                  ? 'rounded-md border border-rule bg-primary px-3 py-2 text-sm font-medium text-on-primary'
-                  : 'rounded-md border border-gray-300 px-3 py-2 text-sm text-muted hover:bg-gray-50'
-              }
-            >
-              {preset.label}
-            </button>
-          ))}
+      <PageSurface>
+        <div className="flex flex-wrap items-end gap-3 border-b border-rule px-4 py-3">
+          <div className="flex items-center gap-1" role="group" aria-label="Time range">
+            {[
+              { days: 1, label: '24h' },
+              { days: 7, label: '7 days' },
+              { days: 30, label: '30 days' },
+            ].map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={() => selectRange(preset.days, preset.label)}
+                className={
+                  range.label === preset.label
+                    ? 'rounded-md border border-rule bg-primary px-3 py-2 text-sm font-medium text-on-primary'
+                    : 'rounded-md border border-gray-300 px-3 py-2 text-sm text-muted hover:bg-gray-50'
+                }
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
 
-      {isLoading && allEntries.length === 0 ? (
-        <p className="text-sm text-gray-500">Loading…</p>
-      ) : allEntries.length === 0 ? (
-        <p className="text-sm text-gray-500">No events in this range — nothing has failed. 🎉</p>
-      ) : (
-        <>
-          <p className="mb-2 text-xs text-muted">
-            Showing {allEntries.length} of {total} events
-          </p>
-          <Table columns={columns} rows={allEntries} rowKey={(entry) => entry.id} />
-          {canLoadMore && (
-            <div className="mt-3 flex justify-center">
-              <Button variant="secondary" onClick={loadMore}>
-                Load more
-              </Button>
-            </div>
-          )}
-        </>
-      )}
+        {isLoading && allEntries.length === 0 ? (
+          <p className="px-4 py-3 text-sm text-gray-500">Loading…</p>
+        ) : allEntries.length === 0 ? (
+          <p className="px-4 py-3 text-sm text-gray-500">No events in this range — nothing has failed. 🎉</p>
+        ) : (
+          <>
+            <p className="px-4 pt-3 text-xs text-muted">
+              Showing {allEntries.length} of {total} events
+            </p>
+            <Table columns={columns} rows={allEntries} rowKey={(entry) => entry.id} />
+            {canLoadMore && (
+              <div className="flex justify-center px-4 py-3">
+                <Button variant="secondary" onClick={loadMore}>
+                  Load more
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </PageSurface>
 
       <Modal open={selected !== null} title={selected ? `${SERVICE_LABELS[selected.service] ?? selected.service} — ${selected.severity}` : ''} onClose={() => setSelected(null)}>
         {selected && (

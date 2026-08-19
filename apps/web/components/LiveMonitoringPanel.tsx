@@ -471,28 +471,28 @@ export function LiveMonitoringPanel({
               <Users size={14} />
               <p className="text-xs font-medium uppercase tracking-wide">Online now</p>
             </div>
-            <p className="text-2xl font-semibold text-ink">{onlineCount}</p>
+            <p className="font-display text-2xl font-bold text-ink">{onlineCount}</p>
           </Card>
           <Card className="flex flex-col gap-1.5">
             <div className="flex items-center gap-1.5 text-muted">
               <Activity size={14} />
               <p className="text-xs font-medium uppercase tracking-wide">In progress</p>
             </div>
-            <p className="text-2xl font-semibold text-ink">{inProgressCount}</p>
+            <p className="font-display text-2xl font-bold text-ink">{inProgressCount}</p>
           </Card>
           <Card className="flex flex-col gap-1.5">
             <div className="flex items-center gap-1.5 text-muted">
               <CheckCircle2 size={14} />
               <p className="text-xs font-medium uppercase tracking-wide">Submitted</p>
             </div>
-            <p className="text-2xl font-semibold text-ink">{submittedCount}</p>
+            <p className="font-display text-2xl font-bold text-ink">{submittedCount}</p>
           </Card>
           <Card className="flex flex-col gap-1.5">
             <div className="flex items-center gap-1.5 text-muted">
               <BellRing size={14} />
               <p className="text-xs font-medium uppercase tracking-wide">Alerts (last 5 min)</p>
             </div>
-            <p className={`text-2xl font-semibold ${recentAlertsCount > 0 ? 'text-status-danger' : 'text-ink'}`}>
+            <p className={`font-display text-2xl font-bold ${recentAlertsCount > 0 ? 'text-status-danger' : 'text-ink'}`}>
               {recentAlertsCount}
             </p>
           </Card>

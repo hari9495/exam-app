@@ -12,6 +12,7 @@ import {
   useWebhookDeliveries,
 } from '../../../../lib/hooks/useIntegrations';
 import { Input, Button, CollapsibleSection, Table, StatusBadge, Select, RequiredFieldsNote, type SelectOption, type Column, type StatusTone, useToast } from '../../../../components/ui';
+import { PageHeader } from '../../../../components/PageChrome';
 import { WebhookDeliveryRow } from '../../../../lib/types';
 
 function deliveryTone(status: string): StatusTone {
@@ -160,7 +161,7 @@ export default function IntegrationsSettingsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-      <h1 className="text-center text-2xl font-semibold text-ink">Integrations</h1>
+      <PageHeader eyebrow="INTEGRATIONS" title="Integrations" />
       <RequiredFieldsNote />
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0, ease: 'easeOut' }}>

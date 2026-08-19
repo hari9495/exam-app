@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Plus, Trash2 } from 'lucide-react';
 import { Button, Card, Input, Select, Table, StatusBadge, useToast, type Column, type StatusTone } from '../../../components/ui';
+import { PageHeader, PageSurface } from '../../../components/PageChrome';
 import { useJobs, useCreateJob, useDeleteJob } from '../../../lib/hooks/usePipeline';
 import { JobListItem, JobStatus, PIPELINE_STAGES } from '../../../lib/types';
 
@@ -108,12 +109,11 @@ export default function JobsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-ink">Jobs</h1>
-        <p className="mt-1 text-sm text-muted">
-          Open a job to track candidates through applied, screened, interview, offer, and hired.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="PIPELINE"
+        title="Jobs"
+        subtitle="Open a job to track candidates through applied, screened, interview, offer, and hired."
+      />
 
       <Card>
         <form onSubmit={handleCreate} className="flex flex-col gap-4">
@@ -130,15 +130,16 @@ export default function JobsPage() {
         </form>
       </Card>
 
-      <div className="flex items-center gap-2">
-        <Select label="Status" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTER_OPTIONS} />
-      </div>
-
-      {isLoading ? (
-        <p className="text-sm text-muted">Loading&hellip;</p>
-      ) : (
-        <Table columns={columns} rows={jobs ?? []} rowKey={(job) => job.id} emptyMessage="No jobs yet." />
-      )}
+      <PageSurface>
+        <div className="flex items-center gap-2 border-b border-rule px-4 py-3">
+          <Select label="Status" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTER_OPTIONS} />
+        </div>
+        {isLoading ? (
+          <p className="p-4 text-sm text-muted">Loading&hellip;</p>
+        ) : (
+          <Table columns={columns} rows={jobs ?? []} rowKey={(job) => job.id} emptyMessage="No jobs yet." />
+        )}
+      </PageSurface>
     </div>
   );
 }

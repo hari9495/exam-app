@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Button, Input, useToast } from '../../../components/ui';
+import { PageHeader, PageSurface } from '../../../components/PageChrome';
 import { useAuth } from '../../../lib/auth-context';
 import { useOfferTemplate, useUpdateOfferTemplate } from '../../../lib/hooks/useOffers';
 
@@ -50,14 +51,13 @@ export default function OfferTemplatePage() {
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-ink">Offer Template</h1>
-        <p className="mt-1 text-sm text-muted">
-          Control the subject and body of the offer letter email sent to candidates.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="OFFERS"
+        title="Offer Template"
+        subtitle="Control the subject and body of the offer letter email sent to candidates."
+      />
 
-      <div className="flex flex-col gap-4 rounded-lg border border-rule bg-white p-6">
+      <PageSurface className="flex flex-col gap-4 p-6">
         <Input label="Subject" value={subject} onChange={setSubject} required />
 
         <div className="flex flex-col gap-1">
@@ -90,7 +90,7 @@ export default function OfferTemplatePage() {
             Save
           </Button>
         </div>
-      </div>
+      </PageSurface>
     </div>
   );
 }

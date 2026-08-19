@@ -6,6 +6,7 @@ import { Button, Input, Table, Modal, useToast, type Column } from '../../../com
 import { useAuth } from '../../../lib/auth-context';
 import { useWalkInGroups, useCreateWalkInGroup, useDeleteWalkInGroup } from '../../../lib/hooks/useWalkInGroups';
 import { ManageWalkInGroupModal } from '../../../components/ManageWalkInGroupModal';
+import { PageHeader, PageSurface } from '../../../components/PageChrome';
 import { WalkInGroup } from '../../../lib/types';
 
 export default function WalkInGroupsPage() {
@@ -84,25 +85,24 @@ export default function WalkInGroupsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-ink">Walk-In Groups</h1>
-        <p className="mt-1 text-sm text-muted">
-          Bundle a subset of your walk-in-enabled exams behind their own shared link/QR code, separate from the
-          default org-wide walk-in page. Each exam belongs to at most one group.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="INTAKE"
+        title="Walk-In Groups"
+        subtitle="Bundle a subset of your walk-in-enabled exams behind their own shared link/QR code, separate from the default org-wide walk-in page. Each exam belongs to at most one group."
+      />
 
-      <form onSubmit={handleCreate} className="flex items-end gap-2">
-        <div className="max-w-sm flex-1">
-          <Input label="New Group Name" hideLabel value={newName} onChange={setNewName} placeholder="e.g. Fresher Drive Hackathon" />
-        </div>
-        <Button type="submit" loading={createGroup.isPending} className="inline-flex items-center gap-1.5">
-          <Plus size={14} />
-          New group
-        </Button>
-      </form>
-
-      <Table columns={columns} rows={groups ?? []} rowKey={(group) => group.id} emptyMessage="No walk-in groups yet. Create one above." />
+      <PageSurface>
+        <form onSubmit={handleCreate} className="flex items-end gap-2 border-b border-rule px-4 py-3">
+          <div className="max-w-sm flex-1">
+            <Input label="New Group Name" hideLabel value={newName} onChange={setNewName} placeholder="e.g. Fresher Drive Hackathon" />
+          </div>
+          <Button type="submit" loading={createGroup.isPending} className="inline-flex items-center gap-1.5">
+            <Plus size={14} />
+            New group
+          </Button>
+        </form>
+        <Table columns={columns} rows={groups ?? []} rowKey={(group) => group.id} emptyMessage="No walk-in groups yet. Create one above." />
+      </PageSurface>
 
       {managing && organizationSlug && (
         <ManageWalkInGroupModal group={managing} orgSlug={organizationSlug} onClose={() => setManagingId(null)} />
