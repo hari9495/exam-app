@@ -35,11 +35,34 @@ describe('formatters are injection-safe (values are data only)', () => {
 
   it('Slack puts untrusted text only in string fields', () => {
     const body = JSON.stringify(formatSlackMessage(summary));
-    // the raw value survives as JSON string content, not spread into block structure
+    // the value (which contains no & < >) survives unescaped as JSON string content,
+    // not spread into block structure
     expect(body).toContain(JSON.stringify(evil).slice(1, -1));
   });
   it('Teams card carries the link action to the summary url', () => {
     const body = JSON.stringify(formatTeamsMessage(summary));
     expect(body).toContain('https://app.example.com/c/1');
+  });
+});
+
+describe('Slack mrkdwn field values are escaped against live markup injection', () => {
+  const evilLink = '<https://evil.example|Click here>';
+  const evilMention = '<!channel> urgent';
+  const summary = buildEventSummary(
+    'offer.accepted',
+    { subject: evilLink, reason: evilMention, linkPath: '/c/1' },
+    base,
+  );
+
+  it('escapes a candidate name crafted as a Slack link into inert text', () => {
+    const body = JSON.stringify(formatSlackMessage(summary));
+    expect(body).toContain('&lt;https://evil.example|Click here&gt;');
+    expect(body).not.toContain(evilLink);
+  });
+
+  it('escapes a field value crafted as a channel mention into inert text', () => {
+    const body = JSON.stringify(formatSlackMessage(summary));
+    expect(body).toContain('&lt;!channel&gt;');
+    expect(body).not.toContain(evilMention);
   });
 });

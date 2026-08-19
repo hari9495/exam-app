@@ -1,8 +1,11 @@
-import { EventSummary } from './event-summary';
+import { EventSummary, escapeMrkdwn } from './event-summary';
 
-// Slack Incoming Webhook body. Untrusted values live only in `text` string fields.
+// Slack Incoming Webhook body. Untrusted field values are escaped (& < >) before being
+// interpolated into mrkdwn text — this neutralizes Slack's live markup: `<url|text>` links
+// and `<!channel>`/`<!here>`/`<@U…>` mentions, which would otherwise render as clickable
+// links / functional pings when built from attacker-controlled input (e.g. candidate name).
 export function formatSlackMessage(summary: EventSummary): object {
-  const fieldLines = summary.fields.map((f) => `*${f.label}:* ${f.value}`).join('\n');
+  const fieldLines = summary.fields.map((f) => `*${f.label}:* ${escapeMrkdwn(f.value)}`).join('\n');
   return {
     text: summary.title,
     blocks: [

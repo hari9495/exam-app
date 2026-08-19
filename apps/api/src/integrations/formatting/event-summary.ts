@@ -6,6 +6,13 @@ export interface EventSummary {
   url: string;
 }
 
+// Escapes chars that are live markup in Slack mrkdwn / could be misread as markup elsewhere.
+// Order matters: & must be escaped first, or the entities inserted for < and > would themselves
+// get re-escaped.
+export function escapeMrkdwn(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 // Optional payload keys -> field label, appended in this order when present.
 const OPTIONAL_FIELDS: { key: string; label: string }[] = [
   { key: 'examTitle', label: 'Exam' },
