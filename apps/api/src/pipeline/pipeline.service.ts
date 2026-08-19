@@ -9,7 +9,7 @@ import { PatchEntryDto } from './dto/patch-entry.dto';
 import { AddFeedbackDto } from './dto/add-feedback.dto';
 import { CandidateEmailTemplatesService } from '../candidate-emails/candidate-email-templates.service';
 import { CandidateEmailsService } from '../candidate-emails/candidate-emails.service';
-import { computeCriteriaHash } from '../candidate-fit/candidate-fit.core';
+import { computeCriteriaHash, validateRubricInput } from '../candidate-fit/candidate-fit.core';
 
 export interface FeedbackRow {
   id: string;
@@ -125,7 +125,14 @@ export class PipelineService {
     context: TenantContext,
     actorUserId: string,
     jobId: string,
-    dto: { title?: string; description?: string; status?: 'open' | 'closed'; publicApplyEnabled?: boolean },
+    dto: {
+      title?: string;
+      description?: string;
+      status?: 'open' | 'closed';
+      publicApplyEnabled?: boolean;
+      fitCriteria?: string | null;
+      fitRubric?: { label: string; weight: number }[] | null;
+    },
   ): Promise<Job> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const job = await tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } });
@@ -137,6 +144,8 @@ export class PipelineService {
         closedAt?: Date | null;
         publicApplyEnabled?: boolean;
         applyToken?: string;
+        fitCriteria?: string | null;
+        fitRubric?: string | null;
       } = {
         title: dto.title,
         description: dto.description,
@@ -152,6 +161,18 @@ export class PipelineService {
         if (dto.publicApplyEnabled && !job.applyToken) {
           data.applyToken = randomUUID();
         }
+      }
+      if (dto.fitCriteria !== undefined) {
+        data.fitCriteria = dto.fitCriteria?.trim() || null;
+      }
+      if (dto.fitRubric !== undefined) {
+        let dims;
+        try {
+          dims = validateRubricInput(dto.fitRubric ?? []);
+        } catch (e) {
+          throw new BadRequestException((e as Error).message);
+        }
+        data.fitRubric = dims.length ? JSON.stringify(dims) : null;
       }
       const updated = await tx.job.update({ where: { id: jobId }, data });
       await this.audit.record(context, {

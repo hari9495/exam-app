@@ -126,6 +126,41 @@ describe('PipelineService', () => {
     });
   });
 
+  describe('updateJob fit criteria', () => {
+    let tx: any;
+    beforeEach(() => {
+      const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
+      tx = {
+        job: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'job-1', applyToken: null, publicApplyEnabled: false }),
+          update,
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+    });
+
+    it('persists fitCriteria and a valid rubric (as JSON string)', async () => {
+      await service.updateJob(context, 'user-1', 'job-1', {
+        fitCriteria: 'Must ship fast',
+        fitRubric: [{ label: 'Python', weight: 60 }, { label: 'AWS', weight: 40 }],
+      } as any);
+      const data = tx.job.update.mock.calls.at(-1)[0].data;
+      expect(data.fitCriteria).toBe('Must ship fast');
+      expect(JSON.parse(data.fitRubric)).toEqual([{ label: 'Python', weight: 60 }, { label: 'AWS', weight: 40 }]);
+    });
+
+    it('clears the rubric when passed null / empty array', async () => {
+      await service.updateJob(context, 'user-1', 'job-1', { fitRubric: [] } as any);
+      expect(tx.job.update.mock.calls.at(-1)[0].data.fitRubric).toBeNull();
+    });
+
+    it('rejects a rubric whose weights do not sum to 100', async () => {
+      await expect(
+        service.updateJob(context, 'user-1', 'job-1', { fitRubric: [{ label: 'A', weight: 50 }] } as any),
+      ).rejects.toThrow(/sum to 100/i);
+    });
+  });
+
   it('deleteJob deletes and audits job.deleted', async () => {
     const del = jest.fn().mockResolvedValue({ id: 'job-1' });
     const tx = { job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }), delete: del } };
