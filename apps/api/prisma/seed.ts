@@ -17,6 +17,7 @@ const PERMISSIONS = [
   { key: 'candidate:data_rights', description: 'Process GDPR data subject requests: export or erase a candidate\'s personal data' },
   { key: 'pipeline:manage', description: 'Create and manage hiring jobs and their candidate pipeline' },
   { key: 'interview:view_assigned', description: 'View interviews you are assigned to as a panelist' },
+  { key: 'org:manage_billing', description: 'View organization billing, plan, and usage' },
 ];
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -36,6 +37,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'ai_jobs:view',
     'pipeline:manage',
     'interview:view_assigned',
+    'org:manage_billing',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],
@@ -85,6 +87,7 @@ async function main() {
           candidateLimit: 100,
           aiCreditLimit: 10,
           proctoringMinutesLimit: 60,
+          seatLimit: 5,
         },
       });
 

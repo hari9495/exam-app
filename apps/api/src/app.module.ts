@@ -45,6 +45,7 @@ import { PipelineAnalyticsModule } from './analytics/pipeline-analytics.module';
 import { OffersModule } from './offers/offers.module';
 import { InterviewsModule } from './interviews/interviews.module';
 import { CandidateFitModule } from './candidate-fit/candidate-fit.module';
+import { BillingModule } from './billing/billing.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
 import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
 import { SentryShutdownFlush } from './sentry-shutdown.provider';
@@ -97,6 +98,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     OffersModule,
     InterviewsModule,
     CandidateFitModule,
+    BillingModule,
   ],
   controllers: [HealthController],
   providers: [

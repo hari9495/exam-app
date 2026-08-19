@@ -21,6 +21,7 @@ import { PistonRuntimesService } from '../code-execution/piston-runtimes.service
 import { RunLimiter } from '../code-execution/run-limiter';
 import { FaceEmbedderService } from '../face/face-embedder.service';
 import { FaceVerificationService } from '../face/face-verification.service';
+import { QuotaService } from '../billing/quota.service';
 
 // The cap-count query folds case AND width (see sanitize-metadata.ts / scc-task-5-report.md),
 // so a plain `.toContain('"screenshot":')` assertion is case- and width-sensitive in JS and
@@ -73,6 +74,7 @@ describe('AttemptService', () => {
   let faceEmbedder: { embed: jest.Mock; isAvailable: jest.Mock };
   let crypto: { encrypt: jest.Mock; decrypt: jest.Mock };
   let faceVerification: { verifySnapshot: jest.Mock; forgetAttempt: jest.Mock };
+  let quota: { assertAiCredits: jest.Mock; assertProctoringMinutes: jest.Mock };
   const session = { invitationId: 'inv-1' };
   const exam = {
     id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false,
@@ -127,6 +129,7 @@ describe('AttemptService', () => {
       verifySnapshot: jest.fn().mockResolvedValue({ verdict: 'skipped', score: null, confirmed: false }),
       forgetAttempt: jest.fn(),
     };
+    quota = { assertAiCredits: jest.fn().mockResolvedValue(undefined), assertProctoringMinutes: jest.fn().mockResolvedValue(undefined) };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -145,6 +148,7 @@ describe('AttemptService', () => {
         { provide: FaceEmbedderService, useValue: faceEmbedder },
         { provide: OrgSecretsCryptoService, useValue: crypto },
         { provide: FaceVerificationService, useValue: faceVerification },
+        { provide: QuotaService, useValue: quota },
       ],
     }).compile();
     service = moduleRef.get(AttemptService);
@@ -976,6 +980,20 @@ describe('AttemptService', () => {
   });
 
   describe('start', () => {
+    // Shadows the outer mockBootstrapThenScoped for this describe block only: start() now does
+    // an extra forTenant read (the quota-gate existence check, see attempt.service.ts) before the
+    // create-tx forTenant call whenever the exam is proctored -- which every fixture exam here is
+    // by default. Route both the existence check and the create tx at the same scopedTx so a
+    // test's tx.attempt.findUnique mock (null == "no existing attempt", or an existing row for the
+    // resume path) governs both calls consistently, exactly like production reading the same row
+    // twice outside vs. inside the write transaction.
+    function mockBootstrapThenScoped(scopedTx: unknown, invitation: unknown = invitationRecord) {
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve(invitation))
+        .mockImplementationOnce((_ctx, fn) => fn(scopedTx))
+        .mockImplementationOnce((_ctx, fn) => fn(scopedTx));
+    }
+
     it('creates a new attempt snapshotting the question order and section structure when none exists', async () => {
       const tx = {
         attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
@@ -1195,6 +1213,7 @@ describe('AttemptService', () => {
       };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: randomizedExam }))
+        .mockImplementationOnce((_ctx, fn) => fn(tx))
         .mockImplementationOnce((_ctx, fn) => fn(tx));
 
       await service.start(session, { consent: true });
@@ -1307,19 +1326,78 @@ describe('AttemptService', () => {
       const snapshot = JSON.parse(tx.attempt.create.mock.calls[0][0].data.sectionSnapshotJson);
       expect(snapshot[0]).toHaveProperty('requiredCount', null);
     });
+
+    // Hard proctoring-minutes quota: block STARTING a new proctored attempt when the org is over
+    // its monthly proctoring minutes. Checked before the create tx opens, so an over-limit org
+    // never gets a half-created attempt row -- and a candidate already mid-exam is never touched,
+    // since this only runs on the start() path.
+    it('throws and does not create an attempt when proctoring minutes quota is exceeded for a proctored exam', async () => {
+      const tx = {
+        attempt: { findUnique: jest.fn(), create: jest.fn() },
+      };
+      mockBootstrapThenScoped(tx);
+      const quotaError = new ForbiddenException({ error: 'quota_exceeded', dimension: 'proctoring_minutes', used: 500, limit: 500 });
+      quota.assertProctoringMinutes.mockRejectedValue(quotaError);
+
+      await expect(service.start(session, { consent: true })).rejects.toThrow(ForbiddenException);
+
+      expect(quota.assertProctoringMinutes).toHaveBeenCalledWith({ organizationId: 'org-1', isSuperAdmin: false });
+      expect(tx.attempt.create).not.toHaveBeenCalled();
+    });
+
+    it('does not check the proctoring quota and creates the attempt for a non-proctored exam', async () => {
+      const nonProctoredExam = { ...exam, enableAntiCheating: false };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
+        examSection: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'section-1', title: 'Section One', selectionMode: 'fixed', poolSize: null, poolDifficulty: null, targetDurationMinutes: null, poolTags: [], questions: [{ questionId: 'q1' }] },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: nonProctoredExam }))
+        .mockImplementationOnce((_ctx, fn) => fn(tx));
+
+      const result = await service.start(session, { consent: true });
+
+      expect(result).toEqual({ id: 'attempt-1', status: 'in_progress' });
+      expect(quota.assertProctoringMinutes).not.toHaveBeenCalled();
+      expect(tx.attempt.create).toHaveBeenCalled();
+    });
+
+    // Regression guard for "never mid-exam": the quota gate must fire ONLY when starting a
+    // genuinely new attempt. A resume of an existing attempt must never be blocked, even when the
+    // org is over its proctoring-minutes limit -- the gate must not even be consulted.
+    it('resumes an existing attempt without ever checking the proctoring quota, even when the org is over its limit', async () => {
+      const existing = { id: 'attempt-1', status: 'in_progress' };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(existing), create: jest.fn() } };
+      mockBootstrapThenScoped(tx);
+      const quotaError = new ForbiddenException({ error: 'quota_exceeded', dimension: 'proctoring_minutes', used: 500, limit: 500 });
+      quota.assertProctoringMinutes.mockRejectedValue(quotaError);
+
+      const result = await service.start(session, { consent: true });
+
+      expect(result).toEqual({ id: 'attempt-1', status: 'in_progress' });
+      expect(quota.assertProctoringMinutes).not.toHaveBeenCalled();
+      expect(tx.attempt.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('start IP restriction', () => {
-    function mockRestrictedInvitation(allowedIpRange: string | null) {
-      tenantPrisma.forTenant.mockImplementationOnce(() =>
-        Promise.resolve({ ...invitationRecord, exam: { ...exam, allowedIpRange } }),
-      );
+    // Every exam fixture here is proctored (spread from the base `exam`), so start() makes the
+    // quota-gate existence-check forTenant call before the create-tx forTenant call -- route both
+    // at the same tx, same reasoning as the local mockBootstrapThenScoped shadow in describe('start').
+    function mockRestrictedInvitation(tx: unknown, allowedIpRange: string | null) {
+      tenantPrisma.forTenant
+        .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: { ...exam, allowedIpRange } }))
+        .mockImplementationOnce((_ctx, fn) => fn(tx))
+        .mockImplementationOnce((_ctx, fn) => fn(tx));
     }
 
     it('blocks redeem from a disallowed IP with the observed IP in the message, and audit-logs it', async () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() } };
-      mockRestrictedInvitation('203.0.113.0/24');
-      tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+      mockRestrictedInvitation(tx, '203.0.113.0/24');
 
       await expect(service.start(session, { consent: true }, '198.51.100.7')).rejects.toThrow(
         'Your network (198.51.100.7) is not approved for this exam. Please contact the exam organizer.',
@@ -1341,8 +1419,7 @@ describe('AttemptService', () => {
         attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
         examSection: { findMany: jest.fn().mockResolvedValue([]) },
       };
-      mockRestrictedInvitation('203.0.113.0/24');
-      tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+      mockRestrictedInvitation(tx, '203.0.113.0/24');
 
       const result = await service.start(session, { consent: true }, '203.0.113.50');
 
@@ -1355,8 +1432,7 @@ describe('AttemptService', () => {
         attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
         examSection: { findMany: jest.fn().mockResolvedValue([]) },
       };
-      mockRestrictedInvitation(null);
-      tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+      mockRestrictedInvitation(tx, null);
 
       const result = await service.start(session, { consent: true }, 'anything-goes');
 
@@ -1366,8 +1442,7 @@ describe('AttemptService', () => {
 
     it('fails closed when the stored range is malformed', async () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() } };
-      mockRestrictedInvitation('garbage');
-      tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+      mockRestrictedInvitation(tx, 'garbage');
 
       await expect(service.start(session, { consent: true }, '203.0.113.50')).rejects.toThrow(ForbiddenException);
       expect(audit.record).toHaveBeenCalled();
@@ -1376,8 +1451,7 @@ describe('AttemptService', () => {
     it('does not IP-check an already-existing attempt (idempotent resume path)', async () => {
       const existing = { id: 'attempt-1', status: 'in_progress' };
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(existing), create: jest.fn() } };
-      mockRestrictedInvitation('203.0.113.0/24');
-      tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+      mockRestrictedInvitation(tx, '203.0.113.0/24');
 
       const result = await service.start(session, {}, '198.51.100.7');
 
@@ -1407,11 +1481,15 @@ describe('AttemptService', () => {
       availabilityWindowEnd: new Date(Date.now() + 60 * 60 * 1000),
     };
 
-    // Shared by both getCurrent() tests (which look up the org logo) and start() tests (which
-    // don't) - callers that need the logo call insert it themselves before calling this.
+    // Used by start() tests only (getCurrent() tests use mockInvitationWithExamAndLogo below,
+    // which also fetches the org logo). Every scheduledExam fixture here is proctored (spread from
+    // the base `exam`), so start() makes its quota-gate existence-check forTenant call before the
+    // create-tx forTenant call -- route both at scopedTx, same reasoning as the local
+    // mockBootstrapThenScoped shadow in describe('start').
     function mockInvitationWithExam(scopedTx: unknown, scheduledExam: Record<string, unknown>) {
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: scheduledExam }))
+        .mockImplementationOnce((_ctx, fn) => fn(scopedTx))
         .mockImplementationOnce((_ctx, fn) => fn(scopedTx));
     }
 
@@ -3844,11 +3922,13 @@ describe('AttemptService', () => {
     it('allows start when the ConfigKey hash matches the config generated for this candidate', async () => {
       const requestUrl = 'https://runtime.test/api/v1/attempt/start';
       const { configKey } = buildSebConfig({ startUrl: 'http://localhost:3000/start?token=tok-1' });
+      // Resuming an already-existing attempt (findUnique resolves it), so the quota-gate
+      // existence-check forTenant call and the create-tx forTenant call both read it and both
+      // short-circuit -- route both to the same tx, as production reads the same row twice.
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) } };
-      mockBootstrapThenScoped(tx);
-      tenantPrisma.forTenant.mockReset();
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve(lockdownInvitation))
+        .mockImplementationOnce((_ctx, fn) => fn(tx))
         .mockImplementationOnce((_ctx, fn) => fn(tx));
 
       const result = await service.start({ invitationId: 'inv-1' }, { consent: true }, '', {
@@ -3862,6 +3942,7 @@ describe('AttemptService', () => {
     it('does not demand SEB when the exam has lockdown off', async () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) } };
       mockBootstrapThenScoped(tx);
+      tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
 
       const result = await service.start({ invitationId: 'inv-1' }, { consent: true }, '', {
         configKeyHash: undefined,
@@ -3929,6 +4010,19 @@ describe('AttemptService', () => {
       const result = await service.analyzeScreenCapture(session, { screenshot: SHOT });
 
       expect(result).toEqual({ status: 'skipped' });
+      expect(tx.aiCreditUsage.create).not.toHaveBeenCalled();
+      expect(tx.proctoringEvent.create).not.toHaveBeenCalled();
+    });
+
+    it('skips when the org is over its AI-credit quota, without calling the AI or recording an event or credit', async () => {
+      quota.assertAiCredits.mockRejectedValue(new Error('quota_exceeded'));
+      const tx = scopedTxFor(attemptFixture());
+      mockBootstrapThenAllScoped(tx);
+
+      const result = await service.analyzeScreenCapture(session, { screenshot: SHOT });
+
+      expect(result).toEqual({ status: 'skipped' });
+      expect(generateStructured).not.toHaveBeenCalled();
       expect(tx.aiCreditUsage.create).not.toHaveBeenCalled();
       expect(tx.proctoringEvent.create).not.toHaveBeenCalled();
     });

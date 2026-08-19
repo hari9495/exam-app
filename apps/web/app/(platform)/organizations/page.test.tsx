@@ -41,6 +41,9 @@ function renderPage(orgs: Organization[] = ORGS) {
         { status: 200 },
       );
     }
+    if (String(url).endsWith('/platform/plans')) {
+      return new Response(JSON.stringify([]), { status: 200 });
+    }
     return new Response(JSON.stringify({}), { status: 200 });
   }) as unknown as typeof fetch;
 

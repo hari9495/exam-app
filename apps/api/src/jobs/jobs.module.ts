@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CryptoModule, StorageModule, AuditModule } from '@exam-platform/shared';
+import { BillingModule } from '../billing/billing.module';
 import { REDIS_CONNECTION, createRedisConnection } from './redis-connection';
 import { AI_JOBS_QUEUE, createAiJobsQueue } from './ai-jobs.queue';
 import { AI_JOB_PROCESSORS } from './processors/job-processor.interface';
@@ -16,7 +17,10 @@ import { JobsService } from './jobs.service';
 import { JobsController } from './jobs.controller';
 
 @Module({
-  imports: [CryptoModule, StorageModule, AuditModule],
+  // BillingModule imported explicitly (not @Global) so CandidateFitProcessor / ResumeParseProcessor /
+  // AiQuestionGenerationProcessor can inject QuotaService -- see the prod DI crash this exact pattern
+  // caused before AuditModule was added here for the same reason.
+  imports: [CryptoModule, StorageModule, AuditModule, BillingModule],
   controllers: [JobsController],
   providers: [
     { provide: REDIS_CONNECTION, useFactory: createRedisConnection },

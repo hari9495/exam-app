@@ -21,13 +21,15 @@ describe('CodeReviewService', () => {
     };
     const aiProvider = { generateStructured: jest.fn() };
     const aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue(aiProvider) };
+    const quota = { assertAiCredits: jest.fn().mockResolvedValue(undefined) };
     return {
-      service: new CodeReviewService(tenantPrisma as never, codeReviewClient as never, aiApiKeyResolver as never),
+      service: new CodeReviewService(tenantPrisma as never, codeReviewClient as never, aiApiKeyResolver as never, quota as never),
       tx,
       tenantPrisma,
       codeReviewClient,
       aiApiKeyResolver,
       aiProvider,
+      quota,
     };
   }
 
@@ -67,6 +69,19 @@ describe('CodeReviewService', () => {
 
     await service.analyze('answer-1');
 
+    expect(tx.codeAnswerReview.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ create: expect.objectContaining({ status: 'failed', suggestedMarks: null, summary: null }) }),
+    );
+    expect(tx.aiCreditUsage.create).not.toHaveBeenCalled();
+  });
+
+  it('upserts CodeAnswerReview as failed and skips the AI call when the org is over its AI-credit quota', async () => {
+    const { service, tx, codeReviewClient, quota } = buildService({ suggestedMarks: 8, summary: 'unused' });
+    quota.assertAiCredits.mockRejectedValue(new Error('quota_exceeded'));
+
+    await service.analyze('answer-1');
+
+    expect(codeReviewClient.review).not.toHaveBeenCalled();
     expect(tx.codeAnswerReview.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ create: expect.objectContaining({ status: 'failed', suggestedMarks: null, summary: null }) }),
     );
@@ -117,7 +132,8 @@ describe('CodeReviewService', () => {
     const codeReviewClient = { review: jest.fn().mockResolvedValue({ suggestedMarks: 5, summary: 'ok' }) };
     const aiProvider = { generateStructured: jest.fn() };
     const aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue(aiProvider) };
-    const service = new CodeReviewService(tenantPrisma as never, codeReviewClient as never, aiApiKeyResolver as never);
+    const quota = { assertAiCredits: jest.fn().mockResolvedValue(undefined) };
+    const service = new CodeReviewService(tenantPrisma as never, codeReviewClient as never, aiApiKeyResolver as never, quota as never);
 
     await service.analyze('answer-1');
 

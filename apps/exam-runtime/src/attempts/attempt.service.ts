@@ -17,6 +17,7 @@ import {
 } from '@exam-platform/shared';
 import { FaceEmbedderService } from '../face/face-embedder.service';
 import { FaceVerificationService } from '../face/face-verification.service';
+import { QuotaService } from '../billing/quota.service';
 import { AttemptSettlementService, PauseReason, SettlementExam } from '../grading/attempt-settlement.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { LeaderboardService, AUTO_GRADABLE_QUESTION_TYPES, CandidateLeaderboardResponse } from '../leaderboard/leaderboard.service';
@@ -254,6 +255,7 @@ export class AttemptService {
     private readonly faceEmbedder: FaceEmbedderService,
     private readonly crypto: OrgSecretsCryptoService,
     private readonly faceVerification: FaceVerificationService,
+    private readonly quota: QuotaService,
   ) {}
 
   // ponytail: in-memory per-attempt floor between AI screen analyses -- single pm2 process, so a
@@ -351,6 +353,21 @@ export class AttemptService {
     // only SEB running OUR generated config can produce (see packages/shared/src/seb). Checked
     // outside the transaction -- pure hashing, no I/O.
     this.enforceSebLockdown(exam, invitation.token, seb);
+
+    // Hard quota: block STARTING a new proctored attempt when the org has exhausted its monthly
+    // proctoring minutes. Never checked mid-exam -- a candidate already testing is never interrupted.
+    // Only a genuinely NEW attempt consumes minutes, so a resume must skip the gate entirely: read
+    // existence first (outside the write tx, so the quota check stays read-only and out of any
+    // $transaction), and only assert when there is nothing to resume.
+    if (exam.enableAntiCheating) {
+      const existingAttempt = await this.tenantPrisma.forTenant(
+        { organizationId, isSuperAdmin: false },
+        (tx) => tx.attempt.findUnique({ where: { invitationId: invitation.id }, select: { id: true } }),
+      );
+      if (!existingAttempt) {
+        await this.quota.assertProctoringMinutes({ organizationId, isSuperAdmin: false });
+      }
+    }
 
     return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
       const existing = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
@@ -1028,6 +1045,7 @@ export class AttemptService {
     // analysis is best-effort, the violation-triggered capture pipeline is unaffected.
     let flagged: { eventType: 'remote_access_suspected' | 'background_app_detected'; toolName: string; reasoning: string } | null = null;
     try {
+      await this.quota.assertAiCredits(context);
       const aiProvider = await this.aiApiKeyResolver.resolve(organizationId);
       const verdict = await aiProvider.generateStructured({
         modelTier: 'fast',

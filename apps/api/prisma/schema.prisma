@@ -13,6 +13,12 @@ model Plan {
   candidateLimit         Int            @map("candidate_limit")
   aiCreditLimit          Int            @map("ai_credit_limit")
   proctoringMinutesLimit Int            @map("proctoring_minutes_limit")
+  seatLimit              Int            @default(5)  @map("seat_limit")
+  priceLabel             String?        @map("price_label")
+  billingInterval        String         @default("month") @map("billing_interval")
+  isPublic               Boolean        @default(true)  @map("is_public")
+  stripeProductId        String?        @map("stripe_product_id")
+  stripePriceId          String?        @map("stripe_price_id")
   createdAt              DateTime       @default(now()) @map("created_at")
   organizations          Organization[]
 
@@ -51,12 +57,28 @@ model Organization {
   samlIdpCertificate     String?           @map("saml_idp_certificate") @db.NVarChar(Max)
   planId                 String            @map("plan_id") @db.UniqueIdentifier
   plan                   Plan              @relation(fields: [planId], references: [id])
+  billingStatus          String            @default("active") @map("billing_status")
+  stripeCustomerId       String?           @map("stripe_customer_id")
+  stripeSubscriptionId   String?           @map("stripe_subscription_id")
   createdAt              DateTime          @default(now()) @map("created_at")
   users                  User[]
   auditLogs              AuditLog[]
   webhookDeliveries      WebhookDelivery[]
 
   @@map("organizations")
+}
+
+model BillingNotice {
+  id             String   @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String   @map("organization_id") @db.UniqueIdentifier
+  dimension      String
+  threshold      Int
+  periodStart    DateTime @map("period_start")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([organizationId, dimension, threshold, periodStart])
+  @@index([organizationId])
+  @@map("billing_notices")
 }
 
 model WebhookDelivery {

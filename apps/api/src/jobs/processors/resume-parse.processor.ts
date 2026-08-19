@@ -9,6 +9,8 @@ import {
   AiProvider,
 } from '@exam-platform/shared';
 import { JobProcessor } from './job-processor.interface';
+import { QuotaService } from '../../billing/quota.service';
+import { QuotaExceededException } from '../../billing/quota-exceeded.exception';
 
 // AI extracts free text out of the résumé; truncate before sending it so a huge PDF cannot blow
 // past the model's context window or run up token cost on filler pages.
@@ -47,6 +49,7 @@ export class ResumeParseProcessor implements JobProcessor {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly blobStorage: BlobStorageService,
     private readonly aiApiKeyResolver: AiApiKeyResolverService,
+    private readonly quota: QuotaService,
   ) {}
 
   async process(input: unknown, context: TenantContext, aiJobId: string): Promise<unknown> {
@@ -70,6 +73,9 @@ export class ResumeParseProcessor implements JobProcessor {
       if (!aiProvider) {
         return this.setStatus(context, candidateId, 'unavailable');
       }
+
+      // Hard quota: block the AI spend when the org has exhausted its monthly AI credits.
+      await this.quota.assertWithinLimit(context, 'ai_credits');
 
       const buf = await this.blobStorage.downloadToBuffer(profile.resumePath);
       const text = (await pdfParse(buf)).text.slice(0, MAX_RESUME_TEXT_CHARS);
@@ -98,6 +104,9 @@ export class ResumeParseProcessor implements JobProcessor {
       });
       return { ok: true };
     } catch (error) {
+      // Quota-exceeded is not a parse failure to retry away -- let it propagate so the AiJob
+      // record surfaces the 402 message, distinct from the generic `failed` parseStatus below.
+      if (error instanceof QuotaExceededException) throw error;
       this.logger.error(`Resume parse failed for candidate ${candidateId} (job ${aiJobId})`, error as Error);
       return this.setStatus(context, candidateId, 'failed');
     }
