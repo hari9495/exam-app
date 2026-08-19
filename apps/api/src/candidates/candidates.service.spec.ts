@@ -3,6 +3,7 @@ import { ConflictException, Logger, NotFoundException } from '@nestjs/common';
 import { BlobServiceClient, ContainerClient, StorageSharedKeyCredential } from '@azure/storage-blob';
 import { CandidatesService } from './candidates.service';
 import { TenantPrismaService, AuditService, BlobStorageService } from '@exam-platform/shared';
+import { QuotaService } from '../billing/quota.service';
 
 // Only BlobServiceClient.fromConnectionString is faked below (real-BlobStorageService nested
 // describe) -- ContainerClient/StorageSharedKeyCredential stay the real SDK classes, same
@@ -17,6 +18,7 @@ describe('CandidatesService', () => {
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
   let blobStorage: { deleteByUrl: jest.Mock; signIfOurs: jest.Mock };
+  let quota: { checkSoftLimit: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
@@ -28,12 +30,14 @@ describe('CandidatesService', () => {
       // and in packages/shared/src/storage/blob-storage.service.spec.ts.
       signIfOurs: jest.fn(async (value) => value),
     };
+    quota = { checkSoftLimit: jest.fn().mockResolvedValue({ warn: false, threshold: null, used: 0, limit: 0 }) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         CandidatesService,
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: AuditService, useValue: audit },
         { provide: BlobStorageService, useValue: blobStorage },
+        { provide: QuotaService, useValue: quota },
       ],
     }).compile();
     service = moduleRef.get(CandidatesService);
@@ -54,6 +58,35 @@ describe('CandidatesService', () => {
     expect(tx.candidate.create).toHaveBeenCalledWith({
       data: { organizationId: 'org-1', email: 'a@test.com', name: 'Alice', phone: undefined },
     });
+  });
+
+  it('checks the soft candidate limit after a successful create', async () => {
+    const tx = {
+      candidate: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'a@test.com', name: 'Alice' }),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    await service.create(context, { email: 'a@test.com', name: 'Alice' });
+
+    expect(quota.checkSoftLimit).toHaveBeenCalledWith(context, 'candidates');
+  });
+
+  it('still returns the created candidate when the soft candidate-limit check rejects', async () => {
+    const tx = {
+      candidate: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'a@test.com', name: 'Alice' }),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+    quota.checkSoftLimit.mockRejectedValueOnce(new Error('billing DB unreachable'));
+
+    const result = await service.create(context, { email: 'a@test.com', name: 'Alice' });
+
+    expect(result.id).toBe('cand-1');
   });
 
   describe('list invitation counts and status filter', () => {
@@ -333,6 +366,42 @@ describe('CandidatesService', () => {
       where: { id: 'cand-existing' },
       data: { name: 'Bob Updated', phone: undefined },
     });
+    // Fired once for the whole batch, not once per created/updated row.
+    expect(quota.checkSoftLimit).toHaveBeenCalledTimes(1);
+    expect(quota.checkSoftLimit).toHaveBeenCalledWith(context, 'candidates');
+  });
+
+  it('does not check the soft candidate limit when the bulk upload creates nobody', async () => {
+    const existingCandidate = { id: 'cand-existing', email: 'bob@test.com' };
+    const tx = {
+      candidate: {
+        findFirst: jest.fn().mockResolvedValue(existingCandidate),
+        update: jest.fn().mockResolvedValue({ id: 'cand-existing' }),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+    const csv = 'email,name,phone\nbob@test.com,Bob Updated,';
+    const result = await service.bulkUpload(context, csv);
+
+    expect(result.created).toBe(0);
+    expect(quota.checkSoftLimit).not.toHaveBeenCalled();
+  });
+
+  it('still returns the bulk upload result when the soft candidate-limit check rejects', async () => {
+    const tx = {
+      candidate: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'cand-new' }),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+    quota.checkSoftLimit.mockRejectedValueOnce(new Error('billing DB unreachable'));
+
+    const csv = 'email,name,phone\nalice@test.com,Alice,';
+    const result = await service.bulkUpload(context, csv);
+
+    expect(result.created).toBe(1);
   });
 
   describe('exportData', () => {
@@ -555,7 +624,7 @@ describe('CandidatesService', () => {
         process.env.AZURE_STORAGE_CONNECTION_STRING = 'UseDevelopmentStorage=true';
         process.env.AZURE_STORAGE_CONTAINER = 'container';
         const realBlobStorage = new BlobStorageService();
-        realService = new CandidatesService(tenantPrisma as never, audit as never, realBlobStorage);
+        realService = new CandidatesService(tenantPrisma as never, audit as never, realBlobStorage, quota as never);
       });
 
       afterEach(() => {

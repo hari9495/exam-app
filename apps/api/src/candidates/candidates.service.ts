@@ -4,6 +4,7 @@ import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { BlobStorageService, BlobDeleteOutcome } from '@exam-platform/shared';
+import { QuotaService } from '../billing/quota.service';
 import { CreateCandidateDto } from './dto/create-candidate.dto';
 import { UpdateCandidateDto } from './dto/update-candidate.dto';
 import { parseCandidateCsv } from './csv-parser';
@@ -128,10 +129,23 @@ export class CandidatesService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly audit: AuditService,
     private readonly blobStorage: BlobStorageService,
+    private readonly quota: QuotaService,
   ) {}
 
+  // Soft limit: never blocks the create -- warns + emails admins once per threshold/period.
+  // Only wired to the recruiter-initiated add (below) and bulkUpload; deliberately NOT wired
+  // to public-applications.service.ts's candidate upsert, which stays lean and must not email
+  // admins on every applicant (public apply is a separate, unauthenticated create path).
+  private async warnSoftCandidateLimit(context: TenantContext): Promise<void> {
+    try {
+      await this.quota.checkSoftLimit(context, 'candidates');
+    } catch (error) {
+      this.logger.error('Soft candidate-limit check failed', error as Error);
+    }
+  }
+
   async create(context: TenantContext, dto: CreateCandidateDto): Promise<Candidate> {
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+    const candidate = await this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.candidate.findFirst({
         where: { organizationId: context.organizationId as string, email: dto.email },
       });
@@ -147,6 +161,8 @@ export class CandidatesService {
         },
       });
     });
+    await this.warnSoftCandidateLimit(context);
+    return candidate;
   }
 
   async list(context: TenantContext, filters: CandidateFilters): Promise<PaginatedResponse<CandidateListItem>> {
@@ -268,7 +284,7 @@ export class CandidatesService {
   async bulkUpload(context: TenantContext, csvContent: string): Promise<BulkUploadResult> {
     const { rows, errors } = parseCandidateCsv(csvContent);
 
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+    const result = await this.tenantPrisma.forTenant(context, async (tx) => {
       let created = 0;
       let updated = 0;
 
@@ -297,6 +313,12 @@ export class CandidatesService {
 
       return { created, updated, errors };
     });
+
+    // Once per batch, not per row -- and only when the batch actually created someone.
+    if (result.created > 0) {
+      await this.warnSoftCandidateLimit(context);
+    }
+    return result;
   }
 
   async getProfile(context: TenantContext, candidateId: string): Promise<CandidateProfile | null> {
