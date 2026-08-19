@@ -12,6 +12,11 @@
   src:url('/fonts/hanken-grotesk.woff2') format('woff2'); }
 
 :root {
+  --slate-ink: #1b2530;
+  --slate-muted: #5c6875;
+  --slate-rule: #dbe0e6;
+  --slate-paper: #ffffff;
+  --slate-ground: #eceff3;
   --color-primary: #0053e2;
   --color-accent: #ffc220;
   --color-primary-text: #ffffff;

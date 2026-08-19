@@ -12,6 +12,11 @@ const config: Config = {
         body: ['Hanken Grotesk', 'system-ui', 'sans-serif'],
       },
       colors: {
+        ink: 'var(--slate-ink, #1b2530)',
+        muted: 'var(--slate-muted, #5c6875)',
+        rule: 'var(--slate-rule, #dbe0e6)',
+        paper: 'var(--slate-paper, #ffffff)',
+        ground: 'var(--slate-ground, #eceff3)',
         primary: 'var(--color-primary, #0053e2)',
         accent: 'var(--color-accent, #ffc220)',
         'on-primary': 'var(--color-primary-text, #ffffff)',
