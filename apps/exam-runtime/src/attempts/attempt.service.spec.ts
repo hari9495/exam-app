@@ -22,6 +22,7 @@ import { RunLimiter } from '../code-execution/run-limiter';
 import { FaceEmbedderService } from '../face/face-embedder.service';
 import { FaceVerificationService } from '../face/face-verification.service';
 import { QuotaService } from '../billing/quota.service';
+import { ApiInternalClient } from '../api-internal-client/api-internal.client';
 
 // The cap-count query folds case AND width (see sanitize-metadata.ts / scc-task-5-report.md),
 // so a plain `.toContain('"screenshot":')` assertion is case- and width-sensitive in JS and
@@ -75,6 +76,7 @@ describe('AttemptService', () => {
   let crypto: { encrypt: jest.Mock; decrypt: jest.Mock };
   let faceVerification: { verifySnapshot: jest.Mock; forgetAttempt: jest.Mock };
   let quota: { assertAiCredits: jest.Mock; assertProctoringMinutes: jest.Mock };
+  let apiInternalClient: { dispatchWebhook: jest.Mock };
   const session = { invitationId: 'inv-1' };
   const exam = {
     id: 'exam-1', organizationId: 'org-1', title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60, passCriteriaPercent: 40, randomizeOrder: false,
@@ -130,6 +132,7 @@ describe('AttemptService', () => {
       forgetAttempt: jest.fn(),
     };
     quota = { assertAiCredits: jest.fn().mockResolvedValue(undefined), assertProctoringMinutes: jest.fn().mockResolvedValue(undefined) };
+    apiInternalClient = { dispatchWebhook: jest.fn().mockResolvedValue(undefined) };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -149,6 +152,7 @@ describe('AttemptService', () => {
         { provide: OrgSecretsCryptoService, useValue: crypto },
         { provide: FaceVerificationService, useValue: faceVerification },
         { provide: QuotaService, useValue: quota },
+        { provide: ApiInternalClient, useValue: apiInternalClient },
       ],
     }).compile();
     service = moduleRef.get(AttemptService);
@@ -1882,6 +1886,46 @@ describe('AttemptService', () => {
       expect(settlement.finalize).not.toHaveBeenCalled();
     });
 
+    it('dispatches attempt.submitted after a real submit commits', async () => {
+      const attempt = { id: 'attempt-1', status: 'in_progress', startedAt: new Date(), questionOrderJson: '[]' };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      settlement.finalize.mockResolvedValue({ id: 'attempt-1', status: 'submitted' });
+      mockBootstrapThenScoped(tx);
+
+      await service.submit(session);
+
+      expect(apiInternalClient.dispatchWebhook).toHaveBeenCalledWith('org-1', 'attempt.submitted', {
+        subject: 'Ada Lovelace',
+        examTitle: 'Backend Round',
+        linkPath: '/candidates/cand-1',
+      });
+    });
+
+    it('does not dispatch attempt.submitted when the attempt was already settled (no-op branch)', async () => {
+      const attempt = { id: 'attempt-1', status: 'submitted', startedAt: new Date(), questionOrderJson: '[]' };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      mockBootstrapThenScoped(tx);
+
+      await service.submit(session);
+
+      expect(apiInternalClient.dispatchWebhook).not.toHaveBeenCalled();
+    });
+
+    it('does not let a dispatch failure break the submit response', async () => {
+      const attempt = { id: 'attempt-1', status: 'in_progress', startedAt: new Date(), questionOrderJson: '[]' };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      settlement.finalize.mockResolvedValue({ id: 'attempt-1', status: 'submitted' });
+      mockBootstrapThenScoped(tx);
+      apiInternalClient.dispatchWebhook.mockRejectedValue(new Error('network down'));
+
+      const result = await service.submit(session);
+
+      expect(result).toEqual({ status: 'submitted' });
+    });
+
     it('throws NotFoundException when no attempt has been started', async () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) } };
       mockBootstrapThenScoped(tx);
@@ -1977,6 +2021,40 @@ describe('AttemptService', () => {
           attemptId: 'attempt-1', candidateId: 'cand-1', eventType: 'looking_down', severity: 'medium', occurredAt: createdEvent.occurredAt,
         });
       });
+
+      it('dispatches integrity.flagged after creating the event', async () => {
+        const createdEvent = { id: 'evt-1', eventType: 'looking_down', severity: 'medium', occurredAt: new Date() };
+        const tx = {
+          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          proctoringEvent: { create: jest.fn().mockResolvedValue(createdEvent) },
+        };
+        mockBootstrapThenScoped(tx);
+
+        await service.reportProctoringEvent(session, { eventType: 'looking_down' });
+        await new Promise((resolve) => setImmediate(resolve)); // let the fire-and-forget dispatch run
+
+        expect(apiInternalClient.dispatchWebhook).toHaveBeenCalledWith('org-1', 'integrity.flagged', {
+          subject: 'Ada Lovelace',
+          examTitle: 'Backend Round',
+          reason: 'looking_down',
+          linkPath: '/live',
+        });
+      });
+
+      it('does not let a dispatch failure break the response', async () => {
+        const createdEvent = { id: 'evt-1', eventType: 'looking_down', severity: 'medium', occurredAt: new Date() };
+        const tx = {
+          attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', browserActivityViolationCount: 0, status: 'in_progress' }) },
+          proctoringEvent: { create: jest.fn().mockResolvedValue(createdEvent) },
+        };
+        mockBootstrapThenScoped(tx);
+        apiInternalClient.dispatchWebhook.mockRejectedValue(new Error('network down'));
+
+        const result = await service.reportProctoringEvent(session, { eventType: 'looking_down' });
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(result).toEqual({ id: 'evt-1', eventType: 'looking_down', severity: 'medium', strike: 0, status: 'in_progress' });
+      });
     });
 
     describe('a strike-worthy event type (e.g. tab_switch)', () => {
@@ -2026,6 +2104,27 @@ describe('AttemptService', () => {
         expect(monitoringGateway.emitProctoringFlag).toHaveBeenCalledWith('exam-1', expect.objectContaining({
           attemptId: 'attempt-1', candidateId: 'cand-1', eventType: 'dev_tools_detected', severity: 'high',
         }));
+      });
+
+      it('dispatches integrity.flagged with the event returned by registerBrowserActivityViolation', async () => {
+        const attempt = { id: 'attempt-1', browserActivityViolationCount: 2, status: 'in_progress' };
+        const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
+        mockBootstrapThenScoped(tx);
+        settlement.registerBrowserActivityViolation.mockResolvedValue({
+          attempt: { ...attempt, browserActivityViolationCount: 3, status: 'blocked' },
+          strike: 3,
+          event: { id: 'evt-1', eventType: 'dev_tools_detected', severity: 'high' },
+        });
+
+        await service.reportProctoringEvent(session, { eventType: 'dev_tools_detected' });
+        await new Promise((resolve) => setImmediate(resolve)); // let the fire-and-forget dispatch run
+
+        expect(apiInternalClient.dispatchWebhook).toHaveBeenCalledWith('org-1', 'integrity.flagged', {
+          subject: 'Ada Lovelace',
+          examTitle: 'Backend Round',
+          reason: 'dev_tools_detected',
+          linkPath: '/live',
+        });
       });
 
       it('throws NotFoundException when no attempt has been started', async () => {
