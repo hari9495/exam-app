@@ -1,40 +1,42 @@
 import { ButtonHTMLAttributes } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 import clsx from 'clsx';
 
 type Variant = 'primary' | 'secondary' | 'danger';
 type Size = 'md' | 'sm';
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'ref'> {
   variant?: Variant;
   size?: Size;
   loading?: boolean;
 }
 
 const VARIANT_CLASSES: Record<Variant, string> = {
-  // border-recruiter-border (a fixed neutral, not org-branded) keeps the button's
-  // outline visible even if an org picks a Primary Color close to the page
-  // background; text-on-primary is org-configurable (Brand Settings > Font Color)
-  // so the label stays readable against whatever Primary Color they choose.
-  primary: 'border border-recruiter-border bg-primary text-on-primary hover:opacity-90',
-  secondary: 'bg-gray-100 text-gray-900 hover:bg-gray-200',
-  danger: 'bg-red-600 text-white hover:bg-red-700',
+  // Colour is rationed to the primary action, in the org's own primary.
+  primary: 'bg-primary text-on-primary hover:opacity-90',
+  // Secondary is a quiet rule outline on paper, not a filled grey block.
+  secondary: 'bg-paper text-ink border border-rule hover:bg-ground',
+  danger: 'bg-status-danger text-white hover:opacity-90',
 };
 
-// 'sm' is for actions sitting inside a dense table row. whitespace-nowrap matters there:
-// in a narrow actions column a two-word label like "View log" otherwise wraps onto two
-// lines and stops reading as a button at all.
 const SIZE_CLASSES: Record<Size, string> = {
   md: 'px-4 py-2 text-sm',
+  // whitespace-nowrap: a two-word label in a dense table actions column must not wrap.
   sm: 'whitespace-nowrap px-2.5 py-1 text-xs',
 };
 
 export function Button({ variant = 'primary', size = 'md', className, disabled, loading, children, ...props }: ButtonProps) {
+  // The press dips the control on a tight spring -- a considered micro-interaction, disabled for
+  // users who prefer reduced motion.
+  const reduce = useReducedMotion();
   return (
-    <button
+    <motion.button
+      whileTap={reduce ? undefined : { scale: 0.97 }}
+      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
       className={clsx(
-        'rounded-md font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+        'rounded-lg font-body font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
         SIZE_CLASSES[size],
-        loading && 'inline-flex items-center justify-center gap-2',
+        (loading || undefined) && 'inline-flex items-center justify-center gap-2',
         VARIANT_CLASSES[variant],
         className,
       )}
@@ -48,6 +50,6 @@ export function Button({ variant = 'primary', size = 'md', className, disabled, 
         </svg>
       )}
       {children}
-    </button>
+    </motion.button>
   );
 }
