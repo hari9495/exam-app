@@ -1,4 +1,4 @@
-﻿import { INTEGRATION_EVENT_TYPES, INTEGRATION_EVENT_LABELS } from './event-types';
+import { INTEGRATION_EVENT_TYPES, INTEGRATION_EVENT_LABELS } from './event-types';
 
 describe('integration event catalog', () => {
   it('has exactly the 8 catalog events, unique', () => {

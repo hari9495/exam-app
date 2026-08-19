@@ -1,4 +1,4 @@
-﻿export const INTEGRATION_EVENT_TYPES = [
+export const INTEGRATION_EVENT_TYPES = [
   'invitation.created',
   'attempt.submitted',
   'attempt.settled',
