@@ -42,7 +42,7 @@ export function Input({ label, value, onChange, error, icon, className, id, hide
           onChange={(e) => onChange(e.target.value)}
           required={required}
           className={clsx(
-            'w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none',
+            'w-full rounded-lg border border-rule bg-paper px-3 py-2.5 font-body text-sm text-ink focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15',
             icon && 'pl-9',
             error && 'border-red-500',
             className,

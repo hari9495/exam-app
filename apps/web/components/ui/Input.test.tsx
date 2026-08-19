@@ -39,4 +39,13 @@ describe('Input', () => {
     render(<Input label="Email" value="" onChange={() => {}} />);
     expect(screen.getByText('Email').className).not.toEqual(expect.stringContaining('content-'));
   });
+
+  it('is a squared slate field bound to its label', () => {
+    render(<Input label="Email" value="" onChange={() => {}} />);
+    const field = screen.getByLabelText('Email');
+    expect(field.className).toContain('border-rule');
+    expect(field.className).toContain('rounded-lg');
+    // The accessible label binding is unchanged -- this is the contract the whole app depends on.
+    expect(field.tagName).toBe('INPUT');
+  });
 });
