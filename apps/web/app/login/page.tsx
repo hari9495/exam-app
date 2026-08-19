@@ -12,7 +12,7 @@ import { Button, Input } from '../../components/ui';
 import { PrudentMark } from '../../components/PrudentMark';
 import { useBranding } from '../../lib/hooks/useBranding';
 import { useDocumentBranding } from '../../lib/hooks/useDocumentBranding';
-import './invigilator.css';
+import '../../components/invigilator.css';
 
 const HIGHLIGHTS = [
   'AI-drafted question banks your team reviews before they go out',

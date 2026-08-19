@@ -45,10 +45,12 @@ export default function ForgotPasswordPage() {
   return (
     <MotionConfig reducedMotion="user">
       <AuthPageLayout
-        title="Forgot Password"
+        title="Forgot password"
+        eyebrow="Account recovery"
         logoUrl={branding?.logoUrl}
         logoLabel={branding?.name}
-        panelHeading="Automate Early Screens."
+        primaryColor={branding?.primaryColor}
+        panelHeading="Automate early screens."
         panelCopy="Focus human judgment on what matters. Prudent Hire runs the first round end to end, so your panel only meets the candidates worth meeting."
         panelHighlights={HIGHLIGHTS}
       >
