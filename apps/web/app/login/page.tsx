@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, MotionConfig } from 'framer-motion';
-import { Eye, EyeOff, AlertCircle, Check } from 'lucide-react';
+import { Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth, SSO_PENDING_SLUG_KEY } from '../../lib/auth-context';
 import { decodeJwtPayload } from '../../lib/jwt';
@@ -12,6 +12,7 @@ import { Button, Input } from '../../components/ui';
 import { PrudentMark } from '../../components/PrudentMark';
 import { useBranding } from '../../lib/hooks/useBranding';
 import { useDocumentBranding } from '../../lib/hooks/useDocumentBranding';
+import './invigilator.css';
 
 const HIGHLIGHTS = [
   'AI-drafted question banks your team reviews before they go out',
@@ -90,129 +91,134 @@ export default function LoginPage() {
     }
   }
 
+  // Colour is rationed to the org's own primary: the one chroma the page spends, on the primary
+  // action. Everything else stays greyscale slate. onPrimary defaults to white, matching the
+  // product's --color-primary-text default.
+  const orgPrimary = (branding as { primaryColor?: string } | undefined)?.primaryColor || '#0053e2';
+  const orgOnPrimary = (branding as { textColor?: string } | undefined)?.textColor || '#ffffff';
+
   return (
     <MotionConfig reducedMotion="user">
-      <div className="flex min-h-screen flex-col">
-        <header className="flex items-center bg-brand-navy px-6 py-4 md:px-16">
-          <Link href="/" className="flex items-center gap-3">
-            <PrudentMark className="h-8 aspect-[100/148] text-white" />
-            <span className="text-lg font-medium tracking-tight text-white">Prudent Hire</span>
+      <div
+        className="inv flex min-h-screen flex-col"
+        style={{ ['--org-primary' as string]: orgPrimary, ['--org-on-primary' as string]: orgOnPrimary }}
+      >
+        <header className="inv-header flex items-center px-6 py-4 md:px-16">
+          <Link href="/" className="flex items-center gap-2.5" style={{ color: 'var(--ink)' }}>
+            <PrudentMark className="h-7 aspect-[100/148]" />
+            <span className="inv-wordmark text-lg">Prudent Hire</span>
           </Link>
         </header>
 
-        <main className="relative grid flex-1 md:grid-cols-2">
-        {/* The navy panel juts a triangle into the white one at the top of the seam.
-            Anchored with right-1/2 so its vertical edge sits exactly on the column divide. */}
-        <svg
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
-          aria-hidden="true"
-          className="pointer-events-none absolute right-1/2 top-0 z-10 hidden h-24 w-24 text-brand-navy md:block"
-        >
-          <polygon points="0,0 100,0 100,100" fill="currentColor" />
-        </svg>
-        <div className="flex flex-col items-center justify-center bg-white px-6 py-8">
-          <div className="w-full max-w-sm">
-            {branding?.logoUrl && (
-              <div className="mb-8 flex justify-center">
-                <div className="flex items-center gap-0">
-                  <img src={branding.logoUrl} alt="Organization logo" className="max-h-20 object-contain" />
-                  {branding?.name && (
-                    <p className="-ml-6 text-center text-2xl font-medium tracking-tight text-brand-navy">{branding.name}</p>
-                  )}
+        <main className="grid flex-1 md:grid-cols-2">
+          <div className="flex flex-col items-center justify-center px-6 py-12">
+            <div className="w-full max-w-sm">
+              {branding?.logoUrl && (
+                <div className="mb-8 flex items-center justify-center gap-0">
+                  <img src={branding.logoUrl} alt="Organization logo" className="max-h-16 object-contain" />
+                  {branding?.name && <p className="inv-wordmark -ml-4 text-xl">{branding.name}</p>}
                 </div>
-              </div>
-            )}
-
-            <div className="rounded-2xl border border-[#CDD8F0] bg-white p-7 shadow-[0_24px_72px_rgba(0,30,96,0.12)]">
-              <h1 className="mb-6 text-center text-lg font-medium text-brand-navy">Staff Login</h1>
-
-              {error && (
-                <p
-                  role="alert"
-                  className="mb-4 flex items-center gap-2 rounded-md bg-status-danger-bg px-3 py-2 text-sm text-status-danger"
-                >
-                  <AlertCircle size={16} className="shrink-0" />
-                  {error}
-                </p>
               )}
 
-              <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                <Input
-                  label="Organization Slug"
-                  value={organizationSlug}
-                  onChange={setOrganizationSlug}
-                />
-                {ssoEnabled ? (
-                  // SSO-enabled orgs are SSO-only: no password fallback is offered.
-                  <motion.a
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, ease: 'easeOut' }}
-                    href={`${process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001/api/v1'}/auth/saml/${organizationSlug}/login`}
-                    onClick={() => window.sessionStorage.setItem(SSO_PENDING_SLUG_KEY, organizationSlug)}
-                    className="flex items-center justify-center rounded-lg bg-primary px-4 py-3 text-sm font-medium text-white transition-opacity hover:opacity-90"
-                  >
-                    Log in with SSO
-                  </motion.a>
-                ) : (
-                  <>
-                    <Input label="Email" type="email" value={email} onChange={setEmail} required />
-                    <div className="relative">
-                      <Input
-                        label="Password"
-                        type={showPassword ? 'text' : 'password'}
-                        value={password}
-                        onChange={setPassword}
-                        required
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword((prev) => !prev)}
-                        aria-label={showPassword ? 'Hide characters' : 'Show characters'}
-                        className="absolute bottom-2 right-3 text-recruiter-text-tertiary hover:text-recruiter-text"
-                      >
-                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
-                    </div>
-                    <Button type="submit" loading={submitting} className="w-full rounded-lg py-3">
-                      Log in
-                    </Button>
-                    <Link href="/forgot-password" className="text-sm font-medium text-primary hover:underline">
-                      Forgot password?
-                    </Link>
-                  </>
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, ease: [0.2, 0.7, 0.2, 1] }}
+                className="inv-card p-7"
+              >
+                <div className="inv-eyebrow mb-1.5">Staff access</div>
+                <h1 className="inv-title mb-6">Sign in to your console</h1>
+
+                {error && (
+                  <p role="alert" className="inv-alert mb-4 flex items-center gap-2 px-3 py-2 text-sm">
+                    <AlertCircle size={16} className="shrink-0" />
+                    {error}
+                  </p>
                 )}
-              </form>
+
+                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                  <Input label="Organization Slug" value={organizationSlug} onChange={setOrganizationSlug} />
+                  {ssoEnabled ? (
+                    // SSO-enabled orgs are SSO-only: no password fallback is offered.
+                    <motion.a
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      whileTap={{ scale: 0.97 }}
+                      transition={{ duration: 0.3, ease: 'easeOut' }}
+                      href={`${process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001/api/v1'}/auth/saml/${organizationSlug}/login`}
+                      onClick={() => window.sessionStorage.setItem(SSO_PENDING_SLUG_KEY, organizationSlug)}
+                      className="inv-cta flex items-center justify-center px-4 py-3 text-sm transition-opacity"
+                    >
+                      Log in with SSO
+                    </motion.a>
+                  ) : (
+                    <>
+                      <Input label="Email" type="email" value={email} onChange={setEmail} required />
+                      <div className="relative">
+                        <Input
+                          label="Password"
+                          type={showPassword ? 'text' : 'password'}
+                          value={password}
+                          onChange={setPassword}
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword((prev) => !prev)}
+                          aria-label={showPassword ? 'Hide characters' : 'Show characters'}
+                          className="absolute bottom-2.5 right-3"
+                          style={{ color: 'var(--muted)' }}
+                        >
+                          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                      {/* A press micro-interaction: the button dips slightly when tapped, on a
+                          tight spring so it reads as a considered control rather than a toy. The
+                          shared Button keeps its own loading spinner for the submit-in-flight
+                          state; this only adds the tactile press. MotionConfig reducedMotion
+                          disables the transform for users who ask for reduced motion. */}
+                      <motion.div
+                        whileTap={{ scale: 0.97 }}
+                        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                        className="w-full"
+                      >
+                        <Button type="submit" loading={submitting} className="w-full py-3">
+                          Log in
+                        </Button>
+                      </motion.div>
+                      <Link href="/forgot-password" className="inv-link text-sm">
+                        Forgot password?
+                      </Link>
+                    </>
+                  )}
+                </form>
+              </motion.div>
+
+              <p className="inv-eyebrow mt-6 text-center" style={{ letterSpacing: '0.06em' }}>
+                &copy; 2026 Prudent Consulting
+              </p>
             </div>
-
-            <p className="mt-6 text-center text-xs text-recruiter-text-tertiary">
-              &copy; 2026 Prudent Consulting. All rights reserved.
-            </p>
           </div>
-        </div>
 
-        <aside className="relative hidden overflow-hidden bg-brand-navy px-16 py-12 md:flex md:flex-col md:items-center md:justify-center md:gap-6">
-          <div
-            className="pointer-events-none absolute -right-24 -top-24 h-[420px] w-[420px] rounded-full"
-            style={{ background: 'radial-gradient(circle, rgba(0,83,226,0.3) 0%, transparent 70%)' }}
-            aria-hidden="true"
-          />
-          <PrudentMark className="pointer-events-none absolute bottom-6 right-6 h-48 aspect-[100/148] text-white/10" />
-          <h2 className="relative max-w-md text-4xl font-medium leading-tight tracking-tight text-white">Automate Early Screens.</h2>
-          <p className="relative max-w-md text-lg leading-relaxed text-white/60">
-            Focus human judgment on what matters. Prudent Hire runs the first round end to end, so your panel only meets the
-            candidates worth meeting.
-          </p>
-          <ul className="relative flex max-w-md flex-col gap-3">
-            {HIGHLIGHTS.map((item) => (
-              <li key={item} className="flex items-start gap-3 text-base text-white/70">
-                <Check size={18} className="mt-1 shrink-0 text-brand-picton" />
-                {item}
-              </li>
-            ))}
-          </ul>
-        </aside>
+          <aside className="inv-aside hidden flex-col justify-center gap-7 px-16 py-12 md:flex">
+            <div>
+              <div className="inv-eyebrow mb-3">Assessment platform</div>
+              <h2 className="inv-headline max-w-md">Automate early screens.</h2>
+            </div>
+            <p className="inv-sub max-w-md">
+              Focus human judgment on what matters. Prudent Hire runs the first round end to end, so your panel only meets the
+              candidates worth meeting.
+            </p>
+            <ul className="flex max-w-md flex-col gap-3.5">
+              {HIGHLIGHTS.map((item) => (
+                <li key={item} className="flex items-start gap-3">
+                  <span className="inv-marker" aria-hidden="true" />
+                  <span className="inv-proof">{item}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="inv-record mt-2">REC &middot; proctored &middot; integrity-scored &middot; panel-ready</div>
+          </aside>
         </main>
       </div>
     </MotionConfig>

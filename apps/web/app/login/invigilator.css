@@ -1,0 +1,76 @@
+/* Invigilator direction, scoped preview on the real login route.
+ *
+ * Everything is under .inv so it cannot leak into the rest of the product: the shared Input and
+ * Button components are kept (so every accessible label and the tests still hold) and restyled
+ * here by element within the scope. Delete this file's import and restore the page to revert.
+ *
+ * The direction, unchanged from the design lab: a greyscale slate canvas with colour rationed to
+ * one place -- the primary action and a genuine error. A real self-hosted typeface, crisp cool
+ * borders instead of soft drop-shadows, squared markers instead of pills. */
+
+@font-face { font-family:'Bricolage Grotesque'; font-weight:500; font-display:swap;
+  src:url('/fonts/bricolage-grotesque-500.woff2') format('woff2'); }
+@font-face { font-family:'Bricolage Grotesque'; font-weight:700; font-display:swap;
+  src:url('/fonts/bricolage-grotesque-700.woff2') format('woff2'); }
+@font-face { font-family:'Hanken Grotesk'; font-weight:400; font-display:swap;
+  src:url('/fonts/hanken-grotesk-400.woff2') format('woff2'); }
+@font-face { font-family:'Hanken Grotesk'; font-weight:500; font-display:swap;
+  src:url('/fonts/hanken-grotesk-500.woff2') format('woff2'); }
+@font-face { font-family:'Hanken Grotesk'; font-weight:600; font-display:swap;
+  src:url('/fonts/hanken-grotesk-600.woff2') format('woff2'); }
+
+.inv {
+  --paper:#ffffff; --ground:#eceff3; --panel:#f5f7f9; --rule:#dbe0e6; --ink:#1b2530; --muted:#5c6875;
+  --display:'Bricolage Grotesque','Hanken Grotesk',system-ui,sans-serif;
+  --body:'Hanken Grotesk',system-ui,sans-serif;
+  font-family:var(--body); color:var(--ink); letter-spacing:-0.005em; background:var(--ground);
+}
+
+/* Header: a quiet paper bar with a single hairline, not a navy block. */
+.inv .inv-header { background:var(--paper); border-bottom:1px solid var(--rule); }
+.inv .inv-wordmark { font-family:var(--display); font-weight:700; letter-spacing:-0.02em; color:var(--ink); }
+
+/* Card: crisp cool border, no blur shadow -- depth the way a printed sheet sits on a desk. */
+.inv .inv-card { background:var(--paper); border:1px solid var(--rule); border-radius:12px;
+  box-shadow:0 1px 0 rgba(27,37,48,0.03); }
+.inv .inv-title { font-family:var(--display); font-weight:700; font-size:22px; letter-spacing:-0.02em; color:var(--ink); }
+.inv .inv-eyebrow { font-size:11px; font-weight:600; letter-spacing:0.11em; text-transform:uppercase; color:var(--muted); }
+
+/* Restyle the shared Input in place. Element selectors inside .inv out-specify Tailwind's single
+   utility classes, so the components stay untouched and every getByLabelText query still works. */
+.inv label { font-family:var(--body); font-size:11px; font-weight:600; letter-spacing:0.08em;
+  text-transform:uppercase; color:var(--muted); }
+.inv input { border-radius:8px; border:1px solid var(--rule); background:var(--paper);
+  padding:10px 12px; font-size:14px; font-family:var(--body); color:var(--ink); }
+.inv input:focus { border-color:var(--org-primary, #0053e2); outline:none;
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--org-primary, #0053e2) 15%, transparent); }
+
+/* Primary action: the one place chroma is spent, in the org colour. */
+.inv button[type='submit'], .inv .inv-cta { border-radius:9px; font-family:var(--body); font-weight:600;
+  background:var(--org-primary, #0053e2); color:var(--org-on-primary, #ffffff); }
+.inv button[type='submit']:hover, .inv .inv-cta:hover { opacity:0.92; }
+
+/* Error is a fixed state colour, squared, with a leading marker -- consistent with the roster seal. */
+.inv .inv-alert { border-radius:8px; background:#fbeaec; color:#8a1c2b; border:1px solid #f2ccd2; }
+
+.inv .inv-link { color:var(--org-primary, #0053e2); font-weight:600; }
+.inv .inv-link:hover { text-decoration:underline; }
+
+/* Right panel: Prudent's brand navy. Dark enough that the display type carries the whole panel,
+   which is what stops the restraint from reading as empty. This is Prudent's own marketing surface
+   (the org's branding lives on the form side), so the brand colour belongs here. A 1px lit hairline
+   along the top edge reads like the lit edge of a board rather than a flat fill. */
+.inv .inv-aside { background:#001E60; box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); }
+.inv .inv-headline { font-family:var(--display); font-weight:700; font-size:42px; line-height:1.03;
+  letter-spacing:-0.03em; color:#f4f7fb; }
+.inv .inv-sub { font-size:16px; line-height:1.62; color:#a7b3c8; }
+.inv .inv-proof { font-size:15px; line-height:1.5; color:#dbe3f0; }
+.inv .inv-marker { width:8px; height:8px; border-radius:2px; background:#5b6e9c;
+  flex:none; margin-top:6px; }
+
+/* On navy the eyebrow and record line lift to legible blue-slate tints that sit with the ground. */
+.inv .inv-aside .inv-eyebrow { color:#8ea0c2; }
+.inv .inv-record { font-family:ui-monospace,'Cascadia Code',Consolas,monospace; font-size:11px;
+  letter-spacing:0.04em; color:#7082a6; }
+
+@media (prefers-reduced-motion: reduce) { .inv * { animation:none !important; transition:none !important; } }
