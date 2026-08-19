@@ -1,7 +1,7 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequireAnyPermission } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { TenantContext } from '@exam-platform/shared';
 import { UsageService } from './usage.service';
@@ -14,7 +14,7 @@ export class BillingController {
   constructor(private readonly usageService: UsageService) {}
 
   @Get('usage')
-  @RequirePermissions('org:manage_billing')
+  @RequireAnyPermission('org:manage_billing', 'results:view')
   usage(@CurrentTenant() tenant: TenantContext) {
     return this.usageService.getUsage(tenant);
   }
