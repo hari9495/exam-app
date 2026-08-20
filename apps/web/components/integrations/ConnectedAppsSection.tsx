@@ -43,18 +43,25 @@ const INTEGRATION_EVENTS: { value: string; label: string }[] = [
 
 const EVENT_LABEL_BY_VALUE = new Map(INTEGRATION_EVENTS.map((e) => [e.value, e.label]));
 
+type AppType = 'slack' | 'msteams' | 'webhook';
+
 const APP_TYPE_OPTIONS: SelectOption[] = [
   { value: 'slack', label: 'Slack' },
   { value: 'msteams', label: 'Microsoft Teams' },
+  { value: 'webhook', label: 'Webhook (Zapier, Make, n8n…)' },
 ];
 
-const APP_TYPE_LABEL: Record<'slack' | 'msteams', string> = { slack: 'Slack', msteams: 'Microsoft Teams' };
+const APP_TYPE_LABEL: Record<AppType, string> = { slack: 'Slack', msteams: 'Microsoft Teams', webhook: 'Webhook' };
 
-const URL_HELP: Record<'slack' | 'msteams', { text: string; href: string }> = {
+const URL_HELP: Record<AppType, { text: string; href: string }> = {
   slack: { text: 'How to get a Slack incoming webhook URL', href: 'https://api.slack.com/messaging/webhooks' },
   msteams: {
     text: 'How to get a Teams workflow webhook URL',
     href: 'https://learn.microsoft.com/microsoftteams/platform/webhooks-and-connectors/what-are-webhooks-and-connectors',
+  },
+  webhook: {
+    text: 'Paste your Zapier “Catch Hook” URL (or any HTTPS endpoint — Make, n8n, custom)',
+    href: 'https://zapier.com/apps/webhook/integrations',
   },
 };
 
@@ -63,7 +70,7 @@ function statusTone(status: string): StatusTone {
 }
 
 interface FormState {
-  type: 'slack' | 'msteams';
+  type: AppType;
   label: string;
   targetUrl: string;
   events: string[];
@@ -231,7 +238,7 @@ export function ConnectedAppsSection() {
   const helpForType = URL_HELP[form.type];
 
   return (
-    <CollapsibleSection title="Connected Apps (Slack & Teams)">
+    <CollapsibleSection title="Connected Apps (Slack, Teams & Webhooks)">
       <div className="sm:col-span-2">
         <Table columns={columns} rows={apps ?? []} rowKey={(row) => row.id} emptyMessage="No connected apps yet." />
       </div>
@@ -248,7 +255,7 @@ export function ConnectedAppsSection() {
             <Select
               label="Type"
               value={form.type}
-              onChange={(value) => setForm((current) => ({ ...current, type: value as 'slack' | 'msteams' }))}
+              onChange={(value) => setForm((current) => ({ ...current, type: value as AppType }))}
               options={APP_TYPE_OPTIONS}
               required
             />

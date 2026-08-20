@@ -49,4 +49,22 @@ describe('IntegrationDeliveryWorkerService.deliver', () => {
     await expect(svc().deliver(delivery as any, integration as any, 'attempt.submitted', { subject: 'Ada', linkPath: '/candidates/9' })).rejects.toThrow(/redirect/i);
     expect(txStub.integrationDelivery.update).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'delivered' }) }));
   });
+
+  const webhookIntegration = { id: 'i2', organizationId: 'o1', type: 'webhook', targetUrlEncrypted: 'enc:https://93.184.216.34/hook', status: 'active' };
+
+  it('posts a raw-JSON body (not Slack blocks) for a generic webhook type', async () => {
+    await svc().deliver(delivery as any, webhookIntegration as any, 'attempt.submitted', { subject: 'Ada', examTitle: 'Backend', linkPath: '/candidates/9' });
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as any).body);
+    expect(body).toMatchObject({ event: 'attempt.submitted', data: { Candidate: 'Ada', Exam: 'Backend' } });
+    expect(body.blocks).toBeUndefined();
+  });
+
+  it('refuses a generic webhook whose hostname resolves to an internal address (delivery-time SSRF)', async () => {
+    const dns = require('node:dns').promises;
+    const spy = jest.spyOn(dns, 'lookup').mockResolvedValue([{ address: '169.254.169.254', family: 4 }]);
+    const bad = { ...webhookIntegration, targetUrlEncrypted: 'enc:https://sneaky.example.com/hook' };
+    await expect(svc().deliver(delivery as any, bad as any, 'attempt.submitted', { subject: 'Ada', linkPath: '/x' })).rejects.toThrow(/non-public/i);
+    expect(fetchMock).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
 });

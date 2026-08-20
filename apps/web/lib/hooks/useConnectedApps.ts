@@ -13,7 +13,7 @@ export function useConnectedApps() {
 }
 
 interface CreateConnectedAppInput {
-  type: 'slack' | 'msteams';
+  type: 'slack' | 'msteams' | 'webhook';
   label: string;
   targetUrl: string;
   events: string[];

@@ -665,7 +665,7 @@ export interface WebhookDeliveryRow {
 // chat-notification channels, distinct from the generic Webhooks integration above).
 export interface ConnectedAppRow {
   id: string;
-  type: 'slack' | 'msteams';
+  type: 'slack' | 'msteams' | 'webhook';
   label: string;
   events: string[];
   status: 'active' | 'disabled';

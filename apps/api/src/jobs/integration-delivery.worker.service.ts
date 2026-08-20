@@ -4,10 +4,11 @@ import Redis from 'ioredis';
 import { TenantPrismaService, OrgSecretsCryptoService, IntegrationEventType } from '@exam-platform/shared';
 import { REDIS_CONNECTION } from './redis-connection';
 import { INTEGRATION_DELIVERIES_QUEUE_NAME } from './integration-deliveries.queue';
-import { assertAllowedWebhookUrl, IntegrationType } from '../integrations/webhook-url-allowlist';
+import { assertAllowedWebhookUrl, assertPublicWebhookTarget, IntegrationType } from '../integrations/webhook-url-allowlist';
 import { buildEventSummary } from '../integrations/formatting/event-summary';
 import { formatSlackMessage } from '../integrations/formatting/format-slack';
 import { formatTeamsMessage } from '../integrations/formatting/format-teams';
+import { formatWebhookMessage } from '../integrations/formatting/format-webhook';
 
 const SUPER_ADMIN_CONTEXT = { organizationId: null, isSuperAdmin: true };
 
@@ -62,10 +63,12 @@ export class IntegrationDeliveryWorkerService implements OnModuleDestroy {
     const type = integration.type as IntegrationType;
     const url = this.cryptoService.decrypt(integration.targetUrlEncrypted);
     assertAllowedWebhookUrl(type, url); // throws -> caught by caller -> marked failed, no retry value
+    if (type === 'webhook') await assertPublicWebhookTarget(url); // SSRF: block internal/metadata targets after DNS resolve
 
     const baseUrl = process.env.APP_BASE_URL ?? '';
     const summary = buildEventSummary(eventType, payload, baseUrl);
-    const body = type === 'slack' ? formatSlackMessage(summary) : formatTeamsMessage(summary);
+    const body =
+      type === 'slack' ? formatSlackMessage(summary) : type === 'msteams' ? formatTeamsMessage(summary) : formatWebhookMessage(eventType, summary);
 
     let response: { ok: boolean; status: number };
     try {
