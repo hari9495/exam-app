@@ -7,7 +7,7 @@ import { IntegrationEventsService } from '../integrations/integration-events.ser
 
 describe('PublicApplicationsService', () => {
   let service: PublicApplicationsService;
-  let prisma: { organization: { findUnique: jest.Mock } };
+  let prisma: { organization: { findUnique: jest.Mock; findMany: jest.Mock } };
   let tenantPrisma: { forTenant: jest.Mock };
   let blobStorage: { upload: jest.Mock; signIfOurs: jest.Mock };
   let jobsService: { enqueue: jest.Mock };
@@ -21,10 +21,13 @@ describe('PublicApplicationsService', () => {
     publicApplyEnabled: true,
     title: 'Backend',
     description: 'Build things',
+    location: 'Remote',
+    employmentType: 'FULL_TIME',
+    createdAt: new Date('2026-08-01T00:00:00.000Z'),
   };
 
   beforeEach(async () => {
-    prisma = { organization: { findUnique: jest.fn() } };
+    prisma = { organization: { findUnique: jest.fn(), findMany: jest.fn() } };
     tenantPrisma = { forTenant: jest.fn() };
     blobStorage = { upload: jest.fn(), signIfOurs: jest.fn(async (value) => value) };
     jobsService = { enqueue: jest.fn() };
@@ -81,6 +84,9 @@ describe('PublicApplicationsService', () => {
       expect(result).toEqual({
         jobTitle: 'Backend',
         jobDescription: 'Build things',
+        location: 'Remote',
+        employmentType: 'FULL_TIME',
+        postedAt: '2026-08-01T00:00:00.000Z',
         orgName: 'Acme',
         orgLogo: 'logos/acme.png?sig=abc',
       });
@@ -272,6 +278,55 @@ describe('PublicApplicationsService', () => {
     it('throws NotFoundException for an unknown token', async () => {
       tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ pipelineEntry: { findUnique: jest.fn().mockResolvedValue(null) } }));
       await expect(service.getApplicationStatus('bad-tok')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('getJobsFeed', () => {
+    it('emits an Indeed-style XML feed of open public-apply jobs, CDATA-wrapped, linking to apply pages', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
+        fn({
+          job: {
+            findMany: jest.fn().mockResolvedValue([
+              {
+                title: 'Backend Engineer',
+                description: 'Build <stuff> & things',
+                location: 'Bengaluru',
+                employmentType: 'FULL_TIME',
+                createdAt: new Date('2026-08-01T00:00:00.000Z'),
+                applyToken: 'tok-1',
+                organizationId: 'org-1',
+              },
+            ]),
+          },
+        }),
+      );
+      prisma.organization.findMany.mockResolvedValue([{ id: 'org-1', name: 'Acme' }]);
+
+      const xml = await service.getJobsFeed();
+
+      expect(xml.startsWith('<?xml')).toBe(true);
+      expect(xml).toContain('<source>');
+      expect(xml).toContain('Backend Engineer');
+      expect(xml).toContain('/apply/tok-1');
+      expect(xml).toContain('Acme');
+      expect(xml).toContain('FULL_TIME');
+      // free-text is CDATA-wrapped so "<stuff> & things" can't break the XML
+      expect(xml).toContain('<![CDATA[Build <stuff> & things]]>');
+    });
+
+    it('escapes a CDATA-terminator injection in free text', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
+        fn({
+          job: {
+            findMany: jest.fn().mockResolvedValue([
+              { title: 'X]]><script>', description: '', location: '', employmentType: '', createdAt: new Date(0), applyToken: 't', organizationId: 'o' },
+            ]),
+          },
+        }),
+      );
+      prisma.organization.findMany.mockResolvedValue([{ id: 'o', name: 'O' }]);
+      const xml = await service.getJobsFeed();
+      expect(xml).not.toContain(']]><script>'); // the terminator must have been split
     });
   });
 });

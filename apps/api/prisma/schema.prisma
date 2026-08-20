@@ -809,6 +809,8 @@ model Job {
   closedAt           DateTime?       @map("closed_at")
   publicApplyEnabled Boolean         @default(false) @map("public_apply_enabled")
   applyToken         String?         @unique @map("apply_token")
+  location           String?         @db.NVarChar(200)
+  employmentType     String?         @map("employment_type")
   entries            PipelineEntry[]
   examLinks          JobExam[]
   walkInGroups       WalkInGroup[]

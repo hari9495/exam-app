@@ -8,6 +8,12 @@ import { applicationStatusBucket } from './application-status';
 import { validatePdfUpload } from './pdf-validation';
 import { ApplyDto } from './dto/apply.dto';
 
+// Job-feed fields are wrapped in CDATA (the aggregator-standard for free-text). The only way to
+// break out of CDATA is the literal "]]>", so split it so it can never terminate the section early.
+function xmlCdata(value: string): string {
+  return `<![CDATA[${value.replace(/]]>/g, ']]]]><![CDATA[>')}]]>`;
+}
+
 @Injectable()
 export class PublicApplicationsService {
   // jobs is RLS-protected and there is no org context until the applyToken resolves one. The
@@ -37,6 +43,9 @@ export class PublicApplicationsService {
             publicApplyEnabled: true,
             title: true,
             description: true,
+            location: true,
+            employmentType: true,
+            createdAt: true,
           },
         }),
     );
@@ -57,11 +66,57 @@ export class PublicApplicationsService {
     return {
       jobTitle: job.title,
       jobDescription: job.description,
+      location: job.location,
+      employmentType: job.employmentType,
+      postedAt: job.createdAt.toISOString(),
       orgName: org?.name ?? '',
       // Container is private -- unsigned logoPath 403s in <img src>. signIfOurs mints a
       // read-only SAS for blobs we own and passes anything else through untouched.
       orgLogo: org?.logoPath ? ((await this.blobStorage.signIfOurs(org.logoPath)) as string | null) : null,
     };
+  }
+
+  // Public jobs feed for aggregators (Indeed-style XML). Every entry is an already-public
+  // (open + publicApplyEnabled) role linking to its own apply page. Global across tenants: these
+  // roles are already individually public, and aggregators filter by company.
+  // ponytail: global feed; if a per-org careers feed is ever needed, key it on a public org slug.
+  async getJobsFeed(): Promise<string> {
+    const baseUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
+    const jobs = await this.tenantPrisma.forTenant(
+      { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
+      (tx) =>
+        tx.job.findMany({
+          where: { status: 'open', publicApplyEnabled: true, applyToken: { not: null } },
+          select: {
+            title: true, description: true, location: true, employmentType: true,
+            createdAt: true, applyToken: true, organizationId: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        }),
+    );
+    // Job has no organization relation navigation; resolve names in one batched query.
+    const orgs = await this.prisma.organization.findMany({
+      where: { id: { in: [...new Set(jobs.map((j) => j.organizationId))] } },
+      select: { id: true, name: true },
+    });
+    const orgName = new Map(orgs.map((o) => [o.id, o.name]));
+    const entries = jobs
+      .map((j) =>
+        [
+          '  <job>',
+          `    <title>${xmlCdata(j.title)}</title>`,
+          `    <date>${j.createdAt.toUTCString()}</date>`,
+          `    <referencenumber>${xmlCdata(j.applyToken as string)}</referencenumber>`,
+          `    <url>${xmlCdata(`${baseUrl}/apply/${j.applyToken}`)}</url>`,
+          `    <company>${xmlCdata(orgName.get(j.organizationId) ?? '')}</company>`,
+          `    <city>${xmlCdata(j.location ?? '')}</city>`,
+          `    <jobtype>${xmlCdata(j.employmentType ?? '')}</jobtype>`,
+          `    <description>${xmlCdata(j.description ?? '')}</description>`,
+          '  </job>',
+        ].join('\n'),
+      )
+      .join('\n');
+    return `<?xml version="1.0" encoding="utf-8"?>\n<source>\n  <publisher>Prudent Hire</publisher>\n${entries}\n</source>\n`;
   }
 
   async apply(applyToken: string, dto: ApplyDto): Promise<{ statusToken: string }> {
