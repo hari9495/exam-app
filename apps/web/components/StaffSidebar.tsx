@@ -102,7 +102,7 @@ export function StaffSidebar({ navItems, pathname, orgName, orgLogoUrl, orgIniti
             <X size={16} />
           </button>
         </div>
-        <ul className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2.5">
+        <ul className="nav-scroll flex flex-1 flex-col gap-0.5 overflow-y-auto p-2.5">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname?.startsWith(item.href) ?? false;
