@@ -7,6 +7,7 @@ describe('InterviewsService', () => {
   let emailService: { send: jest.Mock };
   let blobStorage: { signIfOurs: jest.Mock };
   let audit: { record: jest.Mock };
+  let integrationEvents: { emit: jest.Mock };
   let tx: {
     pipelineEntry: Record<string, jest.Mock>;
     interview: Record<string, jest.Mock>;
@@ -48,7 +49,8 @@ describe('InterviewsService', () => {
     emailService = { send: jest.fn().mockResolvedValue({ success: true }) };
     blobStorage = { signIfOurs: jest.fn().mockResolvedValue(null) };
     audit = { record: jest.fn() };
-    service = new InterviewsService(tenantPrisma as any, emailService as any, blobStorage as any, audit as any);
+    integrationEvents = { emit: jest.fn() };
+    service = new InterviewsService(tenantPrisma as any, emailService as any, blobStorage as any, audit as any, integrationEvents as any);
   });
 
   describe('createInterview', () => {
@@ -451,6 +453,28 @@ describe('InterviewsService', () => {
       expect(ics).toContain('SUMMARY:Interview: Asha Rao');
 
       expect(out).toMatchObject({ status: 'confirmed', confirmedSlotId: 'slot-1' });
+    });
+
+    it('emits interview.confirmed with the candidate name, confirmed slot start time, and a deep link, after the emails are sent', async () => {
+      await service.respondPublic('interview-token-1', { action: 'confirm', slotId: 'slot-1' } as any);
+
+      expect(integrationEvents.emit).toHaveBeenCalledWith(
+        'org-1',
+        'interview.confirmed',
+        expect.objectContaining({
+          subject: 'Asha Rao',
+          slotTime: '2026-09-01T14:00:00.000Z',
+          linkPath: '/interviews/interview-1',
+        }),
+      );
+      const sendOrders = emailService.send.mock.invocationCallOrder;
+      const emitOrder = integrationEvents.emit.mock.invocationCallOrder[0];
+      expect(emitOrder).toBeGreaterThan(sendOrders[sendOrders.length - 1]);
+    });
+
+    it('does not emit interview.confirmed on decline or reschedule', async () => {
+      await service.respondPublic('interview-token-1', { action: 'decline' } as any);
+      expect(integrationEvents.emit).not.toHaveBeenCalled();
     });
 
     it('runs every notify send OUTSIDE all forTenant calls', async () => {

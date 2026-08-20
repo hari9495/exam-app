@@ -12,7 +12,10 @@ import { CandidateFitProcessor } from './processors/candidate-fit.processor';
 import { AiJobsWorkerService } from './ai-jobs.worker.service';
 import { WEBHOOK_DELIVERIES_QUEUE, createWebhookDeliveriesQueue } from './webhook-deliveries.queue';
 import { WebhookDeliveryWorkerService } from './webhook-delivery.worker.service';
+import { INTEGRATION_DELIVERIES_QUEUE, createIntegrationDeliveriesQueue } from './integration-deliveries.queue';
+import { IntegrationDeliveryWorkerService } from './integration-delivery.worker.service';
 import { WebhooksService } from '../webhooks/webhooks.service';
+import { IntegrationEventsService } from '../integrations/integration-events.service';
 import { JobsService } from './jobs.service';
 import { JobsController } from './jobs.controller';
 
@@ -26,6 +29,7 @@ import { JobsController } from './jobs.controller';
     { provide: REDIS_CONNECTION, useFactory: createRedisConnection },
     { provide: AI_JOBS_QUEUE, useFactory: createAiJobsQueue, inject: [REDIS_CONNECTION] },
     { provide: WEBHOOK_DELIVERIES_QUEUE, useFactory: createWebhookDeliveriesQueue, inject: [REDIS_CONNECTION] },
+    { provide: INTEGRATION_DELIVERIES_QUEUE, useFactory: createIntegrationDeliveriesQueue, inject: [REDIS_CONNECTION] },
     EchoProcessor,
     QuestionGenerationClient,
     AiQuestionGenerationProcessor,
@@ -43,9 +47,11 @@ import { JobsController } from './jobs.controller';
     },
     AiJobsWorkerService,
     WebhookDeliveryWorkerService,
+    IntegrationDeliveryWorkerService,
     JobsService,
     WebhooksService,
+    IntegrationEventsService,
   ],
-  exports: [JobsService, WebhooksService],
+  exports: [JobsService, WebhooksService, IntegrationEventsService],
 })
 export class JobsModule {}

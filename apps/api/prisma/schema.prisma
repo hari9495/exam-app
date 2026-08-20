@@ -81,6 +81,37 @@ model BillingNotice {
   @@map("billing_notices")
 }
 
+model OrgIntegration {
+  id                 String    @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  organizationId     String    @map("organization_id") @db.UniqueIdentifier
+  type               String
+  label              String
+  targetUrlEncrypted String    @map("target_url_encrypted") @db.NVarChar(Max)
+  events             String    @db.NVarChar(Max)
+  status             String    @default("active")
+  lastDeliveryAt     DateTime? @map("last_delivery_at")
+  lastError          String?   @map("last_error") @db.NVarChar(Max)
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  @@map("org_integrations")
+}
+
+model IntegrationDelivery {
+  id             String    @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  organizationId String    @map("organization_id") @db.UniqueIdentifier
+  integrationId  String    @map("integration_id") @db.UniqueIdentifier
+  eventType      String    @map("event_type")
+  status         String    @default("pending")
+  httpStatusCode Int?      @map("http_status_code")
+  attemptCount   Int       @default(0) @map("attempt_count")
+  errorDetail    String?   @map("error_detail") @db.NVarChar(Max)
+  createdAt      DateTime  @default(now()) @map("created_at")
+  lastAttemptAt  DateTime? @map("last_attempt_at")
+
+  @@map("integration_deliveries")
+}
+
 model WebhookDelivery {
   id             String       @id @default(uuid()) @db.UniqueIdentifier
   organizationId String       @map("organization_id") @db.UniqueIdentifier

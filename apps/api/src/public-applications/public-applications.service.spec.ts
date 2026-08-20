@@ -3,6 +3,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PublicApplicationsService } from './public-applications.service';
 import { PrismaService, TenantPrismaService, BlobStorageService } from '@exam-platform/shared';
 import { JobsService } from '../jobs/jobs.service';
+import { IntegrationEventsService } from '../integrations/integration-events.service';
 
 describe('PublicApplicationsService', () => {
   let service: PublicApplicationsService;
@@ -10,6 +11,7 @@ describe('PublicApplicationsService', () => {
   let tenantPrisma: { forTenant: jest.Mock };
   let blobStorage: { upload: jest.Mock; signIfOurs: jest.Mock };
   let jobsService: { enqueue: jest.Mock };
+  let integrationEvents: { emit: jest.Mock };
 
   const openJob = {
     id: 'job-1',
@@ -26,6 +28,7 @@ describe('PublicApplicationsService', () => {
     tenantPrisma = { forTenant: jest.fn() };
     blobStorage = { upload: jest.fn(), signIfOurs: jest.fn(async (value) => value) };
     jobsService = { enqueue: jest.fn() };
+    integrationEvents = { emit: jest.fn() };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -34,6 +37,7 @@ describe('PublicApplicationsService', () => {
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: BlobStorageService, useValue: blobStorage },
         { provide: JobsService, useValue: jobsService },
+        { provide: IntegrationEventsService, useValue: integrationEvents },
       ],
     }).compile();
     service = moduleRef.get(PublicApplicationsService);
@@ -175,6 +179,12 @@ describe('PublicApplicationsService', () => {
         'user-1',
       );
       expect(out).toEqual({ statusToken: 'tok-generated' });
+      // A brand-new candidate (existingCandidate was null) is a new applicant.
+      expect(integrationEvents.emit).toHaveBeenCalledWith(
+        'org-1',
+        'candidate.applied',
+        expect.objectContaining({ subject: 'A', source: 'public', linkPath: '/candidates/cand-1' }),
+      );
     });
 
     it('re-apply returns the existing token (upsert update: {} keeps the entry as-is)', async () => {
@@ -226,6 +236,8 @@ describe('PublicApplicationsService', () => {
       // stored name is two words already -- expandedName's guard means no exception applies,
       // so the update must leave name/phone untouched entirely (not even set to the submitted values).
       expect(writeTx.candidate.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: {} }));
+      // Existing candidate re-applying is not a new applicant -- no candidate.applied event.
+      expect(integrationEvents.emit).not.toHaveBeenCalled();
     });
   });
 

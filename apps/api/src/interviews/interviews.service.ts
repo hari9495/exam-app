@@ -3,6 +3,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Interview } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService, BlobStorageService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
+import { IntegrationEventsService } from '../integrations/integration-events.service';
 import { buildCandidateEmailHtml } from '../candidate-emails/candidate-email-render';
 import { CreateInterviewDto } from './dto/create-interview.dto';
 import { RespondInterviewDto } from './dto/respond-interview.dto';
@@ -36,6 +37,7 @@ export class InterviewsService {
     private readonly emailService: EmailService,
     private readonly blobStorage: BlobStorageService,
     private readonly audit: AuditService,
+    private readonly integrationEvents: IntegrationEventsService,
   ) {}
 
   async createInterview(
@@ -475,6 +477,12 @@ export class InterviewsService {
           organizationId: interview.organizationId,
         });
       }
+
+      await this.integrationEvents.emit(interview.organizationId, 'interview.confirmed', {
+        subject: notify.candidateName,
+        slotTime: chosenSlot!.startsAt.toISOString(),
+        linkPath: `/interviews/${interview.id}`,
+      });
     } else if (notify.recruiterEmail) {
       const verb = dto.action === 'decline' ? 'declined' : 'requested a reschedule for';
       const noteText = dto.action === 'reschedule' && dto.note ? `\n\nCandidate's note: ${dto.note}` : '';
