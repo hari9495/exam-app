@@ -15,7 +15,7 @@ import { STRICT_WALK_IN_THROTTLE } from '../rate-limit-tiers';
 export class PublicApplicationsController {
   constructor(private readonly service: PublicApplicationsService) {}
 
-  // Declared BEFORE jobs/:applyToken so the static path wins over the param route.
+  // Distinct segment from jobs/:applyToken (jobs-feed.xml vs jobs/*), so no route collision.
   @Get('jobs-feed.xml')
   @Header('Content-Type', 'application/xml; charset=utf-8')
   jobsFeed() {
