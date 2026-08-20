@@ -39,6 +39,13 @@ describe('webhook URL allowlist (SSRF guard)', () => {
       expect(isAllowedWebhookUrl('webhook', 'https://127.0.0.1/x')).toBe(false);
       expect(isAllowedWebhookUrl('webhook', 'https://169.254.169.254/latest')).toBe(false);
       expect(isAllowedWebhookUrl('webhook', 'https://[::1]/x')).toBe(false);
+      expect(isAllowedWebhookUrl('webhook', 'https://0.0.0.0/x')).toBe(false);
+    });
+    it('normalizes obfuscated IPv4 (decimal/octal/hex) so they cannot bypass the check', () => {
+      // WHATWG URL canonicalizes these to 127.0.0.1 before .hostname is read — guard against regression.
+      expect(isAllowedWebhookUrl('webhook', 'https://2130706433/x')).toBe(false);
+      expect(isAllowedWebhookUrl('webhook', 'https://0x7f000001/x')).toBe(false);
+      expect(isAllowedWebhookUrl('webhook', 'https://0177.0.0.1/x')).toBe(false);
     });
   });
 
