@@ -5,7 +5,7 @@ export class DispatchWebhookDto {
   @IsNotEmpty()
   organizationId!: string;
 
-  @IsIn(['attempt.settled'])
+  @IsIn(['attempt.submitted', 'attempt.settled', 'integrity.flagged'])
   eventType!: string;
 
   @IsObject()

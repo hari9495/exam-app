@@ -6,11 +6,23 @@ import { LeaderboardModule } from '../leaderboard/leaderboard.module';
 import { CodeExecutionModule } from '../code-execution/code-execution.module';
 import { FaceModule } from '../face/face.module';
 import { BillingModule } from '../billing/billing.module';
+import { ApiInternalClientModule } from '../api-internal-client/api-internal-client.module';
 import { AttemptController } from './attempt.controller';
 import { AttemptService } from './attempt.service';
 
 @Module({
-  imports: [GradingModule, MonitoringModule, LeaderboardModule, AuditModule, CodeExecutionModule, StorageModule, CryptoModule, FaceModule, BillingModule],
+  imports: [
+    GradingModule,
+    MonitoringModule,
+    LeaderboardModule,
+    AuditModule,
+    CodeExecutionModule,
+    StorageModule,
+    CryptoModule,
+    FaceModule,
+    BillingModule,
+    ApiInternalClientModule,
+  ],
   controllers: [AttemptController],
   providers: [AttemptService],
 })

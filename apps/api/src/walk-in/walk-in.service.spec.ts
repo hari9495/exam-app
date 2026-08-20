@@ -2,7 +2,7 @@ import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { WalkInService } from './walk-in.service';
 import { PrismaService, TenantPrismaService, AuditService, BlobStorageService } from '@exam-platform/shared';
-import { WebhooksService } from '../webhooks/webhooks.service';
+import { IntegrationEventsService } from '../integrations/integration-events.service';
 import { EmailService } from '../email/email.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { EMAIL_LOGO_SAS_TTL_MS } from '../invitations/invitations.service';
@@ -12,7 +12,7 @@ describe('WalkInService', () => {
   let prisma: { organization: { findUnique: jest.Mock } };
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
-  let webhooksService: { enqueue: jest.Mock };
+  let integrationEvents: { emit: jest.Mock };
   let emailService: { send: jest.Mock };
   let blobStorage: { signIfOurs: jest.Mock };
   let pipelineService: { upsertDriveEntry: jest.Mock };
@@ -21,7 +21,7 @@ describe('WalkInService', () => {
     prisma = { organization: { findUnique: jest.fn() } };
     tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
-    webhooksService = { enqueue: jest.fn() };
+    integrationEvents = { emit: jest.fn() };
     emailService = { send: jest.fn().mockResolvedValue({ success: true }) };
     // Passes the value through unchanged by default, matching signIfOurs' real behavior for a
     // null logoPath or an unconfigured storage account.
@@ -33,7 +33,7 @@ describe('WalkInService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: AuditService, useValue: audit },
-        { provide: WebhooksService, useValue: webhooksService },
+        { provide: IntegrationEventsService, useValue: integrationEvents },
         { provide: EmailService, useValue: emailService },
         { provide: BlobStorageService, useValue: blobStorage },
         { provide: PipelineService, useValue: pipelineService },
@@ -130,7 +130,17 @@ describe('WalkInService', () => {
         expect.objectContaining({ data: expect.objectContaining({ examId: 'exam-1', candidateId: 'cand-1', source: 'walk_in', emailStatus: 'none' }) }),
       );
       expect(result).toEqual({ token: 'raw-token' });
-      expect(webhooksService.enqueue).toHaveBeenCalledWith('org-1', 'invitation.created', expect.objectContaining({ id: 'inv-1' }));
+      expect(integrationEvents.emit).toHaveBeenCalledWith(
+        'org-1',
+        'invitation.created',
+        expect.objectContaining({ id: 'inv-1', subject: 'alice@test.com', linkPath: '/candidates' }),
+      );
+      // A brand-new candidate row (this is a first-time registrant) also fires candidate.applied.
+      expect(integrationEvents.emit).toHaveBeenCalledWith(
+        'org-1',
+        'candidate.applied',
+        expect.objectContaining({ subject: 'Alice', source: 'walk-in', linkPath: '/candidates/cand-1' }),
+      );
 
       // Email dispatch is fire-and-forget -- flush the microtask queue before asserting.
       await new Promise((resolve) => setImmediate(resolve));
@@ -219,6 +229,9 @@ describe('WalkInService', () => {
       expect(tx.invitation.create).not.toHaveBeenCalled();
       expect(tx.candidate.update).not.toHaveBeenCalled();
       expect(result).toEqual({ token: 'existing-token' });
+      // Not a new candidate -- only invitation.created should fire, no candidate.applied.
+      expect(integrationEvents.emit).toHaveBeenCalledTimes(1);
+      expect(integrationEvents.emit).toHaveBeenCalledWith('org-1', 'invitation.created', expect.anything());
     });
 
     it('stamps driveSessionId on a new invitation when a drive is live for the exam\'s group', async () => {

@@ -48,6 +48,9 @@ describe('IntegrationsSettingsPage', () => {
       if (path === '/organizations/integrations/webhook-deliveries') {
         return Promise.resolve([]);
       }
+      if (path === '/organizations/integrations/connected-apps') {
+        return Promise.resolve([]);
+      }
       return Promise.resolve({});
     });
   });
@@ -193,6 +196,9 @@ describe('IntegrationsSettingsPage', () => {
       if (path === '/organizations/integrations/webhook-deliveries') {
         return Promise.resolve([]);
       }
+      if (path === '/organizations/integrations/connected-apps') {
+        return Promise.resolve([]);
+      }
       return Promise.resolve({});
     });
 
@@ -234,6 +240,9 @@ describe('IntegrationsSettingsPage', () => {
         });
       }
       if (path === '/organizations/integrations/webhook-deliveries') {
+        return Promise.resolve([]);
+      }
+      if (path === '/organizations/integrations/connected-apps') {
         return Promise.resolve([]);
       }
       return Promise.resolve({});
@@ -291,6 +300,9 @@ describe('IntegrationsSettingsPage', () => {
       if (path === '/organizations/integrations/webhook-deliveries') {
         return Promise.resolve([]);
       }
+      if (path === '/organizations/integrations/connected-apps') {
+        return Promise.resolve([]);
+      }
       if (path === '/organizations/integrations/api-key' && options?.method === 'POST') {
         return Promise.resolve({ apiKey: 'pk_live_abcdef', apiKeyPrefix: 'pk_live_abcd' });
       }
@@ -328,6 +340,9 @@ describe('IntegrationsSettingsPage', () => {
         return Promise.resolve([
           { id: 'delivery-1', eventType: 'invitation.created', status: 'delivered', httpStatusCode: 200, createdAt: '2026-07-19T00:00:00.000Z' },
         ]);
+      }
+      if (path === '/organizations/integrations/connected-apps') {
+        return Promise.resolve([]);
       }
       return Promise.resolve({});
     });

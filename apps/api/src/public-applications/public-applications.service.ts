@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService, TenantPrismaService, BlobStorageService } from '@exam-platform/shared';
 import { JobsService } from '../jobs/jobs.service';
+import { IntegrationEventsService } from '../integrations/integration-events.service';
 import { expandedName } from '../walk-in/walk-in.service';
 import { applicationStatusBucket } from './application-status';
 import { validatePdfUpload } from './pdf-validation';
@@ -19,6 +20,7 @@ export class PublicApplicationsService {
     private readonly prisma: PrismaService,
     private readonly blobStorage: BlobStorageService,
     private readonly jobsService: JobsService,
+    private readonly integrationEvents: IntegrationEventsService,
   ) {}
 
   private async resolveJob(applyToken: string) {
@@ -80,7 +82,7 @@ export class PublicApplicationsService {
     );
 
     const context = { organizationId: job.organizationId, isSuperAdmin: true };
-    const { entry, candidateId } = await this.tenantPrisma.forTenant(context, async (tx) => {
+    const { entry, candidateId, isNewCandidate } = await this.tenantPrisma.forTenant(context, async (tx) => {
       // Public, unauthenticated endpoint: an existing candidate match must NOT be overwritten
       // with request-body name/phone -- anyone who knows a candidate's email could tamper with
       // their stored details. Same rule as WalkInService.register; expandedName carries the one
@@ -88,6 +90,7 @@ export class PublicApplicationsService {
       const existingCandidate = await tx.candidate.findUnique({
         where: { organizationId_email: { organizationId: job.organizationId, email: dto.email } },
       });
+      const isNewCandidate = !existingCandidate;
       const nameUpdate = existingCandidate ? expandedName(existingCandidate.name, dto.name) : null;
       const candidate = await tx.candidate.upsert({
         where: { organizationId_email: { organizationId: job.organizationId, email: dto.email } },
@@ -123,10 +126,18 @@ export class PublicApplicationsService {
         // though the profile above IS refreshed with the newly-uploaded résumé.
         update: {},
       });
-      return { entry, candidateId: candidate.id };
+      return { entry, candidateId: candidate.id, isNewCandidate };
     });
 
     await this.jobsService.enqueue(context, 'resume_parse', JSON.stringify({ candidateId }), job.createdById);
+
+    if (isNewCandidate) {
+      await this.integrationEvents.emit(job.organizationId, 'candidate.applied', {
+        subject: dto.name,
+        source: 'public',
+        linkPath: `/candidates/${candidateId}`,
+      });
+    }
 
     return { statusToken: entry.applicationToken! };
   }
