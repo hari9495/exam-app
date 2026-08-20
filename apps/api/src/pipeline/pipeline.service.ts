@@ -46,6 +46,15 @@ export interface PipelineBoard {
   rejected: BoardRow[];
 }
 
+// RFC-4180 CSV field encode + spreadsheet formula-injection guard: a leading =/+/-/@ (or tab/CR)
+// can execute as a formula in Excel/Sheets, so prefix those with a quote before RFC-4180 quoting.
+function csvEscape(value: string): string {
+  let s = String(value ?? '');
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  if (/[",\r\n]/.test(s)) s = `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
 function emptyStageCounts(): Record<PipelineStage, number> & { rejected: number } {
   const counts = Object.fromEntries(PIPELINE_STAGES.map((s) => [s, 0])) as Record<PipelineStage, number>;
   return { ...counts, rejected: 0 };
@@ -202,6 +211,30 @@ export class PipelineService {
         metadata: dto,
       });
       return updated;
+    });
+  }
+
+  // Candidate/pipeline CSV export for ATS/HRIS interchange. Formula-injection-safe (candidate
+  // name/email/phone come from the public apply form).
+  async exportJobCandidatesCsv(context: TenantContext, jobId: string): Promise<string> {
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const job = await tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } });
+      if (!job) throw new NotFoundException(`Job ${jobId} not found`);
+      const entries = await tx.pipelineEntry.findMany({
+        where: { jobId },
+        select: { stage: true, rejected: true, createdAt: true, candidate: { select: { name: true, email: true, phone: true } } },
+        orderBy: { createdAt: 'asc' },
+      });
+      const header = ['Name', 'Email', 'Phone', 'Stage', 'Status', 'Applied At'];
+      const rows = entries.map((e) => [
+        e.candidate?.name ?? '',
+        e.candidate?.email ?? '',
+        e.candidate?.phone ?? '',
+        e.stage,
+        e.rejected ? 'rejected' : 'active',
+        e.createdAt.toISOString(),
+      ]);
+      return [header, ...rows].map((r) => r.map(csvEscape).join(',')).join('\r\n') + '\r\n';
     });
   }
 

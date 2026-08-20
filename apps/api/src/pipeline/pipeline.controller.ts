@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
@@ -57,6 +57,14 @@ export class PipelineController {
   @RequirePermissions('results:view')
   getPipeline(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.pipelineService.getPipeline(tenant, id);
+  }
+
+  @Get('jobs/:id/candidates.csv')
+  @RequirePermissions('results:view')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  @Header('Content-Disposition', 'attachment; filename="candidates.csv"')
+  exportCandidatesCsv(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.pipelineService.exportJobCandidatesCsv(tenant, id);
   }
 
   @Post('jobs/:id/entries')

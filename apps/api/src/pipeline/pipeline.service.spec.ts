@@ -351,6 +351,35 @@ describe('PipelineService', () => {
     });
   });
 
+  describe('exportJobCandidatesCsv', () => {
+    it('builds a header + one row per candidate, comma-quoted and formula-injection-safe', async () => {
+      const tx = {
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }) },
+        pipelineEntry: {
+          findMany: jest.fn().mockResolvedValue([
+            { stage: 'hired', rejected: false, createdAt: new Date('2026-08-01T00:00:00.000Z'), candidate: { name: 'Asha, Rao', email: 'asha@example.com', phone: '+91' } },
+            { stage: 'applied', rejected: true, createdAt: new Date('2026-08-02T00:00:00.000Z'), candidate: { name: '=cmd()', email: 'x@y.com', phone: null } },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      const csv = await service.exportJobCandidatesCsv(context, 'job-1');
+      const lines = csv.trim().split('\r\n');
+
+      expect(lines[0]).toBe('Name,Email,Phone,Stage,Status,Applied At');
+      // +91 phone is prefixed with ' -- a leading + is a spreadsheet formula-injection vector (and keeps it as text)
+      expect(lines[1]).toBe("\"Asha, Rao\",asha@example.com,'+91,hired,active,2026-08-01T00:00:00.000Z");
+      expect(lines[2]).toContain("'=cmd()"); // formula prefix neutralized
+      expect(lines[2]).toContain('rejected');
+    });
+
+    it('throws NotFound for a job outside the org', async () => {
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn({ job: { findFirst: jest.fn().mockResolvedValue(null) } }));
+      await expect(service.exportJobCandidatesCsv(context, 'nope')).rejects.toThrow(NotFoundException);
+    });
+  });
+
   describe('patchEntry', () => {
     it('stage move clears reject fields and audits entry.stage_changed', async () => {
       const update = jest.fn().mockResolvedValue({ id: 'en1', stage: 'interview' });

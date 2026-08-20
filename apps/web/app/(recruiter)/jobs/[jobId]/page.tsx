@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
-import { Check, Copy } from 'lucide-react';
+import { Check, Copy, Download } from 'lucide-react';
 import { Button, Checkbox, StatusBadge, useToast, type StatusTone } from '../../../../components/ui';
+import { API_BASE } from '../../../../lib/api-client';
 import { BackLink } from '../../../../components/BackLink';
 import { PageHeader } from '../../../../components/PageChrome';
 import { LinkedExams } from '../../../../components/pipeline/LinkedExams';
@@ -16,6 +17,24 @@ import { JobDetail, JobStatus } from '../../../../lib/types';
 
 const STATUS_LABEL: Record<JobStatus, string> = { open: 'Open', closed: 'Closed' };
 const STATUS_TONE: Record<JobStatus, StatusTone> = { open: 'success', closed: 'neutral' };
+
+// CSV export is an authenticated download, so it can't be a plain <a href> (no bearer token) --
+// fetch it with auth, then hand the browser a blob to save.
+async function downloadCandidatesCsv(jobId: string, accessToken: string | null): Promise<void> {
+  const res = await fetch(`${API_BASE}/jobs/${jobId}/candidates.csv`, {
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    credentials: 'include',
+  });
+  if (!res.ok) throw new Error('Export failed');
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'candidates.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 // Same copy-to-clipboard pattern as WalkInShareCard: navigator.clipboard.writeText, a
 // toast, and a 2s "Copied" icon swap.
@@ -68,12 +87,24 @@ function PublicApplyControl({ job, jobId }: { job: JobDetail; jobId: string }) {
 
 export default function JobPage() {
   const { jobId } = useParams<{ jobId: string }>();
-  const { role } = useAuth();
+  const { role, accessToken } = useAuth();
   const canManage = role !== 'panel';
   const { toast } = useToast();
   const { data: job } = useJob(jobId);
   const updateJob = useUpdateJob(jobId);
   const [addOpen, setAddOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      await downloadCandidatesCsv(jobId, accessToken);
+    } catch {
+      toast('Export failed.', 'error');
+    } finally {
+      setExporting(false);
+    }
+  }
 
   function toggleStatus() {
     if (!job) return;
@@ -114,7 +145,15 @@ export default function JobPage() {
 
       <div className="flex items-center justify-between">
         <h2 className="font-display text-lg font-semibold text-ink">Pipeline</h2>
-        {canManage && <Button onClick={() => setAddOpen(true)}>Add candidate</Button>}
+        {canManage && (
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={handleExport} loading={exporting} className="inline-flex items-center gap-1.5">
+              <Download size={14} />
+              Export CSV
+            </Button>
+            <Button onClick={() => setAddOpen(true)}>Add candidate</Button>
+          </div>
+        )}
       </div>
 
       <PipelineBoard jobId={jobId} />
