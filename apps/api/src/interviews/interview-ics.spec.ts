@@ -21,6 +21,21 @@ describe('buildInterviewIcs', () => {
     expect(ics).toContain('\r\n');
   });
 
+  it('defaults to a METHOD:REQUEST invite at SEQUENCE 0, STATUS:CONFIRMED', () => {
+    const ics = buildInterviewIcs(base);
+    expect(ics).toContain('METHOD:REQUEST');
+    expect(ics).toContain('SEQUENCE:0');
+    expect(ics).toContain('STATUS:CONFIRMED');
+  });
+
+  it('builds a cancellation (METHOD:CANCEL, STATUS:CANCELLED, higher SEQUENCE, same UID)', () => {
+    const ics = buildInterviewIcs({ ...base, method: 'CANCEL', sequence: 1 });
+    expect(ics).toContain('METHOD:CANCEL');
+    expect(ics).toContain('STATUS:CANCELLED');
+    expect(ics).toContain('SEQUENCE:1');
+    expect(ics).toContain(`UID:${base.uid}`); // must match the original event to retract it
+  });
+
   it('escapes commas and newlines in text fields', () => {
     const ics = buildInterviewIcs({
       ...base,

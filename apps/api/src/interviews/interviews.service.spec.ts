@@ -11,6 +11,7 @@ describe('InterviewsService', () => {
   let tx: {
     pipelineEntry: Record<string, jest.Mock>;
     interview: Record<string, jest.Mock>;
+    interviewSlot: Record<string, jest.Mock>;
     interviewPanelist: Record<string, jest.Mock>;
     user: Record<string, jest.Mock>;
     organization: Record<string, jest.Mock>;
@@ -33,6 +34,9 @@ describe('InterviewsService', () => {
         findUnique: jest.fn(),
         update: jest.fn().mockImplementation(({ data }: any) => Promise.resolve({ id: 'interview-1', ...data })),
         updateMany: jest.fn(),
+      },
+      interviewSlot: {
+        findUnique: jest.fn(),
       },
       interviewPanelist: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -191,6 +195,35 @@ describe('InterviewsService', () => {
 
       await expect(service.cancel(context, 'user-1', 'interview-x')).rejects.toThrow(NotFoundException);
       expect(tx.interview.update).not.toHaveBeenCalled();
+    });
+
+    it('sends no cancellation email for an unconfirmed interview', async () => {
+      tx.interview.findFirst.mockResolvedValue({ id: 'interview-1', organizationId: 'org-1', status: 'proposed', confirmedSlotId: null });
+
+      await service.cancel(context, 'user-1', 'interview-1');
+
+      expect(emailService.send).not.toHaveBeenCalled();
+    });
+
+    it('retracts a CONFIRMED interview with a METHOD:CANCEL ics to candidate, recruiter and panelists', async () => {
+      tx.interview.findFirst.mockResolvedValue({
+        id: 'interview-1', organizationId: 'org-1', status: 'confirmed', confirmedSlotId: 'slot-1',
+        pipelineEntryId: 'entry-1', sentByUserId: 'recruiter-1', location: 'Room 1', recruiterNote: 'Panel', timeZone: 'UTC',
+      });
+      tx.interview.update.mockResolvedValue({ id: 'interview-1', status: 'cancelled', timeZone: 'UTC' });
+      tx.interviewSlot.findUnique.mockResolvedValue({ startsAt: new Date('2026-09-01T14:00:00Z'), endsAt: new Date('2026-09-01T15:00:00Z') });
+      tx.pipelineEntry.findUnique.mockResolvedValue({ candidate: { name: 'Asha Rao', email: 'asha@example.com' }, job: { title: 'Backend Engineer' } });
+      tx.interviewPanelist.findMany.mockResolvedValue([{ userId: 'panelist-1' }]);
+      tx.user.findUnique.mockResolvedValue({ email: 'recruiter@example.com' });
+      tx.user.findMany.mockResolvedValue([{ email: 'panelist@example.com' }]);
+
+      await service.cancel(context, 'user-1', 'interview-1');
+
+      const recipients = emailService.send.mock.calls.map((c) => c[0].to);
+      expect(recipients).toEqual(expect.arrayContaining(['asha@example.com', 'recruiter@example.com', 'panelist@example.com']));
+      const ics = emailService.send.mock.calls[0][0].attachments[0].content.toString();
+      expect(ics).toContain('METHOD:CANCEL');
+      expect(ics).toContain('UID:interview-1');
     });
   });
 

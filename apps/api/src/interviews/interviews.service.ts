@@ -126,8 +126,8 @@ export class InterviewsService {
   }
 
   async cancel(context: TenantContext, actorUserId: string, interviewId: string): Promise<Interview> {
-    return this.tenantPrisma.forTenant(context, async (tx) => {
-      const orgId = context.organizationId as string;
+    const orgId = context.organizationId as string;
+    const { updated, cancelNotice } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const interview = await tx.interview.findFirst({ where: { id: interviewId, organizationId: orgId } });
       if (!interview) throw new NotFoundException(`Interview ${interviewId} not found`);
 
@@ -138,8 +138,70 @@ export class InterviewsService {
         entityType: 'interview',
         entityId: interviewId,
       });
-      return updated;
+
+      // Only a CONFIRMED interview created a calendar event; gather recipients so we can retract it.
+      let cancelNotice: {
+        startsAt: Date; endsAt: Date; candidateName: string; jobTitle: string; orgName: string;
+        location: string; description: string; recipients: string[];
+      } | null = null;
+      if (interview.confirmedSlotId) {
+        const slot = await tx.interviewSlot.findUnique({ where: { id: interview.confirmedSlotId }, select: { startsAt: true, endsAt: true } });
+        if (slot) {
+          const entry = await tx.pipelineEntry.findUnique({
+            where: { id: interview.pipelineEntryId },
+            select: { candidate: { select: { name: true, email: true } }, job: { select: { title: true } } },
+          });
+          const org = await tx.organization.findUnique({ where: { id: orgId }, select: { name: true } });
+          const recruiter = interview.sentByUserId
+            ? await tx.user.findUnique({ where: { id: interview.sentByUserId }, select: { email: true } })
+            : null;
+          const panelistRows = await tx.interviewPanelist.findMany({ where: { interviewId }, select: { userId: true } });
+          const panelists = panelistRows.length
+            ? await tx.user.findMany({ where: { id: { in: panelistRows.map((p) => p.userId) } }, select: { email: true } })
+            : [];
+          const recipients = [entry?.candidate.email, recruiter?.email, ...panelists.map((p) => p.email)].filter(
+            (e): e is string => Boolean(e),
+          );
+          cancelNotice = {
+            startsAt: slot.startsAt, endsAt: slot.endsAt,
+            candidateName: entry?.candidate.name ?? '', jobTitle: entry?.job.title ?? '', orgName: org?.name ?? '',
+            location: interview.location, description: interview.recruiterNote ?? '', recipients,
+          };
+        }
+      }
+      return { updated, cancelNotice };
     });
+
+    // Retract the calendar event: a METHOD:CANCEL invite (same UID, higher SEQUENCE) tells the
+    // attendees' calendars to remove it. Email is a network call -> OUTSIDE the tx above.
+    if (cancelNotice) {
+      const ics = buildInterviewIcs({
+        uid: interviewId,
+        startsAt: cancelNotice.startsAt,
+        endsAt: cancelNotice.endsAt,
+        summary: `Interview: ${cancelNotice.candidateName} — ${cancelNotice.jobTitle}`,
+        location: cancelNotice.location,
+        description: cancelNotice.description,
+        method: 'CANCEL',
+        sequence: 1,
+      });
+      const icsAttachment = { filename: 'interview.ics', content: Buffer.from(ics) };
+      const when = formatSlot(cancelNotice.startsAt, cancelNotice.endsAt, updated.timeZone);
+      for (const to of cancelNotice.recipients) {
+        await this.emailService.send({
+          to,
+          subject: `Interview cancelled: ${cancelNotice.jobTitle}`,
+          html: buildCandidateEmailHtml({
+            logoUrl: null,
+            orgName: cancelNotice.orgName || null,
+            bodyText: `The interview for ${cancelNotice.jobTitle}${cancelNotice.orgName ? ` at ${cancelNotice.orgName}` : ''} scheduled for ${when} has been cancelled.`,
+          }),
+          organizationId: orgId,
+          attachments: [icsAttachment],
+        });
+      }
+    }
+    return updated;
   }
 
   async sendInvite(context: TenantContext, actorUserId: string, interviewId: string): Promise<Interview> {
