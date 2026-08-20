@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { SkipToContent } from '../../components/SkipToContent';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { LogOut } from 'lucide-react';
@@ -43,6 +44,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
   return (
     <MotionConfig reducedMotion="user">
       <div className="min-h-screen bg-ground">
+        <SkipToContent />
         <div className="flex items-center justify-between bg-brand-navy px-6 py-4">
           <div className="flex items-center gap-8">
             <div className="flex items-center gap-2.5">
@@ -74,7 +76,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
             Logout
           </button>
         </div>
-        <main className="p-8">{children}</main>
+        <main id="main" className="p-4 md:p-8">{children}</main>
       </div>
     </MotionConfig>
   );

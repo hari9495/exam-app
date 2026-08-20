@@ -167,7 +167,7 @@ export default function InterviewPage() {
               value={reschedNote}
               onChange={(e) => setReschedNote(e.target.value)}
               rows={3}
-              className="w-full rounded-lg border border-candidate-border px-3 py-2 text-sm focus:border-candidate-primary focus:outline-none"
+              className="w-full rounded-lg border border-candidate-border px-3 py-2 text-sm focus:border-candidate-primary focus:outline-none focus:ring-2 focus:ring-candidate-primary/20"
             />
             <CandidateButton disabled={submitting} onClick={() => respond('reschedule', { note: reschedNote })}>
               Send request

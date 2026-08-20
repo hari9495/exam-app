@@ -8,16 +8,9 @@
  * one place -- the primary action and a genuine error. A real self-hosted typeface, crisp cool
  * borders instead of soft drop-shadows, squared markers instead of pills. */
 
-@font-face { font-family:'Bricolage Grotesque'; font-weight:500; font-display:swap;
-  src:url('/fonts/bricolage-grotesque-500.woff2') format('woff2'); }
-@font-face { font-family:'Bricolage Grotesque'; font-weight:700; font-display:swap;
-  src:url('/fonts/bricolage-grotesque-700.woff2') format('woff2'); }
-@font-face { font-family:'Hanken Grotesk'; font-weight:400; font-display:swap;
-  src:url('/fonts/hanken-grotesk-400.woff2') format('woff2'); }
-@font-face { font-family:'Hanken Grotesk'; font-weight:500; font-display:swap;
-  src:url('/fonts/hanken-grotesk-500.woff2') format('woff2'); }
-@font-face { font-family:'Hanken Grotesk'; font-weight:600; font-display:swap;
-  src:url('/fonts/hanken-grotesk-600.woff2') format('woff2'); }
+/* No @font-face here: these once declared five STATIC weight files that do not exist in the repo,
+ * so every auth page fired five 404s per load. Both families are declared once in app/globals.css
+ * as VARIABLE fonts covering the whole weight axis, and --display/--body below resolve to those. */
 
 .inv {
   --paper:#ffffff; --ground:#eceff3; --panel:#f5f7f9; --rule:#dbe0e6; --ink:#1b2530; --muted:#5c6875;

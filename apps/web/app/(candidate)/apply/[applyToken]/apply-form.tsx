@@ -150,7 +150,7 @@ export default function ApplyForm() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
-              className="w-full rounded border border-candidate-border px-3 py-2 text-sm focus:border-candidate-primary focus:outline-none"
+              className="w-full rounded border border-candidate-border px-3 py-2 text-sm focus:border-candidate-primary focus:outline-none focus:ring-2 focus:ring-candidate-primary/20"
             />
           </div>
 
@@ -164,7 +164,7 @@ export default function ApplyForm() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full rounded border border-candidate-border px-3 py-2 text-sm focus:border-candidate-primary focus:outline-none"
+              className="w-full rounded border border-candidate-border px-3 py-2 text-sm focus:border-candidate-primary focus:outline-none focus:ring-2 focus:ring-candidate-primary/20"
             />
           </div>
 
@@ -176,7 +176,7 @@ export default function ApplyForm() {
               id="apply-phone"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              className="w-full rounded border border-candidate-border px-3 py-2 text-sm focus:border-candidate-primary focus:outline-none"
+              className="w-full rounded border border-candidate-border px-3 py-2 text-sm focus:border-candidate-primary focus:outline-none focus:ring-2 focus:ring-candidate-primary/20"
             />
           </div>
 

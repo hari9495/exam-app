@@ -98,7 +98,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
         />
         <div className="flex flex-1 flex-col">
           <StaffTopBar displayName={displayName} initials={initials} roleLabel={roleLabel} avatarUrl={currentUser?.avatarUrl} onLogout={handleLogout} />
-          <main className="flex-1 bg-ground p-8">{children}</main>
+          <main id="main" className="flex-1 bg-ground p-4 md:p-8">{children}</main>
         </div>
       </div>
     </MotionConfig>

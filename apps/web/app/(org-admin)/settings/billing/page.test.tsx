@@ -22,8 +22,9 @@ function usage(overrides: Partial<OrgUsage> = {}): OrgUsage {
 describe('BillingSettingsPage', () => {
   it('shows a loading state before usage has loaded', () => {
     mockedUseOrgUsage.mockReturnValue({ data: undefined });
-    render(<BillingSettingsPage />);
-    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    const { container } = render(<BillingSettingsPage />);
+    // The bare "Loading…" text was replaced by the shared skeleton, which marks itself aria-busy.
+    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
   });
 
   it('renders the plan name, each dimension as used / limit, and the reset date', () => {
