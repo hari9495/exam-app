@@ -4,6 +4,14 @@ const { withSentryConfig } = require('@sentry/nextjs');
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
+  experimental: {
+    // Next 16 splits 404 handling: app/not-found.tsx only renders for notFound()
+    // calls inside a MATCHED route, while a completely unmatched URL (a typo'd
+    // link, a stale bookmark) falls back to Next's own unstyled "This page could
+    // not be found". This flag routes those to app/global-not-found.tsx so a bad
+    // URL lands on the branded page instead.
+    globalNotFound: true,
+  },
 };
 
 // ponytail: no auth token is configured, so the Sentry build plugin can't

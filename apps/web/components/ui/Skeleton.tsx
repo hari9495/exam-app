@@ -2,7 +2,7 @@ import clsx from 'clsx';
 
 /** A single shimmer placeholder block. Size it with className (h-/w-/rounded-). */
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={clsx('animate-pulse rounded bg-rule/60', className)} aria-hidden="true" />;
+  return <div className={clsx('animate-pulse rounded bg-rule/60 motion-reduce:animate-none', className)} aria-hidden="true" />;
 }
 
 /**

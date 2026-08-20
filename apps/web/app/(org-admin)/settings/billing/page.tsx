@@ -2,7 +2,8 @@
 
 import clsx from 'clsx';
 import { useOrgUsage } from '../../../../lib/hooks/useBilling';
-import { Card } from '../../../../components/ui';
+import { PageHeader, PageSurface } from '../../../../components/PageChrome';
+import { Skeleton } from '../../../../components/ui';
 import { DimensionUsage } from '../../../../lib/types';
 
 function UsageBar({ label, used, limit }: { label: string } & DimensionUsage) {
@@ -14,8 +15,8 @@ function UsageBar({ label, used, limit }: { label: string } & DimensionUsage) {
   return (
     <div>
       <div className="flex items-center justify-between text-sm">
-        <span className="font-medium text-recruiter-text">{label}</span>
-        <span className="text-recruiter-text-secondary">
+        <span className="font-medium text-ink">{label}</span>
+        <span className="text-muted">
           {used} / {limit}
           {over && (
             <span aria-label="over limit" className="ml-1 text-status-danger">
@@ -24,8 +25,8 @@ function UsageBar({ label, used, limit }: { label: string } & DimensionUsage) {
           )}
         </span>
       </div>
-      <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-ground">
-        <div className={clsx('h-full rounded-full', barColor)} style={{ width: `${width}%` }} />
+      <div className="mt-1.5 h-2 w-full overflow-hidden rounded bg-ground">
+        <div className={clsx('h-full rounded', barColor)} style={{ width: `${width}%` }} />
       </div>
     </div>
   );
@@ -42,34 +43,51 @@ export default function BillingSettingsPage() {
   const { data: usage } = useOrgUsage();
 
   if (!usage) {
-    return <p className="p-8 text-sm text-recruiter-text-tertiary">Loading…</p>;
+    return (
+      <div>
+        <PageHeader eyebrow="Settings" title="Billing" />
+        <PageSurface className="p-6">
+          <div aria-busy="true" className="flex flex-col gap-5">
+            <Skeleton className="h-6 w-40" />
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="flex flex-col gap-2">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-2 w-full" />
+              </div>
+            ))}
+          </div>
+        </PageSurface>
+      </div>
+    );
   }
 
   const resetDate = nextResetDate(usage.periodStart);
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-      <h1 className="text-center text-2xl font-semibold text-recruiter-text">Billing</h1>
+    <div>
+      <PageHeader eyebrow="Settings" title="Billing" subtitle="Your current plan and how much of it you have used this cycle." />
 
-      <Card className="flex flex-col gap-4">
-        <div>
-          <p className="text-sm text-recruiter-text-secondary">Current plan</p>
-          <p className="font-display text-xl font-semibold capitalize text-recruiter-text">{usage.planName}</p>
+      <PageSurface className="p-6">
+        <div className="flex flex-col gap-6">
+          <div>
+            <p className="font-body text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">Current plan</p>
+            <p className="mt-1 font-display text-xl font-bold capitalize tracking-[-0.01em] text-ink">{usage.planName}</p>
+          </div>
+
+          <div className="flex flex-col gap-4 border-t border-rule pt-6">
+            <UsageBar label="Seats" used={usage.seats.used} limit={usage.seats.limit} />
+            <UsageBar label="Candidates" used={usage.candidates.used} limit={usage.candidates.limit} />
+            <UsageBar label="AI Credits" used={usage.aiCredits.used} limit={usage.aiCredits.limit} />
+            <UsageBar label="Proctoring Minutes" used={usage.proctoringMinutes.used} limit={usage.proctoringMinutes.limit} />
+          </div>
+
+          <p className="border-t border-rule pt-4 text-sm text-muted">
+            Usage resets on{' '}
+            {resetDate.toLocaleDateString(undefined, { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric' })}. Need a
+            different plan? Contact us.
+          </p>
         </div>
-
-        <div className="flex flex-col gap-4">
-          <UsageBar label="Seats" used={usage.seats.used} limit={usage.seats.limit} />
-          <UsageBar label="Candidates" used={usage.candidates.used} limit={usage.candidates.limit} />
-          <UsageBar label="AI Credits" used={usage.aiCredits.used} limit={usage.aiCredits.limit} />
-          <UsageBar label="Proctoring Minutes" used={usage.proctoringMinutes.used} limit={usage.proctoringMinutes.limit} />
-        </div>
-
-        <p className="text-sm text-recruiter-text-tertiary">
-          Usage resets on {resetDate.toLocaleDateString(undefined, { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric' })}.
-        </p>
-      </Card>
-
-      <p className="text-center text-sm text-recruiter-text-secondary">Need a different plan? Contact us.</p>
+      </PageSurface>
     </div>
   );
 }

@@ -18,7 +18,7 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mb-7 flex items-end justify-between gap-4">
+    <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
       <div className="min-w-0">
         {eyebrow && (
           <div className="mb-2 font-body text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">{eyebrow}</div>
