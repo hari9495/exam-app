@@ -69,7 +69,9 @@ export class IntegrationDeliveryWorkerService implements OnModuleDestroy {
 
     let response: { ok: boolean; status: number };
     try {
-      response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      // redirect:'error' so a redirecting endpoint can't bounce us past the host allowlist —
+      // *.logic.azure.com (Teams) is tenant-controllable and could 307/308 to an internal host (SSRF).
+      response = await fetch(url, { method: 'POST', redirect: 'error', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     } catch (e) {
       await this.recordAttempt(delivery, integration, false, undefined, (e as Error).message);
       throw e;

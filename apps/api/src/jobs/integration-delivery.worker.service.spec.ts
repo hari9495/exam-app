@@ -27,7 +27,7 @@ describe('IntegrationDeliveryWorkerService.deliver', () => {
 
   it('POSTs to the decrypted Slack URL and marks delivered', async () => {
     await svc().deliver(delivery as any, integration as any, 'attempt.submitted', { subject: 'Ada', linkPath: '/candidates/9' });
-    expect(fetchMock).toHaveBeenCalledWith('https://hooks.slack.com/services/A/B/c', expect.objectContaining({ method: 'POST' }));
+    expect(fetchMock).toHaveBeenCalledWith('https://hooks.slack.com/services/A/B/c', expect.objectContaining({ method: 'POST', redirect: 'error' }));
     expect(txStub.integrationDelivery.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'delivered', httpStatusCode: 200 }) }));
     expect(txStub.orgIntegration.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ lastDeliveryAt: expect.any(Date), lastError: null }) }));
   });
@@ -41,5 +41,12 @@ describe('IntegrationDeliveryWorkerService.deliver', () => {
   it('throws on non-2xx so BullMQ retries', async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 500 });
     await expect(svc().deliver(delivery as any, integration as any, 'attempt.submitted', { subject: 'Ada', linkPath: '/candidates/9' })).rejects.toThrow(/status 500/);
+  });
+
+  it('treats a redirect (fetch rejects under redirect:error) as a failed delivery, never following it (SSRF guard)', async () => {
+    // undici rejects with a redirect error when redirect:'error' and the endpoint 3xx-redirects
+    fetchMock.mockRejectedValue(new Error('unexpected redirect'));
+    await expect(svc().deliver(delivery as any, integration as any, 'attempt.submitted', { subject: 'Ada', linkPath: '/candidates/9' })).rejects.toThrow(/redirect/i);
+    expect(txStub.integrationDelivery.update).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'delivered' }) }));
   });
 });
