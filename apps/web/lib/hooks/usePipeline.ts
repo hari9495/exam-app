@@ -44,6 +44,8 @@ export function useJobPipeline(jobId: string) {
 export interface CreateJobInput {
   title: string;
   description?: string;
+  location?: string;
+  employmentType?: string;
 }
 
 export function useCreateJob() {

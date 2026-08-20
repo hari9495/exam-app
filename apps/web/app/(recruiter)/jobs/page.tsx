@@ -8,6 +8,19 @@ import { PageHeader, PageSurface } from '../../../components/PageChrome';
 import { useJobs, useCreateJob, useDeleteJob } from '../../../lib/hooks/usePipeline';
 import { JobListItem, JobStatus, PIPELINE_STAGES } from '../../../lib/types';
 
+// schema.org employmentType values (must match the backend EMPLOYMENT_TYPES enum); blank = unset.
+const EMPLOYMENT_TYPE_OPTIONS = [
+  { value: '', label: 'Employment type (optional)' },
+  { value: 'FULL_TIME', label: 'Full-time' },
+  { value: 'PART_TIME', label: 'Part-time' },
+  { value: 'CONTRACTOR', label: 'Contractor' },
+  { value: 'TEMPORARY', label: 'Temporary' },
+  { value: 'INTERN', label: 'Intern' },
+  { value: 'VOLUNTEER', label: 'Volunteer' },
+  { value: 'PER_DIEM', label: 'Per diem' },
+  { value: 'OTHER', label: 'Other' },
+];
+
 const STATUS_LABEL: Record<JobStatus, string> = { open: 'Open', closed: 'Closed' };
 const STATUS_TONE: Record<JobStatus, StatusTone> = { open: 'success', closed: 'neutral' };
 
@@ -34,17 +47,26 @@ export default function JobsPage() {
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [location, setLocation] = useState('');
+  const [employmentType, setEmploymentType] = useState('');
   const canSubmit = Boolean(title.trim());
 
   function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
     createJob.mutate(
-      { title: title.trim(), description: description.trim() || undefined },
+      {
+        title: title.trim(),
+        description: description.trim() || undefined,
+        location: location.trim() || undefined,
+        employmentType: employmentType || undefined,
+      },
       {
         onSuccess: () => {
           setTitle('');
           setDescription('');
+          setLocation('');
+          setEmploymentType('');
           toast('Job created.');
         },
         onError: (error) => toast(error instanceof Error ? error.message : 'Failed to create job.', 'error'),
@@ -120,6 +142,8 @@ export default function JobsPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Input label="Job Title" value={title} onChange={setTitle} placeholder="e.g. Backend Engineer" required />
             <Input label="Description (optional)" value={description} onChange={setDescription} placeholder="Role summary" />
+            <Input label="Location (optional)" value={location} onChange={setLocation} placeholder="e.g. Bengaluru or Remote" />
+            <Select label="Employment type (optional)" value={employmentType} onChange={setEmploymentType} options={EMPLOYMENT_TYPE_OPTIONS} />
           </div>
           <div>
             <Button type="submit" loading={createJob.isPending} disabled={!canSubmit} className="inline-flex items-center gap-1.5">

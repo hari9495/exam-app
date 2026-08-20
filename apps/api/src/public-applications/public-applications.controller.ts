@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, Param, Post, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { PublicApplicationsService } from './public-applications.service';
 import { ApplyDto } from './dto/apply.dto';
@@ -14,6 +14,13 @@ import { STRICT_WALK_IN_THROTTLE } from '../rate-limit-tiers';
 @Throttle(STRICT_WALK_IN_THROTTLE)
 export class PublicApplicationsController {
   constructor(private readonly service: PublicApplicationsService) {}
+
+  // Distinct segment from jobs/:applyToken (jobs-feed.xml vs jobs/*), so no route collision.
+  @Get('jobs-feed.xml')
+  @Header('Content-Type', 'application/xml; charset=utf-8')
+  jobsFeed() {
+    return this.service.getJobsFeed();
+  }
 
   @Get('jobs/:applyToken')
   getJob(@Param('applyToken') applyToken: string) {

@@ -72,10 +72,21 @@ export class PipelineService {
     private readonly messages: CandidateEmailsService,
   ) {}
 
-  async createJob(context: TenantContext, actorUserId: string, dto: { title: string; description?: string }): Promise<Job> {
+  async createJob(
+    context: TenantContext,
+    actorUserId: string,
+    dto: { title: string; description?: string; location?: string; employmentType?: string },
+  ): Promise<Job> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const created = await tx.job.create({
-        data: { organizationId: context.organizationId as string, title: dto.title, description: dto.description, createdById: actorUserId },
+        data: {
+          organizationId: context.organizationId as string,
+          title: dto.title,
+          description: dto.description,
+          location: dto.location,
+          employmentType: dto.employmentType,
+          createdById: actorUserId,
+        },
       });
       await this.audit.record(context, {
         actorUserId,
@@ -132,6 +143,8 @@ export class PipelineService {
       publicApplyEnabled?: boolean;
       fitCriteria?: string | null;
       fitRubric?: { label: string; weight: number }[] | null;
+      location?: string;
+      employmentType?: string;
     },
   ): Promise<Job> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
@@ -146,9 +159,13 @@ export class PipelineService {
         applyToken?: string;
         fitCriteria?: string | null;
         fitRubric?: string | null;
+        location?: string;
+        employmentType?: string;
       } = {
         title: dto.title,
         description: dto.description,
+        location: dto.location,
+        employmentType: dto.employmentType,
       };
       if (dto.status) {
         data.status = dto.status;

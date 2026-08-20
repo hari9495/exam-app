@@ -272,6 +272,9 @@ export const STAGE_LABEL: Record<PipelineStage, string> = {
 export interface PublicJob {
   jobTitle: string;
   jobDescription: string | null;
+  location?: string | null;
+  employmentType?: string | null;
+  postedAt?: string;
   orgName: string;
   orgLogo: string | null;
 }
