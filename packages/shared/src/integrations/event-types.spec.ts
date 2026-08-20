@@ -1,12 +1,12 @@
 import { INTEGRATION_EVENT_TYPES, INTEGRATION_EVENT_LABELS } from './event-types';
 
 describe('integration event catalog', () => {
-  it('has exactly the 8 catalog events, unique', () => {
+  it('has exactly the 9 catalog events, unique', () => {
     expect(INTEGRATION_EVENT_TYPES).toEqual([
       'invitation.created', 'attempt.submitted', 'attempt.settled', 'integrity.flagged',
-      'interview.confirmed', 'offer.accepted', 'candidate.applied', 'candidate.fit_scored',
+      'interview.confirmed', 'offer.accepted', 'candidate.applied', 'candidate.fit_scored', 'candidate.hired',
     ]);
-    expect(new Set(INTEGRATION_EVENT_TYPES).size).toBe(8);
+    expect(new Set(INTEGRATION_EVENT_TYPES).size).toBe(9);
   });
 
   it('has a human label for every event', () => {

@@ -69,7 +69,7 @@ describe('ConnectedAppsSection', () => {
     expect(screen.getAllByText('****')).toHaveLength(2);
   });
 
-  it('opens the Add modal with all 8 event checkboxes', async () => {
+  it('opens the Add modal with all 9 event checkboxes', async () => {
     renderSection();
 
     await userEvent.click(screen.getByRole('button', { name: 'Add connected app' }));
@@ -84,6 +84,7 @@ describe('ConnectedAppsSection', () => {
       'Offer accepted',
       'New applicant',
       'AI fit score ready',
+      'Candidate hired',
     ];
     for (const label of expectedLabels) {
       expect(screen.getByRole('checkbox', { name: label })).toBeInTheDocument();

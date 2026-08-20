@@ -9,6 +9,7 @@ import { PatchEntryDto } from './dto/patch-entry.dto';
 import { AddFeedbackDto } from './dto/add-feedback.dto';
 import { CandidateEmailTemplatesService } from '../candidate-emails/candidate-email-templates.service';
 import { CandidateEmailsService } from '../candidate-emails/candidate-emails.service';
+import { IntegrationEventsService } from '../integrations/integration-events.service';
 import { computeCriteriaHash, validateRubricInput } from '../candidate-fit/candidate-fit.core';
 
 export interface FeedbackRow {
@@ -70,6 +71,7 @@ export class PipelineService {
     private readonly audit: AuditService,
     private readonly templates: CandidateEmailTemplatesService,
     private readonly messages: CandidateEmailsService,
+    private readonly integrationEvents: IntegrationEventsService,
   ) {}
 
   async createJob(
@@ -327,6 +329,29 @@ export class PipelineService {
       await this.audit.record(context, { actorUserId, action, entityType: 'pipeline_entry', entityId: entryId, metadata: { ...dto } });
       return updated;
     });
+
+    // Fan the hire out to integrations (webhook/chat/Zapier -> the org's HRIS for onboarding).
+    // Post-commit, in its own guard so it fires regardless of the comms branch below and can never
+    // affect the stage move that already persisted. emit() is itself never-throw.
+    if (dto.stage === 'hired') {
+      try {
+        const info = await this.tenantPrisma.forTenant(context, (tx) =>
+          tx.pipelineEntry.findUnique({
+            where: { id: entryId },
+            select: { candidateId: true, candidate: { select: { name: true } }, job: { select: { title: true } } },
+          }),
+        );
+        if (info) {
+          await this.integrationEvents.emit(context.organizationId as string, 'candidate.hired', {
+            subject: info.candidate?.name ?? '',
+            roleTitle: info.job?.title ?? '',
+            linkPath: `/candidates/${info.candidateId}`,
+          });
+        }
+      } catch (e) {
+        this.logger.error(`candidate.hired emit failed for entry ${entryId}`, e as Error);
+      }
+    }
 
     // Stage-move comms hook: runs AFTER the tx above has committed. dto.stage takes priority
     // over rejected (patchEntry only ever sets one or the other -- see the branch above).

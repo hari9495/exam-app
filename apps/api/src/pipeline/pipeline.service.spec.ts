@@ -8,6 +8,7 @@ describe('PipelineService', () => {
   let audit: { record: jest.Mock };
   let templates: { resolveForEvent: jest.Mock };
   let messages: { sendMessage: jest.Mock };
+  let integrationEvents: { emit: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
   beforeEach(() => {
@@ -15,7 +16,8 @@ describe('PipelineService', () => {
     audit = { record: jest.fn() };
     templates = { resolveForEvent: jest.fn().mockResolvedValue(null) };
     messages = { sendMessage: jest.fn().mockResolvedValue({ id: 'email-1' }) };
-    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any);
+    integrationEvents = { emit: jest.fn().mockResolvedValue(undefined) };
+    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, integrationEvents as any);
   });
 
   it('createJob writes org-scoped and audits', async () => {
@@ -362,6 +364,35 @@ describe('PipelineService', () => {
         data: { stage: 'interview', rejected: false, rejectedReason: null, rejectedAt: null },
       });
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'entry.stage_changed', entityId: 'en1' }));
+    });
+
+    it('emits candidate.hired (subject/role/linkPath) when moved to the hired stage', async () => {
+      const update = jest.fn().mockResolvedValue({ id: 'en1', stage: 'hired' });
+      const tx = {
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1' }),
+          update,
+          findUnique: jest.fn().mockResolvedValue({ candidateId: 'cand-1', candidate: { name: 'Asha Rao' }, job: { title: 'Backend Engineer' } }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.patchEntry(context, 'user-1', 'en1', { stage: 'hired' });
+
+      expect(integrationEvents.emit).toHaveBeenCalledWith(
+        'org-1',
+        'candidate.hired',
+        expect.objectContaining({ subject: 'Asha Rao', roleTitle: 'Backend Engineer', linkPath: '/candidates/cand-1' }),
+      );
+    });
+
+    it('does not emit candidate.hired on a non-hired stage move', async () => {
+      const tx = { pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1' }), update: jest.fn().mockResolvedValue({ id: 'en1', stage: 'interview' }) } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.patchEntry(context, 'user-1', 'en1', { stage: 'interview' });
+
+      expect(integrationEvents.emit).not.toHaveBeenCalled();
     });
 
     it('rejects an invalid stage with BadRequestException', async () => {
