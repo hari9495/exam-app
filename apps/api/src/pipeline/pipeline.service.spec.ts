@@ -416,10 +416,25 @@ describe('PipelineService', () => {
     });
 
     it('does not emit candidate.hired on a non-hired stage move', async () => {
-      const tx = { pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1' }), update: jest.fn().mockResolvedValue({ id: 'en1', stage: 'interview' }) } };
+      const tx = { pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', stage: 'offer' }), update: jest.fn().mockResolvedValue({ id: 'en1', stage: 'interview' }) } };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
       await service.patchEntry(context, 'user-1', 'en1', { stage: 'interview' });
+
+      expect(integrationEvents.emit).not.toHaveBeenCalled();
+    });
+
+    it('does not re-emit candidate.hired when the entry was already hired (idempotent)', async () => {
+      const tx = {
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', stage: 'hired' }),
+          update: jest.fn().mockResolvedValue({ id: 'en1', stage: 'hired' }),
+          findUnique: jest.fn(),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.patchEntry(context, 'user-1', 'en1', { stage: 'hired' });
 
       expect(integrationEvents.emit).not.toHaveBeenCalled();
     });

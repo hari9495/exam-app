@@ -338,9 +338,11 @@ export class PipelineService {
   }
 
   async patchEntry(context: TenantContext, actorUserId: string, entryId: string, dto: PatchEntryDto): Promise<PatchEntryResult> {
+    let previousStage: string | undefined;
     const entry = await this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: context.organizationId as string } });
       if (!existing) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
+      previousStage = existing.stage;
 
       let data: { stage?: string; rejected: boolean; rejectedReason: string | null; rejectedAt: Date | null };
       let action: string;
@@ -365,8 +367,9 @@ export class PipelineService {
 
     // Fan the hire out to integrations (webhook/chat/Zapier -> the org's HRIS for onboarding).
     // Post-commit, in its own guard so it fires regardless of the comms branch below and can never
-    // affect the stage move that already persisted. emit() is itself never-throw.
-    if (dto.stage === 'hired') {
+    // affect the stage move that already persisted. emit() is itself never-throw. Gated on the
+    // transition INTO hired (previousStage !== 'hired') so a re-save can't re-trigger onboarding.
+    if (dto.stage === 'hired' && previousStage !== 'hired') {
       try {
         const info = await this.tenantPrisma.forTenant(context, (tx) =>
           tx.pipelineEntry.findUnique({

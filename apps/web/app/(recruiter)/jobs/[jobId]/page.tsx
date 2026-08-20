@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Check, Copy, Download } from 'lucide-react';
 import { Button, Checkbox, StatusBadge, useToast, type StatusTone } from '../../../../components/ui';
-import { API_BASE } from '../../../../lib/api-client';
+import { apiFetchBlob } from '../../../../lib/api-client';
 import { BackLink } from '../../../../components/BackLink';
 import { PageHeader } from '../../../../components/PageChrome';
 import { LinkedExams } from '../../../../components/pipeline/LinkedExams';
@@ -18,18 +18,14 @@ import { JobDetail, JobStatus } from '../../../../lib/types';
 const STATUS_LABEL: Record<JobStatus, string> = { open: 'Open', closed: 'Closed' };
 const STATUS_TONE: Record<JobStatus, StatusTone> = { open: 'success', closed: 'neutral' };
 
-// CSV export is an authenticated download, so it can't be a plain <a href> (no bearer token) --
-// fetch it with auth, then hand the browser a blob to save.
+// CSV export is an authenticated download, so it can't be a plain <a href> (no bearer token).
+// apiFetchBlob attaches auth + gives humanized errors; then hand the browser the blob to save.
 async function downloadCandidatesCsv(jobId: string, accessToken: string | null): Promise<void> {
-  const res = await fetch(`${API_BASE}/jobs/${jobId}/candidates.csv`, {
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-    credentials: 'include',
-  });
-  if (!res.ok) throw new Error('Export failed');
-  const url = URL.createObjectURL(await res.blob());
+  const { blob, filename } = await apiFetchBlob(`/jobs/${jobId}/candidates.csv`, {}, accessToken ?? undefined);
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'candidates.csv';
+  a.download = filename ?? 'candidates.csv';
   document.body.appendChild(a);
   a.click();
   a.remove();
