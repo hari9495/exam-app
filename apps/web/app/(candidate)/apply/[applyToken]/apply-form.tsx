@@ -35,6 +35,7 @@ export default function ApplyForm() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [statusToken, setStatusToken] = useState<string | null>(null);
+  const [portalToken, setPortalToken] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -89,6 +90,7 @@ export default function ApplyForm() {
       if (!res.ok) throw new Error('Submission failed. Please try again.');
       const data = await res.json();
       setStatusToken(data.statusToken);
+      setPortalToken(data.portalToken ?? null);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Submission failed. Please try again.');
     } finally {
@@ -107,9 +109,16 @@ export default function ApplyForm() {
   if (statusToken) {
     return (
       <TerminalCard tone="success" title="Application submitted" body="Thanks for applying — we'll be in touch.">
-        <Link href={`/application/${statusToken}`} className="text-sm font-medium text-candidate-primary underline">
-          Track your application
-        </Link>
+        <div className="flex flex-col gap-2">
+          {portalToken && (
+            <Link href={`/portal/${portalToken}`} className="text-sm font-medium text-candidate-primary underline">
+              View all your applications
+            </Link>
+          )}
+          <Link href={`/application/${statusToken}`} className="text-sm font-medium text-candidate-primary underline">
+            Track this application
+          </Link>
+        </div>
       </TerminalCard>
     );
   }

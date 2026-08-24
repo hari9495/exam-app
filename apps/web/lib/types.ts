@@ -292,6 +292,23 @@ export interface PublicJob {
   orgLogo: string | null;
 }
 
+export interface PortalApplication {
+  jobTitle: string;
+  stage: string;
+  rejected: boolean;
+  appliedAt: string;
+  statusToken: string | null;
+  interviews: { token: string | null; status: string; location: string; timeZone: string; confirmed: boolean; slots: { startsAt: string; endsAt: string }[] }[];
+  offers: { token: string | null; status: string; compensation: string; startDate: string; expiresAt: string }[];
+}
+
+export interface PortalView {
+  candidateName: string;
+  candidateEmail: string;
+  orgName: string;
+  applications: PortalApplication[];
+}
+
 export interface ApplicationStatus {
   jobTitle: string;
   appliedAt: string;

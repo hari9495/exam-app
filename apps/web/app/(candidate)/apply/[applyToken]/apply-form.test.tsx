@@ -50,7 +50,7 @@ describe('ApplyForm', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /Submit application/i }));
 
-    const link = await screen.findByRole('link', { name: 'Track your application' });
+    const link = await screen.findByRole('link', { name: 'Track this application' });
     expect(link).toHaveAttribute('href', '/application/tok-1');
 
     const postCall = (global.fetch as jest.Mock).mock.calls.find(([, options]) => options?.method === 'POST');
