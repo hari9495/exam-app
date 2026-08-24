@@ -588,6 +588,26 @@ model Notification {
   @@map("notifications")
 }
 
+// Team-collaboration: an in-app notification to a staff teammate (currently @mentions in candidate
+// feedback; more types later). Distinct from `notifications` above (which tracks invitation email
+// delivery). Per-recipient; org-scoped by RLS, recipient-scoped in the service layer.
+model UserNotification {
+  id              String    @id @default(uuid()) @db.UniqueIdentifier
+  organizationId  String    @map("organization_id") @db.UniqueIdentifier
+  recipientUserId String    @map("recipient_user_id") @db.UniqueIdentifier
+  actorUserId     String?   @map("actor_user_id") @db.UniqueIdentifier
+  type            String
+  entityType      String    @map("entity_type")
+  entityId        String    @map("entity_id") @db.UniqueIdentifier
+  contextText     String?   @map("context_text") @db.NVarChar(500)
+  linkPath        String    @map("link_path")
+  readAt          DateTime? @map("read_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@index([recipientUserId, readAt])
+  @@map("user_notifications")
+}
+
 model Attempt {
   id                            String              @id @default(uuid()) @db.UniqueIdentifier
   invitationId                  String              @unique @map("invitation_id") @db.UniqueIdentifier

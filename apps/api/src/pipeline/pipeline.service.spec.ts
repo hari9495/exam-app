@@ -9,6 +9,7 @@ describe('PipelineService', () => {
   let templates: { resolveForEvent: jest.Mock };
   let messages: { sendMessage: jest.Mock };
   let integrationEvents: { emit: jest.Mock };
+  let notifications: { createMentions: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
   beforeEach(() => {
@@ -17,7 +18,8 @@ describe('PipelineService', () => {
     templates = { resolveForEvent: jest.fn().mockResolvedValue(null) };
     messages = { sendMessage: jest.fn().mockResolvedValue({ id: 'email-1' }) };
     integrationEvents = { emit: jest.fn().mockResolvedValue(undefined) };
-    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, integrationEvents as any);
+    notifications = { createMentions: jest.fn().mockResolvedValue(undefined) };
+    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, integrationEvents as any, notifications as any);
   });
 
   it('createJob writes org-scoped and audits', async () => {
@@ -696,6 +698,37 @@ describe('PipelineService', () => {
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({
         actorUserId: 'user-1', action: 'feedback.added', entityType: 'pipeline_entry', entityId: 'en1',
       }));
+    });
+
+    it('notifies @mentioned teammates (with candidate context) after saving feedback', async () => {
+      const create = jest.fn().mockResolvedValue({ id: 'fb1', entryId: 'en1' });
+      const tx = {
+        pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'en1', candidateId: 'cand-1', candidate: { name: 'Asha Rao' } }) },
+        pipelineFeedback: { create },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.addFeedback(context, 'user-1', 'en1', { note: 'great, @Bola take a look', mentionedUserIds: ['user-2'] });
+
+      expect(notifications.createMentions).toHaveBeenCalledWith(
+        context,
+        'user-1',
+        ['user-2'],
+        expect.objectContaining({ entityType: 'pipeline_entry', entityId: 'en1', contextText: 'Asha Rao', linkPath: '/candidates/cand-1' }),
+      );
+    });
+
+    it('does not notify when no one is mentioned', async () => {
+      const create = jest.fn().mockResolvedValue({ id: 'fb1' });
+      const tx = {
+        pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'en1', candidateId: 'c', candidate: { name: 'X' } }) },
+        pipelineFeedback: { create },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.addFeedback(context, 'user-1', 'en1', { rating: 4 });
+
+      expect(notifications.createMentions).not.toHaveBeenCalled();
     });
 
     it('throws BadRequestException when neither note nor rating is given, and never calls create', async () => {

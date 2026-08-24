@@ -10,6 +10,7 @@ import { AddFeedbackDto } from './dto/add-feedback.dto';
 import { CandidateEmailTemplatesService } from '../candidate-emails/candidate-email-templates.service';
 import { CandidateEmailsService } from '../candidate-emails/candidate-emails.service';
 import { IntegrationEventsService } from '../integrations/integration-events.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { computeCriteriaHash, validateRubricInput } from '../candidate-fit/candidate-fit.core';
 
 export interface FeedbackRow {
@@ -81,6 +82,7 @@ export class PipelineService {
     private readonly templates: CandidateEmailTemplatesService,
     private readonly messages: CandidateEmailsService,
     private readonly integrationEvents: IntegrationEventsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async createJob(
@@ -498,8 +500,11 @@ export class PipelineService {
 
   async addFeedback(context: TenantContext, userId: string, entryId: string, dto: AddFeedbackDto): Promise<PipelineFeedback> {
     if (!dto.note?.trim() && dto.rating == null) throw new BadRequestException('note or rating required');
-    return this.tenantPrisma.forTenant(context, async (tx) => {
-      const entry = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: context.organizationId as string } });
+    const { created, candidateId, candidateName } = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const entry = await tx.pipelineEntry.findFirst({
+        where: { id: entryId, organizationId: context.organizationId as string },
+        select: { id: true, candidateId: true, candidate: { select: { name: true } } },
+      });
       if (!entry) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
 
       const created = await tx.pipelineFeedback.create({
@@ -512,8 +517,23 @@ export class PipelineService {
         entityId: entryId,
         metadata: { rating: dto.rating ?? null },
       });
-      return created;
+      return { created, candidateId: entry.candidateId, candidateName: entry.candidate?.name ?? null };
     });
+
+    // Notify @mentioned teammates -- post-commit, own tx, never breaks the feedback write.
+    if (dto.mentionedUserIds?.length) {
+      try {
+        await this.notifications.createMentions(context, userId, dto.mentionedUserIds, {
+          entityType: 'pipeline_entry',
+          entityId: entryId,
+          contextText: candidateName,
+          linkPath: `/candidates/${candidateId}`,
+        });
+      } catch (e) {
+        this.logger.error(`mention notification failed for entry ${entryId}`, e as Error);
+      }
+    }
+    return created;
   }
 
   async listFeedback(context: TenantContext, entryId: string): Promise<FeedbackRow[]> {
