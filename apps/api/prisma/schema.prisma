@@ -510,6 +510,7 @@ model Candidate {
   name            String
   phone           String?
   status          String            @default("active")
+  portalToken     String?           @unique @map("portal_token")
   createdAt       DateTime          @default(now()) @map("created_at")
   erasedAt        DateTime?         @map("erased_at")
   invitations     Invitation[]

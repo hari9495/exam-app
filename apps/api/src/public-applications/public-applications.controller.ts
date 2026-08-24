@@ -36,4 +36,9 @@ export class PublicApplicationsController {
   status(@Param('statusToken') statusToken: string) {
     return this.service.getApplicationStatus(statusToken);
   }
+
+  @Get('portal/:portalToken')
+  portal(@Param('portalToken') portalToken: string) {
+    return this.service.getPortal(portalToken);
+  }
 }

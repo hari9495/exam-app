@@ -119,7 +119,7 @@ export class PublicApplicationsService {
     return `<?xml version="1.0" encoding="utf-8"?>\n<source>\n  <publisher>Prudent Hire</publisher>\n${entries}\n</source>\n`;
   }
 
-  async apply(applyToken: string, dto: ApplyDto): Promise<{ statusToken: string }> {
+  async apply(applyToken: string, dto: ApplyDto): Promise<{ statusToken: string; portalToken: string }> {
     const job = await this.resolveJob(applyToken);
 
     const buf = Buffer.from(dto.resumeBase64, 'base64');
@@ -137,7 +137,7 @@ export class PublicApplicationsService {
     );
 
     const context = { organizationId: job.organizationId, isSuperAdmin: true };
-    const { entry, candidateId, isNewCandidate } = await this.tenantPrisma.forTenant(context, async (tx) => {
+    const { entry, candidateId, isNewCandidate, portalToken } = await this.tenantPrisma.forTenant(context, async (tx) => {
       // Public, unauthenticated endpoint: an existing candidate match must NOT be overwritten
       // with request-body name/phone -- anyone who knows a candidate's email could tamper with
       // their stored details. Same rule as WalkInService.register; expandedName carries the one
@@ -149,9 +149,16 @@ export class PublicApplicationsService {
       const nameUpdate = existingCandidate ? expandedName(existingCandidate.name, dto.name) : null;
       const candidate = await tx.candidate.upsert({
         where: { organizationId_email: { organizationId: job.organizationId, email: dto.email } },
-        create: { organizationId: job.organizationId, email: dto.email, name: dto.name, phone: dto.phone ?? null },
+        create: { organizationId: job.organizationId, email: dto.email, name: dto.name, phone: dto.phone ?? null, portalToken: randomUUID() },
         update: nameUpdate ? { name: nameUpdate } : {},
       });
+      // Existing candidates (pre-portal, or added via other paths) may lack a token; mint one so
+      // every applicant gets a portal link.
+      let portalToken = candidate.portalToken;
+      if (!portalToken) {
+        portalToken = randomUUID();
+        await tx.candidate.update({ where: { id: candidate.id }, data: { portalToken } });
+      }
       await tx.candidateProfile.upsert({
         where: { candidateId: candidate.id },
         create: { organizationId: job.organizationId, candidateId: candidate.id, resumePath, parseStatus: 'pending' },
@@ -181,7 +188,7 @@ export class PublicApplicationsService {
         // though the profile above IS refreshed with the newly-uploaded résumé.
         update: {},
       });
-      return { entry, candidateId: candidate.id, isNewCandidate };
+      return { entry, candidateId: candidate.id, isNewCandidate, portalToken };
     });
 
     await this.jobsService.enqueue(context, 'resume_parse', JSON.stringify({ candidateId }), job.createdById);
@@ -194,7 +201,61 @@ export class PublicApplicationsService {
       });
     }
 
-    return { statusToken: entry.applicationToken! };
+    return { statusToken: entry.applicationToken!, portalToken };
+  }
+
+  // The unified candidate portal: resolve the candidate by their magic-link token and aggregate
+  // ALL their applications at the org (each with its interviews + offers), so they see everything
+  // in one place. Read-only aggregation; actions happen on the existing per-artifact token pages.
+  async getPortal(portalToken: string) {
+    const candidate = await this.tenantPrisma.forTenant(
+      { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
+      (tx) => tx.candidate.findUnique({ where: { portalToken }, select: { id: true, organizationId: true, name: true, email: true, erasedAt: true } }),
+    );
+    if (!candidate || candidate.erasedAt) throw new NotFoundException('Portal not found');
+    const org = await this.prisma.organization.findUnique({ where: { id: candidate.organizationId }, select: { name: true } });
+    const entries = await this.tenantPrisma.forTenant(
+      { organizationId: candidate.organizationId, isSuperAdmin: true },
+      (tx) =>
+        tx.pipelineEntry.findMany({
+          where: { candidateId: candidate.id },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            applicationToken: true,
+            stage: true,
+            rejected: true,
+            createdAt: true,
+            job: { select: { title: true } },
+            interviews: {
+              select: { interviewToken: true, status: true, location: true, timeZone: true, confirmedSlotId: true, slots: { select: { startsAt: true, endsAt: true } } },
+            },
+            offers: { select: { offerToken: true, status: true, compensation: true, startDate: true, expiresAt: true } },
+          },
+        }),
+    );
+    return {
+      candidateName: candidate.name,
+      candidateEmail: candidate.email,
+      orgName: org?.name ?? '',
+      applications: entries.map((e) => ({
+        jobTitle: e.job.title,
+        stage: e.stage,
+        rejected: e.rejected,
+        appliedAt: e.createdAt.toISOString(),
+        statusToken: e.applicationToken,
+        interviews: e.interviews.map((i) => ({
+          token: i.interviewToken,
+          status: i.status,
+          location: i.location,
+          timeZone: i.timeZone,
+          confirmed: Boolean(i.confirmedSlotId),
+          slots: i.slots.map((s) => ({ startsAt: s.startsAt.toISOString(), endsAt: s.endsAt.toISOString() })),
+        })),
+        offers: e.offers
+          .filter((o) => o.offerToken)
+          .map((o) => ({ token: o.offerToken, status: o.status, compensation: o.compensation, startDate: o.startDate.toISOString(), expiresAt: o.expiresAt.toISOString() })),
+      })),
+    };
   }
 
   async getApplicationStatus(statusToken: string) {
