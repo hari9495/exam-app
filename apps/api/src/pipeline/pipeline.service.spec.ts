@@ -9,7 +9,7 @@ describe('PipelineService', () => {
   let templates: { resolveForEvent: jest.Mock };
   let messages: { sendMessage: jest.Mock };
   let integrationEvents: { emit: jest.Mock };
-  let notifications: { createMentions: jest.Mock };
+  let notifications: { createMentions: jest.Mock; notify: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
   beforeEach(() => {
@@ -18,7 +18,7 @@ describe('PipelineService', () => {
     templates = { resolveForEvent: jest.fn().mockResolvedValue(null) };
     messages = { sendMessage: jest.fn().mockResolvedValue({ id: 'email-1' }) };
     integrationEvents = { emit: jest.fn().mockResolvedValue(undefined) };
-    notifications = { createMentions: jest.fn().mockResolvedValue(undefined) };
+    notifications = { createMentions: jest.fn().mockResolvedValue(undefined), notify: jest.fn().mockResolvedValue(undefined) };
     service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, integrationEvents as any, notifications as any);
   });
 
@@ -350,6 +350,52 @@ describe('PipelineService', () => {
       expect(upsert).toHaveBeenCalledWith(expect.objectContaining({
         where: { jobId_candidateId: { jobId: 'job-1', candidateId: 'c-new' } },
       }));
+    });
+  });
+
+  describe('assignEntry', () => {
+    function assignTx(overrides: any = {}) {
+      return {
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'en1', candidateId: 'cand-1', candidate: { name: 'Asha Rao' } }),
+          update: jest.fn().mockResolvedValue({ id: 'en1' }),
+        },
+        user: { findFirst: jest.fn().mockResolvedValue({ id: 'user-2' }) },
+        ...overrides,
+      };
+    }
+
+    it('sets the assignee, audits entry.assigned, and notifies the new assignee', async () => {
+      const tx = assignTx();
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      const out = await service.assignEntry(context, 'user-1', 'en1', 'user-2');
+
+      expect(out).toEqual({ success: true });
+      expect(tx.pipelineEntry.update).toHaveBeenCalledWith({ where: { id: 'en1' }, data: { assignedUserId: 'user-2' } });
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'entry.assigned', entityId: 'en1' }));
+      expect(notifications.notify).toHaveBeenCalledWith(
+        context, 'user-1', ['user-2'], 'assigned',
+        expect.objectContaining({ entityType: 'pipeline_entry', entityId: 'en1', contextText: 'Asha Rao', linkPath: '/candidates/cand-1' }),
+      );
+    });
+
+    it('unassigns (null) without notifying anyone', async () => {
+      const tx = assignTx();
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.assignEntry(context, 'user-1', 'en1', null);
+
+      expect(tx.pipelineEntry.update).toHaveBeenCalledWith({ where: { id: 'en1' }, data: { assignedUserId: null } });
+      expect(notifications.notify).not.toHaveBeenCalled();
+    });
+
+    it('rejects an assignee that is not a member of the org', async () => {
+      const tx = assignTx({ user: { findFirst: jest.fn().mockResolvedValue(null) } });
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.assignEntry(context, 'user-1', 'en1', 'outsider')).rejects.toThrow(BadRequestException);
+      expect(tx.pipelineEntry.update).not.toHaveBeenCalled();
     });
   });
 

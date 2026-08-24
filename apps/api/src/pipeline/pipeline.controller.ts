@@ -12,6 +12,7 @@ import { AddEntryDto } from './dto/add-entry.dto';
 import { PatchEntryDto } from './dto/patch-entry.dto';
 import { LinkExamDto } from './dto/link-exam.dto';
 import { AddFeedbackDto } from './dto/add-feedback.dto';
+import { AssignEntryDto } from './dto/assign-entry.dto';
 
 @Controller()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -132,5 +133,16 @@ export class PipelineController {
   @RequirePermissions('results:view')
   listFeedback(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.pipelineService.listFeedback(tenant, id);
+  }
+
+  @Patch('entries/:id/assignment')
+  @RequirePermissions('results:view')
+  assignEntry(
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentUserId() userId: string,
+    @Param('id') id: string,
+    @Body() dto: AssignEntryDto,
+  ) {
+    return this.pipelineService.assignEntry(tenant, userId, id, dto.assigneeUserId);
   }
 }

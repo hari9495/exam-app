@@ -25,15 +25,16 @@ export interface MentionTarget {
 export class NotificationsService {
   constructor(private readonly tenantPrisma: TenantPrismaService) {}
 
-  // Create 'mention' notifications for teammates. Validated: only users that actually belong to the
-  // same org, never the actor themselves (you don't get notified for mentioning yourself).
-  async createMentions(
+  // Core: notify teammates of some event. Validated: only users that actually belong to the same
+  // org, never the actor themselves (you don't get notified for your own action).
+  async notify(
     context: TenantContext,
     actorUserId: string,
-    mentionedUserIds: string[],
+    recipientUserIds: string[],
+    type: string,
     target: MentionTarget,
   ): Promise<void> {
-    const ids = [...new Set(mentionedUserIds)].filter((id) => id && id !== actorUserId);
+    const ids = [...new Set(recipientUserIds)].filter((id) => id && id !== actorUserId);
     if (ids.length === 0) return;
     await this.tenantPrisma.forTenant(context, async (tx) => {
       const valid = await tx.user.findMany({
@@ -46,7 +47,7 @@ export class NotificationsService {
             organizationId: context.organizationId as string,
             recipientUserId: u.id,
             actorUserId,
-            type: 'mention',
+            type,
             entityType: target.entityType,
             entityId: target.entityId,
             contextText: target.contextText ?? null,
@@ -55,6 +56,11 @@ export class NotificationsService {
         });
       }
     });
+  }
+
+  // @mentions in candidate feedback.
+  createMentions(context: TenantContext, actorUserId: string, mentionedUserIds: string[], target: MentionTarget): Promise<void> {
+    return this.notify(context, actorUserId, mentionedUserIds, 'mention', target);
   }
 
   async list(context: TenantContext, userId: string): Promise<NotificationView[]> {

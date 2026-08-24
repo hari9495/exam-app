@@ -39,6 +39,8 @@ export interface BoardRow {
   feedbackCount: number;
   fitScore: number | null;
   fitStatus: string | null;
+  assignedUserId: string | null;
+  assigneeName: string | null;
   fitStale: boolean;
 }
 
@@ -272,6 +274,12 @@ export class PipelineService {
       const currentHash = computeCriteriaHash({
         title: job.title, description: job.description, fitCriteria: job.fitCriteria, fitRubric: job.fitRubric,
       });
+      // Resolve assignee display names in one batched query.
+      const assigneeIds = [...new Set(entries.map((e) => e.assignedUserId).filter((id): id is string => Boolean(id)))];
+      const assignees = assigneeIds.length
+        ? await tx.user.findMany({ where: { id: { in: assigneeIds } }, select: { id: true, name: true } })
+        : [];
+      const assigneeName = new Map(assignees.map((a: { id: string; name: string | null }) => [a.id, a.name]));
       const stages = Object.fromEntries(PIPELINE_STAGES.map((s) => [s, [] as BoardRow[]])) as Record<PipelineStage, BoardRow[]>;
       const rejected: BoardRow[] = [];
       for (const e of entries) {
@@ -289,6 +297,8 @@ export class PipelineService {
           fitScore: e.fitAssessment?.overallScore ?? null,
           fitStatus: e.fitAssessment?.status ?? null,
           fitStale: e.fitAssessment?.status === 'done' && e.fitAssessment.criteriaHash !== currentHash,
+          assignedUserId: e.assignedUserId,
+          assigneeName: e.assignedUserId ? (assigneeName.get(e.assignedUserId) ?? null) : null,
         };
         if (e.rejected) rejected.push(row);
         else if (isValidStage(e.stage)) stages[e.stage].push(row);
@@ -534,6 +544,46 @@ export class PipelineService {
       }
     }
     return created;
+  }
+
+  // Assign (or unassign, with null) a candidate to a teammate. Notifies the new assignee.
+  async assignEntry(context: TenantContext, actorUserId: string, entryId: string, assigneeUserId: string | null): Promise<{ success: true }> {
+    const orgId = context.organizationId as string;
+    const { candidateId, candidateName } = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const entry = await tx.pipelineEntry.findFirst({
+        where: { id: entryId, organizationId: orgId },
+        select: { id: true, candidateId: true, candidate: { select: { name: true } } },
+      });
+      if (!entry) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
+      if (assigneeUserId) {
+        const user = await tx.user.findFirst({ where: { id: assigneeUserId, organizationId: orgId }, select: { id: true } });
+        if (!user) throw new BadRequestException('Assignee is not a member of this organization');
+      }
+      await tx.pipelineEntry.update({ where: { id: entryId }, data: { assignedUserId: assigneeUserId } });
+      await this.audit.record(context, {
+        actorUserId,
+        action: 'entry.assigned',
+        entityType: 'pipeline_entry',
+        entityId: entryId,
+        metadata: { assignedUserId: assigneeUserId },
+      });
+      return { candidateId: entry.candidateId, candidateName: entry.candidate?.name ?? null };
+    });
+
+    // Notify the new assignee (post-commit; notify drops the actor, so self-assign is silent).
+    if (assigneeUserId) {
+      try {
+        await this.notifications.notify(context, actorUserId, [assigneeUserId], 'assigned', {
+          entityType: 'pipeline_entry',
+          entityId: entryId,
+          contextText: candidateName,
+          linkPath: `/candidates/${candidateId}`,
+        });
+      } catch (e) {
+        this.logger.error(`assignment notification failed for entry ${entryId}`, e as Error);
+      }
+    }
+    return { success: true };
   }
 
   async listFeedback(context: TenantContext, entryId: string): Promise<FeedbackRow[]> {
