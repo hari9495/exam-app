@@ -9,6 +9,7 @@ import { PatchEntryDto } from './dto/patch-entry.dto';
 import { AddFeedbackDto } from './dto/add-feedback.dto';
 import { CandidateEmailTemplatesService } from '../candidate-emails/candidate-email-templates.service';
 import { CandidateEmailsService } from '../candidate-emails/candidate-emails.service';
+import { IntegrationEventsService } from '../integrations/integration-events.service';
 import { computeCriteriaHash, validateRubricInput } from '../candidate-fit/candidate-fit.core';
 
 export interface FeedbackRow {
@@ -45,6 +46,15 @@ export interface PipelineBoard {
   rejected: BoardRow[];
 }
 
+// RFC-4180 CSV field encode + spreadsheet formula-injection guard: a leading =/+/-/@ (or tab/CR)
+// can execute as a formula in Excel/Sheets, so prefix those with a quote before RFC-4180 quoting.
+function csvEscape(value: string): string {
+  let s = String(value ?? '');
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  if (/[",\r\n]/.test(s)) s = `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
 function emptyStageCounts(): Record<PipelineStage, number> & { rejected: number } {
   const counts = Object.fromEntries(PIPELINE_STAGES.map((s) => [s, 0])) as Record<PipelineStage, number>;
   return { ...counts, rejected: 0 };
@@ -70,6 +80,7 @@ export class PipelineService {
     private readonly audit: AuditService,
     private readonly templates: CandidateEmailTemplatesService,
     private readonly messages: CandidateEmailsService,
+    private readonly integrationEvents: IntegrationEventsService,
   ) {}
 
   async createJob(
@@ -203,6 +214,30 @@ export class PipelineService {
     });
   }
 
+  // Candidate/pipeline CSV export for ATS/HRIS interchange. Formula-injection-safe (candidate
+  // name/email/phone come from the public apply form).
+  async exportJobCandidatesCsv(context: TenantContext, jobId: string): Promise<string> {
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const job = await tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } });
+      if (!job) throw new NotFoundException(`Job ${jobId} not found`);
+      const entries = await tx.pipelineEntry.findMany({
+        where: { jobId },
+        select: { stage: true, rejected: true, createdAt: true, candidate: { select: { name: true, email: true, phone: true } } },
+        orderBy: { createdAt: 'asc' },
+      });
+      const header = ['Name', 'Email', 'Phone', 'Stage', 'Status', 'Applied At'];
+      const rows = entries.map((e) => [
+        e.candidate?.name ?? '',
+        e.candidate?.email ?? '',
+        e.candidate?.phone ?? '',
+        e.stage,
+        e.rejected ? 'rejected' : 'active',
+        e.createdAt.toISOString(),
+      ]);
+      return [header, ...rows].map((r) => r.map(csvEscape).join(',')).join('\r\n') + '\r\n';
+    });
+  }
+
   async deleteJob(context: TenantContext, actorUserId: string, jobId: string): Promise<{ success: true }> {
     await this.tenantPrisma.forTenant(context, async (tx) => {
       const job = await tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } });
@@ -303,9 +338,11 @@ export class PipelineService {
   }
 
   async patchEntry(context: TenantContext, actorUserId: string, entryId: string, dto: PatchEntryDto): Promise<PatchEntryResult> {
+    let previousStage: string | undefined;
     const entry = await this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: context.organizationId as string } });
       if (!existing) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
+      previousStage = existing.stage;
 
       let data: { stage?: string; rejected: boolean; rejectedReason: string | null; rejectedAt: Date | null };
       let action: string;
@@ -327,6 +364,30 @@ export class PipelineService {
       await this.audit.record(context, { actorUserId, action, entityType: 'pipeline_entry', entityId: entryId, metadata: { ...dto } });
       return updated;
     });
+
+    // Fan the hire out to integrations (webhook/chat/Zapier -> the org's HRIS for onboarding).
+    // Post-commit, in its own guard so it fires regardless of the comms branch below and can never
+    // affect the stage move that already persisted. emit() is itself never-throw. Gated on the
+    // transition INTO hired (previousStage !== 'hired') so a re-save can't re-trigger onboarding.
+    if (dto.stage === 'hired' && previousStage !== 'hired') {
+      try {
+        const info = await this.tenantPrisma.forTenant(context, (tx) =>
+          tx.pipelineEntry.findUnique({
+            where: { id: entryId },
+            select: { candidateId: true, candidate: { select: { name: true } }, job: { select: { title: true } } },
+          }),
+        );
+        if (info) {
+          await this.integrationEvents.emit(context.organizationId as string, 'candidate.hired', {
+            subject: info.candidate?.name ?? '',
+            roleTitle: info.job?.title ?? '',
+            linkPath: `/candidates/${info.candidateId}`,
+          });
+        }
+      } catch (e) {
+        this.logger.error(`candidate.hired emit failed for entry ${entryId}`, e as Error);
+      }
+    }
 
     // Stage-move comms hook: runs AFTER the tx above has committed. dto.stage takes priority
     // over rejected (patchEntry only ever sets one or the other -- see the branch above).

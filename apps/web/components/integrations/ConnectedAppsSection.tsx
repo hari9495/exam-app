@@ -39,6 +39,7 @@ const INTEGRATION_EVENTS: { value: string; label: string }[] = [
   { value: 'offer.accepted', label: 'Offer accepted' },
   { value: 'candidate.applied', label: 'New applicant' },
   { value: 'candidate.fit_scored', label: 'AI fit score ready' },
+  { value: 'candidate.hired', label: 'Candidate hired' },
 ];
 
 const EVENT_LABEL_BY_VALUE = new Map(INTEGRATION_EVENTS.map((e) => [e.value, e.label]));

@@ -7,6 +7,7 @@ export const INTEGRATION_EVENT_TYPES = [
   'offer.accepted',
   'candidate.applied',
   'candidate.fit_scored',
+  'candidate.hired',
 ] as const;
 
 export type IntegrationEventType = (typeof INTEGRATION_EVENT_TYPES)[number];
@@ -20,4 +21,5 @@ export const INTEGRATION_EVENT_LABELS: Record<IntegrationEventType, string> = {
   'offer.accepted': 'Offer accepted',
   'candidate.applied': 'New applicant',
   'candidate.fit_scored': 'AI fit score ready',
+  'candidate.hired': 'Candidate hired',
 };

@@ -8,6 +8,7 @@ describe('PipelineService', () => {
   let audit: { record: jest.Mock };
   let templates: { resolveForEvent: jest.Mock };
   let messages: { sendMessage: jest.Mock };
+  let integrationEvents: { emit: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
   beforeEach(() => {
@@ -15,7 +16,8 @@ describe('PipelineService', () => {
     audit = { record: jest.fn() };
     templates = { resolveForEvent: jest.fn().mockResolvedValue(null) };
     messages = { sendMessage: jest.fn().mockResolvedValue({ id: 'email-1' }) };
-    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any);
+    integrationEvents = { emit: jest.fn().mockResolvedValue(undefined) };
+    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, integrationEvents as any);
   });
 
   it('createJob writes org-scoped and audits', async () => {
@@ -349,6 +351,35 @@ describe('PipelineService', () => {
     });
   });
 
+  describe('exportJobCandidatesCsv', () => {
+    it('builds a header + one row per candidate, comma-quoted and formula-injection-safe', async () => {
+      const tx = {
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }) },
+        pipelineEntry: {
+          findMany: jest.fn().mockResolvedValue([
+            { stage: 'hired', rejected: false, createdAt: new Date('2026-08-01T00:00:00.000Z'), candidate: { name: 'Asha, Rao', email: 'asha@example.com', phone: '+91' } },
+            { stage: 'applied', rejected: true, createdAt: new Date('2026-08-02T00:00:00.000Z'), candidate: { name: '=cmd()', email: 'x@y.com', phone: null } },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      const csv = await service.exportJobCandidatesCsv(context, 'job-1');
+      const lines = csv.trim().split('\r\n');
+
+      expect(lines[0]).toBe('Name,Email,Phone,Stage,Status,Applied At');
+      // +91 phone is prefixed with ' -- a leading + is a spreadsheet formula-injection vector (and keeps it as text)
+      expect(lines[1]).toBe("\"Asha, Rao\",asha@example.com,'+91,hired,active,2026-08-01T00:00:00.000Z");
+      expect(lines[2]).toContain("'=cmd()"); // formula prefix neutralized
+      expect(lines[2]).toContain('rejected');
+    });
+
+    it('throws NotFound for a job outside the org', async () => {
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn({ job: { findFirst: jest.fn().mockResolvedValue(null) } }));
+      await expect(service.exportJobCandidatesCsv(context, 'nope')).rejects.toThrow(NotFoundException);
+    });
+  });
+
   describe('patchEntry', () => {
     it('stage move clears reject fields and audits entry.stage_changed', async () => {
       const update = jest.fn().mockResolvedValue({ id: 'en1', stage: 'interview' });
@@ -362,6 +393,50 @@ describe('PipelineService', () => {
         data: { stage: 'interview', rejected: false, rejectedReason: null, rejectedAt: null },
       });
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'entry.stage_changed', entityId: 'en1' }));
+    });
+
+    it('emits candidate.hired (subject/role/linkPath) when moved to the hired stage', async () => {
+      const update = jest.fn().mockResolvedValue({ id: 'en1', stage: 'hired' });
+      const tx = {
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1' }),
+          update,
+          findUnique: jest.fn().mockResolvedValue({ candidateId: 'cand-1', candidate: { name: 'Asha Rao' }, job: { title: 'Backend Engineer' } }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.patchEntry(context, 'user-1', 'en1', { stage: 'hired' });
+
+      expect(integrationEvents.emit).toHaveBeenCalledWith(
+        'org-1',
+        'candidate.hired',
+        expect.objectContaining({ subject: 'Asha Rao', roleTitle: 'Backend Engineer', linkPath: '/candidates/cand-1' }),
+      );
+    });
+
+    it('does not emit candidate.hired on a non-hired stage move', async () => {
+      const tx = { pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', stage: 'offer' }), update: jest.fn().mockResolvedValue({ id: 'en1', stage: 'interview' }) } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.patchEntry(context, 'user-1', 'en1', { stage: 'interview' });
+
+      expect(integrationEvents.emit).not.toHaveBeenCalled();
+    });
+
+    it('does not re-emit candidate.hired when the entry was already hired (idempotent)', async () => {
+      const tx = {
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', stage: 'hired' }),
+          update: jest.fn().mockResolvedValue({ id: 'en1', stage: 'hired' }),
+          findUnique: jest.fn(),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.patchEntry(context, 'user-1', 'en1', { stage: 'hired' });
+
+      expect(integrationEvents.emit).not.toHaveBeenCalled();
     });
 
     it('rejects an invalid stage with BadRequestException', async () => {
