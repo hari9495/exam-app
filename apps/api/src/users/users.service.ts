@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { User } from '@prisma/client';
+import { Prisma, User } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
@@ -26,6 +26,16 @@ import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } fr
 // raw path into a PRIVATE blob container: useless to a browser and not ours to hand out. The
 // "me" endpoints select it separately and return a signed avatarUrl instead (see ProfileUser).
 export type SafeUser = Omit<User, 'passwordHash' | 'avatarPath'>;
+
+// The staff pickers advertise "Search staff by name or email", but this filter matched email
+// only, so typing a person's NAME silently returned nothing -- the audit-log actor picker looked
+// broken even though the user existed. Matches either identifier; SQL Server's default collation
+// makes `contains` case-insensitive, so no manual lower-casing is needed.
+function staffSearchWhere(search?: string): Prisma.UserWhereInput {
+  const term = search?.trim();
+  if (!term) return {};
+  return { OR: [{ email: { contains: term } }, { name: { contains: term } }] };
+}
 
 const SAFE_USER_SELECT = {
   id: true,
@@ -140,7 +150,7 @@ export class UsersService {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const where = {
         organizationId: context.organizationId,
-        ...(filters.search ? { email: { contains: filters.search } } : {}),
+        ...staffSearchWhere(filters.search),
       };
       const [users, total] = await Promise.all([
         tx.user.findMany({ where, select: SAFE_USER_SELECT, orderBy: { createdAt: 'desc' }, skip, take }),
@@ -156,7 +166,7 @@ export class UsersService {
   ): Promise<PaginatedResponse<SafeUser & { organizationName: string | null }>> {
     const { page, pageSize, skip, take } = resolvePaginationParams(filters.page, filters.pageSize);
     return this.tenantPrisma.forTenant(context, async (tx) => {
-      const where = filters.search ? { email: { contains: filters.search } } : {};
+      const where = staffSearchWhere(filters.search);
       const [users, total] = await Promise.all([
         tx.user.findMany({
           where,
@@ -368,7 +378,7 @@ export class UsersService {
   ): Promise<PaginatedResponse<SuperAdminRecord>> {
     const { page, pageSize, skip, take } = resolvePaginationParams(filters.page, filters.pageSize);
     return this.tenantPrisma.forTenant(context, async (tx) => {
-      const where = { role: 'super_admin' as const, ...(filters.search ? { email: { contains: filters.search } } : {}) };
+      const where = { role: 'super_admin' as const, ...staffSearchWhere(filters.search) };
       const [superAdmins, total] = await Promise.all([
         tx.user.findMany({ where, select: SUPER_ADMIN_SELECT, orderBy: { createdAt: 'desc' }, skip, take }),
         tx.user.count({ where }),

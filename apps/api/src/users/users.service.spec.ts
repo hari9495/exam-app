@@ -454,6 +454,50 @@ describe('UsersService', () => {
     });
   });
 
+  // Regression (#6869): the staff pickers say "Search staff by name or email", but this filter
+  // matched email only, so searching a person's NAME returned nothing and the audit-log actor
+  // picker looked broken. The assertion is on the WHERE clause, because the bug was invisible in
+  // the response shape -- the query simply never matched.
+  it('list searches on name as well as email, scoped to the organization', async () => {
+    let whereArg: any;
+    tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
+      fn({
+        user: {
+          findMany: async (args: any) => {
+            whereArg = args.where;
+            return [];
+          },
+          count: async () => 0,
+        },
+      }),
+    );
+
+    await service.list({ organizationId: 'org-1', isSuperAdmin: false }, { search: 'Jane' });
+
+    expect(whereArg.organizationId).toBe('org-1');
+    expect(whereArg.OR).toEqual([{ email: { contains: 'Jane' } }, { name: { contains: 'Jane' } }]);
+  });
+
+  it('list applies no search filter when the term is blank', async () => {
+    let whereArg: any;
+    tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
+      fn({
+        user: {
+          findMany: async (args: any) => {
+            whereArg = args.where;
+            return [];
+          },
+          count: async () => 0,
+        },
+      }),
+    );
+
+    await service.list({ organizationId: 'org-1', isSuperAdmin: false }, { search: '   ' });
+
+    expect(whereArg.OR).toBeUndefined();
+    expect(whereArg.organizationId).toBe('org-1');
+  });
+
   it('inviteSuperAdmin rejects an email that already has a platform account', async () => {
     tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
       fn({ user: { findFirst: async () => ({ id: 'existing-sa' }) } }),
