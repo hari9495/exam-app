@@ -6,6 +6,7 @@ import { Card, Tabs, TabsList, TabsTrigger, TabsContent, useToast } from '../ui'
 import { useJobPipeline, usePatchEntry, useScoreJob } from '../../lib/hooks/usePipeline';
 import { BoardRow, EntryExamResult, PatchEntryResult, PIPELINE_STAGES, PipelineStage, STAGE_LABEL } from '../../lib/types';
 import { useAuth } from '../../lib/auth-context';
+import { useCurrentUser } from '../../lib/hooks/useCurrentUser';
 import { CandidateDrawer } from './CandidateDrawer';
 import { SendMessageModal, SendMessageInitial } from './SendMessageModal';
 
@@ -86,6 +87,7 @@ function PipelineCard({ row, canManage, onOpen, onStageChange, onReject }: Pipel
         </span>
       </div>
       <p className="text-xs text-muted">Added via {row.enteredVia}</p>
+      {row.assigneeName && <p className="text-xs font-medium text-primary">Assigned to {row.assigneeName}</p>}
       {canManage && (
         <div className="flex items-center justify-between gap-2 border-t border-rule pt-2">
           <select
@@ -116,8 +118,11 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
   const patchEntry = usePatchEntry(jobId);
   const scoreJob = useScoreJob(jobId);
   const { toast } = useToast();
+  const { data: currentUser } = useCurrentUser();
   const [tab, setTab] = useState<'board' | 'rejected'>('board');
   const [sortByFit, setSortByFit] = useState(false);
+  const [mineOnly, setMineOnly] = useState(false);
+  const visible = (rows: BoardRow[]) => (mineOnly ? rows.filter((r) => r.assignedUserId === currentUser?.id) : rows);
   const [openRow, setOpenRow] = useState<BoardRow | null>(null);
   const [composeFor, setComposeFor] = useState<{ entryId: string; candidateId: string; candidateName: string; initial: SendMessageInitial } | null>(
     null,
@@ -193,10 +198,16 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
         </TabsList>
         <TabsContent value="board">
           <div className="mb-4 flex items-center justify-between gap-3">
-            <label className="flex items-center gap-1.5 text-xs font-medium text-muted">
-              <input type="checkbox" checked={sortByFit} onChange={(e) => setSortByFit(e.target.checked)} />
-              Sort by fit
-            </label>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-muted">
+                <input type="checkbox" checked={sortByFit} onChange={(e) => setSortByFit(e.target.checked)} />
+                Sort by fit
+              </label>
+              <label className="flex items-center gap-1.5 text-xs font-medium text-muted">
+                <input type="checkbox" checked={mineOnly} onChange={(e) => setMineOnly(e.target.checked)} />
+                My candidates
+              </label>
+            </div>
             <button
               type="button"
               onClick={() => scoreJob.mutate()}
@@ -210,10 +221,10 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
             {PIPELINE_STAGES.map((stage) => (
               <div key={stage} className="flex flex-col gap-3">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
-                  {STAGE_LABEL[stage]} ({board.stages[stage].length})
+                  {STAGE_LABEL[stage]} ({visible(board.stages[stage]).length})
                 </h3>
                 <div className="flex flex-col gap-3">
-                  {(sortByFit ? sortByFitScore(board.stages[stage]) : board.stages[stage]).map((row) => (
+                  {(sortByFit ? sortByFitScore(visible(board.stages[stage])) : visible(board.stages[stage])).map((row) => (
                     <PipelineCard
                       key={row.entryId}
                       row={row}
@@ -223,7 +234,7 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
                       onReject={handleReject}
                     />
                   ))}
-                  {board.stages[stage].length === 0 && <p className="text-xs text-muted">No candidates.</p>}
+                  {visible(board.stages[stage]).length === 0 && <p className="text-xs text-muted">No candidates.</p>}
                 </div>
               </div>
             ))}

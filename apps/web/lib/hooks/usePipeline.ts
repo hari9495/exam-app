@@ -176,6 +176,16 @@ export function useAddFeedback(entryId: string, jobId: string) {
   });
 }
 
+export function useAssignEntry(entryId: string, jobId: string) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (assigneeUserId: string | null) =>
+      apiFetch(`/entries/${entryId}/assignment`, { method: 'PATCH', body: JSON.stringify({ assigneeUserId }) }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobs', jobId, 'pipeline'] }),
+  });
+}
+
 export function useFitAssessment(entryId: string, opts: { poll: boolean }) {
   const { accessToken } = useAuth();
   return useQuery<FitAssessment | null>({

@@ -13,7 +13,9 @@ import { NotificationView } from '../lib/types';
 
 function label(n: NotificationView): string {
   const who = n.actorName ?? 'A teammate';
-  if (n.type === 'mention') return `${who} mentioned you${n.contextText ? ` on ${n.contextText}` : ''}`;
+  const on = n.contextText ? ` on ${n.contextText}` : '';
+  if (n.type === 'mention') return `${who} mentioned you${on}`;
+  if (n.type === 'assigned') return `${who} assigned you${on}`;
   return `${who} sent you a notification`;
 }
 

@@ -390,6 +390,8 @@ export interface BoardRow {
   fitScore: number | null;
   fitStatus: string | null;
   fitStale: boolean;
+  assignedUserId: string | null;
+  assigneeName: string | null;
 }
 
 export interface RubricDimension {

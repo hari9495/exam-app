@@ -6,6 +6,7 @@ import { Modal, Button, StatusBadge, StatusTone, useToast } from '../ui';
 import {
   useEntryFeedback,
   useAddFeedback,
+  useAssignEntry,
   useCandidateProfile,
   useCandidateResumeUrl,
   useFitAssessment,
@@ -419,6 +420,40 @@ function chipLabel(result: EntryExamResult): string {
   return `${result.examTitle} · ${label}${result.score !== null ? ` ${result.score}%` : ''}`;
 }
 
+// Assign this candidate to a teammate (or Unassigned). Local state gives instant feedback; the
+// mutation persists + notifies the new assignee and refetches the board.
+function AssigneeControl({ row, jobId }: { row: BoardRow; jobId: string }) {
+  const { data } = useUserDirectory({ pageSize: 100 });
+  const assign = useAssignEntry(row.entryId, jobId);
+  const { toast } = useToast();
+  const [assignee, setAssignee] = useState(row.assignedUserId ?? '');
+  const teammates = (data?.data ?? []).filter((u) => u.status === 'active');
+
+  function onChange(value: string) {
+    setAssignee(value);
+    assign.mutate(value || null, { onError: () => toast('Failed to update assignee.', 'error') });
+  }
+
+  return (
+    <label className="flex items-center gap-2 text-xs font-medium text-muted">
+      Assigned to
+      <select
+        value={assignee}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={assign.isPending}
+        className="rounded border border-rule px-2 py-1 text-sm text-ink focus:border-primary focus:outline-none"
+      >
+        <option value="">Unassigned</option>
+        {teammates.map((u) => (
+          <option key={u.id} value={u.id}>
+            {u.name ?? u.email}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 // Pick teammates to @mention/notify on this feedback. Chips over an inline @-autocomplete: far
 // simpler, same outcome (their ids go to mentionedUserIds). Backend validates + drops self.
 function MentionPicker({ value, onChange }: { value: string[]; onChange: (ids: string[]) => void }) {
@@ -498,7 +533,10 @@ export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: B
   return (
     <Modal open title={row.candidateName} onClose={onClose} size="lg">
       <div className="flex flex-col gap-5">
-        <p className="text-sm text-muted">{row.candidateEmail}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-muted">{row.candidateEmail}</p>
+          <AssigneeControl row={row} jobId={jobId} />
+        </div>
 
         <CandidateProfileSection candidateId={row.candidateId} />
 
