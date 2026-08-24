@@ -1,3 +1,16 @@
+export interface NotificationView {
+  id: string;
+  type: string;
+  actorUserId: string | null;
+  actorName: string | null;
+  entityType: string;
+  entityId: string;
+  contextText: string | null;
+  linkPath: string;
+  readAt: string | null;
+  createdAt: string;
+}
+
 export interface PaginatedResponse<T> {
   data: T[];
   total: number;

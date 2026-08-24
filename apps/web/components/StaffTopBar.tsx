@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { LogOut } from 'lucide-react';
+import { NotificationBell } from './NotificationBell';
 
 interface StaffTopBarProps {
   displayName: string;
@@ -18,6 +19,7 @@ interface StaffTopBarProps {
 export function StaffTopBar({ displayName, initials, roleLabel, avatarUrl, onLogout }: StaffTopBarProps) {
   return (
     <div className="sticky top-0 z-10 flex h-16 items-center justify-end gap-4 border-b border-rule bg-paper px-6 print:hidden">
+      <NotificationBell />
       <Link
         href="/profile"
         className="flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 transition-colors duration-150 hover:bg-ground"

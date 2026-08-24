@@ -11,6 +11,7 @@ import {
   useFitAssessment,
   useScoreEntry,
 } from '../../lib/hooks/usePipeline';
+import { useUserDirectory } from '../../lib/hooks/useUserDirectory';
 import { useCandidateMessages, useResendMessage } from '../../lib/hooks/useCandidateMessages';
 import { useCandidateOffers, useWithdrawOffer } from '../../lib/hooks/useOffers';
 import { useCandidateInterviews, useCancelInterview } from '../../lib/hooks/useInterviews';
@@ -418,6 +419,36 @@ function chipLabel(result: EntryExamResult): string {
   return `${result.examTitle} · ${label}${result.score !== null ? ` ${result.score}%` : ''}`;
 }
 
+// Pick teammates to @mention/notify on this feedback. Chips over an inline @-autocomplete: far
+// simpler, same outcome (their ids go to mentionedUserIds). Backend validates + drops self.
+function MentionPicker({ value, onChange }: { value: string[]; onChange: (ids: string[]) => void }) {
+  const { data } = useUserDirectory({ pageSize: 100 });
+  const teammates = (data?.data ?? []).filter((u) => u.status === 'active');
+  if (teammates.length === 0) return null;
+  const toggle = (id: string) => onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-xs font-medium text-muted">Notify teammates</span>
+      <div className="flex flex-wrap gap-1.5">
+        {teammates.map((u) => {
+          const on = value.includes(u.id);
+          return (
+            <button
+              key={u.id}
+              type="button"
+              onClick={() => toggle(u.id)}
+              aria-pressed={on}
+              className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${on ? 'border-primary bg-primary/10 text-primary' : 'border-rule text-muted hover:border-primary/30'}`}
+            >
+              @{u.name ?? u.email}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function StarPicker({ value, onChange }: { value: number; onChange: (value: number) => void }) {
   return (
     <div className="flex items-center gap-1">
@@ -446,16 +477,18 @@ export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: B
   const { toast } = useToast();
   const [note, setNote] = useState('');
   const [rating, setRating] = useState(0);
+  const [mentions, setMentions] = useState<string[]>([]);
 
   const canSubmit = Boolean(note.trim() || rating > 0);
 
   function handleSubmit() {
     addFeedback.mutate(
-      { note: note.trim() || undefined, rating: rating > 0 ? rating : undefined },
+      { note: note.trim() || undefined, rating: rating > 0 ? rating : undefined, mentionedUserIds: mentions.length ? mentions : undefined },
       {
         onSuccess: () => {
           setNote('');
           setRating(0);
+          setMentions([]);
         },
         onError: (error) => toast(error instanceof Error ? error.message : 'Failed to add feedback.', 'error'),
       },
@@ -527,6 +560,7 @@ export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: B
               className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none"
             />
             <StarPicker value={rating} onChange={setRating} />
+            <MentionPicker value={mentions} onChange={setMentions} />
             <div>
               <Button size="sm" onClick={handleSubmit} loading={addFeedback.isPending} disabled={!canSubmit}>
                 Post feedback
