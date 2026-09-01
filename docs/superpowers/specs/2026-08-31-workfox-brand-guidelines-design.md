@@ -27,7 +27,7 @@ of truth with two renderings**:
 | Decision | Choice |
 |---|---|
 | Product name (v2) | **Workfox** — status: working name, may change; defined as a label, never hardcoded prose |
-| Company name | Prudent Consulting (legal/footer contexts) |
+| Company name | Yukthix Consulting (legal/footer contexts) |
 | Logo (v2) | **New Workfox mark** — working mark designed in this project; PrudentMark retired from all v2 surfaces |
 | Scope | Full guidelines: identity (voice, logo, naming) + product design system |
 | Format | Both renderings, single content source |
@@ -42,7 +42,7 @@ of truth with two renderings**:
   ```ts
   export const BRAND = {
     productName: 'Workfox',        // working name — single point of change
-    companyName: 'Prudent Consulting',
+    companyName: 'Yukthix Consulting',
     productNameStatus: 'working',  // flips to 'final' when the name is confirmed
   } as const;
   ```
@@ -75,7 +75,7 @@ content. Chapters:
 
 1. **Foundations** — mission, personality, the Workfox Azure philosophy (professional polish,
    detail over decoration, data-true ornament, semantic color discipline). **Naming** section:
-   Workfox (product, working name) vs Prudent
+   Workfox (product, working name) vs Yukthix
    Consulting (company) vs org names; when each appears. White-label stance: on candidate
    surfaces the org speaks; Workfox appears only where the platform speaks (staff login,
    footers, "sent via Workfox" in emails).
