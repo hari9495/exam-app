@@ -1,20 +1,20 @@
 'use client';
 
 // Shared v2 data table — the ONE table format for the product (zebra-polished TanStack v9). Owns the
-// chrome: toolbar (search + Export + Columns), sortable headers, zebra rows + hover, optional row
-// selection + bulk bar, server pagination, and empty/loading/error states. Owns sort / column-
-// visibility / selection state internally; surfaces supply columns, data, and server search/page.
-import { useState, type ReactNode } from 'react';
+// chrome: toolbar (search + optional extra controls + Export + Columns), sortable headers, zebra rows
+// + hover, optional row-selection + bulk bar, optional collapsible row grouping, server or no
+// pagination, and empty/loading/error. Owns sort / column-visibility / selection / group-expand state
+// internally; surfaces supply columns, data, and server search/page.
+import { Fragment, useState, type ReactNode } from 'react';
 import {
   tableFeatures, useTable, createSortedRowModel, rowSortingFeature, rowSelectionFeature,
   columnVisibilityFeature, flexRender, type ColumnDef, type SortingState, type ColumnVisibilityState, type RowSelectionState, type RowData,
 } from '@tanstack/react-table';
-import { Search, ChevronsUpDown, ArrowUp, ArrowDown, SlidersHorizontal, Download, ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import { Search, ChevronsUpDown, ArrowUp, ArrowDown, SlidersHorizontal, Download, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import { Dropdown } from './Dropdown';
 
 export const DT_FEATURES = tableFeatures({ rowSortingFeature, rowSelectionFeature, columnVisibilityFeature, sortedRowModel: createSortedRowModel() });
 
-// Shared cell/toolbar styles so surface-rendered cells stay consistent with the table chrome.
 export const dt = {
   th: { textAlign: 'left', padding: '13px 12px 11px', whiteSpace: 'nowrap' } as React.CSSProperties,
   td: { padding: '11px 12px', fontSize: 13, color: 'var(--ink)', verticalAlign: 'middle' } as React.CSSProperties,
@@ -63,23 +63,35 @@ export interface DataTableProps<T extends RowData> {
   emptyMessage?: string;
   columnLabels?: Record<string, string>;
   onExport?: () => void;
+  /** Extra toolbar controls rendered after the search box (e.g. Group By, a toggle). */
+  toolbarExtra?: ReactNode;
   enableSelection?: boolean;
-  /** Rendered above the table when rows are selected. */
   renderBulkBar?: (selectedIds: string[], clearSelection: () => void) => ReactNode;
+  /** Collapsible row grouping: return the group label(s) for a row (an array puts the row in each,
+   *  e.g. multi-tag). Omit for a flat table. */
+  groupOf?: (row: T) => string | string[];
+  /** Orders the group sections. Default: first-appearance order. */
+  groupSort?: (a: string, b: string) => number;
+  /** Per-group meta shown next to the group label (e.g. "12 questions · 24 marks"). */
+  groupMeta?: (label: string, rows: T[]) => ReactNode;
 }
 
 export function DataTable<T extends RowData>({
   columns, data, getRowId, search, onSearchChange, searchPlaceholder = 'Search…',
   page, totalPages, onPageChange, isLoading, isError, errorMessage = 'Failed to load.',
-  emptyMessage = 'Nothing found.', columnLabels = {}, onExport, enableSelection = false, renderBulkBar,
+  emptyMessage = 'Nothing found.', columnLabels = {}, onExport, toolbarExtra, enableSelection = false,
+  renderBulkBar, groupOf, groupSort, groupMeta,
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>({});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const grouping = Boolean(groupOf);
 
   const selectColumn: ColumnDef<typeof DT_FEATURES, T> = {
     id: 'select', enableSorting: false, enableHiding: false,
-    header: ({ table }) => <Cb checked={table.getIsAllRowsSelected()} indeterminate={table.getIsSomeRowsSelected() && !table.getIsAllRowsSelected()} onChange={(v) => table.toggleAllRowsSelected(v)} />,
+    // Grouped view uses per-group select-all in each group header instead of a global one.
+    header: ({ table }) => grouping ? null : <Cb checked={table.getIsAllRowsSelected()} indeterminate={table.getIsSomeRowsSelected() && !table.getIsAllRowsSelected()} onChange={(v) => table.toggleAllRowsSelected(v)} />,
     cell: ({ row }) => <Cb checked={row.getIsSelected()} onChange={(v) => row.toggleSelected(v)} />,
   };
   const allColumns = enableSelection ? [selectColumn, ...columns] : columns;
@@ -93,6 +105,31 @@ export function DataTable<T extends RowData>({
   const selectedIds = enableSelection ? table.getSelectedRowModel().rows.map((r) => getRowId(r.original)) : [];
   const hideable = table.getAllColumns().filter((c) => c.getCanHide());
   const colCount = allColumns.length;
+  const modelRows = table.getRowModel().rows;
+
+  // Group the (already sorted) rows, preserving first-appearance order of each label.
+  const groups: { label: string; rows: typeof modelRows }[] = [];
+  if (grouping) {
+    const idx = new Map<string, number>();
+    for (const r of modelRows) {
+      const raw = groupOf!(r.original);
+      const labels = Array.isArray(raw) ? (raw.length ? raw : ['—']) : [raw || '—'];
+      for (const label of labels) {
+        let at = idx.get(label);
+        if (at === undefined) { at = groups.length; idx.set(label, at); groups.push({ label, rows: [] }); }
+        groups[at].rows.push(r);
+      }
+    }
+    if (groupSort) groups.sort((a, b) => groupSort(a.label, b.label));
+  }
+  const toggleGroup = (label: string) => setExpanded((c) => { const n = new Set(c); if (n.has(label)) n.delete(label); else n.add(label); return n; });
+
+  const cellStyle = (colId: string): React.CSSProperties => ({ ...dt.td, width: colId === 'select' ? 44 : colId === 'actions' ? 48 : undefined, textAlign: colId === 'actions' ? 'right' : 'left' });
+  const renderRow = (row: typeof modelRows[number], zebra: number) => (
+    <tr key={row.id} className="wf-trow" style={{ background: zebra % 2 ? 'color-mix(in srgb, var(--ink) 2.5%, transparent)' : 'transparent' }}>
+      {row.getVisibleCells().map((cell) => <td key={cell.id} style={cellStyle(cell.column.id)}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}
+    </tr>
+  );
 
   return (
     <div>
@@ -102,6 +139,7 @@ export function DataTable<T extends RowData>({
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
           <input value={search} onChange={(e) => onSearchChange(e.target.value)} placeholder={searchPlaceholder} aria-label={searchPlaceholder} style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px 8px 30px', fontSize: 13, borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none' }} />
         </div>
+        {toolbarExtra}
         <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8 }}>
           {onExport && <button type="button" style={dt.toolBtn} onClick={onExport}><Download size={14} /> Export</button>}
           <Dropdown align="end" menuWidth={190} trigger={<span style={dt.toolBtn}><SlidersHorizontal size={14} /> Columns</span>}>
@@ -120,7 +158,6 @@ export function DataTable<T extends RowData>({
         </span>
       </div>
 
-      {/* Bulk bar */}
       {enableSelection && selectedIds.length > 0 && renderBulkBar?.(selectedIds, () => table.resetRowSelection())}
 
       {/* Table */}
@@ -143,17 +180,35 @@ export function DataTable<T extends RowData>({
                 <tr><td colSpan={colCount} style={{ ...dt.td, textAlign: 'center', color: 'var(--muted)', padding: '32px 0' }}>Loading…</td></tr>
               ) : isError ? (
                 <tr><td colSpan={colCount} style={{ ...dt.td, textAlign: 'center', color: 'var(--danger)', padding: '32px 0' }}>{errorMessage}</td></tr>
-              ) : table.getRowModel().rows.length === 0 ? (
+              ) : modelRows.length === 0 ? (
                 <tr><td colSpan={colCount} style={{ ...dt.td, textAlign: 'center', color: 'var(--muted)', padding: '32px 0' }}>{emptyMessage}</td></tr>
-              ) : table.getRowModel().rows.map((row, i) => (
-                <tr key={row.id} className="wf-trow" style={{ background: i % 2 ? 'color-mix(in srgb, var(--ink) 2.5%, transparent)' : 'transparent' }}>
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} style={{ ...dt.td, width: cell.column.id === 'select' ? 44 : cell.column.id === 'actions' ? 48 : undefined, textAlign: cell.column.id === 'actions' ? 'right' : 'left' }}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
-                </tr>
-              ))}
+              ) : grouping ? (
+                groups.map((g) => {
+                  const open = expanded.has(g.label);
+                  const groupRows = g.rows.map((r) => r.original);
+                  const allSel = enableSelection && g.rows.length > 0 && g.rows.every((r) => r.getIsSelected());
+                  const someSel = enableSelection && g.rows.some((r) => r.getIsSelected());
+                  return (
+                    <Fragment key={g.label}>
+                      <tr style={{ background: 'color-mix(in srgb, var(--ink) 4%, transparent)', borderBottom: '1px solid var(--hair)' }}>
+                        <td colSpan={colCount} style={{ padding: '9px 12px' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                            {enableSelection && <Cb checked={allSel} indeterminate={someSel && !allSel} onChange={(v) => g.rows.forEach((r) => r.toggleSelected(v))} />}
+                            <button type="button" onClick={() => toggleGroup(g.label)} aria-expanded={open} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--ink)' }}>
+                              <ChevronDown size={15} style={{ transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform .15s', color: 'var(--muted)' }} />
+                              <span style={{ fontSize: 13, fontWeight: 600 }}>{g.label}</span>
+                              <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 400 }}>{groupMeta ? groupMeta(g.label, groupRows) : `${g.rows.length}`}</span>
+                            </button>
+                          </span>
+                        </td>
+                      </tr>
+                      {open && g.rows.map((row, i) => renderRow(row, i))}
+                    </Fragment>
+                  );
+                })
+              ) : (
+                modelRows.map((row, i) => renderRow(row, i))
+              )}
             </tbody>
           </table>
         </div>
