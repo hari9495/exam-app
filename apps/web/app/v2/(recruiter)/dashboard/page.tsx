@@ -8,7 +8,7 @@ import { Area, AreaChart, ResponsiveContainer, XAxis, Tooltip } from 'recharts';
 import { Users, Send, Activity, ClipboardCheck } from 'lucide-react';
 import { useDashboardSummary, useDashboardTrend, useDashboardAnalytics } from '../../../../lib/hooks/useDashboard';
 import type { DashboardWindow, DashboardTrendMetric, DashboardTrendDays } from '../../../../lib/types';
-import { IconStatCard, Gauge, AnalyticsTiles, Panel } from '../../../../components/ui-v2';
+import { IconStatCard, Gauge, AnalyticsTiles, Panel, AttentionPanel, ActivityPanel, UpcomingExamsPanel } from '../../../../components/ui-v2';
 import { VIZ, STATUS, rateColor } from '../../../../components/ui-v2/viz';
 
 const WINDOW_DAYS: Record<Exclude<DashboardWindow, 'all'>, DashboardTrendDays> = { '7d': 7, '14d': 14, '30d': 30, '90d': 90 };
@@ -161,6 +161,17 @@ export default function V2DashboardPage() {
           </Panel>
         </div>
       )}
+
+      {/* Upcoming exams + attention/activity lists */}
+      {summary.upcomingExams.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <UpcomingExamsPanel exams={summary.upcomingExams} />
+        </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 12, marginTop: 12 }} className="wf-hero-grid">
+        <AttentionPanel data={{ pendingGrading: summary.attention.pendingGrading, proctoringFlags: summary.attention.recentProctoringFlags, staleInvitationCount: summary.attention.staleInvitationCount }} />
+        <ActivityPanel activity={summary.activity} />
+      </div>
     </>
   );
 }

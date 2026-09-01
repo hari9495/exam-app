@@ -5,7 +5,7 @@
 
 import { Area, AreaChart, ResponsiveContainer, XAxis, Tooltip } from 'recharts';
 import { Users, Send, Activity, ClipboardCheck } from 'lucide-react';
-import { AppShell, IconStatCard, Gauge, AnalyticsTiles, Panel } from '../../../components/ui-v2';
+import { AppShell, IconStatCard, Gauge, AnalyticsTiles, Panel, AttentionPanel, ActivityPanel, UpcomingExamsPanel } from '../../../components/ui-v2';
 import { VIZ, rateColor } from '../../../components/ui-v2/viz';
 import { RECRUITER_NAV_ITEMS } from '../../../lib/recruiter-nav';
 
@@ -33,6 +33,25 @@ const chip: React.CSSProperties = {
 };
 
 function passColor(p: number) { return p >= 65 ? '#15803d' : p >= 55 ? '#a16207' : '#b91c1c'; }
+
+const nowIso = '2026-09-01T09:00:00Z';
+const attentionMock = {
+  pendingGrading: [
+    { examId: 'e1', examTitle: 'Backend Engineer — Node', count: 12 },
+    { examId: 'e2', examTitle: 'QA Automation', count: 3 },
+  ],
+  proctoringFlags: [{ examId: 'e3', examTitle: 'Frontend Engineer — React', occurredAt: nowIso }],
+  staleInvitationCount: 8,
+};
+const activityMock = [
+  { id: 'a1', description: 'Maya invited 24 candidates to Data Analyst — SQL', occurredAt: nowIso },
+  { id: 'a2', description: 'DevOps — Cloud results published', occurredAt: nowIso },
+  { id: 'a3', description: 'You graded 6 answers for QA Automation', occurredAt: nowIso },
+];
+const upcomingMock = [
+  { examId: 'u1', examTitle: 'Senior Backend — System Design', availabilityWindowStart: '2026-09-04T09:00:00Z' },
+  { examId: 'u2', examTitle: 'Product Analyst screen', availabilityWindowStart: '2026-09-06T09:00:00Z' },
+];
 
 export default function ShellPreview() {
   return (
@@ -137,6 +156,15 @@ export default function ShellPreview() {
               </table>
             </div>
           </Panel>
+        </div>
+
+        {/* List panels */}
+        <div style={{ marginTop: 12 }}>
+          <UpcomingExamsPanel exams={upcomingMock} />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 12, marginTop: 12 }} className="wf-hero-grid">
+          <AttentionPanel data={attentionMock} />
+          <ActivityPanel activity={activityMock} />
         </div>
       </AppShell>
     </div>

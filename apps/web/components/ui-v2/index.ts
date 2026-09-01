@@ -12,4 +12,6 @@ export { IconStatCard } from './IconStatCard';
 export { StatsHero } from './StatsHero';
 export { Panel } from './Panel';
 export { Gauge } from './Gauge';
+export { Timeline, TimelineRow } from './Timeline';
 export { AnalyticsTiles } from './dashboard/AnalyticsTiles';
+export { AttentionPanel, ActivityPanel, UpcomingExamsPanel } from './dashboard/DashboardLists';
