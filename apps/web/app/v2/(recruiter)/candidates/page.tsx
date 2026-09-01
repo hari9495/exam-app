@@ -12,7 +12,7 @@ import {
 } from '@tanstack/react-table';
 import {
   Search, MoreHorizontal, ChevronsUpDown, ArrowUp, ArrowDown, SlidersHorizontal, Download,
-  ChevronLeft, ChevronRight, Upload, Power, Trash2, Send, Plus, Pencil, ListFilter,
+  ChevronLeft, ChevronRight, Upload, Power, Trash2, Send, Plus, Pencil, ListFilter, Check,
 } from 'lucide-react';
 import { useCandidates, useCreateCandidate, useUpdateCandidate, useDeleteCandidate } from '../../../../lib/hooks/useCandidates';
 import { useExams } from '../../../../lib/hooks/useExams';
@@ -105,7 +105,23 @@ export default function V2CandidatesPage() {
     },
     { accessorKey: 'email', header: ({ column }) => <SortHead label="Email" sorted={column.getIsSorted()} onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')} />, cell: ({ row }) => <span style={{ color: 'var(--muted)' }}>{row.original.email}</span> },
     { accessorKey: 'phone', header: () => <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)' }}>Phone</span>, enableSorting: false, cell: ({ row }) => <span style={{ color: 'var(--muted)' }}>{row.original.phone ?? '—'}</span> },
-    { accessorKey: 'status', header: ({ column }) => <SortHead label="Status" sorted={column.getIsSorted()} onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')} />, cell: ({ row }) => <StatusPill s={row.original.status} /> },
+    {
+      accessorKey: 'status', enableSorting: false,
+      header: () => (
+        <Dropdown align="start" menuWidth={150} trigger={
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: statusFilter !== 'active' ? 'var(--org-primary)' : 'var(--muted)' }}>
+            Status <ListFilter size={12} style={{ opacity: 0.75 }} />
+          </span>
+        }>
+          {(close) => STATUS_OPTS.map((o) => (
+            <DropdownItem key={o.value} onClick={() => { close(); setStatusFilter(o.value); setPage(1); }}>
+              <span style={{ width: 15, display: 'inline-flex', flexShrink: 0, color: 'var(--org-primary)' }}>{statusFilter === o.value && <Check size={15} />}</span>{o.label}
+            </DropdownItem>
+          ))}
+        </Dropdown>
+      ),
+      cell: ({ row }) => <StatusPill s={row.original.status} />,
+    },
     { accessorKey: 'createdAt', header: ({ column }) => <SortHead label="Added" sorted={column.getIsSorted()} onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')} />, cell: ({ row }) => <span style={{ color: 'var(--muted)' }}>{new Date(row.original.createdAt).toLocaleDateString()}</span> },
     {
       id: 'actions', enableSorting: false, enableHiding: false,
@@ -209,10 +225,6 @@ export default function V2CandidatesPage() {
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
           <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search candidates…" aria-label="Search candidates" style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px 8px 30px', fontSize: 13, borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none' }} />
         </div>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <ListFilter size={15} style={{ color: 'var(--muted)' }} aria-hidden />
-          <Combobox options={STATUS_OPTS} value={statusFilter} onChange={(v) => { setStatusFilter(v); setPage(1); }} width={150} active={statusFilter !== 'active'} />
-        </span>
         <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8 }}>
           <button type="button" style={toolBtn} onClick={exportCsv}><Download size={14} /> Export</button>
           <Dropdown align="end" menuWidth={190} trigger={<span style={toolBtn}><SlidersHorizontal size={14} /> Columns</span>}>
