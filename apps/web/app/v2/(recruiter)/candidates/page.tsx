@@ -155,12 +155,12 @@ export default function V2CandidatesPage() {
         columnLabels={COLUMN_LABELS} onExport={exportCsv}
         enableSelection
         renderBulkBar={(ids, clear) => (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, padding: '10px 14px', borderRadius: 10, background: 'var(--ink)', color: 'var(--paper)', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 13, fontWeight: 600 }}>{ids.length} selected</span>
+          <div style={dt.bulkBar}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--org-primary)' }}>{ids.length} selected</span>
             <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
               <Combobox options={examOptions} value={examId} onChange={setExamId} placeholder="Choose exam…" width={220} active={!!examId} />
-              <button type="button" onClick={() => handleInvite(ids, clear)} disabled={!examId || bulkInvite.isPending} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '8px 13px', borderRadius: 8, border: 'none', background: !examId ? 'color-mix(in srgb, var(--org-primary) 45%, var(--ink))' : 'var(--org-primary)', color: '#fff', cursor: !examId ? 'not-allowed' : 'pointer' }}><Send size={14} /> Send invitations</button>
-              <button type="button" onClick={clear} style={{ fontSize: 12.5, padding: '8px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,.25)', background: 'transparent', color: 'var(--paper)', cursor: 'pointer' }}>Clear</button>
+              <button type="button" onClick={() => handleInvite(ids, clear)} disabled={!examId || bulkInvite.isPending} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '8px 13px', borderRadius: 8, border: 'none', background: !examId ? 'color-mix(in srgb, var(--org-primary) 40%, var(--surface))' : 'var(--org-primary)', color: '#fff', cursor: !examId ? 'not-allowed' : 'pointer' }}><Send size={14} /> Send invitations</button>
+              <button type="button" onClick={clear} style={{ fontSize: 12.5, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', cursor: 'pointer' }}>Clear</button>
             </span>
           </div>
         )}

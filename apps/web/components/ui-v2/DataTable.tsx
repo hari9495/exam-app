@@ -22,6 +22,8 @@ export const dt = {
   iconBtn: { display: 'inline-grid', placeItems: 'center', width: 32, height: 32, borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--muted)', cursor: 'pointer' } as React.CSSProperties,
   primaryBtn: { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, padding: '9px 14px', borderRadius: 9, border: 'none', background: 'var(--org-primary)', color: 'var(--org-on-primary)', cursor: 'pointer' } as React.CSSProperties,
   muted: { color: 'var(--muted)' } as React.CSSProperties,
+  // Selection bulk-action bar — light azure-tinted (not a heavy dark band).
+  bulkBar: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, padding: '10px 14px', borderRadius: 10, background: 'color-mix(in srgb, var(--org-primary) 8%, var(--surface))', border: '1px solid color-mix(in srgb, var(--org-primary) 22%, var(--hair))', color: 'var(--ink)', flexWrap: 'wrap' } as React.CSSProperties,
 };
 
 export function Cb({ checked, onChange, indeterminate = false }: { checked: boolean; onChange: (v: boolean) => void; indeterminate?: boolean }) {
