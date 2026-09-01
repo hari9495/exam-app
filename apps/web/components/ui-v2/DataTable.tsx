@@ -50,9 +50,11 @@ export interface DataTableProps<T extends RowData> {
   columns: ColumnDef<typeof DT_FEATURES, T>[];
   data: T[];
   getRowId: (row: T) => string;
-  search: string;
-  onSearchChange: (v: string) => void;
+  search?: string;
+  onSearchChange?: (v: string) => void;
   searchPlaceholder?: string;
+  /** Hide the whole toolbar (search + Export + Columns) — for embedded/report tables. */
+  hideToolbar?: boolean;
   /** Server pagination. Omit all three for an unpaginated list (shows every row provided). */
   page?: number;
   totalPages?: number;
@@ -77,7 +79,7 @@ export interface DataTableProps<T extends RowData> {
 }
 
 export function DataTable<T extends RowData>({
-  columns, data, getRowId, search, onSearchChange, searchPlaceholder = 'Search…',
+  columns, data, getRowId, search = '', onSearchChange, searchPlaceholder = 'Search…', hideToolbar = false,
   page, totalPages, onPageChange, isLoading, isError, errorMessage = 'Failed to load.',
   emptyMessage = 'Nothing found.', columnLabels = {}, onExport, toolbarExtra, enableSelection = false,
   renderBulkBar, groupOf, groupSort, groupMeta,
@@ -134,29 +136,31 @@ export function DataTable<T extends RowData>({
   return (
     <div>
       {/* Toolbar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', width: 260 }}>
-          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
-          <input value={search} onChange={(e) => onSearchChange(e.target.value)} placeholder={searchPlaceholder} aria-label={searchPlaceholder} style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px 8px 30px', fontSize: 13, borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none' }} />
+      {!hideToolbar && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', width: 260 }}>
+            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
+            <input value={search} onChange={(e) => onSearchChange?.(e.target.value)} placeholder={searchPlaceholder} aria-label={searchPlaceholder} style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px 8px 30px', fontSize: 13, borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none' }} />
+          </div>
+          {toolbarExtra}
+          <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8 }}>
+            {onExport && <button type="button" style={dt.toolBtn} onClick={onExport}><Download size={14} /> Export</button>}
+            <Dropdown align="end" menuWidth={190} trigger={<span style={dt.toolBtn}><SlidersHorizontal size={14} /> Columns</span>}>
+              {() => (
+                <>
+                  <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', padding: '4px 9px 6px' }}>Toggle columns</div>
+                  {hideable.map((col) => (
+                    <label key={col.id} className="wf-opt" style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 9px', borderRadius: 7, fontSize: 13, cursor: 'pointer', color: 'var(--ink)' }}>
+                      <Cb checked={col.getIsVisible()} onChange={(v) => col.toggleVisibility(v)} />
+                      {columnLabels[col.id] ?? col.id}
+                    </label>
+                  ))}
+                </>
+              )}
+            </Dropdown>
+          </span>
         </div>
-        {toolbarExtra}
-        <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8 }}>
-          {onExport && <button type="button" style={dt.toolBtn} onClick={onExport}><Download size={14} /> Export</button>}
-          <Dropdown align="end" menuWidth={190} trigger={<span style={dt.toolBtn}><SlidersHorizontal size={14} /> Columns</span>}>
-            {() => (
-              <>
-                <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', padding: '4px 9px 6px' }}>Toggle columns</div>
-                {hideable.map((col) => (
-                  <label key={col.id} className="wf-opt" style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 9px', borderRadius: 7, fontSize: 13, cursor: 'pointer', color: 'var(--ink)' }}>
-                    <Cb checked={col.getIsVisible()} onChange={(v) => col.toggleVisibility(v)} />
-                    {columnLabels[col.id] ?? col.id}
-                  </label>
-                ))}
-              </>
-            )}
-          </Dropdown>
-        </span>
-      </div>
+      )}
 
       {enableSelection && selectedIds.length > 0 && renderBulkBar?.(selectedIds, () => table.resetRowSelection())}
 
