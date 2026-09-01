@@ -31,8 +31,10 @@ of truth with two renderings**:
 | Logo (v2) | **New Workfox mark** — working mark designed in this project; PrudentMark retired from all v2 surfaces |
 | Scope | Full guidelines: identity (voice, logo, naming) + product design system |
 | Format | Both renderings, single content source |
-| Visual language | C1 editorial (locked in the ui-v2-login spec): paper/ink/muted/hair/gold tokens, Bricolage display + Hanken body, underlined fields, ink CTA, hairlines |
-| 21st.dev | Sources components for the guideline pages; 2–3 of its themes used to stress-test tokens |
+| Visual language | **Workfox Azure — ATS edition** (chosen 2026-09-01, supersedes C1 editorial): based on 21st.dev "Azure Pro" tokens — white / slate-950 ink `#0b1220`, azure `#3b5fe3` primary, slate-100 surfaces, slate-200 hairlines, 6px radii, flat `#0b1220` dark mode with `#3b82f6` primary. Bricolage Grotesque display (job/page titles, eyebrows) + Hanken Grotesk UI/body (General Sans noted as an optional future swap — Fontshare, self-hosted; not adopted now). Craft motifs: data-true funnel meters, score rings, red attention rail on flagged items, mono (IBM Plex Mono) for serials/counts/clocks, drafting-dot board ground, timeline rails. Modern-team chrome: ⌘K search, avatar stacks, activity feeds (visual direction; features only as they exist). |
+| White-label rule | The azure primary is the platform **accent slot**; an org's `--org-primary` replaces the slot wholesale on org-branded surfaces — platform and org chroma never coexist. Status/integrity colors stay semantic and are never overridden. |
+| C1 editorial | Retired as product direction. The shipped `/v2/login` (C1) gets **retoned to Azure tokens** as part of this project; C1 remains only in git history. |
+| 21st.dev | Source of the adopted theme (Azure Pro by @serafimcloud); also sources components for the guideline pages |
 
 ## 3. The name as a label (code)
 
@@ -71,8 +73,9 @@ Guideline content lives as structured data + prose in `apps/web/app/v2/brand/con
 (one file per chapter), consumed by the living route; the shareable doc renders the same
 content. Chapters:
 
-1. **Foundations** — mission, personality, the C1 philosophy (color rationed, hairlines not
-   shadows, print-like calm). **Naming** section: Workfox (product, working name) vs Prudent
+1. **Foundations** — mission, personality, the Workfox Azure philosophy (professional polish,
+   detail over decoration, data-true ornament, semantic color discipline). **Naming** section:
+   Workfox (product, working name) vs Prudent
    Consulting (company) vs org names; when each appears. White-label stance: on candidate
    surfaces the org speaks; Workfox appears only where the platform speaks (staff login,
    footers, "sent via Workfox" in emails).
@@ -81,11 +84,13 @@ content. Chapters:
    register for candidate-facing copy, institutional for staff-facing. Do/don't rewrite
    examples for buttons, errors, empty states, emails.
 3. **Logo** — the Workfox wordmark + monogram, per §4.
-4. **Color** — brand palette; product tokens (paper/ink/muted/hair/gold + dark set, from
-   `v2.css`); status-color semantics; **the white-label composition rule** (org color = focus
-   rings + SSO accent only; ink CTA; gold = editorial accent; neutrals carry everything else).
-5. **Typography** — Bricolage display scale (sizes/weights/tracking incl. the C1 heading
-   spec) + Hanken UI scale (labels 12/600, body 14, helper 12.5); tabular figures for data.
+4. **Color** — brand palette; product tokens (Azure set: white/slate ink/azure primary/slate
+   surfaces + flat navy dark set, codified in `v2.css`); status-color semantics (green clear,
+   amber review, red flag — never overridden); **the accent-slot white-label rule** (azure is
+   the platform slot; org color replaces it wholesale on branded surfaces).
+5. **Typography** — Bricolage display scale (job/page titles, eyebrows) + Hanken UI scale
+   (labels 12/600, body 13–14, helper 11–12.5); IBM Plex Mono for serials, counts, clocks;
+   tabular figures for all data.
 6. **Components** — ui-v2 primitives rendered live with usage rules; the 21st.dev intake
    standard: retone to tokens, never drop in raw; no hardcoded brand colors.
 7. **Motion & interaction** — the one-fade principle, spring taps, reduced-motion always
@@ -122,8 +127,13 @@ content. Chapters:
 
 ## 9. Build order (each its own reviewable chunk)
 
-1. `lib/brand.ts` + `WorkfoxMark` working mark + v2 login kicker switch.
-2. Chapter content files (the book's text — the biggest chunk, reviewed as prose).
-3. `/v2/brand` living route rendering content + real tokens/components.
-4. Shareable artifact doc generated from the same content.
-5. Verification pass.
+1. **Azure token codification**: rewrite `app/v2/v2.css` from C1 values to the Workfox Azure
+   set (light + flat-navy dark), keeping the same custom-property names where meanings map
+   (`--paper`→surface, `--ink`, `--hair`, accent slot); retone the existing ui-v2 primitives
+   and `/v2/login` onto them (login layout unchanged, colors/shapes retoned; underlined fields
+   become Azure bordered fields).
+2. `lib/brand.ts` + `WorkfoxMark` working mark + v2 login kicker switch.
+3. Chapter content files (the book's text — the biggest chunk, reviewed as prose).
+4. `/v2/brand` living route rendering content + real tokens/components.
+5. Shareable artifact doc generated from the same content.
+6. Verification pass (production build; both themes; grep checks; login still works retoned).
