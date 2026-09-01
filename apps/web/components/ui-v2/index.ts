@@ -16,6 +16,7 @@ export { Timeline, TimelineRow } from './Timeline';
 export { Combobox } from './Combobox';
 export { Dropdown, DropdownItem } from './Dropdown';
 export { Dialog } from './Dialog';
+export { Tabs } from './Tabs';
 export { DataTable, DT_FEATURES, dt, Cb, SortHead, Pill } from './DataTable';
 export { AnalyticsTiles } from './dashboard/AnalyticsTiles';
 export { AttentionPanel, ActivityPanel, UpcomingExamsPanel } from './dashboard/DashboardLists';

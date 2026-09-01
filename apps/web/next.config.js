@@ -16,6 +16,10 @@ const nextConfig = {
       // Question editor is rebuilt in v2; redirect the old editor routes too.
       { source: '/questions/new', destination: '/v2/questions/new', permanent: false },
       { source: '/questions/:id/edit', destination: '/v2/questions/:id/edit', permanent: false },
+      // Exam builder is rebuilt in v2. /exams/:id/preview is NOT rebuilt yet, so it stays put
+      // (the v2 edit page links to the old preview route).
+      { source: '/exams/new', destination: '/v2/exams/new', permanent: false },
+      { source: '/exams/:id/edit', destination: '/v2/exams/:id/edit', permanent: false },
     ];
   },
 };

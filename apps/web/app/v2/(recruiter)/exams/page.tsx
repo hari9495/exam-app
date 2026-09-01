@@ -34,7 +34,7 @@ export default function V2ExamsPage() {
 
   function handleDuplicate(id: string) {
     duplicateExam.mutate(id, {
-      onSuccess: (created: { id: string }) => router.push(`/exams/${created.id}/edit`),
+      onSuccess: (created: { id: string }) => router.push(`/v2/exams/${created.id}/edit`),
       onError: (e) => notify('error', e instanceof Error ? e.message : 'Failed to duplicate exam.'),
     });
   }
@@ -56,7 +56,7 @@ export default function V2ExamsPage() {
     {
       accessorKey: 'title', enableHiding: false,
       header: ({ column }) => <SortHead label="Exam" sorted={column.getIsSorted()} onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')} />,
-      cell: ({ row }) => <Link href={`/exams/${row.original.id}/edit`} style={{ fontWeight: 500, color: 'var(--org-primary)', textDecoration: 'none' }}>{row.original.title}</Link>,
+      cell: ({ row }) => <Link href={`/v2/exams/${row.original.id}/edit`} style={{ fontWeight: 500, color: 'var(--org-primary)', textDecoration: 'none' }}>{row.original.title}</Link>,
     },
     {
       accessorKey: 'status', enableSorting: false, enableHiding: false,
@@ -82,7 +82,7 @@ export default function V2ExamsPage() {
       cell: ({ row }) => (
         <Dropdown align="end" menuWidth={160} trigger={<span style={{ display: 'inline-grid', placeItems: 'center', width: 30, height: 30, color: 'var(--muted)', cursor: 'pointer' }}><MoreHorizontal size={17} /></span>}>
           {(close) => (<>
-            <DropdownItem onClick={() => { close(); router.push(`/exams/${row.original.id}/edit`); }}><Pencil size={15} /> Edit</DropdownItem>
+            <DropdownItem onClick={() => { close(); router.push(`/v2/exams/${row.original.id}/edit`); }}><Pencil size={15} /> Edit</DropdownItem>
             <DropdownItem onClick={() => { close(); handleDuplicate(row.original.id); }}><Copy size={15} /> Duplicate</DropdownItem>
             <DropdownItem danger onClick={() => { close(); setPendingDelete(row.original); }}><Trash2 size={15} /> Delete</DropdownItem>
           </>)}
@@ -95,7 +95,7 @@ export default function V2ExamsPage() {
     <>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
         <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Exams</h1>
-        <Link href="/exams/new" style={dt.primaryBtn}><Plus size={14} /> New exam</Link>
+        <Link href="/v2/exams/new" style={dt.primaryBtn}><Plus size={14} /> New exam</Link>
       </div>
 
       {notice && (
