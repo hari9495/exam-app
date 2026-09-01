@@ -88,3 +88,7 @@
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
 }
 .v2-divider::before, .v2-divider::after { content: ""; height: 1px; background: var(--hair); flex: 1; }
+@media (max-width: 780px) {
+  .v2-split { grid-template-columns: 1fr !important; }
+  .v2-split-aside { display: none !important; }
+}
