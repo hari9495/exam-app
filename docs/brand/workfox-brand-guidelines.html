@@ -1,21 +1,21 @@
 <title>Workfox Brand Guidelines</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600;700&display=swap">
 <style>
   :root{
     --paper:#ffffff; --surface:#f8fafc; --raised:#ffffff; --ink:#0b1220; --muted:#64748b;
     --hair:#e2e8f0; --accent:#3b5fe3; --danger:#b91c1c; --success:#15803d; --warning:#a16207;
     --disp:"Bricolage Grotesque",system-ui,sans-serif; --body:"Hanken Grotesk",system-ui,sans-serif;
-    --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+    --mono:ui-monospace,'Cascadia Mono',Consolas,monospace;
   }
   @media (prefers-color-scheme:dark){
     :root:not([data-theme="light"]){
-      --paper:#0b1220; --surface:#0e1626; --raised:#111a2b; --ink:#f8fafc; --muted:#94a3b8;
-      --hair:#1e293b; --accent:#3b82f6; --danger:#f87171;
+      --paper:#0b1220; --surface:#0b1220; --raised:#0b1220; --ink:#f8fafc; --muted:#94a3b8;
+      --hair:#1e293b; --accent:#3b82f6; --danger:#f87171; --success:#4ade80; --warning:#fbbf24;
     }
   }
   :root[data-theme="dark"]{
-    --paper:#0b1220; --surface:#0e1626; --raised:#111a2b; --ink:#f8fafc; --muted:#94a3b8;
-    --hair:#1e293b; --accent:#3b82f6; --danger:#f87171;
+    --paper:#0b1220; --surface:#0b1220; --raised:#0b1220; --ink:#f8fafc; --muted:#94a3b8;
+    --hair:#1e293b; --accent:#3b82f6; --danger:#f87171; --success:#4ade80; --warning:#fbbf24;
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--body);line-height:1.6;
@@ -30,7 +30,7 @@
     line-height:1.02;margin:12px 0 10px;text-wrap:balance}
   .sub{color:var(--muted);font-size:15px;margin:0 0 6px;max-width:60ch}
   .meta{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin:2px 0 0}
-  nav.toc{display:flex;flex-wrap:wrap;gap:x;gap:8px 18px;margin:34px 0 8px;padding:16px 0;
+  nav.toc{display:flex;flex-wrap:wrap;gap:8px 18px;margin:34px 0 8px;padding:16px 0;
     border-top:1px solid var(--hair);border-bottom:1px solid var(--hair)}
   nav.toc a{font-size:13.5px;font-weight:500;text-decoration:none;color:var(--muted)}
   nav.toc a:hover{color:var(--accent)}

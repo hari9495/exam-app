@@ -63,7 +63,7 @@ export default function BrandPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10 }}>
                   {s.pairs.map((p) => (
                     <div key={p.do} style={{ border: '1px solid var(--hair)', borderRadius: 8, padding: '10px 12px', fontSize: 13 }}>
-                      <p style={{ margin: '0 0 6px' }}><span style={{ color: '#15803d', fontWeight: 700 }}>Do</span> — {p.do}</p>
+                      <p style={{ margin: '0 0 6px' }}><span style={{ color: 'var(--success)', fontWeight: 700 }}>Do</span> — {p.do}</p>
                       <p style={{ margin: 0, color: 'var(--muted)' }}><span style={{ color: 'var(--danger)', fontWeight: 700 }}>Don't</span> — {p.dont}</p>
                     </div>
                   ))}
