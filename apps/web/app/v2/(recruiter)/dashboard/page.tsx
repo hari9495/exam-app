@@ -109,7 +109,7 @@ export default function V2DashboardPage() {
       {/* Trend + pass-rate gauge */}
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginTop: 12 }} className="wf-hero-grid">
         <Panel title="Assessment activity" actions={<span style={{ fontSize: 11, color: 'var(--muted)' }}>attempts started</span>}>
-          <div style={{ height: 190 }}>
+          <div style={{ height: 150 }}>
             {series.length > 1 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 0, left: 4 }}>
@@ -130,8 +130,8 @@ export default function V2DashboardPage() {
           </div>
         </Panel>
         <Panel title="Pass rate">
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, paddingTop: 6 }}>
-            <Gauge value={passRate} size={148} label="of 70% target" color={rateColor(passRate, 70)} />
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, paddingTop: 2 }}>
+            <Gauge value={passRate} size={124} label="of 70% target" color={rateColor(passRate, 70)} />
             <div style={{ display: 'flex', gap: 18, fontSize: 12, color: 'var(--muted)' }}>
               <span>Passed <b style={{ color: 'var(--ink)' }}>{analytics?.funnel.passed ?? 0}</b></span>
               <span>Target <b style={{ color: 'var(--ink)' }}>70%</b></span>

@@ -58,7 +58,7 @@ export function AppShell({
           orgName={orgName} displayName={displayName} initials={initials} avatarUrl={avatarUrl}
           collapsed={collapsed} onToggleSidebar={() => setCollapsed((c) => !c)}
         />
-        <main style={{ flex: 1, padding: '24px 28px', background: 'var(--surface)' }}>{children}</main>
+        <main style={{ flex: 1, padding: '20px 28px', background: 'var(--surface)' }}>{children}</main>
       </div>
     </div>
   );
