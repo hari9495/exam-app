@@ -64,6 +64,30 @@ const config: Config = {
           purple: '#6B2FA3',
           'purple-bg': '#F3EAFB',
         },
+        // v2 shadcn tokens (additive; the CSS vars exist only under .v2, so these
+        // resolve only inside the v2 scope and never affect the old UI). The three
+        // names that clash with old tokens (primary/accent/muted) are NOT redefined
+        // here — they are added v-prefixed (vprimary/vmuted/vaccent) so imported
+        // shadcn/21st components rename those three classes to the v-prefixed form.
+        background: 'hsl(var(--background))',
+        foreground: 'hsl(var(--foreground))',
+        card: 'hsl(var(--card))',
+        'card-foreground': 'hsl(var(--card-foreground))',
+        popover: 'hsl(var(--popover))',
+        'popover-foreground': 'hsl(var(--popover-foreground))',
+        'primary-foreground': 'hsl(var(--primary-foreground))',
+        secondary: 'hsl(var(--secondary))',
+        'secondary-foreground': 'hsl(var(--secondary-foreground))',
+        'muted-foreground': 'hsl(var(--muted-foreground))',
+        'accent-foreground': 'hsl(var(--accent-foreground))',
+        destructive: 'hsl(var(--destructive))',
+        'destructive-foreground': 'hsl(var(--destructive-foreground))',
+        border: 'hsl(var(--border))',
+        input: 'hsl(var(--input))',
+        ring: 'hsl(var(--ring))',
+        vprimary: 'hsl(var(--primary))',
+        vmuted: 'hsl(var(--muted))',
+        vaccent: 'hsl(var(--accent))',
       },
       spacing: {
         4.5: '18px',
