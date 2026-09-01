@@ -2,13 +2,15 @@
 
 // v2 QuestionForm — re-skin of components/QuestionForm.tsx on v2 primitives; submit logic + field
 // behavior preserved verbatim (format only). Reuses the Monaco CodeEditor + image-upload/code-language
-// hooks (infra). Used by the v2 new/edit question pages.
+// hooks (infra). layout: 'twocol' (wide card, 2-col fields) or 'preview' (form + live candidate
+// preview panel). Used by the v2 new/edit question pages.
 import { useState } from 'react';
 import { CodeEditor } from '../../../../components/ui/CodeEditor';
 import { type Question, type QuestionType, type Difficulty, type Tag, type CodeLanguage, CODE_LANGUAGE_OPTIONS } from '../../../../lib/types';
 import { type QuestionInput, useUploadQuestionImage, useCodeLanguages } from '../../../../lib/hooks/useQuestions';
 import { monacoLanguageFor } from '../../../../lib/monaco-language';
 import { Combobox, Cb, Button, dt } from '../../../../components/ui-v2';
+import { VIZ } from '../../../../components/ui-v2/viz';
 
 const TYPE_OPTIONS = [
   { value: 'single_mcq', label: 'Single-correct MCQ' },
@@ -18,9 +20,13 @@ const TYPE_OPTIONS = [
 ];
 const DIFFICULTY_OPTIONS = [{ value: 'easy', label: 'Easy' }, { value: 'medium', label: 'Medium' }, { value: 'hard', label: 'Hard' }];
 const LANGUAGE_OPTIONS = CODE_LANGUAGE_OPTIONS.map((value) => ({ value, label: value }));
+const DIFF_LABEL: Record<string, string> = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
 
 interface OptionDraft { text: string; isCorrect: boolean; imageUrl?: string }
-interface QuestionFormProps { initialQuestion?: Question; tags: Tag[]; onSubmit: (input: QuestionInput) => void; submitLabel: string; submitting?: boolean }
+interface QuestionFormProps {
+  initialQuestion?: Question; tags: Tag[]; onSubmit: (input: QuestionInput) => void; submitLabel: string;
+  submitting?: boolean;
+}
 
 function defaultOptionsFor(type: QuestionType): OptionDraft[] {
   if (type === 'code') return [];
@@ -28,20 +34,44 @@ function defaultOptionsFor(type: QuestionType): OptionDraft[] {
   return [{ text: '', isCorrect: false }, { text: '', isCorrect: false }];
 }
 
-const label: React.CSSProperties = { display: 'block', marginBottom: 6 };
 const textInput: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '9px 11px', fontSize: 13, borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none' };
 const rowLabel: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ink)', cursor: 'pointer' };
-const fieldLabelCls = 'v2-label';
+const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14 };
 
 function Field({ label: l, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
-  return <div><label className={fieldLabelCls}>{l}{required && <span style={{ color: 'var(--danger)', marginLeft: 3 }}>*</span>}</label>{children}</div>;
+  return <div><label className="v2-label">{l}{required && <span style={{ color: 'var(--danger)', marginLeft: 3 }}>*</span>}</label>{children}</div>;
 }
-
 function RadioDot({ checked, onChange, ariaLabel }: { checked: boolean; onChange: () => void; ariaLabel: string }) {
   return (
     <span role="radio" aria-checked={checked} aria-label={ariaLabel} onClick={onChange} style={{ width: 16, height: 16, borderRadius: '50%', border: `1.5px solid ${checked ? 'var(--org-primary)' : '#cbd5e1'}`, display: 'inline-grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 }}>
       {checked && <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--org-primary)' }} />}
     </span>
+  );
+}
+
+function LivePreview({ type, text, options, marks, difficulty }: { type: QuestionType; text: string; options: OptionDraft[]; marks: string; difficulty: Difficulty }) {
+  const isMulti = type === 'multi_mcq';
+  const correct = options.filter((o) => o.isCorrect).map((o) => o.text).filter(Boolean).join(', ');
+  return (
+    <div style={{ ...card, padding: 20, position: 'sticky', top: 20 }}>
+      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--muted)', marginBottom: 10 }}>Candidate preview</div>
+      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', marginBottom: 12, whiteSpace: 'pre-wrap' }}>{text.trim() || <span style={{ color: 'var(--muted)', fontWeight: 400 }}>Question text…</span>}</div>
+      {type === 'code' ? (
+        <div style={{ fontSize: 13, color: 'var(--muted)' }}>Code question — candidates write and run code in the editor.</div>
+      ) : options.length === 0 ? (
+        <div style={{ fontSize: 13, color: 'var(--muted)' }}>Add options to preview them.</div>
+      ) : options.map((o, i) => (
+        <label key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', border: '1px solid var(--hair)', borderRadius: 9, marginBottom: 8, fontSize: 13, background: o.isCorrect ? 'color-mix(in srgb, var(--org-primary) 6%, transparent)' : 'var(--surface)' }}>
+          <span style={{ width: 15, height: 15, borderRadius: isMulti ? 4 : '50%', border: `1.5px solid ${o.isCorrect ? 'var(--org-primary)' : '#cbd5e1'}`, background: o.isCorrect ? 'var(--org-primary)' : 'transparent', flexShrink: 0 }} />
+          {o.text.trim() || <span style={{ color: 'var(--muted)' }}>Option {i + 1}</span>}
+        </label>
+      ))}
+      <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 8, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        {type !== 'code' && correct && <span><i style={{ width: 8, height: 8, borderRadius: 2, background: VIZ.green, display: 'inline-block', marginRight: 6 }} />Correct: {correct}</span>}
+        <span>{marks || 0} mark{Number(marks) === 1 ? '' : 's'}</span>
+        <span>{DIFF_LABEL[difficulty] ?? difficulty}</span>
+      </div>
+    </div>
   );
 }
 
@@ -90,14 +120,16 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
     });
   }
 
-  return (
-    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+  const fields = (
+    <>
       <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>Fields marked <span style={{ color: 'var(--danger)' }}>*</span> are required.</p>
-      <Field label="Question type" required><Combobox options={TYPE_OPTIONS} value={type} onChange={handleTypeChange} width="100%" /></Field>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <Field label="Question type" required><Combobox options={TYPE_OPTIONS} value={type} onChange={handleTypeChange} width="100%" /></Field>
+        <Field label="Difficulty" required><Combobox options={DIFFICULTY_OPTIONS} value={difficulty} onChange={(v) => setDifficulty(v as Difficulty)} width="100%" /></Field>
+      </div>
       <Field label="Question text" required>
         <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} required style={{ ...textInput, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} />
       </Field>
-      <Field label="Difficulty" required><Combobox options={DIFFICULTY_OPTIONS} value={difficulty} onChange={(v) => setDifficulty(v as Difficulty)} width="100%" /></Field>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <Field label="Marks" required><input type="number" min={1} value={marks} onChange={(e) => setMarks(e.target.value)} required style={textInput} /></Field>
         <Field label="Negative marks"><input type="number" min={0} value={negativeMarks} onChange={(e) => setNegativeMarks(e.target.value)} style={textInput} /></Field>
@@ -114,9 +146,9 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
           </Field>
           {languageMode === 'fixed' && (
             <div>
-              <label className={fieldLabelCls}>Allowed languages</label>
+              <label className="v2-label">Allowed languages</label>
               {codeLanguagesQuery.isLoading ? <span style={{ fontSize: 13, color: 'var(--muted)' }}>Loading languages…</span> : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px 16px' }}>
                   {(codeLanguagesQuery.data ?? []).map((entry) => (
                     <label key={entry.language} style={rowLabel}>
                       <Cb checked={allowedLanguages.includes(entry.language)} onChange={(checked) => setAllowedLanguages((c) => (checked ? [...c, entry.language] : c.filter((l) => l !== entry.language)))} />
@@ -134,10 +166,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Field label="Snippet language"><Combobox options={LANGUAGE_OPTIONS} value={snippetLanguage} onChange={(v) => setSnippetLanguage(v as CodeLanguage)} width={220} /></Field>
-          <Field label="Code snippet (optional)"><CodeEditor ariaLabel="Code Snippet" language={snippetLanguage} value={snippetCode} onChange={setSnippetCode} height="180px" /></Field>
-          <QuestionImageUpload label="Question image (optional)" value={imageUrl} onChange={setImageUrl} />
-          <label className={fieldLabelCls} style={{ marginBottom: 0 }}>Options</label>
+          <label className="v2-label" style={{ marginBottom: 0 }}>Options</label>
           {type === 'single_mcq' || type === 'true_false' ? (
             options.map((option, index) => (
               <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -160,12 +189,20 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
             ))
           )}
           {type !== 'true_false' && <button type="button" onClick={addOption} style={{ ...dt.toolBtn, alignSelf: 'flex-start' }}>Add option</button>}
+          <details style={{ borderTop: '1px solid var(--hair)', paddingTop: 12, marginTop: 2 }}>
+            <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--muted)', listStyle: 'revert' }}>Code snippet &amp; question image (optional)</summary>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
+              <Field label="Snippet language"><Combobox options={LANGUAGE_OPTIONS} value={snippetLanguage} onChange={(v) => setSnippetLanguage(v as CodeLanguage)} width="100%" /></Field>
+              <Field label="Code snippet"><CodeEditor ariaLabel="Code Snippet" language={snippetLanguage} value={snippetCode} onChange={setSnippetCode} height="180px" /></Field>
+              <QuestionImageUpload label="Question image" value={imageUrl} onChange={setImageUrl} />
+            </div>
+          </details>
         </div>
       )}
 
       {tags.length > 0 && (
         <div>
-          <label className={fieldLabelCls}>Tags</label>
+          <label className="v2-label">Tags</label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px 16px' }}>
             {tags.map((tag) => (
               <label key={tag.id} style={rowLabel}>
@@ -176,8 +213,17 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
           </div>
         </div>
       )}
+    </>
+  );
 
-      <div><Button type="submit" loading={submitting}>{submitLabel}</Button></div>
+  const submitBtn = <div><Button type="submit" loading={submitting}>{submitLabel}</Button></div>;
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.7fr) minmax(300px, 380px)', gap: 20, alignItems: 'start' }} className="wf-hero-grid">
+        <div style={{ ...card, padding: 22, display: 'flex', flexDirection: 'column', gap: 16 }}>{fields}{submitBtn}</div>
+        <LivePreview type={type} text={text} options={options} marks={marks} difficulty={difficulty} />
+      </div>
     </form>
   );
 }
@@ -186,10 +232,9 @@ function QuestionImageUpload({ label: l, value, onChange }: { label: string; val
   const upload = useUploadQuestionImage();
   return (
     <div>
-      <label style={{ ...label, fontSize: 11.5, color: 'var(--muted)', fontWeight: 500 }}>{l}</label>
+      <label style={{ display: 'block', marginBottom: 6, fontSize: 11.5, color: 'var(--muted)', fontWeight: 500 }}>{l}</label>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <input type="file" accept="image/png,image/jpeg,image/svg+xml" aria-label={l}
-          style={{ fontSize: 12.5, color: 'var(--muted)' }}
+        <input type="file" accept="image/png,image/jpeg,image/svg+xml" aria-label={l} style={{ fontSize: 12.5, color: 'var(--muted)' }}
           onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; upload.mutate(file, { onSuccess: (result) => onChange(result.imageUrl) }); }} />
         {value && (<><img src={value} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover' }} /><button type="button" onClick={() => onChange('')} style={dt.toolBtn}>Remove</button></>)}
       </div>

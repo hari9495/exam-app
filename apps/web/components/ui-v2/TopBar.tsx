@@ -12,7 +12,7 @@ export function TopBar({
   collapsed?: boolean; onToggleSidebar?: () => void;
 }) {
   return (
-    <header className="print:hidden h-14 border-b border-border flex items-center px-4 justify-between bg-card shrink-0">
+    <header className="print:hidden sticky top-0 z-30 h-14 border-b border-border flex items-center px-4 justify-between bg-card shrink-0">
       <div className="flex items-center gap-3 text-sm text-muted-foreground">
         {onToggleSidebar && (
           <button type="button" onClick={onToggleSidebar} aria-label={collapsed ? 'Show sidebar' : 'Hide sidebar'}
