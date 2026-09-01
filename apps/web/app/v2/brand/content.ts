@@ -143,4 +143,40 @@ export const BRAND_CHAPTERS: BrandChapter[] = [
       ]},
     ],
   },
+  {
+    slug: 'accessibility',
+    title: 'Accessibility and interaction',
+    intro: `Non-negotiables for every ${P} surface, distilled from the Vercel Web Interface Guidelines, UI UX Pro Max, and Anthropic frontend-design and adapted to our house rules. Where any of them conflicts with our Voice chapter, Voice wins (we use sentence case and spell out "and").`,
+    sections: [
+      { heading: 'Keyboard and focus', rules: [
+        'Every workflow is fully keyboard-operable; no action is mouse-only.',
+        'Every focusable element shows a visible focus ring in the accent slot color, via :focus-visible — never remove an outline without an equivalent replacement.',
+        'Focus is trapped inside modals and returned to the trigger on close; sticky headers never cover the focused element.',
+        'Use real <button>/<a>/<label> — the accent slot ring makes focus obvious.',
+      ]},
+      { heading: 'Targets and input', rules: [
+        'Hit targets are at least 24px, and at least 44px on touch; a checkbox/radio shares one generous target with its label.',
+        'Inputs are at least 16px font on mobile (prevents iOS auto-zoom); never disable browser zoom.',
+        'Never block paste — especially for passwords and one-time codes; set autocomplete, name, type, and inputmode so autofill and the right keyboard work.',
+      ]},
+      { heading: 'Forms', rules: [
+        'Every control has an associated <label>; clicking the label focuses it.',
+        'Errors appear next to the field, in words, with the fix; on submit, focus the first error.',
+        'Keep the submit button enabled until submission begins; disable during the in-flight request with a spinner while preserving its label. Do not pre-disable on incomplete forms.',
+        'Warn before navigation when unsaved changes would be lost.',
+      ]},
+      { heading: 'State and feedback', rules: [
+        'Design every state: empty, sparse, dense, loading, and error — never leave one to chance.',
+        'No layout shift: reserve space for async content, set explicit image dimensions, use stable skeletons that mirror the final content.',
+        'Destructive or irreversible actions require confirmation or an Undo; never show fake success.',
+        'Announce toasts and inline validation with polite aria-live.',
+      ]},
+      { heading: 'Semantics and media', rules: [
+        'Native semantic elements before ARIA; headings run in order with a "Skip to content" link.',
+        'Every color-coded status also carries a text label (never color alone); icon-only buttons get an aria-label; decorative media is aria-hidden.',
+        'Contrast meets WCAG AA in both themes; increase contrast on hover, active, and focus.',
+        'Honor prefers-reduced-motion and prefers-color-scheme on every surface (see Motion and Color).',
+      ]},
+    ],
+  },
 ];

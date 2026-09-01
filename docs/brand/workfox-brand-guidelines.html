@@ -102,6 +102,7 @@
     <a href="#components">6. Components</a>
     <a href="#motion">7. Motion and interaction</a>
     <a href="#email">8. Email and marketing basics</a>
+    <a href="#accessibility">9. Accessibility and interaction</a>
   </nav>
 
   <section id="foundations">
@@ -269,6 +270,44 @@
       <li>Sender identity: the org for candidate mail ("sent via Workfox" in the footer); Workfox for staff and system mail.</li>
       <li>Legal footer: Yukthix Consulting, plus unsubscribe or preferences where applicable.</li>
       <li>Subject lines: fact first, no urgency theatre ("Your results for Drive 07", not "Don't miss your results!").</li>
+    </ul>
+  </section>
+
+  <section id="accessibility">
+    <p class="num">09</p><h2>Accessibility and interaction</h2>
+    <p class="intro">Non-negotiables for every Workfox surface, distilled from the Vercel Web Interface Guidelines, UI UX Pro Max, and Anthropic frontend-design and adapted to our house rules. Where any of them conflicts with the Voice chapter, Voice wins (we use sentence case and spell out "and").</p>
+    <h3>Keyboard and focus</h3>
+    <ul class="rules">
+      <li>Every workflow is fully keyboard-operable; no action is mouse-only.</li>
+      <li>Every focusable element shows a visible focus ring in the accent slot color, via <span class="mono">:focus-visible</span> — never remove an outline without an equivalent replacement.</li>
+      <li>Focus is trapped inside modals and returned to the trigger on close; sticky headers never cover the focused element.</li>
+    </ul>
+    <h3>Targets and input</h3>
+    <ul class="rules">
+      <li>Hit targets are at least 24px, and at least 44px on touch; a checkbox or radio shares one generous target with its label.</li>
+      <li>Inputs are at least 16px font on mobile (prevents iOS auto-zoom); never disable browser zoom.</li>
+      <li>Never block paste — especially for passwords and one-time codes; set autocomplete, name, type, and inputmode so autofill and the right keyboard work.</li>
+    </ul>
+    <h3>Forms</h3>
+    <ul class="rules">
+      <li>Every control has an associated label; clicking the label focuses it.</li>
+      <li>Errors appear next to the field, in words, with the fix; on submit, focus the first error.</li>
+      <li>Keep the submit button enabled until submission begins; disable during the in-flight request with a spinner while preserving its label. Do not pre-disable on incomplete forms.</li>
+      <li>Warn before navigation when unsaved changes would be lost.</li>
+    </ul>
+    <h3>State and feedback</h3>
+    <ul class="rules">
+      <li>Design every state: empty, sparse, dense, loading, and error — never leave one to chance.</li>
+      <li>No layout shift: reserve space for async content, set explicit image dimensions, use stable skeletons that mirror the final content.</li>
+      <li>Destructive or irreversible actions require confirmation or an Undo; never show fake success.</li>
+      <li>Announce toasts and inline validation with polite <span class="mono">aria-live</span>.</li>
+    </ul>
+    <h3>Semantics and media</h3>
+    <ul class="rules">
+      <li>Native semantic elements before ARIA; headings run in order with a "Skip to content" link.</li>
+      <li>Every color-coded status also carries a text label (never color alone); icon-only buttons get an aria-label; decorative media is aria-hidden.</li>
+      <li>Contrast meets WCAG AA in both themes; increase contrast on hover, active, and focus.</li>
+      <li>Honor prefers-reduced-motion and prefers-color-scheme on every surface.</li>
     </ul>
   </section>
 
