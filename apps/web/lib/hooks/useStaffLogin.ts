@@ -90,7 +90,7 @@ export function useStaffLogin() {
     password, setPassword,
     error, submitting, ssoEnabled,
     branding,
-    orgPrimary: branding?.primaryColor || '#0053e2',
+    orgPrimary: branding?.primaryColor || '#3b5fe3',
     orgOnPrimary: branding?.textColor || '#ffffff',
     ssoLoginHref, onSsoClick,
     handleSubmit,
