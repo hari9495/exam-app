@@ -26,11 +26,16 @@ export function AnalyticsTiles({ integrity, scores, funnel }: { integrity: Integ
     { label: 'Submitted', value: funnel.submitted },
     { label: 'Passed', value: funnel.passed },
   ];
+  const hasIntegrity = integrity.clear + integrity.review + integrity.highConcern > 0;
+  const hasScores = scores.distribution.some((d) => d.count > 0);
+  const hasFunnel = funnel.invited > 0;
+  const emptyStyle: React.CSSProperties = { fontSize: 13, color: 'var(--muted)', textAlign: 'center', padding: '14px 0', margin: 0 };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }} className="wf-hero-grid">
         <Panel title="Integrity">
+          {!hasIntegrity ? <p style={emptyStyle}>No completed attempts to analyse yet.</p> : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <div style={{ position: 'relative', width: 120, height: 120, flexShrink: 0 }}>
               <ResponsiveContainer width="100%" height="100%">
@@ -57,9 +62,11 @@ export function AnalyticsTiles({ integrity, scores, funnel }: { integrity: Integ
               ))}
             </div>
           </div>
+          )}
         </Panel>
 
         <Panel title="Score distribution">
+          {!hasScores ? <p style={emptyStyle}>No graded results in this range yet.</p> : (
           <div style={{ height: 132 }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={scores.distribution} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
@@ -71,10 +78,12 @@ export function AnalyticsTiles({ integrity, scores, funnel }: { integrity: Integ
               </BarChart>
             </ResponsiveContainer>
           </div>
+          )}
         </Panel>
       </div>
 
       <Panel title="Hiring funnel">
+        {!hasFunnel ? <p style={emptyStyle}>No pipeline activity in this window.</p> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {funnelStages.map((s, i) => {
             const pct = funnelStages[0].value > 0 ? Math.round((s.value / funnelStages[0].value) * 100) : 0;
@@ -91,6 +100,7 @@ export function AnalyticsTiles({ integrity, scores, funnel }: { integrity: Integ
             );
           })}
         </div>
+        )}
       </Panel>
     </div>
   );
