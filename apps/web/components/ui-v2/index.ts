@@ -4,3 +4,5 @@ export { PasswordField } from './PasswordField';
 export { FormAlert } from './FormAlert';
 export { WorkfoxMark } from './WorkfoxMark';
 export { Card } from './Card';
+export { Sidebar } from './Sidebar';
+export { TopBar } from './TopBar';
