@@ -1,0 +1,279 @@
+<title>Workfox Brand Guidelines</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --paper:#ffffff; --surface:#f8fafc; --raised:#ffffff; --ink:#0b1220; --muted:#64748b;
+    --hair:#e2e8f0; --accent:#3b5fe3; --danger:#b91c1c; --success:#15803d; --warning:#a16207;
+    --disp:"Bricolage Grotesque",system-ui,sans-serif; --body:"Hanken Grotesk",system-ui,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#0b1220; --surface:#0e1626; --raised:#111a2b; --ink:#f8fafc; --muted:#94a3b8;
+      --hair:#1e293b; --accent:#3b82f6; --danger:#f87171;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#0b1220; --surface:#0e1626; --raised:#111a2b; --ink:#f8fafc; --muted:#94a3b8;
+    --hair:#1e293b; --accent:#3b82f6; --danger:#f87171;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--body);line-height:1.6;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:820px;margin:0 auto;padding:56px 24px 96px}
+  a{color:var(--accent)}
+  .mark{display:inline-flex;align-items:center;gap:9px}
+  .mark svg{width:20px;height:20px}
+  .kicker{font-family:var(--body);font-size:11px;font-weight:600;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--accent);display:inline-flex;align-items:center;gap:8px}
+  h1{font-family:var(--disp);font-weight:700;font-size:clamp(30px,5vw,44px);letter-spacing:-.03em;
+    line-height:1.02;margin:12px 0 10px;text-wrap:balance}
+  .sub{color:var(--muted);font-size:15px;margin:0 0 6px;max-width:60ch}
+  .meta{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin:2px 0 0}
+  nav.toc{display:flex;flex-wrap:wrap;gap:x;gap:8px 18px;margin:34px 0 8px;padding:16px 0;
+    border-top:1px solid var(--hair);border-bottom:1px solid var(--hair)}
+  nav.toc a{font-size:13.5px;font-weight:500;text-decoration:none;color:var(--muted)}
+  nav.toc a:hover{color:var(--accent)}
+  section{padding:44px 0 8px;border-bottom:1px solid var(--hair)}
+  .num{font-family:var(--mono);font-size:12px;color:var(--accent);font-weight:600;letter-spacing:.06em}
+  h2{font-family:var(--disp);font-weight:600;font-size:26px;letter-spacing:-.02em;margin:6px 0 8px}
+  .intro{color:var(--muted);font-size:15px;max-width:64ch;margin:0 0 20px}
+  h3{font-size:13px;font-weight:700;letter-spacing:.02em;margin:20px 0 8px;text-transform:uppercase;
+    color:var(--ink)}
+  .body-p{font-size:14.5px;color:var(--muted);max-width:64ch;margin:0 0 10px}
+  ul.rules{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
+  ul.rules li{font-size:14.5px;padding-left:18px;position:relative}
+  ul.rules li::before{content:"";position:absolute;left:0;top:9px;width:6px;height:6px;border-radius:50%;
+    background:var(--accent)}
+  .pairs{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:6px}
+  .pair{border:1px solid var(--hair);border-radius:8px;padding:12px 14px;background:var(--raised)}
+  .pair p{margin:0 0 8px;font-size:13.5px}
+  .pair p:last-child{margin:0;color:var(--muted)}
+  .tag-do{color:var(--success);font-weight:700}
+  .tag-dont{color:var(--danger);font-weight:700}
+  .swgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:20px;margin-top:8px}
+  .swgrid h3{margin-top:0}
+  .sw{display:flex;align-items:center;gap:9px;font-size:12.5px;padding:3px 0}
+  .sw i{width:26px;height:26px;border-radius:6px;border:1px solid var(--hair);flex-shrink:0;display:block}
+  .sw b{font-weight:600}
+  .sw code{font-family:var(--mono);color:var(--muted);font-size:11.5px}
+  .logo-row{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:8px}
+  .logo-tile{width:52px;height:52px;border-radius:12px;display:grid;place-items:center}
+  .logo-tile svg{width:28px;height:28px}
+  .wordmark{font-family:var(--disp);font-weight:600;font-size:26px;letter-spacing:-.02em}
+  .note{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .gallery{display:flex;flex-direction:column;gap:12px;max-width:360px;margin-top:8px}
+  label.f{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:0 0 5px}
+  .field{width:100%;height:38px;border:1px solid var(--hair);border-radius:6px;background:var(--paper);
+    padding:0 11px;font-size:14px;color:var(--muted);display:flex;align-items:center}
+  .btn{height:40px;border-radius:6px;background:var(--accent);color:#fff;font-weight:600;font-size:14px;
+    display:inline-flex;align-items:center;justify-content:center;border:0}
+  .btn.sec{background:var(--paper);color:var(--ink);border:1px solid var(--hair)}
+  .alert{display:flex;gap:8px;font-size:13px;color:var(--danger);border:1px solid var(--hair);
+    border-radius:6px;padding:8px 11px;background:var(--raised)}
+  .flagcard{position:relative;border:1px solid var(--hair);border-radius:8px;padding:10px 12px;
+    background:var(--raised);font-size:13.5px;overflow:hidden}
+  .flagcard::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;
+    border-radius:0 3px 3px 0;background:var(--danger)}
+  .type-spec p{margin:0}
+  .t-display{font-family:var(--disp);font-weight:600;font-size:34px;letter-spacing:-.03em}
+  .t-eyebrow{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-top:14px}
+  .t-body{font-size:14.5px;color:var(--ink);margin-top:10px;max-width:60ch}
+  .t-mono{font-family:var(--mono);font-size:14px;margin-top:10px}
+  footer{margin-top:40px;color:var(--muted);font-size:13px}
+  footer .mono{font-family:var(--mono);font-size:11.5px}
+  mono,.mono{font-family:var(--mono)}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><g id="wmark"><path d="M3 5l4.5 14L12 8l4.5 11L21 5" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></g></defs></svg>
+
+<div class="wrap">
+  <p class="kicker"><svg viewBox="0 0 24 24"><use href="#wmark"/></svg> Workfox Brand Guidelines</p>
+  <h1>How Workfox looks, speaks, and behaves</h1>
+  <p class="sub">The shareable reference for Workfox, an assessment and hiring platform by Yukthix Consulting. This document mirrors the living in-app guidelines and the real design tokens.</p>
+  <p class="meta">Product name status: working · generated from commit 986e8222 · single source: app/v2/brand/content.ts</p>
+
+  <nav class="toc">
+    <a href="#foundations">1. Foundations</a>
+    <a href="#voice">2. Voice and tone</a>
+    <a href="#logo">3. Logo</a>
+    <a href="#color">4. Color</a>
+    <a href="#typography">5. Typography</a>
+    <a href="#components">6. Components</a>
+    <a href="#motion">7. Motion and interaction</a>
+    <a href="#email">8. Email and marketing basics</a>
+  </nav>
+
+  <section id="foundations">
+    <p class="num">01</p><h2>Foundations</h2>
+    <p class="intro">Workfox is an assessment and hiring platform by Yukthix Consulting. The visual language is "Workfox Azure": professional polish with examination-grade discipline — detail over decoration, ornament only when it encodes data, color only when it means something.</p>
+    <h3>Personality</h3>
+    <ul class="rules">
+      <li>Precise: every number is exact, tabular, and sourced.</li>
+      <li>Calm: the interface never shouts; urgency is reserved for genuine integrity events.</li>
+      <li>Watchful: live states are visibly live — the platform sees what happens in a session.</li>
+      <li>Professional: a tool teams live in all day, not a landing page.</li>
+    </ul>
+    <h3>Naming</h3>
+    <p class="body-p">The product is Workfox (status: working name) by Yukthix Consulting. The product name renders only from the BRAND constant in code.</p>
+    <ul class="rules">
+      <li>Product surfaces where the platform speaks (staff login, footers, transactional email) say Workfox.</li>
+      <li>Legal and billing contexts say Yukthix Consulting.</li>
+      <li>On candidate-facing org-branded surfaces the org speaks: its name and color lead; Workfox appears only as "powered by Workfox" attribution where contractually shown.</li>
+    </ul>
+  </section>
+
+  <section id="voice">
+    <p class="num">02</p><h2>Voice and tone</h2>
+    <p class="intro">An invigilator, not a cheerleader. State the fact, then the next step. Short sentences. No exclamation marks in system copy.</p>
+    <h3>Register</h3>
+    <ul class="rules">
+      <li>Staff-facing: institutional and exact.</li>
+      <li>Candidate-facing: warm, plain, and reassuring — an exam is stressful enough.</li>
+      <li>Buttons: verb first, 1–3 words ("Release results", "Invite candidates").</li>
+      <li>Errors: what happened, then what to do. Never blame, never apologize twice.</li>
+    </ul>
+    <h3>Examples</h3>
+    <div class="pairs">
+      <div class="pair"><p><span class="tag-do">Do</span> — That email or password isn't right.</p><p><span class="tag-dont">Don't</span> — Oops! Something went wrong!</p></div>
+      <div class="pair"><p><span class="tag-do">Do</span> — Results released to 41 candidates.</p><p><span class="tag-dont">Don't</span> — Success!! Your results have been released successfully!</p></div>
+      <div class="pair"><p><span class="tag-do">Do</span> — Camera lost. Check your connection — the timer is paused.</p><p><span class="tag-dont">Don't</span> — ERROR: MediaStreamTrack ended unexpectedly.</p></div>
+      <div class="pair"><p><span class="tag-do">Do</span> — Invite candidates</p><p><span class="tag-dont">Don't</span> — Click here to get started</p></div>
+    </div>
+  </section>
+
+  <section id="logo">
+    <p class="num">03</p><h2>Logo</h2>
+    <p class="intro">The working mark is a stroke-drawn W monogram plus the Workfox wordmark set in Bricolage Grotesque 600. Both are placeholders with full usage rules, so the final mark can drop in without relayout.</p>
+    <div class="logo-row">
+      <span class="logo-tile" style="background:var(--accent);color:#fff"><svg viewBox="0 0 24 24"><use href="#wmark"/></svg></span>
+      <span class="logo-tile" style="border:1px solid var(--hair);color:var(--ink)"><svg viewBox="0 0 24 24"><use href="#wmark"/></svg></span>
+      <span class="wordmark">Workfox</span>
+      <span class="note">working mark · replace in WorkfoxMark.tsx</span>
+    </div>
+    <h3>Usage</h3>
+    <ul class="rules">
+      <li>Monogram minimum size 14px; wordmark minimum 12px cap height.</li>
+      <li>Clear space: half the mark height on all sides.</li>
+      <li>The mark inherits currentColor: ink on light, foreground on dark, org-on-primary inside org-colored tiles.</li>
+      <li>Never stretch, rotate, outline, shadow, or gradient the mark.</li>
+      <li>On org-branded candidate surfaces the org logo leads; the mark appears only in attribution.</li>
+    </ul>
+  </section>
+
+  <section id="color">
+    <p class="num">04</p><h2>Color</h2>
+    <p class="intro">A slate-neutral chassis with one working accent. Azure is the platform accent slot; an org's color replaces the slot wholesale on branded surfaces — platform and org chroma never coexist. Status colors are semantic and never overridden.</p>
+    <div class="swgrid">
+      <div>
+        <h3>Light</h3>
+        <div class="sw"><i style="background:#ffffff"></i><b>paper</b><code>#ffffff</code></div>
+        <div class="sw"><i style="background:#f8fafc"></i><b>surface</b><code>#f8fafc</code></div>
+        <div class="sw"><i style="background:#0b1220"></i><b>ink</b><code>#0b1220</code></div>
+        <div class="sw"><i style="background:#64748b"></i><b>muted</b><code>#64748b</code></div>
+        <div class="sw"><i style="background:#e2e8f0"></i><b>hair</b><code>#e2e8f0</code></div>
+        <div class="sw"><i style="background:#3b5fe3"></i><b>accent</b><code>#3b5fe3</code></div>
+        <div class="sw"><i style="background:#b91c1c"></i><b>danger</b><code>#b91c1c</code></div>
+      </div>
+      <div>
+        <h3>Dark (flat navy)</h3>
+        <div class="sw"><i style="background:#0b1220"></i><b>paper</b><code>#0b1220</code></div>
+        <div class="sw"><i style="background:#f8fafc"></i><b>ink</b><code>#f8fafc</code></div>
+        <div class="sw"><i style="background:#94a3b8"></i><b>muted</b><code>#94a3b8</code></div>
+        <div class="sw"><i style="background:#1e293b"></i><b>hair</b><code>#1e293b</code></div>
+        <div class="sw"><i style="background:#3b82f6"></i><b>accent</b><code>#3b82f6</code></div>
+        <div class="sw"><i style="background:#f87171"></i><b>danger</b><code>#f87171</code></div>
+      </div>
+      <div>
+        <h3>Status</h3>
+        <div class="sw"><i style="background:#15803d"></i><b>clear</b><code>#15803d</code></div>
+        <div class="sw"><i style="background:#a16207"></i><b>review</b><code>#a16207</code></div>
+        <div class="sw"><i style="background:#b91c1c"></i><b>flagged</b><code>#b91c1c</code></div>
+      </div>
+    </div>
+    <h3 style="margin-top:22px">Product tokens</h3>
+    <ul class="rules">
+      <li>Accent = the slot: primary actions, focus, active nav. An org's color replaces it wholesale on branded surfaces.</li>
+      <li>A red 3px attention rail marks flagged items; nothing else may use it.</li>
+      <li>Status colors (clear / review / flagged) never re-tint under white-labeling.</li>
+      <li>Dark mode is flat navy — depth comes from borders, not elevation.</li>
+    </ul>
+  </section>
+
+  <section id="typography">
+    <p class="num">05</p><h2>Typography</h2>
+    <p class="intro">Bricolage Grotesque carries identity moments; Hanken Grotesk carries the interface; the mono stack carries evidence — serials, scores, clocks, counts.</p>
+    <div class="type-spec">
+      <p class="t-display">How Workfox reads</p>
+      <p class="t-eyebrow">Eyebrow · uppercase · accent</p>
+      <p class="t-body">Body copy is Hanken Grotesk — clean, quiet, and legible at 14–15px with a generous line height for long working sessions.</p>
+      <p class="t-mono">WF-00412-003 · 94/100 · 00:41:22</p>
+    </div>
+    <h3>Scale</h3>
+    <ul class="rules">
+      <li>Display (Bricolage 600, −0.025em): page and job titles 26–34px.</li>
+      <li>Eyebrow: 10.5–11px, 600, +0.14em, uppercase, accent color.</li>
+      <li>UI labels: 12px/600 muted. Body: 13–14px. Helper: 11–12.5px.</li>
+      <li>Mono: serials, scores, timers, counts — always tabular figures.</li>
+    </ul>
+    <h3>Rules</h3>
+    <ul class="rules">
+      <li>Never letter-space body text; only eyebrows and mono micro-labels.</li>
+      <li>One display moment per screen. Everything else is Hanken.</li>
+    </ul>
+  </section>
+
+  <section id="components">
+    <p class="num">06</p><h2>Components</h2>
+    <p class="intro">The ui-v2 primitives are the only building blocks for product surfaces. Components sourced from 21st.dev are retoned onto the tokens before use — never dropped in with their own colors.</p>
+    <div class="gallery">
+      <div><label class="f">Text field</label><div class="field">maya@northwind.co</div></div>
+      <div><label class="f">Password field</label><div class="field">••••••••••</div></div>
+      <button class="btn">Primary action</button>
+      <button class="btn sec">Secondary action</button>
+      <div class="alert">That email or password isn't right.</div>
+      <div class="flagcard">Flagged candidate — <span class="mono">tab ×4</span></div>
+    </div>
+    <h3>Standards</h3>
+    <ul class="rules">
+      <li>Fields: 38px, 1px hair border, 6px radius; focus = accent border + 18% ring.</li>
+      <li>Primary button: accent fill (the slot), 40px, 6px radius, weight 600.</li>
+      <li>Cards: paper on surface grounds, 1px hair border, 8px radius, shadow subtle and at most two layers.</li>
+      <li>Flagged rows and cards carry the red attention rail.</li>
+      <li>Every decorative metric must be data-true (funnel widths from real counts, rings from real scores).</li>
+    </ul>
+    <h3>21st.dev intake</h3>
+    <ul class="rules">
+      <li>Strip hardcoded colors to tokens. Strip gradients unless data-true. Match radii to 6/8px.</li>
+      <li>If a component fights the accent-slot rule, adapt it or reject it.</li>
+    </ul>
+  </section>
+
+  <section id="motion">
+    <p class="num">07</p><h2>Motion and interaction</h2>
+    <p class="intro">One considered entrance per surface; micro-feedback on press; reduced motion always honored.</p>
+    <ul class="rules">
+      <li>Page and card entrance: a single fade plus 8px rise, about 0.4s, ease-out. No stagger parades.</li>
+      <li>Press: scale 0.98 spring tap on primary actions.</li>
+      <li>Live states may pulse subtly (watch dots); nothing else animates idly.</li>
+      <li>Reduced motion is respected on every surface — no exceptions.</li>
+      <li>Focus visibility is non-negotiable: every interactive element shows the slot-colored ring.</li>
+    </ul>
+  </section>
+
+  <section id="email">
+    <p class="num">08</p><h2>Email and marketing basics</h2>
+    <p class="intro">Transactional email is part of the product: same voice, same restraint. Marketing pages may breathe more but draw from the same tokens.</p>
+    <ul class="rules">
+      <li>Email chrome: white ground, ink text, one accent-colored button at most.</li>
+      <li>Sender identity: the org for candidate mail ("sent via Workfox" in the footer); Workfox for staff and system mail.</li>
+      <li>Legal footer: Yukthix Consulting, plus unsubscribe or preferences where applicable.</li>
+      <li>Subject lines: fact first, no urgency theatre ("Your results for Drive 07", not "Don't miss your results!").</li>
+    </ul>
+  </section>
+
+  <footer>
+    <p class="mark"><svg viewBox="0 0 24 24" style="width:18px;height:18px;color:var(--accent)"><use href="#wmark"/></svg> <strong>Workfox</strong> — a Yukthix Consulting product</p>
+    <p class="mono">Working name and mark. Generated from the in-repo source (app/v2/brand/content.ts) at commit 986e8222.</p>
+  </footer>
+</div>
