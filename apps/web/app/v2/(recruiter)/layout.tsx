@@ -12,6 +12,9 @@ import { useDocumentBranding } from '../../../lib/hooks/useDocumentBranding';
 import { useCurrentUser } from '../../../lib/hooks/useCurrentUser';
 import { AppShell } from '../../../components/ui-v2';
 
+// Recruiter surfaces that have been rebuilt in v2 (their nav hrefs get a /v2 prefix at render).
+const V2_ROUTES = new Set(['/dashboard', '/exams', '/questions', '/candidates', '/reports', '/walk-in-groups', '/jobs', '/analytics/hiring', '/message-templates', '/offer-template']);
+
 
 // A super_admin acting into an org sees the complete feature nav (SUPER_ADMIN_FULL_NAV), not this
 // shell's scoped subset, so nothing is hidden by which console they're on.
@@ -53,7 +56,10 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
 
   // org_admin is a full org-scoped superuser, so it sees the complete feature nav everywhere,
   // just like an acting super_admin.
-  const navItems = actingSuperAdmin || role === 'org_admin' ? SUPER_ADMIN_FULL_NAV : RECRUITER_NAV_ITEMS;
+  const baseNav = actingSuperAdmin || role === 'org_admin' ? SUPER_ADMIN_FULL_NAV : RECRUITER_NAV_ITEMS;
+  // Nav cutover: point items whose surface has a v2 page at /v2/*; admin-only routes
+  // (users/organizations/... in SUPER_ADMIN_FULL_NAV) have no v2 version and stay as-is.
+  const navItems = baseNav.map((item) => (V2_ROUTES.has(item.href) ? { ...item, href: `/v2${item.href}` } : item));
 
   // This layout also mounts for org_admin (and an acting super_admin) -- see navItems above --
   // so the profile label has to reflect the real role instead of hardcoding "Recruiter".
