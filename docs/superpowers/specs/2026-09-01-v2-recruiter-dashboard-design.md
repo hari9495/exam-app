@@ -24,6 +24,9 @@ Rebuild the **recruiter dashboard** in the v2 Azure language, and with it the **
 | Charts | Reuse `Sparkline` (pass Azure color). Re-implement the analytics panels' recharts with an Azure palette in a v2 component (the old `AnalyticsPanels` is class-coupled to `recruiter-*`; we write `components/ui-v2/dashboard/AnalyticsPanels.tsx` fresh, same data reads). |
 | White-label | Org color drives the **accent slot** (`--org-primary`): sidebar active state, primary buttons, focus. Status/integrity colors stay semantic. Workfox is the platform mark. |
 | Route | `app/v2/(recruiter)/dashboard` → URL `/v2/dashboard` (route group adds the shell without a URL segment). |
+| Direction | **A · Bright console** (chosen 2026-09-01): light Azure sidebar + top bar; a 4-card KPI row; analytics panels + a "needs attention" rail. Densest/most familiar of the three mocks. |
+| Component base | **shadcn** (foundation committed 4eadb273): scoped to `.v2`, Azure tokens, `cn` at `lib/cn.ts`, radix wrappers under `components/ui-v2/shadcn/`. 21st.dev components are pulled + retoned; the 3 colliding classes rename to `v`-prefixed (`bg-accent`→`bg-vaccent`, etc.). |
+| 21st sources | KPI cards ← `ephraimduncan/stats-cards-with-links` (change% + big value + gradient area + footer link). Sidebar built on radix (proven pattern) with our recruiter nav; top bar ← `core-header-navbar` pattern. Analytics recharts hand-composed to Azure (21st has no matching analytics tile for our data). Each imported component retoned per the collision convention. |
 
 ## 3. Architecture
 
