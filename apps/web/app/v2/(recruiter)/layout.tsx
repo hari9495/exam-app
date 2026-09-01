@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { MotionConfig } from 'framer-motion';
 import { useAuth } from '../../../lib/auth-context';
 import { staffLandingPath } from '../../../lib/staff-landing';
@@ -10,7 +10,7 @@ import { RECRUITER_NAV_ITEMS } from '../../../lib/recruiter-nav';
 import { useOrgBranding } from '../../../lib/hooks/useBranding';
 import { useDocumentBranding } from '../../../lib/hooks/useDocumentBranding';
 import { useCurrentUser } from '../../../lib/hooks/useCurrentUser';
-import { Sidebar, TopBar } from '../../../components/ui-v2';
+import { AppShell } from '../../../components/ui-v2';
 
 
 // A super_admin acting into an org sees the complete feature nav (SUPER_ADMIN_FULL_NAV), not this
@@ -18,7 +18,6 @@ import { Sidebar, TopBar } from '../../../components/ui-v2';
 
 export default function RecruiterLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const pathname = usePathname();
   const { accessToken, organizationSlug, role, actingSuperAdmin, isLoading, logout } = useAuth();
   // Token-scoped: every session that mounts this layout is org-scoped
   // (recruiter/panel/org_admin/acting super_admin). The slug-gated hook
@@ -79,18 +78,20 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="v2" style={{ display: 'flex', minHeight: '100vh', ...orgVars }}>
-        <Sidebar
+      <div className="v2" style={{ minHeight: '100vh', ...orgVars }}>
+        <AppShell
           navItems={navItems}
-          pathname={pathname}
           orgName={orgName}
-          orgLogoUrl={branding?.logoUrl}
+          orgLogoUrl={branding?.logoUrl ?? undefined}
           orgInitial={orgInitial}
-        />
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
-          <TopBar displayName={displayName} initials={initials} roleLabel={roleLabel} avatarUrl={currentUser?.avatarUrl} onLogout={handleLogout} />
-          <main style={{ flex: 1, padding: '24px 28px', background: 'var(--surface)' }}>{children}</main>
-        </div>
+          roleLabel={roleLabel}
+          displayName={displayName}
+          initials={initials}
+          avatarUrl={currentUser?.avatarUrl ?? undefined}
+          onLogout={handleLogout}
+        >
+          {children}
+        </AppShell>
       </div>
     </MotionConfig>
   );

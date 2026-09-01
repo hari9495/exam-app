@@ -6,3 +6,4 @@ export { WorkfoxMark } from './WorkfoxMark';
 export { Card } from './Card';
 export { Sidebar } from './Sidebar';
 export { TopBar } from './TopBar';
+export { AppShell } from './AppShell';

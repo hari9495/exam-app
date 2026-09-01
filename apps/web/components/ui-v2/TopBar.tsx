@@ -1,28 +1,43 @@
+'use client';
+
+// Adapted from 21st.dev "Dashboard Sidebar"'s top bar (breadcrumb + search + avatar), retoned to
+// v2 Azure shadcn tokens. Logout lives in the sidebar (per the source). Search is a visual ⌘K stub.
 import Link from 'next/link';
-import { LogOut } from 'lucide-react';
+import { Search, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 export function TopBar({
-  displayName, initials, roleLabel, avatarUrl, onLogout,
+  orgName, displayName, initials, avatarUrl, collapsed, onToggleSidebar,
 }: {
-  displayName: string; initials: string; roleLabel: string; avatarUrl?: string | null; onLogout: () => void;
+  orgName: string; displayName: string; initials: string; avatarUrl?: string;
+  collapsed?: boolean; onToggleSidebar?: () => void;
 }) {
   return (
-    <header className="print:hidden" style={{ height: 56, flexShrink: 0, background: 'var(--paper)', borderBottom: '1px solid var(--hair)', display: 'flex', alignItems: 'center', padding: '0 20px' }}>
-      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 14 }}>
-        <Link href="/profile" style={{ display: 'flex', alignItems: 'center', gap: 9, textDecoration: 'none', color: 'var(--ink)' }}>
-          {avatarUrl ? (
-            <img src={avatarUrl} alt="" style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover' }} />
-          ) : (
-            <span style={{ display: 'inline-grid', placeItems: 'center', width: 30, height: 30, borderRadius: '50%', background: 'var(--org-primary)', color: 'var(--org-on-primary)', fontSize: 11, fontWeight: 700 }}>{initials}</span>
-          )}
-          <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
-            <span style={{ fontSize: 13, fontWeight: 600 }}>{displayName}</span>
-            <span style={{ fontSize: 11, color: 'var(--muted)' }}>{roleLabel}</span>
-          </span>
-        </Link>
-        <button onClick={onLogout} aria-label="Log out" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid var(--hair)', borderRadius: 6, padding: '6px 11px', fontSize: 12.5, color: 'var(--muted)', cursor: 'pointer' }}>
-          <LogOut size={14} /> Log out
+    <header className="print:hidden h-14 border-b border-border flex items-center px-4 justify-between bg-card shrink-0">
+      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+        {onToggleSidebar && (
+          <button type="button" onClick={onToggleSidebar} aria-label={collapsed ? 'Show sidebar' : 'Hide sidebar'}
+            className="p-1.5 rounded-md text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 hover:text-foreground transition-colors">
+            {collapsed ? <PanelLeftOpen className="w-[18px] h-[18px]" strokeWidth={1.5} /> : <PanelLeftClose className="w-[18px] h-[18px]" strokeWidth={1.5} />}
+          </button>
+        )}
+        <span className="truncate">{orgName}</span>
+      </div>
+      <div className="flex items-center gap-3">
+        <button type="button" className="hidden md:flex items-center gap-2 w-64 h-8 px-3 rounded-md border border-border bg-background text-muted-foreground text-[13px]">
+          <Search className="w-4 h-4 shrink-0" strokeWidth={1.5} />
+          <span className="flex-1 text-left">Search…</span>
+          <kbd className="text-[10px] font-mono border border-border rounded px-1.5 py-0.5">⌘K</kbd>
         </button>
+        <Link href="/profile" className="flex items-center gap-2 no-underline text-foreground" title={displayName}>
+          {avatarUrl ? (
+            <img src={avatarUrl} alt="" className="w-8 h-8 rounded-full object-cover" />
+          ) : (
+            <span className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold"
+              style={{ background: 'var(--org-primary)', color: 'var(--org-on-primary)' }}>
+              {initials}
+            </span>
+          )}
+        </Link>
       </div>
     </header>
   );
