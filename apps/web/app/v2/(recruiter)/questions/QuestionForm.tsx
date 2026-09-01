@@ -5,6 +5,7 @@
 // hooks (infra). layout: 'twocol' (wide card, 2-col fields) or 'preview' (form + live candidate
 // preview panel). Used by the v2 new/edit question pages.
 import { useState } from 'react';
+import { Trash2 } from 'lucide-react';
 import { CodeEditor } from '../../../../components/ui/CodeEditor';
 import { type Question, type QuestionType, type Difficulty, type Tag, type CodeLanguage, CODE_LANGUAGE_OPTIONS } from '../../../../lib/types';
 import { type QuestionInput, useUploadQuestionImage, useCodeLanguages } from '../../../../lib/hooks/useQuestions';
@@ -40,6 +41,14 @@ const card: React.CSSProperties = { background: 'var(--paper)', border: '1px sol
 
 function Field({ label: l, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return <div><label className="v2-label">{l}{required && <span style={{ color: 'var(--danger)', marginLeft: 3 }}>*</span>}</label>{children}</div>;
+}
+function RemoveOptionBtn({ index, onRemove }: { index: number; onRemove: (i: number) => void }) {
+  return (
+    <button type="button" onClick={() => onRemove(index)} aria-label={`Remove option ${index + 1}`} title="Remove option"
+      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--muted)', cursor: 'pointer', flexShrink: 0 }}>
+      <Trash2 size={15} />
+    </button>
+  );
 }
 function RadioDot({ checked, onChange, ariaLabel }: { checked: boolean; onChange: () => void; ariaLabel: string }) {
   return (
@@ -102,6 +111,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
   const setSingleCorrect = (i: number) => setOptions((c) => c.map((o, j) => ({ ...o, isCorrect: j === i })));
   const toggleMultiCorrect = (i: number, checked: boolean) => setOptions((c) => c.map((o, j) => (j === i ? { ...o, isCorrect: checked } : o)));
   const addOption = () => setOptions((c) => [...c, { text: '', isCorrect: false }]);
+  const removeOption = (i: number) => setOptions((c) => c.filter((_, j) => j !== i));
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -173,6 +183,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <RadioDot checked={option.isCorrect} onChange={() => setSingleCorrect(index)} ariaLabel={`Option ${index + 1} correct`} />
                   <input aria-label={`Option ${index + 1} text`} value={option.text} onChange={(e) => updateOptionText(index, e.target.value)} readOnly={type === 'true_false'} style={{ ...textInput, flex: 1 }} />
+                  {type !== 'true_false' && options.length > 2 && <RemoveOptionBtn index={index} onRemove={removeOption} />}
                 </div>
                 <QuestionImageUpload label={`Option ${index + 1} image (optional)`} value={option.imageUrl ?? ''} onChange={(url) => updateOptionImage(index, url)} />
               </div>
@@ -183,6 +194,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <Cb checked={option.isCorrect} onChange={(checked) => toggleMultiCorrect(index, checked)} />
                   <input aria-label={`Option ${index + 1} text`} value={option.text} onChange={(e) => updateOptionText(index, e.target.value)} style={{ ...textInput, flex: 1 }} />
+                  {options.length > 2 && <RemoveOptionBtn index={index} onRemove={removeOption} />}
                 </div>
                 <QuestionImageUpload label={`Option ${index + 1} image (optional)`} value={option.imageUrl ?? ''} onChange={(url) => updateOptionImage(index, url)} />
               </div>
