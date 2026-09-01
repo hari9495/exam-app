@@ -77,8 +77,8 @@ export function AnalyticsTiles({ integrity, scores, funnel }: { integrity: Integ
       <Panel title="Hiring funnel">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {funnelStages.map((s, i) => {
-            const pct = Math.round((s.value / funnelStages[0].value) * 100);
-            const conv = i === 0 ? null : Math.round((s.value / funnelStages[i - 1].value) * 100);
+            const pct = funnelStages[0].value > 0 ? Math.round((s.value / funnelStages[0].value) * 100) : 0;
+            const conv = i === 0 ? null : funnelStages[i - 1].value > 0 ? Math.round((s.value / funnelStages[i - 1].value) * 100) : null;
             return (
               <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ width: 84, fontSize: 12.5, color: 'var(--muted)', flexShrink: 0 }}>{s.label}</span>
