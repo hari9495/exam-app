@@ -10,7 +10,7 @@ export interface ComboOption { value: string; label: string }
 
 export function Combobox({
   options, value, onChange, placeholder = 'Select', width = 190, active = false,
-}: { options: ComboOption[]; value: string; onChange: (v: string) => void; placeholder?: string; width?: number; active?: boolean }) {
+}: { options: ComboOption[]; value: string; onChange: (v: string) => void; placeholder?: string; width?: number | string; active?: boolean }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const ref = useRef<HTMLDivElement>(null);
