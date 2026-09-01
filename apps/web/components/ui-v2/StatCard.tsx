@@ -32,11 +32,11 @@ export function StatCard({
             <AreaChart data={series} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
               <defs>
                 <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.28} />
-                  <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
+                  <stop offset="0%" stopColor="#3b5fe3" stopOpacity={0.28} />
+                  <stop offset="100%" stopColor="#3b5fe3" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <Area type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={1.8} fill={`url(#${gid})`} isAnimationActive={false} />
+              <Area type="monotone" dataKey="value" stroke="#3b5fe3" strokeWidth={1.8} fill={`url(#${gid})`} isAnimationActive={false} />
             </AreaChart>
           </ResponsiveContainer>
         </div>

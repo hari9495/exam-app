@@ -8,4 +8,8 @@ export { Sidebar } from './Sidebar';
 export { TopBar } from './TopBar';
 export { AppShell } from './AppShell';
 export { StatCard } from './StatCard';
+export { IconStatCard } from './IconStatCard';
 export { StatsHero } from './StatsHero';
+export { Panel } from './Panel';
+export { Gauge } from './Gauge';
+export { AnalyticsTiles } from './dashboard/AnalyticsTiles';

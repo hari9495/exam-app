@@ -33,13 +33,13 @@ export function StatsHero({
               <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 0, left: 4 }}>
                 <defs>
                   <linearGradient id="wf-hero-area" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.26} />
-                    <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#3b5fe3" stopOpacity={0.26} />
+                    <stop offset="100%" stopColor="#3b5fe3" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--muted)' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={24} />
-                <Tooltip cursor={{ stroke: 'var(--hair)' }} contentStyle={{ background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 8, fontSize: 12 }} />
-                <Area type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2} fill="url(#wf-hero-area)" isAnimationActive={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={24} />
+                <Tooltip cursor={{ stroke: '#e2e8f0' }} contentStyle={{ background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 8, fontSize: 12 }} />
+                <Area type="monotone" dataKey="value" stroke="#3b5fe3" strokeWidth={2} fill="url(#wf-hero-area)" isAnimationActive={false} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
