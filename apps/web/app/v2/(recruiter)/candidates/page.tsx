@@ -12,14 +12,15 @@ import {
 } from '@tanstack/react-table';
 import {
   Search, MoreHorizontal, ChevronsUpDown, ArrowUp, ArrowDown, SlidersHorizontal, Download,
-  ChevronLeft, ChevronRight, Upload, Power, Trash2, Send,
+  ChevronLeft, ChevronRight, Upload, Power, Trash2, Send, Plus, Pencil,
 } from 'lucide-react';
-import { useCandidates, useUpdateCandidate, useDeleteCandidate } from '../../../../lib/hooks/useCandidates';
+import { useCandidates, useCreateCandidate, useUpdateCandidate, useDeleteCandidate } from '../../../../lib/hooks/useCandidates';
 import { useExams } from '../../../../lib/hooks/useExams';
 import { useBulkInvite } from '../../../../lib/hooks/useInvitations';
 import type { Candidate } from '../../../../lib/types';
 import { Combobox, Dropdown, DropdownItem, Dialog } from '../../../../components/ui-v2';
 import { VIZ, STATUS } from '../../../../components/ui-v2/viz';
+import { CandidateFormDialog, type CandidateFormValues } from './CandidateFormDialog';
 
 const FEATURES = tableFeatures({ rowSortingFeature, rowSelectionFeature, columnVisibilityFeature, sortedRowModel: createSortedRowModel() });
 const STATUS_OPTS = [{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }, { value: 'all', label: 'All' }];
@@ -30,6 +31,7 @@ const th: React.CSSProperties = { textAlign: 'left', padding: '0 10px 10px', whi
 const td: React.CSSProperties = { padding: '11px 10px', fontSize: 13, color: 'var(--ink)', borderTop: '1px solid var(--hair)', verticalAlign: 'middle' };
 const iconBtn: React.CSSProperties = { display: 'inline-grid', placeItems: 'center', width: 32, height: 32, borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--muted)', cursor: 'pointer' };
 const toolBtn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '8px 11px', borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', cursor: 'pointer' };
+const primaryBtn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, padding: '9px 14px', borderRadius: 9, border: 'none', background: 'var(--org-primary)', color: 'var(--org-on-primary)', cursor: 'pointer' };
 
 function initials(n: string) { return n.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase(); }
 function Avatar({ name, i }: { name: string; i: number }) {
@@ -67,6 +69,9 @@ export default function V2CandidatesPage() {
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [examId, setExamId] = useState('');
   const [pendingDelete, setPendingDelete] = useState<Candidate | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [editing, setEditing] = useState<Candidate | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const notify = (type: 'success' | 'error', text: string) => { setNotice({ type, text }); setTimeout(() => setNotice(null), 4000); };
 
@@ -74,6 +79,7 @@ export default function V2CandidatesPage() {
   const rows = resp?.data ?? [];
   const { data: pubExams } = useExams('published', { pageSize: 100 });
   const examOptions = (pubExams?.data ?? []).map((e) => ({ value: e.id, label: e.title }));
+  const createCandidate = useCreateCandidate();
   const updateCandidate = useUpdateCandidate();
   const deleteCandidate = useDeleteCandidate();
   const bulkInvite = useBulkInvite(examId);
@@ -113,6 +119,7 @@ export default function V2CandidatesPage() {
             <Dropdown align="end" menuWidth={172} trigger={<span style={{ ...iconBtn, width: 30, height: 30, border: 'none', background: 'transparent' }}><MoreHorizontal size={17} /></span>}>
               {(close) => (
                 <>
+                  <DropdownItem onClick={() => { close(); setFormError(null); setEditing(c); }}><Pencil size={15} /> Edit</DropdownItem>
                   <DropdownItem onClick={() => { close(); handleToggleStatus(c); }}><Power size={15} /> {isInactive ? 'Reactivate' : 'Deactivate'}</DropdownItem>
                   {neverInvited && <DropdownItem danger onClick={() => { close(); setPendingDelete(c); }}><Trash2 size={15} /> Delete</DropdownItem>}
                 </>
@@ -157,6 +164,21 @@ export default function V2CandidatesPage() {
       onError: (e) => notify('error', e instanceof Error ? e.message : 'Failed to send invitations.'),
     });
   }
+  function handleAdd(v: CandidateFormValues) {
+    setFormError(null);
+    createCandidate.mutate(v, {
+      onSuccess: () => { setAddOpen(false); notify('success', 'Candidate added.'); },
+      onError: (e) => setFormError(e instanceof Error ? e.message : 'Failed to add candidate.'),
+    });
+  }
+  function handleEditSubmit(v: CandidateFormValues) {
+    if (!editing) return;
+    setFormError(null);
+    updateCandidate.mutate({ id: editing.id, name: v.name, email: v.email, phone: v.phone }, {
+      onSuccess: () => { setEditing(null); notify('success', 'Candidate updated.'); },
+      onError: (e) => setFormError(e instanceof Error ? e.message : 'Failed to update candidate.'),
+    });
+  }
   function exportCsv() {
     const header = ['Name', 'Email', 'Phone', 'Status', 'Added'];
     const lines = rows.map((c) => [c.name, c.email, c.phone ?? '', c.status, new Date(c.createdAt).toLocaleDateString()].map(csvCell).join(','));
@@ -171,7 +193,10 @@ export default function V2CandidatesPage() {
     <>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Candidates</h1>
-        <Link href="/candidates/bulk-upload-invite" style={toolBtn}><Upload size={14} /> Upload &amp; invite</Link>
+        <span style={{ display: 'inline-flex', gap: 8 }}>
+          <Link href="/candidates/bulk-upload-invite" style={toolBtn}><Upload size={14} /> Upload &amp; invite</Link>
+          <button type="button" style={primaryBtn} onClick={() => { setFormError(null); setAddOpen(true); }}><Plus size={14} /> Add candidate</button>
+        </span>
       </div>
 
       {notice && (
@@ -268,6 +293,17 @@ export default function V2CandidatesPage() {
           <button type="button" onClick={handleConfirmDelete} disabled={deleteCandidate.isPending} style={{ fontSize: 13, fontWeight: 500, padding: '8px 14px', borderRadius: 9, border: 'none', background: 'var(--danger)', color: '#fff', cursor: 'pointer' }}>Delete</button>
         </div>
       </Dialog>
+
+      <CandidateFormDialog
+        open={addOpen} mode="add" submitting={createCandidate.isPending} error={formError}
+        onClose={() => setAddOpen(false)} onSubmit={handleAdd}
+      />
+      <CandidateFormDialog
+        open={!!editing} mode="edit"
+        initial={editing ? { name: editing.name, email: editing.email, phone: editing.phone } : undefined}
+        submitting={updateCandidate.isPending} error={formError}
+        onClose={() => setEditing(null)} onSubmit={handleEditSubmit}
+      />
     </>
   );
 }
