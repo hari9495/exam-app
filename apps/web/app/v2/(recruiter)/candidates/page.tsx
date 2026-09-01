@@ -12,7 +12,7 @@ import {
 } from '@tanstack/react-table';
 import {
   Search, MoreHorizontal, ChevronsUpDown, ArrowUp, ArrowDown, SlidersHorizontal, Download,
-  ChevronLeft, ChevronRight, Upload, Power, Trash2, Send, Plus, Pencil,
+  ChevronLeft, ChevronRight, Upload, Power, Trash2, Send, Plus, Pencil, ListFilter,
 } from 'lucide-react';
 import { useCandidates, useCreateCandidate, useUpdateCandidate, useDeleteCandidate } from '../../../../lib/hooks/useCandidates';
 import { useExams } from '../../../../lib/hooks/useExams';
@@ -209,7 +209,10 @@ export default function V2CandidatesPage() {
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
           <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search candidates…" aria-label="Search candidates" style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px 8px 30px', fontSize: 13, borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none' }} />
         </div>
-        <Combobox options={STATUS_OPTS} value={statusFilter} onChange={(v) => { setStatusFilter(v); setPage(1); }} width={150} active={statusFilter !== 'active'} />
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <ListFilter size={15} style={{ color: 'var(--muted)' }} aria-hidden />
+          <Combobox options={STATUS_OPTS} value={statusFilter} onChange={(v) => { setStatusFilter(v); setPage(1); }} width={150} active={statusFilter !== 'active'} />
+        </span>
         <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8 }}>
           <button type="button" style={toolBtn} onClick={exportCsv}><Download size={14} /> Export</button>
           <Dropdown align="end" menuWidth={190} trigger={<span style={toolBtn}><SlidersHorizontal size={14} /> Columns</span>}>
