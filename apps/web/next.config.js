@@ -11,7 +11,12 @@ const nextConfig = {
   // (recruiter) layout, so redirecting it would loop. permanent:false keeps this reversible.
   async redirects() {
     const routes = ['/dashboard', '/exams', '/questions', '/candidates', '/walk-in-groups', '/jobs', '/analytics/hiring', '/message-templates', '/offer-template'];
-    return routes.map((source) => ({ source, destination: `/v2${source}`, permanent: false }));
+    return [
+      ...routes.map((source) => ({ source, destination: `/v2${source}`, permanent: false })),
+      // Question editor is rebuilt in v2; redirect the old editor routes too.
+      { source: '/questions/new', destination: '/v2/questions/new', permanent: false },
+      { source: '/questions/:id/edit', destination: '/v2/questions/:id/edit', permanent: false },
+    ];
   },
 };
 

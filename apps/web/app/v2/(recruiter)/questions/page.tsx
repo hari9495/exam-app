@@ -89,7 +89,7 @@ export default function V2QuestionsPage() {
     {
       accessorKey: 'text', enableHiding: false,
       header: ({ column }) => <SortHead label="Question" sorted={column.getIsSorted()} onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')} />,
-      cell: ({ row }) => <Link href={`/questions/${row.original.id}/edit`} title={row.original.text} style={{ ...truncCell, fontWeight: 500, color: 'var(--org-primary)', textDecoration: 'none' }}>{row.original.text}</Link>,
+      cell: ({ row }) => <Link href={`/v2/questions/${row.original.id}/edit`} title={row.original.text} style={{ ...truncCell, fontWeight: 500, color: 'var(--org-primary)', textDecoration: 'none' }}>{row.original.text}</Link>,
     },
     {
       accessorKey: 'status', enableSorting: false, enableHiding: false,
@@ -152,7 +152,7 @@ export default function V2QuestionsPage() {
         <span style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
           <Link href="/questions/bulk-upload" style={dt.toolBtn}>Bulk upload</Link>
           <button type="button" style={dt.toolBtn} onClick={() => setGenerateOpen(true)}>Generate with AI</button>
-          <Link href="/questions/new" style={dt.primaryBtn}><Plus size={14} /> New question</Link>
+          <Link href="/v2/questions/new" style={dt.primaryBtn}><Plus size={14} /> New question</Link>
         </span>
       </div>
 
