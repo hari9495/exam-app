@@ -3,9 +3,10 @@
 // outside the auth gate. Delete after review.
 'use client';
 
+import { useState } from 'react';
 import { Area, AreaChart, ResponsiveContainer, XAxis, Tooltip } from 'recharts';
 import { Users, Send, Activity, ClipboardCheck } from 'lucide-react';
-import { AppShell, IconStatCard, Gauge, AnalyticsTiles, Panel, AttentionPanel, ActivityPanel, UpcomingExamsPanel } from '../../../components/ui-v2';
+import { AppShell, IconStatCard, Gauge, AnalyticsTiles, Panel, AttentionPanel, ActivityPanel, UpcomingExamsPanel, Combobox } from '../../../components/ui-v2';
 import { VIZ, rateColor } from '../../../components/ui-v2/viz';
 import { RECRUITER_NAV_ITEMS } from '../../../lib/recruiter-nav';
 
@@ -53,7 +54,23 @@ const upcomingMock = [
   { examId: 'u2', examTitle: 'Product Analyst screen', availabilityWindowStart: '2026-09-06T09:00:00Z' },
 ];
 
+const examOptionsMock = [
+  { value: 'all', label: 'All exams' },
+  { value: 'e1', label: 'Frontend Engineer — React' },
+  { value: 'e2', label: 'Backend Engineer — Node' },
+  { value: 'e3', label: 'Data Analyst — SQL' },
+  { value: 'e4', label: 'QA Automation' },
+];
+const candidateOptionsMock = [
+  { value: 'all', label: 'All candidates' },
+  { value: 'c1', label: 'Maya Rodriguez' },
+  { value: 'c2', label: 'Arjun Patel' },
+  { value: 'c3', label: 'Wei Chen' },
+];
+
 export default function ShellPreview() {
+  const [examId, setExamId] = useState('all');
+  const [candidateId, setCandidateId] = useState('all');
   return (
     <div className="v2" style={{ minHeight: '100vh', ['--org-primary' as string]: '#3b5fe3', ['--org-on-primary' as string]: '#ffffff' }}>
       <AppShell
@@ -70,9 +87,9 @@ export default function ShellPreview() {
           <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Recruiting overview</h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--muted)', marginRight: 2 }}>Filters</span>
-            <span style={chip}>Drive: All ▾</span>
             <span style={chip}>Last 30 days ▾</span>
-            <span style={chip}>Exam: All ▾</span>
+            <Combobox options={examOptionsMock} value={examId} onChange={setExamId} placeholder="All exams" active={examId !== 'all'} width={200} />
+            <Combobox options={candidateOptionsMock} value={candidateId} onChange={setCandidateId} placeholder="All candidates" active={candidateId !== 'all'} width={200} />
             <span style={{ ...chip, background: 'color-mix(in srgb, var(--org-primary) 10%, transparent)', borderColor: 'color-mix(in srgb, var(--org-primary) 30%, transparent)', color: 'var(--org-primary)', fontWeight: 600 }}>● Live</span>
           </div>
         </div>

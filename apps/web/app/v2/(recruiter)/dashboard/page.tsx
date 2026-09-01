@@ -5,10 +5,12 @@
 
 import { useState } from 'react';
 import { Area, AreaChart, ResponsiveContainer, XAxis, Tooltip } from 'recharts';
-import { Users, Send, Activity, ClipboardCheck } from 'lucide-react';
+import { Users, Send, Activity, ClipboardCheck, RotateCcw } from 'lucide-react';
 import { useDashboardSummary, useDashboardTrend, useDashboardAnalytics } from '../../../../lib/hooks/useDashboard';
+import { useExams } from '../../../../lib/hooks/useExams';
+import { useCandidates } from '../../../../lib/hooks/useCandidates';
 import type { DashboardWindow, DashboardTrendMetric, DashboardTrendDays } from '../../../../lib/types';
-import { IconStatCard, Gauge, AnalyticsTiles, Panel, AttentionPanel, ActivityPanel, UpcomingExamsPanel } from '../../../../components/ui-v2';
+import { IconStatCard, Gauge, AnalyticsTiles, Panel, AttentionPanel, ActivityPanel, UpcomingExamsPanel, Combobox } from '../../../../components/ui-v2';
 import { VIZ, STATUS, rateColor } from '../../../../components/ui-v2/viz';
 
 const WINDOW_DAYS: Record<Exclude<DashboardWindow, 'all'>, DashboardTrendDays> = { '7d': 7, '14d': 14, '30d': 30, '90d': 90 };
@@ -43,10 +45,22 @@ function Kpi({ title, value, icon, metric, accent, days }: {
 
 export default function V2DashboardPage() {
   const [window, setWindow] = useState<DashboardWindow>('30d');
+  const [examId, setExamId] = useState('all');
+  const [candidateId, setCandidateId] = useState('all');
   const days = window === 'all' ? 90 : WINDOW_DAYS[window];
   const { data: summary, isLoading, isError } = useDashboardSummary(window);
-  const { data: analytics, isError: analyticsError } = useDashboardAnalytics({ window });
+  // KPI strip + trend stay org-wide (window only); exam/candidate narrow the analytics panels below.
+  const { data: analytics, isError: analyticsError } = useDashboardAnalytics({
+    window,
+    examId: examId === 'all' ? undefined : examId,
+    candidateId: candidateId === 'all' ? undefined : candidateId,
+  });
   const { data: activityTrend } = useDashboardTrend('attempts', days);
+  const { data: examsData } = useExams(undefined, { pageSize: 200 });
+  const { data: candidatesData } = useCandidates({ pageSize: 200 });
+  const examOptions = [{ value: 'all', label: 'All exams' }, ...(examsData?.data ?? []).map((e) => ({ value: e.id, label: e.title }))];
+  const candidateOptions = [{ value: 'all', label: 'All candidates' }, ...(candidatesData?.data ?? []).map((c) => ({ value: c.id, label: c.name }))];
+  const filtered = examId !== 'all' || candidateId !== 'all';
   const series = (activityTrend?.points ?? []).map((p) => ({ label: fmtDate(p.date), value: p.value }));
 
   if (isLoading && !summary) {
@@ -61,7 +75,7 @@ export default function V2DashboardPage() {
   return (
     <>
       {/* Header + time slicer */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
         <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Recruiting overview</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--muted)', marginRight: 2 }}>Window</span>
@@ -69,6 +83,19 @@ export default function V2DashboardPage() {
             <button key={w.value} type="button" style={chip(window === w.value)} onClick={() => setWindow(w.value)}>{w.label}</button>
           ))}
         </div>
+      </div>
+
+      {/* Exam / candidate slicers — narrow the analytics panels below */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+        <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--muted)', marginRight: 2 }}>Filter</span>
+        <Combobox options={examOptions} value={examId} onChange={setExamId} placeholder="All exams" active={examId !== 'all'} width={210} />
+        <Combobox options={candidateOptions} value={candidateId} onChange={setCandidateId} placeholder="All candidates" active={candidateId !== 'all'} width={210} />
+        {filtered && (
+          <button type="button" onClick={() => { setExamId('all'); setCandidateId('all'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5, color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', padding: '6px 4px' }}>
+            <RotateCcw size={13} /> Reset
+          </button>
+        )}
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)' }}>Applies to analytics below</span>
       </div>
 
       {/* KPI strip — icon-led tiles with subtle tint */}
