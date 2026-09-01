@@ -19,147 +19,112 @@
 - **Accent-slot white-label rule:** `--accent` is the platform slot color; org-branded surfaces override the slot via `--org-primary` (default now `#3b5fe3`). Status colors (green `#15803d` / amber `#a16207` / red `#b91c1c`) are semantic and never overridden.
 - **Naming:** product name renders ONLY from `BRAND.productName`; the literal string "Workfox" may appear only in `lib/brand.ts` (and docs/tests asserting the constant). Company is **Yukthix Consulting**.
 - **Fonts:** display = Bricolage Grotesque; UI/body = Hanken Grotesk; mono = `ui-monospace, 'Cascadia Mono', Consolas, monospace` system stack.
+- **Login stays on C1 — do NOT modify** `app/v2/login/**`, `app/v2/v2.css`, `lib/hooks/useStaffLogin.ts`, or the ui-v2 primitive source files. Azure is introduced in a NEW `.wfx` scope used only by the guidelines page; login and the v2 primitives keep their current C1 look. Retoning the login to Azure is a separate future task. Two token sets (C1 under `.v2`, Azure under `.wfx`) coexist until then — this is expected.
 - All paths relative to `apps/web/`; run all commands from `apps/web/`.
 
 ---
 
-### Task 1: Azure token codification + retone
+### Task 1: Azure token codification (new `.wfx` scope; login untouched)
 
-Replaces the C1 values in `app/v2/v2.css` with the Workfox Azure set. Class names are preserved, so `/v2/login` and the ui-v2 primitives retone without TSX changes — except one line in the hook (the default slot color).
+Creates a NEW self-contained Azure stylesheet scoped to `.wfx`, used only by the guidelines page. Does NOT touch `app/v2/v2.css`, the login, the hook, or the ui-v2 primitive sources — the login stays on C1. The guidelines page will render the Azure component *standard* using `.wfx-*` demo classes (accurate, since the real primitives are still C1 until each surface is retoned later).
 
 **Files:**
-- Modify: `app/v2/v2.css` (full replacement)
-- Modify: `lib/hooks/useStaffLogin.ts` (one line: default orgPrimary)
+- Create: `app/v2/brand/brand.css`
 
 **Interfaces:**
-- Consumes: nothing new.
-- Produces: the `.v2` scope exposing `--paper --surface --ink --muted --hair --accent --danger --org-primary --org-on-primary --font-disp --font-body --font-mono` and the existing classes `v2-kicker v2-title v2-label v2-field v2-cta v2-sso v2-link v2-alert`, now Azure-toned. Later tasks style against these names only.
+- Consumes: nothing.
+- Produces: the `.wfx` scope exposing tokens `--paper --surface --ink --muted --hair --accent --danger --success --warning --org-primary --org-on-primary --font-disp --font-body --font-mono` (light + dark) and the demo classes `wfx-kicker wfx-title wfx-muted wfx-mono wfx-label wfx-field wfx-btn wfx-link wfx-alert wfx-card wfx-rail wfx-swatch`. Task 4 styles the guidelines page against these names.
 
-- [ ] **Step 1: Replace `app/v2/v2.css` entirely with:**
+- [ ] **Step 1: Create `app/v2/brand/brand.css` with exactly:**
 
 ```css
-/* Workfox Azure — ATS edition. Scoped to .v2; supersedes the C1 editorial values.
-   The accent is the platform slot color: org-branded surfaces override --org-primary
-   and every control styled from it re-tints (accent-slot white-label rule). */
-.v2 {
-  --paper: #ffffff;
-  --surface: #f8fafc;
-  --ink: #0b1220;
-  --muted: #64748b;
-  --hair: #e2e8f0;
-  --accent: #3b5fe3;
-  --danger: #b91c1c;
-  --org-primary: #3b5fe3;
-  --org-on-primary: #ffffff;
+/* Workfox Azure — guidelines scope. Self-contained under .wfx so the login's .v2 (C1)
+   scope, v2.css, the hook, and the ui-v2 primitive sources are ALL untouched. When a
+   product surface is later retoned to Azure, these values move into the shared scope. */
+.wfx {
+  --paper: #ffffff; --surface: #f8fafc; --ink: #0b1220; --muted: #64748b; --hair: #e2e8f0;
+  --accent: #3b5fe3; --danger: #b91c1c; --success: #15803d; --warning: #a16207;
+  --org-primary: #3b5fe3; --org-on-primary: #ffffff;
   --font-disp: 'Bricolage Grotesque', system-ui, sans-serif;
   --font-body: 'Hanken Grotesk', system-ui, sans-serif;
   --font-mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
-  background: var(--paper);
-  color: var(--ink);
-  font-family: var(--font-body);
+  background: var(--paper); color: var(--ink); font-family: var(--font-body);
 }
 @media (prefers-color-scheme: dark) {
-  .v2 {
-    --paper: #0b1220;
-    --surface: #0b1220;
-    --ink: #f8fafc;
-    --muted: #94a3b8;
-    --hair: #1e293b;
-    --accent: #3b82f6;
-    --danger: #f87171;
+  .wfx {
+    --paper: #0b1220; --surface: #0b1220; --ink: #f8fafc; --muted: #94a3b8; --hair: #1e293b;
+    --accent: #3b82f6; --danger: #f87171;
   }
 }
-.v2-kicker {
-  font-size: 11px; font-weight: 600; letter-spacing: 0.14em;
-  text-transform: uppercase; color: var(--accent);
-  display: inline-flex; align-items: center; gap: 7px;
+.wfx-kicker {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--accent); display: inline-flex; align-items: center; gap: 7px;
 }
-.v2-title {
-  font-family: var(--font-disp); font-weight: 600;
-  font-size: clamp(26px, 4vw, 34px); line-height: 1.05;
-  letter-spacing: -0.025em; color: var(--ink); text-wrap: balance;
+.wfx-title {
+  font-family: var(--font-disp); font-weight: 600; letter-spacing: -0.025em;
+  line-height: 1.05; color: var(--ink); text-wrap: balance;
 }
-.v2-label {
-  display: block; font-size: 12px; font-weight: 600;
-  color: var(--muted); margin: 0 0 6px;
-}
-.v2-field {
+.wfx-muted { color: var(--muted); }
+.wfx-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.wfx-label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin: 0 0 6px; }
+.wfx-field {
   width: 100%; height: 38px; border: 1px solid var(--hair); border-radius: 6px;
-  background: var(--paper); padding: 0 11px; font: inherit;
-  font-size: 14px; color: var(--ink); outline: none;
+  background: var(--paper); padding: 0 11px; font: inherit; font-size: 14px; color: var(--ink); outline: none;
 }
-.v2-field::placeholder { color: var(--muted); opacity: 0.7; }
-.v2-field:focus {
+.wfx-field::placeholder { color: var(--muted); opacity: 0.7; }
+.wfx-field:focus {
   border-color: var(--org-primary);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--org-primary) 18%, transparent);
 }
-.v2-cta {
-  width: 100%; height: 40px; border: 0; border-radius: 6px;
+.wfx-btn {
+  height: 40px; padding: 0 16px; border: 0; border-radius: 6px;
   background: var(--org-primary); color: var(--org-on-primary);
-  font-family: var(--font-body); font-size: 14px; font-weight: 600;
-  cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-}
-.v2-cta:disabled { opacity: 0.6; cursor: default; }
-.v2-sso {
-  width: 100%; height: 40px; border: 1px solid var(--hair); border-radius: 6px;
-  background: var(--paper); color: var(--ink); font-size: 14px; font-weight: 600;
+  font-family: var(--font-body); font-size: 14px; font-weight: 600; cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  text-decoration: none; cursor: pointer;
 }
-.v2-sso:focus-visible {
-  border-color: var(--org-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--org-primary) 18%, transparent);
-}
-.v2-link { font-size: 12.5px; color: var(--accent); font-weight: 600; text-decoration: none; }
-.v2-link:hover { text-decoration: underline; }
-.v2-alert {
-  display: flex; align-items: center; gap: 8px; font-size: 13px;
-  color: var(--danger);
+.wfx-btn.sec { background: var(--paper); color: var(--ink); border: 1px solid var(--hair); }
+.wfx-link { font-size: 12.5px; color: var(--accent); font-weight: 600; text-decoration: none; }
+.wfx-link:hover { text-decoration: underline; }
+.wfx-alert {
+  display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--danger);
   background: color-mix(in srgb, var(--danger) 7%, var(--paper));
-  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--hair));
-  border-radius: 6px; padding: 8px 11px;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--hair)); border-radius: 6px; padding: 8px 11px;
 }
-.v2-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-.v2-rail { position: relative; }
-.v2-rail::before {
-  content: ""; position: absolute; left: -1px; top: 8px; bottom: 8px;
-  width: 3px; border-radius: 0 3px 3px 0; background: var(--danger);
+.wfx-card { background: var(--paper); border: 1px solid var(--hair); border-radius: 8px; padding: 10px 12px; }
+.wfx-rail { position: relative; }
+.wfx-rail::before {
+  content: ""; position: absolute; left: -1px; top: 8px; bottom: 8px; width: 3px;
+  border-radius: 0 3px 3px 0; background: var(--danger);
 }
+.wfx-swatch { width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--hair); flex-shrink: 0; }
 ```
 
-- [ ] **Step 2: Change the default slot color in the hook**
+- [ ] **Step 2: Verify nothing else is affected**
 
-In `lib/hooks/useStaffLogin.ts`, change the line
-`orgPrimary: branding?.primaryColor || '#0053e2',`
-to
-`orgPrimary: branding?.primaryColor || '#3b5fe3',`
-(This hook is v2-only; the old login keeps its own `#0053e2` default untouched.)
+Run: `npx tsc --noEmit` → expect no new errors (this task adds only a CSS file).
+Confirm by inspection that `git status` shows ONLY `app/v2/brand/brand.css` as new/changed — no edits to `v2.css`, the login, the hook, or primitives.
 
-- [ ] **Step 3: Verify the retone breaks nothing**
-
-Run: `npx jest components/ui-v2/PasswordField.test.tsx --runInBand` → expect PASS.
-Run: `npx tsc --noEmit` → expect no errors referencing changed files.
-
-- [ ] **Step 4: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add app/v2/v2.css lib/hooks/useStaffLogin.ts
-git commit -m "feat(ui-v2): Workfox Azure tokens replace C1; login/primitives retoned via CSS"
+git add app/v2/brand/brand.css
+git commit -m "feat(brand): Workfox Azure tokens in self-contained .wfx guidelines scope"
 ```
 
 ---
 
-### Task 2: `BRAND` label + `WorkfoxMark` + login identity switch
+### Task 2: `BRAND` label + `WorkfoxMark`
 
 **Files:**
 - Create: `lib/brand.ts`
 - Create: `components/ui-v2/WorkfoxMark.tsx`
 - Modify: `components/ui-v2/index.ts` (add export)
-- Modify: `app/v2/login/page.tsx` (kicker: mark + product name from BRAND)
 - Test: `components/ui-v2/WorkfoxMark.test.tsx`
 
+(Note: the login is NOT touched — its kicker keeps its current text until the separate login-retone task. `BRAND` and `WorkfoxMark` are consumed only by the guidelines page in Task 4.)
+
 **Interfaces:**
-- Consumes: `.v2-kicker` class (Task 1).
+- Consumes: nothing (WorkfoxMark is self-contained SVG).
 - Produces:
   ```ts
   // lib/brand.ts
@@ -246,30 +211,20 @@ Add to `components/ui-v2/index.ts`:
 export { WorkfoxMark } from './WorkfoxMark';
 ```
 
-In `app/v2/login/page.tsx`: add imports
-`import { BRAND } from '../../../lib/brand';` and extend the ui-v2 import with `WorkfoxMark`;
-then replace `<p className="v2-kicker">Prudent</p>` with:
-
-```tsx
-<p className="v2-kicker"><WorkfoxMark size={14} /> {BRAND.productName}</p>
-```
-
 - [ ] **Step 4: Run the test, verify it passes**
 
 Run: `npx jest components/ui-v2/WorkfoxMark.test.tsx --runInBand` → expect PASS.
 
-- [ ] **Step 5: Grep checks**
+- [ ] **Step 5: Grep check**
 
 Run: `grep -rn "Workfox" app components lib --include="*.ts" --include="*.tsx" | grep -v "lib/brand.ts" | grep -v ".test."`
-Expected: no matches (product name only via BRAND).
-Run: `grep -rn "PrudentMark" app/v2 components/ui-v2`
-Expected: no matches.
+Expected: no matches yet (Task 4 will consume `BRAND.productName`, never the literal).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add lib/brand.ts components/ui-v2/WorkfoxMark.tsx components/ui-v2/WorkfoxMark.test.tsx components/ui-v2/index.ts app/v2/login/page.tsx
-git commit -m "feat(brand): BRAND label (Workfox/Yukthix), working WorkfoxMark, login identity"
+git add lib/brand.ts components/ui-v2/WorkfoxMark.tsx components/ui-v2/WorkfoxMark.test.tsx components/ui-v2/index.ts
+git commit -m "feat(brand): BRAND label (Workfox/Yukthix) + working WorkfoxMark"
 ```
 
 ---
@@ -459,13 +414,13 @@ git commit -m "feat(brand): guideline content module — 8 chapters, single sour
 
 ### Task 4: `/v2/brand` living route
 
-Renders the content module with real tokens and real components. Internal reference page — not linked from any product nav.
+Renders the content module in the Azure `.wfx` scope, using the `.wfx-*` demo classes (Task 1) and `WorkfoxMark`. It shows the Azure component *standard* as self-contained demo markup — it does NOT import or retone the shared ui-v2 primitives (those stay C1 for the login until their own retone). Internal reference page — not linked from any product nav.
 
 **Files:**
 - Create: `app/v2/brand/page.tsx`
 
 **Interfaces:**
-- Consumes: `BRAND_CHAPTERS`, `BrandChapter` (Task 3); `Button, TextField, PasswordField, FormAlert, WorkfoxMark` (ui-v2); `BRAND`; `.v2-*` classes and CSS vars (Task 1).
+- Consumes: `BRAND_CHAPTERS`, `BrandChapter` (Task 3); `WorkfoxMark` + `BRAND`; the `.wfx` scope tokens and `.wfx-*` classes from `app/v2/brand/brand.css` (Task 1).
 - Produces: route `/v2/brand`.
 
 - [ ] **Step 1: Create `app/v2/brand/page.tsx`**
@@ -476,7 +431,8 @@ Renders the content module with real tokens and real components. Internal refere
 import { useState } from 'react';
 import { BRAND } from '../../../lib/brand';
 import { BRAND_CHAPTERS } from './content';
-import { Button, TextField, PasswordField, FormAlert, WorkfoxMark } from '../../../components/ui-v2';
+import { WorkfoxMark } from '../../../components/ui-v2';
+import './brand.css';
 
 const LIGHT_TOKENS: Array<[string, string]> = [
   ['paper', '#ffffff'], ['surface', '#f8fafc'], ['ink', '#0b1220'], ['muted', '#64748b'],
@@ -491,9 +447,9 @@ const STATUS: Array<[string, string]> = [['clear', '#15803d'], ['review', '#a162
 function Swatch({ name, hex }: { name: string; hex: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
-      <span style={{ width: 26, height: 26, borderRadius: 6, background: hex, border: '1px solid var(--hair)', flexShrink: 0 }} />
+      <span className="wfx-swatch" style={{ background: hex }} />
       <span style={{ fontWeight: 600 }}>{name}</span>
-      <span className="v2-mono" style={{ color: 'var(--muted)' }}>{hex}</span>
+      <span className="wfx-mono" style={{ color: 'var(--muted)' }}>{hex}</span>
     </div>
   );
 }
@@ -501,24 +457,26 @@ function Swatch({ name, hex }: { name: string; hex: string }) {
 export default function BrandPage() {
   const [pw, setPw] = useState('secret123');
   const [txt, setTxt] = useState('');
+  const [show, setShow] = useState(false);
 
   return (
-    <main style={{ maxWidth: 860, margin: '0 auto', padding: '48px 24px 96px' }}>
-      <p className="v2-kicker"><WorkfoxMark size={14} /> {BRAND.productName} brand guidelines</p>
-      <h1 className="v2-title" style={{ margin: '6px 0 6px' }}>How {BRAND.productName} looks, speaks, and behaves</h1>
-      <p style={{ color: 'var(--muted)', fontSize: 14, margin: '0 0 12px' }}>
-        {BRAND.companyName} · living reference — rendered from the real tokens and components. Product name status: {BRAND.productNameStatus}.
+    <main className="wfx" style={{ minHeight: '100vh' }}>
+     <div style={{ maxWidth: 860, margin: '0 auto', padding: '48px 24px 96px' }}>
+      <p className="wfx-kicker"><WorkfoxMark size={14} /> {BRAND.productName} brand guidelines</p>
+      <h1 className="wfx-title" style={{ fontSize: 'clamp(26px,4vw,34px)', margin: '6px 0 6px' }}>How {BRAND.productName} looks, speaks, and behaves</h1>
+      <p className="wfx-muted" style={{ fontSize: 14, margin: '0 0 12px' }}>
+        {BRAND.companyName} · living reference — rendered from the real Azure tokens. Product name status: {BRAND.productNameStatus}.
       </p>
       <nav style={{ display: 'flex', flexWrap: 'wrap', gap: 10, margin: '0 0 40px' }}>
         {BRAND_CHAPTERS.map((c, i) => (
-          <a key={c.slug} href={`#${c.slug}`} className="v2-link">{i + 1}. {c.title}</a>
+          <a key={c.slug} href={`#${c.slug}`} className="wfx-link">{i + 1}. {c.title}</a>
         ))}
       </nav>
 
       {BRAND_CHAPTERS.map((c, i) => (
         <section key={c.slug} id={c.slug} style={{ margin: '0 0 44px' }}>
-          <p className="v2-kicker">{String(i + 1).padStart(2, '0')}</p>
-          <h2 className="v2-title" style={{ fontSize: 24, margin: '4px 0 8px' }}>{c.title}</h2>
+          <p className="wfx-kicker">{String(i + 1).padStart(2, '0')}</p>
+          <h2 className="wfx-title" style={{ fontSize: 24, margin: '4px 0 8px' }}>{c.title}</h2>
           <p style={{ fontSize: 14, color: 'var(--muted)', maxWidth: '70ch', margin: '0 0 14px' }}>{c.intro}</p>
           {c.sections.map((s) => (
             <div key={s.heading} style={{ margin: '0 0 16px' }}>
@@ -555,23 +513,37 @@ export default function BrandPage() {
               <span style={{ display: 'inline-grid', placeItems: 'center', width: 44, height: 44, borderRadius: 10, background: 'var(--org-primary)', color: 'var(--org-on-primary)' }}><WorkfoxMark size={24} title={`${BRAND.productName} mark on accent`} /></span>
               <span style={{ display: 'inline-grid', placeItems: 'center', width: 44, height: 44, borderRadius: 10, border: '1px solid var(--hair)' }}><WorkfoxMark size={24} title={`${BRAND.productName} mark on paper`} /></span>
               <span style={{ fontFamily: 'var(--font-disp)', fontWeight: 600, fontSize: 24, letterSpacing: '-0.02em' }}>{BRAND.productName}</span>
-              <span className="v2-mono" style={{ fontSize: 11, color: 'var(--muted)' }}>working mark · replace in WorkfoxMark.tsx</span>
+              <span className="wfx-mono" style={{ fontSize: 11, color: 'var(--muted)' }}>working mark · replace in WorkfoxMark.tsx</span>
             </div>
           )}
 
           {c.slug === 'components' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 380, marginTop: 10 }}>
-              <TextField id="bg-demo-text" label="Text field" value={txt} onChange={setTxt} />
-              <PasswordField id="bg-demo-pw" label="Password field" value={pw} onChange={setPw} />
-              <Button>Primary action</Button>
-              <FormAlert>That email or password isn't right.</FormAlert>
-              <div className="v2-rail" style={{ border: '1px solid var(--hair)', borderRadius: 8, padding: '10px 14px', fontSize: 13 }}>
-                Flagged item with the red attention rail — <span className="v2-mono">tab ×4</span>
+              <div>
+                <label className="wfx-label" htmlFor="bg-demo-text">Text field</label>
+                <input id="bg-demo-text" className="wfx-field" value={txt} onChange={(e) => setTxt(e.target.value)} placeholder="maya@northwind.co" />
+              </div>
+              <div>
+                <label className="wfx-label" htmlFor="bg-demo-pw">Password field</label>
+                <div style={{ position: 'relative' }}>
+                  <input id="bg-demo-pw" className="wfx-field" type={show ? 'text' : 'password'} value={pw} onChange={(e) => setPw(e.target.value)} style={{ paddingRight: 40 }} />
+                  <button type="button" onClick={() => setShow((s) => !s)} aria-label={show ? 'Hide characters' : 'Show characters'}
+                    style={{ position: 'absolute', right: 8, top: 8, height: 22, border: 0, background: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 12 }}>
+                    {show ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </div>
+              <button className="wfx-btn">Primary action</button>
+              <button className="wfx-btn sec">Secondary action</button>
+              <div className="wfx-alert">That email or password isn't right.</div>
+              <div className="wfx-card wfx-rail">
+                Flagged candidate — <span className="wfx-mono">tab ×4</span>
               </div>
             </div>
           )}
         </section>
       ))}
+     </div>
     </main>
   );
 }
@@ -583,7 +555,7 @@ Run: `npm run build` → expect success and `/v2/brand` in the route list (Next 
 
 - [ ] **Step 3: Browser smoke (controller assists)**
 
-Open `/v2/brand` in the preview: chapter nav jumps; swatches match the token table; component gallery renders interactively (password toggle works); dark mode legible; `/v2/login` still renders correctly in the Azure retone.
+Open `/v2/brand` in the preview: chapter nav jumps; swatches match the token table; the Azure demo gallery renders (password Show/Hide toggles, fields bordered, primary button azure-filled, red rail on the flagged card); dark mode legible. Also confirm `/v2/login` is UNCHANGED (still C1 — we didn't touch it).
 
 - [ ] **Step 4: Commit**
 
@@ -618,7 +590,8 @@ git commit -m "docs(brand): shareable guidelines snapshot"
 - [ ] **Step 2:** Grep gates (from `apps/web`):
 `grep -rn "Workfox" app components lib --include="*.ts" --include="*.tsx" | grep -v "lib/brand.ts" | grep -v ".test."` → empty;
 `grep -rn "PrudentMark" app/v2 components/ui-v2` → empty;
-`git diff --stat main...HEAD -- app/login components/ui components/invigilator.css` → empty (old UI untouched).
+`git diff --stat main...HEAD -- app/login components/ui components/invigilator.css` → empty (old UI untouched);
+`git diff --stat main...HEAD -- app/v2/login app/v2/v2.css lib/hooks/useStaffLogin.ts` → empty (login/C1 untouched this project).
 - [ ] **Step 3:** Single-file tests: `npx jest components/ui-v2/PasswordField.test.tsx --runInBand` and `npx jest components/ui-v2/WorkfoxMark.test.tsx --runInBand` and `npx jest lib/staff-routing.test.ts --runInBand` → all PASS.
 - [ ] **Step 4:** Browser smoke both themes on `/v2/login` + `/v2/brand` (controller).
 - [ ] **Step 5:** No commit (verification only); fix-forward any failures via the review loop.
@@ -627,8 +600,10 @@ git commit -m "docs(brand): shareable guidelines snapshot"
 
 ## Self-Review
 
-**Spec coverage:** §2 theme decision → Task 1 tokens. §3 name-as-label + login kicker → Task 2 (+ grep in Tasks 2/6). §4 working mark → Task 2 (`WorkfoxMark`, currentColor, one-file replacement note rendered on the page). §5 chapters 1–8 → Task 3 content (all eight present, incl. naming/white-label stance, voice pairs, logo usage, accent-slot rule, status semantics, type scale, 21st.dev intake, motion, email). §6 living route → Task 4; shareable doc → Task 5 (generated-from commit noted). §7 non-goals respected (no old-UI changes; no final logo; grep-only enforcement). §8 verification → Tasks 1/2/4/6 (prod build, both themes, greps, isolated jest). §9 build order 1–6 → Tasks 1–6 in order.
+**AMENDMENT (2026-09-01):** login retone dropped per user. Azure now lives in a self-contained `.wfx` scope (`app/v2/brand/brand.css`); `app/v2/v2.css`, the login, the hook, and the ui-v2 primitive sources are untouched (login stays C1). The guidelines page renders the Azure component standard as `.wfx-*` demo markup rather than retoning the shared primitives.
+
+**Spec coverage:** §2 theme decision → Task 1 `.wfx` Azure tokens. §3 name-as-label → Task 2 `BRAND` (+ grep in Tasks 2/6); login kicker switch deferred to the future login-retone task. §4 working mark → Task 2 (`WorkfoxMark`, currentColor, one-file replacement note rendered on the page). §5 chapters 1–8 → Task 3 content (all eight; naming/white-label stance, voice pairs, logo usage, accent-slot rule, status semantics, type scale, 21st.dev intake, motion, email). §6 living route → Task 4; shareable doc → Task 5 (generated-from commit noted). §7 non-goals respected (no old-UI changes; no final logo; grep-only enforcement). §8 verification → Tasks 1/2/4/6. §9 build order → Tasks 1–6 (the C1→Azure login retone that build-order step 1 mentioned is now a separate future task, per this amendment).
 
 **Placeholder scan:** none — full CSS, full content, full page code included. Task 5 Step 1 references content.ts verbatim as its source, which exists by then.
 
-**Type consistency:** `BRAND` shape identical in Tasks 2/3/4. `BrandChapter/BrandSection/BrandPair` defined in Task 3, consumed in Task 4 (`c.sections`, `s.rules`, `s.pairs`, `p.do/p.dont` all match). `WorkfoxMark({size, className, title})` matches Task 4 usage (`size`, `title`). `TextField/PasswordField/Button/FormAlert` usage matches their Task-4 (login plan) prop shapes — `id/label/value/onChange` and children. `.v2-mono`/`.v2-rail` defined in Task 1, used in Task 4.
+**Type consistency:** `BRAND` shape identical in Tasks 2/3/4. `BrandChapter/BrandSection/BrandPair` defined in Task 3, consumed in Task 4 (`c.sections`, `s.rules`, `s.pairs`, `p.do/p.dont` all match). `WorkfoxMark({size, className, title})` matches Task 4 usage (`size`, `title`). Task 4 uses only `.wfx-*` classes (defined in Task 1's brand.css) and `WorkfoxMark` — no ui-v2 primitive imports, no `.v2-*` dependency. `show/setShow/pw/txt` state all declared in `BrandPage`.
