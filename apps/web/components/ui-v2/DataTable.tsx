@@ -53,9 +53,10 @@ export interface DataTableProps<T extends RowData> {
   search: string;
   onSearchChange: (v: string) => void;
   searchPlaceholder?: string;
-  page: number;
-  totalPages: number;
-  onPageChange: (p: number) => void;
+  /** Server pagination. Omit all three for an unpaginated list (shows every row provided). */
+  page?: number;
+  totalPages?: number;
+  onPageChange?: (p: number) => void;
   isLoading?: boolean;
   isError?: boolean;
   errorMessage?: string;
@@ -156,13 +157,15 @@ export function DataTable<T extends RowData>({
             </tbody>
           </table>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 14px', borderTop: '1px solid var(--hair)', fontSize: 12.5, color: 'var(--muted)' }}>
-          <span>Page {page} of {totalPages}</span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <button type="button" style={{ ...dt.iconBtn, opacity: page <= 1 ? 0.4 : 1, cursor: page <= 1 ? 'not-allowed' : 'pointer' }} disabled={page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))}><ChevronLeft size={15} /></button>
-            <button type="button" style={{ ...dt.iconBtn, opacity: page >= totalPages ? 0.4 : 1, cursor: page >= totalPages ? 'not-allowed' : 'pointer' }} disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}><ChevronRight size={15} /></button>
-          </span>
-        </div>
+        {page !== undefined && onPageChange && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 14px', borderTop: '1px solid var(--hair)', fontSize: 12.5, color: 'var(--muted)' }}>
+            <span>Page {page} of {totalPages ?? 1}</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <button type="button" style={{ ...dt.iconBtn, opacity: page <= 1 ? 0.4 : 1, cursor: page <= 1 ? 'not-allowed' : 'pointer' }} disabled={page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))}><ChevronLeft size={15} /></button>
+              <button type="button" style={{ ...dt.iconBtn, opacity: page >= (totalPages ?? 1) ? 0.4 : 1, cursor: page >= (totalPages ?? 1) ? 'not-allowed' : 'pointer' }} disabled={page >= (totalPages ?? 1)} onClick={() => onPageChange(page + 1)}><ChevronRight size={15} /></button>
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
