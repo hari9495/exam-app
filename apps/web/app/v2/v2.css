@@ -130,6 +130,8 @@
 .wf-row { margin: 0 -8px; padding: 5px 8px; border-radius: 8px; transition: background .12s ease; }
 .wf-row:hover { background: var(--surface); }
 .wf-opt:hover { background: color-mix(in srgb, var(--ink) 4%, transparent) !important; }
+.wf-trow { transition: background .1s ease; }
+.wf-trow:hover { background: color-mix(in srgb, var(--ink) 3%, transparent); }
 .v2-divider {
   display: flex; align-items: center; gap: 10px; color: var(--muted);
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
