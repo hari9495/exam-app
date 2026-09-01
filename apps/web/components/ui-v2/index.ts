@@ -7,3 +7,5 @@ export { Card } from './Card';
 export { Sidebar } from './Sidebar';
 export { TopBar } from './TopBar';
 export { AppShell } from './AppShell';
+export { StatCard } from './StatCard';
+export { StatsHero } from './StatsHero';
