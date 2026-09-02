@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
 
 export function TextField({
-  id, label, type = 'text', value, onChange, required = false, autoComplete, trailing,
+  id, label, type = 'text', value, onChange, required = false, autoComplete, placeholder, trailing,
 }: {
   id: string; label: string; type?: string; value: string;
-  onChange: (v: string) => void; required?: boolean; autoComplete?: string; trailing?: ReactNode;
+  onChange: (v: string) => void; required?: boolean; autoComplete?: string; placeholder?: string; trailing?: ReactNode;
 }) {
   return (
     <div>
@@ -16,6 +16,7 @@ export function TextField({
           value={value}
           required={required}
           autoComplete={autoComplete}
+          placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
           className="v2-field"
           style={trailing ? { paddingRight: 28 } : undefined}
