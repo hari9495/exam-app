@@ -28,7 +28,8 @@ import { ScheduleInterviewModal } from './ScheduleInterviewModal';
 const muted = 'var(--muted)';
 const ink = 'var(--ink)';
 const sub: React.CSSProperties['color'] = 'color-mix(in srgb, var(--ink) 72%, transparent)';
-const listItem: React.CSSProperties = { borderRadius: 8, border: '1px solid var(--hair)', padding: 12 };
+const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 12, padding: 16 };
+const listItem: React.CSSProperties = { borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--surface)', padding: 12 };
 const textInput: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '9px 11px', fontSize: 13, borderRadius: 8, border: '1px solid color-mix(in srgb, var(--ink) 15%, var(--hair))', background: 'var(--paper)', color: ink, outline: 'none' };
 const sectionH: React.CSSProperties = { fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: muted, margin: '0 0 8px' };
 const linkBtn: React.CSSProperties = { background: 'none', border: 'none', padding: 0, fontSize: 12, fontWeight: 500, color: 'var(--org-primary)', cursor: 'pointer' };
@@ -404,12 +405,12 @@ export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: B
         <button type="button" aria-label="Close" onClick={onClose} style={{ display: 'inline-flex', background: 'none', border: 'none', padding: 4, color: muted, cursor: 'pointer' }}><X size={18} /></button>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 20, marginTop: 16 }}>
-        <CandidateProfileSection candidateId={row.candidateId} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 16 }}>
+        <div style={card}><CandidateProfileSection candidateId={row.candidateId} /></div>
 
-        <FitSection entryId={row.entryId} jobId={jobId} />
+        <div style={card}><FitSection entryId={row.entryId} jobId={jobId} /></div>
 
-        <div>
+        <div style={card}>
           <h3 style={sectionH}>Exam results</h3>
           {row.examResults.length === 0 ? (
             <p style={{ fontSize: 13, color: muted, margin: 0 }}>No linked exam results yet.</p>
@@ -424,7 +425,7 @@ export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: B
           )}
         </div>
 
-        <div>
+        <div style={card}>
           <h3 style={sectionH}>Feedback</h3>
           {isLoading ? (
             <p style={{ fontSize: 13, color: muted, margin: 0 }}>Loading…</p>
@@ -455,9 +456,9 @@ export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: B
           </div>
         </div>
 
-        <MessagesSection entryId={row.entryId} candidateId={row.candidateId} candidateName={row.candidateName} />
-        <OffersSection entryId={row.entryId} candidateId={row.candidateId} />
-        <InterviewsSection entryId={row.entryId} candidateId={row.candidateId} />
+        <div style={card}><MessagesSection entryId={row.entryId} candidateId={row.candidateId} candidateName={row.candidateName} /></div>
+        <div style={card}><OffersSection entryId={row.entryId} candidateId={row.candidateId} /></div>
+        <div style={card}><InterviewsSection entryId={row.entryId} candidateId={row.candidateId} /></div>
       </div>
     </Dialog>
   );
