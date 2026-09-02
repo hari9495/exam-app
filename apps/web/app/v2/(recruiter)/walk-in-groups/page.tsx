@@ -4,8 +4,9 @@
 // useCreateWalkInGroup / useDeleteWalkInGroup). New-group dialog, Manage (existing modal), delete
 // confirm. useWalkInGroups returns the full list → unpaginated + client name search.
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Plus, MoreHorizontal, Settings2, Trash2 } from 'lucide-react';
+import { Plus, MoreHorizontal, Settings2, Trash2, CalendarClock } from 'lucide-react';
 import { useAuth } from '../../../../lib/auth-context';
 import { useWalkInGroups, useCreateWalkInGroup, useDeleteWalkInGroup } from '../../../../lib/hooks/useWalkInGroups';
 import { ManageWalkInGroupModal } from '../../../../components/ManageWalkInGroupModal';
@@ -14,6 +15,7 @@ import { DataTable, DT_FEATURES, dt, SortHead, Dropdown, DropdownItem, Dialog, T
 import { STATUS } from '../../../../components/ui-v2/viz';
 
 export default function V2WalkInGroupsPage() {
+  const router = useRouter();
   const { organizationSlug } = useAuth();
   const { data: groups, isLoading, isError } = useWalkInGroups();
   const createGroup = useCreateWalkInGroup();
@@ -56,6 +58,7 @@ export default function V2WalkInGroupsPage() {
       cell: ({ row }) => (
         <Dropdown align="end" menuWidth={150} trigger={<span style={{ display: 'inline-grid', placeItems: 'center', width: 30, height: 30, color: 'var(--muted)', cursor: 'pointer' }}><MoreHorizontal size={17} /></span>}>
           {(close) => (<>
+            <DropdownItem onClick={() => { close(); router.push(`/v2/walk-in-groups/${row.original.id}/drives`); }}><CalendarClock size={15} /> Drives</DropdownItem>
             <DropdownItem onClick={() => { close(); setManagingId(row.original.id); }}><Settings2 size={15} /> Manage</DropdownItem>
             <DropdownItem danger onClick={() => { close(); setPendingDelete(row.original); }}><Trash2 size={15} /> Delete</DropdownItem>
           </>)}
