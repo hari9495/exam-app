@@ -116,7 +116,7 @@ export default function V2JobsPage() {
         <p style={{ fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.5, margin: '0 0 18px' }}>Delete <strong style={{ color: 'var(--ink)' }}>{pendingDelete?.title}</strong>? This removes the job and its pipeline.</p>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
           <button type="button" onClick={() => setPendingDelete(null)} style={dt.toolBtn}>Cancel</button>
-          <button type="button" onClick={handleConfirmDelete} disabled={deleteJob.isPending} style={{ fontSize: 13, fontWeight: 500, padding: '8px 14px', borderRadius: 9, border: 'none', background: 'var(--danger)', color: '#fff', cursor: 'pointer' }}>Delete</button>
+          <button type="button" onClick={handleConfirmDelete} disabled={deleteJob.isPending} style={{ fontSize: 13, fontWeight: 500, padding: '9px 16px', borderRadius: 9, border: 'none', background: 'var(--danger)', color: '#fff', cursor: 'pointer' }}>Delete</button>
         </div>
       </Dialog>
     </>

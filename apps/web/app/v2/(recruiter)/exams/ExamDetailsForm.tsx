@@ -70,8 +70,8 @@ function toDatetimeLocalValue(iso: string): string {
 const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '9px 11px', fontSize: 13, borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none' };
 const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14 };
 const help: React.CSSProperties = { fontSize: 12, color: 'var(--muted)', lineHeight: 1.5, margin: 0 };
-const ghostBtn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', fontSize: 13, fontWeight: 500, padding: '9px 16px', borderRadius: 9, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', cursor: 'pointer', textDecoration: 'none' };
-const primaryBtn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, padding: '9px 18px', borderRadius: 9, border: 'none', background: 'var(--org-primary)', color: 'var(--org-on-primary)', cursor: 'pointer' };
+const ghostBtn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', fontSize: 13, fontWeight: 500, padding: '9px 14px', borderRadius: 9, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', cursor: 'pointer', textDecoration: 'none' };
+const primaryBtn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, padding: '9px 16px', borderRadius: 9, border: 'none', background: 'var(--org-primary)', color: 'var(--org-on-primary)', cursor: 'pointer' };
 // The right-hand field column of each side-label section — keeps inputs a sensible width, not full-bleed.
 const fieldCol: React.CSSProperties = { maxWidth: 480 };
 

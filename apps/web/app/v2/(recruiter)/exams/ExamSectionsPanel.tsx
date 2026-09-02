@@ -306,7 +306,7 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
         <p style={{ fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.5, margin: '0 0 18px' }}>Delete <strong style={{ color: 'var(--ink)' }}>{sectionPendingDelete?.title}</strong> and remove its questions from this exam?</p>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
           <button type="button" onClick={() => setSectionPendingDelete(null)} style={dt.toolBtn}>Cancel</button>
-          <button type="button" onClick={handleConfirmDeleteSection} disabled={deleteSection.isPending} style={{ fontSize: 13, fontWeight: 500, padding: '8px 14px', borderRadius: 9, border: 'none', background: 'var(--danger)', color: '#fff', cursor: 'pointer' }}>Delete</button>
+          <button type="button" onClick={handleConfirmDeleteSection} disabled={deleteSection.isPending} style={{ fontSize: 13, fontWeight: 500, padding: '9px 16px', borderRadius: 9, border: 'none', background: 'var(--danger)', color: '#fff', cursor: 'pointer' }}>Delete</button>
         </div>
       </Dialog>
     </div>

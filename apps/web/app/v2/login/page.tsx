@@ -75,7 +75,7 @@ export default function V2LoginPage() {
                 <TextField id="email" label="Email" type="email" value={s.email} onChange={s.setEmail} required autoComplete="email" />
                 <PasswordField id="password" label="Password" value={s.password} onChange={s.setPassword} required />
                 <motion.div whileTap={{ scale: 0.98 }} transition={{ type: 'spring', stiffness: 500, damping: 30 }}>
-                  <Button type="submit" loading={s.submitting}>Sign in</Button>
+                  <Button type="submit" loading={s.submitting} fullWidth>Sign in</Button>
                 </motion.div>
                 <Link href="/forgot-password" className="v2-link">Forgot password?</Link>
               </>
