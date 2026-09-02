@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { ExamDetailsForm } from '../../ExamDetailsForm';
 import { WalkInShareCard } from '../../../../../../components/WalkInShareCard';
-import { ExamSectionsPanel } from '../../../../../../components/ExamSectionsPanel';
+import { ExamSectionsPanel } from '../../ExamSectionsPanel';
 import { LiveMonitoringPanel } from '../../../../../../components/LiveMonitoringPanel';
 import { GradingQueuePanel } from '../../../../../../components/GradingQueuePanel';
 import { LeaderboardPanel } from '../../../../../../components/LeaderboardPanel';
