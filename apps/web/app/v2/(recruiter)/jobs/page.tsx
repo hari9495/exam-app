@@ -84,7 +84,7 @@ export default function V2JobsPage() {
           <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Jobs</h1>
           <p style={{ fontSize: 13, color: 'var(--muted)', margin: '4px 0 0' }}>Open a job to track candidates through applied, screened, interview, offer, and hired.</p>
         </div>
-        <button type="button" style={dt.primaryBtn} onClick={() => { setFormError(null); setAddOpen(true); }}><Plus size={14} /> New job</button>
+        <button type="button" className="v2-hoverbtn" style={dt.primaryBtn} onClick={() => { setFormError(null); setAddOpen(true); }}><Plus size={14} /> New job</button>
       </div>
 
       {notice && (
@@ -106,7 +106,7 @@ export default function V2JobsPage() {
           </div>
           {formError && <p role="alert" style={{ marginTop: 12, fontSize: 12.5, color: 'var(--danger)' }}>{formError}</p>}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-            <button type="button" onClick={() => setAddOpen(false)} style={dt.toolBtn}>Cancel</button>
+            <button type="button" onClick={() => setAddOpen(false)} className="v2-hoverbtn" style={dt.toolBtn}>Cancel</button>
             <Button type="submit" loading={createJob.isPending}>Create job</Button>
           </div>
         </form>
@@ -115,7 +115,7 @@ export default function V2JobsPage() {
       <Dialog open={!!pendingDelete} onClose={() => setPendingDelete(null)} title="Delete job">
         <p style={{ fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.5, margin: '0 0 18px' }}>Delete <strong style={{ color: 'var(--ink)' }}>{pendingDelete?.title}</strong>? This removes the job and its pipeline.</p>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-          <button type="button" onClick={() => setPendingDelete(null)} style={dt.toolBtn}>Cancel</button>
+          <button type="button" onClick={() => setPendingDelete(null)} className="v2-hoverbtn" style={dt.toolBtn}>Cancel</button>
           <button type="button" onClick={handleConfirmDelete} disabled={deleteJob.isPending} style={{ fontSize: 13, fontWeight: 500, padding: '9px 16px', borderRadius: 9, border: 'none', background: 'var(--danger)', color: '#fff', cursor: 'pointer' }}>Delete</button>
         </div>
       </Dialog>

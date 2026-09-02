@@ -88,7 +88,7 @@ export function AddCandidateModal({ jobId, open, onClose }: { jobId: string; ope
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-        <button type="button" onClick={handleClose} style={dt.toolBtn}>Cancel</button>
+        <button type="button" onClick={handleClose} className="v2-hoverbtn" style={dt.toolBtn}>Cancel</button>
         <Button onClick={handleSubmit} loading={addEntry.isPending} disabled={!canSubmit}>Add</Button>
       </div>
     </Dialog>

@@ -49,7 +49,7 @@ function AccommodationCell({ invitation, onSave, isPending }: { invitation: Invi
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
       <input type="number" min={0} max={300} value={value} onChange={(e) => setValue(e.target.value)} aria-label={`Extra time (%) for ${invitation.candidate.name}`} style={smallNum} />
       <span style={{ fontSize: 13, color: 'var(--muted)' }}>%</span>
-      <button type="button" disabled={isPending} onClick={() => onSave(Number(value))} style={{ ...dt.toolBtn, padding: '5px 9px', opacity: isPending ? 0.5 : 1 }}>Save</button>
+      <button type="button" disabled={isPending} onClick={() => onSave(Number(value))} className="v2-hoverbtn" style={{ ...dt.toolBtn, padding: '5px 9px', opacity: isPending ? 0.5 : 1 }}>Save</button>
     </div>
   );
 }
@@ -113,7 +113,7 @@ export function CandidatesPanel({ examId }: { examId: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button type="button" style={dt.primaryBtn} onClick={() => setInviteModalOpen(true)}>Invite candidates</button>
+        <button type="button" className="v2-hoverbtn" style={dt.primaryBtn} onClick={() => setInviteModalOpen(true)}>Invite candidates</button>
       </div>
       <DataTable
         columns={columns} data={visibleInvitations} getRowId={(r) => r.id}

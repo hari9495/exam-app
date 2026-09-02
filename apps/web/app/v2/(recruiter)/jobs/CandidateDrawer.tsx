@@ -85,7 +85,7 @@ function CandidateProfileSection({ candidateId }: { candidateId: string }) {
         <p style={{ fontSize: 13, color: muted, margin: 0 }}>{statusHint(profile)}</p>
       )}
       {profile?.resumePath && (
-        <button type="button" onClick={handleDownload} disabled={resumeUrl.isPending} style={{ ...dt.toolBtn, marginTop: 12, opacity: resumeUrl.isPending ? 0.5 : 1 }}>
+        <button type="button" onClick={handleDownload} disabled={resumeUrl.isPending} className="v2-hoverbtn" style={{ ...dt.toolBtn, marginTop: 12, opacity: resumeUrl.isPending ? 0.5 : 1 }}>
           {resumeUrl.isPending ? 'Opening…' : 'Download résumé'}
         </button>
       )}
@@ -144,7 +144,7 @@ function FitSection({ entryId, jobId }: { entryId: string; jobId: string }) {
       {!status && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <p style={{ fontSize: 13, color: muted, margin: 0 }}>No fit assessment yet.</p>
-          <button type="button" onClick={handleScore} disabled={scoreEntry.isPending} style={{ ...dt.toolBtn, opacity: scoreEntry.isPending ? 0.5 : 1 }}>Assess fit</button>
+          <button type="button" onClick={handleScore} disabled={scoreEntry.isPending} className="v2-hoverbtn" style={{ ...dt.toolBtn, opacity: scoreEntry.isPending ? 0.5 : 1 }}>Assess fit</button>
         </div>
       )}
 
@@ -158,7 +158,7 @@ function FitSection({ entryId, jobId }: { entryId: string; jobId: string }) {
       {status === 'failed' && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <p style={{ fontSize: 13, color: muted, margin: 0 }}>Scoring failed.</p>
-          <button type="button" onClick={handleScore} disabled={scoreEntry.isPending} style={{ ...dt.toolBtn, opacity: scoreEntry.isPending ? 0.5 : 1 }}>Retry</button>
+          <button type="button" onClick={handleScore} disabled={scoreEntry.isPending} className="v2-hoverbtn" style={{ ...dt.toolBtn, opacity: scoreEntry.isPending ? 0.5 : 1 }}>Retry</button>
         </div>
       )}
 
@@ -166,7 +166,7 @@ function FitSection({ entryId, jobId }: { entryId: string; jobId: string }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontSize: 30, fontWeight: 600, color: ink }}>{fit.data.overallScore}</span>
-            <button type="button" onClick={handleScore} disabled={scoreEntry.isPending} style={{ ...dt.toolBtn, opacity: scoreEntry.isPending ? 0.5 : 1 }}>Re-score</button>
+            <button type="button" onClick={handleScore} disabled={scoreEntry.isPending} className="v2-hoverbtn" style={{ ...dt.toolBtn, opacity: scoreEntry.isPending ? 0.5 : 1 }}>Re-score</button>
           </div>
           {fit.data.summary && <p style={{ fontSize: 13, color: ink, margin: 0 }}>{fit.data.summary}</p>}
           {fit.data.strengths.length > 0 && (
@@ -224,7 +224,7 @@ function MessagesSection({ entryId, candidateId, candidateName }: { entryId: str
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <h3 style={{ ...sectionH, margin: 0 }}>Messages</h3>
-        <button type="button" onClick={() => setComposing(true)} style={dt.toolBtn}>Send message</button>
+        <button type="button" onClick={() => setComposing(true)} className="v2-hoverbtn" style={dt.toolBtn}>Send message</button>
       </div>
       {isLoading ? (
         <p style={{ fontSize: 13, color: muted, margin: 0 }}>Loading…</p>
@@ -276,7 +276,7 @@ function OffersSection({ entryId, candidateId }: { entryId: string; candidateId:
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <h3 style={{ ...sectionH, margin: 0 }}>Offers</h3>
-        <button type="button" onClick={() => setCreating(true)} style={dt.toolBtn}>Create offer</button>
+        <button type="button" onClick={() => setCreating(true)} className="v2-hoverbtn" style={dt.toolBtn}>Create offer</button>
       </div>
       {isLoading ? (
         <p style={{ fontSize: 13, color: muted, margin: 0 }}>Loading…</p>
@@ -328,7 +328,7 @@ function InterviewsSection({ entryId, candidateId }: { entryId: string; candidat
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <h3 style={{ ...sectionH, margin: 0 }}>Interviews</h3>
-        <button type="button" onClick={() => setScheduling(true)} style={dt.toolBtn}>Schedule interview</button>
+        <button type="button" onClick={() => setScheduling(true)} className="v2-hoverbtn" style={dt.toolBtn}>Schedule interview</button>
       </div>
       {isLoading ? (
         <p style={{ fontSize: 13, color: muted, margin: 0 }}>Loading…</p>

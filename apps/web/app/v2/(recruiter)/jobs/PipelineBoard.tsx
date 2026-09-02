@@ -116,7 +116,7 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--muted)', cursor: 'pointer' }}><Cb checked={sortByFit} onChange={setSortByFit} /> Sort by fit</label>
-            <button type="button" onClick={() => scoreJob.mutate()} disabled={scoreJob.isPending} style={{ ...dt.toolBtn, opacity: scoreJob.isPending ? 0.5 : 1 }}>{scoreJob.isPending ? 'Scoring…' : 'Score candidates'}</button>
+            <button type="button" onClick={() => scoreJob.mutate()} disabled={scoreJob.isPending} className="v2-hoverbtn" style={{ ...dt.toolBtn, opacity: scoreJob.isPending ? 0.5 : 1 }}>{scoreJob.isPending ? 'Scoring…' : 'Score candidates'}</button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16 }}>
             {PIPELINE_STAGES.map((stage) => (

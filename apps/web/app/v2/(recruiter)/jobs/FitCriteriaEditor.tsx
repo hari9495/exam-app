@@ -59,7 +59,7 @@ export function FitCriteriaEditor({ job, jobId }: { job: JobDetail; jobId: strin
             <button type="button" onClick={() => removeRow(index)} style={{ background: 'none', border: 'none', fontSize: 12.5, fontWeight: 500, color: 'var(--danger)', cursor: 'pointer', whiteSpace: 'nowrap' }}>Remove</button>
           </div>
         ))}
-        <button type="button" onClick={addRow} style={{ ...dt.toolBtn, alignSelf: 'flex-start' }}>Add dimension</button>
+        <button type="button" onClick={addRow} className="v2-hoverbtn" style={{ ...dt.toolBtn, alignSelf: 'flex-start' }}>Add dimension</button>
         {rubric.length > 0 && (
           <p style={{ fontSize: 13, fontWeight: 500, color: weightTotal === 100 ? STATUS.ok : '#a16207', margin: 0 }}>
             {weightTotal === 100 ? `Weights total: ${weightTotal}%` : `Weights total: ${weightTotal}% — dimensions must sum to 100% before saving`}
@@ -68,7 +68,7 @@ export function FitCriteriaEditor({ job, jobId }: { job: JobDetail; jobId: strin
       </div>
 
       <div>
-        <button type="button" onClick={handleSave} disabled={updateJob.isPending || !rubricValid} style={{ ...dt.primaryBtn, opacity: updateJob.isPending || !rubricValid ? 0.5 : 1, cursor: updateJob.isPending || !rubricValid ? 'not-allowed' : 'pointer' }}>{updateJob.isPending ? 'Saving…' : 'Save fit criteria'}</button>
+        <button type="button" onClick={handleSave} disabled={updateJob.isPending || !rubricValid} className="v2-hoverbtn" style={{ ...dt.primaryBtn, opacity: updateJob.isPending || !rubricValid ? 0.5 : 1, cursor: updateJob.isPending || !rubricValid ? 'not-allowed' : 'pointer' }}>{updateJob.isPending ? 'Saving…' : 'Save fit criteria'}</button>
       </div>
     </div>
   );

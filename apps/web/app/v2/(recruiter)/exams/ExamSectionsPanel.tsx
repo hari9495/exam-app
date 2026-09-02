@@ -251,7 +251,7 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
             <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} required list="section-titles" style={{ ...input, width: '100%' }} />
             <datalist id="section-titles">{sectionTitles.map((title) => <option key={title} value={title} />)}</datalist>
           </div>
-          <button type="submit" style={dt.primaryBtn} disabled={createSection.isPending}>Add section</button>
+          <button type="submit" className="v2-hoverbtn" style={dt.primaryBtn} disabled={createSection.isPending}>Add section</button>
         </form>
       )}
       {!weightLocked && sections.length > 0 && (
@@ -273,8 +273,8 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
                 <SectionRequiredCountInput examId={examId} section={section} locked={locked} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                {!locked && section.selectionMode !== 'pool' && <button type="button" style={dt.toolBtn} onClick={() => setPickerSectionId(section.id)}>Manage questions</button>}
-                {section.selectionMode === 'pool' && <button type="button" style={dt.toolBtn} onClick={() => setPoolPreviewSectionId(section.id)}>Preview pool</button>}
+                {!locked && section.selectionMode !== 'pool' && <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={() => setPickerSectionId(section.id)}>Manage questions</button>}
+                {section.selectionMode === 'pool' && <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={() => setPoolPreviewSectionId(section.id)}>Preview pool</button>}
                 {!locked && (
                   <Dropdown align="end" menuWidth={150} trigger={<span style={{ display: 'inline-grid', placeItems: 'center', width: 30, height: 30, color: 'var(--muted)', cursor: 'pointer' }}><MoreHorizontal size={17} /></span>}>
                     {(close) => (<>
@@ -305,7 +305,7 @@ export function ExamSectionsPanel({ examId }: { examId: string }) {
       <Dialog open={!!sectionPendingDelete} onClose={() => setSectionPendingDelete(null)} title="Delete section">
         <p style={{ fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.5, margin: '0 0 18px' }}>Delete <strong style={{ color: 'var(--ink)' }}>{sectionPendingDelete?.title}</strong> and remove its questions from this exam?</p>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-          <button type="button" onClick={() => setSectionPendingDelete(null)} style={dt.toolBtn}>Cancel</button>
+          <button type="button" onClick={() => setSectionPendingDelete(null)} className="v2-hoverbtn" style={dt.toolBtn}>Cancel</button>
           <button type="button" onClick={handleConfirmDeleteSection} disabled={deleteSection.isPending} style={{ fontSize: 13, fontWeight: 500, padding: '9px 16px', borderRadius: 9, border: 'none', background: 'var(--danger)', color: '#fff', cursor: 'pointer' }}>Delete</button>
         </div>
       </Dialog>

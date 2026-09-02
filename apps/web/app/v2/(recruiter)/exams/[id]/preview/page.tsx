@@ -61,7 +61,7 @@ export default function V2ExamPreviewPage() {
       <Link href={`/v2/exams/${exam.id}/edit`} style={backLink} className="print:hidden"><ArrowLeft size={15} /> Back to Exam</Link>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, margin: '10px 0 4px' }}>
         <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>{exam.title}</h1>
-        <button type="button" onClick={() => window.print()} style={dt.toolBtn} className="print:hidden"><Printer size={14} /> Print</button>
+        <button type="button" onClick={() => window.print()} className="v2-hoverbtn print:hidden" style={dt.toolBtn}><Printer size={14} /> Print</button>
       </div>
       {exam.instructions && <p style={{ margin: '0 0 20px', fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{exam.instructions}</p>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>

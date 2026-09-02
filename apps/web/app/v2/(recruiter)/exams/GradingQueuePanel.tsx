@@ -67,7 +67,7 @@ function CodeQuestionGrader({ attemptId, question }: { attemptId: string; questi
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
             {review?.status === 'failed' && <p style={{ fontSize: 12, color: 'var(--danger)', margin: 0 }}>The AI review didn&apos;t complete. You can try again, or grade this answer yourself.</p>}
-            <button type="button" style={dt.toolBtn} disabled={regenerateReview.isPending} onClick={handleGenerateReview}>{review?.status === 'failed' ? 'Try again' : 'Generate AI review'}</button>
+            <button type="button" className="v2-hoverbtn" style={dt.toolBtn} disabled={regenerateReview.isPending} onClick={handleGenerateReview}>{review?.status === 'failed' ? 'Try again' : 'Generate AI review'}</button>
           </div>
         )}
       </div>
@@ -78,7 +78,7 @@ function CodeQuestionGrader({ attemptId, question }: { attemptId: string; questi
           <input type="number" min={0} max={question.marks} value={marks} onChange={(e) => setMarks(e.target.value)} required aria-label={`Marks for ${question.questionText}`} style={{ ...input, width: 100 }} />
         </div>
         <span style={{ paddingBottom: 9, fontSize: 13, color: 'var(--muted)' }}>/ {question.marks}</span>
-        <button type="button" style={dt.primaryBtn} disabled={gradeAnswer.isPending} onClick={handleSaveGrade}>Save grade</button>
+        <button type="button" className="v2-hoverbtn" style={dt.primaryBtn} disabled={gradeAnswer.isPending} onClick={handleSaveGrade}>Save grade</button>
       </div>
       <textarea aria-label={`Feedback for ${question.questionText}`} value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="Optional feedback" rows={2} style={{ ...input, width: '100%', marginTop: 8, resize: 'vertical', fontFamily: 'inherit' }} />
     </div>
@@ -124,8 +124,8 @@ function AttemptGrader({ row, defaultOpen }: { row: PendingGradingRow; defaultOp
           <span style={{ fontSize: 12, color: allGraded ? VIZ.green : 'var(--muted)' }}>{row.codeQuestions.length === 0 ? 'nothing attempted' : `${gradedCount} of ${row.codeQuestions.length} graded`}</span>
         </button>
         <div style={{ display: 'flex', flexShrink: 0, alignItems: 'center', gap: 8 }}>
-          {row.codeQuestions.length > 0 && <button type="button" style={dt.toolBtn} disabled={reviewingAll} onClick={handleReviewAll}>{reviewingAll ? 'Starting…' : `AI review all (${row.codeQuestions.length})`}</button>}
-          <button type="button" style={{ ...dt.primaryBtn, opacity: !allGraded || finalizeManualGrade.isPending ? 0.5 : 1, cursor: !allGraded || finalizeManualGrade.isPending ? 'not-allowed' : 'pointer' }} disabled={!allGraded || finalizeManualGrade.isPending} onClick={handleFinalize}>Finalize grade</button>
+          {row.codeQuestions.length > 0 && <button type="button" className="v2-hoverbtn" style={dt.toolBtn} disabled={reviewingAll} onClick={handleReviewAll}>{reviewingAll ? 'Starting…' : `AI review all (${row.codeQuestions.length})`}</button>}
+          <button type="button" className="v2-hoverbtn" style={{ ...dt.primaryBtn, opacity: !allGraded || finalizeManualGrade.isPending ? 0.5 : 1, cursor: !allGraded || finalizeManualGrade.isPending ? 'not-allowed' : 'pointer' }} disabled={!allGraded || finalizeManualGrade.isPending} onClick={handleFinalize}>Finalize grade</button>
         </div>
       </div>
       {hasTabActivityContent(row.tabActivitySummary, row.proctoringAnalysis) && (

@@ -128,7 +128,7 @@ export function SendMessageModal({ entryId, candidateId, candidateName, onClose,
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-        <button type="button" onClick={onClose} style={dt.toolBtn}>Cancel</button>
+        <button type="button" onClick={onClose} className="v2-hoverbtn" style={dt.toolBtn}>Cancel</button>
         <Button onClick={handleSend} loading={sendMessage.isPending} disabled={!canSend}>Send</Button>
       </div>
     </Dialog>

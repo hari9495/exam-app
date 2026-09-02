@@ -95,7 +95,7 @@ export default function V2ExamsPage() {
     <>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
         <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Exams</h1>
-        <Link href="/v2/exams/new" style={dt.primaryBtn}><Plus size={14} /> New exam</Link>
+        <Link href="/v2/exams/new" className="v2-hoverbtn" style={dt.primaryBtn}><Plus size={14} /> New exam</Link>
       </div>
 
       {notice && (
@@ -115,7 +115,7 @@ export default function V2ExamsPage() {
           Delete <strong style={{ color: 'var(--ink)' }}>{pendingDelete?.title}</strong>? Candidates and results already collected are kept, but it will no longer appear in your exam list.
         </p>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-          <button type="button" onClick={() => setPendingDelete(null)} style={dt.toolBtn}>Cancel</button>
+          <button type="button" onClick={() => setPendingDelete(null)} className="v2-hoverbtn" style={dt.toolBtn}>Cancel</button>
           <button type="button" onClick={handleConfirmDelete} disabled={archiveExam.isPending} style={{ fontSize: 13, fontWeight: 500, padding: '9px 16px', borderRadius: 9, border: 'none', background: 'var(--danger)', color: '#fff', cursor: 'pointer' }}>Delete</button>
         </div>
       </Dialog>

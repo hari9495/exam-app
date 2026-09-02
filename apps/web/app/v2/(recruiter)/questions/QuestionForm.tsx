@@ -182,7 +182,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
           <QuestionImageUpload label={`Option ${index + 1} image (optional)`} value={option.imageUrl ?? ''} onChange={(url) => updateOptionImage(index, url)} />
         </div>
       ))}
-      {type !== 'true_false' && <button type="button" onClick={addOption} style={{ ...dt.toolBtn, alignSelf: 'flex-start' }}>Add option</button>}
+      {type !== 'true_false' && <button type="button" onClick={addOption} className="v2-hoverbtn" style={{ ...dt.toolBtn, alignSelf: 'flex-start' }}>Add option</button>}
       <details style={{ borderTop: '1px solid var(--hair)', paddingTop: 12, marginTop: 2 }}>
         <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--muted)', listStyle: 'revert' }}>Code snippet &amp; question image (optional)</summary>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
@@ -256,7 +256,7 @@ function QuestionImageUpload({ label: l, value, onChange }: { label: string; val
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <input type="file" accept="image/png,image/jpeg,image/svg+xml" aria-label={l} style={{ fontSize: 12.5, color: 'var(--muted)' }}
           onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; upload.mutate(file, { onSuccess: (result) => onChange(result.imageUrl) }); }} />
-        {value && (<><img src={value} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover' }} /><button type="button" onClick={() => onChange('')} style={dt.toolBtn}>Remove</button></>)}
+        {value && (<><img src={value} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover' }} /><button type="button" onClick={() => onChange('')} className="v2-hoverbtn" style={dt.toolBtn}>Remove</button></>)}
       </div>
     </div>
   );

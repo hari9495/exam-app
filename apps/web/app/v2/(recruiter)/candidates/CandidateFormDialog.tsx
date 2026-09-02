@@ -54,7 +54,7 @@ export function CandidateFormDialog({
         </div>
         {shown && <p role="alert" style={{ marginTop: 12, fontSize: 12.5, color: 'var(--danger)' }}>{shown}</p>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-          <button type="button" onClick={onClose} style={dt.toolBtn}>Cancel</button>
+          <button type="button" onClick={onClose} className="v2-hoverbtn" style={dt.toolBtn}>Cancel</button>
           <Button type="submit" loading={submitting}>{mode === 'add' ? 'Add candidate' : 'Save changes'}</Button>
         </div>
       </form>

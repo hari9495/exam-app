@@ -149,8 +149,8 @@ export function DataTable<T extends RowData>({
           </div>
           {toolbarExtra}
           <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8 }}>
-            {onExport && <button type="button" style={dt.toolBtn} onClick={onExport}><Download size={14} /> Export</button>}
-            <Dropdown align="end" menuWidth={190} trigger={<span style={dt.toolBtn}><SlidersHorizontal size={14} /> Columns</span>}>
+            {onExport && <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={onExport}><Download size={14} /> Export</button>}
+            <Dropdown align="end" menuWidth={190} trigger={<span className="v2-hoverbtn" style={dt.toolBtn}><SlidersHorizontal size={14} /> Columns</span>}>
               {() => (
                 <>
                   <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', padding: '4px 9px 6px' }}>Toggle columns</div>
@@ -225,8 +225,8 @@ export function DataTable<T extends RowData>({
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 14px', borderTop: '1px solid var(--hair)', fontSize: 12.5, color: 'var(--muted)' }}>
             <span>Page {page} of {totalPages ?? 1}</span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <button type="button" style={{ ...dt.iconBtn, opacity: page <= 1 ? 0.4 : 1, cursor: page <= 1 ? 'not-allowed' : 'pointer' }} disabled={page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))}><ChevronLeft size={15} /></button>
-              <button type="button" style={{ ...dt.iconBtn, opacity: page >= (totalPages ?? 1) ? 0.4 : 1, cursor: page >= (totalPages ?? 1) ? 'not-allowed' : 'pointer' }} disabled={page >= (totalPages ?? 1)} onClick={() => onPageChange(page + 1)}><ChevronRight size={15} /></button>
+              <button type="button" className="v2-hoverbtn" style={{ ...dt.iconBtn, opacity: page <= 1 ? 0.4 : 1, cursor: page <= 1 ? 'not-allowed' : 'pointer' }} disabled={page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))}><ChevronLeft size={15} /></button>
+              <button type="button" className="v2-hoverbtn" style={{ ...dt.iconBtn, opacity: page >= (totalPages ?? 1) ? 0.4 : 1, cursor: page >= (totalPages ?? 1) ? 'not-allowed' : 'pointer' }} disabled={page >= (totalPages ?? 1)} onClick={() => onPageChange(page + 1)}><ChevronRight size={15} /></button>
             </span>
           </div>
         )}

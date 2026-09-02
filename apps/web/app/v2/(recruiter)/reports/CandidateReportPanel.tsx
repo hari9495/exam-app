@@ -102,7 +102,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
           />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button type="button" onClick={() => window.print()} style={{ ...dt.toolBtn }} className="print:hidden">
+          <button type="button" onClick={() => window.print()} className="v2-hoverbtn print:hidden" style={{ ...dt.toolBtn }}>
             <Download size={16} style={{ marginRight: 6 }} />
             Export report
           </button>
@@ -397,14 +397,14 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
           ) : insight?.status === 'failed' ? (
             <div style={card}>
               <p style={{ marginBottom: 12, fontSize: 14, color: 'var(--danger)' }}>Generation failed. This is usually temporary — try again.</p>
-              <button type="button" style={{ ...dt.toolBtn, opacity: regenerate.isPending ? 0.5 : 1 }} disabled={regenerate.isPending} onClick={handleRegenerate}>
+              <button type="button" className="v2-hoverbtn" style={{ ...dt.toolBtn, opacity: regenerate.isPending ? 0.5 : 1 }} disabled={regenerate.isPending} onClick={handleRegenerate}>
                 Retry
               </button>
             </div>
           ) : (
             <div style={card}>
               <p style={{ marginBottom: 12, fontSize: 14, color: 'var(--muted)' }}>Not yet generated</p>
-              <button type="button" style={{ ...dt.toolBtn, opacity: regenerate.isPending ? 0.5 : 1 }} disabled={regenerate.isPending} onClick={handleRegenerate}>
+              <button type="button" className="v2-hoverbtn" style={{ ...dt.toolBtn, opacity: regenerate.isPending ? 0.5 : 1 }} disabled={regenerate.isPending} onClick={handleRegenerate}>
                 Regenerate
               </button>
             </div>

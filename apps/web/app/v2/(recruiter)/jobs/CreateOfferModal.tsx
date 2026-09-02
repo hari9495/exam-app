@@ -116,8 +116,8 @@ export function CreateOfferModal({ entryId, candidateId, onClose }: CreateOfferM
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-        <button type="button" onClick={onClose} style={dt.toolBtn}>Cancel</button>
-        <button type="button" onClick={handlePreview} disabled={!canSubmit || busy} style={{ ...dt.toolBtn, opacity: (!canSubmit || busy) ? 0.5 : 1, cursor: (!canSubmit || busy) ? 'not-allowed' : 'pointer' }}>{previewPdf.isPending ? 'Preparing…' : 'Preview PDF'}</button>
+        <button type="button" onClick={onClose} className="v2-hoverbtn" style={dt.toolBtn}>Cancel</button>
+        <button type="button" onClick={handlePreview} disabled={!canSubmit || busy} className="v2-hoverbtn" style={{ ...dt.toolBtn, opacity: (!canSubmit || busy) ? 0.5 : 1, cursor: (!canSubmit || busy) ? 'not-allowed' : 'pointer' }}>{previewPdf.isPending ? 'Preparing…' : 'Preview PDF'}</button>
         <Button onClick={handleSend} loading={sendOffer.isPending} disabled={!canSubmit || busy}>Send</Button>
       </div>
     </Dialog>

@@ -74,7 +74,7 @@ export default function V2WalkInGroupsPage() {
           <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Walk-in Groups</h1>
           <p style={{ fontSize: 13, color: 'var(--muted)', margin: '4px 0 0', maxWidth: 560 }}>Bundle a subset of your walk-in-enabled exams behind their own shared link/QR code. Each exam belongs to at most one group.</p>
         </div>
-        <button type="button" style={dt.primaryBtn} onClick={() => { setFormError(null); setAddOpen(true); }}><Plus size={14} /> New group</button>
+        <button type="button" className="v2-hoverbtn" style={dt.primaryBtn} onClick={() => { setFormError(null); setAddOpen(true); }}><Plus size={14} /> New group</button>
       </div>
 
       {notice && (
@@ -93,7 +93,7 @@ export default function V2WalkInGroupsPage() {
           <TextField id="wig-name" label="Group name" value={newName} onChange={setNewName} required autoComplete="off" />
           {formError && <p role="alert" style={{ marginTop: 12, fontSize: 12.5, color: 'var(--danger)' }}>{formError}</p>}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-            <button type="button" onClick={() => setAddOpen(false)} style={dt.toolBtn}>Cancel</button>
+            <button type="button" onClick={() => setAddOpen(false)} className="v2-hoverbtn" style={dt.toolBtn}>Cancel</button>
             <Button type="submit" loading={createGroup.isPending}>Create group</Button>
           </div>
         </form>
@@ -102,7 +102,7 @@ export default function V2WalkInGroupsPage() {
       <Dialog open={!!pendingDelete} onClose={() => setPendingDelete(null)} title={`Delete "${pendingDelete?.name ?? ''}"?`}>
         <p style={{ fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.5, margin: '0 0 18px' }}>Its {pendingDelete?.exams.length ?? 0} exam{(pendingDelete?.exams.length ?? 0) === 1 ? '' : 's'} stay walk-in-enabled and simply become ungrouped — reachable via their own exam-specific link, just not this group&apos;s.</p>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-          <button type="button" onClick={() => setPendingDelete(null)} style={dt.toolBtn}>Cancel</button>
+          <button type="button" onClick={() => setPendingDelete(null)} className="v2-hoverbtn" style={dt.toolBtn}>Cancel</button>
           <button type="button" onClick={handleConfirmDelete} disabled={deleteGroup.isPending} style={{ fontSize: 13, fontWeight: 500, padding: '9px 16px', borderRadius: 9, border: 'none', background: 'var(--danger)', color: '#fff', cursor: 'pointer' }}>Delete</button>
         </div>
       </Dialog>

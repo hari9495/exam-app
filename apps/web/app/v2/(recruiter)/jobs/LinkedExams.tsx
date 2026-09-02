@@ -48,7 +48,7 @@ export function LinkedExams({ jobId, linkedExams, canManage }: { jobId: string; 
             <Combobox width="100%" value={pickerExamId} onChange={setPickerExamId}
               options={[{ value: '', label: 'Select an exam…' }, ...attachableExams.map((exam) => ({ value: exam.id, label: exam.title }))]} />
           </div>
-          <button type="button" onClick={handleAttach} disabled={!pickerExamId || linkExam.isPending} style={{ ...dt.primaryBtn, opacity: !pickerExamId || linkExam.isPending ? 0.5 : 1, cursor: !pickerExamId || linkExam.isPending ? 'not-allowed' : 'pointer' }}>Attach</button>
+          <button type="button" onClick={handleAttach} disabled={!pickerExamId || linkExam.isPending} className="v2-hoverbtn" style={{ ...dt.primaryBtn, opacity: !pickerExamId || linkExam.isPending ? 0.5 : 1, cursor: !pickerExamId || linkExam.isPending ? 'not-allowed' : 'pointer' }}>Attach</button>
         </div>
       )}
     </div>

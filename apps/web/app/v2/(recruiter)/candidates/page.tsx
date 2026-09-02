@@ -139,8 +139,8 @@ export default function V2CandidatesPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Candidates</h1>
         <span style={{ display: 'inline-flex', gap: 8 }}>
-          <button type="button" style={dt.toolBtn} onClick={() => setBulkOpen(true)}><Upload size={14} /> Upload &amp; invite</button>
-          <button type="button" style={dt.primaryBtn} onClick={() => { setFormError(null); setAddOpen(true); }}><Plus size={14} /> Add candidate</button>
+          <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={() => setBulkOpen(true)}><Upload size={14} /> Upload &amp; invite</button>
+          <button type="button" className="v2-hoverbtn" style={dt.primaryBtn} onClick={() => { setFormError(null); setAddOpen(true); }}><Plus size={14} /> Add candidate</button>
         </span>
       </div>
 
@@ -161,7 +161,7 @@ export default function V2CandidatesPage() {
             <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
               <Combobox options={examOptions} value={examId} onChange={setExamId} placeholder="Choose exam…" width={220} active={!!examId} />
               <button type="button" onClick={() => handleInvite(ids, clear)} disabled={!examId || bulkInvite.isPending} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '8px 13px', borderRadius: 8, border: 'none', background: !examId ? 'color-mix(in srgb, var(--org-primary) 40%, var(--surface))' : 'var(--org-primary)', color: '#fff', cursor: !examId ? 'not-allowed' : 'pointer' }}><Send size={14} /> Send invitations</button>
-              <button type="button" onClick={clear} style={dt.toolBtn}>Clear</button>
+              <button type="button" onClick={clear} className="v2-hoverbtn" style={dt.toolBtn}>Clear</button>
             </span>
           </div>
         )}
@@ -172,7 +172,7 @@ export default function V2CandidatesPage() {
           Permanently delete <strong style={{ color: 'var(--ink)' }}>{pendingDelete?.name}</strong>? They&apos;ve never been invited to an exam, so nothing else is affected. This can&apos;t be undone.
         </p>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-          <button type="button" onClick={() => setPendingDelete(null)} style={dt.toolBtn}>Cancel</button>
+          <button type="button" onClick={() => setPendingDelete(null)} className="v2-hoverbtn" style={dt.toolBtn}>Cancel</button>
           <button type="button" onClick={handleConfirmDelete} disabled={deleteCandidate.isPending} style={{ fontSize: 13, fontWeight: 500, padding: '9px 16px', borderRadius: 9, border: 'none', background: 'var(--danger)', color: '#fff', cursor: 'pointer' }}>Delete</button>
         </div>
       </Dialog>

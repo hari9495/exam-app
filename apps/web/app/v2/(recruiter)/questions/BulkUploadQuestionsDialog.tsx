@@ -37,15 +37,15 @@ export function BulkUploadQuestionsDialog({ open, onClose }: { open: boolean; on
     <Dialog open={open} onClose={onClose} title="Bulk upload questions" width={520}>
       <form onSubmit={handleUpload} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div>
-          <button type="button" onClick={handleDownloadTemplate} disabled={downloadTemplate.isPending} style={dt.toolBtn}><Download size={14} /> Download template</button>
+          <button type="button" onClick={handleDownloadTemplate} disabled={downloadTemplate.isPending} className="v2-hoverbtn" style={dt.toolBtn}><Download size={14} /> Download template</button>
         </div>
         <div>
           <label className="v2-label">Question file (.xlsx or .csv, max 5MB)</label>
           <input type="file" accept=".xlsx,.csv" onChange={(e) => setFile(e.target.files?.[0] ?? null)} style={{ fontSize: 13, color: 'var(--muted)' }} />
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>
-          <button type="button" onClick={onClose} style={dt.toolBtn}>Close</button>
-          <button type="submit" disabled={!file || bulkUpload.isPending} style={{ ...dt.primaryBtn, opacity: !file || bulkUpload.isPending ? 0.5 : 1, cursor: !file || bulkUpload.isPending ? 'not-allowed' : 'pointer' }}><Upload size={14} /> {bulkUpload.isPending ? 'Uploading…' : 'Upload'}</button>
+          <button type="button" onClick={onClose} className="v2-hoverbtn" style={dt.toolBtn}>Close</button>
+          <button type="submit" disabled={!file || bulkUpload.isPending} className="v2-hoverbtn" style={{ ...dt.primaryBtn, opacity: !file || bulkUpload.isPending ? 0.5 : 1, cursor: !file || bulkUpload.isPending ? 'not-allowed' : 'pointer' }}><Upload size={14} /> {bulkUpload.isPending ? 'Uploading…' : 'Upload'}</button>
         </div>
       </form>
       {result && (

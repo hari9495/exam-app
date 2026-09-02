@@ -153,7 +153,7 @@ export function ScheduleInterviewModal({ entryId, candidateId, onClose }: Schedu
             </div>
           ))}
           <div>
-            <button type="button" onClick={() => setSlots((current) => [...current, newSlotRow()])} style={dt.toolBtn}>Add slot</button>
+            <button type="button" onClick={() => setSlots((current) => [...current, newSlotRow()])} className="v2-hoverbtn" style={dt.toolBtn}>Add slot</button>
           </div>
         </div>
 
@@ -193,7 +193,7 @@ export function ScheduleInterviewModal({ entryId, candidateId, onClose }: Schedu
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-        <button type="button" onClick={onClose} style={dt.toolBtn}>Cancel</button>
+        <button type="button" onClick={onClose} className="v2-hoverbtn" style={dt.toolBtn}>Cancel</button>
         <Button onClick={handleSend} loading={busy} disabled={!canSubmit || busy}>Send</Button>
       </div>
     </Dialog>

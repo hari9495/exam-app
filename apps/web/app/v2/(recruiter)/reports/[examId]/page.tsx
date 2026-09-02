@@ -128,10 +128,10 @@ export default function V2ExamReportPage() {
               <Combobox width="100%" value={examId} onChange={(nextExamId) => nextExamId !== examId && router.push(`/v2/reports/${nextExamId}`)} options={examOptions} />
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
-              <button type="button" style={dt.toolBtn} onClick={() => handleExport('csv')} disabled={exportMutation.isPending}>Export CSV</button>
-              <button type="button" style={dt.toolBtn} onClick={() => handleExport('xlsx')} disabled={exportMutation.isPending}>Export Excel</button>
-              <button type="button" style={dt.toolBtn} onClick={() => handleExport('pdf')} disabled={exportMutation.isPending}>Export PDF</button>
-              <button type="button" style={{ ...dt.primaryBtn, opacity: selectedIds.length < 2 ? 0.5 : 1, cursor: selectedIds.length < 2 ? 'not-allowed' : 'pointer' }} disabled={selectedIds.length < 2}
+              <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={() => handleExport('csv')} disabled={exportMutation.isPending}>Export CSV</button>
+              <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={() => handleExport('xlsx')} disabled={exportMutation.isPending}>Export Excel</button>
+              <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={() => handleExport('pdf')} disabled={exportMutation.isPending}>Export PDF</button>
+              <button type="button" className="v2-hoverbtn" style={{ ...dt.primaryBtn, opacity: selectedIds.length < 2 ? 0.5 : 1, cursor: selectedIds.length < 2 ? 'not-allowed' : 'pointer' }} disabled={selectedIds.length < 2}
                 onClick={() => router.push(`/reports/${examId}/compare?invitationIds=${selectedIds.join(',')}`)}>Compare selected</button>
             </div>
           </div>

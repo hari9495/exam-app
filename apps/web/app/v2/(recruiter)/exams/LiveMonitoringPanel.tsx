@@ -209,10 +209,10 @@ export function LiveMonitoringPanel({
         const r = row.original;
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-            {r.status === 'blocked' && r.attemptId && <button type="button" style={dt.primaryBtn} disabled={unblockAttempt.isPending} onClick={() => unblockAttempt.mutate(r.attemptId as string, { onSuccess: () => toast('Candidate unblocked.', 'success'), onError: () => toast("Couldn't unblock the candidate — please try again.", 'error') })}>Unblock</button>}
-            {r.attemptId && <button type="button" style={dt.toolBtn} onClick={() => setLogAttemptId(r.attemptId)}>View log</button>}
-            {r.attemptId && BYPASSABLE_STATUSES.includes(r.status) && r.proctoringBypassed && <button type="button" style={dt.toolBtn} disabled={revokeProctoringBypass.isPending} onClick={() => revokeProctoringBypass.mutate(r.attemptId as string, { onSuccess: () => toast('Proctoring restored.', 'success'), onError: () => toast("Couldn't restore proctoring — please try again.", 'error') })}>Restore proctoring</button>}
-            {r.attemptId && BYPASSABLE_STATUSES.includes(r.status) && !r.proctoringBypassed && <button type="button" style={dt.toolBtn} onClick={() => setBypassAttemptId(r.attemptId)}>Relax proctoring</button>}
+            {r.status === 'blocked' && r.attemptId && <button type="button" className="v2-hoverbtn" style={dt.primaryBtn} disabled={unblockAttempt.isPending} onClick={() => unblockAttempt.mutate(r.attemptId as string, { onSuccess: () => toast('Candidate unblocked.', 'success'), onError: () => toast("Couldn't unblock the candidate — please try again.", 'error') })}>Unblock</button>}
+            {r.attemptId && <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={() => setLogAttemptId(r.attemptId)}>View log</button>}
+            {r.attemptId && BYPASSABLE_STATUSES.includes(r.status) && r.proctoringBypassed && <button type="button" className="v2-hoverbtn" style={dt.toolBtn} disabled={revokeProctoringBypass.isPending} onClick={() => revokeProctoringBypass.mutate(r.attemptId as string, { onSuccess: () => toast('Proctoring restored.', 'success'), onError: () => toast("Couldn't restore proctoring — please try again.", 'error') })}>Restore proctoring</button>}
+            {r.attemptId && BYPASSABLE_STATUSES.includes(r.status) && !r.proctoringBypassed && <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={() => setBypassAttemptId(r.attemptId)}>Relax proctoring</button>}
           </div>
         );
       },
@@ -232,7 +232,7 @@ export function LiveMonitoringPanel({
           <Stat icon={BellRing} label="Alerts (last 5 min)" value={recentAlertsCount} danger />
         </div>
         <div style={{ display: 'flex', flexShrink: 0, alignItems: 'center', gap: 8 }}>
-          {notificationPermission === 'default' && <button type="button" style={dt.toolBtn} onClick={onEnableNotifications}>Enable alerts</button>}
+          {notificationPermission === 'default' && <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={onEnableNotifications}>Enable alerts</button>}
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 99, padding: '4px 10px', fontSize: 12, fontWeight: 500, color: connColor, background: `color-mix(in srgb, ${connColor} 12%, transparent)` }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: connColor }} />{connLabel}
           </span>
@@ -254,7 +254,7 @@ export function LiveMonitoringPanel({
             <DataTable
               columns={columns} data={visibleRoster} getRowId={(r) => r.invitationId}
               search={search} onSearchChange={setSearch} searchPlaceholder="Search candidates…"
-              toolbarExtra={onRefresh ? <button type="button" style={{ ...dt.toolBtn, opacity: connectionStatus !== 'connected' ? 0.5 : 1, cursor: connectionStatus !== 'connected' ? 'not-allowed' : 'pointer' }} disabled={connectionStatus !== 'connected'} onClick={onRefresh}><RefreshCw size={14} /> Refresh</button> : undefined}
+              toolbarExtra={onRefresh ? <button type="button" className="v2-hoverbtn" style={{ ...dt.toolBtn, opacity: connectionStatus !== 'connected' ? 0.5 : 1, cursor: connectionStatus !== 'connected' ? 'not-allowed' : 'pointer' }} disabled={connectionStatus !== 'connected'} onClick={onRefresh}><RefreshCw size={14} /> Refresh</button> : undefined}
               emptyMessage={roster.length === 0 ? 'No candidates invited yet.' : statusFilter === 'all' && !search.trim() ? (subTab === 'live' ? 'No candidates online or in progress right now.' : 'No offline candidates yet.') : 'No candidates match your search or filter.'}
               columnLabels={{ name: 'Candidate', status: 'Status', online: 'Online', remaining: 'Time left', progress: 'Progress', integrityLevel: 'Integrity', integrityAlerts: 'Alerts' }}
             />
@@ -297,8 +297,8 @@ export function LiveMonitoringPanel({
         <label htmlFor="bypass-reason" className="v2-label">Why are you relaxing proctoring?<span style={{ color: 'var(--danger)', marginLeft: 3 }}>*</span></label>
         <textarea id="bypass-reason" value={bypassReason} onChange={(e) => setBypassReason(e.target.value)} rows={3} maxLength={500} style={{ width: '100%', boxSizing: 'border-box', marginBottom: 16, padding: '9px 11px', fontSize: 13, borderRadius: 8, border: '1px solid color-mix(in srgb, var(--ink) 15%, var(--hair))', background: 'var(--paper)', color: 'var(--ink)', outline: 'none', resize: 'vertical', fontFamily: 'inherit' }} />
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-          <button type="button" style={dt.toolBtn} onClick={() => { setBypassAttemptId(null); setBypassReason(''); }}>Cancel</button>
-          <button type="button" style={{ ...dt.primaryBtn, opacity: !bypassReason.trim() || bypassProctoring.isPending ? 0.5 : 1, cursor: !bypassReason.trim() || bypassProctoring.isPending ? 'not-allowed' : 'pointer' }} onClick={handleConfirmBypass} disabled={!bypassReason.trim() || bypassProctoring.isPending}>Confirm</button>
+          <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={() => { setBypassAttemptId(null); setBypassReason(''); }}>Cancel</button>
+          <button type="button" className="v2-hoverbtn" style={{ ...dt.primaryBtn, opacity: !bypassReason.trim() || bypassProctoring.isPending ? 0.5 : 1, cursor: !bypassReason.trim() || bypassProctoring.isPending ? 'not-allowed' : 'pointer' }} onClick={handleConfirmBypass} disabled={!bypassReason.trim() || bypassProctoring.isPending}>Confirm</button>
         </div>
       </Dialog>
     </div>

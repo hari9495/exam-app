@@ -89,9 +89,9 @@ export default function V2EditExamPage() {
           <AuditHistoryLink entityType="exam" entityId={exam.id} entityName={exam.title} />
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Link href={`/v2/exams/${exam.id}/preview`} style={{ ...dt.toolBtn, textDecoration: 'none' }}>Preview</Link>
+          <Link href={`/v2/exams/${exam.id}/preview`} className="v2-hoverbtn" style={{ ...dt.toolBtn, textDecoration: 'none' }}>Preview</Link>
           {exam.status === 'draft' && (
-            <button type="button" style={dt.primaryBtn} disabled={publishExam.isPending}
+            <button type="button" className="v2-hoverbtn" style={dt.primaryBtn} disabled={publishExam.isPending}
               onClick={() => publishExam.mutate(undefined, {
                 onSuccess: () => toast('Exam published.'),
                 onError: (error) => toast(error instanceof Error ? error.message : 'Failed to publish exam.', 'error'),
@@ -100,7 +100,7 @@ export default function V2EditExamPage() {
             </button>
           )}
           {exam.status === 'published' && !exam.hasStartedAttempts && (
-            <button type="button" style={dt.toolBtn} disabled={unpublishExam.isPending}
+            <button type="button" className="v2-hoverbtn" style={dt.toolBtn} disabled={unpublishExam.isPending}
               onClick={() => unpublishExam.mutate(undefined, {
                 onSuccess: () => toast('Exam unpublished — you can edit it now.'),
                 onError: (error) => toast(error instanceof Error ? error.message : 'Failed to unpublish exam.', 'error'),

@@ -104,9 +104,20 @@
   background: var(--org-primary); color: var(--org-on-primary);
   font-family: var(--font-body); font-size: 13px; font-weight: 500;
   cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  transition: transform .12s ease, filter .12s ease, box-shadow .12s ease;
 }
 .v2-cta--block { width: 100%; }
+.v2-cta:hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px); box-shadow: 0 3px 10px -3px color-mix(in srgb, var(--org-primary) 60%, transparent); }
+.v2-cta:active:not(:disabled) { transform: translateY(0) scale(.985); filter: brightness(.98); box-shadow: none; }
 .v2-cta:disabled { opacity: 0.6; cursor: default; }
+
+/* Hover affordance for the inline dt.* buttons (toolBtn/primaryBtn/iconBtn). Uses transform +
+   filter only — never background/border/box-shadow — so it layers over the inline base styles
+   without an inline-vs-class specificity fight. filter:brightness(.97) tints a white secondary a
+   hair grey and darkens the solid primary; the lift + press is the main "this is a button" cue. */
+.v2-hoverbtn { transition: transform .12s ease, filter .12s ease; }
+.v2-hoverbtn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(.97); }
+.v2-hoverbtn:active:not(:disabled) { transform: translateY(0) scale(.98); filter: brightness(.94); }
 .v2-sso {
   width: 100%; height: 40px; border: 1px solid var(--hair); border-radius: 6px;
   background: var(--paper); color: var(--ink); font-size: 14px; font-weight: 600;

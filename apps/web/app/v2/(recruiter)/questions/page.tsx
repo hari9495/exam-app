@@ -152,9 +152,9 @@ export default function V2QuestionsPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Question Bank</h1>
         <span style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
-          <button type="button" style={dt.toolBtn} onClick={() => setBulkOpen(true)}>Bulk upload</button>
-          <button type="button" style={dt.toolBtn} onClick={() => setGenerateOpen(true)}>Generate with AI</button>
-          <Link href="/v2/questions/new" style={dt.primaryBtn}><Plus size={14} /> New question</Link>
+          <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={() => setBulkOpen(true)}>Bulk upload</button>
+          <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={() => setGenerateOpen(true)}>Generate with AI</button>
+          <Link href="/v2/questions/new" className="v2-hoverbtn" style={dt.primaryBtn}><Plus size={14} /> New question</Link>
         </span>
       </div>
 
@@ -185,7 +185,7 @@ export default function V2QuestionsPage() {
             <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8 }}>
               <button type="button" disabled={bulkPending} onClick={() => handleBulk('publish', ids, clear)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '8px 13px', borderRadius: 8, border: 'none', background: 'var(--org-primary)', color: '#fff', cursor: 'pointer' }}><CircleCheck size={14} /> Publish</button>
               <button type="button" disabled={bulkPending} onClick={() => handleBulk('discard', ids, clear)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, padding: '9px 14px', borderRadius: 9, border: '1px solid color-mix(in srgb, var(--danger) 35%, var(--hair))', background: 'var(--paper)', color: 'var(--danger)', cursor: 'pointer', boxShadow: '0 1px 1px rgba(11,18,32,.04)' }}><CircleX size={14} /> Discard</button>
-              <button type="button" onClick={clear} style={dt.toolBtn}>Clear</button>
+              <button type="button" onClick={clear} className="v2-hoverbtn" style={dt.toolBtn}>Clear</button>
             </span>
           </div>
         ) : undefined}
@@ -194,7 +194,7 @@ export default function V2QuestionsPage() {
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             <Combobox options={GROUP_BY_OPTS} value={groupBy} onChange={(v) => { setGroupBy(v as GroupBy); setPage(1); }} width={150} active={groupBy !== 'none'} />
             {((flagged && flagged.length > 0) || needsReviewOnly) && (
-              <button type="button" aria-pressed={needsReviewOnly} onClick={() => { setNeedsReviewOnly((c) => !c); setPage(1); }} style={{ ...dt.toolBtn, ...(needsReviewOnly ? { background: 'color-mix(in srgb, var(--org-primary) 10%, transparent)', borderColor: 'color-mix(in srgb, var(--org-primary) 30%, transparent)', color: 'var(--org-primary)', fontWeight: 600 } : {}) }}>Needs review ({flagged?.length ?? 0})</button>
+              <button type="button" aria-pressed={needsReviewOnly} onClick={() => { setNeedsReviewOnly((c) => !c); setPage(1); }} className="v2-hoverbtn" style={{ ...dt.toolBtn, ...(needsReviewOnly ? { background: 'color-mix(in srgb, var(--org-primary) 10%, transparent)', borderColor: 'color-mix(in srgb, var(--org-primary) 30%, transparent)', color: 'var(--org-primary)', fontWeight: 600 } : {}) }}>Needs review ({flagged?.length ?? 0})</button>
             )}
           </span>
         }
@@ -204,7 +204,7 @@ export default function V2QuestionsPage() {
         <p style={{ fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.5, margin: '0 0 8px' }}>Delete this question? It will be removed from the question bank. Exams that already use it keep their copy.</p>
         <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)', margin: '0 0 18px', ...truncCell, maxWidth: '100%' }} title={pendingDelete?.text}>{pendingDelete?.text}</p>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-          <button type="button" onClick={() => setPendingDelete(null)} style={dt.toolBtn}>Cancel</button>
+          <button type="button" onClick={() => setPendingDelete(null)} className="v2-hoverbtn" style={dt.toolBtn}>Cancel</button>
           <button type="button" onClick={handleConfirmDelete} disabled={archiveQuestion.isPending} style={{ fontSize: 13, fontWeight: 500, padding: '9px 16px', borderRadius: 9, border: 'none', background: 'var(--danger)', color: '#fff', cursor: 'pointer' }}>Delete</button>
         </div>
       </Dialog>

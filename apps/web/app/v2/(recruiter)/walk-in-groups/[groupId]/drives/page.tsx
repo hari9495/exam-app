@@ -73,7 +73,7 @@ export default function V2GroupDrivesPage() {
           <div><label className="v2-label">Ends <span style={{ color: 'var(--danger)' }}>*</span></label><input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} required style={input} />{rangeInvalid && <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--danger)' }}>End must be after start.</p>}</div>
         </div>
         <div>
-          <button type="submit" disabled={!canSubmit || createDrive.isPending} style={{ ...dt.primaryBtn, opacity: !canSubmit || createDrive.isPending ? 0.5 : 1, cursor: !canSubmit || createDrive.isPending ? 'not-allowed' : 'pointer' }}><Plus size={14} /> {createDrive.isPending ? 'Scheduling…' : 'Schedule drive'}</button>
+          <button type="submit" disabled={!canSubmit || createDrive.isPending} className="v2-hoverbtn" style={{ ...dt.primaryBtn, opacity: !canSubmit || createDrive.isPending ? 0.5 : 1, cursor: !canSubmit || createDrive.isPending ? 'not-allowed' : 'pointer' }}><Plus size={14} /> {createDrive.isPending ? 'Scheduling…' : 'Schedule drive'}</button>
         </div>
       </form>
 
@@ -82,7 +82,7 @@ export default function V2GroupDrivesPage() {
       <Dialog open={!!pendingDelete} onClose={() => setPendingDelete(null)} title="Delete drive">
         <p style={{ fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.5, margin: '0 0 18px' }}>Delete <strong style={{ color: 'var(--ink)' }}>{pendingDelete?.name}</strong>? Registered candidates keep their attempts and revert to plain walk-ins.</p>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-          <button type="button" onClick={() => setPendingDelete(null)} style={dt.toolBtn}>Cancel</button>
+          <button type="button" onClick={() => setPendingDelete(null)} className="v2-hoverbtn" style={dt.toolBtn}>Cancel</button>
           <button type="button" onClick={handleConfirmDelete} disabled={deleteDrive.isPending} style={{ fontSize: 13, fontWeight: 500, padding: '9px 16px', borderRadius: 9, border: 'none', background: 'var(--danger)', color: '#fff', cursor: 'pointer' }}>Delete</button>
         </div>
       </Dialog>

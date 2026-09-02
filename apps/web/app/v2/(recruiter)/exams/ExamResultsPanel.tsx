@@ -145,9 +145,9 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
-            <button type="button" style={dt.toolBtn} onClick={() => handleExport('csv')} disabled={exportMutation.isPending}>Export CSV</button>
-            <button type="button" style={dt.toolBtn} onClick={() => handleExport('xlsx')} disabled={exportMutation.isPending}>Export Excel</button>
-            <button type="button" style={{ ...dt.primaryBtn, opacity: selectedIds.length === 0 ? 0.5 : 1, cursor: selectedIds.length === 0 ? 'not-allowed' : 'pointer' }} onClick={() => setAdvanceModalOpen(true)} disabled={selectedIds.length === 0}>Advance to next round</button>
+            <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={() => handleExport('csv')} disabled={exportMutation.isPending}>Export CSV</button>
+            <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={() => handleExport('xlsx')} disabled={exportMutation.isPending}>Export Excel</button>
+            <button type="button" className="v2-hoverbtn" style={{ ...dt.primaryBtn, opacity: selectedIds.length === 0 ? 0.5 : 1, cursor: selectedIds.length === 0 ? 'not-allowed' : 'pointer' }} onClick={() => setAdvanceModalOpen(true)} disabled={selectedIds.length === 0}>Advance to next round</button>
           </div>
           <DataTable columns={columns} data={visible} getRowId={(r) => r.invitationId}
             search={search} onSearchChange={setSearch} searchPlaceholder="Search candidates…"

@@ -66,7 +66,7 @@ function EditTemplateDialog({ template, onClose, onSaved }: { template: Candidat
         </div>
         {error && <p role="alert" style={{ marginTop: 12, fontSize: 12.5, color: 'var(--danger)' }}>{error}</p>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-          <button type="button" onClick={onClose} style={dt.toolBtn}>Cancel</button>
+          <button type="button" onClick={onClose} className="v2-hoverbtn" style={dt.toolBtn}>Cancel</button>
           <Button type="submit" loading={upsert.isPending} disabled={!canSave}>Save</Button>
         </div>
       </form>

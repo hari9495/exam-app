@@ -62,7 +62,7 @@ function PublicApplyControl({ job, jobId }: { job: JobDetail; jobId: string }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 560 }}>
           <input readOnly value={applyUrl} aria-label="Public apply link" onFocus={(e) => e.target.select()}
             className="v2-mono" style={{ minWidth: 0, flex: 1, borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--surface)', padding: '7px 11px', fontSize: 12, color: 'var(--ink)' }} />
-          <button type="button" onClick={handleCopy} style={{ ...dt.toolBtn, whiteSpace: 'nowrap' }}>{copied ? <Check size={14} /> : <Copy size={14} />}{copied ? 'Copied' : 'Copy link'}</button>
+          <button type="button" onClick={handleCopy} className="v2-hoverbtn" style={{ ...dt.toolBtn, whiteSpace: 'nowrap' }}>{copied ? <Check size={14} /> : <Copy size={14} />}{copied ? 'Copied' : 'Copy link'}</button>
         </div>
       )}
     </div>
@@ -97,7 +97,7 @@ export default function V2JobPage() {
             {job && <Pill c={STATUS_TONE[job.status].c} label={STATUS_TONE[job.status].label} />}
           </div>
           {canManage && job && (
-            <button type="button" onClick={toggleStatus} disabled={updateJob.isPending} style={dt.toolBtn}>{job.status === 'open' ? 'Close job' : 'Reopen job'}</button>
+            <button type="button" onClick={toggleStatus} disabled={updateJob.isPending} className="v2-hoverbtn" style={dt.toolBtn}>{job.status === 'open' ? 'Close job' : 'Reopen job'}</button>
           )}
         </div>
         {job?.description && <p style={{ marginTop: 6, fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.5 }}>{job.description}</p>}
@@ -123,7 +123,7 @@ export default function V2JobPage() {
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 4 }}>
         <h2 className="v2-title" style={{ fontSize: 16, margin: 0 }}>Pipeline</h2>
-        {canManage && <button type="button" onClick={() => setAddOpen(true)} style={dt.primaryBtn}>Add candidate</button>}
+        {canManage && <button type="button" onClick={() => setAddOpen(true)} className="v2-hoverbtn" style={dt.primaryBtn}>Add candidate</button>}
       </div>
 
       <PipelineBoard jobId={jobId} />
