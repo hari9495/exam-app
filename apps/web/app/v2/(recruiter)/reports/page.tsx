@@ -27,7 +27,7 @@ export default function V2ReportsPage() {
     {
       accessorKey: 'title', enableHiding: false,
       header: ({ column }) => <SortHead label="Exam" sorted={column.getIsSorted()} onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')} />,
-      cell: ({ row }) => <Link href={`/reports/${row.original.id}`} style={{ fontWeight: 500, color: 'var(--org-primary)', textDecoration: 'none' }}>{row.original.title}</Link>,
+      cell: ({ row }) => <Link href={`/v2/reports/${row.original.id}`} style={{ fontWeight: 500, color: 'var(--org-primary)', textDecoration: 'none' }}>{row.original.title}</Link>,
     },
     { accessorKey: 'status', header: ({ column }) => <SortHead label="Status" sorted={column.getIsSorted()} onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')} />, cell: ({ row }) => <Pill c={STATUS_TONE[row.original.status].c} label={STATUS_TONE[row.original.status].label} /> },
     { accessorKey: 'attemptTotalCount', header: ({ column }) => <SortHead label="Attempts" sorted={column.getIsSorted()} onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')} />, cell: ({ row }) => <span className="v2-mono" style={dt.muted}>{row.original.attemptSettledCount}/{row.original.attemptTotalCount}</span> },

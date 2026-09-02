@@ -20,7 +20,7 @@ export default function V2CandidateReportPage() {
       examId={examId}
       candidateId={candidateId}
       attemptId={attemptId}
-      backSlot={<Link href="/v2/reports" style={backLink} className="print:hidden"><ArrowLeft size={15} /> Back to Results</Link>}
+      backSlot={<Link href={`/v2/reports/${examId}`} style={backLink} className="print:hidden"><ArrowLeft size={15} /> Back to Results</Link>}
     />
   );
 }
