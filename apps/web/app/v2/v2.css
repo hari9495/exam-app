@@ -145,3 +145,17 @@
   .wf-hero-grid { grid-template-columns: 1fr !important; }
   .wf-hero-kpis { grid-template-columns: 1fr 1fr !important; }
 }
+
+/* Editor forms (exam + question) — responsive to actual available width via container queries, so
+   the sidebar's width is accounted for (viewport media queries can't see it). The outer .wf-editor
+   and the form card both declare container context; each grid below queries its nearest one. */
+.wf-editor { container-type: inline-size; }
+.wf-editor-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(280px, 340px); gap: 20px; align-items: start; }
+.wf-section { display: grid; grid-template-columns: 200px 1fr; gap: 20px 32px; padding: 22px 0; }
+.wf-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+/* Form card queries this: once it's narrow, drop the live-preview column below the form. */
+@container (max-width: 820px) { .wf-editor-grid { grid-template-columns: 1fr; } }
+/* Section label column stacks above its fields when the form card gets tight. */
+@container (max-width: 520px) { .wf-section { grid-template-columns: 1fr; gap: 8px; } }
+/* Paired short fields (type/difficulty, marks/negative, …) stack when very tight. */
+@container (max-width: 400px) { .wf-pair { grid-template-columns: 1fr; } }

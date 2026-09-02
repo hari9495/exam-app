@@ -95,7 +95,7 @@ function RadioRow({ checked, onChange, label: l }: { checked: boolean; onChange:
 // fieldset so it stays interactive even when locked. `first` drops the top divider.
 function Section({ title, description, locked, alwaysEditable, first, children }: { title: string; description: string; locked?: boolean; alwaysEditable?: React.ReactNode; first?: boolean; children: React.ReactNode }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 32, padding: '24px 0', borderTop: first ? 'none' : '1px solid var(--hair)' }} className="wf-section">
+    <div className="wf-section" style={{ borderTop: first ? 'none' : '1px solid var(--hair)' }}>
       <div>
         <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{title}</div>
         <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.5 }}>{description}</div>
@@ -192,11 +192,11 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, submitting
       )}
       <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 12px' }}>Fields marked <span style={{ color: 'var(--danger)' }}>*</span> are required.</p>
 
-      <div style={{ ...card, padding: '0 28px' }}>
+      <div className="wf-editor" style={{ ...card, padding: '0 28px' }}>
       <Section first title="Basic Details" description="The name, instructions and scoring candidates see." locked={locked}>
         <Field label="Title" required><input value={title} onChange={(e) => setTitle(e.target.value)} required style={input} /></Field>
         <Field label="Instructions"><textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} rows={3} style={{ ...input, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} /></Field>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <div className="wf-pair">
           <Field label="Duration (minutes)"><input type="number" min={1} value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value)} style={input} /></Field>
           <Field label="Pass criteria (%)"><input type="number" min={0} max={100} value={passCriteriaPercent} onChange={(e) => setPassCriteriaPercent(e.target.value)} style={input} /></Field>
         </div>
@@ -216,7 +216,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, submitting
         <CheckRow label="Enable scheduling" checked={schedulingEnabled} onChange={setSchedulingEnabled} />
         {schedulingEnabled && (
           <>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div className="wf-pair">
               <Field label="Window opens" required><input type="datetime-local" value={availabilityWindowStart} onChange={(e) => setAvailabilityWindowStart(e.target.value)} style={input} /></Field>
               <Field label="Window closes" required><input type="datetime-local" value={availabilityWindowEnd} onChange={(e) => setAvailabilityWindowEnd(e.target.value)} style={input} /></Field>
             </div>

@@ -46,7 +46,7 @@ function Field({ label: l, required, children }: { label: string; required?: boo
 // Side-label section (21st Form Layout #4347): title + description on the left, fields on the right.
 function Section({ title, description, first, children }: { title: string; description: string; first?: boolean; children: React.ReactNode }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 24, padding: '20px 0', borderTop: first ? 'none' : '1px solid var(--hair)' }}>
+    <div className="wf-section" style={{ borderTop: first ? 'none' : '1px solid var(--hair)' }}>
       <div>
         <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{title}</div>
         <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.5 }}>{description}</div>
@@ -197,10 +197,11 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
   return (
     <form onSubmit={handleSubmit}>
       <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 12px' }}>Fields marked <span style={{ color: 'var(--danger)' }}>*</span> are required.</p>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.7fr) minmax(280px, 340px)', gap: 20, alignItems: 'start' }} className="wf-hero-grid">
-        <div style={{ ...card, padding: '0 24px' }}>
+      <div className="wf-editor">
+      <div className="wf-editor-grid">
+        <div className="wf-editor" style={{ ...card, padding: '0 24px' }}>
           <Section first title="Basics" description="Type, prompt and difficulty.">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div className="wf-pair">
               <Field label="Question type" required><Combobox options={TYPE_OPTIONS} value={type} onChange={handleTypeChange} width="100%" /></Field>
               <Field label="Difficulty" required><Combobox options={DIFFICULTY_OPTIONS} value={difficulty} onChange={(v) => setDifficulty(v as Difficulty)} width="100%" /></Field>
             </div>
@@ -209,7 +210,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
             </Field>
           </Section>
           <Section title="Scoring" description="Marks awarded and deducted.">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div className="wf-pair">
               <Field label="Marks" required><input type="number" min={1} value={marks} onChange={(e) => setMarks(e.target.value)} required style={textInput} /></Field>
               <Field label="Negative marks"><input type="number" min={0} value={negativeMarks} onChange={(e) => setNegativeMarks(e.target.value)} style={textInput} /></Field>
             </div>
@@ -218,7 +219,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
             {answerSection}
           </Section>
           <Section title="Organize" description="Topic, category and tags for filtering.">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div className="wf-pair">
               <Field label="Topic (optional)"><input value={topic} onChange={(e) => setTopic(e.target.value)} style={textInput} /></Field>
               <Field label="Category (optional)"><input value={category} onChange={(e) => setCategory(e.target.value)} style={textInput} /></Field>
             </div>
@@ -241,6 +242,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
           </div>
         </div>
         <LivePreview type={type} text={text} options={options} marks={marks} difficulty={difficulty} />
+      </div>
       </div>
     </form>
   );
