@@ -114,7 +114,7 @@ export default function V2EditExamPage() {
       <Tabs tabs={tabs} value={activeTab} onChange={setActiveTab} />
 
       {activeTab === 'details' && (
-        <div style={{ maxWidth: 760 }}>
+        <div style={{ maxWidth: 940 }}>
           <ExamDetailsForm
             initialExam={exam} submitLabel="Save details" submitting={updateExam.isPending}
             locked={detailsLocked} lockedMessage={detailsLockedMessage} hideWalkInField={detailsLocked}

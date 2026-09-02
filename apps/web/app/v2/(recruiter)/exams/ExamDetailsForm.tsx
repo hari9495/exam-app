@@ -4,10 +4,11 @@
 // validation and the onSubmit payload are preserved verbatim (format only). Reuses WalkInShareCard
 // (infra) and useAuth. Collapsible sections use native <details>; locked disables the fieldset.
 import { useState } from 'react';
+import Link from 'next/link';
 import { Exam, FeedbackVisibility } from '../../../../lib/types';
 import { WalkInShareCard } from '../../../../components/WalkInShareCard';
 import { useAuth } from '../../../../lib/auth-context';
-import { Combobox, Cb, Button } from '../../../../components/ui-v2';
+import { Combobox, Cb } from '../../../../components/ui-v2';
 
 export interface ExamDetailsValue {
   title: string;
@@ -44,6 +45,8 @@ interface ExamDetailsFormProps {
   lockedMessage?: string;
   hideWalkInField?: boolean;
   walkInSlot?: React.ReactNode;
+  /** When set, a Cancel link is shown in the footer (used by the New exam page). */
+  cancelHref?: string;
 }
 
 // Keys must stay in sync with TOGGLEABLE_PROCTORING_SIGNALS in the API create-exam DTO.
@@ -67,6 +70,10 @@ function toDatetimeLocalValue(iso: string): string {
 const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '9px 11px', fontSize: 13, borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none' };
 const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14 };
 const help: React.CSSProperties = { fontSize: 12, color: 'var(--muted)', lineHeight: 1.5, margin: 0 };
+const ghostBtn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', fontSize: 13, fontWeight: 500, padding: '9px 16px', borderRadius: 9, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', cursor: 'pointer', textDecoration: 'none' };
+const primaryBtn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, padding: '9px 18px', borderRadius: 9, border: 'none', background: 'var(--org-primary)', color: 'var(--org-on-primary)', cursor: 'pointer' };
+// The right-hand field column of each side-label section — keeps inputs a sensible width, not full-bleed.
+const fieldCol: React.CSSProperties = { maxWidth: 480 };
 
 function Field({ label: l, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return <div><label className="v2-label">{l}{required && <span style={{ color: 'var(--danger)', marginLeft: 3 }}>*</span>}</label>{children}</div>;
@@ -83,21 +90,27 @@ function RadioRow({ checked, onChange, label: l }: { checked: boolean; onChange:
     </label>
   );
 }
-// Collapsible card. `locked` disables everything inside via a disabled fieldset; `alwaysEditable`
-// renders outside that fieldset so it stays interactive even when locked.
-function Section({ title, locked, alwaysEditable, children }: { title: string; locked?: boolean; alwaysEditable?: React.ReactNode; children: React.ReactNode }) {
+// Side-label section (21st Form Layout #4347): title + description on the left, fields on the right.
+// `locked` disables everything inside via a disabled fieldset; `alwaysEditable` renders outside that
+// fieldset so it stays interactive even when locked. `first` drops the top divider.
+function Section({ title, description, locked, alwaysEditable, first, children }: { title: string; description: string; locked?: boolean; alwaysEditable?: React.ReactNode; first?: boolean; children: React.ReactNode }) {
   return (
-    <details open style={{ ...card, padding: '16px 20px' }}>
-      <summary style={{ cursor: 'pointer', fontSize: 14, fontWeight: 600, color: 'var(--ink)', listStyle: 'revert' }}>{title}</summary>
-      <fieldset disabled={locked} style={{ border: 'none', margin: 0, padding: 0, marginTop: 14, display: 'flex', flexDirection: 'column', gap: 14, opacity: locked ? 0.6 : 1 }}>
-        {children}
-      </fieldset>
-      {alwaysEditable && <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>{alwaysEditable}</div>}
-    </details>
+    <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 32, padding: '24px 0', borderTop: first ? 'none' : '1px solid var(--hair)' }} className="wf-section">
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{title}</div>
+        <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.5 }}>{description}</div>
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <fieldset disabled={locked} style={{ ...fieldCol, border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 14, opacity: locked ? 0.6 : 1 }}>
+          {children}
+        </fieldset>
+        {alwaysEditable && <div style={{ ...fieldCol, marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>{alwaysEditable}</div>}
+      </div>
+    </div>
   );
 }
 
-export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, submitting, locked = false, lockedMessage, hideWalkInField = false, walkInSlot }: ExamDetailsFormProps) {
+export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, submitting, locked = false, lockedMessage, hideWalkInField = false, walkInSlot, cancelHref }: ExamDetailsFormProps) {
   const { organizationSlug } = useAuth();
   const [title, setTitle] = useState(initialExam?.title ?? '');
   const [instructions, setInstructions] = useState(initialExam?.instructions ?? '');
@@ -171,15 +184,16 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, submitting
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <form onSubmit={handleSubmit} noValidate>
       {locked && (
-        <p style={{ ...help, padding: '10px 13px', borderRadius: 9, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)' }}>
+        <p style={{ ...help, padding: '10px 13px', borderRadius: 9, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', marginBottom: 12 }}>
           {lockedMessage ?? 'This exam is locked because a candidate has already started it. Nothing here can be changed anymore — you can still invite new candidates and manage live monitoring from their respective tabs.'}
         </p>
       )}
-      <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>Fields marked <span style={{ color: 'var(--danger)' }}>*</span> are required.</p>
+      <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 12px' }}>Fields marked <span style={{ color: 'var(--danger)' }}>*</span> are required.</p>
 
-      <Section title="Basic Details" locked={locked}>
+      <div style={{ ...card, padding: '0 28px' }}>
+      <Section first title="Basic Details" description="The name, instructions and scoring candidates see." locked={locked}>
         <Field label="Title" required><input value={title} onChange={(e) => setTitle(e.target.value)} required style={input} /></Field>
         <Field label="Instructions"><textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} rows={3} style={{ ...input, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} /></Field>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -198,7 +212,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, submitting
         </Field>
       </Section>
 
-      <Section title="Scheduling & Access" locked={locked} alwaysEditable={hideWalkInField && walkInSlot ? walkInSlot : undefined}>
+      <Section title="Scheduling & Access" description="When the exam is open, and who is allowed to take it." locked={locked} alwaysEditable={hideWalkInField && walkInSlot ? walkInSlot : undefined}>
         <CheckRow label="Enable scheduling" checked={schedulingEnabled} onChange={setSchedulingEnabled} />
         {schedulingEnabled && (
           <>
@@ -223,7 +237,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, submitting
         <Field label="Allowed IP / CIDR range (optional)"><input value={allowedIpRange} onChange={(e) => setAllowedIpRange(e.target.value)} placeholder="e.g. 203.0.113.4 or 203.0.113.0/24" style={input} /></Field>
       </Section>
 
-      <Section title="Proctoring & Integrity" locked={locked}>
+      <Section title="Proctoring & Integrity" description="Monitoring, webcam, lockdown and identity checks." locked={locked}>
         <CheckRow label="Enable anti-cheating monitoring for this exam" checked={enableAntiCheating} onChange={setEnableAntiCheating} />
         {enableAntiCheating && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, borderLeft: '2px solid var(--hair)', paddingLeft: 16 }}>
@@ -293,7 +307,13 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, submitting
         </div>
       </Section>
 
-      {!locked && <div><Button type="submit" loading={submitting}>{submitLabel}</Button></div>}
+      {!locked && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, alignItems: 'center', padding: '18px 0', borderTop: '1px solid var(--hair)' }}>
+          {cancelHref && <Link href={cancelHref} style={ghostBtn}>Cancel</Link>}
+          <button type="submit" disabled={submitting} style={{ ...primaryBtn, opacity: submitting ? 0.6 : 1, cursor: submitting ? 'not-allowed' : 'pointer' }}>{submitting ? 'Saving…' : submitLabel}</button>
+        </div>
+      )}
+      </div>
     </form>
   );
 }
