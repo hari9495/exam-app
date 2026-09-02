@@ -27,7 +27,10 @@ const nextConfig = {
       { source: '/drives/:driveId', destination: '/v2/drives/:driveId', permanent: false },
       // Walk-in group drives list rebuilt in v2.
       { source: '/walk-in-groups/:groupId/drives', destination: '/v2/walk-in-groups/:groupId/drives', permanent: false },
-      // Bulk upload is a modal on the v2 candidates/questions lists (no standalone route).
+      // Bulk upload became a modal on the v2 candidates/questions lists (no standalone route);
+      // funnel the old standalone pages to those lists so no old recruiter UI stays reachable.
+      { source: '/questions/bulk-upload', destination: '/v2/questions', permanent: false },
+      { source: '/candidates/bulk-upload-invite', destination: '/v2/candidates', permanent: false },
     ];
   },
 };
