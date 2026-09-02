@@ -111,7 +111,7 @@ export default function V2EditExamPage() {
         </div>
       </div>
 
-      <Tabs tabs={tabs} value={activeTab} onChange={setActiveTab} />
+      <Tabs tabs={tabs} value={activeTab} onChange={setActiveTab} divider={false} />
 
       {activeTab === 'details' && (
         <div>

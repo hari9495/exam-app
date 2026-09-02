@@ -4,14 +4,17 @@
 // renders the active panel. Kept minimal (one strip, no context) since detail pages just switch
 // panels by the active value.
 export function Tabs({
-  tabs, value, onChange,
+  tabs, value, onChange, divider = true,
 }: {
   tabs: { value: string; label: string; badge?: number }[];
   value: string;
   onChange: (v: string) => void;
+  /** Full-width baseline under the strip. On for compact/dialog tabs (anchors them); pass false for
+   *  page-level tabs to get the Loom look — only the active tab underlines, no baseline. */
+  divider?: boolean;
 }) {
   return (
-    <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid color-mix(in srgb, var(--ink) 13%, var(--hair))', marginBottom: 20, overflowX: 'auto', overflowY: 'hidden' }}>
+    <div style={{ display: 'flex', gap: 2, borderBottom: divider ? '1px solid color-mix(in srgb, var(--ink) 13%, var(--hair))' : 'none', marginBottom: 20, overflowX: 'auto', overflowY: 'hidden' }}>
       {tabs.map((t) => {
         const active = t.value === value;
         return (
