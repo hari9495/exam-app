@@ -111,7 +111,7 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
 
   return (
     <div>
-      <Tabs tabs={[{ value: 'board', label: 'Board' }, { value: 'rejected', label: `Rejected (${board.rejected.length})` }]} value={tab} onChange={(v) => setTab(v as 'board' | 'rejected')} />
+      <Tabs tabs={[{ value: 'board', label: 'Board' }, { value: 'rejected', label: `Rejected (${board.rejected.length})` }]} value={tab} onChange={(v) => setTab(v as 'board' | 'rejected')} divider={false} />
       {tab === 'board' && (
         <div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>

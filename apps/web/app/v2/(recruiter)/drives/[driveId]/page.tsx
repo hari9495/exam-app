@@ -29,14 +29,14 @@ export default function V2DrivePage() {
   }, [drive]);
 
   return (
-    <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+    <div style={{ maxWidth: 1280, margin: '0 auto' }}>
       <Link href="/v2/walk-in-groups" style={backLink}><ArrowLeft size={15} /> Back to Walk-in Groups</Link>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '10px 0 16px' }}>
         <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>{drive?.name ?? 'Drive'}</h1>
         {drive && <Pill c={STATUS_TONE[drive.status].c} label={STATUS_TONE[drive.status].label} />}
       </div>
 
-      <Tabs tabs={[{ value: 'live', label: 'Live board' }, { value: 'results', label: 'Results' }]} value={tab} onChange={(v) => setTab(v as 'live' | 'results')} />
+      <Tabs tabs={[{ value: 'live', label: 'Live board' }, { value: 'results', label: 'Results' }]} value={tab} onChange={(v) => setTab(v as 'live' | 'results')} divider={false} />
       {tab === 'live' && <DriveLiveBoard driveId={driveId} />}
       {tab === 'results' && <DriveResults driveId={driveId} />}
     </div>

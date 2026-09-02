@@ -137,7 +137,7 @@ export function ExamResultsPanel({ examId }: { examId: string }) {
 
   return (
     <div>
-      <Tabs tabs={subTabs} value={subTab} onChange={setSubTab} />
+      <Tabs tabs={subTabs} value={subTab} onChange={setSubTab} divider={false} />
       {subTab === 'candidates' && (openReport ? (
         <CandidateReportPanel examId={examId} candidateId={openReport.candidateId} attemptId={openReport.attemptId}
           backSlot={<button type="button" onClick={() => setOpenReport(null)} style={{ marginBottom: 16, display: 'inline-flex', alignItems: 'center', background: 'none', border: 'none', padding: 0, fontSize: 13, fontWeight: 500, color: 'var(--org-primary)', cursor: 'pointer' }}>← Back to results</button>}

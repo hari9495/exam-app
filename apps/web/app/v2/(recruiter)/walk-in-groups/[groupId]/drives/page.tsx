@@ -61,7 +61,7 @@ export default function V2GroupDrivesPage() {
   ];
 
   return (
-    <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+    <div style={{ maxWidth: 1280, margin: '0 auto' }}>
       <Link href="/v2/walk-in-groups" style={backLink}><ArrowLeft size={15} /> Back to Walk-in Groups</Link>
       <h1 className="v2-title" style={{ fontSize: 22, margin: '10px 0 4px' }}>Drives{group ? ` — ${group.name}` : ''}</h1>
       <p style={{ margin: '0 0 20px', fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.5 }}>Schedule a time-boxed hiring drive for this group. Candidates who register while a drive is live are attributed to it.</p>

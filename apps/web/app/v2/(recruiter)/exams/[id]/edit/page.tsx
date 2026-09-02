@@ -81,7 +81,7 @@ export default function V2EditExamPage() {
   ];
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+    <div style={{ maxWidth: 1280, margin: '0 auto' }}>
       <Link href="/v2/exams" style={backLink}><ArrowLeft size={15} /> Back to Exams</Link>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, margin: '10px 0 16px' }}>
         <div>

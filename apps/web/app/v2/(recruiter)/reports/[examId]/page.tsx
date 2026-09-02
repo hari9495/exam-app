@@ -118,7 +118,7 @@ export default function V2ExamReportPage() {
         </div>
       ) : null}
 
-      <Tabs tabs={subTabs} value={subTab} onChange={setSubTab} />
+      <Tabs tabs={subTabs} value={subTab} onChange={setSubTab} divider={false} />
 
       {subTab === 'candidates' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

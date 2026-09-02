@@ -16,7 +16,7 @@ export default function V2NewExamPage() {
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <div style={{ maxWidth: 940, margin: '0 auto' }}>
+    <div style={{ maxWidth: 1280, margin: '0 auto' }}>
       <Link href="/v2/exams" style={backLink}><ArrowLeft size={15} /> Back to Exams</Link>
       <h1 className="v2-title" style={{ fontSize: 22, margin: '10px 0 16px' }}>New exam</h1>
       {error && <div role="alert" style={{ marginBottom: 12, fontSize: 13, padding: '9px 13px', borderRadius: 9, border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)', background: 'color-mix(in srgb, var(--danger) 8%, transparent)', color: 'var(--danger)' }}>{error}</div>}

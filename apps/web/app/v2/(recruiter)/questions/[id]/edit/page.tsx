@@ -25,7 +25,7 @@ export default function V2EditQuestionPage() {
   if (!question) return <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading…</p>;
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+    <div style={{ maxWidth: 1280, margin: '0 auto' }}>
       <Link href="/v2/questions" style={backLink}><ArrowLeft size={15} /> Back to Question Bank</Link>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, margin: '10px 0 16px' }}>
         <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Edit question</h1>
