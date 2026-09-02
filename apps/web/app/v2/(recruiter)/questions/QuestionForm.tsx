@@ -58,7 +58,7 @@ function Section({ title, description, first, children }: { title: string; descr
 function RemoveOptionBtn({ index, onRemove }: { index: number; onRemove: (i: number) => void }) {
   return (
     <button type="button" onClick={() => onRemove(index)} aria-label={`Remove option ${index + 1}`} title="Remove option"
-      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, borderRadius: 8, border: '1px solid color-mix(in srgb, var(--ink) 16%, var(--hair))', background: 'var(--paper)', color: 'var(--danger)', cursor: 'pointer', flexShrink: 0, boxShadow: '0 1px 1px rgba(11,18,32,.04)' }}>
+      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, borderRadius: 8, border: '1px solid color-mix(in srgb, var(--ink) 24%, var(--hair))', background: 'var(--paper)', color: 'var(--danger)', cursor: 'pointer', flexShrink: 0, boxShadow: '0 1px 2px rgba(11,18,32,.08)' }}>
       <Trash2 size={15} />
     </button>
   );
