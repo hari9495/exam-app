@@ -138,7 +138,7 @@ export default function V2CandidatesPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Candidates</h1>
         <span style={{ display: 'inline-flex', gap: 8 }}>
-          <Link href="/candidates/bulk-upload-invite" style={dt.toolBtn}><Upload size={14} /> Upload &amp; invite</Link>
+          <Link href="/v2/candidates/bulk-upload-invite" style={dt.toolBtn}><Upload size={14} /> Upload &amp; invite</Link>
           <button type="button" style={dt.primaryBtn} onClick={() => { setFormError(null); setAddOpen(true); }}><Plus size={14} /> Add candidate</button>
         </span>
       </div>

@@ -150,7 +150,7 @@ export default function V2QuestionsPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Question Bank</h1>
         <span style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
-          <Link href="/questions/bulk-upload" style={dt.toolBtn}>Bulk upload</Link>
+          <Link href="/v2/questions/bulk-upload" style={dt.toolBtn}>Bulk upload</Link>
           <button type="button" style={dt.toolBtn} onClick={() => setGenerateOpen(true)}>Generate with AI</button>
           <Link href="/v2/questions/new" style={dt.primaryBtn}><Plus size={14} /> New question</Link>
         </span>
