@@ -91,8 +91,8 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
   return (
     <div>
       {backSlot}
-      <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div>
+      <div style={{ marginTop: 12, marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>{candidate.candidateName}</h1>
           <AuditHistoryLink
             entityType="candidate"
