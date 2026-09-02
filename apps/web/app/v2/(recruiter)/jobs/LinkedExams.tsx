@@ -32,7 +32,6 @@ export function LinkedExams({ jobId, linkedExams, canManage }: { jobId: string; 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <h3 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', margin: 0 }}>Linked exams</h3>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {linkedExams.length === 0 && <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>No exams linked.</p>}
         {linkedExams.map((exam) => (

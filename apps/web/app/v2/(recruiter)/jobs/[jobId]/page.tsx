@@ -21,6 +21,20 @@ import { STATUS } from '../../../../../components/ui-v2/viz';
 const backLink: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)', textDecoration: 'none' };
 const STATUS_TONE: Record<JobStatus, { c: string; label: string }> = { open: { c: STATUS.ok, label: 'Open' }, closed: { c: 'var(--muted)', label: 'Closed' } };
 
+// Side-label section, same pattern as the exam form's <Section>: title + description on the left,
+// the reused control on the right. `first` drops the top divider.
+function JobSection({ title, description, first, children }: { title: string; description: string; first?: boolean; children: React.ReactNode }) {
+  return (
+    <div className="wf-section" style={{ borderTop: first ? 'none' : '1px solid var(--hair)' }}>
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{title}</div>
+        <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.5 }}>{description}</div>
+      </div>
+      <div style={{ minWidth: 0 }}>{children}</div>
+    </div>
+  );
+}
+
 // Copy-to-clipboard pattern shared with WalkInShareCard: writeText, toast, 2s "Copied" swap.
 function PublicApplyControl({ job, jobId }: { job: JobDetail; jobId: string }) {
   const updateJob = useUpdateJob(jobId);
@@ -42,7 +56,7 @@ function PublicApplyControl({ job, jobId }: { job: JobDetail; jobId: string }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <label style={{ display: 'inline-flex', alignItems: 'center', gap: 9, fontSize: 13, color: 'var(--ink)', cursor: 'pointer' }}>
         <input type="checkbox" checked={job.publicApplyEnabled} disabled={updateJob.isPending} onChange={(e) => toggle(e.target.checked)} style={{ width: 15, height: 15, accentColor: 'var(--org-primary)' }} />
-        Public applications
+        Enable public applications
       </label>
       {job.publicApplyEnabled && applyUrl && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 560 }}>
@@ -90,18 +104,19 @@ export default function V2JobPage() {
       </div>
 
       {job && (
-        <div style={{ background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, padding: '0 22px' }}>
-          <div style={{ padding: '18px 0' }}><LinkedExams jobId={jobId} linkedExams={job.linkedExams} canManage={canManage} /></div>
+        <div className="wf-editor" style={{ background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, padding: '0 28px' }}>
+          <JobSection first title="Linked exams" description="Attach the exams candidates take for this role.">
+            <LinkedExams jobId={jobId} linkedExams={job.linkedExams} canManage={canManage} />
+          </JobSection>
           {canManage && (
-            <div style={{ padding: '18px 0', borderTop: '1px solid var(--hair)' }}>
+            <JobSection title="Public applications" description="Share a public link so anyone can apply to this role.">
               <PublicApplyControl job={job} jobId={jobId} />
-            </div>
+            </JobSection>
           )}
           {canManage && (
-            <div style={{ padding: '18px 0', borderTop: '1px solid var(--hair)' }}>
-              <h3 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', margin: '0 0 12px' }}>Fit criteria</h3>
+            <JobSection title="Fit criteria" description="Describe the ideal candidate and set an optional weighted scoring rubric.">
               <FitCriteriaEditor job={job} jobId={jobId} />
-            </div>
+            </JobSection>
           )}
         </div>
       )}
