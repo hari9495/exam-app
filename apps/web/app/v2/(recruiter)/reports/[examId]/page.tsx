@@ -3,8 +3,8 @@
 // v2 exam report — re-skin of app/(panel)/reports/[examId] on v2 primitives. Summary tiles +
 // Candidates/Accuracy tabs. All hooks, filters, export formats (csv/xlsx/pdf), compare and the
 // exam switcher are verbatim (format only). Candidate rows link to the v2 candidate report; the
-// exam switcher and back-nav stay within /v2. Compare still points at the old route (v2 compare is
-// a later slice). Reuses QuestionAccuracyPanel + IntegrityBadge as-is.
+// exam switcher, Compare and back-nav all stay within /v2. Reuses QuestionAccuracyPanel +
+// IntegrityBadge as-is.
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -132,7 +132,7 @@ export default function V2ExamReportPage() {
               <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={() => handleExport('xlsx')} disabled={exportMutation.isPending}>Export Excel</button>
               <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={() => handleExport('pdf')} disabled={exportMutation.isPending}>Export PDF</button>
               <button type="button" className="v2-hoverbtn" style={{ ...dt.primaryBtn, opacity: selectedIds.length < 2 ? 0.5 : 1, cursor: selectedIds.length < 2 ? 'not-allowed' : 'pointer' }} disabled={selectedIds.length < 2}
-                onClick={() => router.push(`/reports/${examId}/compare?invitationIds=${selectedIds.join(',')}`)}>Compare selected</button>
+                onClick={() => router.push(`/v2/reports/${examId}/compare?invitationIds=${selectedIds.join(',')}`)}>Compare selected</button>
             </div>
           </div>
           <DataTable columns={columns} data={visibleResults} getRowId={(r) => r.invitationId}

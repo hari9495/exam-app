@@ -3,6 +3,7 @@
 // v2 candidate report route — thin wrapper around the v2 CandidateReportPanel (same as the old
 // panel route wraps the old panel). Recruiter-scoped: reached from the pipeline board/drawer and
 // (later) the v2 exam report. Panel-role users keep using the old /reports route.
+import { Suspense } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
@@ -10,7 +11,7 @@ import { CandidateReportPanel } from '../../../CandidateReportPanel';
 
 const backLink: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)', textDecoration: 'none' };
 
-export default function V2CandidateReportPage() {
+function CandidateReportInner() {
   const { examId, candidateId } = useParams<{ examId: string; candidateId: string }>();
   const searchParams = useSearchParams();
   const attemptId = searchParams.get('attemptId') || null;
@@ -22,5 +23,13 @@ export default function V2CandidateReportPage() {
       attemptId={attemptId}
       backSlot={<Link href={`/v2/reports/${examId}`} style={backLink} className="print:hidden"><ArrowLeft size={15} /> Back to Results</Link>}
     />
+  );
+}
+
+export default function V2CandidateReportPage() {
+  return (
+    <Suspense fallback={<p style={{ padding: 32, fontSize: 13, color: 'var(--muted)' }}>Loading…</p>}>
+      <CandidateReportInner />
+    </Suspense>
   );
 }
