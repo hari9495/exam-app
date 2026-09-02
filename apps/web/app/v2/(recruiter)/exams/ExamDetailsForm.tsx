@@ -187,31 +187,33 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, submitting
 
       <div className="wf-editor" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <Section title="Basic Details" description="The name, instructions and scoring candidates see." locked={locked}>
-        <Field label="Title" required><input value={title} onChange={(e) => setTitle(e.target.value)} required style={input} /></Field>
-        <Field label="Instructions"><textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} rows={3} style={{ ...input, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} /></Field>
         <div className="wf-pair">
-          <Field label="Duration (minutes)"><input type="number" min={1} value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value)} style={input} /></Field>
-          <Field label="Pass criteria (%)"><input type="number" min={0} max={100} value={passCriteriaPercent} onChange={(e) => setPassCriteriaPercent(e.target.value)} style={input} /></Field>
+          <Field label="Title" required><input value={title} onChange={(e) => setTitle(e.target.value)} required style={input} /></Field>
+          <Field label="Candidate feedback">
+            <Combobox width="100%" value={feedbackVisibility} onChange={(v) => setFeedbackVisibility(v as FeedbackVisibility)}
+              options={[
+                { value: 'none', label: 'None — candidates just see "submitted"' },
+                { value: 'pass_fail', label: 'Pass/fail only' },
+                { value: 'score', label: 'Score percentage' },
+                { value: 'breakdown', label: 'Per-section breakdown' },
+              ]} />
+          </Field>
+        </div>
+        <Field label="Instructions"><textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} rows={3} style={{ ...input, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} /></Field>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+          <div style={{ width: 180 }}><Field label="Duration (minutes)"><input type="number" min={1} value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value)} style={input} /></Field></div>
+          <div style={{ width: 180 }}><Field label="Pass criteria (%)"><input type="number" min={0} max={100} value={passCriteriaPercent} onChange={(e) => setPassCriteriaPercent(e.target.value)} style={input} /></Field></div>
         </div>
         <CheckRow label="Randomize question order for candidates" checked={randomizeOrder} onChange={setRandomizeOrder} />
-        <Field label="Candidate feedback">
-          <Combobox width="100%" value={feedbackVisibility} onChange={(v) => setFeedbackVisibility(v as FeedbackVisibility)}
-            options={[
-              { value: 'none', label: 'None — candidates just see "submitted"' },
-              { value: 'pass_fail', label: 'Pass/fail only' },
-              { value: 'score', label: 'Score percentage' },
-              { value: 'breakdown', label: 'Per-section breakdown' },
-            ]} />
-        </Field>
       </Section>
 
       <Section title="Scheduling & Access" description="When the exam is open, and who is allowed to take it." locked={locked} alwaysEditable={hideWalkInField && walkInSlot ? walkInSlot : undefined}>
         <CheckRow label="Enable scheduling" checked={schedulingEnabled} onChange={setSchedulingEnabled} />
         {schedulingEnabled && (
           <>
-            <div className="wf-pair">
-              <Field label="Window opens" required><input type="datetime-local" value={availabilityWindowStart} onChange={(e) => setAvailabilityWindowStart(e.target.value)} style={input} /></Field>
-              <Field label="Window closes" required><input type="datetime-local" value={availabilityWindowEnd} onChange={(e) => setAvailabilityWindowEnd(e.target.value)} style={input} /></Field>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+              <div style={{ width: 240 }}><Field label="Window opens" required><input type="datetime-local" value={availabilityWindowStart} onChange={(e) => setAvailabilityWindowStart(e.target.value)} style={input} /></Field></div>
+              <div style={{ width: 240 }}><Field label="Window closes" required><input type="datetime-local" value={availabilityWindowEnd} onChange={(e) => setAvailabilityWindowEnd(e.target.value)} style={input} /></Field></div>
             </div>
             {schedulingError && <p style={{ fontSize: 12, color: 'var(--danger)', margin: 0 }}>{schedulingError}</p>}
           </>
@@ -227,7 +229,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, submitting
             )}
           </div>
         )}
-        <Field label="Allowed IP / CIDR range (optional)"><input value={allowedIpRange} onChange={(e) => setAllowedIpRange(e.target.value)} placeholder="e.g. 203.0.113.4 or 203.0.113.0/24" style={input} /></Field>
+        <div style={{ maxWidth: 380 }}><Field label="Allowed IP / CIDR range (optional)"><input value={allowedIpRange} onChange={(e) => setAllowedIpRange(e.target.value)} placeholder="e.g. 203.0.113.4 or 203.0.113.0/24" style={input} /></Field></div>
       </Section>
 
       <Section title="Proctoring & Integrity" description="Monitoring, webcam, lockdown and identity checks." locked={locked}>
