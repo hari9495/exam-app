@@ -43,15 +43,14 @@ const primaryBtn: React.CSSProperties = { display: 'inline-flex', alignItems: 'c
 function Field({ label: l, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return <div><label className="v2-label">{l}{required && <span style={{ color: 'var(--danger)', marginLeft: 3 }}>*</span>}</label>{children}</div>;
 }
-// Side-label section (21st Form Layout #4347): title + description on the left, fields on the right.
-function Section({ title, description, first, children }: { title: string; description: string; first?: boolean; children: React.ReactNode }) {
+// Section card (design C, matches the exam form): title + description on top, fields filling the
+// card width below.
+function Section({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (
-    <div className="wf-section" style={{ borderTop: first ? 'none' : '1px solid var(--hair)' }}>
-      <div>
-        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{title}</div>
-        <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.5 }}>{description}</div>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0, maxWidth: 520 }}>{children}</div>
+    <div style={{ ...card, padding: '18px 20px' }}>
+      <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>{title}</div>
+      <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3, marginBottom: 16, lineHeight: 1.5 }}>{description}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>{children}</div>
     </div>
   );
 }
@@ -199,8 +198,8 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
       <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 12px' }}>Fields marked <span style={{ color: 'var(--danger)' }}>*</span> are required.</p>
       <div className="wf-editor">
       <div className="wf-editor-grid">
-        <div className="wf-editor" style={{ ...card, padding: '0 24px' }}>
-          <Section first title="Basics" description="Type, prompt and difficulty.">
+        <div className="wf-editor" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <Section title="Basics" description="Type, prompt and difficulty.">
             <div className="wf-pair">
               <Field label="Question type" required><Combobox options={TYPE_OPTIONS} value={type} onChange={handleTypeChange} width="100%" /></Field>
               <Field label="Difficulty" required><Combobox options={DIFFICULTY_OPTIONS} value={difficulty} onChange={(v) => setDifficulty(v as Difficulty)} width="100%" /></Field>
@@ -210,9 +209,9 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
             </Field>
           </Section>
           <Section title="Scoring" description="Marks awarded and deducted.">
-            <div className="wf-pair">
-              <Field label="Marks" required><input type="number" min={1} value={marks} onChange={(e) => setMarks(e.target.value)} required style={textInput} /></Field>
-              <Field label="Negative marks"><input type="number" min={0} value={negativeMarks} onChange={(e) => setNegativeMarks(e.target.value)} style={textInput} /></Field>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+              <div style={{ width: 180 }}><Field label="Marks" required><input type="number" min={1} value={marks} onChange={(e) => setMarks(e.target.value)} required style={textInput} /></Field></div>
+              <div style={{ width: 180 }}><Field label="Negative marks"><input type="number" min={0} value={negativeMarks} onChange={(e) => setNegativeMarks(e.target.value)} style={textInput} /></Field></div>
             </div>
           </Section>
           <Section title={type === 'code' ? 'Code answer' : 'Answer options'} description={type === 'code' ? 'How candidates write and run code.' : 'The choices candidates pick from.'}>
@@ -237,8 +236,8 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
               </div>
             )}
           </Section>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '18px 0', borderTop: '1px solid var(--hair)' }}>
-            <button type="submit" disabled={submitting} style={{ ...primaryBtn, opacity: submitting ? 0.6 : 1, cursor: submitting ? 'not-allowed' : 'pointer' }}>{submitting ? 'Saving…' : submitLabel}</button>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 2 }}>
+            <button type="submit" className="v2-hoverbtn" disabled={submitting} style={{ ...primaryBtn, opacity: submitting ? 0.6 : 1, cursor: submitting ? 'not-allowed' : 'pointer' }}>{submitting ? 'Saving…' : submitLabel}</button>
           </div>
         </div>
         <LivePreview type={type} text={text} options={options} marks={marks} difficulty={difficulty} />
