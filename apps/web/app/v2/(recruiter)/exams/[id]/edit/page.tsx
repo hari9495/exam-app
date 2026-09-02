@@ -89,7 +89,7 @@ export default function V2EditExamPage() {
           <AuditHistoryLink entityType="exam" entityId={exam.id} entityName={exam.title} />
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Link href={`/exams/${exam.id}/preview`} style={{ ...dt.toolBtn, textDecoration: 'none' }}>Preview</Link>
+          <Link href={`/v2/exams/${exam.id}/preview`} style={{ ...dt.toolBtn, textDecoration: 'none' }}>Preview</Link>
           {exam.status === 'draft' && (
             <button type="button" style={dt.primaryBtn} disabled={publishExam.isPending}
               onClick={() => publishExam.mutate(undefined, {

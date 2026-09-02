@@ -20,6 +20,7 @@ const nextConfig = {
       // (the v2 edit page links to the old preview route).
       { source: '/exams/new', destination: '/v2/exams/new', permanent: false },
       { source: '/exams/:id/edit', destination: '/v2/exams/:id/edit', permanent: false },
+      { source: '/exams/:id/preview', destination: '/v2/exams/:id/preview', permanent: false },
       // Job detail (pipeline board) is rebuilt in v2.
       { source: '/jobs/:jobId', destination: '/v2/jobs/:jobId', permanent: false },
       // Drive detail (live board + results) is rebuilt in v2.
