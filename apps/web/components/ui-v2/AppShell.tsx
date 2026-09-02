@@ -3,7 +3,7 @@
 // Combines two 21st.dev sources: the "Dashboard Sidebar" collapse toggle (hide/unhide, driven
 // from the TopBar) and the "Animated Sidebar" (sidebar-001) pointer drag-to-resize. Owns the
 // collapsed + width state and composes Sidebar + TopBar + content.
-import { useCallback, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import type { StaffNavItem } from '../StaffSidebar';
@@ -19,6 +19,16 @@ export function AppShell({
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [width, setWidth] = useState(248);
+  // Responsive: auto-collapse the sidebar when the viewport can't spare the room, and reopen it when
+  // it can. matchMedia's change event only fires when the breakpoint is actually crossed, so a manual
+  // toggle within a size band is preserved until the next crossing.
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1024px)');
+    const apply = () => setCollapsed(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
   const dragging = useRef(false);
   const startX = useRef(0);
   const startW = useRef(0);
