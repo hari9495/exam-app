@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { ArrowLeft, Check, Copy } from 'lucide-react';
 import { useToast } from '../../../../../components/ui';
 import { LinkedExams } from '../LinkedExams';
-import { AddCandidateModal } from '../../../../../components/pipeline/AddCandidateModal';
+import { AddCandidateModal } from '../AddCandidateModal';
 import { PipelineBoard } from '../PipelineBoard';
 import { FitCriteriaEditor } from '../FitCriteriaEditor';
 import { useJob, useUpdateJob } from '../../../../../lib/hooks/usePipeline';
