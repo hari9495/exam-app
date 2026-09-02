@@ -2,15 +2,15 @@
 
 // v2 PipelineBoard — kanban of pipeline stages + rejected tab. Re-skin on v2 primitives; all
 // pipeline hooks, stage-move/reject/score logic and the pending-message compose flow are verbatim.
-// Reuses the existing CandidateDrawer + SendMessageModal for now (v2 restyle is a follow-up).
+// Uses the v2 CandidateDrawer + SendMessageModal (siblings in this folder).
 import { useState } from 'react';
 import Link from 'next/link';
 import { useJobPipeline, usePatchEntry, useScoreJob } from '../../../../lib/hooks/usePipeline';
 import { BoardRow, EntryExamResult, PatchEntryResult, PIPELINE_STAGES, PipelineStage, STAGE_LABEL } from '../../../../lib/types';
 import { useAuth } from '../../../../lib/auth-context';
 import { useToast } from '../../../../components/ui';
-import { CandidateDrawer } from '../../../../components/pipeline/CandidateDrawer';
-import { SendMessageModal, SendMessageInitial } from '../../../../components/pipeline/SendMessageModal';
+import { CandidateDrawer } from './CandidateDrawer';
+import { SendMessageModal, SendMessageInitial } from './SendMessageModal';
 import { Tabs, Cb, dt } from '../../../../components/ui-v2';
 import { STATUS, VIZ } from '../../../../components/ui-v2/viz';
 
