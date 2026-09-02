@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../../../lib/auth-context';
 import { useOfferTemplate, useUpdateOfferTemplate } from '../../../../lib/hooks/useOffers';
-import { Card, TextField, Button, dt } from '../../../../components/ui-v2';
+import { TextField, Button } from '../../../../components/ui-v2';
 import { STATUS } from '../../../../components/ui-v2/viz';
 
 const OFFER_TOKENS = ['candidateName', 'jobTitle', 'orgName', 'recruiterName', 'compensation', 'startDate', 'offerExpiry', 'offerLink'];
@@ -45,7 +45,9 @@ export default function V2OfferTemplatePage() {
         <div role="status" style={{ marginBottom: 12, fontSize: 13, padding: '9px 13px', borderRadius: 9, border: `1px solid ${notice.type === 'success' ? 'color-mix(in srgb, #15803d 30%, transparent)' : 'color-mix(in srgb, var(--danger) 30%, transparent)'}`, background: notice.type === 'success' ? 'color-mix(in srgb, #15803d 8%, transparent)' : 'color-mix(in srgb, var(--danger) 8%, transparent)', color: notice.type === 'success' ? STATUS.ok : 'var(--danger)' }}>{notice.text}</div>
       )}
 
-      <Card style={{ padding: 22 }}>
+      <div style={{ background: 'var(--paper)', border: '1px solid color-mix(in srgb, var(--ink) 12%, var(--hair))', borderRadius: 14, padding: '18px 20px' }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>Offer email</div>
+        <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3, marginBottom: 16, lineHeight: 1.5 }}>The email candidates receive with their offer letter.</div>
         {isLoading ? (
           <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading…</p>
         ) : (
@@ -67,7 +69,7 @@ export default function V2OfferTemplatePage() {
             </div>
           </form>
         )}
-      </Card>
+      </div>
     </div>
   );
 }
