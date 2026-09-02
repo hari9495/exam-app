@@ -2,15 +2,15 @@
 
 // v2 QuestionForm — re-skin of components/QuestionForm.tsx on v2 primitives; submit logic + field
 // behavior preserved verbatim (format only). Reuses the Monaco CodeEditor + image-upload/code-language
-// hooks (infra). layout: 'twocol' (wide card, 2-col fields) or 'preview' (form + live candidate
-// preview panel). Used by the v2 new/edit question pages.
+// hooks (infra). Layout: side-label sections (21st Form Layout #4347) on the left + a sticky live
+// candidate preview on the right. Used by the v2 new/edit question pages.
 import { useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { CodeEditor } from '../../../../components/ui/CodeEditor';
 import { type Question, type QuestionType, type Difficulty, type Tag, type CodeLanguage, CODE_LANGUAGE_OPTIONS } from '../../../../lib/types';
 import { type QuestionInput, useUploadQuestionImage, useCodeLanguages } from '../../../../lib/hooks/useQuestions';
 import { monacoLanguageFor } from '../../../../lib/monaco-language';
-import { Combobox, Cb, Button, dt } from '../../../../components/ui-v2';
+import { Combobox, Cb, dt } from '../../../../components/ui-v2';
 import { VIZ } from '../../../../components/ui-v2/viz';
 
 const TYPE_OPTIONS = [
@@ -38,9 +38,22 @@ function defaultOptionsFor(type: QuestionType): OptionDraft[] {
 const textInput: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '9px 11px', fontSize: 13, borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none' };
 const rowLabel: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ink)', cursor: 'pointer' };
 const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14 };
+const primaryBtn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, padding: '9px 18px', borderRadius: 9, border: 'none', background: 'var(--org-primary)', color: 'var(--org-on-primary)', cursor: 'pointer' };
 
 function Field({ label: l, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return <div><label className="v2-label">{l}{required && <span style={{ color: 'var(--danger)', marginLeft: 3 }}>*</span>}</label>{children}</div>;
+}
+// Side-label section (21st Form Layout #4347): title + description on the left, fields on the right.
+function Section({ title, description, first, children }: { title: string; description: string; first?: boolean; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 24, padding: '20px 0', borderTop: first ? 'none' : '1px solid var(--hair)' }}>
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{title}</div>
+        <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.5 }}>{description}</div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0, maxWidth: 520 }}>{children}</div>
+    </div>
+  );
 }
 function RemoveOptionBtn({ index, onRemove }: { index: number; onRemove: (i: number) => void }) {
   return (
@@ -130,110 +143,103 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
     });
   }
 
-  const fields = (
+  const answerSection = type === 'code' ? (
     <>
-      <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>Fields marked <span style={{ color: 'var(--danger)' }}>*</span> are required.</p>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <Field label="Question type" required><Combobox options={TYPE_OPTIONS} value={type} onChange={handleTypeChange} width="100%" /></Field>
-        <Field label="Difficulty" required><Combobox options={DIFFICULTY_OPTIONS} value={difficulty} onChange={(v) => setDifficulty(v as Difficulty)} width="100%" /></Field>
-      </div>
-      <Field label="Question text" required>
-        <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} required style={{ ...textInput, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} />
+      <Field label="Language mode">
+        <Combobox options={[{ value: 'fixed', label: 'Fixed — choose specific languages' }, { value: 'any', label: 'Any — every language the sandbox supports' }]} value={languageMode} onChange={(v) => setLanguageMode(v as 'fixed' | 'any')} width="100%" />
       </Field>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <Field label="Marks" required><input type="number" min={1} value={marks} onChange={(e) => setMarks(e.target.value)} required style={textInput} /></Field>
-        <Field label="Negative marks"><input type="number" min={0} value={negativeMarks} onChange={(e) => setNegativeMarks(e.target.value)} style={textInput} /></Field>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <Field label="Topic (optional)"><input value={topic} onChange={(e) => setTopic(e.target.value)} style={textInput} /></Field>
-        <Field label="Category (optional)"><input value={category} onChange={(e) => setCategory(e.target.value)} style={textInput} /></Field>
-      </div>
-
-      {type === 'code' ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Field label="Language mode">
-            <Combobox options={[{ value: 'fixed', label: 'Fixed — choose specific languages' }, { value: 'any', label: 'Any — every language the sandbox supports' }]} value={languageMode} onChange={(v) => setLanguageMode(v as 'fixed' | 'any')} width="100%" />
-          </Field>
-          {languageMode === 'fixed' && (
-            <div>
-              <label className="v2-label">Allowed languages</label>
-              {codeLanguagesQuery.isLoading ? <span style={{ fontSize: 13, color: 'var(--muted)' }}>Loading languages…</span> : (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px 16px' }}>
-                  {(codeLanguagesQuery.data ?? []).map((entry) => (
-                    <label key={entry.language} style={rowLabel}>
-                      <Cb checked={allowedLanguages.includes(entry.language)} onChange={(checked) => setAllowedLanguages((c) => (checked ? [...c, entry.language] : c.filter((l) => l !== entry.language)))} />
-                      {entry.language}
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          {languageMode === 'fixed' && allowedLanguages.length === 1 && (
-            <Field label="Starter code"><CodeEditor ariaLabel="Starter Code" language={monacoLanguageFor(allowedLanguages[0])} value={starterCode} onChange={setStarterCode} height="220px" /></Field>
-          )}
-          <label style={rowLabel}><Cb checked={allowStdin} onChange={setAllowStdin} /> Allow candidates to provide input (stdin)</label>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <label className="v2-label" style={{ marginBottom: 0 }}>Options</label>
-          {type === 'single_mcq' || type === 'true_false' ? (
-            options.map((option, index) => (
-              <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <RadioDot checked={option.isCorrect} onChange={() => setSingleCorrect(index)} ariaLabel={`Option ${index + 1} correct`} />
-                  <input aria-label={`Option ${index + 1} text`} value={option.text} onChange={(e) => updateOptionText(index, e.target.value)} readOnly={type === 'true_false'} style={{ ...textInput, flex: 1 }} />
-                  {type !== 'true_false' && options.length > 2 && <RemoveOptionBtn index={index} onRemove={removeOption} />}
-                </div>
-                <QuestionImageUpload label={`Option ${index + 1} image (optional)`} value={option.imageUrl ?? ''} onChange={(url) => updateOptionImage(index, url)} />
-              </div>
-            ))
-          ) : (
-            options.map((option, index) => (
-              <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Cb checked={option.isCorrect} onChange={(checked) => toggleMultiCorrect(index, checked)} />
-                  <input aria-label={`Option ${index + 1} text`} value={option.text} onChange={(e) => updateOptionText(index, e.target.value)} style={{ ...textInput, flex: 1 }} />
-                  {options.length > 2 && <RemoveOptionBtn index={index} onRemove={removeOption} />}
-                </div>
-                <QuestionImageUpload label={`Option ${index + 1} image (optional)`} value={option.imageUrl ?? ''} onChange={(url) => updateOptionImage(index, url)} />
-              </div>
-            ))
-          )}
-          {type !== 'true_false' && <button type="button" onClick={addOption} style={{ ...dt.toolBtn, alignSelf: 'flex-start' }}>Add option</button>}
-          <details style={{ borderTop: '1px solid var(--hair)', paddingTop: 12, marginTop: 2 }}>
-            <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--muted)', listStyle: 'revert' }}>Code snippet &amp; question image (optional)</summary>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
-              <Field label="Snippet language"><Combobox options={LANGUAGE_OPTIONS} value={snippetLanguage} onChange={(v) => setSnippetLanguage(v as CodeLanguage)} width="100%" /></Field>
-              <Field label="Code snippet"><CodeEditor ariaLabel="Code Snippet" language={snippetLanguage} value={snippetCode} onChange={setSnippetCode} height="180px" /></Field>
-              <QuestionImageUpload label="Question image" value={imageUrl} onChange={setImageUrl} />
-            </div>
-          </details>
-        </div>
-      )}
-
-      {tags.length > 0 && (
+      {languageMode === 'fixed' && (
         <div>
-          <label className="v2-label">Tags</label>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px 16px' }}>
-            {tags.map((tag) => (
-              <label key={tag.id} style={rowLabel}>
-                <Cb checked={selectedTagIds.includes(tag.id)} onChange={(checked) => setSelectedTagIds((c) => (checked ? [...c, tag.id] : c.filter((id) => id !== tag.id)))} />
-                {tag.name}
-              </label>
-            ))}
-          </div>
+          <label className="v2-label">Allowed languages</label>
+          {codeLanguagesQuery.isLoading ? <span style={{ fontSize: 13, color: 'var(--muted)' }}>Loading languages…</span> : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px 16px' }}>
+              {(codeLanguagesQuery.data ?? []).map((entry) => (
+                <label key={entry.language} style={rowLabel}>
+                  <Cb checked={allowedLanguages.includes(entry.language)} onChange={(checked) => setAllowedLanguages((c) => (checked ? [...c, entry.language] : c.filter((l) => l !== entry.language)))} />
+                  {entry.language}
+                </label>
+              ))}
+            </div>
+          )}
         </div>
       )}
+      {languageMode === 'fixed' && allowedLanguages.length === 1 && (
+        <Field label="Starter code"><CodeEditor ariaLabel="Starter Code" language={monacoLanguageFor(allowedLanguages[0])} value={starterCode} onChange={setStarterCode} height="220px" /></Field>
+      )}
+      <label style={rowLabel}><Cb checked={allowStdin} onChange={setAllowStdin} /> Allow candidates to provide input (stdin)</label>
+    </>
+  ) : (
+    <>
+      {options.map((option, index) => (
+        <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {type === 'multi_mcq'
+              ? <Cb checked={option.isCorrect} onChange={(checked) => toggleMultiCorrect(index, checked)} />
+              : <RadioDot checked={option.isCorrect} onChange={() => setSingleCorrect(index)} ariaLabel={`Option ${index + 1} correct`} />}
+            <input aria-label={`Option ${index + 1} text`} value={option.text} onChange={(e) => updateOptionText(index, e.target.value)} readOnly={type === 'true_false'} style={{ ...textInput, flex: 1 }} />
+            {type !== 'true_false' && options.length > 2 && <RemoveOptionBtn index={index} onRemove={removeOption} />}
+          </div>
+          <QuestionImageUpload label={`Option ${index + 1} image (optional)`} value={option.imageUrl ?? ''} onChange={(url) => updateOptionImage(index, url)} />
+        </div>
+      ))}
+      {type !== 'true_false' && <button type="button" onClick={addOption} style={{ ...dt.toolBtn, alignSelf: 'flex-start' }}>Add option</button>}
+      <details style={{ borderTop: '1px solid var(--hair)', paddingTop: 12, marginTop: 2 }}>
+        <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--muted)', listStyle: 'revert' }}>Code snippet &amp; question image (optional)</summary>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
+          <Field label="Snippet language"><Combobox options={LANGUAGE_OPTIONS} value={snippetLanguage} onChange={(v) => setSnippetLanguage(v as CodeLanguage)} width="100%" /></Field>
+          <Field label="Code snippet"><CodeEditor ariaLabel="Code Snippet" language={snippetLanguage} value={snippetCode} onChange={setSnippetCode} height="180px" /></Field>
+          <QuestionImageUpload label="Question image" value={imageUrl} onChange={setImageUrl} />
+        </div>
+      </details>
     </>
   );
 
-  const submitBtn = <div><Button type="submit" loading={submitting}>{submitLabel}</Button></div>;
-
   return (
     <form onSubmit={handleSubmit}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.7fr) minmax(300px, 380px)', gap: 20, alignItems: 'start' }} className="wf-hero-grid">
-        <div style={{ ...card, padding: 22, display: 'flex', flexDirection: 'column', gap: 16 }}>{fields}{submitBtn}</div>
+      <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 12px' }}>Fields marked <span style={{ color: 'var(--danger)' }}>*</span> are required.</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.7fr) minmax(280px, 340px)', gap: 20, alignItems: 'start' }} className="wf-hero-grid">
+        <div style={{ ...card, padding: '0 24px' }}>
+          <Section first title="Basics" description="Type, prompt and difficulty.">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <Field label="Question type" required><Combobox options={TYPE_OPTIONS} value={type} onChange={handleTypeChange} width="100%" /></Field>
+              <Field label="Difficulty" required><Combobox options={DIFFICULTY_OPTIONS} value={difficulty} onChange={(v) => setDifficulty(v as Difficulty)} width="100%" /></Field>
+            </div>
+            <Field label="Question text" required>
+              <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} required style={{ ...textInput, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} />
+            </Field>
+          </Section>
+          <Section title="Scoring" description="Marks awarded and deducted.">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <Field label="Marks" required><input type="number" min={1} value={marks} onChange={(e) => setMarks(e.target.value)} required style={textInput} /></Field>
+              <Field label="Negative marks"><input type="number" min={0} value={negativeMarks} onChange={(e) => setNegativeMarks(e.target.value)} style={textInput} /></Field>
+            </div>
+          </Section>
+          <Section title={type === 'code' ? 'Code answer' : 'Answer options'} description={type === 'code' ? 'How candidates write and run code.' : 'The choices candidates pick from.'}>
+            {answerSection}
+          </Section>
+          <Section title="Organize" description="Topic, category and tags for filtering.">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <Field label="Topic (optional)"><input value={topic} onChange={(e) => setTopic(e.target.value)} style={textInput} /></Field>
+              <Field label="Category (optional)"><input value={category} onChange={(e) => setCategory(e.target.value)} style={textInput} /></Field>
+            </div>
+            {tags.length > 0 && (
+              <div>
+                <label className="v2-label">Tags</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px 16px' }}>
+                  {tags.map((tag) => (
+                    <label key={tag.id} style={rowLabel}>
+                      <Cb checked={selectedTagIds.includes(tag.id)} onChange={(checked) => setSelectedTagIds((c) => (checked ? [...c, tag.id] : c.filter((id) => id !== tag.id)))} />
+                      {tag.name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </Section>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '18px 0', borderTop: '1px solid var(--hair)' }}>
+            <button type="submit" disabled={submitting} style={{ ...primaryBtn, opacity: submitting ? 0.6 : 1, cursor: submitting ? 'not-allowed' : 'pointer' }}>{submitting ? 'Saving…' : submitLabel}</button>
+          </div>
+        </div>
         <LivePreview type={type} text={text} options={options} marks={marks} difficulty={difficulty} />
       </div>
     </form>
