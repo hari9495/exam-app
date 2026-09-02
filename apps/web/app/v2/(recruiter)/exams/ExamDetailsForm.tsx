@@ -72,9 +72,6 @@ const card: React.CSSProperties = { background: 'var(--paper)', border: '1px sol
 const help: React.CSSProperties = { fontSize: 12, color: 'var(--muted)', lineHeight: 1.5, margin: 0 };
 const ghostBtn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', fontSize: 13, fontWeight: 500, padding: '9px 14px', borderRadius: 9, border: '1px solid var(--org-primary)', background: 'var(--paper)', color: 'var(--org-primary)', cursor: 'pointer', textDecoration: 'none', boxShadow: '0 1px 2px rgba(11,18,32,.08)' };
 const primaryBtn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, padding: '9px 16px', borderRadius: 9, border: 'none', background: 'var(--org-primary)', color: 'var(--org-on-primary)', cursor: 'pointer' };
-// The right-hand field column of each side-label section — keeps inputs a sensible width, not full-bleed.
-const fieldCol: React.CSSProperties = { maxWidth: 480 };
-
 function Field({ label: l, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return <div><label className="v2-label">{l}{required && <span style={{ color: 'var(--danger)', marginLeft: 3 }}>*</span>}</label>{children}</div>;
 }
@@ -90,22 +87,18 @@ function RadioRow({ checked, onChange, label: l }: { checked: boolean; onChange:
     </label>
   );
 }
-// Side-label section (21st Form Layout #4347): title + description on the left, fields on the right.
-// `locked` disables everything inside via a disabled fieldset; `alwaysEditable` renders outside that
-// fieldset so it stays interactive even when locked. `first` drops the top divider.
-function Section({ title, description, locked, alwaysEditable, first, children }: { title: string; description: string; locked?: boolean; alwaysEditable?: React.ReactNode; first?: boolean; children: React.ReactNode }) {
+// Section card (design C): each section is its own card — title + description on top, fields filling
+// the card width below. `locked` disables everything inside via a disabled fieldset; `alwaysEditable`
+// renders outside that fieldset so it stays interactive even when locked.
+function Section({ title, description, locked, alwaysEditable, children }: { title: string; description: string; locked?: boolean; alwaysEditable?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="wf-section" style={{ borderTop: first ? 'none' : '1px solid var(--hair)' }}>
-      <div>
-        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{title}</div>
-        <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.5 }}>{description}</div>
-      </div>
-      <div style={{ minWidth: 0 }}>
-        <fieldset disabled={locked} style={{ ...fieldCol, border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 14, opacity: locked ? 0.6 : 1 }}>
-          {children}
-        </fieldset>
-        {alwaysEditable && <div style={{ ...fieldCol, marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>{alwaysEditable}</div>}
-      </div>
+    <div style={{ ...card, padding: '18px 20px' }}>
+      <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>{title}</div>
+      <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3, marginBottom: 16, lineHeight: 1.5 }}>{description}</div>
+      <fieldset disabled={locked} style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 14, opacity: locked ? 0.6 : 1 }}>
+        {children}
+      </fieldset>
+      {alwaysEditable && <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>{alwaysEditable}</div>}
     </div>
   );
 }
@@ -192,8 +185,8 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, submitting
       )}
       <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 12px' }}>Fields marked <span style={{ color: 'var(--danger)' }}>*</span> are required.</p>
 
-      <div className="wf-editor" style={{ ...card, padding: '0 28px' }}>
-      <Section first title="Basic Details" description="The name, instructions and scoring candidates see." locked={locked}>
+      <div className="wf-editor" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <Section title="Basic Details" description="The name, instructions and scoring candidates see." locked={locked}>
         <Field label="Title" required><input value={title} onChange={(e) => setTitle(e.target.value)} required style={input} /></Field>
         <Field label="Instructions"><textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} rows={3} style={{ ...input, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} /></Field>
         <div className="wf-pair">
@@ -308,9 +301,9 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, submitting
       </Section>
 
       {!locked && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, alignItems: 'center', padding: '18px 0', borderTop: '1px solid var(--hair)' }}>
-          {cancelHref && <Link href={cancelHref} style={ghostBtn}>Cancel</Link>}
-          <button type="submit" disabled={submitting} style={{ ...primaryBtn, opacity: submitting ? 0.6 : 1, cursor: submitting ? 'not-allowed' : 'pointer' }}>{submitting ? 'Saving…' : submitLabel}</button>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, alignItems: 'center', marginTop: 2 }}>
+          {cancelHref && <Link href={cancelHref} className="v2-hoverbtn" style={ghostBtn}>Cancel</Link>}
+          <button type="submit" className="v2-hoverbtn" disabled={submitting} style={{ ...primaryBtn, opacity: submitting ? 0.6 : 1, cursor: submitting ? 'not-allowed' : 'pointer' }}>{submitting ? 'Saving…' : submitLabel}</button>
         </div>
       )}
       </div>
