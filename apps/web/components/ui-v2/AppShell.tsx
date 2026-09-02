@@ -19,15 +19,21 @@ export function AppShell({
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [width, setWidth] = useState(248);
-  // Responsive: auto-collapse the sidebar when the viewport can't spare the room, and reopen it when
-  // it can. matchMedia's change event only fires when the breakpoint is actually crossed, so a manual
-  // toggle within a size band is preserved until the next crossing.
+  // Responsive: auto-collapse the sidebar when the shell itself gets narrow, and reopen it when it
+  // widens. A ResizeObserver on the shell root measures the actual rendered width (robust to the
+  // preview pane's scaling, where matchMedia's change event can be unreliable). We only flip on
+  // crossing the threshold, so a manual toggle within a size band is preserved.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const wasNarrow = useRef<boolean | null>(null);
   useEffect(() => {
-    const mq = window.matchMedia('(max-width: 1024px)');
-    const apply = () => setCollapsed(mq.matches);
-    apply();
-    mq.addEventListener('change', apply);
-    return () => mq.removeEventListener('change', apply);
+    const el = rootRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const narrow = entries[0].contentRect.width < 1024;
+      if (narrow !== wasNarrow.current) { wasNarrow.current = narrow; setCollapsed(narrow); }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
   const dragging = useRef(false);
   const startX = useRef(0);
@@ -49,7 +55,7 @@ export function AppShell({
   const onPointerUp = useCallback(() => { dragging.current = false; }, []);
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
+    <div ref={rootRef} style={{ display: 'flex', minHeight: '100vh' }}>
       {!collapsed && (
         <div style={{ position: 'relative', flexShrink: 0 }}>
           <Sidebar
