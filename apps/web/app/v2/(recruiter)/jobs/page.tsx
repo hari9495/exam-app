@@ -55,7 +55,7 @@ export default function V2JobsPage() {
   }
 
   const columns: ColumnDef<typeof DT_FEATURES, JobListItem>[] = [
-    { accessorKey: 'title', enableHiding: false, header: ({ column }) => <SortHead label="Job" sorted={column.getIsSorted()} onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')} />, cell: ({ row }) => <Link href={`/jobs/${row.original.id}`} style={{ fontWeight: 500, color: 'var(--org-primary)', textDecoration: 'none' }}>{row.original.title}</Link> },
+    { accessorKey: 'title', enableHiding: false, header: ({ column }) => <SortHead label="Job" sorted={column.getIsSorted()} onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')} />, cell: ({ row }) => <Link href={`/v2/jobs/${row.original.id}`} style={{ fontWeight: 500, color: 'var(--org-primary)', textDecoration: 'none' }}>{row.original.title}</Link> },
     {
       accessorKey: 'status', enableSorting: false, enableHiding: false,
       header: () => (
