@@ -17,6 +17,7 @@ import type { Question, QuestionType } from '../../../../lib/types';
 import { DataTable, DT_FEATURES, dt, SortHead, Pill, Combobox, Dropdown, DropdownItem, Dialog } from '../../../../components/ui-v2';
 import { VIZ, STATUS } from '../../../../components/ui-v2/viz';
 import { GenerateQuestionsModal } from '../../../../components/GenerateQuestionsModal';
+import { BulkUploadQuestionsDialog } from './BulkUploadQuestionsDialog';
 
 const STATUS_OPTS = [{ value: 'active', label: 'Active' }, { value: 'draft', label: 'Drafts' }, { value: 'archived', label: 'Archived' }];
 const GROUP_BY_OPTS = [{ value: 'none', label: 'No grouping' }, { value: 'topic', label: 'Topic' }, { value: 'category', label: 'Category' }, { value: 'difficulty', label: 'Difficulty' }, { value: 'tag', label: 'Tag' }];
@@ -36,6 +37,7 @@ export default function V2QuestionsPage() {
   const [needsReviewOnly, setNeedsReviewOnly] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Question | null>(null);
   const [generateOpen, setGenerateOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [bulkPending, setBulkPending] = useState(false);
   const notify = (type: 'success' | 'error', text: string) => { setNotice({ type, text }); setTimeout(() => setNotice(null), 4000); };
@@ -150,7 +152,7 @@ export default function V2QuestionsPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Question Bank</h1>
         <span style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
-          <Link href="/v2/questions/bulk-upload" style={dt.toolBtn}>Bulk upload</Link>
+          <button type="button" style={dt.toolBtn} onClick={() => setBulkOpen(true)}>Bulk upload</button>
           <button type="button" style={dt.toolBtn} onClick={() => setGenerateOpen(true)}>Generate with AI</button>
           <Link href="/v2/questions/new" style={dt.primaryBtn}><Plus size={14} /> New question</Link>
         </span>
@@ -207,6 +209,7 @@ export default function V2QuestionsPage() {
         </div>
       </Dialog>
 
+      <BulkUploadQuestionsDialog open={bulkOpen} onClose={() => setBulkOpen(false)} />
       <GenerateQuestionsModal
         open={generateOpen}
         onClose={() => setGenerateOpen(false)}

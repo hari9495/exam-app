@@ -1,18 +1,14 @@
 'use client';
 
-// v2 Bulk upload questions — full re-skin on v2 primitives. Upload/template hooks + result handling
-// verbatim (format only).
+// v2 Bulk upload questions — as a Dialog (opened from the Question Bank list). Upload/template hooks
+// + result handling verbatim (format only).
 import { useState } from 'react';
-import Link from 'next/link';
-import { ArrowLeft, Download, Upload } from 'lucide-react';
-import { useBulkUploadQuestions, useDownloadBulkUploadTemplate, BulkUploadResult } from '../../../../../lib/hooks/useQuestions';
-import { useToast } from '../../../../../components/ui';
-import { dt } from '../../../../../components/ui-v2';
+import { Download, Upload } from 'lucide-react';
+import { useBulkUploadQuestions, useDownloadBulkUploadTemplate, BulkUploadResult } from '../../../../lib/hooks/useQuestions';
+import { useToast } from '../../../../components/ui';
+import { Dialog, dt } from '../../../../components/ui-v2';
 
-const backLink: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)', textDecoration: 'none' };
-const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, padding: 22 };
-
-export default function V2BulkUploadQuestionsPage() {
+export function BulkUploadQuestionsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<BulkUploadResult | null>(null);
   const { toast } = useToast();
@@ -38,10 +34,8 @@ export default function V2BulkUploadQuestionsPage() {
   }
 
   return (
-    <div style={{ maxWidth: 680, margin: '0 auto' }}>
-      <Link href="/v2/questions" style={backLink}><ArrowLeft size={15} /> Back to Question Bank</Link>
-      <h1 className="v2-title" style={{ fontSize: 22, margin: '10px 0 16px' }}>Bulk upload questions</h1>
-      <form onSubmit={handleUpload} style={{ ...card, display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <Dialog open={open} onClose={onClose} title="Bulk upload questions" width={520}>
+      <form onSubmit={handleUpload} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div>
           <button type="button" onClick={handleDownloadTemplate} disabled={downloadTemplate.isPending} style={dt.toolBtn}><Download size={14} /> Download template</button>
         </div>
@@ -49,15 +43,16 @@ export default function V2BulkUploadQuestionsPage() {
           <label className="v2-label">Question file (.xlsx or .csv, max 5MB)</label>
           <input type="file" accept=".xlsx,.csv" onChange={(e) => setFile(e.target.files?.[0] ?? null)} style={{ fontSize: 13, color: 'var(--muted)' }} />
         </div>
-        <div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>
+          <button type="button" onClick={onClose} style={dt.toolBtn}>Close</button>
           <button type="submit" disabled={!file || bulkUpload.isPending} style={{ ...dt.primaryBtn, opacity: !file || bulkUpload.isPending ? 0.5 : 1, cursor: !file || bulkUpload.isPending ? 'not-allowed' : 'pointer' }}><Upload size={14} /> {bulkUpload.isPending ? 'Uploading…' : 'Upload'}</button>
         </div>
       </form>
       {result && (
-        <div style={{ ...card, marginTop: 16 }}>
+        <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--hair)', maxHeight: 300, overflowY: 'auto' }}>
           <p style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>{result.created.length} question(s) created.</p>
           {result.errors.length > 0 && (
-            <div style={{ marginTop: 14 }}>
+            <div style={{ marginTop: 12 }}>
               <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--danger)', margin: '0 0 8px' }}>{result.errors.length} row(s) had errors:</p>
               <div style={{ overflowX: 'auto', overflowY: 'hidden', border: '1px solid var(--hair)', borderRadius: 10 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -73,6 +68,6 @@ export default function V2BulkUploadQuestionsPage() {
           )}
         </div>
       )}
-    </div>
+    </Dialog>
   );
 }

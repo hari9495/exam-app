@@ -24,9 +24,7 @@ const nextConfig = {
       { source: '/jobs/:jobId', destination: '/v2/jobs/:jobId', permanent: false },
       // Drive detail (live board + results) is rebuilt in v2.
       { source: '/drives/:driveId', destination: '/v2/drives/:driveId', permanent: false },
-      // Bulk upload pages rebuilt in v2.
-      { source: '/questions/bulk-upload', destination: '/v2/questions/bulk-upload', permanent: false },
-      { source: '/candidates/bulk-upload-invite', destination: '/v2/candidates/bulk-upload-invite', permanent: false },
+      // Bulk upload is a modal on the v2 candidates/questions lists (no standalone route).
     ];
   },
 };

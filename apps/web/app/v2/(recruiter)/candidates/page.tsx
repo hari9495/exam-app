@@ -4,7 +4,6 @@
 // a bulk-invite bar via renderBulkBar; status filter in the Status header; kebab Edit/Deactivate/
 // Delete; Add/Edit form modals. Search + status + pagination server-side.
 import { useState } from 'react';
-import Link from 'next/link';
 import type { ColumnDef } from '@tanstack/react-table';
 import { MoreHorizontal, Upload, Power, Trash2, Send, Plus, Pencil, ListFilter, Check } from 'lucide-react';
 import { useCandidates, useCreateCandidate, useUpdateCandidate, useDeleteCandidate } from '../../../../lib/hooks/useCandidates';
@@ -14,6 +13,7 @@ import type { Candidate } from '../../../../lib/types';
 import { DataTable, DT_FEATURES, dt, SortHead, Pill, Combobox, Dropdown, DropdownItem, Dialog } from '../../../../components/ui-v2';
 import { VIZ, STATUS } from '../../../../components/ui-v2/viz';
 import { CandidateFormDialog, type CandidateFormValues } from './CandidateFormDialog';
+import { BulkUploadInviteDialog } from './BulkUploadInviteDialog';
 
 const STATUS_OPTS = [{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }, { value: 'all', label: 'All' }];
 const COLUMN_LABELS: Record<string, string> = { email: 'Email', phone: 'Phone', createdAt: 'Added' };
@@ -32,6 +32,7 @@ export default function V2CandidatesPage() {
   const [examId, setExamId] = useState('');
   const [pendingDelete, setPendingDelete] = useState<Candidate | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [editing, setEditing] = useState<Candidate | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -138,7 +139,7 @@ export default function V2CandidatesPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Candidates</h1>
         <span style={{ display: 'inline-flex', gap: 8 }}>
-          <Link href="/v2/candidates/bulk-upload-invite" style={dt.toolBtn}><Upload size={14} /> Upload &amp; invite</Link>
+          <button type="button" style={dt.toolBtn} onClick={() => setBulkOpen(true)}><Upload size={14} /> Upload &amp; invite</button>
           <button type="button" style={dt.primaryBtn} onClick={() => { setFormError(null); setAddOpen(true); }}><Plus size={14} /> Add candidate</button>
         </span>
       </div>
@@ -176,6 +177,7 @@ export default function V2CandidatesPage() {
         </div>
       </Dialog>
 
+      <BulkUploadInviteDialog open={bulkOpen} onClose={() => setBulkOpen(false)} />
       <CandidateFormDialog open={addOpen} mode="add" submitting={createCandidate.isPending} error={formError} onClose={() => setAddOpen(false)} onSubmit={handleAdd} />
       <CandidateFormDialog open={!!editing} mode="edit" initial={editing ? { name: editing.name, email: editing.email, phone: editing.phone } : undefined} submitting={updateCandidate.isPending} error={formError} onClose={() => setEditing(null)} onSubmit={handleEditSubmit} />
     </>
