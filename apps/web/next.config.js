@@ -22,6 +22,8 @@ const nextConfig = {
       { source: '/exams/:id/edit', destination: '/v2/exams/:id/edit', permanent: false },
       // Job detail (pipeline board) is rebuilt in v2.
       { source: '/jobs/:jobId', destination: '/v2/jobs/:jobId', permanent: false },
+      // Drive detail (live board + results) is rebuilt in v2.
+      { source: '/drives/:driveId', destination: '/v2/drives/:driveId', permanent: false },
     ];
   },
 };
