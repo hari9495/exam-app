@@ -40,7 +40,7 @@ function matchesSearch(row: Invitation, query: string): boolean {
   return row.candidate.name.toLowerCase().includes(query) || row.candidate.email.toLowerCase().includes(query);
 }
 
-const smallNum: React.CSSProperties = { width: 60, textAlign: 'right', padding: '5px 8px', fontSize: 13, borderRadius: 6, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none' };
+const smallNum: React.CSSProperties = { width: 60, textAlign: 'right', padding: '5px 8px', fontSize: 13, borderRadius: 6, border: '1px solid color-mix(in srgb, var(--ink) 15%, var(--hair))', background: 'var(--paper)', color: 'var(--ink)', outline: 'none' };
 
 function AccommodationCell({ invitation, onSave, isPending }: { invitation: Invitation; onSave: (value: number) => void; isPending: boolean }) {
   const [value, setValue] = useState(String(invitation.extraTimePercent));

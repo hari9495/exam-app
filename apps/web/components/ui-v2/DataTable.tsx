@@ -145,7 +145,7 @@ export function DataTable<T extends RowData>({
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', width: 260 }}>
             <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
-            <input value={search} onChange={(e) => onSearchChange?.(e.target.value)} placeholder={searchPlaceholder} aria-label={searchPlaceholder} style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px 8px 30px', fontSize: 13, borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none' }} />
+            <input value={search} onChange={(e) => onSearchChange?.(e.target.value)} placeholder={searchPlaceholder} aria-label={searchPlaceholder} style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px 8px 30px', fontSize: 13, borderRadius: 8, border: '1px solid color-mix(in srgb, var(--ink) 15%, var(--hair))', background: 'var(--paper)', color: 'var(--ink)', outline: 'none' }} />
           </div>
           {toolbarExtra}
           <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8 }}>

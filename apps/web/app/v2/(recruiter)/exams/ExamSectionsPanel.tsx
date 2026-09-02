@@ -21,9 +21,9 @@ const TYPE_COLOR: Record<string, string> = { single_mcq: VIZ.azure, multi_mcq: V
 const TYPE_OPTIONS = [{ value: 'all', label: 'All types' }, ...(Object.keys(TYPE_LABEL) as QuestionType[]).map((value) => ({ value, label: TYPE_LABEL[value] }))];
 const DIFFICULTY_OPTIONS = [{ value: 'all', label: 'All difficulties' }, ...(Object.keys(DIFFICULTY_LABEL) as Difficulty[]).map((value) => ({ value, label: DIFFICULTY_LABEL[value] }))];
 
-const input: React.CSSProperties = { boxSizing: 'border-box', padding: '8px 11px', fontSize: 13, borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none' };
+const input: React.CSSProperties = { boxSizing: 'border-box', padding: '8px 11px', fontSize: 13, borderRadius: 8, border: '1px solid color-mix(in srgb, var(--ink) 15%, var(--hair))', background: 'var(--paper)', color: 'var(--ink)', outline: 'none' };
 const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, padding: 16 };
-const smallNum: React.CSSProperties = { width: 60, textAlign: 'right', padding: '4px 7px', fontSize: 13, borderRadius: 6, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none' };
+const smallNum: React.CSSProperties = { width: 60, textAlign: 'right', padding: '4px 7px', fontSize: 13, borderRadius: 6, border: '1px solid color-mix(in srgb, var(--ink) 15%, var(--hair))', background: 'var(--paper)', color: 'var(--ink)', outline: 'none' };
 
 function TypePill({ type }: { type: QuestionType }) {
   return <Pill c={TYPE_COLOR[type] ?? 'var(--muted)'} label={TYPE_LABEL[type] ?? type} />;

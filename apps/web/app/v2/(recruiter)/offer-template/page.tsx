@@ -59,7 +59,7 @@ export default function V2OfferTemplatePage() {
                     <button key={t} type="button" onClick={() => setBody((c) => `${c}{{${t}}}`)} style={{ fontSize: 11.5, padding: '3px 8px', borderRadius: 6, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>{`{{${t}}}`}</button>
                   ))}
                 </div>
-                <textarea id="offer-body" value={body} onChange={(e) => setBody(e.target.value)} rows={10} style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', fontSize: 13, borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} />
+                <textarea id="offer-body" value={body} onChange={(e) => setBody(e.target.value)} rows={10} style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', fontSize: 13, borderRadius: 8, border: '1px solid color-mix(in srgb, var(--ink) 15%, var(--hair))', background: 'var(--paper)', color: 'var(--ink)', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} />
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>

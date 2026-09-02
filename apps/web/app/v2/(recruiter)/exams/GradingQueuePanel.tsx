@@ -14,7 +14,7 @@ import { VIZ, STATUS } from '../../../../components/ui-v2/viz';
 
 const DIFFICULTY_COLOR: Record<string, string> = { easy: STATUS.ok, medium: STATUS.warn, hard: STATUS.bad };
 const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 12, padding: 16 };
-const input: React.CSSProperties = { boxSizing: 'border-box', padding: '8px 11px', fontSize: 13, borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', outline: 'none' };
+const input: React.CSSProperties = { boxSizing: 'border-box', padding: '8px 11px', fontSize: 13, borderRadius: 8, border: '1px solid color-mix(in srgb, var(--ink) 15%, var(--hair))', background: 'var(--paper)', color: 'var(--ink)', outline: 'none' };
 
 function CodeQuestionGrader({ attemptId, question }: { attemptId: string; question: PendingGradingCodeQuestion }) {
   const [marks, setMarks] = useState(question.marksAwarded !== null ? String(question.marksAwarded) : '');
