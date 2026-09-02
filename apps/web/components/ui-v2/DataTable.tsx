@@ -18,9 +18,10 @@ export const DT_FEATURES = tableFeatures({ rowSortingFeature, rowSelectionFeatur
 export const dt = {
   th: { textAlign: 'left', padding: '13px 12px 11px', whiteSpace: 'nowrap' } as React.CSSProperties,
   td: { padding: '11px 12px', fontSize: 13, color: 'var(--ink)', verticalAlign: 'middle' } as React.CSSProperties,
-  // Canonical secondary button — same height as primaryBtn / v2-cta so action rows read as one size.
-  toolBtn: { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, padding: '9px 14px', borderRadius: 9, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', cursor: 'pointer' } as React.CSSProperties,
-  iconBtn: { display: 'inline-grid', placeItems: 'center', width: 36, height: 36, borderRadius: 9, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--muted)', cursor: 'pointer' } as React.CSSProperties,
+  // Canonical secondary button — white (paper) fill with a defined border so it clearly reads as a
+  // clickable button, not a greyed-out/disabled one, on both grey list pages and white dialogs.
+  toolBtn: { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, padding: '9px 14px', borderRadius: 9, border: '1px solid color-mix(in srgb, var(--ink) 16%, var(--hair))', background: 'var(--paper)', color: 'var(--ink)', cursor: 'pointer', boxShadow: '0 1px 1px rgba(11,18,32,.04)' } as React.CSSProperties,
+  iconBtn: { display: 'inline-grid', placeItems: 'center', width: 36, height: 36, borderRadius: 9, border: '1px solid color-mix(in srgb, var(--ink) 16%, var(--hair))', background: 'var(--paper)', color: 'var(--ink)', cursor: 'pointer', boxShadow: '0 1px 1px rgba(11,18,32,.04)' } as React.CSSProperties,
   // Canonical primary button — matches .v2-cta (the Button component) exactly.
   primaryBtn: { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, padding: '9px 16px', borderRadius: 9, border: 'none', background: 'var(--org-primary)', color: 'var(--org-on-primary)', cursor: 'pointer' } as React.CSSProperties,
   muted: { color: 'var(--muted)' } as React.CSSProperties,

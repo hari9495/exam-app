@@ -3,7 +3,7 @@
 // Shared Add/Edit candidate form, on the ui-v2 Dialog + TextField primitives. Presentational: the
 // page owns the create/update mutations and passes onSubmit + submitting + error.
 import { useEffect, useState } from 'react';
-import { Dialog, TextField, Button } from '../../../../components/ui-v2';
+import { Dialog, TextField, Button, dt } from '../../../../components/ui-v2';
 
 export interface CandidateFormValues { name: string; email: string; phone?: string }
 
@@ -54,7 +54,7 @@ export function CandidateFormDialog({
         </div>
         {shown && <p role="alert" style={{ marginTop: 12, fontSize: 12.5, color: 'var(--danger)' }}>{shown}</p>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-          <button type="button" onClick={onClose} style={{ fontSize: 13, padding: '9px 14px', borderRadius: 9, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', cursor: 'pointer' }}>Cancel</button>
+          <button type="button" onClick={onClose} style={dt.toolBtn}>Cancel</button>
           <Button type="submit" loading={submitting}>{mode === 'add' ? 'Add candidate' : 'Save changes'}</Button>
         </div>
       </form>

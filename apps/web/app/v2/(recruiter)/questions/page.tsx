@@ -184,8 +184,8 @@ export default function V2QuestionsPage() {
             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--org-primary)' }}>{ids.length} selected</span>
             <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8 }}>
               <button type="button" disabled={bulkPending} onClick={() => handleBulk('publish', ids, clear)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '8px 13px', borderRadius: 8, border: 'none', background: 'var(--org-primary)', color: '#fff', cursor: 'pointer' }}><CircleCheck size={14} /> Publish</button>
-              <button type="button" disabled={bulkPending} onClick={() => handleBulk('discard', ids, clear)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '8px 13px', borderRadius: 8, border: '1px solid color-mix(in srgb, var(--danger) 35%, var(--hair))', background: 'var(--surface)', color: 'var(--danger)', cursor: 'pointer' }}><CircleX size={14} /> Discard</button>
-              <button type="button" onClick={clear} style={{ fontSize: 12.5, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--surface)', color: 'var(--ink)', cursor: 'pointer' }}>Clear</button>
+              <button type="button" disabled={bulkPending} onClick={() => handleBulk('discard', ids, clear)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, padding: '9px 14px', borderRadius: 9, border: '1px solid color-mix(in srgb, var(--danger) 35%, var(--hair))', background: 'var(--paper)', color: 'var(--danger)', cursor: 'pointer', boxShadow: '0 1px 1px rgba(11,18,32,.04)' }}><CircleX size={14} /> Discard</button>
+              <button type="button" onClick={clear} style={dt.toolBtn}>Clear</button>
             </span>
           </div>
         ) : undefined}
