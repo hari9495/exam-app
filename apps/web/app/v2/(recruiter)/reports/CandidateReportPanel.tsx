@@ -155,16 +155,17 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
         </div>
       )}
 
-      <div style={{ ...card, marginBottom: 24 }}>
-        <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>Score</p>
-        <p style={{ fontSize: 26, fontWeight: 600, color: 'var(--ink)', margin: 0 }}>
-          {candidate.percentage !== null ? `${candidate.percentage.toFixed(1)}%` : '—'}
-          {candidate.score !== null && candidate.maxScore !== null && (
-            <span style={{ marginLeft: 8, fontSize: 14, fontWeight: 400, color: 'var(--muted)' }}>
-              ({candidate.score}/{candidate.maxScore})
-            </span>
-          )}
-        </p>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginBottom: 24 }}>
+        <div style={{ ...card, padding: 16, minWidth: 180 }}>
+          <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>Score</p>
+          <p style={{ fontSize: 26, fontWeight: 600, color: 'var(--ink)', margin: '2px 0 0' }}>{candidate.percentage !== null ? `${candidate.percentage.toFixed(1)}%` : '—'}</p>
+        </div>
+        {candidate.score !== null && candidate.maxScore !== null && (
+          <div style={{ ...card, padding: 16, minWidth: 180 }}>
+            <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>Points</p>
+            <p style={{ fontSize: 26, fontWeight: 600, color: 'var(--ink)', margin: '2px 0 0' }}>{candidate.score}<span style={{ fontSize: 14, fontWeight: 400, color: 'var(--muted)' }}>/{candidate.maxScore}</span></p>
+          </div>
+        )}
       </div>
 
       {candidate.faceEnrolment && (
@@ -395,16 +396,16 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
               </p>
             </div>
           ) : insight?.status === 'failed' ? (
-            <div style={card}>
-              <p style={{ marginBottom: 12, fontSize: 14, color: 'var(--danger)' }}>Generation failed. This is usually temporary — try again.</p>
-              <button type="button" className="v2-hoverbtn" style={{ ...dt.toolBtn, opacity: regenerate.isPending ? 0.5 : 1 }} disabled={regenerate.isPending} onClick={handleRegenerate}>
+            <div style={{ ...card, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <p style={{ fontSize: 14, color: 'var(--danger)', margin: 0 }}>Generation failed. This is usually temporary — try again.</p>
+              <button type="button" className="v2-hoverbtn" style={{ ...dt.toolBtn, flexShrink: 0, opacity: regenerate.isPending ? 0.5 : 1 }} disabled={regenerate.isPending} onClick={handleRegenerate}>
                 Retry
               </button>
             </div>
           ) : (
-            <div style={card}>
-              <p style={{ marginBottom: 12, fontSize: 14, color: 'var(--muted)' }}>Not yet generated</p>
-              <button type="button" className="v2-hoverbtn" style={{ ...dt.toolBtn, opacity: regenerate.isPending ? 0.5 : 1 }} disabled={regenerate.isPending} onClick={handleRegenerate}>
+            <div style={{ ...card, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <p style={{ fontSize: 14, color: 'var(--muted)', margin: 0 }}>Not yet generated</p>
+              <button type="button" className="v2-hoverbtn" style={{ ...dt.toolBtn, flexShrink: 0, opacity: regenerate.isPending ? 0.5 : 1 }} disabled={regenerate.isPending} onClick={handleRegenerate}>
                 Regenerate
               </button>
             </div>
