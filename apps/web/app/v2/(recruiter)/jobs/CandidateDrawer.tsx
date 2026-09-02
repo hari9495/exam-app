@@ -418,7 +418,7 @@ export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: B
             <ul style={{ display: 'flex', flexDirection: 'column', gap: 4, listStyle: 'none', padding: 0, margin: 0 }}>
               {row.examResults.map((result) => (
                 <li key={result.examId}>
-                  <Link href={`/reports/${result.examId}/candidates/${row.candidateId}`} style={{ fontSize: 13, color: 'var(--org-primary)', textDecoration: 'none' }}>{chipLabel(result)}</Link>
+                  <Link href={`/v2/reports/${result.examId}/candidates/${row.candidateId}`} style={{ fontSize: 13, color: 'var(--org-primary)', textDecoration: 'none' }}>{chipLabel(result)}</Link>
                 </li>
               ))}
             </ul>

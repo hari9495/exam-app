@@ -51,7 +51,7 @@ function PipelineCard({ row, canManage, onOpen, onStageChange, onReject }: Pipel
       <button type="button" onClick={() => onOpen(row)} style={{ textAlign: 'left', background: 'none', border: 'none', padding: 0, fontSize: 13.5, fontWeight: 600, color: 'var(--org-primary)', cursor: 'pointer' }}>{row.candidateName}</button>
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
         {row.examResults.map((result) => (
-          <Link key={result.examId} href={`/reports/${result.examId}/candidates/${row.candidateId}`} style={chip}>{chipLabel(result)}</Link>
+          <Link key={result.examId} href={`/v2/reports/${result.examId}/candidates/${row.candidateId}`} style={chip}>{chipLabel(result)}</Link>
         ))}
         {row.fitScore != null ? (
           <span style={{ ...chip, fontWeight: 600, color: chipColor(row.fitScore) }}>{row.fitScore}{row.fitStale && <span title="Stale — candidate updated since last score">⚠</span>}</span>

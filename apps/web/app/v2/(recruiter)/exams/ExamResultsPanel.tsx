@@ -1,9 +1,9 @@
 'use client';
 
 // v2 ExamResultsPanel — re-skin of components/ExamResultsPanel.tsx on v2 primitives. All filtering,
-// selection, export, advance and average-comparison logic is verbatim (format only). Reuses the
-// number-filter helpers, IntegrityBadge, CandidateReportPanel, QuestionAccuracyPanel and
-// AdvanceToNextRoundModal as-is.
+// selection, export, advance and average-comparison logic is verbatim (format only). Uses the v2
+// CandidateReportPanel for the inline drill-in; still reuses the number-filter helpers,
+// IntegrityBadge, QuestionAccuracyPanel and AdvanceToNextRoundModal as-is.
 import { useState } from 'react';
 import { ListFilter, Check } from 'lucide-react';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -14,7 +14,7 @@ import { useResultsList, useResultsExport, useQuestionAccuracy } from '../../../
 import { RESULT_STATUS_LABEL, RESULT_STATUS_TONE } from '../../../../lib/candidate-status';
 import { AdvanceToNextRoundModal } from '../../../../components/AdvanceToNextRoundModal';
 import { QuestionAccuracyPanel } from '../../../../components/QuestionAccuracyPanel';
-import { CandidateReportPanel } from '../../../../components/CandidateReportPanel';
+import { CandidateReportPanel } from '../reports/CandidateReportPanel';
 import { ExamResultRow } from '../../../../lib/types';
 import { DataTable, DT_FEATURES, dt, SortHead, Pill, Cb, Tabs, Dropdown, DropdownItem } from '../../../../components/ui-v2';
 import { STATUS, VIZ } from '../../../../components/ui-v2/viz';
