@@ -89,11 +89,24 @@ export default function V2JobPage() {
         {job?.description && <p style={{ marginTop: 6, fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.5 }}>{job.description}</p>}
       </div>
 
-      {job && <LinkedExams jobId={jobId} linkedExams={job.linkedExams} canManage={canManage} />}
-      {job && canManage && <PublicApplyControl job={job} jobId={jobId} />}
-      {job && canManage && <FitCriteriaEditor job={job} jobId={jobId} />}
+      {job && (
+        <div style={{ background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, padding: '0 22px' }}>
+          <div style={{ padding: '18px 0' }}><LinkedExams jobId={jobId} linkedExams={job.linkedExams} canManage={canManage} /></div>
+          {canManage && (
+            <div style={{ padding: '18px 0', borderTop: '1px solid var(--hair)' }}>
+              <PublicApplyControl job={job} jobId={jobId} />
+            </div>
+          )}
+          {canManage && (
+            <div style={{ padding: '18px 0', borderTop: '1px solid var(--hair)' }}>
+              <h3 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', margin: '0 0 12px' }}>Fit criteria</h3>
+              <FitCriteriaEditor job={job} jobId={jobId} />
+            </div>
+          )}
+        </div>
+      )}
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 4 }}>
         <h2 className="v2-title" style={{ fontSize: 16, margin: 0 }}>Pipeline</h2>
         {canManage && <button type="button" onClick={() => setAddOpen(true)} style={dt.primaryBtn}>Add candidate</button>}
       </div>
