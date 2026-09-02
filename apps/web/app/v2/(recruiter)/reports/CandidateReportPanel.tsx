@@ -89,7 +89,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
   );
 
   return (
-    <div>
+    <div style={{ maxWidth: 1040, margin: '0 auto' }}>
       {backSlot}
       <div style={{ marginTop: 12, marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
