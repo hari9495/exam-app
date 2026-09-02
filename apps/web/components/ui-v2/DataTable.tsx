@@ -168,7 +168,7 @@ export function DataTable<T extends RowData>({
 
       {/* Table */}
       <div style={{ background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', overflowY: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               {table.getHeaderGroups().map((hg) => (

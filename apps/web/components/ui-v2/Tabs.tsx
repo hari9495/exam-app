@@ -11,7 +11,7 @@ export function Tabs({
   onChange: (v: string) => void;
 }) {
   return (
-    <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--hair)', marginBottom: 20, overflowX: 'auto' }}>
+    <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--hair)', marginBottom: 20, overflowX: 'auto', overflowY: 'hidden' }}>
       {tabs.map((t) => {
         const active = t.value === value;
         return (

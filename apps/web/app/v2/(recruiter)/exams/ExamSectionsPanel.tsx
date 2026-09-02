@@ -125,7 +125,7 @@ function SectionQuestionList({ examId, section, locked }: { examId: string; sect
       {visible.length === 0 ? (
         <p style={{ padding: '16px 0', textAlign: 'center', fontSize: 13, color: 'var(--muted)' }}>No questions match your search.</p>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', overflowY: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr><th style={dt.th}>#</th><th style={dt.th}>Question</th><th style={dt.th}>Type</th><th style={dt.th}>Difficulty</th><th style={dt.th}>Marks</th>{!locked && <th style={dt.th} />}</tr></thead>
             <tbody>

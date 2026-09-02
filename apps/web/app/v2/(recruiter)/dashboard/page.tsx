@@ -157,7 +157,7 @@ export default function V2DashboardPage() {
       {analytics && analytics.examQuality.length > 0 && (
         <div style={{ marginTop: 12 }}>
           <Panel title="Exam quality" actions={<span style={{ fontSize: 11, color: 'var(--muted)' }}>{analytics.examQuality.length} exams · hardest first</span>}>
-            <div style={{ overflowX: 'auto' }}>
+            <div style={{ overflowX: 'auto', overflowY: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ textAlign: 'left', color: 'var(--muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
