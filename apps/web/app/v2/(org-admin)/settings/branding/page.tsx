@@ -75,6 +75,31 @@ function ColorSwatch({ label, value, onChange }: { label: string; value: string;
   );
 }
 
+// Live brand preview — a mini login/console mock that reflects the chosen colors + logo in
+// real time (the classic branding-settings "editor + preview" pattern). Presentation only.
+function BrandPreview({ logoUrl, orgName, primary, accent, textColor }: { logoUrl?: string | null; orgName?: string | null; primary: string; accent: string; textColor: string }) {
+  return (
+    <aside style={{ flex: '0 0 320px', position: 'sticky', top: 16, ...card }}>
+      <h2 style={{ ...sectionTitle, marginBottom: 4 }}>Live preview</h2>
+      <p style={{ ...desc, margin: '0 0 14px' }}>How your colors and logo appear to candidates and staff.</p>
+      <div style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid var(--hair)', background: 'var(--surface)' }}>
+        {/* top bar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'var(--paper)', borderBottom: '1px solid var(--hair)' }}>
+          {logoUrl ? <img src={logoUrl} alt="" style={{ height: 22, width: 22, borderRadius: 5, objectFit: 'contain' }} /> : <span style={{ height: 22, width: 22, borderRadius: 5, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, background: primary, color: textColor }}>{(orgName ?? 'O')[0]?.toUpperCase()}</span>}
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: ink }}>{orgName || 'Your organization'}</span>
+        </div>
+        {/* body */}
+        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ height: 8, width: '55%', borderRadius: 99, background: 'color-mix(in srgb, var(--ink) 12%, transparent)' }} />
+          <div style={{ height: 8, width: '80%', borderRadius: 99, background: 'color-mix(in srgb, var(--ink) 8%, transparent)' }} />
+          <button type="button" tabIndex={-1} style={{ marginTop: 6, alignSelf: 'flex-start', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, background: primary, color: textColor, cursor: 'default' }}>Sign in</button>
+          <span style={{ alignSelf: 'flex-start', fontSize: 11, fontWeight: 600, borderRadius: 99, padding: '3px 10px', background: accent, color: '#1a1f1d' }}>Accent</span>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
 export default function V2BrandingSettingsPage() {
   const { data: branding, isLoading, isError, error: loadError } = useOrgBranding();
   const updateBranding = useUpdateBranding();
@@ -147,7 +172,7 @@ export default function V2BrandingSettingsPage() {
   }
 
   return (
-    <div style={{ maxWidth: 760 }}>
+    <div style={{ maxWidth: 1040 }}>
       <div style={{ marginBottom: 16 }}>
         <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Branding Settings</h1>
         <p style={{ ...desc, marginTop: 6 }}>Theme the candidate exam experience and staff console with your organization&apos;s colors and logo.</p>
@@ -163,7 +188,8 @@ export default function V2BrandingSettingsPage() {
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 20 }}>
+        <div style={{ flex: '1 1 440px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
         {/* Colors */}
         <section style={card}>
           <h2 style={sectionTitle}>Colors</h2>
@@ -238,6 +264,8 @@ export default function V2BrandingSettingsPage() {
             </p>
           </div>
         </section>
+        </div>
+        <BrandPreview logoUrl={branding?.logoUrl} orgName={branding?.name} primary={primaryColor} accent={accentColor} textColor={textColor} />
       </div>
     </div>
   );
