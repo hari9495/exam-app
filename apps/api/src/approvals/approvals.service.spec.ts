@@ -110,12 +110,20 @@ describe('ApprovalsService.submit', () => {
 
     expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'approval.step_skipped' }));
     expect(tx.$queryRaw).toHaveBeenCalled();
-    expect(notifications.notify).toHaveBeenCalledWith(
-      context,
-      'user-1',
-      ['user-1', 'admin-1'],
-      'approval.step_skipped',
-      expect.objectContaining({ entityType: 'job', entityId: 'job-1' }),
-    );
+
+    const skippedCall = notifications.notify.mock.calls.find((call: unknown[]) => call[3] === 'approval.step_skipped');
+    expect(skippedCall).toBeDefined();
+    const [, actorArg, recipientsArg, , target] = skippedCall as [unknown, string, string[], string, Record<string, unknown>];
+    expect(target).toEqual(expect.objectContaining({ entityType: 'job', entityId: 'job-1' }));
+
+    // Regression for the bug where the submitter never received this notification:
+    // NotificationsService.notify unconditionally drops the actor from its own recipient list
+    // (`ids.filter(id => id !== actorUserId)`). Passing the submitter as the actor here means
+    // the submitter self-filters out and only admins are notified -- replicate that exact
+    // filter against what was actually passed, and prove the submitter survives it.
+    expect(actorArg).not.toBe('user-1');
+    const survivingRecipients = [...new Set(recipientsArg)].filter((id) => id && id !== actorArg);
+    expect(survivingRecipients).toContain('user-1');
+    expect(survivingRecipients).toContain('admin-1');
   });
 });

@@ -31,6 +31,14 @@ interface SubmitTxOutcome {
 export class ApprovalsService {
   private readonly logger = new Logger(ApprovalsService.name);
 
+  // Nil-GUID sentinel for a system-generated notification's actor -- same convention as the
+  // LOOKUP_ORG sentinel in offers/interviews/public-applications services. Needed because
+  // NotificationsService.notify() unconditionally drops the actor from its own recipient list
+  // (`ids.filter(id => id !== actorUserId)`), and this notification's real recipient list is
+  // [submitter, ...admins]: using submitterUserId as the actor here would silently drop the
+  // submitter from their own "your submission had skipped steps" notification.
+  private readonly SYSTEM_ACTOR_ID = '00000000-0000-0000-0000-000000000000';
+
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly audit: AuditService,
@@ -123,7 +131,7 @@ export class ApprovalsService {
       try {
         const adminIds = await this.getApprovalsConfigureHolderIds(context);
         const recipients = [submitterUserId, ...adminIds];
-        await this.notifications.notify(context, submitterUserId, recipients, 'approval.step_skipped', {
+        await this.notifications.notify(context, this.SYSTEM_ACTOR_ID, recipients, 'approval.step_skipped', {
           entityType: outcome.subjectType,
           entityId: subjectId,
           contextText: outcome.skipped.map((s) => s.reason).join('; '),
