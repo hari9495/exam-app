@@ -24,8 +24,20 @@ import {
   useTestConnectedApp,
 } from '../../../../../lib/hooks/useConnectedApps';
 import type { WebhookDeliveryRow, ConnectedAppRow } from '../../../../../lib/types';
+import { Mail, Sparkles, KeyRound, Webhook, Plug } from 'lucide-react';
 import { Button, TextField, PasswordField, Combobox, Dialog, DataTable, DT_FEATURES, dt, Cb, SortHead, Pill } from '../../../../../components/ui-v2';
 import { STATUS } from '../../../../../components/ui-v2/viz';
+
+// Section-sidebar layout (21st.dev "Settings Card with Sidebar" #25323, retoned Azure): a left
+// icon-nav swaps the right panel so each integration gets its own focused space.
+const SECTIONS = [
+  { id: 'email', label: 'Email (SMTP)', icon: Mail },
+  { id: 'ai', label: 'AI API key', icon: Sparkles },
+  { id: 'api', label: 'Public API', icon: KeyRound },
+  { id: 'webhooks', label: 'Webhooks', icon: Webhook },
+  { id: 'apps', label: 'Connected apps', icon: Plug },
+] as const;
+type SectionId = (typeof SECTIONS)[number]['id'];
 
 const ink = 'var(--ink)';
 const muted = 'var(--muted)';
@@ -67,6 +79,7 @@ export default function V2IntegrationsSettingsPage() {
 
   const [notice, setNotice] = useState<Notice>(null);
   const notify = (type: 'success' | 'error', text: string) => { setNotice({ type, text }); setTimeout(() => setNotice(null), 4000); };
+  const [active, setActive] = useState<SectionId>('email');
 
   const [smtpHost, setSmtpHost] = useState('');
   const [smtpPort, setSmtpPort] = useState('587');
@@ -182,7 +195,7 @@ export default function V2IntegrationsSettingsPage() {
   }
 
   return (
-    <div style={{ maxWidth: 820 }}>
+    <div style={{ maxWidth: 1040 }}>
       <div style={{ marginBottom: 16 }}>
         <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Integrations</h1>
         <p style={{ ...desc, marginTop: 6 }}>Connect email delivery, AI, the public API, webhooks, and chat apps to your organization.</p>
@@ -192,8 +205,35 @@ export default function V2IntegrationsSettingsPage() {
         <div role="status" style={{ marginBottom: 12, fontSize: 13, padding: '9px 13px', borderRadius: 9, border: `1px solid ${notice.type === 'success' ? 'color-mix(in srgb, #15803d 30%, transparent)' : 'color-mix(in srgb, var(--danger) 30%, transparent)'}`, background: notice.type === 'success' ? 'color-mix(in srgb, #15803d 8%, transparent)' : 'color-mix(in srgb, var(--danger) 8%, transparent)', color: notice.type === 'success' ? STATUS.ok : 'var(--danger)' }}>{notice.text}</div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* Email (SMTP) */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 20 }}>
+        {/* Section nav (21st sidebar pattern) */}
+        <nav style={{ flex: '0 0 210px', display: 'flex', flexDirection: 'column', gap: 2, padding: 8, background: 'var(--paper)', border: '1px solid color-mix(in srgb, var(--ink) 12%, var(--hair))', borderRadius: 14, position: 'sticky', top: 16 }}>
+          {SECTIONS.map(({ id, label, icon: Icon }) => {
+            const on = active === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActive(id)}
+                aria-current={on ? 'page' : undefined}
+                className={on ? undefined : 'v2-hoverbtn'}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
+                  padding: '9px 11px', borderRadius: 9, border: 'none', cursor: 'pointer', fontSize: 13.5,
+                  background: on ? 'var(--org-primary)' : 'transparent',
+                  color: on ? 'var(--org-on-primary)' : 'var(--muted)',
+                  fontWeight: on ? 600 : 500,
+                }}
+              >
+                <Icon size={16} style={{ flexShrink: 0 }} /> {label}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Active section panel */}
+        <div style={{ flex: '1 1 460px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {active === 'email' && (
         <section style={card}>
           <h2 style={sectionTitle}>Email (SMTP)</h2>
           <p style={desc}>
@@ -242,7 +282,8 @@ export default function V2IntegrationsSettingsPage() {
           </div>
         </section>
 
-        {/* AI API Key */}
+        )}
+        {active === 'ai' && (
         <section style={card}>
           <h2 style={sectionTitle}>AI API Key</h2>
           <p style={desc}>
@@ -314,7 +355,8 @@ export default function V2IntegrationsSettingsPage() {
           </div>
         </section>
 
-        {/* Public API */}
+        )}
+        {active === 'api' && (
         <section style={card}>
           <h2 style={sectionTitle}>Public API</h2>
           <p style={desc}>
@@ -339,7 +381,8 @@ export default function V2IntegrationsSettingsPage() {
           {apiKeyError && <p role="alert" style={{ ...errorText, marginTop: 10 }}>{apiKeyError}</p>}
         </section>
 
-        {/* Webhooks */}
+        )}
+        {active === 'webhooks' && (
         <section style={card}>
           <h2 style={sectionTitle}>Webhooks</h2>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, marginTop: 14 }}>
@@ -375,8 +418,9 @@ export default function V2IntegrationsSettingsPage() {
           </div>
         </section>
 
-        {/* Connected Apps */}
-        <ConnectedAppsSection notify={notify} />
+        )}
+        {active === 'apps' && <ConnectedAppsSection notify={notify} />}
+        </div>
       </div>
     </div>
   );
