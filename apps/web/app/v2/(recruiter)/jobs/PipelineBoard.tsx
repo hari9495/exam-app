@@ -50,19 +50,24 @@ function PipelineCard({ row, canManage, onOpen, onStageChange, onReject }: Pipel
   return (
     <div style={card}>
       <button type="button" onClick={() => onOpen(row)} style={{ textAlign: 'left', background: 'none', border: 'none', padding: 0, fontSize: 13.5, fontWeight: 600, color: 'var(--org-primary)', cursor: 'pointer' }}>{row.candidateName}</button>
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
-        {row.examResults.map((result) => (
-          <Link key={result.examId} href={`/v2/reports/${result.examId}/candidates/${row.candidateId}`} style={chip}>{chipLabel(result)}</Link>
-        ))}
-        {row.fitScore != null ? (
-          <span style={{ ...chip, fontWeight: 600, color: chipColor(row.fitScore) }}>{row.fitScore}{row.fitStale && <span title="Stale — candidate updated since last score">⚠</span>}</span>
-        ) : <span style={{ fontSize: 12, color: 'var(--muted)' }}>—</span>}
+      {/* Chips row only when there's something to show — no orphan "—" placeholder. */}
+      {(row.examResults.length > 0 || row.fitScore != null) && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+          {row.examResults.map((result) => (
+            <Link key={result.examId} href={`/v2/reports/${result.examId}/candidates/${row.candidateId}`} style={chip}>{chipLabel(result)}</Link>
+          ))}
+          {row.fitScore != null && (
+            <span style={{ ...chip, fontWeight: 600, color: chipColor(row.fitScore) }}>{row.fitScore}{row.fitStale && <span title="Stale — candidate updated since last score">⚠</span>}</span>
+          )}
+        </div>
+      )}
+      {/* One compact meta line: rating + notes (or a single empty-state), then source. */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px 10px', fontSize: 11.5, color: 'var(--muted)' }}>
+        {row.avgRating !== null && <RatingStars avgRating={row.avgRating} />}
+        {row.feedbackCount > 0 && <span>{row.feedbackCount} {row.feedbackCount === 1 ? 'note' : 'notes'}</span>}
+        {row.avgRating === null && row.feedbackCount === 0 && <span>No feedback yet</span>}
+        <span>Added via {row.enteredVia}</span>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <RatingStars avgRating={row.avgRating} />
-        <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>{row.feedbackCount} {row.feedbackCount === 1 ? 'note' : 'notes'}</span>
-      </div>
-      <p style={{ fontSize: 11.5, color: 'var(--muted)', margin: 0 }}>Added via {row.enteredVia}</p>
       {row.assigneeName && <p style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--org-primary)', margin: 0 }}>Assigned to {row.assigneeName}</p>}
       {canManage && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderTop: '1px solid var(--hair)', paddingTop: 8 }}>
