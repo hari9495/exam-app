@@ -5,7 +5,7 @@
 // the add-entry payload are verbatim (format only).
 import { useState } from 'react';
 import { Search } from 'lucide-react';
-import { Dialog, Tabs, TextField, Button, dt } from '../../../../components/ui-v2';
+import { Dialog, Tabs, TextField, Button, FormAlert, dt } from '../../../../components/ui-v2';
 import { useToast } from '../../../../components/ui';
 import { useAddEntry } from '../../../../lib/hooks/usePipeline';
 import { useCandidates } from '../../../../lib/hooks/useCandidates';
@@ -20,6 +20,7 @@ export function AddCandidateModal({ jobId, open, onClose }: { jobId: string; ope
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   function reset() {
     setMode('existing');
@@ -28,6 +29,7 @@ export function AddCandidateModal({ jobId, open, onClose }: { jobId: string; ope
     setName('');
     setEmail('');
     setPhone('');
+    setError(null);
   }
   function handleClose() {
     reset();
@@ -42,9 +44,10 @@ export function AddCandidateModal({ jobId, open, onClose }: { jobId: string; ope
         ? selectedCandidateId ? { candidateId: selectedCandidateId } : null
         : name.trim() && email.trim() ? { newCandidate: { name: name.trim(), email: email.trim(), phone: phone.trim() || undefined } } : null;
     if (!input) return;
+    setError(null);
     addEntry.mutate(input, {
       onSuccess: () => { toast('Candidate added to the pipeline.'); handleClose(); },
-      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to add candidate.', 'error'),
+      onError: (err) => setError(err instanceof Error ? err.message : 'Failed to add candidate.'),
     });
   }
 
@@ -87,6 +90,7 @@ export function AddCandidateModal({ jobId, open, onClose }: { jobId: string; ope
         )}
       </div>
 
+      {error && <div style={{ marginTop: 14 }}><FormAlert>{error}</FormAlert></div>}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
         <button type="button" onClick={handleClose} className="v2-hoverbtn" style={dt.toolBtn}>Cancel</button>
         <Button onClick={handleSubmit} loading={addEntry.isPending} disabled={!canSubmit}>Add</Button>

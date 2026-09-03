@@ -8,12 +8,20 @@ import Link from 'next/link';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Plus, MoreHorizontal, ListFilter, Check, Trash2 } from 'lucide-react';
 import { useJobs, useCreateJob, useDeleteJob } from '../../../../lib/hooks/usePipeline';
+import { useTeammates } from '../../../../lib/hooks/useUserDirectory';
 import { type JobListItem, type JobStatus, PIPELINE_STAGES } from '../../../../lib/types';
-import { DataTable, DT_FEATURES, dt, SortHead, Pill, Dropdown, DropdownItem, Dialog, TextField, Button } from '../../../../components/ui-v2';
+import { DataTable, DT_FEATURES, dt, SortHead, Pill, Dropdown, DropdownItem, Dialog, TextField, Combobox, Button } from '../../../../components/ui-v2';
 import { STATUS } from '../../../../components/ui-v2/viz';
 
 const STATUS_OPTS = [{ value: 'all', label: 'All statuses' }, { value: 'open', label: 'Open' }, { value: 'closed', label: 'Closed' }];
-const STATUS_PILL: Record<JobStatus, { c: string; label: string }> = { open: { c: STATUS.ok, label: 'Open' }, closed: { c: 'var(--muted)', label: 'Closed' } };
+// draft/pending_approval only ever appear when the org's requisition gate is on (Task 3); the
+// list filter above stays open/closed-only since GET /jobs only supports filtering by those two.
+const STATUS_PILL: Record<JobStatus, { c: string; label: string }> = {
+  draft: { c: 'var(--muted)', label: 'Draft' },
+  pending_approval: { c: STATUS.warn, label: 'Pending approval' },
+  open: { c: STATUS.ok, label: 'Open' },
+  closed: { c: 'var(--muted)', label: 'Closed' },
+};
 
 function stageSummary(stageCounts: JobListItem['stageCounts']): string {
   const parts = PIPELINE_STAGES.map((stage) => ({ stage, count: stageCounts[stage] })).filter((e) => e.count > 0);
@@ -26,23 +34,43 @@ export default function V2JobsPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [department, setDepartment] = useState('');
+  const [hiringManagerId, setHiringManagerId] = useState('');
+  const [headcount, setHeadcount] = useState('');
+  const [salaryMin, setSalaryMin] = useState('');
+  const [salaryMax, setSalaryMax] = useState('');
+  const [salaryCurrency, setSalaryCurrency] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<JobListItem | null>(null);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const notify = (type: 'success' | 'error', text: string) => { setNotice({ type, text }); setTimeout(() => setNotice(null), 4000); };
 
   const { data: jobs, isLoading, isError } = useJobs(statusFilter === 'all' ? undefined : (statusFilter as JobStatus));
+  const { data: teammates } = useTeammates();
+  const managerOptions = [{ value: '', label: 'None' }, ...(teammates ?? []).map((t) => ({ value: t.id, label: t.name ?? t.email }))];
   const createJob = useCreateJob();
   const deleteJob = useDeleteJob();
   const q = search.trim().toLowerCase();
   const rows = q ? (jobs ?? []).filter((j) => j.title.toLowerCase().includes(q)) : (jobs ?? []);
 
+  function resetForm() {
+    setTitle(''); setDescription(''); setDepartment(''); setHiringManagerId(''); setHeadcount(''); setSalaryMin(''); setSalaryMax(''); setSalaryCurrency('');
+  }
   function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) { setFormError('Job title is required.'); return; }
     setFormError(null);
-    createJob.mutate({ title: title.trim(), description: description.trim() || undefined }, {
-      onSuccess: () => { setAddOpen(false); setTitle(''); setDescription(''); notify('success', 'Job created.'); },
+    createJob.mutate({
+      title: title.trim(),
+      description: description.trim() || undefined,
+      department: department.trim() || undefined,
+      hiringManagerId: hiringManagerId || undefined,
+      headcount: headcount.trim() ? Number(headcount) : undefined,
+      salaryMin: salaryMin.trim() ? Number(salaryMin) : undefined,
+      salaryMax: salaryMax.trim() ? Number(salaryMax) : undefined,
+      salaryCurrency: salaryCurrency.trim() || undefined,
+    }, {
+      onSuccess: () => { setAddOpen(false); resetForm(); notify('success', 'Job created.'); },
       onError: (err) => setFormError(err instanceof Error ? err.message : 'Failed to create job.'),
     });
   }
@@ -103,6 +131,17 @@ export default function V2JobsPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <TextField id="job-title" label="Job title" value={title} onChange={setTitle} required autoComplete="off" />
             <TextField id="job-desc" label="Description (optional)" value={description} onChange={setDescription} autoComplete="off" />
+            <TextField id="job-department" label="Department (optional)" value={department} onChange={setDepartment} autoComplete="off" />
+            <div>
+              <label className="v2-label">Hiring manager (optional)</label>
+              <Combobox options={managerOptions} value={hiringManagerId} onChange={setHiringManagerId} placeholder="None" width="100%" />
+            </div>
+            <TextField id="job-headcount" label="Headcount (optional)" type="number" value={headcount} onChange={setHeadcount} autoComplete="off" />
+            <div style={{ display: 'flex', gap: 10 }}>
+              <div style={{ flex: 1 }}><TextField id="job-salary-min" label="Salary min (optional)" type="number" value={salaryMin} onChange={setSalaryMin} autoComplete="off" /></div>
+              <div style={{ flex: 1 }}><TextField id="job-salary-max" label="Salary max (optional)" type="number" value={salaryMax} onChange={setSalaryMax} autoComplete="off" /></div>
+              <div style={{ width: 90 }}><TextField id="job-currency" label="Currency" value={salaryCurrency} onChange={setSalaryCurrency} placeholder="USD" autoComplete="off" /></div>
+            </div>
           </div>
           {formError && <p role="alert" style={{ marginTop: 12, fontSize: 12.5, color: 'var(--danger)' }}>{formError}</p>}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>

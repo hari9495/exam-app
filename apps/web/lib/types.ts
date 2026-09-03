@@ -269,7 +269,7 @@ export interface WalkInGroup {
   jobId: string | null;
 }
 
-export type JobStatus = 'open' | 'closed';
+export type JobStatus = 'draft' | 'pending_approval' | 'open' | 'closed';
 export type PipelineStage = 'applied' | 'screened' | 'interview' | 'offer' | 'hired';
 
 export const PIPELINE_STAGES: PipelineStage[] = ['applied', 'screened', 'interview', 'offer', 'hired'];
@@ -322,6 +322,7 @@ export interface JobListItem {
   status: JobStatus;
   createdAt: string;
   stageCounts: Record<PipelineStage, number> & { rejected: number };
+  approval: ApprovalSummary | null;
 }
 
 // Mirrors apps/api/src/analytics/pipeline-analytics.ts HiringAnalytics exactly.
@@ -374,6 +375,13 @@ export interface JobDetail {
   applyToken: string | null;
   fitCriteria?: string | null;
   fitRubric?: string | null;
+  department: string | null;
+  hiringManagerId: string | null;
+  headcount: number | null;
+  salaryMin: number | null;
+  salaryMax: number | null;
+  salaryCurrency: string | null;
+  approval: ApprovalSummary | null;
 }
 
 export type CandidateParseStatus = 'pending' | 'parsing' | 'done' | 'failed' | 'unavailable';

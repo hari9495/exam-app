@@ -12,14 +12,25 @@ import { LinkedExams } from '../LinkedExams';
 import { AddCandidateModal } from '../AddCandidateModal';
 import { PipelineBoard } from '../PipelineBoard';
 import { FitCriteriaEditor } from '../FitCriteriaEditor';
+import { RequisitionSection } from '../RequisitionSection';
 import { useJob, useUpdateJob } from '../../../../../lib/hooks/usePipeline';
 import { useAuth } from '../../../../../lib/auth-context';
 import { JobDetail, JobStatus } from '../../../../../lib/types';
-import { dt, Pill } from '../../../../../components/ui-v2';
+import { dt, Pill, FormAlert } from '../../../../../components/ui-v2';
 import { STATUS } from '../../../../../components/ui-v2/viz';
 
 const backLink: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)', textDecoration: 'none' };
-const STATUS_TONE: Record<JobStatus, { c: string; label: string }> = { open: { c: STATUS.ok, label: 'Open' }, closed: { c: 'var(--muted)', label: 'Closed' } };
+const STATUS_TONE: Record<JobStatus, { c: string; label: string }> = {
+  draft: { c: 'var(--muted)', label: 'Draft' },
+  pending_approval: { c: STATUS.warn, label: 'Pending approval' },
+  open: { c: STATUS.ok, label: 'Open' },
+  closed: { c: 'var(--muted)', label: 'Closed' },
+};
+// Requires an open (approved) requisition -- matches the API's draft/pending_approval gate on
+// add-entry and enabling public-apply (pipeline.service.ts). Closed jobs are left alone: the API
+// doesn't gate them either, and disabling would regress today's (pre-gate) closed-job behavior.
+const goLiveGated = (status: JobStatus) => status === 'draft' || status === 'pending_approval';
+const GO_LIVE_HINT = 'Requires approval to go live';
 
 // Side-label section, same pattern as the exam form's <Section>: title + description on the left,
 // the reused control on the right. `first` drops the top divider.
@@ -40,10 +51,13 @@ function PublicApplyControl({ job, jobId }: { job: JobDetail; jobId: string }) {
   const updateJob = useUpdateJob(jobId);
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const applyUrl = job.applyToken && typeof window !== 'undefined' ? `${window.location.origin}/apply/${job.applyToken}` : '';
+  const gated = goLiveGated(job.status);
 
   function toggle(next: boolean) {
-    updateJob.mutate({ publicApplyEnabled: next }, { onError: (error) => toast(error instanceof Error ? error.message : 'Failed to update job.', 'error') });
+    setError(null);
+    updateJob.mutate({ publicApplyEnabled: next }, { onError: (err) => setError(err instanceof Error ? err.message : 'Failed to update job.') });
   }
   async function handleCopy() {
     try {
@@ -54,10 +68,12 @@ function PublicApplyControl({ job, jobId }: { job: JobDetail; jobId: string }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 9, fontSize: 13, color: 'var(--ink)', cursor: 'pointer' }}>
-        <input type="checkbox" checked={job.publicApplyEnabled} disabled={updateJob.isPending} onChange={(e) => toggle(e.target.checked)} style={{ width: 15, height: 15, accentColor: 'var(--org-primary)' }} />
+      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 9, fontSize: 13, color: gated ? 'var(--muted)' : 'var(--ink)', cursor: gated ? 'not-allowed' : 'pointer' }}>
+        <input type="checkbox" checked={job.publicApplyEnabled} disabled={updateJob.isPending || gated} onChange={(e) => toggle(e.target.checked)} style={{ width: 15, height: 15, accentColor: 'var(--org-primary)' }} />
         Enable public applications
       </label>
+      {gated && <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>{GO_LIVE_HINT}</p>}
+      {error && <FormAlert>{error}</FormAlert>}
       {job.publicApplyEnabled && applyUrl && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 560 }}>
           <input readOnly value={applyUrl} aria-label="Public apply link" onFocus={(e) => e.target.select()}
@@ -96,7 +112,7 @@ export default function V2JobPage() {
             <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>{job?.title ?? 'Job'}</h1>
             {job && <Pill c={STATUS_TONE[job.status].c} label={STATUS_TONE[job.status].label} />}
           </div>
-          {canManage && job && (
+          {canManage && job && (job.status === 'open' || job.status === 'closed') && (
             <button type="button" onClick={toggleStatus} disabled={updateJob.isPending} className="v2-hoverbtn" style={dt.toolBtn}>{job.status === 'open' ? 'Close job' : 'Reopen job'}</button>
           )}
         </div>
@@ -105,7 +121,12 @@ export default function V2JobPage() {
 
       {job && (
         <div className="wf-editor" style={{ background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, padding: '0 28px' }}>
-          <JobSection first title="Linked exams" description="Attach the exams candidates take for this role.">
+          {canManage && (
+            <JobSection first title="Requisition" description="Role details, and the approval status for opening this requisition.">
+              <RequisitionSection job={job} jobId={jobId} />
+            </JobSection>
+          )}
+          <JobSection first={!canManage} title="Linked exams" description="Attach the exams candidates take for this role.">
             <LinkedExams jobId={jobId} linkedExams={job.linkedExams} canManage={canManage} />
           </JobSection>
           {canManage && (
@@ -123,7 +144,12 @@ export default function V2JobPage() {
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 4 }}>
         <h2 className="v2-title" style={{ fontSize: 16, margin: 0 }}>Pipeline</h2>
-        {canManage && <button type="button" onClick={() => setAddOpen(true)} className="v2-hoverbtn" style={dt.primaryBtn}>Add candidate</button>}
+        {canManage && job && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+            <button type="button" onClick={() => setAddOpen(true)} disabled={goLiveGated(job.status)} className="v2-hoverbtn" style={{ ...dt.primaryBtn, opacity: goLiveGated(job.status) ? 0.5 : 1, cursor: goLiveGated(job.status) ? 'not-allowed' : 'pointer' }}>Add candidate</button>
+            {goLiveGated(job.status) && <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>{GO_LIVE_HINT}</span>}
+          </div>
+        )}
       </div>
 
       <PipelineBoard jobId={jobId} />

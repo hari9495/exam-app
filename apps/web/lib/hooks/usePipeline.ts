@@ -46,6 +46,12 @@ export interface CreateJobInput {
   description?: string;
   location?: string;
   employmentType?: string;
+  department?: string;
+  hiringManagerId?: string;
+  headcount?: number;
+  salaryMin?: number;
+  salaryMax?: number;
+  salaryCurrency?: string;
 }
 
 export function useCreateJob() {

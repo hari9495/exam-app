@@ -13,7 +13,12 @@ import { DataTable, DT_FEATURES, dt, SortHead, Pill, Panel, Combobox } from '../
 import { VIZ, STATUS } from '../../../../../components/ui-v2/viz';
 
 const WINDOWS = [{ value: '7', label: 'Last 7 days' }, { value: '14', label: 'Last 14 days' }, { value: '30', label: 'Last 30 days' }, { value: '90', label: 'Last 90 days' }];
-const STATUS_PILL: Record<JobStatus, { c: string; label: string }> = { open: { c: STATUS.ok, label: 'Open' }, closed: { c: 'var(--muted)', label: 'Closed' } };
+const STATUS_PILL: Record<JobStatus, { c: string; label: string }> = {
+  draft: { c: 'var(--muted)', label: 'Draft' },
+  pending_approval: { c: STATUS.warn, label: 'Pending approval' },
+  open: { c: STATUS.ok, label: 'Open' },
+  closed: { c: 'var(--muted)', label: 'Closed' },
+};
 const SOURCE_LABEL: Record<string, string> = { manual: 'Manual', exam: 'Exam', application: 'Application', drive: 'Drive' };
 const fmtDays = (v: number | null) => (v === null ? '—' : v.toFixed(1));
 function jobStatusPill(status: string) { return status in STATUS_PILL ? STATUS_PILL[status as JobStatus] : { c: 'var(--muted)', label: status.charAt(0).toUpperCase() + status.slice(1) }; }
