@@ -62,8 +62,8 @@ export function useDecideApproval() {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['approvals'] });
-      queryClient.invalidateQueries({ queryKey: ['pipeline'] });
-      queryClient.invalidateQueries({ queryKey: ['offers'] });
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-offers'] });
     },
   });
 }

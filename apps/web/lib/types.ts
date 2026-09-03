@@ -718,7 +718,7 @@ export interface ApprovalDecisionView {
   stepPosition: number;
   approverUserId: string;
   decision: 'approved' | 'rejected';
-  note?: string;
+  note?: string | null;
   decidedAt: string;
 }
 export interface ApprovalRequestDetail extends ApprovalRequestSummary {

@@ -56,7 +56,7 @@ export function useSubmitOffer() {
   return useMutation({
     mutationFn: (offerId: string) => apiFetch(`/offers/${offerId}/submit`, { method: 'POST' }, accessToken ?? undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['offers'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-offers'] });
       queryClient.invalidateQueries({ queryKey: ['approvals'] });
     },
   });
@@ -68,7 +68,7 @@ export function useCancelOffer() {
   return useMutation({
     mutationFn: (offerId: string) => apiFetch(`/offers/${offerId}/approval/cancel`, { method: 'POST' }, accessToken ?? undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['offers'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-offers'] });
       queryClient.invalidateQueries({ queryKey: ['approvals'] });
     },
   });
