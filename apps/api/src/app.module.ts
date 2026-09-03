@@ -49,6 +49,7 @@ import { CandidateFitModule } from './candidate-fit/candidate-fit.module';
 import { BillingModule } from './billing/billing.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { ApprovalsModule } from './approvals/approvals.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
 import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
 import { SentryShutdownFlush } from './sentry-shutdown.provider';
@@ -104,6 +105,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     BillingModule,
     IntegrationsModule,
     NotificationsModule,
+    ApprovalsModule,
   ],
   controllers: [HealthController],
   providers: [
