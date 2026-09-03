@@ -216,4 +216,40 @@ describe('resolveSteps', () => {
       { position: 0, reason: 'No approver resolved for step "Manager approval" (reporting_manager)' },
     ]);
   });
+
+  it('re-numbers resolved steps contiguously when a middle step is skipped', async () => {
+    const tx = makeTx({
+      users: {
+        u1: { status: 'active' },
+        u3: { status: 'active' },
+        submitter: { managerId: null },
+      },
+    });
+    const steps: ChainStepInput[] = [
+      usersStep({ position: 0, name: 'First approval', approverUserIds: ['u1'] }),
+      {
+        position: 1,
+        name: 'Manager approval',
+        approverType: 'reporting_manager',
+        approverUserIds: [],
+        managerLevel: 1,
+      },
+      usersStep({ position: 2, name: 'Third approval', approverUserIds: ['u3'] }),
+    ];
+
+    const { resolved, skipped } = await resolveSteps(tx, {
+      steps,
+      submitterUserId: 'submitter',
+      gate: 'requisition',
+      subjectId: 'job-1',
+    });
+
+    expect(skipped).toEqual([
+      { position: 1, reason: 'No approver resolved for step "Manager approval" (reporting_manager)' },
+    ]);
+    expect(resolved).toEqual([
+      { position: 0, name: 'First approval', approverType: 'users', approverUserIds: ['u1'] },
+      { position: 1, name: 'Third approval', approverType: 'users', approverUserIds: ['u3'] },
+    ]);
+  });
 });
