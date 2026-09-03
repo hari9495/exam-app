@@ -80,6 +80,147 @@ describe('PipelineService', () => {
 
       await expect(service.updateJob(context, 'user-1', 'job-1', { publicApplyEnabled: true })).rejects.toThrow(ConflictException);
     });
+
+    it('refuses addEntry when the job is pending_approval (409)', async () => {
+      const tx = { job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'pending_approval' }) } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.addEntry(context, 'user-1', 'job-1', { candidateId: 'c1' })).rejects.toThrow(ConflictException);
+    });
+
+    it('refuses setPublicApply (enabling) when the job is pending_approval (409)', async () => {
+      const tx = { job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'pending_approval', applyToken: null }) } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.updateJob(context, 'user-1', 'job-1', { publicApplyEnabled: true })).rejects.toThrow(ConflictException);
+    });
+
+    // Gate-off regression: pre-feature there was no status guard at all, so adding a candidate
+    // to / re-enabling public apply on a CLOSED job must keep working -- the gate only exists
+    // for draft/pending_approval, the states the approvals feature actually introduced.
+    it('allows addEntry on a closed job (gate-off regression)', async () => {
+      const upsert = jest.fn().mockResolvedValue({ id: 'en1', stage: 'applied', enteredVia: 'manual' });
+      const tx = {
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'closed' }) },
+        candidate: { findFirst: jest.fn().mockResolvedValue({ id: 'c1', organizationId: 'org-1' }) },
+        pipelineEntry: { upsert },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.addEntry(context, 'user-1', 'job-1', { candidateId: 'c1' })).resolves.toBeDefined();
+      expect(upsert).toHaveBeenCalled();
+    });
+
+    it('allows re-enabling public apply on a closed job (gate-off regression)', async () => {
+      const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
+      const tx = {
+        job: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'closed', applyToken: 'existing-token', publicApplyEnabled: false }),
+          update,
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.updateJob(context, 'user-1', 'job-1', { publicApplyEnabled: true })).resolves.toBeDefined();
+      expect(update).toHaveBeenCalledWith({
+        where: { id: 'job-1' },
+        data: expect.objectContaining({ publicApplyEnabled: true }),
+      });
+    });
+  });
+
+  describe('updateJob gate-bypass guard on status', () => {
+    it('rejects PATCH status:open on a draft job (409)', async () => {
+      const tx = { job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'draft' }) } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.updateJob(context, 'user-1', 'job-1', { status: 'open' } as any)).rejects.toThrow(ConflictException);
+    });
+
+    it('rejects PATCH status:open on a pending_approval job (409)', async () => {
+      const tx = { job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'pending_approval' }) } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.updateJob(context, 'user-1', 'job-1', { status: 'open' } as any)).rejects.toThrow(ConflictException);
+    });
+
+    it('allows closed -> open (reopening a previously-open job stays a free status flip)', async () => {
+      const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
+      const tx = { job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'closed' }), update } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.updateJob(context, 'user-1', 'job-1', { status: 'open' } as any)).resolves.toBeDefined();
+      expect(update).toHaveBeenCalledWith({ where: { id: 'job-1' }, data: expect.objectContaining({ status: 'open' }) });
+    });
+
+    it('allows a normal field edit on an open job (no status change)', async () => {
+      const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
+      const tx = { job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'open', title: 'Old Title' }), update } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.updateJob(context, 'user-1', 'job-1', { title: 'New Title' })).resolves.toBeDefined();
+      expect(update).toHaveBeenCalledWith({ where: { id: 'job-1' }, data: expect.objectContaining({ title: 'New Title' }) });
+    });
+
+    it('allows open -> closed', async () => {
+      const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
+      const tx = { job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'open' }), update } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.updateJob(context, 'user-1', 'job-1', { status: 'closed' })).resolves.toBeDefined();
+      expect(update).toHaveBeenCalledWith({ where: { id: 'job-1' }, data: expect.objectContaining({ status: 'closed', closedAt: expect.any(Date) }) });
+    });
+  });
+
+  describe('updateJob field-locking while pending_approval', () => {
+    function pendingJob(overrides: any = {}) {
+      return {
+        id: 'job-1',
+        status: 'pending_approval',
+        title: 'Backend Eng',
+        department: 'Engineering',
+        headcount: 2,
+        salaryMin: 100000,
+        salaryMax: 150000,
+        salaryCurrency: 'USD',
+        hiringManagerId: 'mgr-1',
+        ...overrides,
+      };
+    }
+
+    it.each([
+      ['title', 'New Title'],
+      ['department', 'Sales'],
+      ['headcount', 5],
+      ['salaryMin', 90000],
+      ['salaryMax', 160000],
+      ['salaryCurrency', 'EUR'],
+      ['hiringManagerId', 'mgr-2'],
+    ])('rejects editing %s while pending_approval (409)', async (field, newValue) => {
+      const tx = { job: { findFirst: jest.fn().mockResolvedValue(pendingJob()) } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.updateJob(context, 'user-1', 'job-1', { [field]: newValue } as any)).rejects.toThrow(ConflictException);
+    });
+
+    it('allows editing description while pending_approval', async () => {
+      const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
+      const tx = { job: { findFirst: jest.fn().mockResolvedValue(pendingJob()), update } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.updateJob(context, 'user-1', 'job-1', { description: 'Updated description' })).resolves.toBeDefined();
+      expect(update).toHaveBeenCalledWith({ where: { id: 'job-1' }, data: expect.objectContaining({ description: 'Updated description' }) });
+    });
+
+    it('allows resending the same (unchanged) locked-field values while pending_approval', async () => {
+      const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
+      const tx = { job: { findFirst: jest.fn().mockResolvedValue(pendingJob()), update } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(
+        service.updateJob(context, 'user-1', 'job-1', { title: 'Backend Eng', description: 'ok' }),
+      ).resolves.toBeDefined();
+    });
   });
 
   describe('submitRequisition', () => {

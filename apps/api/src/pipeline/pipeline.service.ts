@@ -204,6 +204,26 @@ export class PipelineService {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const job = await tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } });
       if (!job) throw new NotFoundException(`Job ${jobId} not found`);
+
+      // Gate bypass guard: a requisition becomes 'open' only through the approvals engine
+      // (submitRequisition -> ApprovalsService.decide), never via a direct PATCH. closed<->open
+      // stays a free status flip either way.
+      if (dto.status === 'open' && (job.status === 'draft' || job.status === 'pending_approval')) {
+        throw new ConflictException('A requisition becomes open through approval, not a direct status change');
+      }
+
+      // Field-locking (spec 3.1): while a requisition is pending approval, the fields the
+      // approver is reviewing can't be changed out from under them -- cancel the pending
+      // approval first. description (and any other field) stays freely editable.
+      if (job.status === 'pending_approval') {
+        const lockedFields = ['title', 'department', 'headcount', 'salaryMin', 'salaryMax', 'salaryCurrency', 'hiringManagerId'] as const;
+        for (const field of lockedFields) {
+          if (dto[field] !== undefined && dto[field] !== job[field]) {
+            throw new ConflictException('Cancel the pending approval before editing requisition details');
+          }
+        }
+      }
+
       const data: {
         title?: string;
         description?: string;
@@ -238,9 +258,10 @@ export class PipelineService {
         data.closedAt = dto.status === 'closed' ? new Date() : null;
       }
       if (dto.publicApplyEnabled !== undefined) {
-        // Can't start collecting public applications for a requisition that isn't approved yet
-        // (job.status !== 'open'); disabling it back off is always allowed regardless of status.
-        if (dto.publicApplyEnabled && job.status !== 'open') {
+        // Can't start collecting public applications while the requisition is gated (draft or
+        // pending_approval); a closed job (gate off, or previously open+closed) may still
+        // re-enable it, matching pre-gate behavior. Disabling it back off is always allowed.
+        if (dto.publicApplyEnabled && (job.status === 'draft' || job.status === 'pending_approval')) {
           throw new ConflictException('Requisition not approved');
         }
         data.publicApplyEnabled = dto.publicApplyEnabled;
@@ -411,7 +432,7 @@ export class PipelineService {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const job = await tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } });
       if (!job) throw new NotFoundException(`Job ${jobId} not found`);
-      if (job.status !== 'open') throw new ConflictException('Requisition not approved');
+      if (job.status === 'draft' || job.status === 'pending_approval') throw new ConflictException('Requisition not approved');
 
       let candidateId: string;
       if (dto.newCandidate) {

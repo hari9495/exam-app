@@ -34,6 +34,8 @@ export interface SubmitResult {
 
 export interface DecideResult {
   requestStatus: string;
+  // Retained for the HTTP response shape only -- the subject flip (job/offer status) already
+  // happens in-layer inside decide() itself, so no caller consumes this field to trigger dispatch.
   subjectResolved: boolean;
   subjectType: string;
   subjectId: string;
@@ -412,6 +414,10 @@ export class ApprovalsService {
     });
   }
 
+  // Unlike decide(), which flips the subject (job/offer) status in-layer as part of the same
+  // transaction, cancel() does not touch the subject at all -- it relies on its caller
+  // (PipelineService.cancelRequisitionApproval / OffersService.cancelOfferApproval) to flip it
+  // back to 'draft' after this returns.
   async cancel(
     context: TenantContext,
     requestId: string,
