@@ -107,6 +107,8 @@
   transition: transform .12s ease, filter .12s ease, box-shadow .12s ease;
 }
 .v2-cta--block { width: 100%; }
+.v2-cta--danger { background: var(--danger); }
+.v2-cta--danger:hover:not(:disabled) { box-shadow: 0 3px 10px -3px color-mix(in srgb, var(--danger) 60%, transparent); }
 .v2-cta:hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px); box-shadow: 0 3px 10px -3px color-mix(in srgb, var(--org-primary) 60%, transparent); }
 .v2-cta:active:not(:disabled) { transform: translateY(0) scale(.985); filter: brightness(.98); box-shadow: none; }
 .v2-cta:disabled { opacity: 0.6; cursor: default; }
