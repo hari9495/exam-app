@@ -122,7 +122,7 @@ export function ChainEditor({ steps, dispatch }: { steps: EditorStep[]; dispatch
                 </div>
               )}
             </div>
-          ) : (
+          ) : step.approverType === 'reporting_manager' ? (
             <div>
               <label className="v2-label">Level</label>
               <Combobox
@@ -132,7 +132,7 @@ export function ChainEditor({ steps, dispatch }: { steps: EditorStep[]; dispatch
                 width={170}
               />
             </div>
-          )}
+          ) : null}
 
           <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
             <button type="button" style={iconBtn} disabled={index === 0} onClick={() => dispatch({ type: 'move', from: index, to: index - 1 })} aria-label="Move step up">

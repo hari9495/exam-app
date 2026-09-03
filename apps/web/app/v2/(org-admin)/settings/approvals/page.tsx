@@ -29,16 +29,27 @@ function GateCard({ gate, title, description, initial }: { gate: ApprovalGate; t
   const [enabled, setEnabled] = useState(false);
   const [steps, setSteps] = useState<EditorStep[]>([]);
   const [notice, setNotice] = useState<Notice>(null);
+  // Saving one gate invalidates the shared ['approvals','chains'] query, which refetches
+  // {requisition,offer} together — changing `initial`'s reference for BOTH cards. Without this
+  // guard that would re-run this effect and clobber unsaved edits on whichever card the admin
+  // didn't just save. Only re-seed while pristine; a save clears dirty once its own edits are
+  // the saved truth, so the next (matching) refetch re-seeds harmlessly.
+  const [dirty, setDirty] = useState(false);
 
-  // Seed from the server once it loads; local edits after that stay local until Save.
   useEffect(() => {
-    if (!initial) return;
+    if (!initial || dirty) return;
     setEnabled(initial.enabled);
     setSteps(initial.steps.map(toEditorStep));
-  }, [initial]);
+  }, [initial, dirty]);
+
+  function handleEnabledChange(v: boolean) {
+    setEnabled(v);
+    setDirty(true);
+  }
 
   function dispatch(action: Parameters<typeof chainReducer>[1]) {
     setSteps((s) => chainReducer(s, action));
+    setDirty(true);
   }
 
   function handleSave() {
@@ -51,11 +62,11 @@ function GateCard({ gate, title, description, initial }: { gate: ApprovalGate; t
           name: s.name,
           approverType: s.approverType,
           approverUserIds: s.approverType === 'users' ? s.approverUserIds : undefined,
-          managerLevel: s.approverType === 'users' ? undefined : s.managerLevel ?? undefined,
+          managerLevel: s.approverType === 'reporting_manager' ? s.managerLevel ?? undefined : undefined,
         })),
       },
       {
-        onSuccess: () => setNotice({ type: 'success', text: `${title} chain saved.` }),
+        onSuccess: () => { setDirty(false); setNotice({ type: 'success', text: `${title} chain saved.` }); },
         onError: (err) => setNotice({ type: 'error', text: err instanceof Error ? err.message : `Failed to save the ${title.toLowerCase()} chain.` }),
       },
     );
@@ -69,7 +80,7 @@ function GateCard({ gate, title, description, initial }: { gate: ApprovalGate; t
           <p style={desc}>{description}</p>
         </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: ink, cursor: 'pointer' }}>
-          <Cb checked={enabled} onChange={setEnabled} />
+          <Cb checked={enabled} onChange={handleEnabledChange} />
           Require approval
         </label>
       </div>
