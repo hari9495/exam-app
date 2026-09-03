@@ -14,6 +14,7 @@ import {
   HealthService,
   SentryReporter,
 } from '@exam-platform/shared';
+import { HttpExceptionFilter } from './http-exception.filter';
 import { HealthController } from './health/health.controller';
 import { RbacModule } from './rbac/rbac.module';
 import { AuthModule } from './auth/auth.module';
@@ -121,6 +122,10 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
         new SystemEventsExceptionFilter(adapterHost, systemEvents, 'api', reporter),
       inject: [HttpAdapterHost, SystemEventsService, SentryReporter],
     },
+    // Registered AFTER SystemEventsExceptionFilter on purpose: Nest matches global filters in
+    // reverse registration order, so this @Catch(HttpException) filter handles every deliberate
+    // HttpException (with its real status) and the catch-all above only sees genuine crashes.
+    { provide: APP_FILTER, useClass: HttpExceptionFilter },
     {
       provide: HealthService,
       useFactory: (prisma: PrismaService) => {
