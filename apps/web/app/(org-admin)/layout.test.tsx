@@ -59,8 +59,8 @@ describe('Org admin layout', () => {
       </QueryProvider>,
     );
 
-    // A logged-in recruiter who lands here (e.g. mid Login-as/return) goes to /dashboard, not /login.
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/dashboard'));
+    // A logged-in recruiter who lands here (e.g. mid Login-as/return) goes to their v2 console, not /login.
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/v2/dashboard'));
     expect(mockPush).not.toHaveBeenCalledWith('/login');
     expect(screen.queryByRole('link', { name: 'Staff Users' })).not.toBeInTheDocument();
   });

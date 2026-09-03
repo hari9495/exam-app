@@ -2,12 +2,12 @@
 export function roleToLandingPath(role: string | undefined): string {
   switch (role) {
     case 'super_admin':
-      return '/organizations';
+      return '/v2/organizations';
     case 'org_admin':
-      return '/users';
+      return '/v2/users';
     case 'panel':
-      return '/reports';
+      return '/v2/panel/reports';
     default:
-      return '/dashboard';
+      return '/v2/dashboard';
   }
 }

@@ -45,7 +45,7 @@ describe('Platform layout', () => {
 
   it('sends an authenticated org_admin (wrong console) to their own console, not to /login', async () => {
     renderLayout('org_admin');
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/users'));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/v2/users'));
     expect(mockPush).not.toHaveBeenCalledWith('/login');
     expect(screen.queryByText('Page content')).not.toBeInTheDocument();
   });

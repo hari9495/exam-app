@@ -15,8 +15,10 @@ const nextConfig = {
   // v2 nav cutover: send the recruiter list routes to their rebuilt /v2 pages (covers login
   // landing, bookmarks, and the old shell's sidebar). Exact sources only — detail/editor
   // subpaths (/exams/:id/edit, /exams/new, /reports/:id, ...) are NOT rebuilt and stay put.
-  // /reports is intentionally omitted: the 'panel' role lands there and isn't allowed in the v2
-  // (recruiter) layout, so redirecting it would loop. permanent:false keeps this reversible.
+  // Every staff console is now v2 (recruiter/org-admin/platform/panel); the blocks below redirect
+  // each console's routes to /v2. /reports now targets the dedicated /v2/panel/reports (its own
+  // path, which admits the panel role), which resolves the old redirect loop. permanent:false keeps
+  // this reversible.
   async redirects() {
     const routes = ['/dashboard', '/exams', '/questions', '/candidates', '/walk-in-groups', '/jobs', '/analytics/hiring', '/message-templates', '/offer-template'];
     return [
@@ -42,6 +44,27 @@ const nextConfig = {
       // funnel the old standalone pages to those lists so no old recruiter UI stays reachable.
       { source: '/questions/bulk-upload', destination: '/v2/questions', permanent: false },
       { source: '/candidates/bulk-upload-invite', destination: '/v2/candidates', permanent: false },
+      // v2 cutover — org-admin console (settings + admin surfaces).
+      { source: '/settings/billing', destination: '/v2/settings/billing', permanent: false },
+      { source: '/settings/integrations', destination: '/v2/settings/integrations', permanent: false },
+      { source: '/settings/branding', destination: '/v2/settings/branding', permanent: false },
+      { source: '/settings/sso', destination: '/v2/settings/sso', permanent: false },
+      { source: '/users', destination: '/v2/users', permanent: false },
+      { source: '/audit-log', destination: '/v2/audit-log', permanent: false },
+      { source: '/system-logs', destination: '/v2/system-logs', permanent: false },
+      { source: '/data-rights', destination: '/v2/data-rights', permanent: false },
+      // v2 cutover — platform (super-admin) console.
+      { source: '/organizations', destination: '/v2/organizations', permanent: false },
+      { source: '/plans', destination: '/v2/plans', permanent: false },
+      { source: '/platform-admins', destination: '/v2/platform-admins', permanent: false },
+      { source: '/all-users', destination: '/v2/all-users', permanent: false },
+      // v2 cutover — panel/interviewer console (/v2/panel/* is a real path, so /reports redirects
+      // here without the old loop). Each report depth is listed explicitly (:param = one segment).
+      { source: '/interviews', destination: '/v2/panel/interviews', permanent: false },
+      { source: '/reports', destination: '/v2/panel/reports', permanent: false },
+      { source: '/reports/:examId', destination: '/v2/panel/reports/:examId', permanent: false },
+      { source: '/reports/:examId/compare', destination: '/v2/panel/reports/:examId/compare', permanent: false },
+      { source: '/reports/:examId/candidates/:candidateId', destination: '/v2/panel/reports/:examId/candidates/:candidateId', permanent: false },
     ];
   },
 };
