@@ -1,3 +1,4 @@
+import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { ApprovalsService } from './approvals.service';
 import { resolveSteps } from './approver-resolver';
 
@@ -125,5 +126,123 @@ describe('ApprovalsService.submit', () => {
     const survivingRecipients = [...new Set(recipientsArg)].filter((id) => id && id !== actorArg);
     expect(survivingRecipients).toContain('user-1');
     expect(survivingRecipients).toContain('admin-1');
+  });
+});
+
+describe('ApprovalsService.decide', () => {
+  let service: ApprovalsService;
+  let tenantPrisma: { forTenant: jest.Mock };
+  let audit: { record: jest.Mock };
+  let notifications: { notify: jest.Mock };
+  let tx: {
+    approvalRequest: { findFirst: jest.Mock; updateMany: jest.Mock };
+    approvalDecision: { create: jest.Mock };
+  };
+  const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
+
+  const twoStepReq = (overrides: Record<string, unknown> = {}) => ({
+    id: 'req-1',
+    organizationId: 'org-1',
+    gate: 'requisition',
+    subjectType: 'job',
+    subjectId: 'job-1',
+    status: 'pending_approval',
+    currentStepPosition: 0,
+    submittedByUserId: 'submitter-1',
+    chainSnapshotJson: JSON.stringify([
+      { position: 0, name: 'Step 1', approverType: 'users', approverUserIds: ['mgr-1'] },
+      { position: 1, name: 'Step 2', approverType: 'users', approverUserIds: ['mgr-2'] },
+    ]),
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    tx = {
+      approvalRequest: { findFirst: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      approvalDecision: { create: jest.fn().mockResolvedValue({}) },
+    };
+    tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
+    audit = { record: jest.fn().mockResolvedValue(undefined) };
+    notifications = { notify: jest.fn().mockResolvedValue(undefined) };
+    service = new ApprovalsService(tenantPrisma as any, audit as any, notifications as any);
+  });
+
+  it('advances to the next step when a non-final step is approved', async () => {
+    tx.approvalRequest.findFirst.mockResolvedValue(twoStepReq());
+
+    const result = await service.decide(context, 'req-1', 'mgr-1', 'approved');
+
+    expect(result).toEqual({ requestStatus: 'pending_approval', subjectResolved: false, subjectType: 'job', subjectId: 'job-1', gate: 'requisition' });
+    expect(tx.approvalDecision.create).toHaveBeenCalledWith({
+      data: { requestId: 'req-1', stepPosition: 0, approverUserId: 'mgr-1', decision: 'approved', note: null },
+    });
+    expect(tx.approvalRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: 'req-1', status: 'pending_approval', currentStepPosition: 0 },
+      data: { currentStepPosition: 1 },
+    });
+    expect(notifications.notify).toHaveBeenCalledWith(
+      context,
+      'mgr-1',
+      ['mgr-2'],
+      'approval.requested',
+      expect.objectContaining({ entityType: 'job', entityId: 'job-1', linkPath: '/v2/approvals/req-1' }),
+    );
+  });
+
+  it('marks the request approved + subjectResolved on final-step approval', async () => {
+    tx.approvalRequest.findFirst.mockResolvedValue(twoStepReq({ currentStepPosition: 1 }));
+
+    const result = await service.decide(context, 'req-1', 'mgr-2', 'approved');
+
+    expect(result).toEqual({ requestStatus: 'approved', subjectResolved: true, subjectType: 'job', subjectId: 'job-1', gate: 'requisition' });
+    expect(tx.approvalRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: 'req-1', status: 'pending_approval', currentStepPosition: 1 },
+      data: { status: 'approved', decidedAt: expect.any(Date) },
+    });
+    expect(notifications.notify).toHaveBeenCalledWith(
+      context,
+      'mgr-2',
+      ['submitter-1'],
+      'approval.approved',
+      expect.objectContaining({ entityType: 'job', entityId: 'job-1' }),
+    );
+  });
+
+  it('marks rejected + subjectResolved on reject, storing the note', async () => {
+    tx.approvalRequest.findFirst.mockResolvedValue(twoStepReq());
+
+    const result = await service.decide(context, 'req-1', 'mgr-1', 'rejected', 'not a fit');
+
+    expect(result).toEqual({ requestStatus: 'rejected', subjectResolved: true, subjectType: 'job', subjectId: 'job-1', gate: 'requisition' });
+    expect(tx.approvalDecision.create).toHaveBeenCalledWith({
+      data: { requestId: 'req-1', stepPosition: 0, approverUserId: 'mgr-1', decision: 'rejected', note: 'not a fit' },
+    });
+    expect(tx.approvalRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: 'req-1', status: 'pending_approval', currentStepPosition: 0 },
+      data: { status: 'rejected', decidedAt: expect.any(Date) },
+    });
+    expect(notifications.notify).toHaveBeenCalledWith(
+      context,
+      'mgr-1',
+      ['submitter-1'],
+      'approval.rejected',
+      expect.objectContaining({ entityType: 'job', entityId: 'job-1' }),
+    );
+  });
+
+  it('throws 403 when actor is not in the current step approvers', async () => {
+    tx.approvalRequest.findFirst.mockResolvedValue(twoStepReq());
+
+    await expect(service.decide(context, 'req-1', 'not-an-approver', 'approved')).rejects.toThrow(ForbiddenException);
+    expect(tx.approvalDecision.create).not.toHaveBeenCalled();
+    expect(tx.approvalRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('the conditional update makes a second concurrent decide a no-op (409)', async () => {
+    tx.approvalRequest.findFirst.mockResolvedValue(twoStepReq());
+    tx.approvalRequest.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(service.decide(context, 'req-1', 'mgr-1', 'approved')).rejects.toThrow(ConflictException);
+    expect(notifications.notify).not.toHaveBeenCalled();
   });
 });

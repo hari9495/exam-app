@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import {
   TenantContext,
   TenantPrismaService,
@@ -14,6 +14,24 @@ import { resolveSteps } from './approver-resolver';
 export interface SubmitResult {
   status: 'approved' | 'pending_approval';
   requestId?: string;
+}
+
+export interface DecideResult {
+  requestStatus: string;
+  subjectResolved: boolean;
+  subjectType: string;
+  subjectId: string;
+  gate: ApprovalGate;
+}
+
+// decide()'s tx callback stays pure DB work; audit + notify run after commit for the same
+// reason as submit()'s post-commit notify block -- a notification/audit failure must not
+// roll back a decision that's already been persisted.
+interface DecideTxOutcome {
+  result: DecideResult;
+  requestId: string;
+  submittedByUserId: string;
+  nextStepApproverIds?: string[];
 }
 
 // Everything the tx callback needs to hand back to the post-commit notification step.
@@ -140,6 +158,98 @@ export class ApprovalsService {
       } catch (e) {
         this.logger.error(`skipped-step notification failed for ${subjectType} ${subjectId}`, e as Error);
       }
+    }
+
+    return outcome.result;
+  }
+
+  async decide(
+    context: TenantContext,
+    requestId: string,
+    actorUserId: string,
+    decision: 'approved' | 'rejected',
+    note?: string,
+  ): Promise<DecideResult> {
+    const outcome = await this.tenantPrisma.forTenant(context, async (tx): Promise<DecideTxOutcome> => {
+      const req = await tx.approvalRequest.findFirst({
+        where: { id: requestId, organizationId: context.organizationId as string },
+      });
+      if (!req || req.status !== 'pending_approval') {
+        throw new ConflictException('Request is not open for approval');
+      }
+      const steps: ResolvedStep[] = JSON.parse(req.chainSnapshotJson);
+      const step = steps[req.currentStepPosition];
+      if (!step || !step.approverUserIds.includes(actorUserId)) {
+        throw new ForbiddenException('Not an approver for the current step');
+      }
+
+      await tx.approvalDecision.create({
+        data: { requestId, stepPosition: req.currentStepPosition, approverUserId: actorUserId, decision, note: note ?? null },
+      });
+
+      const isLast = req.currentStepPosition >= steps.length - 1;
+
+      if (decision === 'rejected') {
+        const upd = await tx.approvalRequest.updateMany({
+          where: { id: requestId, status: 'pending_approval', currentStepPosition: req.currentStepPosition },
+          data: { status: 'rejected', decidedAt: new Date() },
+        });
+        if (upd.count === 0) throw new ConflictException('Already actioned');
+        return {
+          result: { requestStatus: 'rejected', subjectResolved: true, subjectType: req.subjectType, subjectId: req.subjectId, gate: req.gate as ApprovalGate },
+          requestId,
+          submittedByUserId: req.submittedByUserId,
+        };
+      }
+
+      if (isLast) {
+        const upd = await tx.approvalRequest.updateMany({
+          where: { id: requestId, status: 'pending_approval', currentStepPosition: req.currentStepPosition },
+          data: { status: 'approved', decidedAt: new Date() },
+        });
+        if (upd.count === 0) throw new ConflictException('Already actioned');
+        return {
+          result: { requestStatus: 'approved', subjectResolved: true, subjectType: req.subjectType, subjectId: req.subjectId, gate: req.gate as ApprovalGate },
+          requestId,
+          submittedByUserId: req.submittedByUserId,
+        };
+      }
+
+      const upd = await tx.approvalRequest.updateMany({
+        where: { id: requestId, status: 'pending_approval', currentStepPosition: req.currentStepPosition },
+        data: { currentStepPosition: req.currentStepPosition + 1 },
+      });
+      if (upd.count === 0) throw new ConflictException('Already actioned');
+      return {
+        result: { requestStatus: 'pending_approval', subjectResolved: false, subjectType: req.subjectType, subjectId: req.subjectId, gate: req.gate as ApprovalGate },
+        requestId,
+        submittedByUserId: req.submittedByUserId,
+        nextStepApproverIds: steps[req.currentStepPosition + 1].approverUserIds,
+      };
+    });
+
+    try {
+      await this.audit.record(context, {
+        actorUserId,
+        action: `approval.${decision}`,
+        entityType: outcome.result.subjectType,
+        entityId: outcome.result.subjectId,
+      });
+    } catch (e) {
+      this.logger.error(`approval decision audit failed for request ${requestId}`, e as Error);
+    }
+
+    try {
+      const target = { entityType: outcome.result.subjectType, entityId: outcome.result.subjectId, linkPath: `/v2/approvals/${outcome.requestId}` };
+      if (outcome.result.requestStatus === 'pending_approval' && outcome.nextStepApproverIds) {
+        await this.notifications.notify(context, actorUserId, outcome.nextStepApproverIds, APPROVAL_NOTIFICATION_TYPES.requested, target);
+      } else if (outcome.result.requestStatus === 'approved') {
+        await this.notifications.notify(context, actorUserId, [outcome.submittedByUserId], APPROVAL_NOTIFICATION_TYPES.approved, target);
+      } else if (outcome.result.requestStatus === 'rejected') {
+        await this.notifications.notify(context, actorUserId, [outcome.submittedByUserId], APPROVAL_NOTIFICATION_TYPES.rejected, target);
+      }
+    } catch (e) {
+      this.logger.error(`approval decision notification failed for request ${requestId}`, e as Error);
     }
 
     return outcome.result;
