@@ -9,6 +9,7 @@ describe('OffersService', () => {
   let blobStorage: { upload: jest.Mock; signIfOurs: jest.Mock };
   let audit: { record: jest.Mock };
   let integrationEvents: { emit: jest.Mock };
+  let approvals: { getChains: jest.Mock; submit: jest.Mock; isConfigurer: jest.Mock; cancelForSubject: jest.Mock };
   let tx: {
     pipelineEntry: Record<string, jest.Mock>;
     offer: Record<string, jest.Mock>;
@@ -53,7 +54,21 @@ describe('OffersService', () => {
     };
     audit = { record: jest.fn() };
     integrationEvents = { emit: jest.fn() };
-    service = new OffersService(tenantPrisma as any, offerTemplates as any, email as any, blobStorage as any, audit as any, integrationEvents as any);
+    approvals = {
+      getChains: jest.fn().mockResolvedValue({ requisition: { gate: 'requisition', enabled: false, steps: [] }, offer: { gate: 'offer', enabled: false, steps: [] } }),
+      submit: jest.fn(),
+      isConfigurer: jest.fn(),
+      cancelForSubject: jest.fn(),
+    };
+    service = new OffersService(
+      tenantPrisma as any,
+      offerTemplates as any,
+      email as any,
+      blobStorage as any,
+      audit as any,
+      integrationEvents as any,
+      approvals as any,
+    );
   });
 
   describe('createOffer', () => {
@@ -282,6 +297,112 @@ describe('OffersService', () => {
       tx.offer.findFirst.mockResolvedValue(null);
 
       await expect(service.sendOffer(context, 'user-1', 'offer-x')).rejects.toThrow(NotFoundException);
+    });
+
+    it('works from draft when the offer gate is off (existing behavior preserved)', async () => {
+      approvals.getChains.mockResolvedValue({ requisition: { enabled: false, steps: [] }, offer: { enabled: false, steps: [] } });
+      tx.offer.findFirst.mockResolvedValue(baseOffer({ status: 'draft' }));
+      email.send.mockResolvedValue({ success: true });
+
+      const out = await service.sendOffer(context, 'user-1', 'offer-1');
+
+      expect(out.status).toBe('sent');
+    });
+
+    it('refuses unless status is approved when the offer gate is on', async () => {
+      approvals.getChains.mockResolvedValue({ requisition: { enabled: false, steps: [] }, offer: { enabled: true, steps: [] } });
+      tx.offer.findFirst.mockResolvedValue(baseOffer({ status: 'draft' }));
+
+      await expect(service.sendOffer(context, 'user-1', 'offer-1')).rejects.toThrow(ConflictException);
+      expect(tx.offer.update).not.toHaveBeenCalled();
+      expect(blobStorage.upload).not.toHaveBeenCalled();
+      expect(email.send).not.toHaveBeenCalled();
+    });
+
+    it('sends an approved offer when the gate is on', async () => {
+      approvals.getChains.mockResolvedValue({ requisition: { enabled: false, steps: [] }, offer: { enabled: true, steps: [] } });
+      tx.offer.findFirst.mockResolvedValue(baseOffer({ status: 'approved' }));
+      email.send.mockResolvedValue({ success: true });
+
+      const out = await service.sendOffer(context, 'user-1', 'offer-1');
+
+      expect(out.status).toBe('sent');
+    });
+  });
+
+  describe('markApproved / markDraft', () => {
+    it('markApproved updates the org-scoped offer status to approved', async () => {
+      await service.markApproved(context, 'offer-1');
+      expect(tx.offer.updateMany).toHaveBeenCalledWith({
+        where: { id: 'offer-1', organizationId: 'org-1' },
+        data: { status: 'approved' },
+      });
+    });
+
+    it('markDraft updates the org-scoped offer status to draft', async () => {
+      await service.markDraft(context, 'offer-1');
+      expect(tx.offer.updateMany).toHaveBeenCalledWith({
+        where: { id: 'offer-1', organizationId: 'org-1' },
+        data: { status: 'draft' },
+      });
+    });
+  });
+
+  describe('submitOffer', () => {
+    it('submits a draft offer and sets pending_approval when submit returns pending', async () => {
+      tx.offer.findFirst.mockResolvedValue({ id: 'offer-1', organizationId: 'org-1', status: 'draft' });
+      approvals.submit.mockResolvedValue({ status: 'pending_approval', requestId: 'req-1' });
+
+      const result = await service.submitOffer(context, 'user-1', 'offer-1');
+
+      expect(approvals.submit).toHaveBeenCalledWith(context, 'offer', 'offer-1', 'user-1');
+      expect(tx.offer.updateMany).toHaveBeenCalledWith({
+        where: { id: 'offer-1', organizationId: 'org-1' },
+        data: { status: 'pending_approval' },
+      });
+      expect(result).toEqual({ status: 'pending_approval', requestId: 'req-1' });
+    });
+
+    it('sets status approved immediately when submit auto-passes', async () => {
+      tx.offer.findFirst.mockResolvedValue({ id: 'offer-1', organizationId: 'org-1', status: 'draft' });
+      approvals.submit.mockResolvedValue({ status: 'approved' });
+
+      const result = await service.submitOffer(context, 'user-1', 'offer-1');
+
+      expect(tx.offer.updateMany).toHaveBeenCalledWith({
+        where: { id: 'offer-1', organizationId: 'org-1' },
+        data: { status: 'approved' },
+      });
+      expect(result).toEqual({ status: 'approved' });
+    });
+
+    it('throws NotFoundException for an offer outside the org', async () => {
+      tx.offer.findFirst.mockResolvedValue(null);
+
+      await expect(service.submitOffer(context, 'user-1', 'offer-x')).rejects.toThrow(NotFoundException);
+      expect(approvals.submit).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException when the offer is not in draft', async () => {
+      tx.offer.findFirst.mockResolvedValue({ id: 'offer-1', organizationId: 'org-1', status: 'pending_approval' });
+
+      await expect(service.submitOffer(context, 'user-1', 'offer-1')).rejects.toThrow(ConflictException);
+      expect(approvals.submit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('cancelOfferApproval', () => {
+    it('checks isConfigurer, cancels the open request for the offer subject, then resets to draft', async () => {
+      approvals.isConfigurer.mockResolvedValue(true);
+
+      await service.cancelOfferApproval(context, 'user-1', 'offer-1');
+
+      expect(approvals.isConfigurer).toHaveBeenCalledWith(context, 'user-1');
+      expect(approvals.cancelForSubject).toHaveBeenCalledWith(context, 'offer', 'offer-1', 'user-1', true);
+      expect(tx.offer.updateMany).toHaveBeenCalledWith({
+        where: { id: 'offer-1', organizationId: 'org-1' },
+        data: { status: 'draft' },
+      });
     });
   });
 

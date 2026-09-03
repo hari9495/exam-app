@@ -9,6 +9,7 @@ import { OfferTemplatesService } from './offer-templates.service';
 import { CreateOfferDto } from './dto/create-offer.dto';
 import { buildOfferPdf } from './offer-pdf';
 import { renderOfferTemplate } from './offer-render';
+import { ApprovalsService, SubmitResult } from '../approvals/approvals.service';
 
 const LOGO_SIGN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const PDF_SIGN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
@@ -27,6 +28,7 @@ export class OffersService {
     private readonly blobStorage: BlobStorageService,
     private readonly audit: AuditService,
     private readonly integrationEvents: IntegrationEventsService,
+    private readonly approvals: ApprovalsService,
   ) {}
 
   async createOffer(context: TenantContext, actorUserId: string, entryId: string, dto: CreateOfferDto): Promise<Offer> {
@@ -129,8 +131,58 @@ export class OffersService {
     );
   }
 
+  // Org-scoped status flips for the offer approval lifecycle -- mirrors
+  // PipelineService.markRequisitionApproved/Draft (Task 11) for the offer gate.
+  async markApproved(context: TenantContext, offerId: string): Promise<void> {
+    await this.setOfferStatus(context, offerId, 'approved');
+  }
+
+  async markDraft(context: TenantContext, offerId: string): Promise<void> {
+    await this.setOfferStatus(context, offerId, 'draft');
+  }
+
+  private async setOfferStatus(context: TenantContext, offerId: string, status: string): Promise<void> {
+    await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.offer.updateMany({ where: { id: offerId, organizationId: context.organizationId as string }, data: { status } }),
+    );
+  }
+
+  // Submits the offer through the approvals engine. Only a draft offer is eligible -- one
+  // already pending, approved, or sent has either cleared this gate already or isn't
+  // resubmittable. Mirrors PipelineService.submitRequisition's auto-pass/pending split.
+  async submitOffer(context: TenantContext, actorUserId: string, offerId: string): Promise<SubmitResult> {
+    const offer = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.offer.findFirst({ where: { id: offerId, organizationId: context.organizationId as string } }),
+    );
+    if (!offer) throw new NotFoundException(`Offer ${offerId} not found`);
+    if (offer.status !== 'draft') throw new ConflictException('Only a draft offer can be submitted');
+
+    const result = await this.approvals.submit(context, 'offer', offerId, actorUserId);
+    if (result.status === 'approved') {
+      await this.markApproved(context, offerId);
+    } else {
+      await this.setOfferStatus(context, offerId, 'pending_approval');
+    }
+    return result;
+  }
+
+  // Cancels the offer's open approval request (permission-checked by ApprovalsService.cancel via
+  // isConfigurer) and puts the offer back in draft so it can be edited and resubmitted.
+  async cancelOfferApproval(context: TenantContext, actorUserId: string, offerId: string): Promise<void> {
+    const isConfigurer = await this.approvals.isConfigurer(context, actorUserId);
+    await this.approvals.cancelForSubject(context, 'offer', offerId, actorUserId, isConfigurer);
+    await this.markDraft(context, offerId);
+  }
+
   async sendOffer(context: TenantContext, actorUserId: string, offerId: string): Promise<Offer> {
     const orgId = context.organizationId as string;
+
+    // Offer gate: when the org has an enabled offer approval chain, only an approved offer may
+    // be sent. When the gate is off (no chain, or disabled), preserve today's behavior exactly --
+    // sendable straight from draft. Read outside the tx below, same as PipelineService.createJob's
+    // requisition-gate check.
+    const chains = await this.approvals.getChains(context);
+    const gateEnabled = chains.offer.enabled;
 
     // Phase 1 (short tx): org-scoped read + the offerToken mint. No network calls here --
     // forTenant uses Prisma's default 5s interactive-transaction timeout, and the PDF build +
@@ -142,7 +194,11 @@ export class OffersService {
         include: { pipelineEntry: { include: { candidate: true, job: true } } },
       });
       if (!offer) throw new NotFoundException(`Offer ${offerId} not found`);
-      if (offer.status !== 'draft') throw new BadRequestException('Offer already sent');
+      if (gateEnabled) {
+        if (offer.status !== 'approved') throw new ConflictException('Offer not approved');
+      } else if (offer.status !== 'draft') {
+        throw new BadRequestException('Offer already sent');
+      }
       if (offer.pipelineEntry.candidate.erasedAt) throw new BadRequestException('Candidate has been erased');
 
       const offerToken = randomUUID();

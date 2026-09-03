@@ -66,6 +66,18 @@ export class OffersController {
     return this.offers.withdraw(tenant, userId, id);
   }
 
+  @Post('offers/:id/submit')
+  @RequirePermissions('pipeline:manage')
+  submitOffer(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.offers.submitOffer(tenant, userId, id);
+  }
+
+  @Post('offers/:id/approval/cancel')
+  @RequirePermissions('pipeline:manage')
+  cancelOfferApproval(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.offers.cancelOfferApproval(tenant, userId, id);
+  }
+
   @Get('offer-template')
   @RequirePermissions('pipeline:manage')
   getTemplate(@CurrentTenant() tenant: TenantContext) {
