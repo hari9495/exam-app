@@ -3,13 +3,14 @@
 // v2 panel Results (reports) list — same as the recruiter v2 reports list (useExams ≤100, client
 // search/sort, no pagination, truncation note, shared DataTable), but rows link into the panel
 // console at /v2/panel/reports/:id so panelists stay under /v2/panel/*.
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { ColumnDef } from '@tanstack/react-table';
+import { ClipboardList, CircleCheck, Users, CheckCheck } from 'lucide-react';
 import { useExams } from '../../../../lib/hooks/useExams';
 import type { ExamListItem, ExamStatus } from '../../../../lib/types';
-import { DataTable, DT_FEATURES, dt, SortHead, Pill } from '../../../../components/ui-v2';
-import { STATUS } from '../../../../components/ui-v2/viz';
+import { DataTable, DT_FEATURES, dt, SortHead, Pill, IconStatCard } from '../../../../components/ui-v2';
+import { STATUS, VIZ } from '../../../../components/ui-v2/viz';
 
 const STATUS_TONE: Record<ExamStatus, { c: string; label: string }> = { published: { c: STATUS.ok, label: 'Published' }, draft: { c: 'var(--muted)', label: 'Draft' }, archived: { c: STATUS.bad, label: 'Archived' } };
 const COLUMN_LABELS: Record<string, string> = { status: 'Status', attemptTotalCount: 'Attempts', durationMinutes: 'Duration', passCriteriaPercent: 'Pass mark', createdAt: 'Created' };
@@ -22,6 +23,14 @@ export default function V2PanelReportsPage() {
   const q = search.trim().toLowerCase();
   const rows = q ? all.filter((e) => e.title.toLowerCase().includes(q)) : all;
   const truncated = resp?.total !== undefined && resp.total > all.length;
+
+  // Stats strip reflects the fetched exams (up to the server max), not the current search.
+  const stats = useMemo(() => ({
+    total: all.length,
+    published: all.filter((e) => e.status === 'published').length,
+    attempts: all.reduce((sum, e) => sum + (e.attemptTotalCount ?? 0), 0),
+    settled: all.reduce((sum, e) => sum + (e.attemptSettledCount ?? 0), 0),
+  }), [all]);
 
   const columns: ColumnDef<typeof DT_FEATURES, ExamListItem>[] = [
     {
@@ -38,11 +47,22 @@ export default function V2PanelReportsPage() {
 
   return (
     <>
-      <h1 className="v2-title" style={{ fontSize: 22, margin: '0 0 6px' }}>Results</h1>
-      <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 0 14px' }}>
-        {rows.length} {rows.length === 1 ? 'exam' : 'exams'}
-        {truncated && (q ? ` · searched only the first ${all.length} of ${resp?.total} — there may be more matches` : ` · showing ${all.length} of ${resp?.total} — search to reach the rest`)}
-      </p>
+      <div style={{ marginBottom: 16 }}>
+        <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--muted)', margin: 0 }}>Panel</p>
+        <h1 className="v2-title" style={{ fontSize: 22, margin: '2px 0 0' }}>Results</h1>
+        <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: '4px 0 0' }}>
+          {rows.length} {rows.length === 1 ? 'exam' : 'exams'}
+          {truncated && (q ? ` · searched only the first ${all.length} of ${resp?.total} — there may be more matches` : ` · showing ${all.length} of ${resp?.total} — search to reach the rest`)}
+        </p>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }} className="wf-hero-kpis">
+        <IconStatCard title="Exams" value={stats.total} icon={<ClipboardList size={22} />} accent={VIZ.azure} />
+        <IconStatCard title="Published" value={stats.published} icon={<CircleCheck size={22} />} accent={VIZ.teal} />
+        <IconStatCard title="Total attempts" value={stats.attempts} icon={<Users size={22} />} accent={VIZ.violet} />
+        <IconStatCard title="Settled" value={stats.settled} icon={<CheckCheck size={22} />} accent={VIZ.amber} />
+      </div>
+
       <DataTable
         columns={columns} data={rows} getRowId={(r) => r.id}
         search={search} onSearchChange={setSearch} searchPlaceholder="Search exams…"

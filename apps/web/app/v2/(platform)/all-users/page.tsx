@@ -9,12 +9,12 @@
 import { Suspense, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, LogIn } from 'lucide-react';
+import { MoreHorizontal, LogIn, Users, UserCheck, Building2, UserMinus } from 'lucide-react';
 import { useUserDirectory } from '../../../../lib/hooks/useUserDirectory';
 import { useAuth } from '../../../../lib/auth-context';
 import type { DirectoryUser } from '../../../../lib/types';
-import { DataTable, DT_FEATURES, dt, SortHead, Pill, Dropdown, DropdownItem } from '../../../../components/ui-v2';
-import { STATUS } from '../../../../components/ui-v2/viz';
+import { DataTable, DT_FEATURES, dt, SortHead, Pill, Dropdown, DropdownItem, IconStatCard } from '../../../../components/ui-v2';
+import { STATUS, VIZ } from '../../../../components/ui-v2/viz';
 
 // Matches the server's MAX_PAGE_SIZE in apps/api/src/common/paginated-response.ts.
 const DIRECTORY_PAGE_SIZE = 100;
@@ -35,6 +35,15 @@ function AllUsersInner() {
     (u.name ?? '').toLowerCase().includes(q) ||
     (u.organizationName ?? '').toLowerCase().includes(q)
   ), [data, q]);
+
+  // Stats strip reflects the whole directory, not the current search.
+  const allUsers = data?.data ?? [];
+  const stats = useMemo(() => ({
+    total: allUsers.length,
+    active: allUsers.filter((u) => u.status === 'active').length,
+    orgs: new Set(allUsers.map((u) => u.organizationId).filter(Boolean)).size,
+    noOrg: allUsers.filter((u) => !u.organizationId).length,
+  }), [allUsers]);
 
   async function handleManage(user: DirectoryUser) {
     if (!user.organizationId) return;
@@ -68,7 +77,16 @@ function AllUsersInner() {
   return (
     <>
       <div style={{ marginBottom: 16 }}>
-        <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>All Users</h1>
+        <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--muted)', margin: 0 }}>Platform</p>
+        <h1 className="v2-title" style={{ fontSize: 22, margin: '2px 0 0' }}>All Users</h1>
+        <p style={{ fontSize: 13, color: 'var(--muted)', margin: '4px 0 0' }}>Everyone across every organization — switch in to manage a user&apos;s org.</p>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }} className="wf-hero-kpis">
+        <IconStatCard title="Total users" value={stats.total} icon={<Users size={22} />} accent={VIZ.azure} />
+        <IconStatCard title="Active" value={stats.active} icon={<UserCheck size={22} />} accent={VIZ.teal} />
+        <IconStatCard title="Organizations" value={stats.orgs} icon={<Building2 size={22} />} accent={VIZ.violet} />
+        <IconStatCard title="No organization" value={stats.noOrg} icon={<UserMinus size={22} />} accent={VIZ.amber} />
       </div>
 
       <DataTable

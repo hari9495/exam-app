@@ -10,15 +10,15 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, LogIn, Pencil, Power, Users as UsersIcon, Trash2, Plus } from 'lucide-react';
+import { MoreHorizontal, LogIn, Pencil, Power, Users as UsersIcon, Trash2, Plus, Building2, CircleCheck, CirclePause } from 'lucide-react';
 import {
   useOrganizations, useSetOrganizationStatus, useCreateOrganization, useUpdateOrganization, useDeleteOrganization,
 } from '../../../../lib/hooks/useOrganizations';
 import { usePlans, useAssignPlan } from '../../../../lib/hooks/usePlans';
 import { useAuth } from '../../../../lib/auth-context';
 import type { Organization } from '../../../../lib/types';
-import { DataTable, DT_FEATURES, dt, SortHead, Pill, Dropdown, DropdownItem, TextField, Combobox, Dialog, Button } from '../../../../components/ui-v2';
-import { STATUS } from '../../../../components/ui-v2/viz';
+import { DataTable, DT_FEATURES, dt, SortHead, Pill, Dropdown, DropdownItem, TextField, Combobox, Dialog, Button, IconStatCard } from '../../../../components/ui-v2';
+import { STATUS, VIZ } from '../../../../components/ui-v2/viz';
 
 const REGION_OPTIONS = [
   { value: 'us', label: 'US' },
@@ -206,6 +206,15 @@ export default function V2OrganizationsPage() {
     (org.primaryAdminEmail ?? '').toLowerCase().includes(q)
   ), [data, q]);
 
+  // Stats strip reflects all organizations, not the current search.
+  const allOrgs = data?.data ?? [];
+  const stats = useMemo(() => ({
+    total: allOrgs.length,
+    active: allOrgs.filter((o) => o.status === 'active').length,
+    suspended: allOrgs.filter((o) => o.status !== 'active').length,
+    users: allOrgs.reduce((sum, o) => sum + (o.userCount ?? 0), 0),
+  }), [allOrgs]);
+
   async function handleSwitchInto(orgId: string) {
     await switchIntoOrg(orgId);
     router.push('/dashboard');
@@ -257,14 +266,25 @@ export default function V2OrganizationsPage() {
 
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-        <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Organizations</h1>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <div>
+          <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--muted)', margin: 0 }}>Platform</p>
+          <h1 className="v2-title" style={{ fontSize: 22, margin: '2px 0 0' }}>Organizations</h1>
+          <p style={{ fontSize: 13, color: 'var(--muted)', margin: '4px 0 0' }}>Every tenant on the platform — switch in, manage plans, or suspend access.</p>
+        </div>
         <Button onClick={() => setCreateOpen(true)}><Plus size={15} /> New</Button>
       </div>
 
       {notice && (
         <div role="status" style={{ marginBottom: 12, fontSize: 13, padding: '9px 13px', borderRadius: 9, border: `1px solid ${notice.type === 'success' ? 'color-mix(in srgb, #15803d 30%, transparent)' : 'color-mix(in srgb, var(--danger) 30%, transparent)'}`, background: notice.type === 'success' ? 'color-mix(in srgb, #15803d 8%, transparent)' : 'color-mix(in srgb, var(--danger) 8%, transparent)', color: notice.type === 'success' ? STATUS.ok : 'var(--danger)' }}>{notice.text}</div>
       )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }} className="wf-hero-kpis">
+        <IconStatCard title="Organizations" value={stats.total} icon={<Building2 size={22} />} accent={VIZ.azure} />
+        <IconStatCard title="Active" value={stats.active} icon={<CircleCheck size={22} />} accent={VIZ.teal} />
+        <IconStatCard title="Suspended" value={stats.suspended} icon={<CirclePause size={22} />} accent={VIZ.amber} />
+        <IconStatCard title="Total users" value={stats.users} icon={<UsersIcon size={22} />} accent={VIZ.violet} />
+      </div>
 
       <DataTable
         columns={columns} data={rows} getRowId={(org) => org.id}

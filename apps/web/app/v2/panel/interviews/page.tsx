@@ -3,11 +3,12 @@
 // v2 panel Interviews — format-only re-skin of app/(panel)/interviews onto the v2 kit. Same
 // useMyInterviews hook, same time/location/status columns and client search (location OR status);
 // old ListView → shared DataTable, StatusBadge → Pill. Matches the v2 Staff Users conventions.
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
+import { CalendarDays, CircleCheck, Clock, AlertCircle } from 'lucide-react';
 import { useMyInterviews } from '../../../../lib/hooks/useInterviews';
 import type { Interview, InterviewStatus } from '../../../../lib/types';
-import { DataTable, DT_FEATURES, dt, SortHead, Pill } from '../../../../components/ui-v2';
+import { DataTable, DT_FEATURES, dt, SortHead, Pill, IconStatCard } from '../../../../components/ui-v2';
 import { STATUS, VIZ } from '../../../../components/ui-v2/viz';
 
 const STATUS_TONE: Record<InterviewStatus, string> = {
@@ -34,6 +35,15 @@ export default function V2PanelInterviewsPage() {
     ? (interviews ?? []).filter((i) => i.location.toLowerCase().includes(q) || i.status.toLowerCase().includes(q))
     : (interviews ?? []);
 
+  // Stats strip reflects every assigned interview, not the current search.
+  const allInterviews = interviews ?? [];
+  const stats = useMemo(() => ({
+    total: allInterviews.length,
+    confirmed: allInterviews.filter((i) => i.status === 'confirmed').length,
+    proposed: allInterviews.filter((i) => i.status === 'proposed').length,
+    needsAction: allInterviews.filter((i) => i.status === 'reschedule_requested').length,
+  }), [allInterviews]);
+
   const sortHead = (label: string) => ({ column }: { column: { getIsSorted: () => false | 'asc' | 'desc'; toggleSorting: (d?: boolean) => void } }) =>
     <SortHead label={label} sorted={column.getIsSorted()} onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')} />;
 
@@ -45,7 +55,19 @@ export default function V2PanelInterviewsPage() {
 
   return (
     <>
-      <h1 className="v2-title" style={{ fontSize: 22, margin: '0 0 16px' }}>Interviews</h1>
+      <div style={{ marginBottom: 16 }}>
+        <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--muted)', margin: 0 }}>Panel</p>
+        <h1 className="v2-title" style={{ fontSize: 22, margin: '2px 0 0' }}>Interviews</h1>
+        <p style={{ fontSize: 13, color: 'var(--muted)', margin: '4px 0 0' }}>The interviews assigned to you, with their proposed times and status.</p>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }} className="wf-hero-kpis">
+        <IconStatCard title="Assigned" value={stats.total} icon={<CalendarDays size={22} />} accent={VIZ.azure} />
+        <IconStatCard title="Confirmed" value={stats.confirmed} icon={<CircleCheck size={22} />} accent={VIZ.teal} />
+        <IconStatCard title="Proposed" value={stats.proposed} icon={<Clock size={22} />} accent={VIZ.violet} />
+        <IconStatCard title="Needs action" value={stats.needsAction} icon={<AlertCircle size={22} />} accent={VIZ.amber} />
+      </div>
+
       <DataTable
         columns={columns} data={rows} getRowId={(i) => i.id}
         search={search} onSearchChange={setSearch} searchPlaceholder="Search interviews…"

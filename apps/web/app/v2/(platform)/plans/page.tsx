@@ -7,11 +7,11 @@
 // Checkbox → v2 Cb.
 import { useMemo, useState, type FormEvent } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Pencil, Plus } from 'lucide-react';
+import { Pencil, Plus, Layers, Eye, EyeOff } from 'lucide-react';
 import { usePlans, useCreatePlan, useUpdatePlan } from '../../../../lib/hooks/usePlans';
 import type { Plan } from '../../../../lib/types';
-import { DataTable, DT_FEATURES, dt, SortHead, Pill, Cb, Dropdown, DropdownItem, TextField, Dialog, Button } from '../../../../components/ui-v2';
-import { STATUS } from '../../../../components/ui-v2/viz';
+import { DataTable, DT_FEATURES, dt, SortHead, Pill, Cb, Dropdown, DropdownItem, TextField, Dialog, Button, IconStatCard } from '../../../../components/ui-v2';
+import { STATUS, VIZ } from '../../../../components/ui-v2/viz';
 
 interface PlanFormState {
   name: string;
@@ -60,6 +60,14 @@ export default function V2PlansPage() {
 
   const q = search.trim().toLowerCase();
   const rows = useMemo(() => (plans ?? []).filter((p) => !q || p.name.toLowerCase().includes(q)), [plans, q]);
+
+  // Stats strip reflects all plans, not the current search.
+  const allPlans = plans ?? [];
+  const stats = useMemo(() => ({
+    total: allPlans.length,
+    public: allPlans.filter((p) => p.isPublic).length,
+    hidden: allPlans.filter((p) => !p.isPublic).length,
+  }), [allPlans]);
 
   function openCreate() { setForm(EMPTY_FORM); setError(null); setCreating(true); }
   function openEdit(plan: Plan) { setForm(toFormState(plan)); setError(null); setEditing(plan); }
@@ -112,14 +120,24 @@ export default function V2PlansPage() {
 
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-        <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Plans</h1>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <div>
+          <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--muted)', margin: 0 }}>Platform</p>
+          <h1 className="v2-title" style={{ fontSize: 22, margin: '2px 0 0' }}>Plans</h1>
+          <p style={{ fontSize: 13, color: 'var(--muted)', margin: '4px 0 0' }}>Subscription tiers and the limits each one grants an organization.</p>
+        </div>
         <Button onClick={openCreate}><Plus size={15} /> New plan</Button>
       </div>
 
       {notice && (
         <div role="status" style={{ marginBottom: 12, fontSize: 13, padding: '9px 13px', borderRadius: 9, border: `1px solid ${notice.type === 'success' ? 'color-mix(in srgb, #15803d 30%, transparent)' : 'color-mix(in srgb, var(--danger) 30%, transparent)'}`, background: notice.type === 'success' ? 'color-mix(in srgb, #15803d 8%, transparent)' : 'color-mix(in srgb, var(--danger) 8%, transparent)', color: notice.type === 'success' ? STATUS.ok : 'var(--danger)' }}>{notice.text}</div>
       )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }} className="wf-hero-kpis">
+        <IconStatCard title="Total plans" value={stats.total} icon={<Layers size={22} />} accent={VIZ.azure} />
+        <IconStatCard title="Public" value={stats.public} icon={<Eye size={22} />} accent={VIZ.teal} />
+        <IconStatCard title="Hidden" value={stats.hidden} icon={<EyeOff size={22} />} accent={VIZ.violet} />
+      </div>
 
       <DataTable
         columns={columns} data={rows} getRowId={(p) => p.id}

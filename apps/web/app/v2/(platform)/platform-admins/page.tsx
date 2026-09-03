@@ -7,10 +7,11 @@
 // Modals → v2 Dialog; toast → inline notice.
 import { useMemo, useState, type FormEvent } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
+import { ShieldCheck, UserPlus } from 'lucide-react';
 import { useSuperAdmins, useInviteSuperAdmin, usePromoteSuperAdmin } from '../../../../lib/hooks/useSuperAdmins';
 import type { SuperAdminSummary } from '../../../../lib/types';
-import { DataTable, DT_FEATURES, dt, SortHead, TextField, Dialog, Button } from '../../../../components/ui-v2';
-import { STATUS } from '../../../../components/ui-v2/viz';
+import { DataTable, DT_FEATURES, dt, SortHead, TextField, Dialog, Button, IconStatCard } from '../../../../components/ui-v2';
+import { STATUS, VIZ } from '../../../../components/ui-v2/viz';
 
 // Matches the server's MAX_PAGE_SIZE; see the note in useOrganizations.
 const SUPER_ADMIN_PAGE_SIZE = 100;
@@ -32,6 +33,16 @@ export default function V2PlatformAdminsPage() {
 
   const q = search.trim().toLowerCase();
   const rows = useMemo(() => (data?.data ?? []).filter((sa) => !q || sa.email.toLowerCase().includes(q)), [data, q]);
+
+  // Stats strip reflects all platform admins, not the current search.
+  const allAdmins = data?.data ?? [];
+  const stats = useMemo(() => {
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    return {
+      total: allAdmins.length,
+      recent: allAdmins.filter((sa) => new Date(sa.createdAt).getTime() >= cutoff).length,
+    };
+  }, [allAdmins]);
 
   function closeAll() {
     setOpenForm(null);
@@ -60,8 +71,12 @@ export default function V2PlatformAdminsPage() {
 
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-        <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Platform Admins</h1>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <div>
+          <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--muted)', margin: 0 }}>Platform</p>
+          <h1 className="v2-title" style={{ fontSize: 22, margin: '2px 0 0' }}>Platform Admins</h1>
+          <p style={{ fontSize: 13, color: 'var(--muted)', margin: '4px 0 0' }}>People with super-admin access across the whole platform.</p>
+        </div>
         <span style={{ display: 'inline-flex', gap: 10 }}>
           <Button onClick={() => setOpenForm('invite')}>Invite admin</Button>
           <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={() => setOpenForm('promote')}>Promote user</button>
@@ -71,6 +86,11 @@ export default function V2PlatformAdminsPage() {
       {notice && (
         <div role="status" style={{ marginBottom: 12, fontSize: 13, padding: '9px 13px', borderRadius: 9, border: `1px solid ${notice.type === 'success' ? 'color-mix(in srgb, #15803d 30%, transparent)' : 'color-mix(in srgb, var(--danger) 30%, transparent)'}`, background: notice.type === 'success' ? 'color-mix(in srgb, #15803d 8%, transparent)' : 'color-mix(in srgb, var(--danger) 8%, transparent)', color: notice.type === 'success' ? STATUS.ok : 'var(--danger)' }}>{notice.text}</div>
       )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 16, maxWidth: 560 }} className="wf-hero-kpis">
+        <IconStatCard title="Platform admins" value={stats.total} icon={<ShieldCheck size={22} />} accent={VIZ.violet} />
+        <IconStatCard title="Granted last 30 days" value={stats.recent} icon={<UserPlus size={22} />} accent={VIZ.teal} />
+      </div>
 
       <DataTable
         columns={columns} data={rows} getRowId={(sa) => sa.id}
