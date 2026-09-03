@@ -12,11 +12,13 @@ import { useToast } from '../../../../components/ui';
 import {
   useEntryFeedback,
   useAddFeedback,
+  useAssignEntry,
   useCandidateProfile,
   useCandidateResumeUrl,
   useFitAssessment,
   useScoreEntry,
 } from '../../../../lib/hooks/usePipeline';
+import { useUserDirectory } from '../../../../lib/hooks/useUserDirectory';
 import { useCandidateMessages, useResendMessage } from '../../../../lib/hooks/useCandidateMessages';
 import { useCandidateOffers, useWithdrawOffer } from '../../../../lib/hooks/useOffers';
 import { useCandidateInterviews, useCancelInterview } from '../../../../lib/hooks/useInterviews';
@@ -363,6 +365,73 @@ function chipLabel(result: EntryExamResult): string {
   return `${result.examTitle} · ${label}${result.score !== null ? ` ${result.score}%` : ''}`;
 }
 
+// Team-collab: assign this pipeline entry to a teammate. Logic verbatim from the old drawer
+// (useUserDirectory + useAssignEntry); v2-styled native select.
+function AssigneeControl({ row, jobId }: { row: BoardRow; jobId: string }) {
+  const { data } = useUserDirectory({ pageSize: 100 });
+  const assign = useAssignEntry(row.entryId, jobId);
+  const { toast } = useToast();
+  const [assignee, setAssignee] = useState(row.assignedUserId ?? '');
+  const teammates = (data?.data ?? []).filter((u) => u.status === 'active');
+
+  function onChange(value: string) {
+    setAssignee(value);
+    assign.mutate(value || null, { onError: () => toast('Failed to update assignee.', 'error') });
+  }
+
+  return (
+    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 500, color: muted }}>
+      Assigned to
+      <select
+        value={assignee}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={assign.isPending}
+        style={{ padding: '6px 9px', fontSize: 13, borderRadius: 8, border: '1px solid color-mix(in srgb, var(--ink) 15%, var(--hair))', background: 'var(--paper)', color: ink, outline: 'none' }}
+      >
+        <option value="">Unassigned</option>
+        {teammates.map((u) => (
+          <option key={u.id} value={u.id}>{u.name ?? u.email}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+// Pick teammates to @mention/notify on this feedback. Chips over an inline @-autocomplete; their
+// ids go to mentionedUserIds. Backend validates + drops self. Logic verbatim from the old drawer.
+function MentionPicker({ value, onChange }: { value: string[]; onChange: (ids: string[]) => void }) {
+  const { data } = useUserDirectory({ pageSize: 100 });
+  const teammates = (data?.data ?? []).filter((u) => u.status === 'active');
+  if (teammates.length === 0) return null;
+  const toggle = (id: string) => onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <span style={{ fontSize: 12, fontWeight: 500, color: muted }}>Notify teammates</span>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {teammates.map((u) => {
+          const on = value.includes(u.id);
+          return (
+            <button
+              key={u.id}
+              type="button"
+              onClick={() => toggle(u.id)}
+              aria-pressed={on}
+              style={{
+                borderRadius: 99, padding: '4px 10px', fontSize: 12, cursor: 'pointer',
+                border: `1px solid ${on ? 'var(--org-primary)' : 'var(--hair)'}`,
+                background: on ? 'color-mix(in srgb, var(--org-primary) 10%, transparent)' : 'var(--paper)',
+                color: on ? 'var(--org-primary)' : muted,
+              }}
+            >
+              @{u.name ?? u.email}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function StarPicker({ value, onChange }: { value: number; onChange: (value: number) => void }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -382,14 +451,15 @@ export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: B
   const { toast } = useToast();
   const [note, setNote] = useState('');
   const [rating, setRating] = useState(0);
+  const [mentions, setMentions] = useState<string[]>([]);
 
   const canSubmit = Boolean(note.trim() || rating > 0);
 
   function handleSubmit() {
     addFeedback.mutate(
-      { note: note.trim() || undefined, rating: rating > 0 ? rating : undefined },
+      { note: note.trim() || undefined, rating: rating > 0 ? rating : undefined, mentionedUserIds: mentions.length ? mentions : undefined },
       {
-        onSuccess: () => { setNote(''); setRating(0); },
+        onSuccess: () => { setNote(''); setRating(0); setMentions([]); },
         onError: (error) => toast(error instanceof Error ? error.message : 'Failed to add feedback.', 'error'),
       },
     );
@@ -402,7 +472,10 @@ export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: B
           <h2 style={{ fontFamily: 'var(--font-disp)', fontWeight: 600, fontSize: 18, letterSpacing: '-0.01em', color: ink, margin: 0 }}>{row.candidateName}</h2>
           <p style={{ fontSize: 13, color: sub, margin: '4px 0 0' }}>{row.candidateEmail}</p>
         </div>
-        <button type="button" aria-label="Close" onClick={onClose} style={{ display: 'inline-flex', background: 'none', border: 'none', padding: 4, color: muted, cursor: 'pointer' }}><X size={18} /></button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <AssigneeControl row={row} jobId={jobId} />
+          <button type="button" aria-label="Close" onClick={onClose} style={{ display: 'inline-flex', background: 'none', border: 'none', padding: 4, color: muted, cursor: 'pointer' }}><X size={18} /></button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 16 }}>
@@ -450,6 +523,7 @@ export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: B
             <label htmlFor="feedback-note" className="v2-label" style={{ marginBottom: 0 }}>Add feedback</label>
             <textarea id="feedback-note" value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="Notes for the team…" style={{ ...textInput, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} />
             <StarPicker value={rating} onChange={setRating} />
+            <MentionPicker value={mentions} onChange={setMentions} />
             <div>
               <Button onClick={handleSubmit} loading={addFeedback.isPending} disabled={!canSubmit}>Post feedback</Button>
             </div>

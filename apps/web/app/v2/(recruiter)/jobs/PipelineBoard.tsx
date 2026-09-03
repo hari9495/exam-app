@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { useJobPipeline, usePatchEntry, useScoreJob } from '../../../../lib/hooks/usePipeline';
 import { BoardRow, EntryExamResult, PatchEntryResult, PIPELINE_STAGES, PipelineStage, STAGE_LABEL } from '../../../../lib/types';
 import { useAuth } from '../../../../lib/auth-context';
+import { useCurrentUser } from '../../../../lib/hooks/useCurrentUser';
 import { useToast } from '../../../../components/ui';
 import { CandidateDrawer } from './CandidateDrawer';
 import { SendMessageModal, SendMessageInitial } from './SendMessageModal';
@@ -62,6 +63,7 @@ function PipelineCard({ row, canManage, onOpen, onStageChange, onReject }: Pipel
         <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>{row.feedbackCount} {row.feedbackCount === 1 ? 'note' : 'notes'}</span>
       </div>
       <p style={{ fontSize: 11.5, color: 'var(--muted)', margin: 0 }}>Added via {row.enteredVia}</p>
+      {row.assigneeName && <p style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--org-primary)', margin: 0 }}>Assigned to {row.assigneeName}</p>}
       {canManage && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderTop: '1px solid var(--hair)', paddingTop: 8 }}>
           <select aria-label={`Stage for ${row.candidateName}`} value={row.stage} onChange={(e) => onStageChange(row.entryId, e.target.value as PipelineStage)} style={stageSelect}>
@@ -78,11 +80,14 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
   const { data: board, isLoading, isError } = useJobPipeline(jobId);
   const { role } = useAuth();
   const canManage = role !== 'panel';
+  const { data: currentUser } = useCurrentUser();
   const patchEntry = usePatchEntry(jobId);
   const scoreJob = useScoreJob(jobId);
   const { toast } = useToast();
   const [tab, setTab] = useState<'board' | 'rejected'>('board');
   const [sortByFit, setSortByFit] = useState(false);
+  const [mineOnly, setMineOnly] = useState(false);
+  const visible = (rows: BoardRow[]) => (mineOnly ? rows.filter((r) => r.assignedUserId === currentUser?.id) : rows);
   const [openRow, setOpenRow] = useState<BoardRow | null>(null);
   const [composeFor, setComposeFor] = useState<{ entryId: string; candidateId: string; candidateName: string; initial: SendMessageInitial } | null>(null);
 
@@ -115,18 +120,21 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
       {tab === 'board' && (
         <div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--muted)', cursor: 'pointer' }}><Cb checked={sortByFit} onChange={setSortByFit} /> Sort by fit</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--muted)', cursor: 'pointer' }}><Cb checked={sortByFit} onChange={setSortByFit} /> Sort by fit</label>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--muted)', cursor: 'pointer' }}><Cb checked={mineOnly} onChange={setMineOnly} /> My candidates</label>
+            </div>
             <button type="button" onClick={() => scoreJob.mutate()} disabled={scoreJob.isPending} className="v2-hoverbtn" style={{ ...dt.toolBtn, opacity: scoreJob.isPending ? 0.5 : 1 }}>{scoreJob.isPending ? 'Scoring…' : 'Score candidates'}</button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16 }}>
             {PIPELINE_STAGES.map((stage) => (
               <div key={stage} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <h3 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', margin: 0 }}>{STAGE_LABEL[stage]} ({board.stages[stage].length})</h3>
+                <h3 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', margin: 0 }}>{STAGE_LABEL[stage]} ({visible(board.stages[stage]).length})</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {(sortByFit ? sortByFitScore(board.stages[stage]) : board.stages[stage]).map((row) => (
+                  {(sortByFit ? sortByFitScore(visible(board.stages[stage])) : visible(board.stages[stage])).map((row) => (
                     <PipelineCard key={row.entryId} row={row} canManage={canManage} onOpen={setOpenRow} onStageChange={handleStageChange} onReject={handleReject} />
                   ))}
-                  {board.stages[stage].length === 0 && <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>No candidates.</p>}
+                  {visible(board.stages[stage]).length === 0 && <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>No candidates.</p>}
                 </div>
               </div>
             ))}

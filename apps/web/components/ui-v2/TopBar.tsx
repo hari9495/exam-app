@@ -4,6 +4,7 @@
 // v2 Azure shadcn tokens. Logout lives in the sidebar (per the source). Search is a visual ⌘K stub.
 import Link from 'next/link';
 import { Search, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { NotificationBell } from './NotificationBell';
 
 export function TopBar({
   orgName, displayName, initials, avatarUrl, collapsed, onToggleSidebar,
@@ -28,6 +29,7 @@ export function TopBar({
           <span className="flex-1 text-left">Search…</span>
           <kbd className="text-[10px] font-mono border border-border rounded px-1.5 py-0.5">⌘K</kbd>
         </button>
+        <NotificationBell />
         <Link href="/profile" className="flex items-center gap-2 no-underline text-foreground" title={displayName}>
           {avatarUrl ? (
             <img src={avatarUrl} alt="" className="w-8 h-8 rounded-full object-cover" />
