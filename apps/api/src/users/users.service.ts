@@ -44,6 +44,7 @@ const SAFE_USER_SELECT = {
   name: true,
   role: true,
   status: true,
+  managerId: true,
   lastLoginAt: true,
   createdAt: true,
 } as const;
@@ -274,6 +275,9 @@ export class UsersService {
     if (dto.role === 'super_admin') {
       throw new ForbiddenException('Cannot assign the super_admin role here');
     }
+    if (dto.managerId === targetUserId) {
+      throw new BadRequestException('A user cannot report to themselves');
+    }
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const target = await tx.user.findFirst({ where: { id: targetUserId, organizationId: context.organizationId } });
       if (!target) {
@@ -287,6 +291,7 @@ export class UsersService {
         data: {
           ...(dto.role !== undefined ? { role: dto.role } : {}),
           ...(dto.name !== undefined ? { name: dto.name } : {}),
+          ...(dto.managerId !== undefined ? { managerId: dto.managerId } : {}),
         },
         select: SAFE_USER_SELECT,
       });

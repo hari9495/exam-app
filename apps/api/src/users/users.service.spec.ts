@@ -737,6 +737,26 @@ describe('UsersService', () => {
       await service.update(ctx, 't1', { name: 'X' }, 'admin1');
       expect(tx.user.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 't1' }, data: { name: 'X' } }));
     });
+
+    it('persists managerId when updating a user\'s reporting manager', async () => {
+      const tx = {
+        user: {
+          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1' }),
+          update: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', name: 'Al', organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date() }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      await service.update(ctx, 't1', { managerId: 'mgr1' }, 'admin1');
+      expect(tx.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 't1' }, data: expect.objectContaining({ managerId: 'mgr1' }) }),
+      );
+    });
+
+    it('refuses to set a user as their own manager', async () => {
+      await expect(service.update(ctx, 't1', { managerId: 't1' }, 'admin1')).rejects.toThrow(
+        new BadRequestException('A user cannot report to themselves'),
+      );
+    });
   });
 
   describe('requestPasswordReset', () => {

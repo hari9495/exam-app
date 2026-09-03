@@ -1,4 +1,4 @@
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
 const EDITABLE_ROLES = ['org_admin', 'recruiter', 'panel'] as const;
 
@@ -11,4 +11,8 @@ export class UpdateUserDto {
   @IsString()
   @MaxLength(120)
   name?: string;
+
+  @IsOptional()
+  @IsUUID()
+  managerId?: string;
 }
