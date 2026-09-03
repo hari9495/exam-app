@@ -190,7 +190,7 @@ export class ApprovalsService {
           submitterUserId,
           outcome.resolvedFirstStep.approverUserIds,
           APPROVAL_NOTIFICATION_TYPES.requested,
-          { entityType: outcome.subjectType, entityId: subjectId, linkPath: `/v2/approvals/${outcome.result.requestId}` },
+          { entityType: outcome.subjectType, entityId: subjectId, linkPath: `/v2/approvals` },
         );
       } catch (e) {
         this.logger.error(`approval request notification failed for ${subjectType} ${subjectId}`, e as Error);
@@ -302,7 +302,7 @@ export class ApprovalsService {
     }
 
     try {
-      const target = { entityType: outcome.result.subjectType, entityId: outcome.result.subjectId, linkPath: `/v2/approvals/${outcome.requestId}` };
+      const target = { entityType: outcome.result.subjectType, entityId: outcome.result.subjectId, linkPath: `/v2/approvals` };
       if (outcome.result.requestStatus === 'pending_approval' && outcome.nextStepApproverIds) {
         await this.notifications.notify(context, actorUserId, outcome.nextStepApproverIds, APPROVAL_NOTIFICATION_TYPES.requested, target);
       } else if (outcome.result.requestStatus === 'approved') {
@@ -508,7 +508,7 @@ export class ApprovalsService {
         actorUserId,
         outcome.currentStepApproverIds,
         APPROVAL_NOTIFICATION_TYPES.cancelled,
-        { entityType: outcome.result.subjectType, entityId: outcome.result.subjectId, linkPath: `/v2/approvals/${requestId}` },
+        { entityType: outcome.result.subjectType, entityId: outcome.result.subjectId, linkPath: `/v2/approvals` },
       );
     } catch (e) {
       this.logger.error(`approval cancellation notification failed for request ${requestId}`, e as Error);
