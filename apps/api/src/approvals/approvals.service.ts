@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
   TenantContext,
   TenantPrismaService,
@@ -38,6 +38,32 @@ export interface DecideResult {
   subjectType: string;
   subjectId: string;
   gate: ApprovalGate;
+}
+
+export interface RequestSummary {
+  id: string;
+  gate: ApprovalGate;
+  subjectType: string;
+  subjectId: string;
+  status: string;
+  currentStepPosition: number;
+  submittedByUserId: string;
+  submittedAt: Date;
+  stepCount: number;
+}
+
+export interface RequestDetail {
+  id: string;
+  gate: ApprovalGate;
+  subjectType: string;
+  subjectId: string;
+  status: string;
+  currentStepPosition: number;
+  submittedByUserId: string;
+  submittedAt: Date;
+  steps: ResolvedStep[];
+  decisions: { id: string; stepPosition: number; approverUserId: string; decision: string; note: string | null; decidedAt: Date }[];
+  subject: Record<string, unknown>;
 }
 
 // decide()'s tx callback stays pure DB work; audit + notify run after commit for the same
@@ -211,6 +237,11 @@ export class ApprovalsService {
           data: { status: 'rejected', decidedAt: new Date() },
         });
         if (upd.count === 0) throw new ConflictException('Already actioned');
+        if (req.subjectType === 'job') {
+          await tx.job.updateMany({ where: { id: req.subjectId, organizationId: context.organizationId as string }, data: { status: 'draft' } });
+        } else {
+          await tx.offer.updateMany({ where: { id: req.subjectId, organizationId: context.organizationId as string }, data: { status: 'draft' } });
+        }
         return {
           result: { requestStatus: 'rejected', subjectResolved: true, subjectType: req.subjectType, subjectId: req.subjectId, gate: req.gate as ApprovalGate },
           requestId,
@@ -224,6 +255,11 @@ export class ApprovalsService {
           data: { status: 'approved', decidedAt: new Date() },
         });
         if (upd.count === 0) throw new ConflictException('Already actioned');
+        if (req.subjectType === 'job') {
+          await tx.job.updateMany({ where: { id: req.subjectId, organizationId: context.organizationId as string }, data: { status: 'open' } });
+        } else {
+          await tx.offer.updateMany({ where: { id: req.subjectId, organizationId: context.organizationId as string }, data: { status: 'approved' } });
+        }
         return {
           result: { requestStatus: 'approved', subjectResolved: true, subjectType: req.subjectType, subjectId: req.subjectId, gate: req.gate as ApprovalGate },
           requestId,
@@ -269,6 +305,105 @@ export class ApprovalsService {
     }
 
     return outcome.result;
+  }
+
+  async listRequests(
+    context: TenantContext,
+    userId: string,
+    scope: 'inbox' | 'submitted',
+    status?: string,
+  ): Promise<RequestSummary[]> {
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      if (scope === 'submitted') {
+        const rows = await tx.approvalRequest.findMany({
+          where: { organizationId: context.organizationId as string, submittedByUserId: userId, ...(status ? { status } : {}) },
+        });
+        return rows.map(this.toRequestSummary);
+      }
+
+      // ponytail: in-app inbox filter over pending requests; denormalize current_approver_user_id if volume grows
+      const rows = await tx.approvalRequest.findMany({
+        where: { organizationId: context.organizationId as string, status: 'pending_approval' },
+      });
+      return rows
+        .filter((r) => {
+          const steps: ResolvedStep[] = JSON.parse(r.chainSnapshotJson);
+          const step = steps[r.currentStepPosition];
+          return !!step && step.approverUserIds.includes(userId);
+        })
+        .map(this.toRequestSummary);
+    });
+  }
+
+  private toRequestSummary(r: {
+    id: string;
+    gate: string;
+    subjectType: string;
+    subjectId: string;
+    status: string;
+    currentStepPosition: number;
+    submittedByUserId: string;
+    submittedAt: Date;
+    chainSnapshotJson: string;
+  }): RequestSummary {
+    const steps: ResolvedStep[] = JSON.parse(r.chainSnapshotJson);
+    return {
+      id: r.id,
+      gate: r.gate as ApprovalGate,
+      subjectType: r.subjectType,
+      subjectId: r.subjectId,
+      status: r.status,
+      currentStepPosition: r.currentStepPosition,
+      submittedByUserId: r.submittedByUserId,
+      submittedAt: r.submittedAt,
+      stepCount: steps.length,
+    };
+  }
+
+  async getRequestDetail(context: TenantContext, requestId: string): Promise<RequestDetail> {
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const req = await tx.approvalRequest.findFirst({
+        where: { id: requestId, organizationId: context.organizationId as string },
+        include: { decisions: { orderBy: { decidedAt: 'asc' } } },
+      });
+      if (!req) throw new NotFoundException('Approval request not found');
+
+      const steps: ResolvedStep[] = JSON.parse(req.chainSnapshotJson);
+
+      let subject: Record<string, unknown>;
+      if (req.subjectType === 'job') {
+        const job = await tx.job.findFirst({
+          where: { id: req.subjectId, organizationId: context.organizationId as string },
+          select: { title: true, status: true },
+        });
+        subject = { title: job?.title, status: job?.status };
+      } else {
+        const offer = await tx.offer.findFirst({
+          where: { id: req.subjectId, organizationId: context.organizationId as string },
+          select: { compensation: true, status: true, candidateId: true },
+        });
+        let candidateName: string | undefined;
+        if (offer?.candidateId) {
+          const candidate = await tx.candidate.findFirst({ where: { id: offer.candidateId }, select: { name: true } });
+          candidateName = candidate?.name;
+        }
+        subject = { candidateName, compensation: offer?.compensation, status: offer?.status };
+      }
+
+      return {
+        id: req.id,
+        gate: req.gate as ApprovalGate,
+        subjectType: req.subjectType,
+        subjectId: req.subjectId,
+        status: req.status,
+        currentStepPosition: req.currentStepPosition,
+        submittedByUserId: req.submittedByUserId,
+        submittedAt: req.submittedAt,
+        steps,
+        decisions: req.decisions,
+        subject,
+      };
+    });
   }
 
   async cancel(

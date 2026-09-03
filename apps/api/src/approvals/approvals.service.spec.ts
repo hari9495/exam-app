@@ -137,6 +137,8 @@ describe('ApprovalsService.decide', () => {
   let tx: {
     approvalRequest: { findFirst: jest.Mock; updateMany: jest.Mock };
     approvalDecision: { create: jest.Mock };
+    job: { updateMany: jest.Mock };
+    offer: { updateMany: jest.Mock };
   };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
@@ -160,6 +162,8 @@ describe('ApprovalsService.decide', () => {
     tx = {
       approvalRequest: { findFirst: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       approvalDecision: { create: jest.fn().mockResolvedValue({}) },
+      job: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      offer: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     };
     tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
@@ -187,9 +191,11 @@ describe('ApprovalsService.decide', () => {
       'approval.requested',
       expect.objectContaining({ entityType: 'job', entityId: 'job-1', linkPath: '/v2/approvals/req-1' }),
     );
+    expect(tx.job.updateMany).not.toHaveBeenCalled();
+    expect(tx.offer.updateMany).not.toHaveBeenCalled();
   });
 
-  it('marks the request approved + subjectResolved on final-step approval', async () => {
+  it('marks the request approved + subjectResolved on final-step approval, and flips the job to open', async () => {
     tx.approvalRequest.findFirst.mockResolvedValue(twoStepReq({ currentStepPosition: 1 }));
 
     const result = await service.decide(context, 'req-1', 'mgr-2', 'approved');
@@ -199,6 +205,11 @@ describe('ApprovalsService.decide', () => {
       where: { id: 'req-1', status: 'pending_approval', currentStepPosition: 1 },
       data: { status: 'approved', decidedAt: expect.any(Date) },
     });
+    expect(tx.job.updateMany).toHaveBeenCalledWith({
+      where: { id: 'job-1', organizationId: 'org-1' },
+      data: { status: 'open' },
+    });
+    expect(tx.offer.updateMany).not.toHaveBeenCalled();
     expect(notifications.notify).toHaveBeenCalledWith(
       context,
       'mgr-2',
@@ -208,7 +219,22 @@ describe('ApprovalsService.decide', () => {
     );
   });
 
-  it('marks rejected + subjectResolved on reject, storing the note', async () => {
+  it('flips an offer to approved on final-step approval', async () => {
+    tx.approvalRequest.findFirst.mockResolvedValue(
+      twoStepReq({ currentStepPosition: 1, subjectType: 'offer', subjectId: 'offer-1', gate: 'offer' }),
+    );
+
+    const result = await service.decide(context, 'req-1', 'mgr-2', 'approved');
+
+    expect(result.subjectType).toBe('offer');
+    expect(tx.offer.updateMany).toHaveBeenCalledWith({
+      where: { id: 'offer-1', organizationId: 'org-1' },
+      data: { status: 'approved' },
+    });
+    expect(tx.job.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('marks rejected + subjectResolved on reject, storing the note, and flips the job to draft', async () => {
     tx.approvalRequest.findFirst.mockResolvedValue(twoStepReq());
 
     const result = await service.decide(context, 'req-1', 'mgr-1', 'rejected', 'not a fit');
@@ -221,6 +247,10 @@ describe('ApprovalsService.decide', () => {
       where: { id: 'req-1', status: 'pending_approval', currentStepPosition: 0 },
       data: { status: 'rejected', decidedAt: expect.any(Date) },
     });
+    expect(tx.job.updateMany).toHaveBeenCalledWith({
+      where: { id: 'job-1', organizationId: 'org-1' },
+      data: { status: 'draft' },
+    });
     expect(notifications.notify).toHaveBeenCalledWith(
       context,
       'mgr-1',
@@ -228,6 +258,19 @@ describe('ApprovalsService.decide', () => {
       'approval.rejected',
       expect.objectContaining({ entityType: 'job', entityId: 'job-1' }),
     );
+  });
+
+  it('flips an offer to draft on reject', async () => {
+    tx.approvalRequest.findFirst.mockResolvedValue(twoStepReq({ subjectType: 'offer', subjectId: 'offer-1', gate: 'offer' }));
+
+    const result = await service.decide(context, 'req-1', 'mgr-1', 'rejected');
+
+    expect(result.subjectType).toBe('offer');
+    expect(tx.offer.updateMany).toHaveBeenCalledWith({
+      where: { id: 'offer-1', organizationId: 'org-1' },
+      data: { status: 'draft' },
+    });
+    expect(tx.job.updateMany).not.toHaveBeenCalled();
   });
 
   it('throws 403 when actor is not in the current step approvers', async () => {
@@ -370,6 +413,137 @@ describe('ApprovalsService.cancel', () => {
       await expect(service.cancelForSubject(context, 'job', 'job-1', 'submitter-1', false)).rejects.toThrow(ConflictException);
       expect(tx.approvalRequest.updateMany).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('ApprovalsService.listRequests', () => {
+  const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
+
+  const req = (overrides: Record<string, unknown> = {}) => ({
+    id: 'req-1',
+    organizationId: 'org-1',
+    gate: 'requisition',
+    subjectType: 'job',
+    subjectId: 'job-1',
+    status: 'pending_approval',
+    currentStepPosition: 0,
+    submittedByUserId: 'submitter-1',
+    submittedAt: new Date('2026-01-01'),
+    chainSnapshotJson: JSON.stringify([
+      { position: 0, name: 'Step 1', approverType: 'users', approverUserIds: ['mgr-1'] },
+      { position: 1, name: 'Step 2', approverType: 'users', approverUserIds: ['mgr-2'] },
+    ]),
+    ...overrides,
+  });
+
+  it('inbox: includes a request where the actor is a current-step approver', async () => {
+    const tx = { approvalRequest: { findMany: jest.fn().mockResolvedValue([req()]) } };
+    const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
+    const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
+
+    const result = await service.listRequests(context, 'mgr-1', 'inbox');
+
+    expect(tx.approvalRequest.findMany).toHaveBeenCalledWith({ where: { organizationId: 'org-1', status: 'pending_approval' } });
+    expect(result).toEqual([
+      {
+        id: 'req-1',
+        gate: 'requisition',
+        subjectType: 'job',
+        subjectId: 'job-1',
+        status: 'pending_approval',
+        currentStepPosition: 0,
+        submittedByUserId: 'submitter-1',
+        submittedAt: req().submittedAt,
+        stepCount: 2,
+      },
+    ]);
+  });
+
+  it('inbox: excludes a request where the actor is only an approver on a later step', async () => {
+    const tx = { approvalRequest: { findMany: jest.fn().mockResolvedValue([req()]) } };
+    const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
+    const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
+
+    const result = await service.listRequests(context, 'mgr-2', 'inbox');
+
+    expect(result).toEqual([]);
+  });
+
+  it('submitted: filters by submitter and optional status', async () => {
+    const tx = { approvalRequest: { findMany: jest.fn().mockResolvedValue([req()]) } };
+    const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
+    const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
+
+    const result = await service.listRequests(context, 'submitter-1', 'submitted', 'pending_approval');
+
+    expect(tx.approvalRequest.findMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1', submittedByUserId: 'submitter-1', status: 'pending_approval' },
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].submittedByUserId).toBe('submitter-1');
+  });
+});
+
+describe('ApprovalsService.getRequestDetail', () => {
+  const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
+
+  const baseReq = (overrides: Record<string, unknown> = {}) => ({
+    id: 'req-1',
+    organizationId: 'org-1',
+    gate: 'requisition',
+    subjectType: 'job',
+    subjectId: 'job-1',
+    status: 'approved',
+    currentStepPosition: 1,
+    submittedByUserId: 'submitter-1',
+    submittedAt: new Date('2026-01-01'),
+    chainSnapshotJson: JSON.stringify([
+      { position: 0, name: 'Step 1', approverType: 'users', approverUserIds: ['mgr-1'] },
+      { position: 1, name: 'Step 2', approverType: 'users', approverUserIds: ['mgr-2'] },
+    ]),
+    decisions: [{ id: 'dec-1', stepPosition: 0, approverUserId: 'mgr-1', decision: 'approved', note: null, decidedAt: new Date('2026-01-02') }],
+    ...overrides,
+  });
+
+  it('returns decisions, steps and a job subject summary', async () => {
+    const tx = {
+      approvalRequest: { findFirst: jest.fn().mockResolvedValue(baseReq()) },
+      job: { findFirst: jest.fn().mockResolvedValue({ title: 'Engineer', status: 'open' }) },
+    };
+    const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
+    const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
+
+    const result = await service.getRequestDetail(context, 'req-1');
+
+    expect(result.steps).toHaveLength(2);
+    expect(result.decisions).toEqual(baseReq().decisions);
+    expect(result.subject).toEqual({ title: 'Engineer', status: 'open' });
+    expect(tx.job.findFirst).toHaveBeenCalledWith({
+      where: { id: 'job-1', organizationId: 'org-1' },
+      select: { title: true, status: true },
+    });
+  });
+
+  it('returns a candidate/compensation subject summary for an offer', async () => {
+    const tx = {
+      approvalRequest: { findFirst: jest.fn().mockResolvedValue(baseReq({ subjectType: 'offer', subjectId: 'offer-1' })) },
+      offer: { findFirst: jest.fn().mockResolvedValue({ compensation: '100k', status: 'approved', candidateId: 'cand-1' }) },
+      candidate: { findFirst: jest.fn().mockResolvedValue({ name: 'Jane Doe' }) },
+    };
+    const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
+    const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
+
+    const result = await service.getRequestDetail(context, 'req-1');
+
+    expect(result.subject).toEqual({ candidateName: 'Jane Doe', compensation: '100k', status: 'approved' });
+  });
+
+  it('404s when the request is not found in-org', async () => {
+    const tx = { approvalRequest: { findFirst: jest.fn().mockResolvedValue(null) } };
+    const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
+    const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
+
+    await expect(service.getRequestDetail(context, 'missing')).rejects.toThrow('Approval request not found');
   });
 });
 
