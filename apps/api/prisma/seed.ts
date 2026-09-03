@@ -3,7 +3,7 @@ import * as argon2 from 'argon2';
 
 const prisma = new PrismaClient();
 
-const PERMISSIONS = [
+export const PERMISSIONS = [
   { key: 'platform:manage_organizations', description: 'Create and manage organizations (Super Admin only)' },
   { key: 'org:manage_users', description: 'Invite and manage users within an organization' },
   { key: 'org:manage_settings', description: 'Edit organization branding/domain/security settings' },
@@ -18,9 +18,10 @@ const PERMISSIONS = [
   { key: 'pipeline:manage', description: 'Create and manage hiring jobs and their candidate pipeline' },
   { key: 'interview:view_assigned', description: 'View interviews you are assigned to as a panelist' },
   { key: 'org:manage_billing', description: 'View organization billing, plan, and usage' },
+  { key: 'approvals:configure', description: 'Configure approval chains and staff reporting managers' },
 ];
 
-const ROLE_PERMISSIONS: Record<string, string[]> = {
+export const ROLE_PERMISSIONS: Record<string, string[]> = {
   super_admin: ['platform:manage_organizations', 'org:manage_users', 'org:manage_settings', 'org:view', 'audit:view'],
   // org_admin is a full org-scoped superuser: their own admin features PLUS the complete
   // recruiter/panel capability set (exams, question bank, candidates, results).
@@ -38,6 +39,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'pipeline:manage',
     'interview:view_assigned',
     'org:manage_billing',
+    'approvals:configure',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],
