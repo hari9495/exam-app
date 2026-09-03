@@ -31,3 +31,4 @@ export * from './health/health.service';
 export * from './analytics/item-statistics';
 export * from './analytics/answer-key-change';
 export * from './billing/billing-core';
+export * from './approvals/approval-types';
