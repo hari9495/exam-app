@@ -5,7 +5,7 @@
 // useIntegrations for the SMTP banner). Inline Enabled toggle, kebab Edit / Restore default.
 import { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Pencil, RotateCcw } from 'lucide-react';
+import { MoreHorizontal, Pencil, RotateCcw, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../../../../lib/auth-context';
 import { useMessageTemplates, useUpsertTemplate, useSetTemplateEnabled, useDeleteTemplate } from '../../../../lib/hooks/useCandidateMessages';
 import { useIntegrations } from '../../../../lib/hooks/useIntegrations';
@@ -17,6 +17,10 @@ const TRIGGER_MODE_OPTS = [{ value: 'manual', label: 'Manual only' }, { value: '
 const TRIGGER_EVENT_OPTS = [...PIPELINE_STAGES.map((s) => ({ value: s, label: STAGE_LABEL[s] })), { value: 'rejected', label: 'Rejected' }, { value: 'none', label: 'None (manual only)' }];
 const MERGE_TOKENS = ['candidateName', 'jobTitle', 'orgName', 'recruiterName', 'statusLink'];
 const MODE_LABEL: Record<string, string> = { manual: 'Manual only', prompt: 'Prompt before sending', auto: 'Send automatically' };
+// Events that ship a built-in default (see apps/api/src/candidate-emails/default-templates.ts).
+// A saved template on one of these can be "restored" to its built-in copy; anything else
+// (manual-only, or a stage with no default) has nothing to fall back to, so it's a plain delete.
+const DEFAULT_EVENTS = new Set(['applied', 'interview', 'offer', 'rejected']);
 
 function triggerEventLabel(event: string | null): string {
   if (event === null) return 'None (manual only)';
@@ -24,7 +28,11 @@ function triggerEventLabel(event: string | null): string {
   return STAGE_LABEL[event as PipelineStage] ?? event;
 }
 
-function EditTemplateDialog({ template, onClose, onSaved }: { template: CandidateEmailTemplate; onClose: () => void; onSaved: () => void }) {
+// A blank manual-only template for the "New template" flow (no id → the upsert creates a row;
+// triggerEvent null keeps it manual-only, and the backend allows several of those).
+const BLANK_TEMPLATE: CandidateEmailTemplate = { id: null, name: '', triggerEvent: null, triggerMode: 'manual', subject: '', body: '', enabled: true, isDefault: false };
+
+function EditTemplateDialog({ template, isNew = false, onClose, onSaved }: { template: CandidateEmailTemplate; isNew?: boolean; onClose: () => void; onSaved: () => void }) {
   const upsert = useUpsertTemplate();
   const [name, setName] = useState(template.name);
   const [triggerEvent, setTriggerEvent] = useState(template.triggerEvent ?? 'none');
@@ -45,7 +53,7 @@ function EditTemplateDialog({ template, onClose, onSaved }: { template: Candidat
   }
 
   return (
-    <Dialog open onClose={onClose} title={`Edit "${template.name}"`} width={560}>
+    <Dialog open onClose={onClose} title={isNew ? 'New template' : `Edit "${template.name}"`} width={560}>
       <form onSubmit={handleSave}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <TextField id="tpl-name" label="Name" value={name} onChange={setName} required autoComplete="off" />
@@ -83,6 +91,7 @@ export default function V2MessageTemplatesPage() {
   const deleteTemplate = useDeleteTemplate();
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<CandidateEmailTemplate | null>(null);
+  const [creating, setCreating] = useState(false);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const notify = (type: 'success' | 'error', text: string) => { setNotice({ type, text }); setTimeout(() => setNotice(null), 4000); };
   const showNoSmtpBanner = integrationsLoaded && integrations?.smtpConfigured === false;
@@ -97,6 +106,10 @@ export default function V2MessageTemplatesPage() {
   function handleRestoreDefault(t: CandidateEmailTemplate) {
     if (!t.id) return;
     deleteTemplate.mutate(t.id, { onSuccess: () => notify('success', 'Restored to default.'), onError: (err) => notify('error', err instanceof Error ? err.message : 'Failed to restore default.') });
+  }
+  function handleDelete(t: CandidateEmailTemplate) {
+    if (!t.id) return;
+    deleteTemplate.mutate(t.id, { onSuccess: () => notify('success', 'Template deleted.'), onError: (err) => notify('error', err instanceof Error ? err.message : 'Failed to delete template.') });
   }
 
   const columns: ColumnDef<typeof DT_FEATURES, CandidateEmailTemplate>[] = [
@@ -113,7 +126,11 @@ export default function V2MessageTemplatesPage() {
         <Dropdown align="end" menuWidth={160} trigger={<span style={{ display: 'inline-grid', placeItems: 'center', width: 30, height: 30, color: 'var(--muted)', cursor: 'pointer' }}><MoreHorizontal size={17} /></span>}>
           {(close) => (<>
             <DropdownItem onClick={() => { close(); setEditing(row.original); }}><Pencil size={15} /> Edit</DropdownItem>
-            {!row.original.isDefault && row.original.id && <DropdownItem onClick={() => { close(); handleRestoreDefault(row.original); }}><RotateCcw size={15} /> Restore default</DropdownItem>}
+            {!row.original.isDefault && row.original.id && (
+              row.original.triggerEvent && DEFAULT_EVENTS.has(row.original.triggerEvent)
+                ? <DropdownItem onClick={() => { close(); handleRestoreDefault(row.original); }}><RotateCcw size={15} /> Restore default</DropdownItem>
+                : <DropdownItem onClick={() => { close(); handleDelete(row.original); }}><Trash2 size={15} /> Delete</DropdownItem>
+            )}
           </>)}
         </Dropdown>
       ),
@@ -124,9 +141,12 @@ export default function V2MessageTemplatesPage() {
 
   return (
     <>
-      <div style={{ marginBottom: 16 }}>
-        <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Message Templates</h1>
-        <p style={{ fontSize: 13, color: 'var(--muted)', margin: '4px 0 0', maxWidth: 620 }}>Control what candidates are emailed at each pipeline stage. Edit a default template to override it for your organization, or restore it to fall back to the built-in copy.</p>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
+        <div>
+          <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Message Templates</h1>
+          <p style={{ fontSize: 13, color: 'var(--muted)', margin: '4px 0 0', maxWidth: 620 }}>Control what candidates are emailed at each pipeline stage. Edit a default template to override it for your organization, or restore it to fall back to the built-in copy. Add a manual-only template for ad-hoc emails you send yourself.</p>
+        </div>
+        <Button onClick={() => setCreating(true)}><Plus size={15} /> New template</Button>
       </div>
 
       {showNoSmtpBanner && (
@@ -144,6 +164,7 @@ export default function V2MessageTemplatesPage() {
       />
 
       {editing && <EditTemplateDialog template={editing} onClose={() => setEditing(null)} onSaved={() => notify('success', 'Template saved.')} />}
+      {creating && <EditTemplateDialog template={BLANK_TEMPLATE} isNew onClose={() => setCreating(false)} onSaved={() => notify('success', 'Template created.')} />}
     </>
   );
 }
