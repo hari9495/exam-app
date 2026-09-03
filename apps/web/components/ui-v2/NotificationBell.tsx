@@ -14,6 +14,11 @@ function label(n: NotificationView): string {
   const on = n.contextText ? ` on ${n.contextText}` : '';
   if (n.type === 'mention') return `${who} mentioned you${on}`;
   if (n.type === 'assigned') return `${who} assigned you${on}`;
+  if (n.type === 'approval.requested') return `${who} needs your approval${on}`;
+  if (n.type === 'approval.approved') return `Your submission was approved${on}`;
+  if (n.type === 'approval.rejected') return `Your submission was rejected${on}`;
+  if (n.type === 'approval.cancelled') return `An approval you were on was withdrawn${on}`;
+  if (n.type === 'approval.step_skipped') return `An approval step was skipped${on}`;
   return `${who} sent you a notification`;
 }
 
