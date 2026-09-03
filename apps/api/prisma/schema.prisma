@@ -152,6 +152,7 @@ model User {
   // SAS-signed on the way out -- see UsersService.toProfileResponse.
   avatarPath          String?              @map("avatar_path")
   lastLoginAt         DateTime?            @map("last_login_at")
+  managerId           String?              @map("manager_id") @db.UniqueIdentifier
   createdAt           DateTime             @default(now()) @map("created_at")
   refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
@@ -837,6 +838,12 @@ model Job {
   walkInGroups       WalkInGroup[]
   fitCriteria        String?         @map("fit_criteria") @db.NVarChar(Max)
   fitRubric          String?         @map("fit_rubric") @db.NVarChar(Max)
+  department         String?         @db.NVarChar(200)
+  hiringManagerId    String?         @map("hiring_manager_id") @db.UniqueIdentifier
+  headcount          Int?
+  salaryMin          Int?            @map("salary_min")
+  salaryMax          Int?            @map("salary_max")
+  salaryCurrency     String?         @map("salary_currency") @db.NVarChar(10)
 
   @@index([organizationId, status])
   @@map("jobs")
@@ -975,6 +982,68 @@ model Offer {
   @@index([organizationId, pipelineEntryId])
   @@index([organizationId, candidateId])
   @@map("offers")
+}
+
+model ApprovalChain {
+  id             String              @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String              @map("organization_id") @db.UniqueIdentifier
+  gate           String              // 'requisition' | 'offer'
+  enabled        Boolean             @default(false)
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  steps          ApprovalChainStep[]
+
+  @@unique([organizationId, gate])
+  @@map("approval_chains")
+}
+
+model ApprovalChainStep {
+  id              String        @id @default(uuid()) @db.UniqueIdentifier
+  chainId         String        @map("chain_id") @db.UniqueIdentifier
+  position        Int
+  name            String        @db.NVarChar(200)
+  approverType    String        @map("approver_type") // 'users' | 'reporting_manager' | 'hiring_manager'
+  approverUserIds String?       @map("approver_user_ids") @db.NVarChar(Max) // JSON array
+  managerLevel    Int?          @map("manager_level")
+  chain           ApprovalChain @relation(fields: [chainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([chainId])
+  @@map("approval_chain_steps")
+}
+
+model ApprovalRequest {
+  id                  String             @id @default(uuid()) @db.UniqueIdentifier
+  organizationId      String             @map("organization_id") @db.UniqueIdentifier
+  gate                String
+  subjectType         String             @map("subject_type") // 'job' | 'offer'
+  subjectId           String             @map("subject_id") @db.UniqueIdentifier
+  status              String             @default("pending_approval")
+  currentStepPosition Int                @map("current_step_position")
+  submittedByUserId   String             @map("submitted_by_user_id") @db.UniqueIdentifier
+  submittedAt         DateTime           @default(now()) @map("submitted_at")
+  decidedAt           DateTime?          @map("decided_at")
+  chainSnapshotJson   String             @map("chain_snapshot_json") @db.NVarChar(Max)
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+  decisions           ApprovalDecision[]
+
+  @@index([organizationId, status])
+  @@index([subjectType, subjectId])
+  @@map("approval_requests")
+}
+
+model ApprovalDecision {
+  id             String          @id @default(uuid()) @db.UniqueIdentifier
+  requestId      String          @map("request_id") @db.UniqueIdentifier
+  stepPosition   Int             @map("step_position")
+  approverUserId String          @map("approver_user_id") @db.UniqueIdentifier
+  decision       String          // 'approved' | 'rejected'
+  note           String?         @db.NVarChar(Max)
+  decidedAt      DateTime        @default(now()) @map("decided_at")
+  request        ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([requestId])
+  @@map("approval_decisions")
 }
 
 model Interview {
