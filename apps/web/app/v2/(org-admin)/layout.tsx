@@ -6,7 +6,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { MotionConfig } from 'framer-motion';
-import { Users, History, TerminalSquare, ShieldCheck, CreditCard, Plug, Palette, KeyRound } from 'lucide-react';
+import { Users, History, TerminalSquare, ShieldCheck, CreditCard, Plug, Palette, KeyRound, GitPullRequestArrow } from 'lucide-react';
 import { useAuth } from '../../../lib/auth-context';
 import { staffLandingPath } from '../../../lib/staff-landing';
 import { useOrgBranding } from '../../../lib/hooks/useBranding';
@@ -21,6 +21,7 @@ const ORG_ADMIN_NAV = [
   { href: '/v2/settings/integrations', label: 'Integrations', icon: Plug },
   { href: '/v2/settings/branding', label: 'Brand settings', icon: Palette },
   { href: '/v2/settings/sso', label: 'Single sign-on', icon: KeyRound },
+  { href: '/v2/settings/approvals', label: 'Approvals', icon: GitPullRequestArrow },
   { href: '/v2/users', label: 'Staff users', icon: Users },
   { href: '/v2/audit-log', label: 'Audit log', icon: History },
   { href: '/v2/system-logs', label: 'System logs', icon: TerminalSquare },
@@ -47,6 +48,12 @@ export default function OrgAdminV2Layout({ children }: { children: React.ReactNo
     ['--org-on-primary']: branding?.textColor || '#ffffff',
   } as React.CSSProperties;
 
+  // approvals:configure is seeded only to org_admin, and actingSuperAdmin bypasses every
+  // permission check server-side (see PermissionsGuard) — so this is the same condition
+  // that already gates entry into this whole console, applied per-item for this one nav link.
+  const canConfigureApprovals = role === 'org_admin' || actingSuperAdmin;
+  const navItems = ORG_ADMIN_NAV.filter((item) => item.href !== '/v2/settings/approvals' || canConfigureApprovals);
+
   async function handleLogout() {
     await logout();
     router.push('/login');
@@ -66,7 +73,7 @@ export default function OrgAdminV2Layout({ children }: { children: React.ReactNo
     <MotionConfig reducedMotion="user">
       <div className="v2" style={{ minHeight: '100vh', ...orgVars }}>
         <AppShell
-          navItems={ORG_ADMIN_NAV}
+          navItems={navItems}
           orgName={orgName}
           orgLogoUrl={branding?.logoUrl ?? undefined}
           orgInitial={orgInitial}
