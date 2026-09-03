@@ -17,7 +17,7 @@ import { STATUS, VIZ } from '../../../../components/ui-v2/viz';
 
 const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 };
 const chip: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, borderRadius: 99, border: '1px solid var(--hair)', background: 'var(--paper)', padding: '2px 8px', fontSize: 11.5, color: 'var(--ink)', textDecoration: 'none' };
-const stageSelect: React.CSSProperties = { fontSize: 12, padding: '5px 8px', borderRadius: 7, border: '1px solid color-mix(in srgb, var(--ink) 15%, var(--hair))', background: 'var(--paper)', color: 'var(--ink)', outline: 'none', cursor: 'pointer' };
+const stageSelect: React.CSSProperties = { fontSize: 12, padding: '5px 8px', borderRadius: 7, border: '1px solid color-mix(in srgb, var(--ink) 15%, var(--hair))', background: 'var(--paper)', color: 'var(--ink)', outline: 'none', cursor: 'pointer', minWidth: 0, maxWidth: '100%' };
 
 function chipLabel(result: EntryExamResult): string {
   if (result.passFail === null) return `${result.examTitle} · Pending`;
@@ -70,7 +70,7 @@ function PipelineCard({ row, canManage, onOpen, onStageChange, onReject }: Pipel
       </div>
       {row.assigneeName && <p style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--org-primary)', margin: 0 }}>Assigned to {row.assigneeName}</p>}
       {canManage && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderTop: '1px solid var(--hair)', paddingTop: 8 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderTop: '1px solid var(--hair)', paddingTop: 8 }}>
           <select aria-label={`Stage for ${row.candidateName}`} value={row.stage} onChange={(e) => onStageChange(row.entryId, e.target.value as PipelineStage)} style={stageSelect}>
             {PIPELINE_STAGES.map((stage) => <option key={stage} value={stage}>{STAGE_LABEL[stage]}</option>)}
           </select>
@@ -131,18 +131,22 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
             </div>
             <button type="button" onClick={() => scoreJob.mutate()} disabled={scoreJob.isPending} className="v2-hoverbtn" style={{ ...dt.toolBtn, opacity: scoreJob.isPending ? 0.5 : 1 }}>{scoreJob.isPending ? 'Scoring…' : 'Score candidates'}</button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${PIPELINE_STAGES.length}, minmax(0, 1fr))`, gap: 16 }}>
-            {PIPELINE_STAGES.map((stage) => (
-              <div key={stage} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <h3 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', margin: 0 }}>{STAGE_LABEL[stage]} ({visible(board.stages[stage]).length})</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {(sortByFit ? sortByFitScore(visible(board.stages[stage])) : visible(board.stages[stage])).map((row) => (
-                    <PipelineCard key={row.entryId} row={row} canManage={canManage} onOpen={setOpenRow} onStageChange={handleStageChange} onReject={handleReject} />
-                  ))}
-                  {visible(board.stages[stage]).length === 0 && <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>No candidates.</p>}
+          {/* Kanban scrolls horizontally instead of crushing the 5 stage columns below ~200px
+              (which spilled the card footer controls out of the card on narrow/minimized screens). */}
+          <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${PIPELINE_STAGES.length}, minmax(200px, 1fr))`, gap: 16 }}>
+              {PIPELINE_STAGES.map((stage) => (
+                <div key={stage} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <h3 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', margin: 0 }}>{STAGE_LABEL[stage]} ({visible(board.stages[stage]).length})</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {(sortByFit ? sortByFitScore(visible(board.stages[stage])) : visible(board.stages[stage])).map((row) => (
+                      <PipelineCard key={row.entryId} row={row} canManage={canManage} onOpen={setOpenRow} onStageChange={handleStageChange} onReject={handleReject} />
+                    ))}
+                    {visible(board.stages[stage]).length === 0 && <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>No candidates.</p>}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       )}
