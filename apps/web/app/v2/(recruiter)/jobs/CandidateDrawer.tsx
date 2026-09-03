@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { X } from 'lucide-react';
-import { Dialog, Button, Pill, dt } from '../../../../components/ui-v2';
+import { Dialog, Button, Pill, ApprovalTimeline, dt } from '../../../../components/ui-v2';
 import { STATUS, VIZ } from '../../../../components/ui-v2/viz';
 import { useToast } from '../../../../components/ui';
 import {
@@ -20,7 +20,8 @@ import {
 } from '../../../../lib/hooks/usePipeline';
 import { useTeammates } from '../../../../lib/hooks/useUserDirectory';
 import { useCandidateMessages, useResendMessage } from '../../../../lib/hooks/useCandidateMessages';
-import { useCandidateOffers, useWithdrawOffer } from '../../../../lib/hooks/useOffers';
+import { useCandidateOffers, useWithdrawOffer, useSendOffer, useSubmitOffer, useCancelOffer } from '../../../../lib/hooks/useOffers';
+import { useApprovalChains } from '../../../../lib/hooks/useApprovals';
 import { useCandidateInterviews, useCancelInterview } from '../../../../lib/hooks/useInterviews';
 import { BoardRow, EntryExamResult, CandidateProfile, Offer, OfferStatus, Interview, InterviewStatus } from '../../../../lib/types';
 import { SendMessageModal } from './SendMessageModal';
@@ -201,9 +202,18 @@ function FitSection({ entryId, jobId }: { entryId: string; jobId: string }) {
   );
 }
 
-// Tone → v2 colour, replacing the old StatusBadge tones.
-const OFFER_STATUS_COLOR: Record<OfferStatus, string> = {
-  draft: muted, sent: VIZ.azure, accepted: STATUS.ok, declined: STATUS.bad, expired: STATUS.warn, withdrawn: muted,
+// Tone + label → v2 pill, replacing the old StatusBadge tones. pending_approval/approved only
+// appear when the org's offer approval gate is on (Phase-1 Task 13) -- matches the JOB_STATUS_PILL
+// convention in jobs/page.tsx.
+const OFFER_STATUS_PILL: Record<OfferStatus, { c: string; label: string }> = {
+  draft: { c: muted, label: 'Draft' },
+  pending_approval: { c: STATUS.warn, label: 'Pending approval' },
+  approved: { c: STATUS.ok, label: 'Approved' },
+  sent: { c: VIZ.azure, label: 'Sent' },
+  accepted: { c: STATUS.ok, label: 'Accepted' },
+  declined: { c: STATUS.bad, label: 'Declined' },
+  expired: { c: STATUS.warn, label: 'Expired' },
+  withdrawn: { c: muted, label: 'Withdrawn' },
 };
 const INTERVIEW_STATUS_COLOR: Record<InterviewStatus, string> = {
   proposed: VIZ.azure, confirmed: STATUS.ok, declined: STATUS.bad, reschedule_requested: STATUS.warn, cancelled: muted,
@@ -264,6 +274,13 @@ function offerTimestampLabel(offer: Offer): string {
 function OffersSection({ entryId, candidateId }: { entryId: string; candidateId: string }) {
   const { data: offers, isLoading } = useCandidateOffers(candidateId);
   const withdrawOffer = useWithdrawOffer(candidateId);
+  const sendOffer = useSendOffer(candidateId);
+  const submitOffer = useSubmitOffer();
+  const cancelOffer = useCancelOffer();
+  // Reliable signal for whether the offer approval gate is on -- see CreateOfferModal. When off
+  // (or not yet loaded), a lingering draft offer shows no action here, same as today.
+  const { data: approvalChains } = useApprovalChains();
+  const offerGateOn = approvalChains?.offer.enabled ?? false;
   const { toast } = useToast();
   const [creating, setCreating] = useState(false);
 
@@ -271,6 +288,24 @@ function OffersSection({ entryId, candidateId }: { entryId: string; candidateId:
     withdrawOffer.mutate(offerId, {
       onSuccess: () => toast('Offer withdrawn.'),
       onError: (error) => toast(error instanceof Error ? error.message : 'Failed to withdraw offer.', 'error'),
+    });
+  }
+  function handleSend(offerId: string) {
+    sendOffer.mutate(offerId, {
+      onSuccess: () => toast('Offer sent.'),
+      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to send offer.', 'error'),
+    });
+  }
+  function handleSubmit(offerId: string) {
+    submitOffer.mutate(offerId, {
+      onSuccess: () => toast('Offer submitted for approval.'),
+      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to submit offer for approval.', 'error'),
+    });
+  }
+  function handleCancel(offerId: string) {
+    cancelOffer.mutate(offerId, {
+      onSuccess: () => toast('Approval request cancelled.'),
+      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to cancel approval.', 'error'),
     });
   }
 
@@ -290,14 +325,26 @@ function OffersSection({ entryId, candidateId }: { entryId: string; candidateId:
             <li key={offer.id} style={listItem}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: 500, color: ink }}>{offer.compensation}</span>
-                <Pill c={OFFER_STATUS_COLOR[offer.status]} label={offer.status} />
+                <Pill c={OFFER_STATUS_PILL[offer.status].c} label={OFFER_STATUS_PILL[offer.status].label} />
               </div>
               <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 12, color: muted }}>
                 <span>{offerTimestampLabel(offer)}</span>
                 {offer.status === 'sent' && (
                   <button type="button" onClick={() => handleWithdraw(offer.id)} disabled={withdrawOffer.isPending} style={{ ...linkBtn, opacity: withdrawOffer.isPending ? 0.5 : 1 }}>Withdraw</button>
                 )}
+                {offer.status === 'approved' && (
+                  <button type="button" onClick={() => handleSend(offer.id)} disabled={sendOffer.isPending} style={{ ...linkBtn, opacity: sendOffer.isPending ? 0.5 : 1 }}>Send</button>
+                )}
+                {offer.status === 'draft' && offerGateOn && (
+                  <button type="button" onClick={() => handleSubmit(offer.id)} disabled={submitOffer.isPending} style={{ ...linkBtn, opacity: submitOffer.isPending ? 0.5 : 1 }}>Submit for approval</button>
+                )}
               </div>
+              {offer.status === 'pending_approval' && offer.approval && (
+                <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <ApprovalTimeline steps={offer.approval.steps} currentStep={offer.approval.currentStep} />
+                  <button type="button" onClick={() => handleCancel(offer.id)} disabled={cancelOffer.isPending} className="v2-hoverbtn" style={{ ...dt.toolBtn, alignSelf: 'flex-start' }}>Cancel approval</button>
+                </div>
+              )}
             </li>
           ))}
         </ul>

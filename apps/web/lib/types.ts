@@ -513,9 +513,12 @@ export interface CandidateEmailTemplate {
   isDefault: boolean;
 }
 
-export type OfferStatus = 'draft' | 'sent' | 'accepted' | 'declined' | 'expired' | 'withdrawn';
+// pending_approval/approved only appear when the org's offer approval chain is enabled (Phase-1
+// Task 13) -- an org with the offer gate off never leaves draft/sent/etc.
+export type OfferStatus = 'draft' | 'pending_approval' | 'approved' | 'sent' | 'accepted' | 'declined' | 'expired' | 'withdrawn';
 
-// Mirrors apps/api's Offer row -- see offers.service.ts.
+// Mirrors apps/api's Offer row plus the approval summary offers.service.ts joins on for
+// listForEntry/listForCandidate (Offer & { approval: ApprovalSummary | null }).
 export interface Offer {
   id: string;
   status: OfferStatus;
@@ -526,6 +529,7 @@ export interface Offer {
   respondedAt: string | null;
   pdfPath: string | null;
   createdAt: string;
+  approval: ApprovalSummary | null;
 }
 
 // GET /offer-template -- the org's saved offer letter override, or the code default (id: null).

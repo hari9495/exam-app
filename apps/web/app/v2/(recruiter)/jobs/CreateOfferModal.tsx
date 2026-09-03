@@ -6,8 +6,9 @@
 import { useEffect, useState } from 'react';
 import { Dialog, TextField, Button, dt } from '../../../../components/ui-v2';
 import { useToast } from '../../../../components/ui';
-import { useCreateOffer, useSendOffer, useOfferTemplate, usePreviewOfferPdf } from '../../../../lib/hooks/useOffers';
+import { useCreateOffer, useSendOffer, useSubmitOffer, useOfferTemplate, usePreviewOfferPdf } from '../../../../lib/hooks/useOffers';
 import { useIntegrations } from '../../../../lib/hooks/useIntegrations';
+import { useApprovalChains } from '../../../../lib/hooks/useApprovals';
 
 interface CreateOfferModalProps {
   entryId: string;
@@ -31,10 +32,15 @@ export function CreateOfferModal({ entryId, candidateId, onClose }: CreateOfferM
   const { data: template } = useOfferTemplate();
   const createOffer = useCreateOffer(entryId, candidateId);
   const sendOffer = useSendOffer(candidateId);
+  const submitOffer = useSubmitOffer();
   const previewPdf = usePreviewOfferPdf();
   // Best-effort, same as SendMessageModal: a plain recruiter gets a 403 on this org-admin
   // endpoint, so isSuccess just stays false and the banner quietly doesn't render.
   const { data: integrations, isSuccess: integrationsLoaded } = useIntegrations();
+  // Reliable signal for whether the offer approval gate is on -- undefined data (not yet loaded)
+  // defaults to false, so the button renders Send (today's behaviour) until the chain loads.
+  const { data: approvalChains } = useApprovalChains();
+  const offerGateOn = approvalChains?.offer.enabled ?? false;
   const { toast } = useToast();
 
   const [compensation, setCompensation] = useState('');
@@ -87,7 +93,18 @@ export function CreateOfferModal({ entryId, candidateId, onClose }: CreateOfferM
     }
   }
 
-  const busy = createOffer.isPending || sendOffer.isPending || previewPdf.isPending;
+  async function handleSubmitForApproval() {
+    try {
+      const id = await ensureOffer();
+      await submitOffer.mutateAsync(id);
+      toast('Offer submitted for approval.');
+      onClose();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Failed to submit offer for approval.', 'error');
+    }
+  }
+
+  const busy = createOffer.isPending || sendOffer.isPending || submitOffer.isPending || previewPdf.isPending;
 
   return (
     <Dialog open onClose={onClose} title="Create offer" width={680}>
@@ -118,7 +135,11 @@ export function CreateOfferModal({ entryId, candidateId, onClose }: CreateOfferM
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
         <button type="button" onClick={onClose} className="v2-hoverbtn" style={dt.toolBtn}>Cancel</button>
         <button type="button" onClick={handlePreview} disabled={!canSubmit || busy} className="v2-hoverbtn" style={{ ...dt.toolBtn, opacity: (!canSubmit || busy) ? 0.5 : 1, cursor: (!canSubmit || busy) ? 'not-allowed' : 'pointer' }}>{previewPdf.isPending ? 'Preparing…' : 'Preview PDF'}</button>
-        <Button onClick={handleSend} loading={sendOffer.isPending} disabled={!canSubmit || busy}>Send</Button>
+        {offerGateOn ? (
+          <Button onClick={handleSubmitForApproval} loading={submitOffer.isPending} disabled={!canSubmit || busy}>Submit for approval</Button>
+        ) : (
+          <Button onClick={handleSend} loading={sendOffer.isPending} disabled={!canSubmit || busy}>Send</Button>
+        )}
       </div>
     </Dialog>
   );
