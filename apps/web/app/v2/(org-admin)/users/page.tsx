@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation';
 import type { ColumnDef } from '@tanstack/react-table';
 import { MoreHorizontal, Pencil, Power, KeyRound, ListFilter, Check, LogIn, Plus, Users, UserCheck, ShieldCheck, ClipboardList } from 'lucide-react';
 import { useUsers, useUpdateUser, useDeactivateUser, useReactivateUser, useResetUserPassword, useCreateUser, useBulkCreateUsers } from '../../../../lib/hooks/useUsers';
+import { useTeammates } from '../../../../lib/hooks/useUserDirectory';
 import { useCurrentUser } from '../../../../lib/hooks/useCurrentUser';
 import { useSsoStatus, useSsoSettings } from '../../../../lib/hooks/useSso';
 import { useAuth } from '../../../../lib/auth-context';
@@ -36,6 +37,7 @@ const ROLE_OPTIONS = [
   { value: 'recruiter', label: 'Recruiter' },
   { value: 'panel', label: 'Interview Panel' },
 ];
+const NO_MANAGER = '';
 
 // Mirrors the server matrix: an org_admin (or a super_admin acting on this org) may
 // manage any staff member except a super_admin and except themselves.
@@ -164,6 +166,7 @@ export default function V2UsersPage() {
   // ListView sorted/filtered client-side, so a paginated slice would only ever sort/filter the
   // visible page. Fetch one large page instead (same as the old page).
   const { data: usersResponse, isLoading, isError } = useUsers({ pageSize: 200 });
+  const { data: teammates } = useTeammates();
   const { data: ssoStatus } = useSsoStatus();
   const ssoEnabled = ssoStatus?.enabled === true;
 
@@ -179,6 +182,7 @@ export default function V2UsersPage() {
   const [editing, setEditing] = useState<StaffUser | null>(null);
   const [editRole, setEditRole] = useState('');
   const [editName, setEditName] = useState('');
+  const [editManagerId, setEditManagerId] = useState(NO_MANAGER);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const notify: Notify = (type, text) => { setNotice({ type, text }); setTimeout(() => setNotice(null), 4000); };
 
@@ -198,11 +202,16 @@ export default function V2UsersPage() {
     panelists: allUsers.filter((u) => u.role === 'panel').length,
   }), [allUsers]);
 
-  function openEdit(target: StaffUser) { setEditing(target); setEditRole(target.role); setEditName(target.name ?? ''); }
+  const managerOptions = useMemo(() => [
+    { value: NO_MANAGER, label: '— None —' },
+    ...(teammates ?? []).filter((t) => t.id !== editing?.id).map((t) => ({ value: t.id, label: t.name ?? t.email })),
+  ], [teammates, editing]);
+
+  function openEdit(target: StaffUser) { setEditing(target); setEditRole(target.role); setEditName(target.name ?? ''); setEditManagerId(target.managerId ?? NO_MANAGER); }
   function submitEdit(e: FormEvent) {
     e.preventDefault();
     if (!editing) return;
-    updateUser.mutate({ id: editing.id, role: editRole, name: editName }, { onSuccess: () => { notify('success', `Updated ${editing.email}.`); setEditing(null); } });
+    updateUser.mutate({ id: editing.id, role: editRole, name: editName, managerId: editManagerId === NO_MANAGER ? null : editManagerId }, { onSuccess: () => { notify('success', `Updated ${editing.email}.`); setEditing(null); } });
   }
   async function handleImpersonate(target: StaffUser) {
     if (!confirm(`Log in as ${target.email}? You will act as this user until you return.`)) return;
@@ -301,6 +310,7 @@ export default function V2UsersPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <TextField id="edit-name" label="Name" value={editName} onChange={setEditName} autoComplete="off" />
               <div><label className="v2-label">Role</label><Combobox options={ROLE_OPTIONS} value={editRole} onChange={setEditRole} width="100%" /></div>
+              <div><label className="v2-label">Manager</label><Combobox options={managerOptions} value={editManagerId} onChange={setEditManagerId} width="100%" /></div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
               <button type="button" onClick={() => setEditing(null)} className="v2-hoverbtn" style={dt.toolBtn}>Cancel</button>

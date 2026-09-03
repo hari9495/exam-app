@@ -41,6 +41,7 @@ export interface StaffUser {
   name: string | null;
   role: string;
   status: string;
+  managerId: string | null;
   lastLoginAt: string | null;
   createdAt: string;
   // Only the /users/me endpoints return this -- the list endpoints deliberately omit it rather
