@@ -15,7 +15,7 @@
     "@anthropic-ai/sdk": "^0.32.1",
     "@azure/storage-blob": "^12.33.0",
     "@nestjs/common": "^11.1.28",
-    "@prisma/client": "^5.10.0",
+    "@prisma/client": "^7.9.1",
     "@sentry/node": "^10.70.0",
     "openai": "^6.48.0"
   },
