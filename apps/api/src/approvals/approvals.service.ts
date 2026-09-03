@@ -255,6 +255,64 @@ export class ApprovalsService {
     return outcome.result;
   }
 
+  async cancel(
+    context: TenantContext,
+    requestId: string,
+    actorUserId: string,
+    isConfigurer: boolean,
+  ): Promise<{ subjectType: string; subjectId: string; gate: ApprovalGate }> {
+    const outcome = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const req = await tx.approvalRequest.findFirst({
+        where: { id: requestId, organizationId: context.organizationId as string },
+      });
+      if (!req || req.status !== 'pending_approval') {
+        throw new ConflictException('Request is not open for approval');
+      }
+      if (req.submittedByUserId !== actorUserId && !isConfigurer) {
+        throw new ForbiddenException('Not allowed to cancel this request');
+      }
+
+      const upd = await tx.approvalRequest.updateMany({
+        where: { id: requestId, status: 'pending_approval' },
+        data: { status: 'cancelled', decidedAt: new Date() },
+      });
+      if (upd.count === 0) throw new ConflictException('Already actioned');
+
+      const steps: ResolvedStep[] = JSON.parse(req.chainSnapshotJson);
+      const currentStepApproverIds = steps[req.currentStepPosition]?.approverUserIds ?? [];
+
+      return {
+        result: { subjectType: req.subjectType, subjectId: req.subjectId, gate: req.gate as ApprovalGate },
+        currentStepApproverIds,
+      };
+    });
+
+    try {
+      await this.audit.record(context, {
+        actorUserId,
+        action: 'approval.cancelled',
+        entityType: outcome.result.subjectType,
+        entityId: outcome.result.subjectId,
+      });
+    } catch (e) {
+      this.logger.error(`approval cancellation audit failed for request ${requestId}`, e as Error);
+    }
+
+    try {
+      await this.notifications.notify(
+        context,
+        actorUserId,
+        outcome.currentStepApproverIds,
+        APPROVAL_NOTIFICATION_TYPES.cancelled,
+        { entityType: outcome.result.subjectType, entityId: outcome.result.subjectId, linkPath: `/v2/approvals/${requestId}` },
+      );
+    } catch (e) {
+      this.logger.error(`approval cancellation notification failed for request ${requestId}`, e as Error);
+    }
+
+    return outcome.result;
+  }
+
   // Single round-trip join (no relation exists between User.role and RolePermission in the
   // Prisma schema -- role is a plain string, not a FK) rather than one query per lookup.
   private async getApprovalsConfigureHolderIds(context: TenantContext): Promise<string[]> {

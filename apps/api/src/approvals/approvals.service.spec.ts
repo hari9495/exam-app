@@ -246,3 +246,104 @@ describe('ApprovalsService.decide', () => {
     expect(notifications.notify).not.toHaveBeenCalled();
   });
 });
+
+describe('ApprovalsService.cancel', () => {
+  let service: ApprovalsService;
+  let tenantPrisma: { forTenant: jest.Mock };
+  let audit: { record: jest.Mock };
+  let notifications: { notify: jest.Mock };
+  let tx: {
+    approvalRequest: { findFirst: jest.Mock; updateMany: jest.Mock };
+  };
+  const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
+
+  const twoStepReq = (overrides: Record<string, unknown> = {}) => ({
+    id: 'req-1',
+    organizationId: 'org-1',
+    gate: 'requisition',
+    subjectType: 'job',
+    subjectId: 'job-1',
+    status: 'pending_approval',
+    currentStepPosition: 0,
+    submittedByUserId: 'submitter-1',
+    chainSnapshotJson: JSON.stringify([
+      { position: 0, name: 'Step 1', approverType: 'users', approverUserIds: ['mgr-1'] },
+      { position: 1, name: 'Step 2', approverType: 'users', approverUserIds: ['mgr-2'] },
+    ]),
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    tx = {
+      approvalRequest: { findFirst: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    };
+    tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
+    audit = { record: jest.fn().mockResolvedValue(undefined) };
+    notifications = { notify: jest.fn().mockResolvedValue(undefined) };
+    service = new ApprovalsService(tenantPrisma as any, audit as any, notifications as any);
+  });
+
+  it('lets the submitter cancel their own request', async () => {
+    tx.approvalRequest.findFirst.mockResolvedValue(twoStepReq());
+
+    const result = await service.cancel(context, 'req-1', 'submitter-1', false);
+
+    expect(result).toEqual({ subjectType: 'job', subjectId: 'job-1', gate: 'requisition' });
+    expect(tx.approvalRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: 'req-1', status: 'pending_approval' },
+      data: { status: 'cancelled', decidedAt: expect.any(Date) },
+    });
+    expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'approval.cancelled', entityType: 'job', entityId: 'job-1' }));
+    expect(notifications.notify).toHaveBeenCalledWith(
+      context,
+      'submitter-1',
+      ['mgr-1'],
+      'approval.cancelled',
+      expect.objectContaining({ entityType: 'job', entityId: 'job-1' }),
+    );
+  });
+
+  it('lets an approvals:configure holder cancel someone else\'s request', async () => {
+    tx.approvalRequest.findFirst.mockResolvedValue(twoStepReq());
+
+    const result = await service.cancel(context, 'req-1', 'admin-1', true);
+
+    expect(result).toEqual({ subjectType: 'job', subjectId: 'job-1', gate: 'requisition' });
+    expect(notifications.notify).toHaveBeenCalledWith(
+      context,
+      'admin-1',
+      ['mgr-1'],
+      'approval.cancelled',
+      expect.objectContaining({ entityType: 'job', entityId: 'job-1' }),
+    );
+  });
+
+  it('throws 403 when a non-submitter, non-configurer tries to cancel', async () => {
+    tx.approvalRequest.findFirst.mockResolvedValue(twoStepReq());
+
+    await expect(service.cancel(context, 'req-1', 'random-user', false)).rejects.toThrow(ForbiddenException);
+    expect(tx.approvalRequest.updateMany).not.toHaveBeenCalled();
+    expect(notifications.notify).not.toHaveBeenCalled();
+  });
+
+  it('throws 409 when the request is not open for approval', async () => {
+    tx.approvalRequest.findFirst.mockResolvedValue(twoStepReq({ status: 'approved' }));
+
+    await expect(service.cancel(context, 'req-1', 'submitter-1', false)).rejects.toThrow(ConflictException);
+    expect(tx.approvalRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('throws 409 when not found', async () => {
+    tx.approvalRequest.findFirst.mockResolvedValue(null);
+
+    await expect(service.cancel(context, 'req-1', 'submitter-1', false)).rejects.toThrow(ConflictException);
+  });
+
+  it('the conditional update makes a second concurrent cancel a no-op (409)', async () => {
+    tx.approvalRequest.findFirst.mockResolvedValue(twoStepReq());
+    tx.approvalRequest.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(service.cancel(context, 'req-1', 'submitter-1', false)).rejects.toThrow(ConflictException);
+    expect(notifications.notify).not.toHaveBeenCalled();
+  });
+});
