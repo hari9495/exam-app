@@ -246,7 +246,7 @@ export default function V2UsersPage() {
         if (!manage && !impersonatable) return null;
         return (
           <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
-            {impersonatable && <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={() => handleImpersonate(u)}><LogIn size={14} /> Login as</button>}
+            {impersonatable && <button type="button" className="v2-hoverbtn" style={{ ...dt.toolBtn, whiteSpace: 'nowrap' }} onClick={() => handleImpersonate(u)}><LogIn size={14} /> Login as</button>}
             {manage && (
               <Dropdown align="end" menuWidth={180} trigger={<span style={{ display: 'inline-grid', placeItems: 'center', width: 30, height: 30, color: 'var(--muted)', cursor: 'pointer' }}><MoreHorizontal size={17} /></span>}>
                 {(close) => (<>
