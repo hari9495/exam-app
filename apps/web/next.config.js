@@ -12,6 +12,38 @@ const nextConfig = {
     // URL lands on the branded page instead.
     globalNotFound: true,
   },
+  // v2 nav cutover: send the recruiter list routes to their rebuilt /v2 pages (covers login
+  // landing, bookmarks, and the old shell's sidebar). Exact sources only — detail/editor
+  // subpaths (/exams/:id/edit, /exams/new, /reports/:id, ...) are NOT rebuilt and stay put.
+  // /reports is intentionally omitted: the 'panel' role lands there and isn't allowed in the v2
+  // (recruiter) layout, so redirecting it would loop. permanent:false keeps this reversible.
+  async redirects() {
+    const routes = ['/dashboard', '/exams', '/questions', '/candidates', '/walk-in-groups', '/jobs', '/analytics/hiring', '/message-templates', '/offer-template'];
+    return [
+      ...routes.map((source) => ({ source, destination: `/v2${source}`, permanent: false })),
+      // Staff login is rebuilt in v2 (Azure split login). Everything that pushes to /login
+      // (logout, unauth guards, SSO/reset returns) funnels to the v2 page. permanent:false → reversible.
+      { source: '/login', destination: '/v2/login', permanent: false },
+      // Question editor is rebuilt in v2; redirect the old editor routes too.
+      { source: '/questions/new', destination: '/v2/questions/new', permanent: false },
+      { source: '/questions/:id/edit', destination: '/v2/questions/:id/edit', permanent: false },
+      // Exam builder is rebuilt in v2. /exams/:id/preview is NOT rebuilt yet, so it stays put
+      // (the v2 edit page links to the old preview route).
+      { source: '/exams/new', destination: '/v2/exams/new', permanent: false },
+      { source: '/exams/:id/edit', destination: '/v2/exams/:id/edit', permanent: false },
+      { source: '/exams/:id/preview', destination: '/v2/exams/:id/preview', permanent: false },
+      // Job detail (pipeline board) is rebuilt in v2.
+      { source: '/jobs/:jobId', destination: '/v2/jobs/:jobId', permanent: false },
+      // Drive detail (live board + results) is rebuilt in v2.
+      { source: '/drives/:driveId', destination: '/v2/drives/:driveId', permanent: false },
+      // Walk-in group drives list rebuilt in v2.
+      { source: '/walk-in-groups/:groupId/drives', destination: '/v2/walk-in-groups/:groupId/drives', permanent: false },
+      // Bulk upload became a modal on the v2 candidates/questions lists (no standalone route);
+      // funnel the old standalone pages to those lists so no old recruiter UI stays reachable.
+      { source: '/questions/bulk-upload', destination: '/v2/questions', permanent: false },
+      { source: '/candidates/bulk-upload-invite', destination: '/v2/candidates', permanent: false },
+    ];
+  },
 };
 
 // ponytail: no auth token is configured, so the Sentry build plugin can't

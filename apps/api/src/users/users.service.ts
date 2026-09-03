@@ -185,6 +185,20 @@ export class UsersService {
     });
   }
 
+  // Org-scoped teammate list for the pipeline assign/@mention pickers. Unlike listDirectory (a
+  // super-admin, cross-org endpoint), this is gated at results:view and returns only the caller's
+  // own org's active staff — RLS via forTenant enforces the org scope. No cross-org organizationName.
+  async listTeammates(context: TenantContext, filters: { search?: string } = {}): Promise<SafeUser[]> {
+    return this.tenantPrisma.forTenant(context, (tx) =>
+      tx.user.findMany({
+        where: { ...staffSearchWhere(filters.search), status: 'active' },
+        select: SAFE_USER_SELECT,
+        orderBy: { name: 'asc' },
+        take: 200,
+      }),
+    );
+  }
+
   async getMe(context: TenantContext, userId: string): Promise<ProfileUser> {
     const user = await this.tenantPrisma.forTenant(context, (tx) =>
       tx.user.findUniqueOrThrow({ where: { id: userId }, select: PROFILE_USER_SELECT }),

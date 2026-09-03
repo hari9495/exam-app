@@ -35,5 +35,6 @@ DECLARE @pid UNIQUEIDENTIFIER = (SELECT id FROM dbo.permissions WHERE [key] = 'o
 IF NOT EXISTS (SELECT 1 FROM dbo.role_permissions WHERE role = 'org_admin' AND permission_id = @pid)
   INSERT INTO dbo.role_permissions (role, permission_id) VALUES ('org_admin', @pid);
 
--- Backfill a sane seat limit on the seeded trial plan
-UPDATE dbo.plans SET seat_limit = 5 WHERE id = '00000000-0000-0000-0000-000000000001';
+-- (Seat-limit backfill is unnecessary: the ADD above applies DEFAULT 5 to every
+-- existing row. A same-batch `UPDATE ... SET seat_limit` fails to parse on SQL Server
+-- because the column isn't visible until the batch completes — error 207.)

@@ -1,0 +1,59 @@
+/* Workfox Azure — guidelines scope. Self-contained under .wfx so the login's .v2 (C1)
+   scope, v2.css, the hook, and the ui-v2 primitive sources are ALL untouched. When a
+   product surface is later retoned to Azure, these values move into the shared scope. */
+.wfx {
+  --paper: #ffffff; --surface: #f8fafc; --ink: #0b1220; --muted: #64748b; --hair: #e2e8f0;
+  --accent: #3b5fe3; --danger: #b91c1c; --success: #15803d; --warning: #a16207;
+  --org-primary: #3b5fe3; --org-on-primary: #ffffff;
+  --font-disp: 'Bricolage Grotesque', system-ui, sans-serif;
+  --font-body: 'Hanken Grotesk', system-ui, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  background: var(--paper); color: var(--ink); font-family: var(--font-body);
+}
+@media (prefers-color-scheme: dark) {
+  .wfx {
+    --paper: #0b1220; --surface: #0b1220; --ink: #f8fafc; --muted: #94a3b8; --hair: #1e293b;
+    --accent: #3b82f6; --danger: #f87171; --success: #4ade80; --warning: #fbbf24;
+  }
+}
+.wfx-kicker {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--accent); display: inline-flex; align-items: center; gap: 7px;
+}
+.wfx-title {
+  font-family: var(--font-disp); font-weight: 600; letter-spacing: -0.025em;
+  line-height: 1.05; color: var(--ink); text-wrap: balance;
+}
+.wfx-muted { color: var(--muted); }
+.wfx-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.wfx-label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin: 0 0 6px; }
+.wfx-field {
+  width: 100%; height: 38px; border: 1px solid var(--hair); border-radius: 6px;
+  background: var(--paper); padding: 0 11px; font: inherit; font-size: 14px; color: var(--ink); outline: none;
+}
+.wfx-field::placeholder { color: var(--muted); opacity: 0.7; }
+.wfx-field:focus {
+  border-color: var(--org-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--org-primary) 18%, transparent);
+}
+.wfx-btn {
+  height: 40px; padding: 0 16px; border: 0; border-radius: 6px;
+  background: var(--org-primary); color: var(--org-on-primary);
+  font-family: var(--font-body); font-size: 14px; font-weight: 600; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+}
+.wfx-btn.sec { background: var(--paper); color: var(--ink); border: 1px solid var(--hair); }
+.wfx-link { font-size: 12.5px; color: var(--accent); font-weight: 600; text-decoration: none; }
+.wfx-link:hover { text-decoration: underline; }
+.wfx-alert {
+  display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 7%, var(--paper));
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--hair)); border-radius: 6px; padding: 8px 11px;
+}
+.wfx-card { background: var(--paper); border: 1px solid var(--hair); border-radius: 8px; padding: 10px 12px; }
+.wfx-rail { position: relative; }
+.wfx-rail::before {
+  content: ""; position: absolute; left: -1px; top: 8px; bottom: 8px; width: 3px;
+  border-radius: 0 3px 3px 0; background: var(--danger);
+}
+.wfx-swatch { width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--hair); flex-shrink: 0; }
