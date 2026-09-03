@@ -21,7 +21,7 @@ import {
 import { useTeammates } from '../../../../lib/hooks/useUserDirectory';
 import { useCandidateMessages, useResendMessage } from '../../../../lib/hooks/useCandidateMessages';
 import { useCandidateOffers, useWithdrawOffer, useSendOffer, useSubmitOffer, useCancelOffer } from '../../../../lib/hooks/useOffers';
-import { useApprovalChains } from '../../../../lib/hooks/useApprovals';
+import { useApprovalGateStatus } from '../../../../lib/hooks/useApprovals';
 import { useCandidateInterviews, useCancelInterview } from '../../../../lib/hooks/useInterviews';
 import { BoardRow, EntryExamResult, CandidateProfile, Offer, OfferStatus, Interview, InterviewStatus } from '../../../../lib/types';
 import { SendMessageModal } from './SendMessageModal';
@@ -279,8 +279,7 @@ function OffersSection({ entryId, candidateId }: { entryId: string; candidateId:
   const cancelOffer = useCancelOffer();
   // Reliable signal for whether the offer approval gate is on -- see CreateOfferModal. When off
   // (or not yet loaded), a lingering draft offer shows no action here, same as today.
-  const { data: approvalChains } = useApprovalChains();
-  const offerGateOn = approvalChains?.offer.enabled ?? false;
+  const offerGateOn = useApprovalGateStatus().data?.offer ?? false;
   const { toast } = useToast();
   const [creating, setCreating] = useState(false);
 

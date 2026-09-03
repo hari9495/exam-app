@@ -726,6 +726,7 @@ export interface ApprovalRequestSummary {
   submittedByUserId: string;
   submittedAt: string;
   stepCount: number;
+  subjectLabel?: string;
 }
 export interface ApprovalDecisionView {
   stepPosition: number;

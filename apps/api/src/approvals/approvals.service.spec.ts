@@ -437,13 +437,23 @@ describe('ApprovalsService.listRequests', () => {
   });
 
   it('inbox: includes a request where the actor is a current-step approver', async () => {
-    const tx = { approvalRequest: { findMany: jest.fn().mockResolvedValue([req()]) } };
+    const tx = {
+      approvalRequest: { findMany: jest.fn().mockResolvedValue([req()]) },
+      job: { findMany: jest.fn().mockResolvedValue([{ id: 'job-1', title: 'Engineer' }]) },
+      offer: { findMany: jest.fn() },
+      candidate: { findMany: jest.fn() },
+    };
     const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
     const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
 
     const result = await service.listRequests(context, 'mgr-1', 'inbox');
 
     expect(tx.approvalRequest.findMany).toHaveBeenCalledWith({ where: { organizationId: 'org-1', status: 'pending_approval' } });
+    expect(tx.job.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ['job-1'] }, organizationId: 'org-1' },
+      select: { id: true, title: true },
+    });
+    expect(tx.offer.findMany).not.toHaveBeenCalled();
     expect(result).toEqual([
       {
         id: 'req-1',
@@ -455,22 +465,34 @@ describe('ApprovalsService.listRequests', () => {
         submittedByUserId: 'submitter-1',
         submittedAt: req().submittedAt,
         stepCount: 2,
+        subjectLabel: 'Engineer',
       },
     ]);
   });
 
   it('inbox: excludes a request where the actor is only an approver on a later step', async () => {
-    const tx = { approvalRequest: { findMany: jest.fn().mockResolvedValue([req()]) } };
+    const tx = {
+      approvalRequest: { findMany: jest.fn().mockResolvedValue([req()]) },
+      job: { findMany: jest.fn() },
+      offer: { findMany: jest.fn() },
+      candidate: { findMany: jest.fn() },
+    };
     const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
     const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
 
     const result = await service.listRequests(context, 'mgr-2', 'inbox');
 
     expect(result).toEqual([]);
+    expect(tx.job.findMany).not.toHaveBeenCalled();
   });
 
   it('submitted: filters by submitter and optional status', async () => {
-    const tx = { approvalRequest: { findMany: jest.fn().mockResolvedValue([req()]) } };
+    const tx = {
+      approvalRequest: { findMany: jest.fn().mockResolvedValue([req()]) },
+      job: { findMany: jest.fn().mockResolvedValue([{ id: 'job-1', title: 'Engineer' }]) },
+      offer: { findMany: jest.fn() },
+      candidate: { findMany: jest.fn() },
+    };
     const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
     const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
 
@@ -481,6 +503,76 @@ describe('ApprovalsService.listRequests', () => {
     });
     expect(result).toHaveLength(1);
     expect(result[0].submittedByUserId).toBe('submitter-1');
+  });
+
+  it('submitted: resolves an offer subjectLabel via candidateId -> candidate name (no direct relation)', async () => {
+    const tx = {
+      approvalRequest: { findMany: jest.fn().mockResolvedValue([req({ subjectType: 'offer', subjectId: 'offer-1', gate: 'offer' })]) },
+      job: { findMany: jest.fn() },
+      offer: { findMany: jest.fn().mockResolvedValue([{ id: 'offer-1', candidateId: 'cand-1' }]) },
+      candidate: { findMany: jest.fn().mockResolvedValue([{ id: 'cand-1', name: 'Jane Doe' }]) },
+    };
+    const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
+    const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
+
+    const result = await service.listRequests(context, 'submitter-1', 'submitted');
+
+    expect(tx.offer.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ['offer-1'] }, organizationId: 'org-1' },
+      select: { id: true, candidateId: true },
+    });
+    expect(tx.candidate.findMany).toHaveBeenCalledWith({ where: { id: { in: ['cand-1'] } }, select: { id: true, name: true } });
+    expect(result[0].subjectLabel).toBe('Offer — Jane Doe');
+  });
+
+  it('omits subjectLabel when the subject cannot be resolved', async () => {
+    const tx = {
+      approvalRequest: { findMany: jest.fn().mockResolvedValue([req()]) },
+      job: { findMany: jest.fn().mockResolvedValue([]) },
+      offer: { findMany: jest.fn() },
+      candidate: { findMany: jest.fn() },
+    };
+    const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
+    const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
+
+    const result = await service.listRequests(context, 'submitter-1', 'submitted');
+
+    expect(result[0].subjectLabel).toBeUndefined();
+  });
+});
+
+describe('ApprovalsService.getGateStatus', () => {
+  const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
+
+  it('returns the enabled flag for each gate that has a chain row', async () => {
+    const tx = {
+      approvalChain: {
+        findMany: jest.fn().mockResolvedValue([
+          { gate: 'requisition', enabled: true },
+          { gate: 'offer', enabled: false },
+        ]),
+      },
+    };
+    const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
+    const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
+
+    const result = await service.getGateStatus(context);
+
+    expect(tx.approvalChain.findMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1' },
+      select: { gate: true, enabled: true },
+    });
+    expect(result).toEqual({ requisition: true, offer: false });
+  });
+
+  it('defaults a gate to false when no chain row exists for it', async () => {
+    const tx = { approvalChain: { findMany: jest.fn().mockResolvedValue([]) } };
+    const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
+    const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
+
+    const result = await service.getGateStatus(context);
+
+    expect(result).toEqual({ requisition: false, offer: false });
   });
 });
 

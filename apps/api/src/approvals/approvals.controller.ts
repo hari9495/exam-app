@@ -12,6 +12,15 @@ import { DecideDto } from './dto/decide.dto';
 export class ApprovalsController {
   constructor(private readonly approvals: ApprovalsService) {}
 
+  // No @RequirePermissions -- auth-only (any org user), same reasoning as decide() above.
+  // Recruiters need to know whether the offer/requisition gate is enabled to render the right
+  // CTA ("Submit for approval" vs "Send"), but approvals:configure is org_admin-only, so they
+  // can't call getChains() on the /organizations/approvals controller.
+  @Get('gate-status')
+  getGateStatus(@CurrentTenant() tenant: TenantContext) {
+    return this.approvals.getGateStatus(tenant);
+  }
+
   @Get('requests')
   listRequests(
     @CurrentTenant() tenant: TenantContext,

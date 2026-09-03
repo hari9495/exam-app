@@ -20,7 +20,7 @@ class RejectingGuard implements CanActivate {
 
 describe('ApprovalsController', () => {
   let controller: ApprovalsController;
-  let approvals: { listRequests: jest.Mock; getRequestDetail: jest.Mock; decide: jest.Mock };
+  let approvals: { listRequests: jest.Mock; getRequestDetail: jest.Mock; decide: jest.Mock; getGateStatus: jest.Mock };
   const tenant = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
   beforeEach(async () => {
@@ -28,6 +28,7 @@ describe('ApprovalsController', () => {
       listRequests: jest.fn().mockResolvedValue([{ id: 'req-1' }]),
       getRequestDetail: jest.fn().mockResolvedValue({ id: 'req-1' }),
       decide: jest.fn().mockResolvedValue({ requestStatus: 'approved' }),
+      getGateStatus: jest.fn().mockResolvedValue({ requisition: false, offer: true }),
     };
     const moduleRef = await Test.createTestingModule({
       controllers: [ApprovalsController],
@@ -54,6 +55,15 @@ describe('ApprovalsController', () => {
   it('getRequestDetail delegates with the request id', async () => {
     await controller.getRequestDetail(tenant, 'req-1');
     expect(approvals.getRequestDetail).toHaveBeenCalledWith(tenant, 'req-1');
+  });
+
+  // Regression for Finding 1: any authenticated org user (not just approvals:configure
+  // holders) must be able to read the gate-enabled flags -- this route carries no
+  // @RequirePermissions, unlike getChains() on the config controller.
+  it('getGateStatus delegates to the service with the tenant context', async () => {
+    const result = await controller.getGateStatus(tenant);
+    expect(approvals.getGateStatus).toHaveBeenCalledWith(tenant);
+    expect(result).toEqual({ requisition: false, offer: true });
   });
 
   it('decide delegates to the service with the actor, id, decision, and note', async () => {

@@ -26,8 +26,8 @@ const STATUS_PILL: Record<string, { c: string; label: string }> = {
 };
 const linkBtn: React.CSSProperties = { background: 'none', border: 'none', padding: 0, font: 'inherit', fontWeight: 600, color: 'var(--org-primary)', cursor: 'pointer', textAlign: 'left' };
 
-function subjectLabel(row: { subjectType: string; subjectId: string }): string {
-  return `${row.subjectType === 'job' ? 'Job' : 'Offer'} #${row.subjectId.slice(0, 8)}`;
+function subjectLabel(row: { subjectType: string; subjectId: string; subjectLabel?: string }): string {
+  return row.subjectLabel || `${row.subjectType === 'job' ? 'Job' : 'Offer'} #${row.subjectId.slice(0, 8)}`;
 }
 
 function submitterLabel(userId: string, teammates: DirectoryUser[] | undefined): string {

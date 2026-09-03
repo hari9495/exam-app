@@ -2,7 +2,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as authContext from '../auth-context';
 import * as apiClient from '../api-client';
-import { useApprovalChains, useDecideApproval } from './useApprovals';
+import { useApprovalChains, useApprovalGateStatus, useDecideApproval, useUpsertApprovalChain } from './useApprovals';
 
 jest.mock('../auth-context');
 jest.mock('../api-client');
@@ -30,6 +30,47 @@ describe('useApprovalChains', () => {
     await waitFor(() => expect(result.current.data?.requisition.gate).toBe('requisition'));
 
     expect(mockedApiFetch).toHaveBeenCalledWith('/organizations/approvals/chains', {}, 'token');
+  });
+});
+
+describe('useApprovalGateStatus', () => {
+  beforeEach(() => {
+    mockedUseAuth.mockReturnValue({ accessToken: 'token' });
+    mockedApiFetch.mockResolvedValue({ requisition: false, offer: true });
+  });
+
+  // Regression for Finding 1: the offer UI must read gate state from this auth-only endpoint,
+  // not useApprovalChains (approvals:configure-only, 403s for a plain recruiter).
+  it('fetches gate flags from the auth-only /approvals/gate-status endpoint', async () => {
+    const { result } = renderHook(() => useApprovalGateStatus(), { wrapper });
+
+    await waitFor(() => expect(result.current.data?.offer).toBe(true));
+
+    expect(mockedApiFetch).toHaveBeenCalledWith('/approvals/gate-status', {}, 'token');
+  });
+});
+
+describe('useUpsertApprovalChain', () => {
+  beforeEach(() => {
+    mockedUseAuth.mockReturnValue({ accessToken: 'token' });
+    mockedApiFetch.mockResolvedValue({ gate: 'offer', enabled: true, steps: [] });
+  });
+
+  it('invalidates both chains and gate-status on success, so the recruiter UI picks up the toggle', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
+    const localWrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+
+    const { result } = renderHook(() => useUpsertApprovalChain(), { wrapper: localWrapper });
+
+    result.current.mutate({ gate: 'offer', enabled: true, steps: [] });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['approvals', 'chains'] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['approvals', 'gate-status'] });
   });
 });
 

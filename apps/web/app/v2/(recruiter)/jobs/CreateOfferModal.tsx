@@ -8,7 +8,7 @@ import { Dialog, TextField, Button, dt } from '../../../../components/ui-v2';
 import { useToast } from '../../../../components/ui';
 import { useCreateOffer, useSendOffer, useSubmitOffer, useOfferTemplate, usePreviewOfferPdf } from '../../../../lib/hooks/useOffers';
 import { useIntegrations } from '../../../../lib/hooks/useIntegrations';
-import { useApprovalChains } from '../../../../lib/hooks/useApprovals';
+import { useApprovalGateStatus } from '../../../../lib/hooks/useApprovals';
 
 interface CreateOfferModalProps {
   entryId: string;
@@ -38,9 +38,10 @@ export function CreateOfferModal({ entryId, candidateId, onClose }: CreateOfferM
   // endpoint, so isSuccess just stays false and the banner quietly doesn't render.
   const { data: integrations, isSuccess: integrationsLoaded } = useIntegrations();
   // Reliable signal for whether the offer approval gate is on -- undefined data (not yet loaded)
-  // defaults to false, so the button renders Send (today's behaviour) until the chain loads.
-  const { data: approvalChains } = useApprovalChains();
-  const offerGateOn = approvalChains?.offer.enabled ?? false;
+  // defaults to false, so the button renders Send (today's behaviour) until this loads. Uses the
+  // auth-only gate-status endpoint rather than useApprovalChains(), which is
+  // approvals:configure-only and 403s for a plain recruiter (silently collapsing to "off").
+  const offerGateOn = useApprovalGateStatus().data?.offer ?? false;
   const { toast } = useToast();
 
   const [compensation, setCompensation] = useState('');

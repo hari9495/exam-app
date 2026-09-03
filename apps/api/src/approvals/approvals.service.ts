@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import {
   TenantContext,
   TenantPrismaService,
@@ -52,6 +53,7 @@ export interface RequestSummary {
   submittedByUserId: string;
   submittedAt: Date;
   stepCount: number;
+  subjectLabel?: string;
 }
 
 export interface ApprovalSummary {
@@ -322,25 +324,64 @@ export class ApprovalsService {
     status?: string,
   ): Promise<RequestSummary[]> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
+      let rows;
       if (scope === 'submitted') {
-        const rows = await tx.approvalRequest.findMany({
+        rows = await tx.approvalRequest.findMany({
           where: { organizationId: context.organizationId as string, submittedByUserId: userId, ...(status ? { status } : {}) },
         });
-        return rows.map(this.toRequestSummary);
-      }
-
-      // ponytail: in-app inbox filter over pending requests; denormalize current_approver_user_id if volume grows
-      const rows = await tx.approvalRequest.findMany({
-        where: { organizationId: context.organizationId as string, status: 'pending_approval' },
-      });
-      return rows
-        .filter((r) => {
+      } else {
+        // ponytail: in-app inbox filter over pending requests; denormalize current_approver_user_id if volume grows
+        const all = await tx.approvalRequest.findMany({
+          where: { organizationId: context.organizationId as string, status: 'pending_approval' },
+        });
+        rows = all.filter((r) => {
           const steps: ResolvedStep[] = JSON.parse(r.chainSnapshotJson);
           const step = steps[r.currentStepPosition];
           return !!step && step.approverUserIds.includes(userId);
-        })
-        .map(this.toRequestSummary);
+        });
+      }
+
+      const labels = await this.resolveSubjectLabels(context, tx, rows);
+      return rows.map((r) => {
+        const summary = this.toRequestSummary(r);
+        const subjectLabel = labels.get(`${r.subjectType}:${r.subjectId}`);
+        return subjectLabel ? { ...summary, subjectLabel } : summary;
+      });
     });
+  }
+
+  // Batch-resolves a human-readable label (job title / "Offer — <candidate name>") for a page
+  // of request summaries -- one findMany per subject type (plus one candidate lookup for
+  // offers, since Offer has no Prisma relation to Candidate, only a bare candidateId column)
+  // rather than a query per row. Keyed by "subjectType:subjectId" since job and offer ids are
+  // both plain UUIDs and could theoretically collide across the two id spaces.
+  private async resolveSubjectLabels(
+    context: TenantContext,
+    tx: Prisma.TransactionClient,
+    rows: { subjectType: string; subjectId: string }[],
+  ): Promise<Map<string, string>> {
+    const labels = new Map<string, string>();
+    const organizationId = context.organizationId as string;
+
+    const jobIds = [...new Set(rows.filter((r) => r.subjectType === 'job').map((r) => r.subjectId))];
+    if (jobIds.length > 0) {
+      const jobs = await tx.job.findMany({ where: { id: { in: jobIds }, organizationId }, select: { id: true, title: true } });
+      for (const job of jobs) labels.set(`job:${job.id}`, job.title);
+    }
+
+    const offerIds = [...new Set(rows.filter((r) => r.subjectType === 'offer').map((r) => r.subjectId))];
+    if (offerIds.length > 0) {
+      const offers = await tx.offer.findMany({ where: { id: { in: offerIds }, organizationId }, select: { id: true, candidateId: true } });
+      const candidateIds = [...new Set(offers.map((o) => o.candidateId))];
+      const candidates = candidateIds.length > 0 ? await tx.candidate.findMany({ where: { id: { in: candidateIds } }, select: { id: true, name: true } }) : [];
+      const nameByCandidateId = new Map(candidates.map((c) => [c.id, c.name]));
+      for (const offer of offers) {
+        const name = nameByCandidateId.get(offer.candidateId);
+        if (name) labels.set(`offer:${offer.id}`, `Offer — ${name}`);
+      }
+    }
+
+    return labels;
   }
 
   private toRequestSummary(r: {
@@ -474,6 +515,21 @@ export class ApprovalsService {
     }
 
     return outcome.result;
+  }
+
+  // Lightweight, auth-only (no approvals:configure requirement) read of just the enabled flags --
+  // lets any org user (e.g. a recruiter) know whether the offer/requisition gate is on so their
+  // UI can show "Submit for approval" vs "Send", without granting them the full chain config
+  // that getChains() exposes to admins only.
+  async getGateStatus(context: TenantContext): Promise<{ requisition: boolean; offer: boolean }> {
+    const rows = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.approvalChain.findMany({
+        where: { organizationId: context.organizationId as string },
+        select: { gate: true, enabled: true },
+      }),
+    );
+    const byGate = new Map(rows.map((r) => [r.gate as ApprovalGate, r.enabled]));
+    return { requisition: byGate.get('requisition') ?? false, offer: byGate.get('offer') ?? false };
   }
 
   async getChains(context: TenantContext): Promise<{ requisition: ChainDto; offer: ChainDto }> {
