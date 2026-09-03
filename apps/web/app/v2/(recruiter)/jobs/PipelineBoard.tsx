@@ -126,7 +126,7 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
             </div>
             <button type="button" onClick={() => scoreJob.mutate()} disabled={scoreJob.isPending} className="v2-hoverbtn" style={{ ...dt.toolBtn, opacity: scoreJob.isPending ? 0.5 : 1 }}>{scoreJob.isPending ? 'Scoring…' : 'Score candidates'}</button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${PIPELINE_STAGES.length}, minmax(0, 1fr))`, gap: 16 }}>
             {PIPELINE_STAGES.map((stage) => (
               <div key={stage} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <h3 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', margin: 0 }}>{STAGE_LABEL[stage]} ({visible(board.stages[stage]).length})</h3>
