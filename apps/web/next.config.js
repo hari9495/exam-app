@@ -13,6 +13,9 @@ const nextConfig = {
     const routes = ['/dashboard', '/exams', '/questions', '/candidates', '/walk-in-groups', '/jobs', '/analytics/hiring', '/message-templates', '/offer-template'];
     return [
       ...routes.map((source) => ({ source, destination: `/v2${source}`, permanent: false })),
+      // Staff login is rebuilt in v2 (Azure split login). Everything that pushes to /login
+      // (logout, unauth guards, SSO/reset returns) funnels to the v2 page. permanent:false → reversible.
+      { source: '/login', destination: '/v2/login', permanent: false },
       // Question editor is rebuilt in v2; redirect the old editor routes too.
       { source: '/questions/new', destination: '/v2/questions/new', permanent: false },
       { source: '/questions/:id/edit', destination: '/v2/questions/:id/edit', permanent: false },
