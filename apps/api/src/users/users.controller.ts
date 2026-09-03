@@ -57,6 +57,14 @@ export class UsersController {
     return this.usersService.list(tenant, { page, pageSize, search });
   }
 
+  // Org-scoped teammates for the pipeline assign/@mention pickers (results:view, not the
+  // super-admin platform directory). Returns only the caller's own org's active staff.
+  @Get('teammates')
+  @RequirePermissions('results:view')
+  listTeammates(@CurrentTenant() tenant: TenantContext, @Query('search') search?: string) {
+    return this.usersService.listTeammates(tenant, { search });
+  }
+
   @Get('directory')
   @RequirePermissions('platform:manage_organizations')
   listDirectory(

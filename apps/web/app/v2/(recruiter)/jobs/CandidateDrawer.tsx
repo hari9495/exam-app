@@ -18,7 +18,7 @@ import {
   useFitAssessment,
   useScoreEntry,
 } from '../../../../lib/hooks/usePipeline';
-import { useUserDirectory } from '../../../../lib/hooks/useUserDirectory';
+import { useTeammates } from '../../../../lib/hooks/useUserDirectory';
 import { useCandidateMessages, useResendMessage } from '../../../../lib/hooks/useCandidateMessages';
 import { useCandidateOffers, useWithdrawOffer } from '../../../../lib/hooks/useOffers';
 import { useCandidateInterviews, useCancelInterview } from '../../../../lib/hooks/useInterviews';
@@ -368,11 +368,11 @@ function chipLabel(result: EntryExamResult): string {
 // Team-collab: assign this pipeline entry to a teammate. Logic verbatim from the old drawer
 // (useUserDirectory + useAssignEntry); v2-styled native select.
 function AssigneeControl({ row, jobId }: { row: BoardRow; jobId: string }) {
-  const { data } = useUserDirectory({ pageSize: 100 });
+  const { data } = useTeammates();
   const assign = useAssignEntry(row.entryId, jobId);
   const { toast } = useToast();
   const [assignee, setAssignee] = useState(row.assignedUserId ?? '');
-  const teammates = (data?.data ?? []).filter((u) => u.status === 'active');
+  const teammates = (data ?? []).filter((u) => u.status === 'active');
 
   function onChange(value: string) {
     setAssignee(value);
@@ -400,8 +400,8 @@ function AssigneeControl({ row, jobId }: { row: BoardRow; jobId: string }) {
 // Pick teammates to @mention/notify on this feedback. Chips over an inline @-autocomplete; their
 // ids go to mentionedUserIds. Backend validates + drops self. Logic verbatim from the old drawer.
 function MentionPicker({ value, onChange }: { value: string[]; onChange: (ids: string[]) => void }) {
-  const { data } = useUserDirectory({ pageSize: 100 });
-  const teammates = (data?.data ?? []).filter((u) => u.status === 'active');
+  const { data } = useTeammates();
+  const teammates = (data ?? []).filter((u) => u.status === 'active');
   if (teammates.length === 0) return null;
   const toggle = (id: string) => onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
   return (
