@@ -406,6 +406,33 @@ export class ApprovalsService {
     });
   }
 
+  // True when userId holds the approvals:configure permission -- used by callers (e.g. the
+  // pipeline requisition-cancel endpoint) that need to decide whether an actor may cancel
+  // someone else's request, without duplicating the role/permission join themselves.
+  async isConfigurer(context: TenantContext, userId: string): Promise<boolean> {
+    const ids = await this.getApprovalsConfigureHolderIds(context);
+    return ids.includes(userId);
+  }
+
+  // Looks up the OPEN request for a subject (job/offer) and delegates to cancel() for the
+  // actual permission check + state transition. Lets callers (pipeline, offers) cancel by
+  // subject instead of having to know/track the approvalRequest id themselves.
+  async cancelForSubject(
+    context: TenantContext,
+    subjectType: 'job' | 'offer',
+    subjectId: string,
+    actorUserId: string,
+    isConfigurer: boolean,
+  ): Promise<{ subjectType: string; subjectId: string; gate: ApprovalGate }> {
+    const request = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.approvalRequest.findFirst({
+        where: { organizationId: context.organizationId as string, subjectType, subjectId, status: 'pending_approval' },
+      }),
+    );
+    if (!request) throw new ConflictException('No open approval request');
+    return this.cancel(context, request.id, actorUserId, isConfigurer);
+  }
+
   // Single round-trip join (no relation exists between User.role and RolePermission in the
   // Prisma schema -- role is a plain string, not a FK) rather than one query per lookup.
   private async getApprovalsConfigureHolderIds(context: TenantContext): Promise<string[]> {

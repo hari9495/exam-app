@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { PipelineService } from './pipeline.service';
 import { computeCriteriaHash } from '../candidate-fit/candidate-fit.core';
 
@@ -10,7 +10,13 @@ describe('PipelineService', () => {
   let messages: { sendMessage: jest.Mock };
   let integrationEvents: { emit: jest.Mock };
   let notifications: { createMentions: jest.Mock; notify: jest.Mock };
+  let approvals: { getChains: jest.Mock; submit: jest.Mock; isConfigurer: jest.Mock; cancelForSubject: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
+
+  const chains = (requisitionEnabled: boolean) => ({
+    requisition: { gate: 'requisition', enabled: requisitionEnabled, steps: [] },
+    offer: { gate: 'offer', enabled: false, steps: [] },
+  });
 
   beforeEach(() => {
     tenantPrisma = { forTenant: jest.fn() };
@@ -19,7 +25,13 @@ describe('PipelineService', () => {
     messages = { sendMessage: jest.fn().mockResolvedValue({ id: 'email-1' }) };
     integrationEvents = { emit: jest.fn().mockResolvedValue(undefined) };
     notifications = { createMentions: jest.fn().mockResolvedValue(undefined), notify: jest.fn().mockResolvedValue(undefined) };
-    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, integrationEvents as any, notifications as any);
+    approvals = {
+      getChains: jest.fn().mockResolvedValue(chains(false)),
+      submit: jest.fn(),
+      isConfigurer: jest.fn(),
+      cancelForSubject: jest.fn(),
+    };
+    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, integrationEvents as any, notifications as any, approvals as any);
   });
 
   it('createJob writes org-scoped and audits', async () => {
@@ -28,9 +40,108 @@ describe('PipelineService', () => {
     const out = await service.createJob(context, 'user-1', { title: 'Backend Eng' });
     expect(out).toEqual({ id: 'job-1', title: 'Backend Eng' });
     expect(create).toHaveBeenCalledWith({
-      data: { organizationId: 'org-1', title: 'Backend Eng', description: undefined, createdById: 'user-1' },
+      data: expect.objectContaining({ organizationId: 'org-1', title: 'Backend Eng', description: undefined, createdById: 'user-1', status: 'open' }),
     });
     expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'job.created', entityId: 'job-1' }));
+  });
+
+  describe('requisition gating', () => {
+    it('creates a job as draft when the requisition gate is enabled', async () => {
+      approvals.getChains.mockResolvedValue(chains(true));
+      const create = jest.fn().mockResolvedValue({ id: 'job-1', status: 'draft' });
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn({ job: { create } }));
+
+      await service.createJob(context, 'user-1', { title: 'Backend Eng' });
+
+      expect(create).toHaveBeenCalledWith({ data: expect.objectContaining({ status: 'draft' }) });
+    });
+
+    it('creates a job as open when the gate is disabled', async () => {
+      approvals.getChains.mockResolvedValue(chains(false));
+      const create = jest.fn().mockResolvedValue({ id: 'job-1', status: 'open' });
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn({ job: { create } }));
+
+      await service.createJob(context, 'user-1', { title: 'Backend Eng' });
+
+      expect(create).toHaveBeenCalledWith({ data: expect.objectContaining({ status: 'open' }) });
+    });
+
+    it('refuses addEntry when the job is not open (409)', async () => {
+      const tx = { job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'draft' }) } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.addEntry(context, 'user-1', 'job-1', { candidateId: 'c1' })).rejects.toThrow(ConflictException);
+    });
+
+    it('refuses setPublicApply (enabling) when the job is not open (409)', async () => {
+      const tx = { job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'draft', applyToken: null }) } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.updateJob(context, 'user-1', 'job-1', { publicApplyEnabled: true })).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('submitRequisition', () => {
+    it('submits and leaves the job pending when approval is required', async () => {
+      const tx = { job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'draft' }), updateMany: jest.fn().mockResolvedValue({ count: 1 }) } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      approvals.submit.mockResolvedValue({ status: 'pending_approval', requestId: 'req-1' });
+
+      const result = await service.submitRequisition(context, 'user-1', 'job-1');
+
+      expect(result).toEqual({ status: 'pending_approval', requestId: 'req-1' });
+      expect(approvals.submit).toHaveBeenCalledWith(context, 'requisition', 'job-1', 'user-1');
+      expect(tx.job.updateMany).toHaveBeenCalledWith({
+        where: { id: 'job-1', organizationId: 'org-1' },
+        data: { status: 'pending_approval' },
+      });
+    });
+
+    it('submits and opens the job immediately when the chain auto-passes', async () => {
+      const tx = { job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'draft' }), updateMany: jest.fn().mockResolvedValue({ count: 1 }) } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      approvals.submit.mockResolvedValue({ status: 'approved' });
+
+      const result = await service.submitRequisition(context, 'user-1', 'job-1');
+
+      expect(result).toEqual({ status: 'approved' });
+      expect(tx.job.updateMany).toHaveBeenCalledWith({
+        where: { id: 'job-1', organizationId: 'org-1' },
+        data: { status: 'open' },
+      });
+    });
+
+    it('refuses to submit a job that is not a draft', async () => {
+      const tx = { job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'open' }) } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.submitRequisition(context, 'user-1', 'job-1')).rejects.toThrow(ConflictException);
+      expect(approvals.submit).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for a job outside the org', async () => {
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn({ job: { findFirst: jest.fn().mockResolvedValue(null) } }));
+
+      await expect(service.submitRequisition(context, 'user-1', 'missing')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('cancelRequisitionApproval', () => {
+    it('resolves isConfigurer, cancels the open request, and flips the job back to draft', async () => {
+      approvals.isConfigurer.mockResolvedValue(false);
+      approvals.cancelForSubject.mockResolvedValue({ subjectType: 'job', subjectId: 'job-1', gate: 'requisition' });
+      const tx = { job: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.cancelRequisitionApproval(context, 'user-1', 'job-1');
+
+      expect(approvals.isConfigurer).toHaveBeenCalledWith(context, 'user-1');
+      expect(approvals.cancelForSubject).toHaveBeenCalledWith(context, 'job', 'job-1', 'user-1', false);
+      expect(tx.job.updateMany).toHaveBeenCalledWith({
+        where: { id: 'job-1', organizationId: 'org-1' },
+        data: { status: 'draft' },
+      });
+    });
   });
 
   it('getJob throws NotFoundException when not in org', async () => {
@@ -59,7 +170,7 @@ describe('PipelineService', () => {
       const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
       const tx = {
         job: {
-          findFirst: jest.fn().mockResolvedValue({ id: 'job-1', applyToken: null, publicApplyEnabled: false }),
+          findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'open', applyToken: null, publicApplyEnabled: false }),
           update,
         },
       };
@@ -79,7 +190,7 @@ describe('PipelineService', () => {
       const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
       const tx = {
         job: {
-          findFirst: jest.fn().mockResolvedValue({ id: 'job-1', applyToken: 'existing-token', publicApplyEnabled: false }),
+          findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'open', applyToken: 'existing-token', publicApplyEnabled: false }),
           update,
         },
       };
@@ -289,7 +400,7 @@ describe('PipelineService', () => {
     it('upserts at applied/manual, audits entry.added, and is idempotent on re-add (update:{})', async () => {
       const upsert = jest.fn().mockResolvedValue({ id: 'en1', stage: 'applied', enteredVia: 'manual' });
       const tx = {
-        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }) },
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'open' }) },
         candidate: { findFirst: jest.fn().mockResolvedValue({ id: 'c1', organizationId: 'org-1' }) },
         pipelineEntry: { upsert },
       };
@@ -319,7 +430,7 @@ describe('PipelineService', () => {
     it('throws NotFoundException when candidateId is not in the org, and never calls upsert', async () => {
       const upsert = jest.fn();
       const tx = {
-        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }) },
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'open' }) },
         candidate: { findFirst: jest.fn().mockResolvedValue(null) },
         pipelineEntry: { upsert },
       };
@@ -333,7 +444,7 @@ describe('PipelineService', () => {
       const candidateUpsert = jest.fn().mockResolvedValue({ id: 'c-new' });
       const upsert = jest.fn().mockResolvedValue({ id: 'en2', stage: 'applied', enteredVia: 'manual' });
       const tx = {
-        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }) },
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'open' }) },
         candidate: { upsert: candidateUpsert },
         pipelineEntry: { upsert },
       };

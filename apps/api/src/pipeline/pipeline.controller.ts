@@ -54,6 +54,18 @@ export class PipelineController {
     return this.pipelineService.deleteJob(tenant, userId, id);
   }
 
+  @Post('jobs/:id/submit')
+  @RequirePermissions('pipeline:manage')
+  submitRequisition(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.pipelineService.submitRequisition(tenant, userId, id);
+  }
+
+  @Post('jobs/:id/approval/cancel')
+  @RequirePermissions('pipeline:manage')
+  cancelRequisitionApproval(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.pipelineService.cancelRequisitionApproval(tenant, userId, id);
+  }
+
   @Get('jobs/:id/pipeline')
   @RequirePermissions('results:view')
   getPipeline(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {

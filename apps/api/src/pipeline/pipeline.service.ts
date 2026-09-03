@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Job, PipelineEntry, PipelineFeedback } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService } from '@exam-platform/shared';
 import { PIPELINE_STAGES, PipelineStage, isValidStage } from './pipeline-stages';
@@ -11,6 +11,7 @@ import { CandidateEmailTemplatesService } from '../candidate-emails/candidate-em
 import { CandidateEmailsService } from '../candidate-emails/candidate-emails.service';
 import { IntegrationEventsService } from '../integrations/integration-events.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ApprovalsService, SubmitResult } from '../approvals/approvals.service';
 import { computeCriteriaHash, validateRubricInput } from '../candidate-fit/candidate-fit.core';
 
 export interface FeedbackRow {
@@ -85,13 +86,31 @@ export class PipelineService {
     private readonly messages: CandidateEmailsService,
     private readonly integrationEvents: IntegrationEventsService,
     private readonly notifications: NotificationsService,
+    private readonly approvals: ApprovalsService,
   ) {}
 
   async createJob(
     context: TenantContext,
     actorUserId: string,
-    dto: { title: string; description?: string; location?: string; employmentType?: string },
+    dto: {
+      title: string;
+      description?: string;
+      location?: string;
+      employmentType?: string;
+      department?: string;
+      hiringManagerId?: string;
+      headcount?: number;
+      salaryMin?: number;
+      salaryMax?: number;
+      salaryCurrency?: string;
+    },
   ): Promise<Job> {
+    // Requisition gate: a job can't go live (status 'open') until its requisition is approved,
+    // but only when the org has actually turned the gate on -- an org with no chain configured
+    // keeps today's behavior of jobs opening immediately.
+    const chains = await this.approvals.getChains(context);
+    const status = chains.requisition.enabled ? 'draft' : 'open';
+
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const created = await tx.job.create({
         data: {
@@ -100,7 +119,14 @@ export class PipelineService {
           description: dto.description,
           location: dto.location,
           employmentType: dto.employmentType,
+          department: dto.department,
+          hiringManagerId: dto.hiringManagerId,
+          headcount: dto.headcount,
+          salaryMin: dto.salaryMin,
+          salaryMax: dto.salaryMax,
+          salaryCurrency: dto.salaryCurrency,
           createdById: actorUserId,
+          status,
         },
       });
       await this.audit.record(context, {
@@ -160,6 +186,12 @@ export class PipelineService {
       fitRubric?: { label: string; weight: number }[] | null;
       location?: string;
       employmentType?: string;
+      department?: string;
+      hiringManagerId?: string;
+      headcount?: number;
+      salaryMin?: number;
+      salaryMax?: number;
+      salaryCurrency?: string;
     },
   ): Promise<Job> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
@@ -176,17 +208,34 @@ export class PipelineService {
         fitRubric?: string | null;
         location?: string;
         employmentType?: string;
+        department?: string;
+        hiringManagerId?: string;
+        headcount?: number;
+        salaryMin?: number;
+        salaryMax?: number;
+        salaryCurrency?: string;
       } = {
         title: dto.title,
         description: dto.description,
         location: dto.location,
         employmentType: dto.employmentType,
+        department: dto.department,
+        hiringManagerId: dto.hiringManagerId,
+        headcount: dto.headcount,
+        salaryMin: dto.salaryMin,
+        salaryMax: dto.salaryMax,
+        salaryCurrency: dto.salaryCurrency,
       };
       if (dto.status) {
         data.status = dto.status;
         data.closedAt = dto.status === 'closed' ? new Date() : null;
       }
       if (dto.publicApplyEnabled !== undefined) {
+        // Can't start collecting public applications for a requisition that isn't approved yet
+        // (job.status !== 'open'); disabling it back off is always allowed regardless of status.
+        if (dto.publicApplyEnabled && job.status !== 'open') {
+          throw new ConflictException('Requisition not approved');
+        }
         data.publicApplyEnabled = dto.publicApplyEnabled;
         // Mint once, on first enable; never rotate an existing token and never clear it on
         // toggle-off, so a re-enable reuses the same public URL recruiters may have already shared.
@@ -216,6 +265,50 @@ export class PipelineService {
       });
       return updated;
     });
+  }
+
+  // Org-scoped status flips for the requisition lifecycle. updateMany (not update) since the
+  // caller has already resolved the job by id but these are also reachable standalone (Task 12
+  // reuses both) -- the organizationId filter keeps them tenant-safe either way.
+  async markRequisitionApproved(context: TenantContext, jobId: string): Promise<void> {
+    await this.setJobStatus(context, jobId, 'open');
+  }
+
+  async markRequisitionDraft(context: TenantContext, jobId: string): Promise<void> {
+    await this.setJobStatus(context, jobId, 'draft');
+  }
+
+  private async setJobStatus(context: TenantContext, jobId: string, status: string): Promise<void> {
+    await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.job.updateMany({ where: { id: jobId, organizationId: context.organizationId as string }, data: { status } }),
+    );
+  }
+
+  // Submits the job's requisition through the approvals engine. Only a draft job can be
+  // submitted -- one already open, pending, or closed has either cleared this gate already or
+  // isn't eligible for it. Mirrors the auto-pass/pending split ApprovalsService.submit returns.
+  async submitRequisition(context: TenantContext, actorUserId: string, jobId: string): Promise<SubmitResult> {
+    const job = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } }),
+    );
+    if (!job) throw new NotFoundException(`Job ${jobId} not found`);
+    if (job.status !== 'draft') throw new ConflictException('Only a draft requisition can be submitted');
+
+    const result = await this.approvals.submit(context, 'requisition', jobId, actorUserId);
+    if (result.status === 'approved') {
+      await this.markRequisitionApproved(context, jobId);
+    } else {
+      await this.setJobStatus(context, jobId, 'pending_approval');
+    }
+    return result;
+  }
+
+  // Cancels the job's open approval request (permission-checked by ApprovalsService.cancel via
+  // isConfigurer) and puts the requisition back in draft so it can be edited and resubmitted.
+  async cancelRequisitionApproval(context: TenantContext, actorUserId: string, jobId: string): Promise<void> {
+    const isConfigurer = await this.approvals.isConfigurer(context, actorUserId);
+    await this.approvals.cancelForSubject(context, 'job', jobId, actorUserId, isConfigurer);
+    await this.markRequisitionDraft(context, jobId);
   }
 
   // Candidate/pipeline CSV export for ATS/HRIS interchange. Formula-injection-safe (candidate
@@ -311,6 +404,7 @@ export class PipelineService {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const job = await tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } });
       if (!job) throw new NotFoundException(`Job ${jobId} not found`);
+      if (job.status !== 'open') throw new ConflictException('Requisition not approved');
 
       let candidateId: string;
       if (dto.newCandidate) {

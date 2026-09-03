@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Min, MaxLength, MinLength } from 'class-validator';
 import { EMPLOYMENT_TYPES } from './create-job.dto';
 
 export class UpdateJobDto {
@@ -25,4 +25,22 @@ export class UpdateJobDto {
 
   @IsOptional() @IsArray()
   fitRubric?: { label: string; weight: number }[];
+
+  @IsOptional() @IsString() @MaxLength(200)
+  department?: string;
+
+  @IsOptional() @IsUUID()
+  hiringManagerId?: string;
+
+  @IsOptional() @IsInt() @Min(1)
+  headcount?: number;
+
+  @IsOptional() @IsInt()
+  salaryMin?: number;
+
+  @IsOptional() @IsInt()
+  salaryMax?: number;
+
+  @IsOptional() @IsString()
+  salaryCurrency?: string;
 }

@@ -346,4 +346,42 @@ describe('ApprovalsService.cancel', () => {
     await expect(service.cancel(context, 'req-1', 'submitter-1', false)).rejects.toThrow(ConflictException);
     expect(notifications.notify).not.toHaveBeenCalled();
   });
+
+  describe('cancelForSubject', () => {
+    it('finds the open request for the subject and delegates to cancel', async () => {
+      tx.approvalRequest.findFirst.mockResolvedValue(twoStepReq());
+
+      const result = await service.cancelForSubject(context, 'job', 'job-1', 'submitter-1', false);
+
+      expect(result).toEqual({ subjectType: 'job', subjectId: 'job-1', gate: 'requisition' });
+      // First lookup (by subject) is a status:pending_approval scan; cancel()'s own lookup is by id.
+      expect(tx.approvalRequest.findFirst).toHaveBeenCalledWith({
+        where: { organizationId: 'org-1', subjectType: 'job', subjectId: 'job-1', status: 'pending_approval' },
+      });
+      expect(tx.approvalRequest.updateMany).toHaveBeenCalledWith({
+        where: { id: 'req-1', status: 'pending_approval' },
+        data: { status: 'cancelled', decidedAt: expect.any(Date) },
+      });
+    });
+
+    it('throws 409 when there is no open request for the subject', async () => {
+      tx.approvalRequest.findFirst.mockResolvedValue(null);
+
+      await expect(service.cancelForSubject(context, 'job', 'job-1', 'submitter-1', false)).rejects.toThrow(ConflictException);
+      expect(tx.approvalRequest.updateMany).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('ApprovalsService.isConfigurer', () => {
+  const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
+
+  it('returns true when the user id is among the approvals:configure holders', async () => {
+    const tx = { $queryRaw: jest.fn().mockResolvedValue([{ id: 'admin-1' }, { id: 'admin-2' }]) };
+    const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
+    const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
+
+    await expect(service.isConfigurer(context, 'admin-2')).resolves.toBe(true);
+    await expect(service.isConfigurer(context, 'nobody')).resolves.toBe(false);
+  });
 });
