@@ -10,7 +10,7 @@ describe('PipelineService', () => {
   let messages: { sendMessage: jest.Mock };
   let integrationEvents: { emit: jest.Mock };
   let notifications: { createMentions: jest.Mock; notify: jest.Mock };
-  let approvals: { getChains: jest.Mock; submit: jest.Mock; isConfigurer: jest.Mock; cancelForSubject: jest.Mock };
+  let approvals: { getChains: jest.Mock; submit: jest.Mock; isConfigurer: jest.Mock; cancelForSubject: jest.Mock; getSummariesFor: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
   const chains = (requisitionEnabled: boolean) => ({
@@ -30,6 +30,7 @@ describe('PipelineService', () => {
       submit: jest.fn(),
       isConfigurer: jest.fn(),
       cancelForSubject: jest.fn(),
+      getSummariesFor: jest.fn().mockResolvedValue(new Map()),
     };
     service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, integrationEvents as any, notifications as any, approvals as any);
   });
@@ -163,6 +164,33 @@ describe('PipelineService', () => {
 
     expect(job.publicApplyEnabled).toBe(true);
     expect(job.applyToken).toBe('tok-abc');
+  });
+
+  describe('getJob approval summary', () => {
+    const tx = () => ({
+      job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }) },
+      jobExam: { findMany: jest.fn().mockResolvedValue([]) },
+    });
+
+    it('returns approval: null when there is no open request for the job', async () => {
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx()));
+      approvals.getSummariesFor.mockResolvedValue(new Map());
+
+      const job = await service.getJob(context, 'job-1');
+
+      expect(approvals.getSummariesFor).toHaveBeenCalledWith(context, 'job', ['job-1']);
+      expect(job.approval).toBeNull();
+    });
+
+    it('attaches the approval summary with currentStep for a job with an open request', async () => {
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx()));
+      const summary = { status: 'pending_approval', currentStep: 1, steps: [{ name: 'Step 1', state: 'approved' as const }] };
+      approvals.getSummariesFor.mockResolvedValue(new Map([['job-1', summary]]));
+
+      const job = await service.getJob(context, 'job-1');
+
+      expect(job.approval).toEqual(summary);
+    });
   });
 
   describe('updateJob publicApplyEnabled toggle', () => {
@@ -394,6 +422,23 @@ describe('PipelineService', () => {
     expect(jobs.find((j) => j.id === 'job-2')!.stageCounts).toEqual({
       applied: 0, screened: 0, interview: 0, offer: 0, hired: 0, rejected: 0,
     });
+  });
+
+  it('listJobs batches the approval summary lookup in one call and attaches it per row', async () => {
+    const tx = {
+      job: { findMany: jest.fn().mockResolvedValue([{ id: 'job-1' }, { id: 'job-2' }]) },
+      pipelineEntry: { groupBy: jest.fn().mockResolvedValue([]) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+    const summary = { status: 'pending_approval', currentStep: 0, steps: [] };
+    approvals.getSummariesFor.mockResolvedValue(new Map([['job-1', summary]]));
+
+    const jobs = await service.listJobs(context);
+
+    expect(approvals.getSummariesFor).toHaveBeenCalledTimes(1);
+    expect(approvals.getSummariesFor).toHaveBeenCalledWith(context, 'job', ['job-1', 'job-2']);
+    expect(jobs.find((j) => j.id === 'job-1')!.approval).toEqual(summary);
+    expect(jobs.find((j) => j.id === 'job-2')!.approval).toBeNull();
   });
 
   describe('addEntry', () => {

@@ -559,3 +559,153 @@ describe('ApprovalsService.isConfigurer', () => {
     await expect(service.isConfigurer(context, 'nobody')).resolves.toBe(false);
   });
 });
+
+describe('ApprovalsService.getSummariesFor', () => {
+  const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
+
+  const twoSteps = JSON.stringify([
+    { position: 0, name: 'Step 1', approverType: 'users', approverUserIds: ['mgr-1'] },
+    { position: 1, name: 'Step 2', approverType: 'users', approverUserIds: ['mgr-2'] },
+  ]);
+
+  it('returns an empty map without querying when ids is empty', async () => {
+    const tx = { approvalRequest: { findMany: jest.fn() } };
+    const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
+    const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
+
+    const result = await service.getSummariesFor(context, 'job', []);
+
+    expect(result.size).toBe(0);
+    expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+  });
+
+  it('a pending request: earlier steps approved, current+later pending', async () => {
+    const tx = {
+      approvalRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            subjectId: 'job-1',
+            status: 'pending_approval',
+            currentStepPosition: 1,
+            chainSnapshotJson: JSON.stringify([
+              { position: 0, name: 'Step 1', approverType: 'users', approverUserIds: ['mgr-1'] },
+              { position: 1, name: 'Step 2', approverType: 'users', approverUserIds: ['mgr-2'] },
+              { position: 2, name: 'Step 3', approverType: 'users', approverUserIds: ['mgr-3'] },
+            ]),
+            decisions: [{ stepPosition: 0, decision: 'approved' }],
+          },
+        ]),
+      },
+    };
+    const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
+    const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
+
+    const result = await service.getSummariesFor(context, 'job', ['job-1']);
+
+    expect(tx.approvalRequest.findMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1', subjectType: 'job', subjectId: { in: ['job-1'] } },
+      orderBy: { submittedAt: 'desc' },
+      include: { decisions: true },
+    });
+    expect(result.get('job-1')).toEqual({
+      status: 'pending_approval',
+      currentStep: 1,
+      steps: [
+        { name: 'Step 1', state: 'approved' },
+        { name: 'Step 2', state: 'pending' },
+        { name: 'Step 3', state: 'pending' },
+      ],
+    });
+  });
+
+  it('an approved request: all steps approved', async () => {
+    const tx = {
+      approvalRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          { subjectId: 'job-1', status: 'approved', currentStepPosition: 1, chainSnapshotJson: twoSteps, decisions: [
+            { stepPosition: 0, decision: 'approved' },
+            { stepPosition: 1, decision: 'approved' },
+          ] },
+        ]),
+      },
+    };
+    const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
+    const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
+
+    const result = await service.getSummariesFor(context, 'job', ['job-1']);
+
+    expect(result.get('job-1')).toEqual({
+      status: 'approved',
+      currentStep: 1,
+      steps: [
+        { name: 'Step 1', state: 'approved' },
+        { name: 'Step 2', state: 'approved' },
+      ],
+    });
+  });
+
+  it('a rejected request: the rejected step is rejected, earlier approved, later pending', async () => {
+    const tx = {
+      approvalRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            subjectId: 'offer-1',
+            status: 'rejected',
+            currentStepPosition: 1,
+            chainSnapshotJson: JSON.stringify([
+              { position: 0, name: 'Step 1', approverType: 'users', approverUserIds: ['mgr-1'] },
+              { position: 1, name: 'Step 2', approverType: 'users', approverUserIds: ['mgr-2'] },
+              { position: 2, name: 'Step 3', approverType: 'users', approverUserIds: ['mgr-3'] },
+            ]),
+            decisions: [
+              { stepPosition: 0, decision: 'approved' },
+              { stepPosition: 1, decision: 'rejected' },
+            ],
+          },
+        ]),
+      },
+    };
+    const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
+    const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
+
+    const result = await service.getSummariesFor(context, 'offer', ['offer-1']);
+
+    expect(result.get('offer-1')).toEqual({
+      status: 'rejected',
+      currentStep: 1,
+      steps: [
+        { name: 'Step 1', state: 'approved' },
+        { name: 'Step 2', state: 'rejected' },
+        { name: 'Step 3', state: 'pending' },
+      ],
+    });
+  });
+
+  it('keeps only the latest request per subject (first row wins under desc order)', async () => {
+    const tx = {
+      approvalRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          { subjectId: 'job-1', status: 'pending_approval', currentStepPosition: 0, chainSnapshotJson: twoSteps, decisions: [] },
+          { subjectId: 'job-1', status: 'rejected', currentStepPosition: 0, chainSnapshotJson: twoSteps, decisions: [{ stepPosition: 0, decision: 'rejected' }] },
+        ]),
+      },
+    };
+    const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
+    const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
+
+    const result = await service.getSummariesFor(context, 'job', ['job-1']);
+
+    expect(result.size).toBe(1);
+    expect(result.get('job-1')?.status).toBe('pending_approval');
+  });
+
+  it('a subject with no request is absent from the map', async () => {
+    const tx = { approvalRequest: { findMany: jest.fn().mockResolvedValue([]) } };
+    const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
+    const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
+
+    const result = await service.getSummariesFor(context, 'job', ['job-1']);
+
+    expect(result.has('job-1')).toBe(false);
+  });
+});

@@ -9,7 +9,7 @@ import { OfferTemplatesService } from './offer-templates.service';
 import { CreateOfferDto } from './dto/create-offer.dto';
 import { buildOfferPdf } from './offer-pdf';
 import { renderOfferTemplate } from './offer-render';
-import { ApprovalsService, SubmitResult } from '../approvals/approvals.service';
+import { ApprovalsService, ApprovalSummary, SubmitResult } from '../approvals/approvals.service';
 
 const LOGO_SIGN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const PDF_SIGN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
@@ -113,22 +113,30 @@ export class OffersService {
     });
   }
 
-  async listForEntry(context: TenantContext, entryId: string): Promise<Offer[]> {
-    return this.tenantPrisma.forTenant(context, async (tx) =>
+  async listForEntry(context: TenantContext, entryId: string): Promise<(Offer & { approval: ApprovalSummary | null })[]> {
+    const offers = await this.tenantPrisma.forTenant(context, async (tx) =>
       tx.offer.findMany({
         where: { organizationId: context.organizationId as string, pipelineEntryId: entryId },
         orderBy: { createdAt: 'desc' },
       }),
     );
+    return this.withApprovalSummaries(context, offers);
   }
 
-  async listForCandidate(context: TenantContext, candidateId: string): Promise<Offer[]> {
-    return this.tenantPrisma.forTenant(context, async (tx) =>
+  async listForCandidate(context: TenantContext, candidateId: string): Promise<(Offer & { approval: ApprovalSummary | null })[]> {
+    const offers = await this.tenantPrisma.forTenant(context, async (tx) =>
       tx.offer.findMany({
         where: { organizationId: context.organizationId as string, candidateId },
         orderBy: { createdAt: 'desc' },
       }),
     );
+    return this.withApprovalSummaries(context, offers);
+  }
+
+  // One batched getSummariesFor call for the whole list, not one per offer -- avoids N+1.
+  private async withApprovalSummaries(context: TenantContext, offers: Offer[]): Promise<(Offer & { approval: ApprovalSummary | null })[]> {
+    const approvalByOfferId = await this.approvals.getSummariesFor(context, 'offer', offers.map((o) => o.id));
+    return offers.map((offer) => ({ ...offer, approval: approvalByOfferId.get(offer.id) ?? null }));
   }
 
   // Org-scoped status flips for the offer approval lifecycle -- mirrors

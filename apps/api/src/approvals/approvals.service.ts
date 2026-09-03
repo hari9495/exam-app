@@ -52,6 +52,12 @@ export interface RequestSummary {
   stepCount: number;
 }
 
+export interface ApprovalSummary {
+  status: string;
+  currentStep: number;
+  steps: { name: string; state: 'pending' | 'approved' | 'rejected' }[];
+}
+
 export interface RequestDetail {
   id: string;
   gate: ApprovalGate;
@@ -566,6 +572,47 @@ export class ApprovalsService {
     );
     if (!request) throw new ConflictException('No open approval request');
     return this.cancel(context, request.id, actorUserId, isConfigurer);
+  }
+
+  // Batched read for enriching job/offer read payloads with an `approval` summary (Task 13).
+  // One query for all ids, keeping only the latest request per subject -- `orderBy: submittedAt
+  // desc` plus "first seen wins" in the loop below does that without a second query or a
+  // window function. A subject with no request is simply absent from the returned map; callers
+  // map that to `approval: null`.
+  async getSummariesFor(context: TenantContext, subjectType: 'job' | 'offer', ids: string[]): Promise<Map<string, ApprovalSummary>> {
+    if (ids.length === 0) return new Map();
+
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const rows = await tx.approvalRequest.findMany({
+        where: { organizationId: context.organizationId as string, subjectType, subjectId: { in: ids } },
+        orderBy: { submittedAt: 'desc' },
+        include: { decisions: true },
+      });
+
+      const summaries = new Map<string, ApprovalSummary>();
+      for (const row of rows) {
+        if (summaries.has(row.subjectId)) continue; // already have the latest (desc order) for this subject
+
+        const steps: ResolvedStep[] = JSON.parse(row.chainSnapshotJson);
+        const decisionByPosition = new Map(row.decisions.map((d: { stepPosition: number; decision: string }) => [d.stepPosition, d.decision]));
+
+        summaries.set(row.subjectId, {
+          status: row.status,
+          currentStep: row.currentStepPosition,
+          steps: steps.map((step) => {
+            const decision = decisionByPosition.get(step.position);
+            const state: 'pending' | 'approved' | 'rejected' =
+              decision === 'approved' || decision === 'rejected'
+                ? decision
+                : step.position < row.currentStepPosition
+                  ? 'approved'
+                  : 'pending';
+            return { name: step.name, state };
+          }),
+        });
+      }
+      return summaries;
+    });
   }
 
   // Single round-trip join (no relation exists between User.role and RolePermission in the

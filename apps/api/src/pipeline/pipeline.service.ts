@@ -11,7 +11,7 @@ import { CandidateEmailTemplatesService } from '../candidate-emails/candidate-em
 import { CandidateEmailsService } from '../candidate-emails/candidate-emails.service';
 import { IntegrationEventsService } from '../integrations/integration-events.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { ApprovalsService, SubmitResult } from '../approvals/approvals.service';
+import { ApprovalsService, ApprovalSummary, SubmitResult } from '../approvals/approvals.service';
 import { computeCriteriaHash, validateRubricInput } from '../candidate-fit/candidate-fit.core';
 
 export interface FeedbackRow {
@@ -25,6 +25,7 @@ export interface FeedbackRow {
 
 export interface JobWithCounts extends Job {
   stageCounts: Record<PipelineStage, number> & { rejected: number };
+  approval: ApprovalSummary | null;
 }
 
 export interface BoardRow {
@@ -141,7 +142,7 @@ export class PipelineService {
   }
 
   async listJobs(context: TenantContext, status?: 'open' | 'closed'): Promise<JobWithCounts[]> {
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+    const jobs = await this.tenantPrisma.forTenant(context, async (tx) => {
       const jobs = await tx.job.findMany({
         where: { organizationId: context.organizationId as string, ...(status ? { status } : {}) },
         orderBy: { createdAt: 'desc' },
@@ -161,16 +162,22 @@ export class PipelineService {
       }
       return jobs.map((job) => ({ ...job, stageCounts: countsByJob.get(job.id) ?? emptyStageCounts() }));
     });
+
+    // One batched call for the whole list, not one per job -- avoids N+1.
+    const approvalByJobId = await this.approvals.getSummariesFor(context, 'job', jobs.map((j) => j.id));
+    return jobs.map((job) => ({ ...job, approval: approvalByJobId.get(job.id) ?? null }));
   }
 
-  async getJob(context: TenantContext, jobId: string): Promise<Job & { linkedExams: { examId: string; title: string }[] }> {
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+  async getJob(context: TenantContext, jobId: string): Promise<Job & { linkedExams: { examId: string; title: string }[]; approval: ApprovalSummary | null }> {
+    const { job, linkedExams } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const job = await tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } });
       if (!job) throw new NotFoundException(`Job ${jobId} not found`);
       const links = await tx.jobExam.findMany({ where: { jobId }, include: { exam: { select: { title: true } } } });
       const linkedExams = links.map((l) => ({ examId: l.examId, title: l.exam.title }));
-      return { ...job, linkedExams };
+      return { job, linkedExams };
     });
+    const approval = (await this.approvals.getSummariesFor(context, 'job', [jobId])).get(jobId) ?? null;
+    return { ...job, linkedExams, approval };
   }
 
   async updateJob(

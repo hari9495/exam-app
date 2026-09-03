@@ -9,7 +9,7 @@ describe('OffersService', () => {
   let blobStorage: { upload: jest.Mock; signIfOurs: jest.Mock };
   let audit: { record: jest.Mock };
   let integrationEvents: { emit: jest.Mock };
-  let approvals: { getChains: jest.Mock; submit: jest.Mock; isConfigurer: jest.Mock; cancelForSubject: jest.Mock };
+  let approvals: { getChains: jest.Mock; submit: jest.Mock; isConfigurer: jest.Mock; cancelForSubject: jest.Mock; getSummariesFor: jest.Mock };
   let tx: {
     pipelineEntry: Record<string, jest.Mock>;
     offer: Record<string, jest.Mock>;
@@ -59,6 +59,7 @@ describe('OffersService', () => {
       submit: jest.fn(),
       isConfigurer: jest.fn(),
       cancelForSubject: jest.fn(),
+      getSummariesFor: jest.fn().mockResolvedValue(new Map()),
     };
     service = new OffersService(
       tenantPrisma as any,
@@ -168,6 +169,19 @@ describe('OffersService', () => {
         orderBy: { createdAt: 'desc' },
       });
     });
+
+    it('batches the approval summary lookup in one call and attaches it per offer (?? null)', async () => {
+      tx.offer.findMany.mockResolvedValue([{ id: 'offer-1' }, { id: 'offer-2' }]);
+      const summary = { status: 'pending_approval', currentStep: 0, steps: [] };
+      approvals.getSummariesFor.mockResolvedValue(new Map([['offer-1', summary]]));
+
+      const offers = await service.listForEntry(context, 'entry-1');
+
+      expect(approvals.getSummariesFor).toHaveBeenCalledTimes(1);
+      expect(approvals.getSummariesFor).toHaveBeenCalledWith(context, 'offer', ['offer-1', 'offer-2']);
+      expect(offers.find((o) => o.id === 'offer-1')!.approval).toEqual(summary);
+      expect(offers.find((o) => o.id === 'offer-2')!.approval).toBeNull();
+    });
   });
 
   describe('listForCandidate', () => {
@@ -178,6 +192,15 @@ describe('OffersService', () => {
         where: { organizationId: 'org-1', candidateId: 'cand-1' },
         orderBy: { createdAt: 'desc' },
       });
+    });
+
+    it('attaches approval: null for an offer with no open request', async () => {
+      tx.offer.findMany.mockResolvedValue([{ id: 'offer-1' }]);
+      approvals.getSummariesFor.mockResolvedValue(new Map());
+
+      const offers = await service.listForCandidate(context, 'cand-1');
+
+      expect(offers[0].approval).toBeNull();
     });
   });
 
