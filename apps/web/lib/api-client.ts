@@ -47,7 +47,10 @@ export async function apiFetch(path: string, options: RequestInit = {}, accessTo
   // Exclude the refresh endpoint itself: the registered unauthorized handler
   // (AuthProvider's silentRefresh) calls this same endpoint, so retrying a
   // failed refresh through the handler would recurse into itself forever.
-  if ((response.status === 401 || response.status === 403) && unauthorizedHandler && path !== '/auth/refresh') {
+  // A 401 from the login endpoint means bad credentials, NOT an expired session — running the
+  // refresh handler there is pointless (no session yet) and, if refresh itself errors, masks the
+  // real "Invalid credentials" message. Exclude it alongside the refresh endpoint.
+  if ((response.status === 401 || response.status === 403) && unauthorizedHandler && path !== '/auth/refresh' && path !== '/auth/staff/login') {
     const freshToken = await unauthorizedHandler();
     if (freshToken) {
       response = await doFetch(path, options, freshToken);
