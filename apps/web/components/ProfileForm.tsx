@@ -23,7 +23,7 @@ function PasswordVisibilityToggle({ visible, onToggle }: { visible: boolean; onT
       type="button"
       onClick={onToggle}
       aria-label={visible ? 'Hide characters' : 'Show characters'}
-      className="absolute bottom-2 right-3 text-recruiter-text-tertiary hover:text-recruiter-text"
+      className="absolute bottom-2 right-3 text-muted hover:text-ink"
     >
       {visible ? <EyeOff size={16} /> : <Eye size={16} />}
     </button>
@@ -90,7 +90,7 @@ function AvatarField() {
       ) : (
         <div
           aria-hidden="true"
-          className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-recruiter-border bg-primary text-lg font-semibold text-on-primary"
+          className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-rule bg-primary text-lg font-semibold text-on-primary"
         >
           {user ? initialsFor(user) : ''}
         </div>
@@ -114,7 +114,7 @@ function AvatarField() {
             </Button>
           )}
         </div>
-        <p className="text-xs text-recruiter-text-tertiary">PNG or JPEG, up to 1MB.</p>
+        <p className="text-xs text-muted">PNG or JPEG, up to 1MB.</p>
       </div>
       {error && (
         <p role="alert" className="text-sm text-status-danger">
@@ -183,8 +183,8 @@ export function ProfileForm() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-xl font-semibold text-recruiter-text">My Profile</h1>
-      {!user && <p className="text-sm text-recruiter-text-secondary">Loading…</p>}
+      <h1 className="font-display text-xl font-bold text-ink">My Profile</h1>
+      {!user && <p className="text-sm text-muted">Loading…</p>}
 
       <motion.div
         initial={{ opacity: 0, y: 10 }}
@@ -222,7 +222,7 @@ export function ProfileForm() {
       >
         <CollapsibleSection title="Password">
           {ssoEnabled ? (
-            <p className="text-sm text-recruiter-text-secondary sm:col-span-2">
+            <p className="text-sm text-muted sm:col-span-2">
               Single sign-on is enabled for this organization. You sign in with your identity provider — there is no
               password to change.
             </p>
@@ -270,7 +270,7 @@ export function ProfileForm() {
                 </Button>
               </div>
               {!passwordsMatch && confirmPassword.length > 0 && (
-                <p className="text-xs text-recruiter-text-tertiary sm:col-span-2">Passwords must match.</p>
+                <p className="text-xs text-muted sm:col-span-2">Passwords must match.</p>
               )}
             </form>
           )}

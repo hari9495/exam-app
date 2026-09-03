@@ -17,6 +17,8 @@ import {
 } from '@exam-platform/shared';
 import { FaceEmbedderService } from '../face/face-embedder.service';
 import { FaceVerificationService } from '../face/face-verification.service';
+import { QuotaService } from '../billing/quota.service';
+import { ApiInternalClient } from '../api-internal-client/api-internal.client';
 import { AttemptSettlementService, PauseReason, SettlementExam } from '../grading/attempt-settlement.service';
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { LeaderboardService, AUTO_GRADABLE_QUESTION_TYPES, CandidateLeaderboardResponse } from '../leaderboard/leaderboard.service';
@@ -254,6 +256,8 @@ export class AttemptService {
     private readonly faceEmbedder: FaceEmbedderService,
     private readonly crypto: OrgSecretsCryptoService,
     private readonly faceVerification: FaceVerificationService,
+    private readonly quota: QuotaService,
+    private readonly apiInternalClient: ApiInternalClient,
   ) {}
 
   // ponytail: in-memory per-attempt floor between AI screen analyses -- single pm2 process, so a
@@ -351,6 +355,21 @@ export class AttemptService {
     // only SEB running OUR generated config can produce (see packages/shared/src/seb). Checked
     // outside the transaction -- pure hashing, no I/O.
     this.enforceSebLockdown(exam, invitation.token, seb);
+
+    // Hard quota: block STARTING a new proctored attempt when the org has exhausted its monthly
+    // proctoring minutes. Never checked mid-exam -- a candidate already testing is never interrupted.
+    // Only a genuinely NEW attempt consumes minutes, so a resume must skip the gate entirely: read
+    // existence first (outside the write tx, so the quota check stays read-only and out of any
+    // $transaction), and only assert when there is nothing to resume.
+    if (exam.enableAntiCheating) {
+      const existingAttempt = await this.tenantPrisma.forTenant(
+        { organizationId, isSuperAdmin: false },
+        (tx) => tx.attempt.findUnique({ where: { invitationId: invitation.id }, select: { id: true } }),
+      );
+      if (!existingAttempt) {
+        await this.quota.assertProctoringMinutes({ organizationId, isSuperAdmin: false });
+      }
+    }
 
     return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
       const existing = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
@@ -695,8 +714,8 @@ export class AttemptService {
   // write itself don't care which path got them here.
   private async writeProctoringEvent(
     tx: Prisma.TransactionClient,
-    exam: SettlementExam,
-    invitation: { candidateId: string },
+    exam: SettlementExam & { title: string },
+    invitation: { candidateId: string; candidate?: { name: string; email: string } | null },
     attempt: Attempt,
     eventType: string,
     metadata: Record<string, unknown> | undefined,
@@ -718,6 +737,7 @@ export class AttemptService {
         severity: event.severity,
         occurredAt: new Date(),
       });
+      this.dispatchIntegrityFlagged(exam, invitation, event.eventType);
       return { id: event.id, eventType: event.eventType, severity: event.severity, strike, status: updated.status };
     }
 
@@ -737,6 +757,7 @@ export class AttemptService {
       severity: event.severity,
       occurredAt: event.occurredAt,
     });
+    this.dispatchIntegrityFlagged(exam, invitation, event.eventType);
     return {
       id: event.id,
       eventType: event.eventType,
@@ -744,6 +765,30 @@ export class AttemptService {
       strike: attempt.browserActivityViolationCount,
       status: attempt.status,
     };
+  }
+
+  // Fired once per NEW proctoring-event row (mirrors emitProctoringFlag's own placement right
+  // above each call site -- never per video frame or poll). Not awaited and never allowed to
+  // break the candidate's proctoring flow, same contract as attempt-settlement.service.ts's
+  // 'attempt.settled' dispatch; dispatchWebhook itself already swallows its own errors, this
+  // try/catch is defensive symmetry with that call, not load-bearing.
+  private dispatchIntegrityFlagged(
+    exam: { organizationId: string; title: string },
+    invitation: { candidateId: string; candidate?: { name: string; email: string } | null },
+    reason: string,
+  ): void {
+    void (async () => {
+      try {
+        await this.apiInternalClient.dispatchWebhook(exam.organizationId, 'integrity.flagged', {
+          subject: invitation.candidate?.name || invitation.candidate?.email || invitation.candidateId,
+          examTitle: exam.title,
+          reason,
+          linkPath: '/live',
+        });
+      } catch (error) {
+        this.logger.error('Webhook dispatch failed to start', error as Error);
+      }
+    })();
   }
 
   async webcamViolation(session: CandidateSession, dto: WebcamViolationDto): Promise<{ strike: number; status: string }> {
@@ -1028,6 +1073,7 @@ export class AttemptService {
     // analysis is best-effort, the violation-triggered capture pipeline is unaffected.
     let flagged: { eventType: 'remote_access_suspected' | 'background_app_detected'; toolName: string; reasoning: string } | null = null;
     try {
+      await this.quota.assertAiCredits(context);
       const aiProvider = await this.aiApiKeyResolver.resolve(organizationId);
       const verdict = await aiProvider.generateStructured({
         modelTier: 'fast',
@@ -1422,7 +1468,11 @@ export class AttemptService {
   async submit(session: CandidateSession): Promise<{ status: string }> {
     const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
 
-    return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+    // Tracks whether finalize() actually ran THIS call -- the early return below (attempt
+    // already settled, e.g. by settleIfExpired or a prior submit) must not re-fire the
+    // dispatch below for a submission that already happened.
+    let didSubmit = false;
+    const result = await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
       const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
       if (!attempt) {
         throw new NotFoundException('No attempt has been started');
@@ -1433,8 +1483,25 @@ export class AttemptService {
       }
 
       const finalized = await this.attemptSettlement.finalize(tx, exam, settled, 'submitted');
+      didSubmit = true;
       return { status: finalized.status };
     });
+
+    // Outside the transaction (post-commit) and never allowed to break the candidate's submit
+    // flow -- mirrors attempt-settlement.service.ts's 'attempt.settled' dispatch exactly.
+    if (didSubmit) {
+      try {
+        await this.apiInternalClient.dispatchWebhook(organizationId, 'attempt.submitted', {
+          subject: invitation.candidate?.name || invitation.candidate?.email || invitation.candidateId,
+          examTitle: exam.title,
+          linkPath: `/candidates/${invitation.candidateId}`,
+        });
+      } catch (error) {
+        this.logger.error('Webhook dispatch failed to start', error as Error);
+      }
+    }
+
+    return result;
   }
 
   private async resolveContext(invitationId: string) {

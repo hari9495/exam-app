@@ -22,7 +22,7 @@ export function ResultSummary({ feedback }: { feedback: AttemptFeedback }) {
       {feedback.passFail ? (
         <span
           className={clsx(
-            'mx-auto inline-flex items-center rounded-full px-4 py-1 text-sm font-bold uppercase tracking-wide',
+            'mx-auto inline-flex items-center rounded px-4 py-1 text-sm font-bold uppercase tracking-wide',
             feedback.passFail === 'pass'
               ? 'bg-candidate-primary-light text-candidate-primary'
               : 'bg-candidate-danger-bg text-candidate-danger',
@@ -33,7 +33,7 @@ export function ResultSummary({ feedback }: { feedback: AttemptFeedback }) {
       ) : null}
 
       {feedback.percentage !== null ? (
-        <p className="text-3xl font-bold tabular-nums text-candidate-text">{feedback.percentage.toFixed(1)}%</p>
+        <p className="font-display text-3xl font-bold tabular-nums text-candidate-text">{feedback.percentage.toFixed(1)}%</p>
       ) : null}
 
       {feedback.sections ? (

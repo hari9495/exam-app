@@ -4,6 +4,14 @@ const { withSentryConfig } = require('@sentry/nextjs');
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
+  experimental: {
+    // Next 16 splits 404 handling: app/not-found.tsx only renders for notFound()
+    // calls inside a MATCHED route, while a completely unmatched URL (a typo'd
+    // link, a stale bookmark) falls back to Next's own unstyled "This page could
+    // not be found". This flag routes those to app/global-not-found.tsx so a bad
+    // URL lands on the branded page instead.
+    globalNotFound: true,
+  },
   // v2 nav cutover: send the recruiter list routes to their rebuilt /v2 pages (covers login
   // landing, bookmarks, and the old shell's sidebar). Exact sources only — detail/editor
   // subpaths (/exams/:id/edit, /exams/new, /reports/:id, ...) are NOT rebuilt and stay put.

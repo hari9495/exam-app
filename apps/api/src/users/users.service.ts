@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { User } from '@prisma/client';
+import { Prisma, User } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
@@ -12,6 +12,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuditService } from '@exam-platform/shared';
 import { randomBytes, createHash } from 'crypto';
 import { EmailService } from '../email/email.service';
+import { QuotaService } from '../billing/quota.service';
 import { SuperAdminEmailDto } from './dto/super-admin-email.dto';
 import { BulkCreateUsersDto } from './dto/bulk-create-users.dto';
 import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
@@ -25,6 +26,16 @@ import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } fr
 // raw path into a PRIVATE blob container: useless to a browser and not ours to hand out. The
 // "me" endpoints select it separately and return a signed avatarUrl instead (see ProfileUser).
 export type SafeUser = Omit<User, 'passwordHash' | 'avatarPath'>;
+
+// The staff pickers advertise "Search staff by name or email", but this filter matched email
+// only, so typing a person's NAME silently returned nothing -- the audit-log actor picker looked
+// broken even though the user existed. Matches either identifier; SQL Server's default collation
+// makes `contains` case-insensitive, so no manual lower-casing is needed.
+function staffSearchWhere(search?: string): Prisma.UserWhereInput {
+  const term = search?.trim();
+  if (!term) return {};
+  return { OR: [{ email: { contains: term } }, { name: { contains: term } }] };
+}
 
 const SAFE_USER_SELECT = {
   id: true,
@@ -72,6 +83,7 @@ export class UsersService {
     private readonly jwt: JwtService,
     private readonly emailService: EmailService,
     private readonly blobStorage: BlobStorageService,
+    private readonly quota: QuotaService,
   ) {}
 
   async create(context: TenantContext, dto: CreateUserDto): Promise<SafeUser> {
@@ -118,7 +130,19 @@ export class UsersService {
       entityType: 'user',
       entityId: user.id,
     });
+    await this.warnSoftSeatLimit(context);
     return user;
+  }
+
+  // Soft limit: never blocks creating the user; warns + emails admins once per threshold/period.
+  // Fired after the create's tx has committed (checkSoftLimit does its own reads + email), and
+  // never allowed to fail the create -- a notification hiccup is not the caller's problem.
+  private async warnSoftSeatLimit(context: TenantContext): Promise<void> {
+    try {
+      await this.quota.checkSoftLimit(context, 'seats');
+    } catch (error) {
+      this.logger.error('Soft seat-limit check failed', error as Error);
+    }
   }
 
   async list(context: TenantContext, filters: { page?: string; pageSize?: string; search?: string } = {}): Promise<PaginatedResponse<SafeUser>> {
@@ -126,7 +150,7 @@ export class UsersService {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const where = {
         organizationId: context.organizationId,
-        ...(filters.search ? { email: { contains: filters.search } } : {}),
+        ...staffSearchWhere(filters.search),
       };
       const [users, total] = await Promise.all([
         tx.user.findMany({ where, select: SAFE_USER_SELECT, orderBy: { createdAt: 'desc' }, skip, take }),
@@ -142,7 +166,7 @@ export class UsersService {
   ): Promise<PaginatedResponse<SafeUser & { organizationName: string | null }>> {
     const { page, pageSize, skip, take } = resolvePaginationParams(filters.page, filters.pageSize);
     return this.tenantPrisma.forTenant(context, async (tx) => {
-      const where = filters.search ? { email: { contains: filters.search } } : {};
+      const where = staffSearchWhere(filters.search);
       const [users, total] = await Promise.all([
         tx.user.findMany({
           where,
@@ -354,7 +378,7 @@ export class UsersService {
   ): Promise<PaginatedResponse<SuperAdminRecord>> {
     const { page, pageSize, skip, take } = resolvePaginationParams(filters.page, filters.pageSize);
     return this.tenantPrisma.forTenant(context, async (tx) => {
-      const where = { role: 'super_admin' as const, ...(filters.search ? { email: { contains: filters.search } } : {}) };
+      const where = { role: 'super_admin' as const, ...staffSearchWhere(filters.search) };
       const [superAdmins, total] = await Promise.all([
         tx.user.findMany({ where, select: SUPER_ADMIN_SELECT, orderBy: { createdAt: 'desc' }, skip, take }),
         tx.user.count({ where }),
@@ -544,6 +568,9 @@ export class UsersService {
       } else {
         skipped.push(outcome.skipped);
       }
+    }
+    if (created.length > 0) {
+      await this.warnSoftSeatLimit(context);
     }
     return { created, skipped };
   }

@@ -1,6 +1,11 @@
+// Stub BullMQ so constructing the service doesn't open a real Redis connection (which otherwise
+// keeps the event loop alive and hangs the run). deliver/handle are exercised directly.
+jest.mock('bullmq', () => ({ Worker: jest.fn().mockImplementation(() => ({ on: jest.fn(), close: jest.fn() })) }));
+
 import { WebhookDeliveryWorkerService } from './webhook-delivery.worker.service';
 import { TenantPrismaService, OrgSecretsCryptoService } from '@exam-platform/shared';
 import { createHmac } from 'crypto';
+import { promises as dns } from 'node:dns';
 
 describe('WebhookDeliveryWorkerService', () => {
   let worker: WebhookDeliveryWorkerService;
@@ -12,10 +17,13 @@ describe('WebhookDeliveryWorkerService', () => {
     tenantPrisma = { forTenant: jest.fn() };
     cryptoService = { decrypt: jest.fn().mockReturnValue('plaintext-secret') };
     worker = new WebhookDeliveryWorkerService({} as any, tenantPrisma as any, cryptoService as any);
+    // SSRF guard resolves the target host; mock DNS so tests never hit the network.
+    jest.spyOn(dns, 'lookup').mockResolvedValue([{ address: '93.184.216.34', family: 4 }] as any);
   });
 
   afterEach(() => {
     global.fetch = originalFetch;
+    jest.restoreAllMocks();
   });
 
   it('signs the payload with HMAC-SHA256 of the decrypted secret and posts it', async () => {
@@ -32,6 +40,7 @@ describe('WebhookDeliveryWorkerService', () => {
     const expectedSignature = createHmac('sha256', 'plaintext-secret').update(delivery.payloadJson).digest('hex');
     expect(global.fetch).toHaveBeenCalledWith('https://example.com/hook', {
       method: 'POST',
+      redirect: 'error',
       headers: { 'Content-Type': 'application/json', 'X-Webhook-Signature': expectedSignature },
       body: delivery.payloadJson,
     });
@@ -52,6 +61,17 @@ describe('WebhookDeliveryWorkerService', () => {
       where: { id: 'delivery-1' },
       data: { status: 'pending', httpStatusCode: 500, attemptCount: { increment: 1 }, lastAttemptAt: expect.any(Date) },
     });
+  });
+
+  it('refuses (SSRF) a webhook URL resolving to an internal address, without posting', async () => {
+    (dns.lookup as jest.Mock).mockResolvedValue([{ address: '169.254.169.254', family: 4 }] as any);
+    const delivery = { id: 'delivery-1', payloadJson: '{}', organization: { webhookUrl: 'https://sneaky.example.com/hook', webhookSecretEncrypted: 'blob' } };
+    const tx = { webhookDelivery: { findUniqueOrThrow: jest.fn().mockResolvedValue(delivery), update: jest.fn() } };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+    global.fetch = jest.fn();
+
+    await expect((worker as any).handle({ data: { deliveryId: 'delivery-1' } })).rejects.toThrow(/non-public/i);
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it('marks a delivery permanently failed only once BullMQ has exhausted all retries', async () => {

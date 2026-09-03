@@ -44,6 +44,8 @@ export function useJobPipeline(jobId: string) {
 export interface CreateJobInput {
   title: string;
   description?: string;
+  location?: string;
+  employmentType?: string;
 }
 
 export function useCreateJob() {
@@ -165,12 +167,22 @@ export function useAddFeedback(entryId: string, jobId: string) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { note?: string; rating?: number }) =>
+    mutationFn: (input: { note?: string; rating?: number; mentionedUserIds?: string[] }) =>
       apiFetch(`/entries/${entryId}/feedback`, { method: 'POST', body: JSON.stringify(input) }, accessToken ?? undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['entries', entryId, 'feedback'] });
       queryClient.invalidateQueries({ queryKey: ['jobs', jobId, 'pipeline'] });
     },
+  });
+}
+
+export function useAssignEntry(entryId: string, jobId: string) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (assigneeUserId: string | null) =>
+      apiFetch(`/entries/${entryId}/assignment`, { method: 'PATCH', body: JSON.stringify({ assigneeUserId }) }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobs', jobId, 'pipeline'] }),
   });
 }
 

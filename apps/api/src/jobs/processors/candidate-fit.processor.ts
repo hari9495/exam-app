@@ -8,6 +8,8 @@ import {
   AuditService,
 } from '@exam-platform/shared';
 import { JobProcessor } from './job-processor.interface';
+import { QuotaService } from '../../billing/quota.service';
+import { IntegrationEventsService } from '../../integrations/integration-events.service';
 import {
   parseRubric,
   buildFitToolSchema,
@@ -30,6 +32,8 @@ export class CandidateFitProcessor implements JobProcessor {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly aiApiKeyResolver: AiApiKeyResolverService,
     private readonly audit: AuditService,
+    private readonly quota: QuotaService,
+    private readonly integrationEvents: IntegrationEventsService,
   ) {}
 
   async process(input: unknown, context: TenantContext, aiJobId: string): Promise<unknown> {
@@ -42,14 +46,15 @@ export class CandidateFitProcessor implements JobProcessor {
       const job = await tx.job.findFirst({ where: { id: entry.jobId, organizationId: context.organizationId as string } });
       const profile = await tx.candidateProfile.findFirst({ where: { candidateId: entry.candidateId, organizationId: context.organizationId as string } });
       const aiJob = await tx.aiJob.findUnique({ where: { id: aiJobId } });
-      return { entry, job, profile, scoredByUserId: aiJob?.createdBy ?? null };
+      const candidate = await tx.candidate.findFirst({ where: { id: entry.candidateId, organizationId: context.organizationId as string } });
+      return { entry, job, profile, scoredByUserId: aiJob?.createdBy ?? null, candidateName: candidate?.name ?? '' };
     });
 
     if (!loaded || !loaded.job) {
       // The entry (or its job) vanished between enqueue and processing — nothing to score.
       return { ok: false, status: 'skipped_no_resume' };
     }
-    const { entry, job, profile, scoredByUserId } = loaded;
+    const { entry, job, profile, scoredByUserId, candidateName } = loaded;
 
     if (!profile || profile.parseStatus !== 'done') {
       await this.setStatus(context, entryId, 'skipped_no_resume');
@@ -66,6 +71,12 @@ export class CandidateFitProcessor implements JobProcessor {
       await this.setStatus(context, entryId, 'skipped_no_ai_key');
       return { ok: false, status: 'skipped_no_ai_key' };
     }
+
+    // Hard quota: block the AI spend when the org has exhausted its monthly AI credits.
+    // Deliberately outside the try/catch below so QuotaExceededException propagates as-is to the
+    // worker (which fails the AiJob with the 402 message) instead of being folded into the
+    // generic candidateFitAssessment `failed` status.
+    await this.quota.assertWithinLimit(context, 'ai_credits');
 
     try {
       const rubric = parseRubric(job.fitRubric);
@@ -109,6 +120,11 @@ export class CandidateFitProcessor implements JobProcessor {
         action: 'candidate_fit.scored',
         entityType: 'candidate_fit_assessment',
         entityId: entryId,
+      });
+      await this.integrationEvents.emit(context.organizationId as string, 'candidate.fit_scored', {
+        subject: candidateName,
+        score: String(result.overallScore),
+        linkPath: `/candidates/${entry.candidateId}`,
       });
       return { ok: true, overallScore: result.overallScore };
     } catch (error) {

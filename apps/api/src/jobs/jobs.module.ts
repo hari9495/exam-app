@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CryptoModule, StorageModule, AuditModule } from '@exam-platform/shared';
+import { BillingModule } from '../billing/billing.module';
 import { REDIS_CONNECTION, createRedisConnection } from './redis-connection';
 import { AI_JOBS_QUEUE, createAiJobsQueue } from './ai-jobs.queue';
 import { AI_JOB_PROCESSORS } from './processors/job-processor.interface';
@@ -11,17 +12,24 @@ import { CandidateFitProcessor } from './processors/candidate-fit.processor';
 import { AiJobsWorkerService } from './ai-jobs.worker.service';
 import { WEBHOOK_DELIVERIES_QUEUE, createWebhookDeliveriesQueue } from './webhook-deliveries.queue';
 import { WebhookDeliveryWorkerService } from './webhook-delivery.worker.service';
+import { INTEGRATION_DELIVERIES_QUEUE, createIntegrationDeliveriesQueue } from './integration-deliveries.queue';
+import { IntegrationDeliveryWorkerService } from './integration-delivery.worker.service';
 import { WebhooksService } from '../webhooks/webhooks.service';
+import { IntegrationEventsService } from '../integrations/integration-events.service';
 import { JobsService } from './jobs.service';
 import { JobsController } from './jobs.controller';
 
 @Module({
-  imports: [CryptoModule, StorageModule, AuditModule],
+  // BillingModule imported explicitly (not @Global) so CandidateFitProcessor / ResumeParseProcessor /
+  // AiQuestionGenerationProcessor can inject QuotaService -- see the prod DI crash this exact pattern
+  // caused before AuditModule was added here for the same reason.
+  imports: [CryptoModule, StorageModule, AuditModule, BillingModule],
   controllers: [JobsController],
   providers: [
     { provide: REDIS_CONNECTION, useFactory: createRedisConnection },
     { provide: AI_JOBS_QUEUE, useFactory: createAiJobsQueue, inject: [REDIS_CONNECTION] },
     { provide: WEBHOOK_DELIVERIES_QUEUE, useFactory: createWebhookDeliveriesQueue, inject: [REDIS_CONNECTION] },
+    { provide: INTEGRATION_DELIVERIES_QUEUE, useFactory: createIntegrationDeliveriesQueue, inject: [REDIS_CONNECTION] },
     EchoProcessor,
     QuestionGenerationClient,
     AiQuestionGenerationProcessor,
@@ -39,9 +47,11 @@ import { JobsController } from './jobs.controller';
     },
     AiJobsWorkerService,
     WebhookDeliveryWorkerService,
+    IntegrationDeliveryWorkerService,
     JobsService,
     WebhooksService,
+    IntegrationEventsService,
   ],
-  exports: [JobsService, WebhooksService],
+  exports: [JobsService, WebhooksService, IntegrationEventsService],
 })
 export class JobsModule {}

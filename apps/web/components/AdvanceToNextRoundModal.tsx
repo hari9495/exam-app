@@ -57,10 +57,10 @@ export function AdvanceToNextRoundModal({ examId, candidateIds, open, onClose, o
   return (
     <Modal open={open} title={`Advance ${candidateIds.length} Candidate${candidateIds.length === 1 ? '' : 's'}`} onClose={onClose}>
       {noPublishedTargets ? (
-        <p className="text-sm text-recruiter-text-secondary">No other published exams to advance candidates into — publish one first.</p>
+        <p className="text-sm text-muted">No other published exams to advance candidates into — publish one first.</p>
       ) : (
         <>
-          <p className="mb-3 text-sm text-recruiter-text-secondary">
+          <p className="mb-3 text-sm text-muted">
             Invite the selected candidates to a different exam, e.g. the next interview round. This doesn&apos;t change
             anything about their result here.
           </p>

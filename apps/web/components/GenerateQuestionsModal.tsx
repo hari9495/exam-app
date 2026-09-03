@@ -200,7 +200,7 @@ export function GenerateQuestionsModal({ open, onClose, onCompleted }: GenerateQ
         )}
 
         {running && (
-          <p className="text-sm text-recruiter-text-secondary">
+          <p className="text-sm text-muted">
             Generating… This is safe to close — the questions will appear in Drafts when it finishes.
           </p>
         )}
@@ -214,7 +214,7 @@ export function GenerateQuestionsModal({ open, onClose, onCompleted }: GenerateQ
               Last run: {output.requested} requested · {output.created} created · {output.dropped.length} dropped
             </p>
             {output.dropped.length > 0 && (
-              <ul className="list-disc pl-5 text-recruiter-text-secondary">
+              <ul className="list-disc pl-5 text-muted">
                 {[...new Set(output.dropped.map((d) => d.reason))].map((reason) => (
                   <li key={reason}>{reason}</li>
                 ))}

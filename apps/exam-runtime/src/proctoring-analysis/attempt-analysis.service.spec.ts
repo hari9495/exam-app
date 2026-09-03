@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { AttemptAnalysisService } from './attempt-analysis.service';
 import { ProctoringRiskClient } from './proctoring-risk.client';
 import { TenantPrismaService, AiApiKeyResolverService, AiNotConfiguredError } from '@exam-platform/shared';
+import { QuotaService } from '../billing/quota.service';
 
 describe('AttemptAnalysisService', () => {
   let service: AttemptAnalysisService;
@@ -9,6 +10,7 @@ describe('AttemptAnalysisService', () => {
   let proctoringRiskClient: { assessRisk: jest.Mock };
   let aiApiKeyResolver: { resolve: jest.Mock };
   let aiProvider: { generateStructured: jest.Mock };
+  let quota: { assertAiCredits: jest.Mock };
 
   const startedAt = new Date('2026-07-09T10:00:00Z');
   const attemptWithExam = {
@@ -22,12 +24,14 @@ describe('AttemptAnalysisService', () => {
     proctoringRiskClient = { assessRisk: jest.fn() };
     aiProvider = { generateStructured: jest.fn() };
     aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue(aiProvider) };
+    quota = { assertAiCredits: jest.fn().mockResolvedValue(undefined) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         AttemptAnalysisService,
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: ProctoringRiskClient, useValue: proctoringRiskClient },
         { provide: AiApiKeyResolverService, useValue: aiApiKeyResolver },
+        { provide: QuotaService, useValue: quota },
       ],
     }).compile();
     service = moduleRef.get(AttemptAnalysisService);
@@ -66,7 +70,7 @@ describe('AttemptAnalysisService', () => {
   it('calls the LLM with elapsed-second timestamps and persists a completed analysis', async () => {
     const events = [{ eventType: 'tab_switch', severity: 'medium', occurredAt: new Date('2026-07-09T10:02:00Z') }];
     const readTx = { proctoringEvent: { findMany: jest.fn().mockResolvedValue(events) } };
-    const persistTx = { proctoringAnalysis: { upsert: jest.fn() } };
+    const persistTx = { proctoringAnalysis: { upsert: jest.fn() }, aiCreditUsage: { create: jest.fn() } };
     tenantPrisma.forTenant
       .mockResolvedValueOnce(attemptWithExam)
       // analyze() now claims the row as 'processing' before the slow AI call -- an extra
@@ -78,11 +82,38 @@ describe('AttemptAnalysisService', () => {
 
     await service.analyze('attempt-1');
 
+    expect(quota.assertAiCredits).toHaveBeenCalledWith({ organizationId: 'org-1', isSuperAdmin: false });
     expect(proctoringRiskClient.assessRisk).toHaveBeenCalledWith([{ eventType: 'tab_switch', severity: 'medium', elapsedSeconds: 120 }], aiProvider);
     expect(persistTx.proctoringAnalysis.upsert).toHaveBeenCalledWith({
       where: { attemptId: 'attempt-1' },
       create: { attemptId: 'attempt-1', status: 'completed', riskLevel: 'medium', summary: 'One tab switch.' },
       update: { status: 'completed', riskLevel: 'medium', summary: 'One tab switch.', analyzedAt: expect.any(Date) },
+    });
+    expect(persistTx.aiCreditUsage.create).toHaveBeenCalledWith({
+      data: { organizationId: 'org-1', source: 'proctoring_analysis', credits: 1, sourceId: 'attempt-1' },
+    });
+  });
+
+  it('never calls the provider and never writes an aiCreditUsage row when the org is over its AI credit quota', async () => {
+    const events = [{ eventType: 'tab_switch', severity: 'medium', occurredAt: new Date('2026-07-09T10:02:00Z') }];
+    const readTx = { proctoringEvent: { findMany: jest.fn().mockResolvedValue(events) } };
+    const persistTx = { proctoringAnalysis: { upsert: jest.fn() }, aiCreditUsage: { create: jest.fn() } };
+    tenantPrisma.forTenant
+      .mockResolvedValueOnce(attemptWithExam)
+      .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn({ proctoringAnalysis: { upsert: jest.fn() } }))
+      .mockImplementationOnce((_ctx, fn) => fn(readTx))
+      .mockImplementationOnce((_ctx, fn) => fn(persistTx));
+    quota.assertAiCredits.mockRejectedValue(new Error('quota_exceeded'));
+
+    await expect(service.analyze('attempt-1')).resolves.toBeUndefined();
+
+    expect(aiApiKeyResolver.resolve).not.toHaveBeenCalled();
+    expect(proctoringRiskClient.assessRisk).not.toHaveBeenCalled();
+    expect(persistTx.aiCreditUsage.create).not.toHaveBeenCalled();
+    expect(persistTx.proctoringAnalysis.upsert).toHaveBeenCalledWith({
+      where: { attemptId: 'attempt-1' },
+      create: { attemptId: 'attempt-1', status: 'failed', riskLevel: null, summary: null },
+      update: { status: 'failed', riskLevel: null, summary: null, analyzedAt: expect.any(Date) },
     });
   });
 

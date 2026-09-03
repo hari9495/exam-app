@@ -1,3 +1,16 @@
+export interface NotificationView {
+  id: string;
+  type: string;
+  actorUserId: string | null;
+  actorName: string | null;
+  entityType: string;
+  entityId: string;
+  contextText: string | null;
+  linkPath: string;
+  readAt: string | null;
+  createdAt: string;
+}
+
 export interface PaginatedResponse<T> {
   data: T[];
   total: number;
@@ -272,8 +285,28 @@ export const STAGE_LABEL: Record<PipelineStage, string> = {
 export interface PublicJob {
   jobTitle: string;
   jobDescription: string | null;
+  location?: string | null;
+  employmentType?: string | null;
+  postedAt?: string;
   orgName: string;
   orgLogo: string | null;
+}
+
+export interface PortalApplication {
+  jobTitle: string;
+  stage: string;
+  rejected: boolean;
+  appliedAt: string;
+  statusToken: string | null;
+  interviews: { token: string | null; status: string; location: string; timeZone: string; confirmed: boolean; slots: { startsAt: string; endsAt: string }[] }[];
+  offers: { token: string | null; status: string; compensation: string; startDate: string; expiresAt: string }[];
+}
+
+export interface PortalView {
+  candidateName: string;
+  candidateEmail: string;
+  orgName: string;
+  applications: PortalApplication[];
 }
 
 export interface ApplicationStatus {
@@ -374,6 +407,8 @@ export interface BoardRow {
   fitScore: number | null;
   fitStatus: string | null;
   fitStale: boolean;
+  assignedUserId: string | null;
+  assigneeName: string | null;
 }
 
 export interface RubricDimension {
@@ -615,6 +650,36 @@ export interface IntegrationsResponse {
   webhookUrl: string | null;
 }
 
+// Mirrors apps/api/src/billing/usage.service.ts OrgUsage -- what GET /organizations/billing/usage
+// returns for the org-admin Billing page (plan name, per-dimension used/limit, and the period
+// this usage was accrued in).
+export interface DimensionUsage {
+  used: number;
+  limit: number;
+}
+
+export interface OrgUsage {
+  planName: string;
+  periodStart: string;
+  seats: DimensionUsage;
+  candidates: DimensionUsage;
+  aiCredits: DimensionUsage;
+  proctoringMinutes: DimensionUsage;
+}
+
+// Mirrors apps/api/src/billing/dto/plan.dto.ts UpsertPlanDto + the Prisma Plan model, as returned
+// by GET/POST/PATCH /platform/plans (super-admin plan catalog).
+export interface Plan {
+  id: string;
+  name: string;
+  seatLimit: number;
+  candidateLimit: number;
+  aiCreditLimit: number;
+  proctoringMinutesLimit: number;
+  priceLabel: string | null;
+  isPublic: boolean;
+}
+
 export interface SsoSettingsResponse {
   samlEnabled: boolean;
   samlIdpEntityId: string | null;
@@ -628,6 +693,29 @@ export interface WebhookDeliveryRow {
   status: string;
   httpStatusCode: number | null;
   createdAt: string;
+}
+
+// Mirrors apps/api/src/integrations/connected-apps.service.ts ConnectedAppView -- what
+// GET/POST/PATCH /organizations/integrations/connected-apps(/:id) returns (Slack/Teams
+// chat-notification channels, distinct from the generic Webhooks integration above).
+export interface ConnectedAppRow {
+  id: string;
+  type: 'slack' | 'msteams' | 'webhook';
+  label: string;
+  events: string[];
+  status: 'active' | 'disabled';
+  lastDeliveryAt: string | null;
+  lastError: string | null;
+  urlHint: string;
+}
+
+export interface ConnectedAppDeliveryRow {
+  id: string;
+  eventType: string;
+  status: string;
+  httpStatusCode: number | null;
+  createdAt: string;
+  lastAttemptAt: string | null;
 }
 
 export type ProctoringEventType =

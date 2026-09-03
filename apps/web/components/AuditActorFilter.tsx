@@ -24,13 +24,13 @@ export function AuditActorFilter({ actorUserId, actorLabel, onChange }: AuditAct
     return (
       <div className="flex flex-col gap-1">
         <span className="text-sm font-medium text-gray-700">Actor</span>
-        <span className="inline-flex items-center gap-1.5 rounded-md border border-recruiter-border bg-recruiter-bg-subtle px-3 py-2 text-sm text-recruiter-text">
+        <span className="inline-flex items-center gap-1.5 rounded-md border border-rule bg-ground px-3 py-2 text-sm text-ink">
           {actorLabel ?? actorUserId}
           <button
             type="button"
             onClick={() => onChange(undefined, undefined)}
             aria-label="Clear actor filter"
-            className="text-recruiter-text-tertiary hover:text-recruiter-text"
+            className="text-muted hover:text-ink"
           >
             <X size={14} />
           </button>
@@ -43,7 +43,7 @@ export function AuditActorFilter({ actorUserId, actorLabel, onChange }: AuditAct
     <div className="relative">
       <Input label="Actor" placeholder="Search staff by name or email…" value={search} onChange={setSearch} />
       {results.length > 0 && (
-        <ul className="absolute z-10 mt-1 max-h-56 w-64 overflow-y-auto rounded-md border border-recruiter-border bg-white py-1 shadow-md">
+        <ul className="absolute z-10 mt-1 max-h-56 w-64 overflow-y-auto rounded-md border border-rule bg-white py-1 shadow-md">
           {results.map((user) => (
             <li key={user.id}>
               <button
@@ -52,10 +52,10 @@ export function AuditActorFilter({ actorUserId, actorLabel, onChange }: AuditAct
                   onChange(user.id, user.name ?? user.email);
                   setSearch('');
                 }}
-                className="block w-full px-3 py-1.5 text-left text-sm text-recruiter-text hover:bg-recruiter-bg-subtle"
+                className="block w-full px-3 py-1.5 text-left text-sm text-ink hover:bg-ground"
               >
                 {user.name ?? user.email}
-                {user.name && <span className="ml-1 text-xs text-recruiter-text-tertiary">{user.email}</span>}
+                {user.name && <span className="ml-1 text-xs text-muted">{user.email}</span>}
               </button>
             </li>
           ))}

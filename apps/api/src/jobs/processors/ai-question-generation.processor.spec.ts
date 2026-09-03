@@ -1,10 +1,12 @@
 import { AiQuestionGenerationProcessor } from './ai-question-generation.processor';
+import { QuotaExceededException } from '../../billing/quota-exceeded.exception';
 
 describe('AiQuestionGenerationProcessor', () => {
   let processor: AiQuestionGenerationProcessor;
   let questionGenerationClient: { generate: jest.Mock };
   let tenantPrisma: { forTenant: jest.Mock };
   let aiApiKeyResolver: { resolve: jest.Mock };
+  let quota: { assertWithinLimit: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
   const input = {
     topic: 'JavaScript closures',
@@ -22,7 +24,8 @@ describe('AiQuestionGenerationProcessor', () => {
     questionGenerationClient = { generate: jest.fn() };
     tenantPrisma = { forTenant: jest.fn() };
     aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue(aiProvider) };
-    processor = new AiQuestionGenerationProcessor(questionGenerationClient as any, tenantPrisma as any, aiApiKeyResolver as any);
+    quota = { assertWithinLimit: jest.fn().mockResolvedValue(undefined) };
+    processor = new AiQuestionGenerationProcessor(questionGenerationClient as any, tenantPrisma as any, aiApiKeyResolver as any, quota as any);
   });
 
   it('inserts every valid generated question as a draft, ai-generated row', async () => {
@@ -265,6 +268,12 @@ describe('AiQuestionGenerationProcessor', () => {
     expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
   });
 
+  it('does not call the AI provider when the AI-credit quota is exceeded', async () => {
+    quota.assertWithinLimit.mockRejectedValue(new QuotaExceededException('ai_credits', 50, 50));
+    await processor.process(input, context, 'job-1').catch(() => {});
+    expect(questionGenerationClient.generate).not.toHaveBeenCalled();
+  });
+
   it('applies the requested marks, negative marks and tags to every generated question', async () => {
     const create = jest.fn().mockResolvedValue({ id: 'q1' });
     const creditCreate = jest.fn().mockResolvedValue({});
@@ -283,6 +292,7 @@ describe('AiQuestionGenerationProcessor', () => {
       client as never,
       tenantPrisma as never,
       { resolve: jest.fn().mockResolvedValue({}) } as never,
+      { assertWithinLimit: jest.fn().mockResolvedValue(undefined) } as never,
     );
 
     await processor.process(
@@ -315,6 +325,7 @@ describe('AiQuestionGenerationProcessor', () => {
       client as never,
       tenantPrisma as never,
       { resolve: jest.fn().mockResolvedValue({}) } as never,
+      { assertWithinLimit: jest.fn().mockResolvedValue(undefined) } as never,
     );
 
     await processor.process(
@@ -349,6 +360,7 @@ describe('AiQuestionGenerationProcessor', () => {
       client as never,
       tenantPrisma as never,
       { resolve: jest.fn().mockResolvedValue({}) } as never,
+      { assertWithinLimit: jest.fn().mockResolvedValue(undefined) } as never,
     );
 
     const result = await processor.process(
@@ -383,6 +395,7 @@ describe('AiQuestionGenerationProcessor', () => {
       client as never,
       tenantPrisma as never,
       { resolve: jest.fn().mockResolvedValue({}) } as never,
+      { assertWithinLimit: jest.fn().mockResolvedValue(undefined) } as never,
     );
 
     // old-shaped input: no marks, no negativeMarks, no tagIds
@@ -418,6 +431,7 @@ describe('AiQuestionGenerationProcessor', () => {
       client as never,
       tenantPrisma as never,
       { resolve: jest.fn().mockResolvedValue({}) } as never,
+      { assertWithinLimit: jest.fn().mockResolvedValue(undefined) } as never,
     );
 
     await processor.process(
@@ -448,6 +462,7 @@ describe('AiQuestionGenerationProcessor', () => {
       client as never,
       tenantPrisma as never,
       { resolve: jest.fn().mockResolvedValue({}) } as never,
+      { assertWithinLimit: jest.fn().mockResolvedValue(undefined) } as never,
     );
 
     const result = await processor.process(

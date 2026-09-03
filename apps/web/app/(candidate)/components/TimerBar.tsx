@@ -49,11 +49,11 @@ export function TimerBar({ remainingSeconds, totalSeconds, progressLabel }: Time
     <div>
       <div className="flex items-center justify-end gap-1.5">
         {progressLabel ? (
-          <span className="inline-flex items-center rounded-full bg-candidate-bg px-3 py-1 text-xs font-bold text-candidate-text-secondary">
+          <span className="inline-flex items-center rounded bg-candidate-bg px-3 py-1 text-xs font-bold text-candidate-text-secondary">
             {progressLabel}
           </span>
         ) : null}
-        <span className={clsx('inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold', BADGE_CLASSES[tier])}>
+        <span className={clsx('inline-flex items-center gap-1.5 rounded px-3 py-1 font-display text-xs font-bold tabular-nums', BADGE_CLASSES[tier])}>
           <Clock className="h-3.5 w-3.5" aria-hidden="true" />
           {formatTime(remainingSeconds)} remaining
         </span>

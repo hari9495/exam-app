@@ -88,7 +88,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
       {backSlot}
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">{candidate.candidateName}</h1>
+          <h1 className="font-display text-2xl font-bold">{candidate.candidateName}</h1>
           <AuditHistoryLink
             entityType="candidate"
             entityId={candidateId}
@@ -153,7 +153,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0, ease: 'easeOut' }}>
         <Card className="mb-6">
           <p className="text-xs text-gray-500">Score</p>
-          <p className="text-2xl font-semibold">
+          <p className="font-display text-2xl font-bold">
             {candidate.percentage !== null ? `${candidate.percentage.toFixed(1)}%` : '—'}
             {candidate.score !== null && candidate.maxScore !== null && (
               <span className="ml-2 text-sm font-normal text-gray-500">
@@ -357,7 +357,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
              *  shrinks the rendered image on BOTH axes and centers it, instead of the
              *  browser's default flush-left alignment dumping all the resulting slack
              *  as blank space on one side. object-contain never crops the evidence. */}
-            <div className="flex h-[60vh] items-center justify-center overflow-hidden rounded bg-recruiter-bg-subtle">
+            <div className="flex h-[60vh] items-center justify-center overflow-hidden rounded bg-ground">
               <img src={selectedScreenshot} alt="Screen capture" className="max-h-full max-w-full object-contain" />
             </div>
           </div>

@@ -3,13 +3,15 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PublicApplicationsService } from './public-applications.service';
 import { PrismaService, TenantPrismaService, BlobStorageService } from '@exam-platform/shared';
 import { JobsService } from '../jobs/jobs.service';
+import { IntegrationEventsService } from '../integrations/integration-events.service';
 
 describe('PublicApplicationsService', () => {
   let service: PublicApplicationsService;
-  let prisma: { organization: { findUnique: jest.Mock } };
+  let prisma: { organization: { findUnique: jest.Mock; findMany: jest.Mock } };
   let tenantPrisma: { forTenant: jest.Mock };
   let blobStorage: { upload: jest.Mock; signIfOurs: jest.Mock };
   let jobsService: { enqueue: jest.Mock };
+  let integrationEvents: { emit: jest.Mock };
 
   const openJob = {
     id: 'job-1',
@@ -19,13 +21,17 @@ describe('PublicApplicationsService', () => {
     publicApplyEnabled: true,
     title: 'Backend',
     description: 'Build things',
+    location: 'Remote',
+    employmentType: 'FULL_TIME',
+    createdAt: new Date('2026-08-01T00:00:00.000Z'),
   };
 
   beforeEach(async () => {
-    prisma = { organization: { findUnique: jest.fn() } };
+    prisma = { organization: { findUnique: jest.fn(), findMany: jest.fn() } };
     tenantPrisma = { forTenant: jest.fn() };
     blobStorage = { upload: jest.fn(), signIfOurs: jest.fn(async (value) => value) };
     jobsService = { enqueue: jest.fn() };
+    integrationEvents = { emit: jest.fn() };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -34,6 +40,7 @@ describe('PublicApplicationsService', () => {
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: BlobStorageService, useValue: blobStorage },
         { provide: JobsService, useValue: jobsService },
+        { provide: IntegrationEventsService, useValue: integrationEvents },
       ],
     }).compile();
     service = moduleRef.get(PublicApplicationsService);
@@ -77,6 +84,9 @@ describe('PublicApplicationsService', () => {
       expect(result).toEqual({
         jobTitle: 'Backend',
         jobDescription: 'Build things',
+        location: 'Remote',
+        employmentType: 'FULL_TIME',
+        postedAt: '2026-08-01T00:00:00.000Z',
         orgName: 'Acme',
         orgLogo: 'logos/acme.png?sig=abc',
       });
@@ -121,7 +131,7 @@ describe('PublicApplicationsService', () => {
       const writeTx = {
         candidate: {
           findUnique: jest.fn().mockResolvedValue(null),
-          upsert: jest.fn().mockResolvedValue({ id: 'cand-1' }),
+          upsert: jest.fn().mockResolvedValue({ id: 'cand-1', portalToken: 'ptok-1' }),
         },
         candidateProfile: { upsert: jest.fn().mockResolvedValue({ id: 'prof-1' }) },
         pipelineEntry: { upsert: jest.fn().mockResolvedValue({ id: 'en-1', applicationToken: 'tok-generated' }) },
@@ -174,7 +184,13 @@ describe('PublicApplicationsService', () => {
         expect.stringContaining('cand-1'),
         'user-1',
       );
-      expect(out).toEqual({ statusToken: 'tok-generated' });
+      expect(out).toEqual({ statusToken: 'tok-generated', portalToken: 'ptok-1' });
+      // A brand-new candidate (existingCandidate was null) is a new applicant.
+      expect(integrationEvents.emit).toHaveBeenCalledWith(
+        'org-1',
+        'candidate.applied',
+        expect.objectContaining({ subject: 'A', source: 'public', linkPath: '/candidates/cand-1' }),
+      );
     });
 
     it('re-apply returns the existing token (upsert update: {} keeps the entry as-is)', async () => {
@@ -182,7 +198,7 @@ describe('PublicApplicationsService', () => {
       const writeTx = {
         candidate: {
           findUnique: jest.fn().mockResolvedValue(null),
-          upsert: jest.fn().mockResolvedValue({ id: 'cand-1' }),
+          upsert: jest.fn().mockResolvedValue({ id: 'cand-1', portalToken: 'ptok-1' }),
         },
         candidateProfile: { upsert: jest.fn().mockResolvedValue({ id: 'prof-1' }) },
         pipelineEntry: { upsert: jest.fn().mockResolvedValue({ id: 'en-1', applicationToken: 'existing-token' }) },
@@ -196,7 +212,7 @@ describe('PublicApplicationsService', () => {
       const pdf = Buffer.from('%PDF-1.7 hello again').toString('base64');
       const out = await service.apply('valid-token', { name: 'A', email: 'a@x.com', resumeBase64: pdf });
 
-      expect(out).toEqual({ statusToken: 'existing-token' });
+      expect(out).toEqual({ statusToken: 'existing-token', portalToken: 'ptok-1' });
     });
 
     it('does not let public input overwrite an existing candidate\'s stored name/phone', async () => {
@@ -204,7 +220,7 @@ describe('PublicApplicationsService', () => {
       const writeTx = {
         candidate: {
           findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', name: 'Real Name', phone: '555-0000' }),
-          upsert: jest.fn().mockResolvedValue({ id: 'cand-1' }),
+          upsert: jest.fn().mockResolvedValue({ id: 'cand-1', portalToken: 'ptok-1' }),
         },
         candidateProfile: { upsert: jest.fn().mockResolvedValue({ id: 'prof-1' }) },
         pipelineEntry: { upsert: jest.fn().mockResolvedValue({ id: 'en-1', applicationToken: 'existing-token' }) },
@@ -226,6 +242,8 @@ describe('PublicApplicationsService', () => {
       // stored name is two words already -- expandedName's guard means no exception applies,
       // so the update must leave name/phone untouched entirely (not even set to the submitted values).
       expect(writeTx.candidate.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: {} }));
+      // Existing candidate re-applying is not a new applicant -- no candidate.applied event.
+      expect(integrationEvents.emit).not.toHaveBeenCalled();
     });
   });
 
@@ -260,6 +278,94 @@ describe('PublicApplicationsService', () => {
     it('throws NotFoundException for an unknown token', async () => {
       tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ pipelineEntry: { findUnique: jest.fn().mockResolvedValue(null) } }));
       await expect(service.getApplicationStatus('bad-tok')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('getPortal', () => {
+    it("aggregates the candidate's applications with their interviews and offers", async () => {
+      tenantPrisma.forTenant
+        .mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', name: 'Asha', email: 'a@x.com', erasedAt: null }) } }))
+        .mockImplementationOnce((_c, fn) =>
+          fn({
+            pipelineEntry: {
+              findMany: jest.fn().mockResolvedValue([
+                {
+                  applicationToken: 'st1',
+                  stage: 'interview',
+                  rejected: false,
+                  createdAt: new Date('2026-08-01T00:00:00.000Z'),
+                  job: { title: 'Backend' },
+                  interviews: [{ interviewToken: 'it1', status: 'proposed', location: 'Room', timeZone: 'UTC', confirmedSlotId: null, slots: [{ startsAt: new Date('2026-09-01T14:00:00.000Z'), endsAt: new Date('2026-09-01T15:00:00.000Z') }] }],
+                  offers: [{ offerToken: 'ot1', status: 'sent', compensation: '10L', startDate: new Date('2026-10-01T00:00:00.000Z'), expiresAt: new Date('2026-09-15T00:00:00.000Z') }],
+                },
+              ]),
+            },
+          }),
+        );
+      prisma.organization.findUnique.mockResolvedValue({ name: 'Acme' });
+
+      const out = await service.getPortal('ptok-1');
+
+      expect(out.candidateName).toBe('Asha');
+      expect(out.orgName).toBe('Acme');
+      expect(out.applications).toHaveLength(1);
+      expect(out.applications[0]).toMatchObject({ jobTitle: 'Backend', stage: 'interview', statusToken: 'st1' });
+      expect(out.applications[0].interviews[0]).toMatchObject({ token: 'it1', confirmed: false });
+      expect(out.applications[0].offers[0]).toMatchObject({ token: 'ot1', status: 'sent' });
+    });
+
+    it('throws NotFound for an unknown/erased portal token', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue(null) } }));
+      await expect(service.getPortal('bad')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('getJobsFeed', () => {
+    it('emits an Indeed-style XML feed of open public-apply jobs, CDATA-wrapped, linking to apply pages', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
+        fn({
+          job: {
+            findMany: jest.fn().mockResolvedValue([
+              {
+                title: 'Backend Engineer',
+                description: 'Build <stuff> & things',
+                location: 'Bengaluru',
+                employmentType: 'FULL_TIME',
+                createdAt: new Date('2026-08-01T00:00:00.000Z'),
+                applyToken: 'tok-1',
+                organizationId: 'org-1',
+              },
+            ]),
+          },
+        }),
+      );
+      prisma.organization.findMany.mockResolvedValue([{ id: 'org-1', name: 'Acme' }]);
+
+      const xml = await service.getJobsFeed();
+
+      expect(xml.startsWith('<?xml')).toBe(true);
+      expect(xml).toContain('<source>');
+      expect(xml).toContain('Backend Engineer');
+      expect(xml).toContain('/apply/tok-1');
+      expect(xml).toContain('Acme');
+      expect(xml).toContain('FULL_TIME');
+      // free-text is CDATA-wrapped so "<stuff> & things" can't break the XML
+      expect(xml).toContain('<![CDATA[Build <stuff> & things]]>');
+    });
+
+    it('escapes a CDATA-terminator injection in free text', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
+        fn({
+          job: {
+            findMany: jest.fn().mockResolvedValue([
+              { title: 'X]]><script>', description: '', location: '', employmentType: '', createdAt: new Date(0), applyToken: 't', organizationId: 'o' },
+            ]),
+          },
+        }),
+      );
+      prisma.organization.findMany.mockResolvedValue([{ id: 'o', name: 'O' }]);
+      const xml = await service.getJobsFeed();
+      expect(xml).not.toContain(']]><script>'); // the terminator must have been split
     });
   });
 });

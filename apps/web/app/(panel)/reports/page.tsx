@@ -64,6 +64,7 @@ export default function PanelReportsPage() {
 
   return (
     <ListView<ExamListItem>
+      eyebrow="REPORTING"
       title="Results"
       icon={<BarChart3 size={20} />}
       columns={columns}

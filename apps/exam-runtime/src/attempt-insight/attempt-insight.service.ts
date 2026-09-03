@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TenantPrismaService, AiApiKeyResolverService, AiNotConfiguredError, AI_NOT_CONFIGURED_STATUS } from '@exam-platform/shared';
+import { QuotaService } from '../billing/quota.service';
 import { InsightClient, TopicBreakdownEntry } from './insight.client';
 
 @Injectable()
@@ -10,6 +11,7 @@ export class AttemptInsightService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly insightClient: InsightClient,
     private readonly aiApiKeyResolver: AiApiKeyResolverService,
+    private readonly quota: QuotaService,
   ) {}
 
   async analyze(attemptId: string): Promise<void> {
@@ -54,6 +56,7 @@ export class AttemptInsightService {
 
       let result: { status: string; summary: string | null };
       try {
+        await this.quota.assertAiCredits({ organizationId, isSuperAdmin: false });
         // Resolve the key as its own step so a MISSING key is recorded distinctly from a
         // provider error. Both used to collapse into `failed`, and the report then offered a
         // Retry for a condition retrying can never fix.

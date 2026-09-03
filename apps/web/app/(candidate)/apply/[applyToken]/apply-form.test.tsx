@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useParams } from 'next/navigation';
-import ApplyPage from './page';
+import ApplyForm from './apply-form';
 
 jest.mock('next/navigation', () => ({ useParams: jest.fn() }));
 
@@ -25,7 +25,7 @@ function mockFetch() {
   }) as unknown as typeof fetch;
 }
 
-describe('ApplyPage', () => {
+describe('ApplyForm', () => {
   const originalFetch = global.fetch;
 
   beforeEach(() => {
@@ -38,7 +38,7 @@ describe('ApplyPage', () => {
 
   it('loads the job, submits the application, and shows the status link', async () => {
     mockFetch();
-    render(<ApplyPage />);
+    render(<ApplyForm />);
 
     expect(await screen.findByText('Senior Backend Engineer')).toBeInTheDocument();
 
@@ -50,7 +50,7 @@ describe('ApplyPage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /Submit application/i }));
 
-    const link = await screen.findByRole('link', { name: 'Track your application' });
+    const link = await screen.findByRole('link', { name: 'Track this application' });
     expect(link).toHaveAttribute('href', '/application/tok-1');
 
     const postCall = (global.fetch as jest.Mock).mock.calls.find(([, options]) => options?.method === 'POST');
@@ -65,7 +65,7 @@ describe('ApplyPage', () => {
 
   it('blocks submission and shows an inline error when name is blank', async () => {
     mockFetch();
-    render(<ApplyPage />);
+    render(<ApplyForm />);
 
     expect(await screen.findByText('Senior Backend Engineer')).toBeInTheDocument();
 
@@ -81,7 +81,7 @@ describe('ApplyPage', () => {
 
   it('blocks submission and shows an inline error when email is invalid', async () => {
     mockFetch();
-    render(<ApplyPage />);
+    render(<ApplyForm />);
 
     expect(await screen.findByText('Senior Backend Engineer')).toBeInTheDocument();
 
@@ -98,7 +98,7 @@ describe('ApplyPage', () => {
 
   it('shows a generic message when the job is not accepting applications', async () => {
     global.fetch = jest.fn(async () => new Response(JSON.stringify({}), { status: 404 })) as unknown as typeof fetch;
-    render(<ApplyPage />);
+    render(<ApplyForm />);
 
     expect(await screen.findByText("This role isn't accepting applications.")).toBeInTheDocument();
   });

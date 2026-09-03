@@ -11,6 +11,7 @@ import { useOrgBranding } from '../../../lib/hooks/useBranding';
 import { useDocumentBranding } from '../../../lib/hooks/useDocumentBranding';
 import { useCurrentUser } from '../../../lib/hooks/useCurrentUser';
 import { AppShell } from '../../../components/ui-v2';
+import { OverLimitBanner } from '../../../components/billing/OverLimitBanner';
 
 // Recruiter surfaces that have been rebuilt in v2 (their nav hrefs get a /v2 prefix at render).
 const V2_ROUTES = new Set(['/dashboard', '/exams', '/questions', '/candidates', '/reports', '/walk-in-groups', '/jobs', '/analytics/hiring', '/message-templates', '/offer-template']);
@@ -51,7 +52,7 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
   }
 
   if (isLoading || !accessToken || (role !== null && role !== 'recruiter' && role !== 'org_admin' && !actingSuperAdmin)) {
-    return <p className="p-8 text-sm text-recruiter-text-tertiary">Loading…</p>;
+    return <p className="p-8 text-sm text-muted">Loading…</p>;
   }
 
   // org_admin is a full org-scoped superuser, so it sees the complete feature nav everywhere,
@@ -96,6 +97,7 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
           avatarUrl={currentUser?.avatarUrl ?? undefined}
           onLogout={handleLogout}
         >
+          <OverLimitBanner />
           {children}
         </AppShell>
       </div>

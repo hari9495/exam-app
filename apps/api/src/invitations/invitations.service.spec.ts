@@ -3,7 +3,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { InvitationsService, EMAIL_LOGO_SAS_TTL_MS } from './invitations.service';
 import { TenantPrismaService, AuditService, BlobStorageService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
-import { WebhooksService } from '../webhooks/webhooks.service';
+import { IntegrationEventsService } from '../integrations/integration-events.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 
 describe('InvitationsService', () => {
@@ -11,7 +11,7 @@ describe('InvitationsService', () => {
   let tenantPrisma: { forTenant: jest.Mock };
   let emailService: { send: jest.Mock };
   let audit: { record: jest.Mock };
-  let webhooksService: { enqueue: jest.Mock };
+  let integrationEvents: { emit: jest.Mock };
   let blobStorage: { signIfOurs: jest.Mock };
   let pipelineService: { syncEntriesForInvitations: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
@@ -20,7 +20,7 @@ describe('InvitationsService', () => {
     tenantPrisma = { forTenant: jest.fn() };
     emailService = { send: jest.fn().mockResolvedValue({ success: true, previewUrl: 'https://ethereal.email/x' }) };
     audit = { record: jest.fn() };
-    webhooksService = { enqueue: jest.fn() };
+    integrationEvents = { emit: jest.fn() };
     // Passes the value through unchanged by default, matching signIfOurs' real behavior for a
     // null logoPath or an unconfigured storage account -- individual tests override this to
     // verify the signing itself.
@@ -32,7 +32,7 @@ describe('InvitationsService', () => {
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: EmailService, useValue: emailService },
         { provide: AuditService, useValue: audit },
-        { provide: WebhooksService, useValue: webhooksService },
+        { provide: IntegrationEventsService, useValue: integrationEvents },
         { provide: BlobStorageService, useValue: blobStorage },
         { provide: PipelineService, useValue: pipelineService },
       ],
@@ -431,7 +431,7 @@ describe('InvitationsService', () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
-  it('enqueues an invitation.created webhook after successfully inviting candidates', async () => {
+  it('emits an invitation.created integration event after successfully inviting candidates', async () => {
     const createTx = {
       exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', title: 'Backend Round', status: 'published' }) },
       candidate: { findMany: jest.fn().mockResolvedValue([{ id: 'cand-1', email: 'a@test.com', name: 'Alice', erasedAt: null }]) },
@@ -447,14 +447,21 @@ describe('InvitationsService', () => {
 
     await service.bulkInvite(context, 'exam-1', ['cand-1']);
 
-    expect(webhooksService.enqueue).toHaveBeenCalledWith(
+    expect(integrationEvents.emit).toHaveBeenCalledWith(
       'org-1',
       'invitation.created',
-      expect.objectContaining({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1' }),
+      expect.objectContaining({
+        id: 'inv-1',
+        examId: 'exam-1',
+        candidateId: 'cand-1',
+        subject: 'a@test.com',
+        examTitle: 'Backend Round',
+        linkPath: '/candidates',
+      }),
     );
   });
 
-  it('does not enqueue a webhook when no invitations were actually created', async () => {
+  it('does not emit an invitation.created event when no invitations were actually created', async () => {
     // Real bulkInvite() throws NotFoundException before reaching createdWithCandidate
     // if a requested candidateId doesn't resolve at all (see the "throws NotFoundException
     // when a candidateId does not resolve" test above) -- so the only non-throwing path
@@ -472,7 +479,7 @@ describe('InvitationsService', () => {
 
     await service.bulkInvite(context, 'exam-1', ['cand-1']);
 
-    expect(webhooksService.enqueue).not.toHaveBeenCalled();
+    expect(integrationEvents.emit).not.toHaveBeenCalled();
   });
 
   it('calls PipelineService.syncEntriesForInvitations with the exam id and invited candidate ids inside the same tx', async () => {

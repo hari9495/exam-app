@@ -8,6 +8,7 @@ describe('OffersService', () => {
   let email: { send: jest.Mock };
   let blobStorage: { upload: jest.Mock; signIfOurs: jest.Mock };
   let audit: { record: jest.Mock };
+  let integrationEvents: { emit: jest.Mock };
   let tx: {
     pipelineEntry: Record<string, jest.Mock>;
     offer: Record<string, jest.Mock>;
@@ -21,6 +22,7 @@ describe('OffersService', () => {
       pipelineEntry: {
         findFirst: jest.fn().mockResolvedValue({ id: 'entry-1', candidateId: 'cand-1', organizationId: 'org-1' }),
         findUnique: jest.fn().mockResolvedValue({
+          candidateId: 'cand-1',
           job: { title: 'Backend Engineer' },
           candidate: { name: 'Asha' },
         }),
@@ -50,7 +52,8 @@ describe('OffersService', () => {
       signIfOurs: jest.fn().mockResolvedValue(null),
     };
     audit = { record: jest.fn() };
-    service = new OffersService(tenantPrisma as any, offerTemplates as any, email as any, blobStorage as any, audit as any);
+    integrationEvents = { emit: jest.fn() };
+    service = new OffersService(tenantPrisma as any, offerTemplates as any, email as any, blobStorage as any, audit as any, integrationEvents as any);
   });
 
   describe('createOffer', () => {
@@ -400,6 +403,11 @@ describe('OffersService', () => {
         }),
       );
       expect(out).toMatchObject({ id: 'offer-1', status: 'accepted' });
+      expect(integrationEvents.emit).toHaveBeenCalledWith(
+        'org-1',
+        'offer.accepted',
+        expect.objectContaining({ subject: 'Asha', roleTitle: 'Backend Engineer', linkPath: '/candidates/cand-1' }),
+      );
 
       // Ordering: the update tx runs, then the recruiter is notified -- and the send call
       // itself never happens inside a forTenant callback.
@@ -448,13 +456,23 @@ describe('OffersService', () => {
       expect(out).toMatchObject({ status: 'declined' });
     });
 
-    it('skips the recruiter email when the offer has no sentByUserId', async () => {
+    it('skips the recruiter email when the offer has no sentByUserId, but still emits offer.accepted', async () => {
       tx.offer.findUnique.mockResolvedValue(baseOffer({ sentByUserId: null }));
       tx.offer.updateMany.mockResolvedValue({ count: 1 });
 
       await service.respondPublic('offer-token-1', 'accept');
 
       expect(email.send).not.toHaveBeenCalled();
+      expect(integrationEvents.emit).toHaveBeenCalledWith('org-1', 'offer.accepted', expect.objectContaining({ subject: 'Asha' }));
+    });
+
+    it('does not emit offer.accepted on decline', async () => {
+      tx.offer.findUnique.mockResolvedValue(baseOffer());
+      tx.offer.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.respondPublic('offer-token-1', 'decline');
+
+      expect(integrationEvents.emit).not.toHaveBeenCalled();
     });
 
     it('throws a generic ConflictException and makes no changes when the offer has expired', async () => {

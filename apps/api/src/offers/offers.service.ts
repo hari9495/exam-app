@@ -3,6 +3,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Offer } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService, BlobStorageService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
+import { IntegrationEventsService } from '../integrations/integration-events.service';
 import { buildCandidateEmailHtml } from '../candidate-emails/candidate-email-render';
 import { OfferTemplatesService } from './offer-templates.service';
 import { CreateOfferDto } from './dto/create-offer.dto';
@@ -25,6 +26,7 @@ export class OffersService {
     private readonly emailService: EmailService,
     private readonly blobStorage: BlobStorageService,
     private readonly audit: AuditService,
+    private readonly integrationEvents: IntegrationEventsService,
   ) {}
 
   async createOffer(context: TenantContext, actorUserId: string, entryId: string, dto: CreateOfferDto): Promise<Offer> {
@@ -319,31 +321,47 @@ export class OffersService {
       return { ...offer, status: newStatus, respondedAt } as Offer;
     });
 
-    // Recruiter notification: OUTSIDE the tx above -- emailService.send is a network call and
-    // must never run inside a forTenant callback (same three-phase reasoning as sendOffer).
-    if (offer.sentByUserId) {
-      const notify = await this.tenantPrisma.forTenant(context, async (tx) => {
-        const recruiter = await tx.user.findUnique({ where: { id: offer.sentByUserId as string }, select: { email: true } });
-        const entry = await tx.pipelineEntry.findUnique({
-          where: { id: offer.pipelineEntryId },
-          select: { candidate: { select: { name: true } }, job: { select: { title: true } } },
-        });
-        return { recruiterEmail: recruiter?.email, candidateName: entry?.candidate.name ?? '', jobTitle: entry?.job.title ?? '' };
+    // Recruiter notification + fit-scored candidate lookup: OUTSIDE the tx above --
+    // emailService.send is a network call and must never run inside a forTenant callback
+    // (same three-phase reasoning as sendOffer). Fetched unconditionally (not gated on
+    // sentByUserId) since offer.accepted must emit regardless of whether a recruiter email
+    // goes out.
+    const notify = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const recruiter = offer.sentByUserId
+        ? await tx.user.findUnique({ where: { id: offer.sentByUserId as string }, select: { email: true } })
+        : null;
+      const entry = await tx.pipelineEntry.findUnique({
+        where: { id: offer.pipelineEntryId },
+        select: { candidateId: true, candidate: { select: { name: true } }, job: { select: { title: true } } },
       });
-      if (notify.recruiterEmail) {
-        const verb = action === 'accept' ? 'accepted' : 'declined';
-        const html = buildCandidateEmailHtml({
-          logoUrl: null,
-          orgName: null,
-          bodyText: `Candidate ${notify.candidateName} has ${verb} the offer for ${notify.jobTitle}.`,
-        });
-        await this.emailService.send({
-          to: notify.recruiterEmail,
-          subject: `Offer ${verb}: ${notify.candidateName}`,
-          html,
-          organizationId: offer.organizationId,
-        });
-      }
+      return {
+        recruiterEmail: recruiter?.email,
+        candidateName: entry?.candidate.name ?? '',
+        candidateId: entry?.candidateId,
+        jobTitle: entry?.job.title ?? '',
+      };
+    });
+    if (notify.recruiterEmail) {
+      const verb = action === 'accept' ? 'accepted' : 'declined';
+      const html = buildCandidateEmailHtml({
+        logoUrl: null,
+        orgName: null,
+        bodyText: `Candidate ${notify.candidateName} has ${verb} the offer for ${notify.jobTitle}.`,
+      });
+      await this.emailService.send({
+        to: notify.recruiterEmail,
+        subject: `Offer ${verb}: ${notify.candidateName}`,
+        html,
+        organizationId: offer.organizationId,
+      });
+    }
+
+    if (action === 'accept') {
+      await this.integrationEvents.emit(offer.organizationId, 'offer.accepted', {
+        subject: notify.candidateName,
+        roleTitle: notify.jobTitle || undefined,
+        linkPath: `/candidates/${notify.candidateId}`,
+      });
     }
 
     return updated;

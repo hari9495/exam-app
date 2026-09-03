@@ -109,9 +109,9 @@ export default function InterviewPage() {
 
   return (
     <div className="mx-auto flex flex-1 max-w-xl flex-col justify-center gap-6 p-4 sm:p-8">
-      <div className="rounded-lg border border-candidate-border bg-white p-6 shadow-sm">
-        <p className="mb-1 text-sm font-semibold text-candidate-text-secondary">{interview.orgName}</p>
-        <h1 className="mb-4 text-xl font-bold text-candidate-text">{interview.jobTitle}</h1>
+      <div className="rounded-lg border border-candidate-border bg-white p-6">
+        <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-candidate-text-secondary">{interview.orgName}</p>
+        <h1 className="mb-4 font-display text-xl font-bold text-candidate-text">{interview.jobTitle}</h1>
 
         <dl className="mb-4 flex flex-col gap-2 text-sm">
           <div className="flex justify-between gap-4">
@@ -167,7 +167,7 @@ export default function InterviewPage() {
               value={reschedNote}
               onChange={(e) => setReschedNote(e.target.value)}
               rows={3}
-              className="w-full rounded-lg border border-candidate-border px-3 py-2 text-sm focus:border-candidate-primary focus:outline-none"
+              className="w-full rounded-lg border border-candidate-border px-3 py-2 text-sm focus:border-candidate-primary focus:outline-none focus:ring-2 focus:ring-candidate-primary/20"
             />
             <CandidateButton disabled={submitting} onClick={() => respond('reschedule', { note: reschedNote })}>
               Send request

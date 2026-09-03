@@ -57,7 +57,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
   }
 
   if (isLoading || !accessToken || (role !== null && !ALLOWED_ROLES.includes(role) && !actingSuperAdmin)) {
-    return <p className="p-8 text-sm text-recruiter-text-tertiary">Loading…</p>;
+    return <p className="p-8 text-sm text-muted">Loading…</p>;
   }
 
   // org_admin / acting super_admin see the complete feature union; a recruiter sees the recruiter
@@ -98,7 +98,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
         />
         <div className="flex flex-1 flex-col">
           <StaffTopBar displayName={displayName} initials={initials} roleLabel={roleLabel} avatarUrl={currentUser?.avatarUrl} onLogout={handleLogout} />
-          <main className="flex-1 p-8">{children}</main>
+          <main id="main" className="flex-1 bg-ground p-4 md:p-8">{children}</main>
         </div>
       </div>
     </MotionConfig>

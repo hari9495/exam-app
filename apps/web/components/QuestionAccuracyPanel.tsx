@@ -73,14 +73,14 @@ export function QuestionAccuracyPanel({ examId }: { examId: string }) {
     <div>
       <div className="mb-2 flex flex-wrap items-end gap-2">
         <div className="relative max-w-xs flex-1">
-          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-recruiter-text-tertiary" />
+          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
           <input
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search questions…"
             aria-label="Search questions"
-            className="w-full rounded-md border border-recruiter-border py-1.5 pl-8 pr-3 text-sm"
+            className="w-full rounded-md border border-rule py-1.5 pl-8 pr-3 text-sm"
           />
         </div>
       </div>

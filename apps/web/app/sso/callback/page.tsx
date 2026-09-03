@@ -70,7 +70,7 @@ function SsoCallbackRedeemer() {
 
   return (
     <main className="flex min-h-screen items-center justify-center">
-      <p className="text-sm text-recruiter-text-tertiary">Signing you in&hellip;</p>
+      <p className="text-sm text-muted">Signing you in&hellip;</p>
     </main>
   );
 }
@@ -80,7 +80,7 @@ export default function SsoCallbackPage() {
     <Suspense
       fallback={
         <main className="flex min-h-screen items-center justify-center">
-          <p className="text-sm text-recruiter-text-tertiary">Signing you in&hellip;</p>
+          <p className="text-sm text-muted">Signing you in&hellip;</p>
         </main>
       }
     >

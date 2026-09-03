@@ -86,9 +86,9 @@ export default function OfferPage() {
 
   return (
     <div className="mx-auto flex flex-1 max-w-xl flex-col justify-center gap-6 p-4 sm:p-8">
-      <div className="rounded-lg border border-candidate-border bg-white p-6 shadow-sm">
-        <p className="mb-1 text-sm font-semibold text-candidate-text-secondary">{offer.orgName}</p>
-        <h1 className="mb-4 text-xl font-bold text-candidate-text">{offer.jobTitle}</h1>
+      <div className="rounded-lg border border-candidate-border bg-white p-6">
+        <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-candidate-text-secondary">{offer.orgName}</p>
+        <h1 className="mb-4 font-display text-xl font-bold text-candidate-text">{offer.jobTitle}</h1>
 
         <dl className="mb-6 flex flex-col gap-2 text-sm">
           <div className="flex justify-between gap-4">

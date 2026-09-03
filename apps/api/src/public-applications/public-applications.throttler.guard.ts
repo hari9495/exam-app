@@ -11,7 +11,10 @@ export class PublicApplicationsThrottlerGuard extends ThrottlerGuard {
   // falls back to a fixed 'status' bucket shared by all status lookups rather than trusting an
   // unvalidated route param as a per-caller key.
   // Deliberately does NOT extend FailOpenThrottlerGuard -- public-facing surface, fail closed.
+  // Token-less routes (status lookups, the jobs-feed) fall back to their route PATTERN, so each
+  // gets its own shared bucket instead of colliding in one 'status' pool -- otherwise a burst of
+  // status checks and an aggregator polling the feed would 429 each other.
   protected async getTracker(req: Record<string, any>): Promise<string> {
-    return req.params?.applyToken ?? req.params?.token ?? 'status';
+    return req.params?.applyToken ?? req.params?.token ?? req.params?.portalToken ?? req.route?.path ?? 'status';
   }
 }

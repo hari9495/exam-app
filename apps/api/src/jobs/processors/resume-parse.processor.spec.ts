@@ -1,5 +1,6 @@
 import { AiNotConfiguredError } from '@exam-platform/shared';
 import { ResumeParseProcessor } from './resume-parse.processor';
+import { QuotaExceededException } from '../../billing/quota-exceeded.exception';
 
 jest.mock('pdf-parse', () => jest.fn());
 import pdfParse from 'pdf-parse';
@@ -9,6 +10,7 @@ describe('ResumeParseProcessor', () => {
   let tenantPrisma: { forTenant: jest.Mock };
   let blobStorage: { downloadToBuffer: jest.Mock };
   let aiApiKeyResolver: { resolve: jest.Mock };
+  let quota: { assertWithinLimit: jest.Mock };
   const aiProvider = { generateStructured: jest.fn(), ping: jest.fn() };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
   const profile = { candidateId: 'cand-1', resumePath: 'resumes/cand-1.pdf' };
@@ -18,7 +20,8 @@ describe('ResumeParseProcessor', () => {
     tenantPrisma = { forTenant: jest.fn() };
     blobStorage = { downloadToBuffer: jest.fn() };
     aiApiKeyResolver = { resolve: jest.fn() };
-    processor = new ResumeParseProcessor(tenantPrisma as never, blobStorage as never, aiApiKeyResolver as never);
+    quota = { assertWithinLimit: jest.fn().mockResolvedValue(undefined) };
+    processor = new ResumeParseProcessor(tenantPrisma as never, blobStorage as never, aiApiKeyResolver as never, quota as never);
   });
 
   it('parses the résumé and writes parsedSummary/parsedSkills/parsedTitle/parsedYearsExperience with parseStatus=done', async () => {
@@ -180,5 +183,17 @@ describe('ResumeParseProcessor', () => {
         parsedAt: expect.any(Date),
       },
     });
+  });
+
+  it('does not call the AI provider when the AI-credit quota is exceeded', async () => {
+    const findUnique = jest.fn().mockResolvedValue(profile);
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ candidateProfile: { findUnique, update: jest.fn() } }));
+    aiApiKeyResolver.resolve.mockResolvedValue(aiProvider);
+    quota.assertWithinLimit.mockRejectedValue(new QuotaExceededException('ai_credits', 50, 50));
+
+    await processor.process({ candidateId: 'cand-1' }, context, 'job-1').catch(() => {});
+
+    expect(blobStorage.downloadToBuffer).not.toHaveBeenCalled();
+    expect(aiProvider.generateStructured).not.toHaveBeenCalled();
   });
 });

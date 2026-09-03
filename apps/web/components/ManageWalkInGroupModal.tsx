@@ -87,7 +87,7 @@ export function ManageWalkInGroupModal({ group, orgSlug, onClose }: ManageWalkIn
         </div>
 
         <div>
-          <p className="mb-2 text-sm font-medium text-recruiter-text">Shared link for this group</p>
+          <p className="mb-2 text-sm font-medium text-ink">Shared link for this group</p>
           <WalkInShareCard groupId={group.id} orgSlug={orgSlug} />
         </div>
 
@@ -100,12 +100,12 @@ export function ManageWalkInGroupModal({ group, orgSlug, onClose }: ManageWalkIn
 
         <div>
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-sm font-medium text-recruiter-text">Exams in this group ({selectedIds.length})</p>
+            <p className="text-sm font-medium text-ink">Exams in this group ({selectedIds.length})</p>
             <Button type="button" size="sm" loading={setExams.isPending} onClick={handleSaveMembers}>
               Save members
             </Button>
           </div>
-          <ul className="flex max-h-72 flex-col gap-1.5 overflow-y-auto rounded-md border border-recruiter-border p-3">
+          <ul className="flex max-h-72 flex-col gap-1.5 overflow-y-auto rounded-md border border-rule p-3">
             {(eligibleExams ?? []).map((exam) => {
               const otherGroupName =
                 exam.walkInGroupId && exam.walkInGroupId !== group.id ? groupNameById.get(exam.walkInGroupId) : null;
@@ -120,7 +120,7 @@ export function ManageWalkInGroupModal({ group, orgSlug, onClose }: ManageWalkIn
               );
             })}
             {(eligibleExams ?? []).length === 0 && (
-              <p className="text-sm text-recruiter-text-tertiary">
+              <p className="text-sm text-muted">
                 No walk-in-enabled exams yet. Enable walk-in on an exam&apos;s Details tab first.
               </p>
             )}

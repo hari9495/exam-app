@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
@@ -12,6 +12,7 @@ import { AddEntryDto } from './dto/add-entry.dto';
 import { PatchEntryDto } from './dto/patch-entry.dto';
 import { LinkExamDto } from './dto/link-exam.dto';
 import { AddFeedbackDto } from './dto/add-feedback.dto';
+import { AssignEntryDto } from './dto/assign-entry.dto';
 
 @Controller()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -57,6 +58,14 @@ export class PipelineController {
   @RequirePermissions('results:view')
   getPipeline(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.pipelineService.getPipeline(tenant, id);
+  }
+
+  @Get('jobs/:id/candidates.csv')
+  @RequirePermissions('results:view')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  @Header('Content-Disposition', 'attachment; filename="candidates.csv"')
+  exportCandidatesCsv(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.pipelineService.exportJobCandidatesCsv(tenant, id);
   }
 
   @Post('jobs/:id/entries')
@@ -124,5 +133,16 @@ export class PipelineController {
   @RequirePermissions('results:view')
   listFeedback(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.pipelineService.listFeedback(tenant, id);
+  }
+
+  @Patch('entries/:id/assignment')
+  @RequirePermissions('results:view')
+  assignEntry(
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentUserId() userId: string,
+    @Param('id') id: string,
+    @Body() dto: AssignEntryDto,
+  ) {
+    return this.pipelineService.assignEntry(tenant, userId, id, dto.assigneeUserId);
   }
 }

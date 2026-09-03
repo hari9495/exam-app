@@ -9,6 +9,8 @@ import { PatchEntryDto } from './dto/patch-entry.dto';
 import { AddFeedbackDto } from './dto/add-feedback.dto';
 import { CandidateEmailTemplatesService } from '../candidate-emails/candidate-email-templates.service';
 import { CandidateEmailsService } from '../candidate-emails/candidate-emails.service';
+import { IntegrationEventsService } from '../integrations/integration-events.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { computeCriteriaHash, validateRubricInput } from '../candidate-fit/candidate-fit.core';
 
 export interface FeedbackRow {
@@ -37,12 +39,23 @@ export interface BoardRow {
   feedbackCount: number;
   fitScore: number | null;
   fitStatus: string | null;
+  assignedUserId: string | null;
+  assigneeName: string | null;
   fitStale: boolean;
 }
 
 export interface PipelineBoard {
   stages: Record<PipelineStage, BoardRow[]>;
   rejected: BoardRow[];
+}
+
+// RFC-4180 CSV field encode + spreadsheet formula-injection guard: a leading =/+/-/@ (or tab/CR)
+// can execute as a formula in Excel/Sheets, so prefix those with a quote before RFC-4180 quoting.
+function csvEscape(value: string): string {
+  let s = String(value ?? '');
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  if (/[",\r\n]/.test(s)) s = `"${s.replace(/"/g, '""')}"`;
+  return s;
 }
 
 function emptyStageCounts(): Record<PipelineStage, number> & { rejected: number } {
@@ -70,12 +83,25 @@ export class PipelineService {
     private readonly audit: AuditService,
     private readonly templates: CandidateEmailTemplatesService,
     private readonly messages: CandidateEmailsService,
+    private readonly integrationEvents: IntegrationEventsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
-  async createJob(context: TenantContext, actorUserId: string, dto: { title: string; description?: string }): Promise<Job> {
+  async createJob(
+    context: TenantContext,
+    actorUserId: string,
+    dto: { title: string; description?: string; location?: string; employmentType?: string },
+  ): Promise<Job> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const created = await tx.job.create({
-        data: { organizationId: context.organizationId as string, title: dto.title, description: dto.description, createdById: actorUserId },
+        data: {
+          organizationId: context.organizationId as string,
+          title: dto.title,
+          description: dto.description,
+          location: dto.location,
+          employmentType: dto.employmentType,
+          createdById: actorUserId,
+        },
       });
       await this.audit.record(context, {
         actorUserId,
@@ -132,6 +158,8 @@ export class PipelineService {
       publicApplyEnabled?: boolean;
       fitCriteria?: string | null;
       fitRubric?: { label: string; weight: number }[] | null;
+      location?: string;
+      employmentType?: string;
     },
   ): Promise<Job> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
@@ -146,9 +174,13 @@ export class PipelineService {
         applyToken?: string;
         fitCriteria?: string | null;
         fitRubric?: string | null;
+        location?: string;
+        employmentType?: string;
       } = {
         title: dto.title,
         description: dto.description,
+        location: dto.location,
+        employmentType: dto.employmentType,
       };
       if (dto.status) {
         data.status = dto.status;
@@ -186,6 +218,30 @@ export class PipelineService {
     });
   }
 
+  // Candidate/pipeline CSV export for ATS/HRIS interchange. Formula-injection-safe (candidate
+  // name/email/phone come from the public apply form).
+  async exportJobCandidatesCsv(context: TenantContext, jobId: string): Promise<string> {
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const job = await tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } });
+      if (!job) throw new NotFoundException(`Job ${jobId} not found`);
+      const entries = await tx.pipelineEntry.findMany({
+        where: { jobId },
+        select: { stage: true, rejected: true, createdAt: true, candidate: { select: { name: true, email: true, phone: true } } },
+        orderBy: { createdAt: 'asc' },
+      });
+      const header = ['Name', 'Email', 'Phone', 'Stage', 'Status', 'Applied At'];
+      const rows = entries.map((e) => [
+        e.candidate?.name ?? '',
+        e.candidate?.email ?? '',
+        e.candidate?.phone ?? '',
+        e.stage,
+        e.rejected ? 'rejected' : 'active',
+        e.createdAt.toISOString(),
+      ]);
+      return [header, ...rows].map((r) => r.map(csvEscape).join(',')).join('\r\n') + '\r\n';
+    });
+  }
+
   async deleteJob(context: TenantContext, actorUserId: string, jobId: string): Promise<{ success: true }> {
     await this.tenantPrisma.forTenant(context, async (tx) => {
       const job = await tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } });
@@ -218,6 +274,12 @@ export class PipelineService {
       const currentHash = computeCriteriaHash({
         title: job.title, description: job.description, fitCriteria: job.fitCriteria, fitRubric: job.fitRubric,
       });
+      // Resolve assignee display names in one batched query.
+      const assigneeIds = [...new Set(entries.map((e) => e.assignedUserId).filter((id): id is string => Boolean(id)))];
+      const assignees = assigneeIds.length
+        ? await tx.user.findMany({ where: { id: { in: assigneeIds } }, select: { id: true, name: true } })
+        : [];
+      const assigneeName = new Map(assignees.map((a: { id: string; name: string | null }) => [a.id, a.name]));
       const stages = Object.fromEntries(PIPELINE_STAGES.map((s) => [s, [] as BoardRow[]])) as Record<PipelineStage, BoardRow[]>;
       const rejected: BoardRow[] = [];
       for (const e of entries) {
@@ -235,6 +297,8 @@ export class PipelineService {
           fitScore: e.fitAssessment?.overallScore ?? null,
           fitStatus: e.fitAssessment?.status ?? null,
           fitStale: e.fitAssessment?.status === 'done' && e.fitAssessment.criteriaHash !== currentHash,
+          assignedUserId: e.assignedUserId,
+          assigneeName: e.assignedUserId ? (assigneeName.get(e.assignedUserId) ?? null) : null,
         };
         if (e.rejected) rejected.push(row);
         else if (isValidStage(e.stage)) stages[e.stage].push(row);
@@ -286,9 +350,11 @@ export class PipelineService {
   }
 
   async patchEntry(context: TenantContext, actorUserId: string, entryId: string, dto: PatchEntryDto): Promise<PatchEntryResult> {
+    let previousStage: string | undefined;
     const entry = await this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: context.organizationId as string } });
       if (!existing) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
+      previousStage = existing.stage;
 
       let data: { stage?: string; rejected: boolean; rejectedReason: string | null; rejectedAt: Date | null };
       let action: string;
@@ -310,6 +376,30 @@ export class PipelineService {
       await this.audit.record(context, { actorUserId, action, entityType: 'pipeline_entry', entityId: entryId, metadata: { ...dto } });
       return updated;
     });
+
+    // Fan the hire out to integrations (webhook/chat/Zapier -> the org's HRIS for onboarding).
+    // Post-commit, in its own guard so it fires regardless of the comms branch below and can never
+    // affect the stage move that already persisted. emit() is itself never-throw. Gated on the
+    // transition INTO hired (previousStage !== 'hired') so a re-save can't re-trigger onboarding.
+    if (dto.stage === 'hired' && previousStage !== 'hired') {
+      try {
+        const info = await this.tenantPrisma.forTenant(context, (tx) =>
+          tx.pipelineEntry.findUnique({
+            where: { id: entryId },
+            select: { candidateId: true, candidate: { select: { name: true } }, job: { select: { title: true } } },
+          }),
+        );
+        if (info) {
+          await this.integrationEvents.emit(context.organizationId as string, 'candidate.hired', {
+            subject: info.candidate?.name ?? '',
+            roleTitle: info.job?.title ?? '',
+            linkPath: `/candidates/${info.candidateId}`,
+          });
+        }
+      } catch (e) {
+        this.logger.error(`candidate.hired emit failed for entry ${entryId}`, e as Error);
+      }
+    }
 
     // Stage-move comms hook: runs AFTER the tx above has committed. dto.stage takes priority
     // over rejected (patchEntry only ever sets one or the other -- see the branch above).
@@ -420,8 +510,11 @@ export class PipelineService {
 
   async addFeedback(context: TenantContext, userId: string, entryId: string, dto: AddFeedbackDto): Promise<PipelineFeedback> {
     if (!dto.note?.trim() && dto.rating == null) throw new BadRequestException('note or rating required');
-    return this.tenantPrisma.forTenant(context, async (tx) => {
-      const entry = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: context.organizationId as string } });
+    const { created, candidateId, candidateName } = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const entry = await tx.pipelineEntry.findFirst({
+        where: { id: entryId, organizationId: context.organizationId as string },
+        select: { id: true, candidateId: true, candidate: { select: { name: true } } },
+      });
       if (!entry) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
 
       const created = await tx.pipelineFeedback.create({
@@ -434,8 +527,63 @@ export class PipelineService {
         entityId: entryId,
         metadata: { rating: dto.rating ?? null },
       });
-      return created;
+      return { created, candidateId: entry.candidateId, candidateName: entry.candidate?.name ?? null };
     });
+
+    // Notify @mentioned teammates -- post-commit, own tx, never breaks the feedback write.
+    if (dto.mentionedUserIds?.length) {
+      try {
+        await this.notifications.createMentions(context, userId, dto.mentionedUserIds, {
+          entityType: 'pipeline_entry',
+          entityId: entryId,
+          contextText: candidateName,
+          linkPath: `/candidates/${candidateId}`,
+        });
+      } catch (e) {
+        this.logger.error(`mention notification failed for entry ${entryId}`, e as Error);
+      }
+    }
+    return created;
+  }
+
+  // Assign (or unassign, with null) a candidate to a teammate. Notifies the new assignee.
+  async assignEntry(context: TenantContext, actorUserId: string, entryId: string, assigneeUserId: string | null): Promise<{ success: true }> {
+    const orgId = context.organizationId as string;
+    const { candidateId, candidateName } = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const entry = await tx.pipelineEntry.findFirst({
+        where: { id: entryId, organizationId: orgId },
+        select: { id: true, candidateId: true, candidate: { select: { name: true } } },
+      });
+      if (!entry) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
+      if (assigneeUserId) {
+        const user = await tx.user.findFirst({ where: { id: assigneeUserId, organizationId: orgId }, select: { id: true } });
+        if (!user) throw new BadRequestException('Assignee is not a member of this organization');
+      }
+      await tx.pipelineEntry.update({ where: { id: entryId }, data: { assignedUserId: assigneeUserId } });
+      await this.audit.record(context, {
+        actorUserId,
+        action: 'entry.assigned',
+        entityType: 'pipeline_entry',
+        entityId: entryId,
+        metadata: { assignedUserId: assigneeUserId },
+      });
+      return { candidateId: entry.candidateId, candidateName: entry.candidate?.name ?? null };
+    });
+
+    // Notify the new assignee (post-commit; notify drops the actor, so self-assign is silent).
+    if (assigneeUserId) {
+      try {
+        await this.notifications.notify(context, actorUserId, [assigneeUserId], 'assigned', {
+          entityType: 'pipeline_entry',
+          entityId: entryId,
+          contextText: candidateName,
+          linkPath: `/candidates/${candidateId}`,
+        });
+      } catch (e) {
+        this.logger.error(`assignment notification failed for entry ${entryId}`, e as Error);
+      }
+    }
+    return { success: true };
   }
 
   async listFeedback(context: TenantContext, entryId: string): Promise<FeedbackRow[]> {

@@ -1,6 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import { StaffTopBar } from './StaffTopBar';
 
+// The bell has its own tests + its own data hooks (react-query/auth); this suite covers the top
+// bar's presentational content, so stub it out to keep this render provider-free.
+jest.mock('./NotificationBell', () => ({ NotificationBell: () => null }));
+
 function renderTopBar(props: Partial<React.ComponentProps<typeof StaffTopBar>> = {}) {
   return render(
     <StaffTopBar

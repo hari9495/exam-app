@@ -12,6 +12,7 @@ import { useDocumentBranding } from '../../lib/hooks/useDocumentBranding';
 import { useCurrentUser } from '../../lib/hooks/useCurrentUser';
 import { StaffSidebar } from '../../components/StaffSidebar';
 import { StaffTopBar } from '../../components/StaffTopBar';
+import { OverLimitBanner } from '../../components/billing/OverLimitBanner';
 
 const BASE_NAV_ITEMS = [
   { href: '/users', label: 'Staff Users', icon: Users },
@@ -62,7 +63,7 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
   }
 
   if (isLoading || !accessToken || (role !== null && role !== 'org_admin' && !actingSuperAdmin)) {
-    return <p className="p-8 text-sm text-recruiter-text-tertiary">Loading…</p>;
+    return <p className="p-8 text-sm text-muted">Loading…</p>;
   }
 
   // org_admin is a full org-scoped superuser: it sees the complete feature nav (recruiter/panel
@@ -98,7 +99,8 @@ export default function OrgAdminLayout({ children }: { children: React.ReactNode
       />
       <div className="flex flex-1 flex-col">
         <StaffTopBar displayName={displayName} initials={initials} roleLabel={roleLabel} avatarUrl={currentUser?.avatarUrl} onLogout={handleLogout} />
-        <main className="flex-1 p-8">{children}</main>
+        <OverLimitBanner />
+        <main id="main" className="flex-1 bg-ground p-4 md:p-8">{children}</main>
       </div>
     </div>
     </MotionConfig>

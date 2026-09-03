@@ -2,8 +2,9 @@
 
 import { ReactNode, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowUp, ArrowDown, Inbox } from 'lucide-react';
 import { Select } from './Select';
+import { EmptyState } from './EmptyState';
 
 export interface SortOption<T> {
   key: string;
@@ -26,7 +27,7 @@ export function CardGrid<T>({ items, cardKey, renderCard, emptyMessage = 'No res
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   if (items.length === 0) {
-    return <p className="py-8 text-center font-body text-sm text-muted">{emptyMessage}</p>;
+    return <EmptyState icon={<Inbox size={20} />} title={emptyMessage} />;
   }
 
   const activeSort = sortOptions?.find((option) => option.key === sortKey);

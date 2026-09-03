@@ -13,6 +13,12 @@ model Plan {
   candidateLimit         Int            @map("candidate_limit")
   aiCreditLimit          Int            @map("ai_credit_limit")
   proctoringMinutesLimit Int            @map("proctoring_minutes_limit")
+  seatLimit              Int            @default(5)  @map("seat_limit")
+  priceLabel             String?        @map("price_label")
+  billingInterval        String         @default("month") @map("billing_interval")
+  isPublic               Boolean        @default(true)  @map("is_public")
+  stripeProductId        String?        @map("stripe_product_id")
+  stripePriceId          String?        @map("stripe_price_id")
   createdAt              DateTime       @default(now()) @map("created_at")
   organizations          Organization[]
 
@@ -51,12 +57,59 @@ model Organization {
   samlIdpCertificate     String?           @map("saml_idp_certificate") @db.NVarChar(Max)
   planId                 String            @map("plan_id") @db.UniqueIdentifier
   plan                   Plan              @relation(fields: [planId], references: [id])
+  billingStatus          String            @default("active") @map("billing_status")
+  stripeCustomerId       String?           @map("stripe_customer_id")
+  stripeSubscriptionId   String?           @map("stripe_subscription_id")
   createdAt              DateTime          @default(now()) @map("created_at")
   users                  User[]
   auditLogs              AuditLog[]
   webhookDeliveries      WebhookDelivery[]
 
   @@map("organizations")
+}
+
+model BillingNotice {
+  id             String   @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String   @map("organization_id") @db.UniqueIdentifier
+  dimension      String
+  threshold      Int
+  periodStart    DateTime @map("period_start")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([organizationId, dimension, threshold, periodStart])
+  @@index([organizationId])
+  @@map("billing_notices")
+}
+
+model OrgIntegration {
+  id                 String    @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  organizationId     String    @map("organization_id") @db.UniqueIdentifier
+  type               String
+  label              String
+  targetUrlEncrypted String    @map("target_url_encrypted") @db.NVarChar(Max)
+  events             String    @db.NVarChar(Max)
+  status             String    @default("active")
+  lastDeliveryAt     DateTime? @map("last_delivery_at")
+  lastError          String?   @map("last_error") @db.NVarChar(Max)
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  @@map("org_integrations")
+}
+
+model IntegrationDelivery {
+  id             String    @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  organizationId String    @map("organization_id") @db.UniqueIdentifier
+  integrationId  String    @map("integration_id") @db.UniqueIdentifier
+  eventType      String    @map("event_type")
+  status         String    @default("pending")
+  httpStatusCode Int?      @map("http_status_code")
+  attemptCount   Int       @default(0) @map("attempt_count")
+  errorDetail    String?   @map("error_detail") @db.NVarChar(Max)
+  createdAt      DateTime  @default(now()) @map("created_at")
+  lastAttemptAt  DateTime? @map("last_attempt_at")
+
+  @@map("integration_deliveries")
 }
 
 model WebhookDelivery {
@@ -457,6 +510,7 @@ model Candidate {
   name            String
   phone           String?
   status          String            @default("active")
+  portalToken     String?           @unique @map("portal_token")
   createdAt       DateTime          @default(now()) @map("created_at")
   erasedAt        DateTime?         @map("erased_at")
   invitations     Invitation[]
@@ -533,6 +587,26 @@ model Notification {
 
   @@index([invitationId])
   @@map("notifications")
+}
+
+// Team-collaboration: an in-app notification to a staff teammate (currently @mentions in candidate
+// feedback; more types later). Distinct from `notifications` above (which tracks invitation email
+// delivery). Per-recipient; org-scoped by RLS, recipient-scoped in the service layer.
+model UserNotification {
+  id              String    @id @default(uuid()) @db.UniqueIdentifier
+  organizationId  String    @map("organization_id") @db.UniqueIdentifier
+  recipientUserId String    @map("recipient_user_id") @db.UniqueIdentifier
+  actorUserId     String?   @map("actor_user_id") @db.UniqueIdentifier
+  type            String
+  entityType      String    @map("entity_type")
+  entityId        String    @map("entity_id") @db.UniqueIdentifier
+  contextText     String?   @map("context_text") @db.NVarChar(500)
+  linkPath        String    @map("link_path")
+  readAt          DateTime? @map("read_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@index([recipientUserId, readAt])
+  @@map("user_notifications")
 }
 
 model Attempt {
@@ -756,6 +830,8 @@ model Job {
   closedAt           DateTime?       @map("closed_at")
   publicApplyEnabled Boolean         @default(false) @map("public_apply_enabled")
   applyToken         String?         @unique @map("apply_token")
+  location           String?         @db.NVarChar(200)
+  employmentType     String?         @map("employment_type") @db.NVarChar(50)
   entries            PipelineEntry[]
   examLinks          JobExam[]
   walkInGroups       WalkInGroup[]
@@ -777,6 +853,7 @@ model PipelineEntry {
   rejectedAt       DateTime?          @map("rejected_at")
   enteredVia       String             @map("entered_via")
   applicationToken String?            @unique @map("application_token")
+  assignedUserId   String?            @map("assigned_user_id") @db.UniqueIdentifier
   createdAt        DateTime           @default(now()) @map("created_at")
   updatedAt        DateTime           @updatedAt @map("updated_at")
   job              Job                @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)

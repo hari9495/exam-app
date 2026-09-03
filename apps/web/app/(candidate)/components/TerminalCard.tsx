@@ -31,11 +31,11 @@ interface TerminalCardProps {
 export function TerminalCard({ tone, title, body, children }: TerminalCardProps) {
   return (
     <div className="flex flex-1 items-center justify-center px-8 pb-32 pt-8">
-      <div className="w-full max-w-sm rounded-lg border border-candidate-border bg-white p-6 text-center shadow-sm">
+      <div className="w-full max-w-sm rounded-lg border border-candidate-border bg-white p-6 text-center">
         <div className={clsx('mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full', ICON_CLASSES[tone])}>
           <ToneIcon tone={tone} />
         </div>
-        <h1 className="mb-1 text-base font-bold text-candidate-text">{title}</h1>
+        <h1 className="mb-1 font-display text-base font-bold text-candidate-text">{title}</h1>
         <p className="text-sm text-candidate-text-secondary">{body}</p>
         {children ? <div className="mt-4">{children}</div> : null}
       </div>

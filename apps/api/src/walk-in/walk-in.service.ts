@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Candidate, Invitation } from '@prisma/client';
 import { PrismaService, TenantPrismaService, AuditService, BlobStorageService } from '@exam-platform/shared';
-import { WebhooksService } from '../webhooks/webhooks.service';
+import { IntegrationEventsService } from '../integrations/integration-events.service';
 import { EmailService } from '../email/email.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { buildAssessmentEmailHtml, generateToken, resolveInvitationExpiry, EMAIL_LOGO_SAS_TTL_MS } from '../invitations/invitations.service';
@@ -56,7 +56,7 @@ export class WalkInService {
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly audit: AuditService,
-    private readonly webhooks: WebhooksService,
+    private readonly integrationEvents: IntegrationEventsService,
     private readonly emailService: EmailService,
     private readonly blobStorage: BlobStorageService,
     private readonly pipeline: PipelineService,
@@ -95,7 +95,7 @@ export class WalkInService {
     const org = await this.resolveOrg(orgSlug);
     const context = { organizationId: org.id, isSuperAdmin: true };
 
-    const { invitation, exam, candidate } = await this.tenantPrisma.forTenant(context, async (tx) => {
+    const { invitation, exam, candidate, isNewCandidate } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({ where: { id: dto.examId, organizationId: org.id } });
       if (!exam || exam.status !== 'published' || !exam.walkInEnabled) {
         throw new BadRequestException('This exam is not currently open for walk-in registration');
@@ -105,6 +105,7 @@ export class WalkInService {
       // an existing candidate match must NOT be overwritten with request-body name/phone --
       // anyone who knows a candidate's email could tamper with their stored details.
       const existingCandidate = await tx.candidate.findFirst({ where: { organizationId: org.id, email: dto.email } });
+      const isNewCandidate = !existingCandidate;
       let candidate =
         existingCandidate ??
         (await tx.candidate.create({
@@ -159,9 +160,9 @@ export class WalkInService {
             where: { id: liveInvitation.id },
             data: { driveSessionId: liveSession.id },
           });
-          return { invitation: updated, exam, candidate };
+          return { invitation: updated, exam, candidate, isNewCandidate };
         }
-        return { invitation: liveInvitation, exam, candidate };
+        return { invitation: liveInvitation, exam, candidate, isNewCandidate };
       }
       const created = await tx.invitation.create({
         data: {
@@ -178,7 +179,7 @@ export class WalkInService {
           driveSessionId: liveSession?.id ?? null,
         },
       });
-      return { invitation: created, exam, candidate };
+      return { invitation: created, exam, candidate, isNewCandidate };
     });
 
     await this.audit.record(context, {
@@ -187,12 +188,22 @@ export class WalkInService {
       entityType: 'invitation',
       metadata: { count: 1, source: 'walk_in' },
     });
-    await this.webhooks.enqueue(org.id, 'invitation.created', {
+    await this.integrationEvents.emit(org.id, 'invitation.created', {
       id: invitation.id,
       examId: invitation.examId,
       candidateId: invitation.candidateId,
       status: invitation.status,
+      subject: candidate.email,
+      examTitle: exam.title,
+      linkPath: '/candidates',
     });
+    if (isNewCandidate) {
+      await this.integrationEvents.emit(org.id, 'candidate.applied', {
+        subject: candidate.name,
+        source: 'walk-in',
+        linkPath: `/candidates/${candidate.id}`,
+      });
+    }
 
     // Fire-and-forget, same rationale as InvitationsService.dispatchInvitationEmail: email
     // delivery is a notification side effect, not part of the transactional outcome of

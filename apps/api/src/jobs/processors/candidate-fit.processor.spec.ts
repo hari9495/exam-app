@@ -1,4 +1,5 @@
 import { CandidateFitProcessor } from './candidate-fit.processor';
+import { QuotaExceededException } from '../../billing/quota-exceeded.exception';
 
 describe('CandidateFitProcessor', () => {
   const context = { organizationId: 'org-1', isSuperAdmin: false };
@@ -8,6 +9,8 @@ describe('CandidateFitProcessor', () => {
   let aiResolver: any;
   let audit: any;
   let provider: any;
+  let quota: any;
+  let integrationEvents: any;
   let processor: CandidateFitProcessor;
   const callOrder: string[] = [];
 
@@ -24,6 +27,7 @@ describe('CandidateFitProcessor', () => {
       aiJob: { findUnique: jest.fn().mockResolvedValue({ id: aiJobId, createdBy: 'user-9' }) },
       candidateFitAssessment: { update: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
       aiCreditUsage: { create: jest.fn().mockResolvedValue({}) },
+      candidate: { findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', name: 'Jordan Lee' }) },
     };
     tenantPrisma = {
       forTenant: jest.fn(async (_ctx: any, fn: any) => {
@@ -39,7 +43,9 @@ describe('CandidateFitProcessor', () => {
     };
     aiResolver = { resolve: jest.fn().mockResolvedValue(provider) };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
-    processor = new CandidateFitProcessor(tenantPrisma, aiResolver, audit);
+    quota = { assertWithinLimit: jest.fn().mockResolvedValue(undefined) };
+    integrationEvents = { emit: jest.fn() };
+    processor = new CandidateFitProcessor(tenantPrisma, aiResolver, audit, quota, integrationEvents);
   });
 
   it('has type candidate_fit', () => {
@@ -60,6 +66,25 @@ describe('CandidateFitProcessor', () => {
       expect.objectContaining({ organizationId: 'org-1' }),
       expect.objectContaining({ actorUserId: 'user-9', action: 'candidate_fit.scored', entityType: 'candidate_fit_assessment', entityId: 'entry-1' }),
     );
+  });
+
+  it('emits candidate.fit_scored with the candidate name, score, and a deep link, after the write commits', async () => {
+    await processor.process({ entryId: 'entry-1' }, context, aiJobId);
+
+    expect(integrationEvents.emit).toHaveBeenCalledWith(
+      'org-1',
+      'candidate.fit_scored',
+      expect.objectContaining({ subject: 'Jordan Lee', score: '80', linkPath: '/candidates/cand-1' }),
+    );
+    const writeOrder = tx.candidateFitAssessment.update.mock.invocationCallOrder[0];
+    const emitOrder = integrationEvents.emit.mock.invocationCallOrder[0];
+    expect(emitOrder).toBeGreaterThan(writeOrder);
+  });
+
+  it('does not emit candidate.fit_scored when scoring is skipped (no resume)', async () => {
+    tx.candidateProfile.findFirst.mockResolvedValue({ ...profile, parseStatus: 'pending' });
+    await processor.process({ entryId: 'entry-1' }, context, aiJobId);
+    expect(integrationEvents.emit).not.toHaveBeenCalled();
   });
 
   it('runs the AI call OUTSIDE every forTenant tx', async () => {
@@ -91,5 +116,11 @@ describe('CandidateFitProcessor', () => {
     provider.generateStructured.mockResolvedValue({ overallScore: 50 }); // missing summary
     await processor.process({ entryId: 'entry-1' }, context, aiJobId);
     expect(tx.candidateFitAssessment.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'failed' }) }));
+  });
+
+  it('does not call the AI provider when the AI-credit quota is exceeded', async () => {
+    quota.assertWithinLimit.mockRejectedValue(new QuotaExceededException('ai_credits', 50, 50));
+    await processor.process({ entryId: 'entry-1' }, context, aiJobId).catch(() => {});
+    expect(provider.generateStructured).not.toHaveBeenCalled();
   });
 });

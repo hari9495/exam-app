@@ -2,12 +2,14 @@ import { Test } from '@nestjs/testing';
 import { AttemptInsightService } from './attempt-insight.service';
 import { InsightClient } from './insight.client';
 import { TenantPrismaService, AiApiKeyResolverService, AiNotConfiguredError } from '@exam-platform/shared';
+import { QuotaService } from '../billing/quota.service';
 
 describe('AttemptInsightService', () => {
   let service: AttemptInsightService;
   let tenantPrisma: { forTenant: jest.Mock };
   let insightClient: { generate: jest.Mock };
   let aiApiKeyResolver: { resolve: jest.Mock };
+  let quota: { assertAiCredits: jest.Mock };
   const fakeAiProvider = { generateStructured: jest.fn() };
 
   const attemptWithResult = {
@@ -20,12 +22,14 @@ describe('AttemptInsightService', () => {
     tenantPrisma = { forTenant: jest.fn() };
     insightClient = { generate: jest.fn() };
     aiApiKeyResolver = { resolve: jest.fn().mockResolvedValue(fakeAiProvider) };
+    quota = { assertAiCredits: jest.fn().mockResolvedValue(undefined) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         AttemptInsightService,
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: InsightClient, useValue: insightClient },
         { provide: AiApiKeyResolverService, useValue: aiApiKeyResolver },
+        { provide: QuotaService, useValue: quota },
       ],
     }).compile();
     service = moduleRef.get(AttemptInsightService);
@@ -208,5 +212,28 @@ describe('AttemptInsightService', () => {
     tenantPrisma.forTenant.mockRejectedValueOnce(new Error('DB connection lost'));
 
     await expect(service.analyze('attempt-1')).resolves.toBeUndefined();
+  });
+
+  it('skips the AI call and records no credit usage when the org is over its AI-credit quota', async () => {
+    const readTx = {
+      answer: { findMany: jest.fn().mockResolvedValue([]) },
+      proctoringAnalysis: { findUnique: jest.fn().mockResolvedValue(null) },
+    };
+    const persistTx = { attemptInsight: { upsert: jest.fn() } };
+    tenantPrisma.forTenant
+      .mockResolvedValueOnce(attemptWithResult)
+      .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn({ attemptInsight: { upsert: jest.fn() } }))
+      .mockImplementationOnce((_ctx, fn) => fn(readTx))
+      .mockImplementationOnce((_ctx, fn) => fn(persistTx));
+    quota.assertAiCredits.mockRejectedValue(new Error('quota_exceeded'));
+
+    await expect(service.analyze('attempt-1')).resolves.toBeUndefined();
+
+    expect(insightClient.generate).not.toHaveBeenCalled();
+    expect(persistTx.attemptInsight.upsert).toHaveBeenCalledWith({
+      where: { attemptId: 'attempt-1' },
+      create: { attemptId: 'attempt-1', status: 'failed', summary: null },
+      update: { status: 'failed', summary: null, generatedAt: expect.any(Date) },
+    });
   });
 });

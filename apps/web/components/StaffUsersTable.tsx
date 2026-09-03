@@ -211,6 +211,7 @@ export function StaffUsersTable({
   return (
     <>
       <ListView<StaffUser>
+        eyebrow="TEAM"
         title="Staff Users"
         icon={<UsersRound size={22} />}
         columns={columns}
