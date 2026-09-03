@@ -167,7 +167,17 @@ export default function V2DataRightsPage() {
 
       {notice && <div role="status" style={{ fontSize: 13, padding: '9px 13px', borderRadius: 9, border: '1px solid color-mix(in srgb, #15803d 30%, transparent)', background: 'color-mix(in srgb, #15803d 8%, transparent)', color: STATUS.ok }}>{notice}</div>}
 
-      <div style={card}>
+      {/* Look-up hero — the primary action on this page */}
+      <div style={{ ...card, background: 'color-mix(in srgb, var(--org-primary) 6%, var(--paper))', borderColor: 'color-mix(in srgb, var(--org-primary) 22%, var(--hair))' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
+          <div style={{ width: 46, height: 46, borderRadius: 13, flexShrink: 0, display: 'grid', placeItems: 'center', background: 'color-mix(in srgb, var(--org-primary) 14%, var(--surface))', color: 'var(--org-primary)' }}>
+            <UserSearch size={22} />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ fontSize: 15, fontFamily: 'var(--font-disp)', fontWeight: 600, color: 'var(--ink)', margin: 0 }}>Look up a candidate</p>
+            <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: '2px 0 0' }}>Enter the candidate&apos;s email to view, export, or erase their record.</p>
+          </div>
+        </div>
         <form onSubmit={handleLookup} style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
           <div style={{ maxWidth: 360, flex: 1 }}>
             <TextField id="dr-email" label="Candidate email" type="email" value={email} onChange={setEmail} required autoComplete="off" />
@@ -187,13 +197,18 @@ export default function V2DataRightsPage() {
       {candidate && (
         <div style={card}>
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <p style={{ fontWeight: 500, color: 'var(--ink)', margin: 0 }}>{candidate.name}</p>
-                {candidate.erasedAt && <Pill c="var(--muted)" label="Erased" />}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+              <div style={{ width: 44, height: 44, borderRadius: '50%', flexShrink: 0, display: 'grid', placeItems: 'center', background: 'color-mix(in srgb, var(--org-primary) 12%, var(--surface))', color: 'var(--org-primary)', fontFamily: 'var(--font-disp)', fontWeight: 600, fontSize: 17, textTransform: 'uppercase' }}>
+                {(candidate.name || candidate.email).trim().charAt(0)}
               </div>
-              <p style={{ fontSize: 13, color: 'var(--muted)', margin: '2px 0 0' }}>{candidate.email}</p>
-              {candidate.phone && <p style={{ fontSize: 13, color: 'var(--muted)', margin: '2px 0 0' }}>{candidate.phone}</p>}
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <p style={{ fontWeight: 500, color: 'var(--ink)', margin: 0 }}>{candidate.name}</p>
+                  {candidate.erasedAt && <Pill c="var(--muted)" label="Erased" />}
+                </div>
+                <p style={{ fontSize: 13, color: 'var(--muted)', margin: '2px 0 0' }}>{candidate.email}</p>
+                {candidate.phone && <p style={{ fontSize: 13, color: 'var(--muted)', margin: '2px 0 0' }}>{candidate.phone}</p>}
+              </div>
             </div>
             {candidate.erasedAt ? (
               <p style={{ fontSize: 13, color: 'var(--muted)' }}>Erased at {new Date(candidate.erasedAt).toLocaleString()}</p>

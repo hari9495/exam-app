@@ -1,17 +1,16 @@
 'use client';
 
-// v2 System Logs — format-only re-skin of the old (org-admin)/system-logs page. Same hook
+// v2 System Logs — activity-feed re-skin of the old (org-admin)/system-logs page. Same hook
 // (useSystemEvents) and identical logic: service/severity/time-range filters reset the cursor
-// accumulation, "Load more" pages via cursor. Service + severity move into DataTable header filter
-// dropdowns (instant-apply, like the candidates Status filter); time range is a filter card above.
-// Old Table/PageChrome/Modal → shared DataTable + v2 Dialog.
+// accumulation, "Load more" pages via cursor. The log list is now a Timeline feed (one row per
+// event, most-recent first) instead of a DataTable; clicking a row opens the same detail Dialog.
+// Service + severity move from DataTable header dropdowns into Combobox filters in the toolbar card
+// (still instant-apply); time range presets stay beside them.
 import { useState } from 'react';
-import type { ColumnDef } from '@tanstack/react-table';
-import { ListFilter, Check } from 'lucide-react';
 import { useSystemEvents, type SystemEventEntry, type SystemEventFilters } from '../../../../lib/hooks/useSystemEvents';
 import { formatAuditTimestamp, formatRelativeTime } from '../../../../lib/audit-display';
 import { plainEnglish } from '../../../../lib/system-event-message';
-import { DataTable, DT_FEATURES, dt, Pill, Dropdown, DropdownItem, Dialog } from '../../../../components/ui-v2';
+import { dt, Pill, Combobox, Dialog, Timeline, TimelineRow } from '../../../../components/ui-v2';
 import { STATUS } from '../../../../components/ui-v2/viz';
 
 const SERVICE_OPTIONS = [
@@ -46,17 +45,9 @@ function contextSummary(entry: SystemEventEntry): string {
   return parts.join(' · ');
 }
 
-const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)' };
-
-function HeaderFilter({ label, value, options, onChange }: { label: string; value: string; options: { value: string; label: string }[]; onChange: (v: string) => void }) {
-  return (
-    <Dropdown align="start" menuWidth={170} trigger={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer', ...labelStyle, color: value !== 'all' ? 'var(--org-primary)' : 'var(--muted)' }}>{label} <ListFilter size={12} style={{ opacity: 0.75 }} /></span>}>
-      {(close) => options.map((o) => (
-        <DropdownItem key={o.value} onClick={() => { close(); onChange(o.value); }}><span style={{ width: 15, display: 'inline-flex', flexShrink: 0, color: 'var(--org-primary)' }}>{value === o.value && <Check size={15} />}</span>{o.label}</DropdownItem>
-      ))}
-    </Dropdown>
-  );
-}
+const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', marginBottom: 4, display: 'block' };
+// Full-width clickable feed row (replaces the old table "View" button); opens the detail Dialog.
+const feedRow: React.CSSProperties = { display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '2px 0', margin: 0, cursor: 'pointer', font: 'inherit' };
 
 export default function V2SystemLogsPage() {
   const [service, setService] = useState('all');
@@ -85,16 +76,6 @@ export default function V2SystemLogsPage() {
   function loadMore() { setEntries(allEntries); setCursor(allEntries[allEntries.length - 1]?.id); }
   function selectRange(daysBack: number, label: string) { applyFilterChange(() => setRange({ ...presetRange(daysBack), label })); }
 
-  const columns: ColumnDef<typeof DT_FEATURES, SystemEventEntry>[] = [
-    { id: 'index', enableSorting: false, header: () => <span style={labelStyle}>#</span>, cell: ({ row }) => <span style={dt.muted}>{row.index + 1}</span> },
-    { id: 'when', enableSorting: false, header: () => <span style={labelStyle}>When</span>, cell: ({ row }) => <span title={formatAuditTimestamp(row.original.occurredAt)} style={{ whiteSpace: 'nowrap', color: 'var(--muted)' }}>{formatRelativeTime(row.original.occurredAt)}</span> },
-    { id: 'service', enableSorting: false, header: () => <HeaderFilter label="Service" value={service} options={SERVICE_OPTIONS} onChange={(v) => applyFilterChange(() => setService(v))} />, cell: ({ row }) => <span style={{ whiteSpace: 'nowrap', color: 'var(--ink)' }}>{SERVICE_LABELS[row.original.service] ?? row.original.service}</span> },
-    { id: 'severity', enableSorting: false, header: () => <HeaderFilter label="Severity" value={severity} options={SEVERITY_OPTIONS} onChange={(v) => applyFilterChange(() => setSeverity(v))} />, cell: ({ row }) => <Pill c={severityColor(row.original.severity)} label={row.original.severity} /> },
-    { id: 'message', enableSorting: false, header: () => <span style={labelStyle}>What happened</span>, cell: ({ row }) => <span style={{ color: 'var(--ink)' }} title={row.original.message}>{plainEnglish(row.original).summary}</span> },
-    { id: 'context', enableSorting: false, header: () => <span style={labelStyle}>Context</span>, cell: ({ row }) => { const summary = contextSummary(row.original); return summary ? <span style={{ wordBreak: 'break-all', fontSize: 12, color: 'var(--muted)' }}>{summary}</span> : <span style={dt.muted}>—</span>; } },
-    { id: 'view', enableSorting: false, enableHiding: false, header: () => null, cell: ({ row }) => <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={() => setSelected(row.original)}>View</button> },
-  ];
-
   return (
     <>
       <div style={{ marginBottom: 16 }}>
@@ -103,20 +84,45 @@ export default function V2SystemLogsPage() {
         <p style={{ fontSize: 13, color: 'var(--muted)', margin: '4px 0 0', maxWidth: 640 }}>Production errors from the servers and candidates&rsquo; browsers — what failed and why, without needing server access.</p>
       </div>
 
-      <div style={{ background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, padding: '12px 16px', marginBottom: 16 }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }} role="group" aria-label="Time range">
-          {[{ days: 1, label: '24h' }, { days: 7, label: '7 days' }, { days: 30, label: '30 days' }].map((preset) => {
-            const active = range.label === preset.label;
-            return <button key={preset.label} type="button" onClick={() => selectRange(preset.days, preset.label)} style={{ borderRadius: 8, border: `1px solid ${active ? 'var(--org-primary)' : 'var(--hair)'}`, padding: '6px 14px', fontSize: 13, fontWeight: 500, cursor: 'pointer', background: active ? 'var(--org-primary)' : 'var(--paper)', color: active ? 'var(--org-on-primary)' : 'var(--muted)' }}>{preset.label}</button>;
-          })}
+      <div style={{ background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, padding: '14px 16px', marginBottom: 16, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 12 }}>
+        <div><label style={labelStyle}>Service</label><Combobox options={SERVICE_OPTIONS} value={service} onChange={(v) => applyFilterChange(() => setService(v))} width={180} active={service !== 'all'} /></div>
+        <div><label style={labelStyle}>Severity</label><Combobox options={SEVERITY_OPTIONS} value={severity} onChange={(v) => applyFilterChange(() => setSeverity(v))} width={160} active={severity !== 'all'} /></div>
+        <div>
+          <label style={labelStyle}>Time range</label>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }} role="group" aria-label="Time range">
+            {[{ days: 1, label: '24h' }, { days: 7, label: '7 days' }, { days: 30, label: '30 days' }].map((preset) => {
+              const active = range.label === preset.label;
+              return <button key={preset.label} type="button" onClick={() => selectRange(preset.days, preset.label)} style={{ borderRadius: 8, border: `1px solid ${active ? 'var(--org-primary)' : 'var(--hair)'}`, padding: '6px 14px', fontSize: 13, fontWeight: 500, cursor: 'pointer', background: active ? 'var(--org-primary)' : 'var(--paper)', color: active ? 'var(--org-on-primary)' : 'var(--muted)' }}>{preset.label}</button>;
+            })}
+          </div>
         </div>
       </div>
 
-      {allEntries.length > 0 && <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 8px' }}>Showing {allEntries.length} of {total} events</p>}
-      <DataTable
-        columns={columns} data={allEntries} getRowId={(e) => e.id} hideToolbar
-        isLoading={isLoading && allEntries.length === 0} emptyMessage="No events in this range — nothing has failed. 🎉"
-      />
+      {allEntries.length > 0 && <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 12px' }}>Showing {allEntries.length} of {total} events</p>}
+      {isLoading && allEntries.length === 0 ? (
+        <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading…</p>
+      ) : allEntries.length === 0 ? (
+        <p style={{ fontSize: 13, color: 'var(--muted)' }}>No events in this range — nothing has failed. 🎉</p>
+      ) : (
+        <Timeline>
+          {allEntries.map((entry, i) => {
+            const summary = contextSummary(entry);
+            return (
+              <TimelineRow key={entry.id} color={severityColor(entry.severity)} last={i === allEntries.length - 1}>
+                <button type="button" onClick={() => setSelected(entry)} className="wf-row" style={feedRow}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <Pill c={severityColor(entry.severity)} label={entry.severity} />
+                    <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>{SERVICE_LABELS[entry.service] ?? entry.service}</span>
+                    <span title={formatAuditTimestamp(entry.occurredAt)} style={{ marginLeft: 'auto', whiteSpace: 'nowrap', fontSize: 12, color: 'var(--muted)' }}>{formatRelativeTime(entry.occurredAt)}</span>
+                  </div>
+                  <div style={{ marginTop: 5, fontSize: 13, color: 'var(--ink)' }}>{plainEnglish(entry).summary}</div>
+                  {summary && <div style={{ marginTop: 2, wordBreak: 'break-all', fontSize: 12, color: 'var(--muted)' }}>{summary}</div>}
+                </button>
+              </TimelineRow>
+            );
+          })}
+        </Timeline>
+      )}
       {canLoadMore && (
         <div style={{ display: 'flex', justifyContent: 'center', marginTop: 14 }}><button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={loadMore}>Load more</button></div>
       )}

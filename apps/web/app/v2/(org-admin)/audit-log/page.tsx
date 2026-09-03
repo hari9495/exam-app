@@ -1,19 +1,18 @@
 'use client';
 
-// v2 Audit Log — format-only re-skin of the old (org-admin)/audit-log page. Same hooks
+// v2 Audit Log — activity-feed re-skin of the old (org-admin)/audit-log page. Same hooks
 // (useAuditLogs cursor pagination + useAuditLogExport) and identical logic: staged filters applied
 // on submit, quick-range + category instant-apply, cursor "Load more" accumulation, entity-history
-// deep link. Old Table/PageChrome/Modal → shared DataTable + v2 filter card + v2 Dialog. The Action
-// filter (apply-on-submit in the old header) moves into the filter card beside Entity type; the
-// AuditActorFilter typeahead becomes a Combobox over the same useUsers data.
+// deep link. The log list is now a Timeline feed (one row per event, most-recent first) instead of a
+// DataTable; clicking a row opens the same detail Dialog. Filters keep their v2 filter card and the
+// AuditActorFilter typeahead stays a Combobox over the same useUsers data.
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Download, X } from 'lucide-react';
 import { useAuditLogs, useAuditLogExport, type AuditLogFilters } from '../../../../lib/hooks/useAuditLogs';
 import { useUsers } from '../../../../lib/hooks/useUsers';
 import type { AuditLogEntry } from '../../../../lib/types';
-import type { ColumnDef } from '@tanstack/react-table';
-import { DataTable, DT_FEATURES, dt, Pill, Combobox, Dialog } from '../../../../components/ui-v2';
+import { dt, Pill, Combobox, Dialog, Timeline, TimelineRow } from '../../../../components/ui-v2';
 import { STATUS } from '../../../../components/ui-v2/viz';
 import {
   friendlyAction, auditDetail, auditActor, formatAuditTimestamp, formatRelativeTime,
@@ -48,6 +47,8 @@ function presetRange(daysBack: number): { from: string; to: string } {
 
 const dateInput: React.CSSProperties = { padding: '8px 10px', fontSize: 13, borderRadius: 8, border: '1px solid color-mix(in srgb, var(--ink) 15%, var(--hair))', background: 'var(--paper)', color: 'var(--ink)', outline: 'none' };
 const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', marginBottom: 4, display: 'block' };
+// Full-width clickable feed row (replaces the old table "View" button); opens the detail Dialog.
+const feedRow: React.CSSProperties = { display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '2px 0', margin: 0, cursor: 'pointer', font: 'inherit' };
 
 function AuditLogInner() {
   const searchParams = useSearchParams();
@@ -94,21 +95,6 @@ function AuditLogInner() {
 
   const total = data?.total ?? 0;
 
-  const columns: ColumnDef<typeof DT_FEATURES, AuditLogEntry>[] = [
-    { id: 'index', enableSorting: false, header: () => <span style={labelStyle}>#</span>, cell: ({ row }) => <span style={dt.muted}>{row.index + 1}</span> },
-    { id: 'when', enableSorting: false, header: () => <span style={labelStyle}>When</span>, cell: ({ row }) => <span title={formatAuditTimestamp(row.original.createdAt)} style={{ whiteSpace: 'nowrap', color: 'var(--muted)' }}>{formatRelativeTime(row.original.createdAt)}</span> },
-    { id: 'action', enableSorting: false, header: () => <span style={labelStyle}>Action</span>, cell: ({ row }) => <Pill c={toneColor(row.original.action)} label={friendlyAction(row.original.action)} /> },
-    { id: 'summary', enableSorting: false, header: () => <span style={labelStyle}>Details</span>, cell: ({ row }) => { const detail = auditDetail(row.original); return detail ? <span style={{ color: 'var(--ink)' }}>{detail}</span> : <span style={dt.muted}>—</span>; } },
-    {
-      id: 'actor', enableSorting: false, header: () => <span style={labelStyle}>Actor</span>,
-      cell: ({ row }) => {
-        const actor = auditActor(row.original);
-        return actor === 'System' ? <span style={dt.muted}>System</span> : <span style={{ color: 'var(--ink)' }}>{actor}{row.original.actorRole && <span style={{ marginLeft: 4, fontSize: 12, color: 'var(--muted)' }}>({row.original.actorRole})</span>}</span>;
-      },
-    },
-    { id: 'view', enableSorting: false, enableHiding: false, header: () => null, cell: ({ row }) => <button type="button" onClick={() => setSelected(row.original)} style={{ whiteSpace: 'nowrap', fontSize: 13, fontWeight: 500, color: 'var(--org-primary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>View</button> },
-  ];
-
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -154,11 +140,33 @@ function AuditLogInner() {
         <p role="alert" style={{ fontSize: 13, color: 'var(--danger)' }}>Failed to load audit log.</p>
       ) : (
         <>
-          <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 8px' }}>Showing {entries.length} of {total} event{total === 1 ? '' : 's'}</p>
-          <DataTable
-            columns={columns} data={entries} getRowId={(e) => e.id} hideToolbar
-            isLoading={isLoading && entries.length === 0} emptyMessage="No audit events found."
-          />
+          <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 12px' }}>Showing {entries.length} of {total} event{total === 1 ? '' : 's'}</p>
+          {isLoading && entries.length === 0 ? (
+            <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading…</p>
+          ) : entries.length === 0 ? (
+            <p style={{ fontSize: 13, color: 'var(--muted)' }}>No audit events found.</p>
+          ) : (
+            <Timeline>
+              {entries.map((entry, i) => {
+                const detail = auditDetail(entry);
+                const actor = auditActor(entry);
+                return (
+                  <TimelineRow key={entry.id} color={toneColor(entry.action)} last={i === entries.length - 1}>
+                    <button type="button" onClick={() => setSelected(entry)} className="wf-row" style={feedRow}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <Pill c={toneColor(entry.action)} label={friendlyAction(entry.action)} />
+                        <span title={formatAuditTimestamp(entry.createdAt)} style={{ marginLeft: 'auto', whiteSpace: 'nowrap', fontSize: 12, color: 'var(--muted)' }}>{formatRelativeTime(entry.createdAt)}</span>
+                      </div>
+                      <div style={{ marginTop: 5, fontSize: 13, color: detail ? 'var(--ink)' : 'var(--muted)' }}>{detail || '—'}</div>
+                      <div style={{ marginTop: 2, fontSize: 12, color: 'var(--muted)' }}>
+                        {actor === 'System' ? 'System' : <>{actor}{entry.actorRole && <span style={{ marginLeft: 4 }}>({entry.actorRole})</span>}</>}
+                      </div>
+                    </button>
+                  </TimelineRow>
+                );
+              })}
+            </Timeline>
+          )}
           {entries.length > 0 && entries.length < total && (
             <div style={{ marginTop: 14 }}><button type="button" className="v2-hoverbtn" style={{ ...dt.toolBtn, opacity: isLoading ? 0.6 : 1 }} disabled={isLoading} onClick={handleLoadMore}>Load more</button></div>
           )}

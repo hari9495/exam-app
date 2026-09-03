@@ -9,13 +9,13 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Pencil, Power, KeyRound, ListFilter, Check, LogIn, Plus } from 'lucide-react';
+import { MoreHorizontal, Pencil, Power, KeyRound, ListFilter, Check, LogIn, Plus, Users, UserCheck, ShieldCheck, ClipboardList } from 'lucide-react';
 import { useUsers, useUpdateUser, useDeactivateUser, useReactivateUser, useResetUserPassword, useCreateUser, useBulkCreateUsers } from '../../../../lib/hooks/useUsers';
 import { useCurrentUser } from '../../../../lib/hooks/useCurrentUser';
 import { useSsoStatus, useSsoSettings } from '../../../../lib/hooks/useSso';
 import { useAuth } from '../../../../lib/auth-context';
 import type { StaffUser } from '../../../../lib/types';
-import { DataTable, DT_FEATURES, dt, SortHead, Pill, Cb, Dropdown, DropdownItem, Dialog, TextField, Combobox, Button } from '../../../../components/ui-v2';
+import { DataTable, DT_FEATURES, dt, SortHead, Pill, Cb, Dropdown, DropdownItem, Dialog, TextField, Combobox, Button, IconStatCard } from '../../../../components/ui-v2';
 import { VIZ, STATUS } from '../../../../components/ui-v2/viz';
 
 const ROLE_COLOR: Record<string, string> = { org_admin: VIZ.violet, recruiter: VIZ.azure, panel: 'var(--muted)', super_admin: VIZ.amber };
@@ -189,6 +189,15 @@ export default function V2UsersPage() {
     (!q || u.email.toLowerCase().includes(q) || (u.name ?? '').toLowerCase().includes(q))
   ), [usersResponse, roleFilter, statusFilter, q]);
 
+  // Stats strip reflects the whole fetched roster (not the current filter/search).
+  const allUsers = usersResponse?.data ?? [];
+  const stats = useMemo(() => ({
+    total: allUsers.length,
+    active: allUsers.filter((u) => u.status === 'active').length,
+    orgAdmins: allUsers.filter((u) => u.role === 'org_admin').length,
+    panelists: allUsers.filter((u) => u.role === 'panel').length,
+  }), [allUsers]);
+
   function openEdit(target: StaffUser) { setEditing(target); setEditRole(target.role); setEditName(target.name ?? ''); }
   function submitEdit(e: FormEvent) {
     e.preventDefault();
@@ -259,14 +268,25 @@ export default function V2UsersPage() {
 
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-        <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Staff Users</h1>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <div>
+          <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--muted)', margin: 0 }}>Organization</p>
+          <h1 className="v2-title" style={{ fontSize: 22, margin: '2px 0 0' }}>Staff Users</h1>
+          <p style={{ fontSize: 13, color: 'var(--muted)', margin: '4px 0 0' }}>Manage the people who can sign in to your organization&apos;s console.</p>
+        </div>
         <Button onClick={() => setShowNew(true)}><Plus size={15} /> New user</Button>
       </div>
 
       {notice && (
         <div role="status" style={{ marginBottom: 12, fontSize: 13, padding: '9px 13px', borderRadius: 9, border: `1px solid ${notice.type === 'success' ? 'color-mix(in srgb, #15803d 30%, transparent)' : 'color-mix(in srgb, var(--danger) 30%, transparent)'}`, background: notice.type === 'success' ? 'color-mix(in srgb, #15803d 8%, transparent)' : 'color-mix(in srgb, var(--danger) 8%, transparent)', color: notice.type === 'success' ? STATUS.ok : 'var(--danger)' }}>{notice.text}</div>
       )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }} className="wf-hero-kpis">
+        <IconStatCard title="Total users" value={stats.total} icon={<Users size={22} />} accent={VIZ.azure} />
+        <IconStatCard title="Active" value={stats.active} icon={<UserCheck size={22} />} accent={VIZ.teal} />
+        <IconStatCard title="Org admins" value={stats.orgAdmins} icon={<ShieldCheck size={22} />} accent={VIZ.violet} />
+        <IconStatCard title="Panelists" value={stats.panelists} icon={<ClipboardList size={22} />} accent={VIZ.amber} />
+      </div>
 
       <DataTable
         columns={columns} data={rows} getRowId={(u) => u.id}
