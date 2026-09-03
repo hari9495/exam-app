@@ -220,7 +220,7 @@ export function useSubmitRequisition() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (jobId: string) => apiFetch(`/pipeline/jobs/${jobId}/submit`, { method: 'POST' }, accessToken ?? undefined),
+    mutationFn: (jobId: string) => apiFetch(`/jobs/${jobId}/submit`, { method: 'POST' }, accessToken ?? undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
       queryClient.invalidateQueries({ queryKey: ['approvals'] });
@@ -232,7 +232,7 @@ export function useCancelRequisition() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (jobId: string) => apiFetch(`/pipeline/jobs/${jobId}/approval/cancel`, { method: 'POST' }, accessToken ?? undefined),
+    mutationFn: (jobId: string) => apiFetch(`/jobs/${jobId}/approval/cancel`, { method: 'POST' }, accessToken ?? undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
       queryClient.invalidateQueries({ queryKey: ['approvals'] });
