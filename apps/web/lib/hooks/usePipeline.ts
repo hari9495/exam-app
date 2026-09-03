@@ -210,6 +210,30 @@ export function useScoreEntry(jobId: string) {
   });
 }
 
+export function useSubmitRequisition() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (jobId: string) => apiFetch(`/pipeline/jobs/${jobId}/submit`, { method: 'POST' }, accessToken ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pipeline'] });
+      queryClient.invalidateQueries({ queryKey: ['approvals'] });
+    },
+  });
+}
+
+export function useCancelRequisition() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (jobId: string) => apiFetch(`/pipeline/jobs/${jobId}/approval/cancel`, { method: 'POST' }, accessToken ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pipeline'] });
+      queryClient.invalidateQueries({ queryKey: ['approvals'] });
+    },
+  });
+}
+
 export function useScoreJob(jobId: string) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();

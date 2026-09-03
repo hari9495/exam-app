@@ -50,6 +50,30 @@ export function useWithdrawOffer(candidateId: string) {
   });
 }
 
+export function useSubmitOffer() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (offerId: string) => apiFetch(`/offers/${offerId}/submit`, { method: 'POST' }, accessToken ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['offers'] });
+      queryClient.invalidateQueries({ queryKey: ['approvals'] });
+    },
+  });
+}
+
+export function useCancelOffer() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (offerId: string) => apiFetch(`/offers/${offerId}/approval/cancel`, { method: 'POST' }, accessToken ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['offers'] });
+      queryClient.invalidateQueries({ queryKey: ['approvals'] });
+    },
+  });
+}
+
 export function useOfferTemplate() {
   const { accessToken } = useAuth();
   return useQuery<OfferTemplate>({

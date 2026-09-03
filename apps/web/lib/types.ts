@@ -680,6 +680,53 @@ export interface Plan {
   isPublic: boolean;
 }
 
+export type ApprovalGate = 'requisition' | 'offer';
+export type ApproverType = 'users' | 'reporting_manager' | 'hiring_manager';
+export interface ApprovalChainStep {
+  position: number;
+  name: string;
+  approverType: ApproverType;
+  approverUserIds: string[];
+  managerLevel: number | null;
+}
+export interface ApprovalChain {
+  gate: ApprovalGate;
+  enabled: boolean;
+  steps: ApprovalChainStep[];
+}
+export interface ApprovalStepView {
+  name: string;
+  state: 'pending' | 'approved' | 'rejected';
+}
+export interface ApprovalSummary {
+  status: string;
+  currentStep: number;
+  steps: ApprovalStepView[];
+}
+export interface ApprovalRequestSummary {
+  id: string;
+  gate: ApprovalGate;
+  subjectType: 'job' | 'offer';
+  subjectId: string;
+  status: string;
+  currentStepPosition: number;
+  submittedByUserId: string;
+  submittedAt: string;
+  stepCount: number;
+}
+export interface ApprovalDecisionView {
+  stepPosition: number;
+  approverUserId: string;
+  decision: 'approved' | 'rejected';
+  note?: string;
+  decidedAt: string;
+}
+export interface ApprovalRequestDetail extends ApprovalRequestSummary {
+  decisions: ApprovalDecisionView[];
+  steps: { name: string; approverType: ApproverType; approverUserIds: string[] }[];
+  subject: Record<string, unknown>;
+}
+
 export interface SsoSettingsResponse {
   samlEnabled: boolean;
   samlIdpEntityId: string | null;

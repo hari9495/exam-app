@@ -50,10 +50,10 @@ export function useUpdateUser() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { id: string; role?: string; name?: string }) =>
+    mutationFn: (input: { id: string; role?: string; name?: string; managerId?: string | null }) =>
       apiFetch(
         `/users/${input.id}`,
-        { method: 'PATCH', body: JSON.stringify({ role: input.role, name: input.name }) },
+        { method: 'PATCH', body: JSON.stringify({ role: input.role, name: input.name, managerId: input.managerId }) },
         accessToken ?? undefined,
       ),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
