@@ -14,7 +14,7 @@ import { AppShell } from '../../../components/ui-v2';
 import { OverLimitBanner } from '../../../components/billing/OverLimitBanner';
 
 // Recruiter surfaces that have been rebuilt in v2 (their nav hrefs get a /v2 prefix at render).
-const V2_ROUTES = new Set(['/dashboard', '/exams', '/questions', '/candidates', '/reports', '/walk-in-groups', '/jobs', '/analytics/hiring', '/message-templates', '/offer-template']);
+const V2_ROUTES = new Set(['/dashboard', '/exams', '/questions', '/candidates', '/reports', '/walk-in-groups', '/jobs', '/approvals', '/analytics/hiring', '/message-templates', '/offer-template']);
 
 
 // A super_admin acting into an org sees the complete feature nav (SUPER_ADMIN_FULL_NAV), not this
