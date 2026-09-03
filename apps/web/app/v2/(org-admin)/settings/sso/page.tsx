@@ -5,9 +5,11 @@
 // edit-gating, save/toggle logic, validation and metadata URL; only presentation changes
 // (old ui kit → ui-v2, CollapsibleSection → a static card).
 import { useEffect, useState } from 'react';
+import { ShieldCheck } from 'lucide-react';
 import { useSsoSettings, useUpdateSsoSettings } from '../../../../../lib/hooks/useSso';
 import { useAuth } from '../../../../../lib/auth-context';
 import { Button, TextField, dt } from '../../../../../components/ui-v2';
+import { STATUS } from '../../../../../components/ui-v2/viz';
 
 const ink = 'var(--ink)';
 const muted = 'var(--muted)';
@@ -61,6 +63,8 @@ export default function V2SsoSettingsPage() {
 
   const toggleDisabled = !sso?.samlEnabled && (!entityId || !ssoUrl || !certificate);
 
+  const enabled = Boolean(sso?.samlEnabled);
+
   return (
     <div style={{ maxWidth: 760 }}>
       <div style={{ marginBottom: 16 }}>
@@ -68,16 +72,41 @@ export default function V2SsoSettingsPage() {
         <p style={{ ...desc, marginTop: 6 }}>Let staff sign in through your identity provider with SAML.</p>
       </div>
 
-      <section style={card}>
-        <h2 style={sectionTitle}>SAML Configuration</h2>
-        <p style={desc}>
-          {sso?.samlEnabled ? 'Configured and enabled — staff can log in via SSO.' : 'Not configured — staff use password login only.'}
-        </p>
-
-        <div style={{ borderRadius: 10, background: 'var(--surface)', padding: 12, marginTop: 14 }}>
-          <p style={{ margin: '0 0 4px', fontSize: 11.5, fontWeight: 600, color: muted }}>Give this to your IdP admin</p>
-          <p style={{ margin: 0, wordBreak: 'break-all', fontFamily: 'var(--font-mono)', fontSize: 12, color: ink }}>{metadataUrl}</p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* Status hero */}
+        <div style={{ ...card, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', background: enabled ? 'color-mix(in srgb, var(--org-primary) 6%, var(--paper))' : 'var(--paper)', borderColor: enabled ? 'color-mix(in srgb, var(--org-primary) 22%, var(--hair))' : 'color-mix(in srgb, var(--ink) 12%, var(--hair))' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <span style={{ display: 'grid', placeItems: 'center', width: 44, height: 44, borderRadius: 12, background: enabled ? 'color-mix(in srgb, var(--org-primary) 14%, transparent)' : 'color-mix(in srgb, var(--ink) 6%, transparent)', color: enabled ? 'var(--org-primary)' : muted, flexShrink: 0 }}>
+              <ShieldCheck size={22} />
+            </span>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <h2 style={sectionTitle}>SAML single sign-on</h2>
+                <span style={{ fontSize: 11.5, fontWeight: 600, borderRadius: 99, padding: '2px 10px', background: enabled ? 'color-mix(in srgb, ' + STATUS.ok + ' 14%, transparent)' : 'color-mix(in srgb, var(--ink) 8%, transparent)', color: enabled ? STATUS.ok : muted }}>{enabled ? 'Enabled' : 'Disabled'}</span>
+              </div>
+              <p style={{ ...desc, marginTop: 4 }}>{enabled ? 'Staff can sign in through your identity provider.' : idpConfigured ? 'Configured — enable to let staff use SSO.' : 'Add your IdP details below, then enable.'}</p>
+            </div>
+          </div>
+          {enabled ? (
+            <button type="button" className="v2-hoverbtn" onClick={handleToggleEnabled} disabled={updateSso.isPending} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, padding: '9px 16px', borderRadius: 9, border: 'none', background: 'var(--danger)', color: '#fff', cursor: 'pointer' }}>Disable SSO</button>
+          ) : (
+            <Button loading={updateSso.isPending} onClick={handleToggleEnabled} disabled={toggleDisabled}>Enable SSO</Button>
+          )}
         </div>
+
+        {/* Service Provider metadata */}
+        <section style={card}>
+          <h2 style={sectionTitle}>Service provider metadata</h2>
+          <p style={desc}>Give this URL to your IdP admin when setting up the SAML app.</p>
+          <div style={{ borderRadius: 10, background: 'var(--surface)', border: '1px solid var(--hair)', padding: 12, marginTop: 14 }}>
+            <p style={{ margin: 0, wordBreak: 'break-all', fontFamily: 'var(--font-mono)', fontSize: 12, color: ink }}>{metadataUrl}</p>
+          </div>
+        </section>
+
+        {/* IdP configuration */}
+        <section style={card}>
+          <h2 style={sectionTitle}>Identity provider details</h2>
+          <p style={desc}>{idpConfigured ? 'The SAML trust with your IdP.' : 'Paste these from your IdP’s SAML app.'}</p>
 
         {idpConfigured && !editing ? (
           <div style={{ marginTop: 16 }}>
@@ -133,24 +162,9 @@ export default function V2SsoSettingsPage() {
           </form>
         )}
 
-        <div style={{ marginTop: 16 }}>
-          {sso?.samlEnabled ? (
-            <button
-              type="button"
-              className="v2-hoverbtn"
-              onClick={handleToggleEnabled}
-              disabled={updateSso.isPending}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, padding: '9px 16px', borderRadius: 9, border: 'none', background: 'var(--danger)', color: '#fff', cursor: 'pointer' }}
-            >
-              Disable SSO
-            </button>
-          ) : (
-            <Button loading={updateSso.isPending} onClick={handleToggleEnabled} disabled={toggleDisabled}>Enable SSO</Button>
-          )}
-        </div>
-
         {error && <p role="alert" style={{ fontSize: 12.5, color: 'var(--danger)', margin: '12px 0 0' }}>{error}</p>}
-      </section>
+        </section>
+      </div>
     </div>
   );
 }
