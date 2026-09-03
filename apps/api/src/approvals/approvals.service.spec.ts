@@ -92,7 +92,7 @@ describe('ApprovalsService.submit', () => {
       'user-1',
       ['mgr-1', 'mgr-2'],
       'approval.requested',
-      expect.objectContaining({ entityType: 'job', entityId: 'job-1', linkPath: '/v2/approvals/req-1' }),
+      expect.objectContaining({ entityType: 'job', entityId: 'job-1', linkPath: '/v2/approvals' }),
     );
   });
 
@@ -189,7 +189,7 @@ describe('ApprovalsService.decide', () => {
       'mgr-1',
       ['mgr-2'],
       'approval.requested',
-      expect.objectContaining({ entityType: 'job', entityId: 'job-1', linkPath: '/v2/approvals/req-1' }),
+      expect.objectContaining({ entityType: 'job', entityId: 'job-1', linkPath: '/v2/approvals' }),
     );
     expect(tx.job.updateMany).not.toHaveBeenCalled();
     expect(tx.offer.updateMany).not.toHaveBeenCalled();
@@ -342,7 +342,7 @@ describe('ApprovalsService.cancel', () => {
       'submitter-1',
       ['mgr-1'],
       'approval.cancelled',
-      expect.objectContaining({ entityType: 'job', entityId: 'job-1' }),
+      expect.objectContaining({ entityType: 'job', entityId: 'job-1', linkPath: '/v2/approvals' }),
     );
   });
 
