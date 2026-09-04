@@ -55,6 +55,7 @@ model Organization {
   samlIdpEntityId        String?           @map("saml_idp_entity_id")
   samlIdpSsoUrl          String?           @map("saml_idp_sso_url")
   samlIdpCertificate     String?           @map("saml_idp_certificate") @db.NVarChar(Max)
+  autoArchiveSiblingsOnHire Boolean        @default(true) @map("auto_archive_siblings_on_hire")
   planId                 String            @map("plan_id") @db.UniqueIdentifier
   plan                   Plan              @relation(fields: [planId], references: [id])
   billingStatus          String            @default("active") @map("billing_status")
@@ -511,6 +512,7 @@ model Candidate {
   name            String
   phone           String?
   status          String            @default("active")
+  globalStage     String            @default("new") @map("global_stage")
   portalToken     String?           @unique @map("portal_token")
   createdAt       DateTime          @default(now()) @map("created_at")
   erasedAt        DateTime?         @map("erased_at")
@@ -520,6 +522,7 @@ model Candidate {
   candidateEmails CandidateEmail[]
 
   @@unique([organizationId, email])
+  @@index([organizationId, globalStage])
   @@map("candidates")
 }
 
