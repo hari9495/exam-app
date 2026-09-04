@@ -199,12 +199,18 @@ export interface ExamListItem extends Omit<Exam, 'sections'> {
 
 export type CandidateStatus = 'active' | 'inactive';
 
+// Kept in sync by hand with @exam-platform/shared's GLOBAL_STAGES/GlobalStage -- apps/web
+// can't import that package at runtime (see lib/hooks/useQuestions.ts's comment on why).
+export const GLOBAL_STAGES = ['new', 'in_review', 'engaged', 'available', 'offered', 'hired', 'rejected'] as const;
+export type GlobalStage = (typeof GLOBAL_STAGES)[number];
+
 export interface Candidate {
   id: string;
   email: string;
   name: string;
   phone: string | null;
   status: CandidateStatus;
+  globalStage: GlobalStage;
   createdAt: string;
   erasedAt: string | null;
   invitationCount?: number;

@@ -16,6 +16,7 @@ import {
   usePipelines, useCreatePipeline, useDeletePipeline,
   useCreateStage, useUpdateStage, useDeleteStage,
   useCreateStatus, useUpdateStatus, useDeleteStatus,
+  useOrgPipelineSettings, useUpdateOrgPipelineSettings,
 } from '../../../../../lib/hooks/usePipelines';
 import type { Pipeline, PipelineStageConfig, PipelineStatus, StageCategory } from '../../../../../lib/types';
 import { Button, TextField, Combobox, Dialog, Tabs, dt } from '../../../../../components/ui-v2';
@@ -210,6 +211,35 @@ function PipelineEditor({ pipeline, notifyError }: { pipeline: Pipeline; notifyE
   );
 }
 
+// Defaults to checked while the setting is still loading -- the org column itself defaults
+// to true (see Task 8's OrganizationsService.getPipelineSettings), so this avoids a flash of
+// "off" for the common case.
+function AutoArchiveToggle({ notifyError }: { notifyError: (text: string) => void }) {
+  const { data } = useOrgPipelineSettings();
+  const update = useUpdateOrgPipelineSettings();
+  const checked = data?.autoArchiveSiblingsOnHire ?? true;
+
+  function toggle(next: boolean) {
+    update.mutate({ autoArchiveSiblingsOnHire: next }, {
+      onError: (err) => notifyError(err instanceof Error ? err.message : 'Failed to update setting.'),
+    });
+  }
+
+  return (
+    <div style={{ ...card, marginBottom: 16 }}>
+      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 9, fontSize: 13, color: 'var(--ink)', cursor: update.isPending ? 'not-allowed' : 'pointer' }}>
+        <input
+          type="checkbox" checked={checked} disabled={update.isPending}
+          onChange={(e) => toggle(e.target.checked)}
+          style={{ width: 15, height: 15, accentColor: 'var(--org-primary)' }}
+        />
+        Auto-archive other applications when a candidate is hired
+      </label>
+      <p style={desc}>When a candidate is hired for one job, their other open pipeline entries are archived automatically.</p>
+    </div>
+  );
+}
+
 export default function V2PipelinesSettingsPage() {
   const { role, actingSuperAdmin } = useAuth();
   const canConfigure = role === 'org_admin' || actingSuperAdmin;
@@ -252,6 +282,8 @@ export default function V2PipelinesSettingsPage() {
           {notice.text}
         </div>
       )}
+
+      <AutoArchiveToggle notifyError={(text) => notify('error', text)} />
 
       {isLoading && <p style={{ fontSize: 13, color: muted }}>Loading pipelines…</p>}
       {isError && <p style={{ fontSize: 13, color: 'var(--danger)' }}>Failed to load pipelines.</p>}

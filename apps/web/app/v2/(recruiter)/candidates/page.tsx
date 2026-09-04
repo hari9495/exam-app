@@ -5,18 +5,31 @@
 // Delete; Add/Edit form modals. Search + status + pagination server-side.
 import { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Upload, Power, Trash2, Send, Plus, Pencil, ListFilter, Check } from 'lucide-react';
+import { MoreHorizontal, Upload, Power, Trash2, Send, Plus, Pencil, ListFilter, Check, UserPlus, Users } from 'lucide-react';
 import { useCandidates, useCreateCandidate, useUpdateCandidate, useDeleteCandidate } from '../../../../lib/hooks/useCandidates';
 import { useExams } from '../../../../lib/hooks/useExams';
 import { useBulkInvite } from '../../../../lib/hooks/useInvitations';
-import type { Candidate } from '../../../../lib/types';
+import { GLOBAL_STAGES, type Candidate, type GlobalStage } from '../../../../lib/types';
 import { DataTable, DT_FEATURES, dt, SortHead, Pill, Combobox, Dropdown, DropdownItem, Dialog } from '../../../../components/ui-v2';
 import { VIZ, STATUS } from '../../../../components/ui-v2/viz';
 import { CandidateFormDialog, type CandidateFormValues } from './CandidateFormDialog';
 import { BulkUploadInviteDialog } from './BulkUploadInviteDialog';
+import { ReEngageModal } from './ReEngageModal';
 
 const STATUS_OPTS = [{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }, { value: 'all', label: 'All' }];
-const COLUMN_LABELS: Record<string, string> = { email: 'Email', phone: 'Phone', createdAt: 'Added' };
+const COLUMN_LABELS: Record<string, string> = { email: 'Email', phone: 'Phone', createdAt: 'Added', globalStage: 'Stage' };
+
+// Friendly labels + a colour per GLOBAL_STAGES value, in the new -> rejected funnel order the
+// API returns them in (see @exam-platform/shared's global-stage.ts).
+const STAGE_LABELS: Record<GlobalStage, string> = {
+  new: 'New', in_review: 'In review', engaged: 'Engaged', available: 'Available',
+  offered: 'Offered', hired: 'Hired', rejected: 'Rejected',
+};
+const STAGE_COLORS: Record<GlobalStage, string> = {
+  new: 'var(--muted)', in_review: VIZ.azure, engaged: VIZ.violet, available: VIZ.teal,
+  offered: VIZ.amber, hired: STATUS.ok, rejected: STATUS.bad,
+};
+const STAGE_OPTS = [{ value: 'all', label: 'All' }, ...GLOBAL_STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] }))];
 const AVA = [VIZ.azure, VIZ.teal, VIZ.violet, VIZ.amber];
 function initials(n: string) { return n.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase(); }
 function Avatar({ name, i }: { name: string; i: number }) {
@@ -29,16 +42,22 @@ export default function V2CandidatesPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('active');
+  const [stageFilter, setStageFilter] = useState('all');
   const [examId, setExamId] = useState('');
   const [pendingDelete, setPendingDelete] = useState<Candidate | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [editing, setEditing] = useState<Candidate | null>(null);
+  const [reengaging, setReengaging] = useState<Candidate | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const notify = (type: 'success' | 'error', text: string) => { setNotice({ type, text }); setTimeout(() => setNotice(null), 4000); };
 
-  const { data: resp, isLoading, isError } = useCandidates({ page, pageSize: 20, search: search || undefined, status: statusFilter === 'all' ? undefined : statusFilter });
+  const { data: resp, isLoading, isError, refetch } = useCandidates({
+    page, pageSize: 20, search: search || undefined,
+    status: statusFilter === 'all' ? undefined : statusFilter,
+    globalStage: stageFilter === 'all' ? undefined : stageFilter,
+  });
   const rows = resp?.data ?? [];
   const { data: pubExams } = useExams('published', { pageSize: 100 });
   const examOptions = (pubExams?.data ?? []).map((e) => ({ value: e.id, label: e.title }));
@@ -114,6 +133,21 @@ export default function V2CandidatesPage() {
       ),
       cell: ({ row }) => <Pill c={row.original.status === 'active' ? STATUS.ok : 'var(--muted)'} label={row.original.status === 'active' ? 'Active' : 'Inactive'} />,
     },
+    {
+      accessorKey: 'globalStage', enableSorting: false, enableHiding: false,
+      header: () => (
+        <Dropdown align="start" menuWidth={160} trigger={
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: stageFilter !== 'all' ? 'var(--org-primary)' : 'var(--muted)' }}>Stage <ListFilter size={12} style={{ opacity: 0.75 }} /></span>
+        }>
+          {(close) => STAGE_OPTS.map((o) => (
+            <DropdownItem key={o.value} onClick={() => { close(); setStageFilter(o.value); setPage(1); }}>
+              <span style={{ width: 15, display: 'inline-flex', flexShrink: 0, color: 'var(--org-primary)' }}>{stageFilter === o.value && <Check size={15} />}</span>{o.label}
+            </DropdownItem>
+          ))}
+        </Dropdown>
+      ),
+      cell: ({ row }) => <Pill c={STAGE_COLORS[row.original.globalStage]} label={STAGE_LABELS[row.original.globalStage]} />,
+    },
     { accessorKey: 'createdAt', header: ({ column }) => <SortHead label="Added" sorted={column.getIsSorted()} onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')} />, cell: ({ row }) => <span style={dt.muted}>{new Date(row.original.createdAt).toLocaleDateString()}</span> },
     {
       id: 'actions', enableSorting: false, enableHiding: false, header: () => null,
@@ -125,6 +159,7 @@ export default function V2CandidatesPage() {
           <Dropdown align="end" menuWidth={172} trigger={<span style={{ display: 'inline-grid', placeItems: 'center', width: 30, height: 30, color: 'var(--muted)', cursor: 'pointer' }}><MoreHorizontal size={17} /></span>}>
             {(close) => (<>
               <DropdownItem onClick={() => { close(); setFormError(null); setEditing(c); }}><Pencil size={15} /> Edit</DropdownItem>
+              {c.globalStage === 'available' && <DropdownItem onClick={() => { close(); setReengaging(c); }}><UserPlus size={15} /> Re-engage</DropdownItem>}
               <DropdownItem onClick={() => { close(); handleToggleStatus(c); }}><Power size={15} /> {isInactive ? 'Reactivate' : 'Deactivate'}</DropdownItem>
               {neverInvited && <DropdownItem danger onClick={() => { close(); setPendingDelete(c); }}><Trash2 size={15} /> Delete</DropdownItem>}
             </>)}
@@ -139,6 +174,12 @@ export default function V2CandidatesPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Candidates</h1>
         <span style={{ display: 'inline-flex', gap: 8 }}>
+          <button
+            type="button" className="v2-hoverbtn" style={stageFilter === 'available' ? dt.primaryBtn : dt.toolBtn}
+            onClick={() => { setStageFilter(stageFilter === 'available' ? 'all' : 'available'); setPage(1); }}
+          >
+            <Users size={14} /> Talent pool
+          </button>
           <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={() => setBulkOpen(true)}><Upload size={14} /> Upload &amp; invite</button>
           <button type="button" className="v2-hoverbtn" style={dt.primaryBtn} onClick={() => { setFormError(null); setAddOpen(true); }}><Plus size={14} /> Add candidate</button>
         </span>
@@ -180,6 +221,10 @@ export default function V2CandidatesPage() {
       <BulkUploadInviteDialog open={bulkOpen} onClose={() => setBulkOpen(false)} />
       <CandidateFormDialog open={addOpen} mode="add" submitting={createCandidate.isPending} error={formError} onClose={() => setAddOpen(false)} onSubmit={handleAdd} />
       <CandidateFormDialog open={!!editing} mode="edit" initial={editing ? { name: editing.name, email: editing.email, phone: editing.phone } : undefined} submitting={updateCandidate.isPending} error={formError} onClose={() => setEditing(null)} onSubmit={handleEditSubmit} />
+      <ReEngageModal
+        candidate={reengaging} open={!!reengaging} onClose={() => setReengaging(null)}
+        onSuccess={() => { refetch(); notify('success', 'Candidate re-engaged.'); }}
+      />
     </>
   );
 }

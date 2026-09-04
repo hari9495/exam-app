@@ -8,6 +8,7 @@ interface UseCandidatesParams {
   pageSize?: number;
   search?: string;
   status?: string;
+  globalStage?: string;
 }
 
 function buildCandidatesQuery(params: UseCandidatesParams): string {
@@ -16,6 +17,7 @@ function buildCandidatesQuery(params: UseCandidatesParams): string {
   if (params.pageSize) query.set('pageSize', String(params.pageSize));
   if (params.search) query.set('search', params.search);
   if (params.status) query.set('status', params.status);
+  if (params.globalStage) query.set('globalStage', params.globalStage);
   const queryString = query.toString();
   return queryString ? `?${queryString}` : '';
 }

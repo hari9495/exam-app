@@ -134,3 +134,33 @@ export function useDeleteStatus() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['pipelines'] }),
   });
 }
+
+// Org-wide auto-archive-on-hire toggle (Task 8's GET/PATCH /organizations/pipeline-settings,
+// both pipelines:configure-gated). Mirrors useSso.ts's useSsoSettings/useUpdateSsoSettings
+// fetch-wrapper/invalidation shape.
+export interface PipelineSettingsResponse {
+  autoArchiveSiblingsOnHire: boolean;
+}
+
+export function useOrgPipelineSettings() {
+  const { accessToken } = useAuth();
+  return useQuery<PipelineSettingsResponse>({
+    queryKey: ['pipeline-settings'],
+    queryFn: () => apiFetch('/organizations/pipeline-settings', {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken),
+  });
+}
+
+export function useUpdateOrgPipelineSettings() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { autoArchiveSiblingsOnHire: boolean }) =>
+      apiFetch(
+        '/organizations/pipeline-settings',
+        { method: 'PATCH', body: JSON.stringify(input) },
+        accessToken ?? undefined,
+      ) as Promise<PipelineSettingsResponse>,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['pipeline-settings'] }),
+  });
+}
