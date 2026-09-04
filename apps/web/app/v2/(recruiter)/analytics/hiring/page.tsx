@@ -21,11 +21,10 @@ const STATUS_PILL: Record<JobStatus, { c: string; label: string }> = {
 };
 const SOURCE_LABEL: Record<string, string> = { manual: 'Manual', exam: 'Exam', application: 'Application', drive: 'Drive' };
 const fmtDays = (v: number | null) => (v === null ? '—' : v.toFixed(1));
-// The hiring-analytics API isn't migrated to configurable pipelines yet (see
-// apps/api/src/analytics/pipeline-analytics.ts's still-fixed STAGE_ORDER) -- funnel rows carry
-// one of the 5 legacy stage strings verbatim, so this is a plain capitalize rather than a lookup
-// into a removed STAGE_LABEL map.
-const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+// Funnel rows are now the 3 category buckets from apps/api/src/analytics/pipeline-analytics.ts
+// (CATEGORY_ORDER: 'active' | 'offer' | 'hired'), not the old 5 name-based stage rows.
+const FUNNEL_STAGE_LABEL: Record<string, string> = { active: 'Active', offer: 'Offer', hired: 'Hired' };
+const funnelStageLabel = (s: string) => FUNNEL_STAGE_LABEL[s] ?? (s.charAt(0).toUpperCase() + s.slice(1));
 function jobStatusPill(status: string) { return status in STATUS_PILL ? STATUS_PILL[status as JobStatus] : { c: 'var(--muted)', label: status.charAt(0).toUpperCase() + status.slice(1) }; }
 const sectionHead: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: 'var(--ink)', margin: '0 0 10px' };
 const chip = (active: boolean): React.CSSProperties => ({ fontSize: 12.5, padding: '6px 11px', borderRadius: 8, cursor: 'pointer', border: `1px solid ${active ? 'color-mix(in srgb, var(--org-primary) 30%, transparent)' : 'var(--hair)'}`, background: active ? 'color-mix(in srgb, var(--org-primary) 10%, transparent)' : 'var(--surface)', color: active ? 'var(--org-primary)' : 'var(--ink)', fontWeight: active ? 600 : 400 });
@@ -93,7 +92,7 @@ export default function V2HiringAnalyticsPage() {
                   const isLast = i === data.funnel.length - 1;
                   return (
                     <div key={r.stage} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <span style={{ width: 92, fontSize: 12.5, color: 'var(--muted)', flexShrink: 0 }}>{capitalize(r.stage)}</span>
+                      <span style={{ width: 92, fontSize: 12.5, color: 'var(--muted)', flexShrink: 0 }}>{funnelStageLabel(r.stage)}</span>
                       <div style={{ flex: 1, height: 22, background: 'var(--surface)', borderRadius: 6, overflow: 'hidden' }}><div style={{ width: `${Math.max(pct, 2)}%`, height: '100%', background: isLast ? VIZ.green : 'var(--org-primary)', borderRadius: 6 }} /></div>
                       <span className="v2-mono" style={{ width: 52, textAlign: 'right', fontSize: 12.5, color: 'var(--ink)', flexShrink: 0 }}>{r.reached.toLocaleString()}</span>
                       <span className="v2-mono" style={{ width: 44, textAlign: 'right', fontSize: 11.5, color: 'var(--muted)', flexShrink: 0 }}>{conv == null ? '' : `${conv}%`}</span>

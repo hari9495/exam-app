@@ -390,10 +390,9 @@ export interface JobListItem {
   approval: ApprovalSummary | null;
 }
 
-// Mirrors apps/api/src/analytics/pipeline-analytics.ts HiringAnalytics exactly. That module
-// hasn't been migrated to configurable pipelines (Phase A) -- `stage` is still one of the 5
-// legacy fixed-stage strings ('applied'/'screened'/'interview'/'offer'/'hired'), just untyped as
-// a bare string now that the PipelineStage union it used to reference is gone.
+// Mirrors apps/api/src/analytics/pipeline-analytics.ts HiringAnalytics exactly. `stage` is one
+// of the 3 category buckets ('active'/'offer'/'hired' -- see CATEGORY_ORDER), untyped as a bare
+// string here since that's a StageCategory value, not the old fixed-stage-name union.
 export interface HiringFunnelRow {
   stage: string;
   reached: number;
