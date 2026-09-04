@@ -1,9 +1,10 @@
-import { Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
 import { NotificationsService } from './notifications.service';
+import { UpdateNotificationPreferenceDto } from './dto/update-notification-preference.dto';
 
 // Every route is the CURRENT user's own inbox -- no extra permission beyond being authenticated;
 // the service scopes every query to recipientUserId so one staffer never sees another's inbox.
@@ -30,5 +31,19 @@ export class NotificationsController {
   @Post('read-all')
   markAllRead(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
     return this.service.markAllRead(tenant, userId);
+  }
+
+  @Get('preferences')
+  getPreferences(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
+    return this.service.getPreferences(tenant, userId);
+  }
+
+  @Patch('preferences')
+  updatePreference(
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentUserId() userId: string,
+    @Body() dto: UpdateNotificationPreferenceDto,
+  ) {
+    return this.service.setPreference(tenant, userId, dto.type, dto.emailEnabled);
   }
 }
