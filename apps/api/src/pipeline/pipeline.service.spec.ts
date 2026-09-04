@@ -6,7 +6,7 @@ describe('PipelineService', () => {
   let service: PipelineService;
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
-  let templates: { resolveForEvent: jest.Mock };
+  let templates: { resolveForStage: jest.Mock };
   let messages: { sendMessage: jest.Mock };
   let integrationEvents: { emit: jest.Mock };
   let notifications: { createMentions: jest.Mock; notify: jest.Mock };
@@ -22,7 +22,7 @@ describe('PipelineService', () => {
   beforeEach(() => {
     tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
-    templates = { resolveForEvent: jest.fn().mockResolvedValue(null) };
+    templates = { resolveForStage: jest.fn().mockResolvedValue(null) };
     messages = { sendMessage: jest.fn().mockResolvedValue({ id: 'email-1' }) };
     integrationEvents = { emit: jest.fn().mockResolvedValue(undefined) };
     notifications = { createMentions: jest.fn().mockResolvedValue(undefined), notify: jest.fn().mockResolvedValue(undefined) };
@@ -679,8 +679,8 @@ describe('PipelineService', () => {
       expect(out).toEqual({ id: 'en1', stage: 'applied', enteredVia: 'manual' });
       expect(upsert).toHaveBeenCalledWith({
         where: { jobId_candidateId: { jobId: 'job-1', candidateId: 'c1' } },
-        create: { organizationId: 'org-1', jobId: 'job-1', candidateId: 'c1', stage: 'applied', enteredVia: 'manual' },
-        update: {}, // never overwrite stage/enteredVia on re-add
+        create: { organizationId: 'org-1', jobId: 'job-1', candidateId: 'c1', enteredVia: 'manual' },
+        update: {}, // never overwrite enteredVia on re-add
       });
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({
         actorUserId: 'user-1', action: 'entry.added', entityType: 'pipeline_entry', entityId: 'en1',
@@ -810,8 +810,8 @@ describe('PipelineService', () => {
         job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }) },
         pipelineEntry: {
           findMany: jest.fn().mockResolvedValue([
-            { stage: 'hired', rejected: false, createdAt: new Date('2026-08-01T00:00:00.000Z'), candidate: { name: 'Asha, Rao', email: 'asha@example.com', phone: '+91' } },
-            { stage: 'applied', rejected: true, createdAt: new Date('2026-08-02T00:00:00.000Z'), candidate: { name: '=cmd()', email: 'x@y.com', phone: null } },
+            { status: { stage: { name: 'hired' } }, rejected: false, createdAt: new Date('2026-08-01T00:00:00.000Z'), candidate: { name: 'Asha, Rao', email: 'asha@example.com', phone: '+91' } },
+            { status: { stage: { name: 'applied' } }, rejected: true, createdAt: new Date('2026-08-02T00:00:00.000Z'), candidate: { name: '=cmd()', email: 'x@y.com', phone: null } },
           ]),
         },
       };
@@ -834,44 +834,27 @@ describe('PipelineService', () => {
   });
 
   describe('patchEntry', () => {
-    it('statusId move (active category) clears reject fields, sets statusId, syncs the legacy stage column, and audits entry.stage_changed', async () => {
-      const update = jest.fn().mockResolvedValue({ id: 'en1', statusId: 'st-int', stage: 'interview' });
+    it('statusId move (active category) clears reject fields, sets statusId, and audits entry.stage_changed', async () => {
+      const update = jest.fn().mockResolvedValue({ id: 'en1', statusId: 'st-int' });
       const tx = {
         pipelineEntry: {
-          findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', job: { pipelineId: 'p1' }, status: null, stage: 'applied' }),
+          findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', job: { pipelineId: 'p1' }, status: null }),
           update,
         },
       };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
-      pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-int', name: 'interview' }, stage: { pipelineId: 'p1', category: 'active' } });
+      pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-int', name: 'interview' }, stage: { id: 'stage-int', pipelineId: 'p1', category: 'active' } });
 
       const { entry } = await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-int' });
 
       expect(pipelines.resolveStatus).toHaveBeenCalledWith(context, 'st-int');
-      // Guards the T6 critical fix: the legacy `stage` column (still read by the live
-      // board/counts/CSV) must move with the entry, not stay frozen at create-time 'applied'.
+      // The flat pipeline_entries.stage column is gone -- statusId is the only source of truth now.
       expect(update).toHaveBeenCalledWith({
         where: { id: 'en1' },
-        data: { statusId: 'st-int', stage: 'interview', rejected: false, rejectedReason: null, rejectedAt: null, archivedAt: null },
+        data: { statusId: 'st-int', rejected: false, rejectedReason: null, rejectedAt: null, archivedAt: null },
       });
-      expect(entry.stage).toBe('interview');
+      expect(entry.statusId).toBe('st-int');
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'entry.stage_changed', entityId: 'en1' }));
-    });
-
-    it('statusId move whose resolved status name is not a legacy stage falls back to the entry\'s existing stage', async () => {
-      const update = jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: 'en1', ...data }));
-      const tx = {
-        pipelineEntry: {
-          findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', job: { pipelineId: 'p1' }, status: null, stage: 'applied' }),
-          update,
-        },
-      };
-      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
-      pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-custom', name: 'Panel Review' }, stage: { pipelineId: 'p1', category: 'active' } });
-
-      const { entry } = await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-custom' });
-
-      expect(entry.stage).toBe('applied');
     });
 
     it('emits candidate.hired (subject/role/linkPath) when moved to a hired-category status', async () => {
@@ -1056,25 +1039,25 @@ describe('PipelineService', () => {
           findFirst: jest.fn().mockResolvedValue({ id: 'entry-1', jobId: 'job-1', job: { pipelineId: 'p1' }, status: null }),
           update: jest.fn().mockResolvedValue({ id: 'entry-1', statusId: 'st-offer' }),
         },
-        pipelineStage: { findFirst: jest.fn().mockResolvedValue(null) },
+        pipelineStage: { findFirst: jest.fn().mockResolvedValue({ id: 'stage-rejected', statuses: [{ id: 'st-rej' }] }) },
       };
       beforeEach(() => {
         tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
-        pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-offer', name: 'offer' }, stage: { pipelineId: 'p1', category: 'offer' } });
+        pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-offer', name: 'offer' }, stage: { id: 'stage-offer', pipelineId: 'p1', category: 'offer' } });
       });
 
-      it('auto-sends when the target event resolves an auto template', async () => {
-        templates.resolveForEvent.mockResolvedValue({ id: 't1', subject: 's', body: 'b', triggerMode: 'auto' });
+      it('auto-sends when the target stage resolves an auto template', async () => {
+        templates.resolveForStage.mockResolvedValue({ id: 't1', subject: 's', body: 'b', triggerMode: 'auto' });
 
         const result = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
 
-        expect(templates.resolveForEvent).toHaveBeenCalledWith(context, 'offer');
+        expect(templates.resolveForStage).toHaveBeenCalledWith(context, 'stage-offer');
         expect(messages.sendMessage).toHaveBeenCalledWith(context, null, 'entry-1', expect.objectContaining({ source: 'stage_auto', templateId: 't1', subject: 's', body: 'b' }));
         expect(result.pendingMessage).toBeUndefined();
       });
 
       it('returns a pendingMessage (does not send) for a prompt template', async () => {
-        templates.resolveForEvent.mockResolvedValue({ id: 't1', subject: 's', body: 'b', triggerMode: 'prompt' });
+        templates.resolveForStage.mockResolvedValue({ id: 't1', subject: 's', body: 'b', triggerMode: 'prompt' });
 
         const r = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
 
@@ -1082,16 +1065,16 @@ describe('PipelineService', () => {
         expect(messages.sendMessage).not.toHaveBeenCalled();
       });
 
-      it('maps a rejection to the rejected event', async () => {
-        templates.resolveForEvent.mockResolvedValue(null);
+      it('maps a rejection to the rejected-category stage', async () => {
+        templates.resolveForStage.mockResolvedValue(null);
 
         await service.patchEntry(context, 'user-1', 'entry-1', { rejected: true });
 
-        expect(templates.resolveForEvent).toHaveBeenCalledWith(context, 'rejected');
+        expect(templates.resolveForStage).toHaveBeenCalledWith(context, 'stage-rejected');
       });
 
       it('does nothing when no template resolves', async () => {
-        templates.resolveForEvent.mockResolvedValue(null);
+        templates.resolveForStage.mockResolvedValue(null);
 
         const r = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
 
@@ -1102,12 +1085,12 @@ describe('PipelineService', () => {
       it('does not resolve a template (or send) when neither statusId nor rejected:true is set', async () => {
         await service.patchEntry(context, 'user-1', 'entry-1', { rejected: false });
 
-        expect(templates.resolveForEvent).not.toHaveBeenCalled();
+        expect(templates.resolveForStage).not.toHaveBeenCalled();
         expect(messages.sendMessage).not.toHaveBeenCalled();
       });
 
       it('still returns the moved entry when the post-commit comms resolution throws', async () => {
-        templates.resolveForEvent.mockRejectedValue(new Error('pool exhausted'));
+        templates.resolveForStage.mockRejectedValue(new Error('pool exhausted'));
 
         const result = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
 
@@ -1140,7 +1123,7 @@ describe('PipelineService', () => {
       });
       expect(tx.invitation.findMany).toHaveBeenCalledWith({ where: { examId: 'e1' }, select: { candidateId: true } });
       expect(upsert).toHaveBeenCalledTimes(2);
-      expect(upsert.mock.calls[0][0].create).toMatchObject({ enteredVia: 'exam', stage: 'applied' });
+      expect(upsert.mock.calls[0][0].create).toMatchObject({ enteredVia: 'exam' });
       expect(upsert.mock.calls[0][0].update).toEqual({});
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({
         actorUserId: 'user-1', action: 'job.exam_linked', entityType: 'job', entityId: 'job-1', metadata: { examId: 'e1' },
@@ -1190,7 +1173,7 @@ describe('PipelineService', () => {
       expect(upsert).toHaveBeenCalledTimes(2); // job-1xc1, job-2xc1
       expect(upsert).toHaveBeenCalledWith({
         where: { jobId_candidateId: { jobId: 'job-1', candidateId: 'c1' } },
-        create: { organizationId: 'org-1', jobId: 'job-1', candidateId: 'c1', stage: 'applied', enteredVia: 'exam' },
+        create: { organizationId: 'org-1', jobId: 'job-1', candidateId: 'c1', enteredVia: 'exam' },
         update: {},
       });
     });
@@ -1220,7 +1203,7 @@ describe('PipelineService', () => {
     await service.upsertDriveEntry(tx as any, context, 'job-1', 'cand-1');
     expect(upsert).toHaveBeenCalledWith({
       where: { jobId_candidateId: { jobId: 'job-1', candidateId: 'cand-1' } },
-      create: { organizationId: 'org-1', jobId: 'job-1', candidateId: 'cand-1', stage: 'applied', enteredVia: 'drive' },
+      create: { organizationId: 'org-1', jobId: 'job-1', candidateId: 'cand-1', enteredVia: 'drive' },
       update: {},
     });
   });

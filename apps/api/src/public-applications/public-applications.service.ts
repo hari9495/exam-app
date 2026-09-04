@@ -46,6 +46,7 @@ export class PublicApplicationsService {
             location: true,
             employmentType: true,
             createdAt: true,
+            pipelineId: true,
           },
         }),
     );
@@ -174,15 +175,28 @@ export class PublicApplicationsService {
           parsedAt: null,
         },
       });
+      // New entries land on the job's pipeline's first active-category stage's first status (by
+      // position), same rule as PipelineService.addEntry -- falls back to the pipeline's first
+      // stage at all if none is category 'active', and to no statusId if the job has no pipeline
+      // (pre-migration edge case).
+      const pipeline = job.pipelineId
+        ? await tx.pipeline.findFirst({
+            where: { id: job.pipelineId },
+            include: { stages: { orderBy: { position: 'asc' }, include: { statuses: { orderBy: { position: 'asc' } } } } },
+          })
+        : null;
+      const activeStage = pipeline?.stages.find((s: { category: string }) => s.category === 'active') ?? pipeline?.stages[0];
+      const statusId = activeStage?.statuses[0]?.id;
+
       const entry = await tx.pipelineEntry.upsert({
         where: { jobId_candidateId: { jobId: job.id, candidateId: candidate.id } },
         create: {
           organizationId: job.organizationId,
           jobId: job.id,
           candidateId: candidate.id,
-          stage: 'applied',
           enteredVia: 'application',
           applicationToken: randomUUID(),
+          statusId,
         },
         // Stamp-if-absent: a re-apply keeps the existing entry (and its token) untouched, even
         // though the profile above IS refreshed with the newly-uploaded résumé.
@@ -222,7 +236,7 @@ export class PublicApplicationsService {
           orderBy: { createdAt: 'desc' },
           select: {
             applicationToken: true,
-            stage: true,
+            status: { select: { stage: { select: { name: true } } } },
             rejected: true,
             createdAt: true,
             job: { select: { title: true } },
@@ -239,7 +253,7 @@ export class PublicApplicationsService {
       orgName: org?.name ?? '',
       applications: entries.map((e) => ({
         jobTitle: e.job.title,
-        stage: e.stage,
+        stage: e.status?.stage.name ?? '',
         rejected: e.rejected,
         appliedAt: e.createdAt.toISOString(),
         statusToken: e.applicationToken,
@@ -264,14 +278,19 @@ export class PublicApplicationsService {
       (tx) =>
         tx.pipelineEntry.findUnique({
           where: { applicationToken: statusToken },
-          select: { stage: true, rejected: true, createdAt: true, job: { select: { title: true } } },
+          select: {
+            status: { select: { stage: { select: { name: true } } } },
+            rejected: true,
+            createdAt: true,
+            job: { select: { title: true } },
+          },
         }),
     );
     if (!row) throw new NotFoundException('Application not found');
     return {
       jobTitle: row.job.title,
       appliedAt: row.createdAt,
-      statusBucket: applicationStatusBucket(row.stage, row.rejected),
+      statusBucket: applicationStatusBucket(row.status?.stage.name ?? '', row.rejected),
     };
   }
 }

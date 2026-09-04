@@ -2,7 +2,34 @@ import { Injectable } from '@nestjs/common';
 import { TenantPrismaService, TenantContext } from '@exam-platform/shared';
 import { computeHiringAnalytics, HiringAnalytics, EntryRow, JobMeta } from './pipeline-analytics';
 
-const ENTRY_SELECT = { stage: true, rejected: true, enteredVia: true, createdAt: true, updatedAt: true, jobId: true } as const;
+// stage is read via the status FK (the flat pipeline_entries.stage column is gone) -- name comes
+// from the status's stage, same as the CSV export/candidate-portal readers.
+const ENTRY_SELECT = {
+  rejected: true,
+  enteredVia: true,
+  createdAt: true,
+  updatedAt: true,
+  jobId: true,
+  status: { select: { stage: { select: { name: true } } } },
+} as const;
+
+function toEntryRow(r: {
+  status: { stage: { name: string } } | null;
+  rejected: boolean;
+  enteredVia: string;
+  createdAt: Date;
+  updatedAt: Date;
+  jobId: string;
+}): EntryRow {
+  return {
+    stage: r.status?.stage.name ?? '',
+    rejected: r.rejected,
+    enteredVia: r.enteredVia,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+    jobId: r.jobId,
+  };
+}
 
 @Injectable()
 export class PipelineAnalyticsService {
@@ -24,8 +51,8 @@ export class PipelineAnalyticsService {
         filter.jobId ? tx.pipelineEntry.findMany({ where: orgWindowWhere, select: ENTRY_SELECT }) : Promise.resolve(null),
       ]);
 
-      const full = computeHiringAnalytics(filtered as EntryRow[], jobMeta);
-      const jobsSource = orgWide ? computeHiringAnalytics(orgWide as EntryRow[], jobMeta) : full;
+      const full = computeHiringAnalytics(filtered.map(toEntryRow), jobMeta);
+      const jobsSource = orgWide ? computeHiringAnalytics(orgWide.map(toEntryRow), jobMeta) : full;
       return { funnel: full.funnel, timeToHire: full.timeToHire, sources: full.sources, jobs: jobsSource.jobs };
     });
   }

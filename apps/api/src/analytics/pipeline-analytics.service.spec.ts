@@ -11,7 +11,7 @@ function serviceWith(tx: { pipelineEntry: { findMany: jest.Mock }; job: { findMa
 describe('PipelineAnalyticsService.getHiring', () => {
   it('fetches the org-scoped createdAt-window cohort and returns computed analytics', async () => {
     const findMany = jest.fn().mockResolvedValue([
-      { stage: 'hired', rejected: false, enteredVia: 'manual', createdAt: new Date('2026-08-01'), updatedAt: new Date('2026-08-04'), jobId: 'job-1' },
+      { status: { stage: { name: 'hired' } }, rejected: false, enteredVia: 'manual', createdAt: new Date('2026-08-01'), updatedAt: new Date('2026-08-04'), jobId: 'job-1' },
     ]);
     const jobFindMany = jest.fn().mockResolvedValue([{ id: 'job-1', title: 'Backend', status: 'open' }]);
     const { service } = serviceWith({ pipelineEntry: { findMany }, job: { findMany: jobFindMany } });
@@ -21,7 +21,14 @@ describe('PipelineAnalyticsService.getHiring', () => {
 
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { organizationId: 'org-1', createdAt: { gte: from, lte: to } },
-      select: { stage: true, rejected: true, enteredVia: true, createdAt: true, updatedAt: true, jobId: true },
+      select: {
+        rejected: true,
+        enteredVia: true,
+        createdAt: true,
+        updatedAt: true,
+        jobId: true,
+        status: { select: { stage: { select: { name: true } } } },
+      },
     }));
     expect(jobFindMany).toHaveBeenCalledWith({
       where: { organizationId: 'org-1' },
@@ -33,8 +40,8 @@ describe('PipelineAnalyticsService.getHiring', () => {
 
   it('applies jobId to the filtered cohort while the jobs table stays org-wide for the window', async () => {
     const findMany = jest.fn().mockResolvedValue([
-      { stage: 'hired', rejected: false, enteredVia: 'manual', createdAt: new Date('2026-08-01'), updatedAt: new Date('2026-08-04'), jobId: 'job-1' },
-      { stage: 'applied', rejected: false, enteredVia: 'referral', createdAt: new Date('2026-08-02'), updatedAt: new Date('2026-08-02'), jobId: 'job-2' },
+      { status: { stage: { name: 'hired' } }, rejected: false, enteredVia: 'manual', createdAt: new Date('2026-08-01'), updatedAt: new Date('2026-08-04'), jobId: 'job-1' },
+      { status: { stage: { name: 'applied' } }, rejected: false, enteredVia: 'referral', createdAt: new Date('2026-08-02'), updatedAt: new Date('2026-08-02'), jobId: 'job-2' },
     ]);
     const jobFindMany = jest.fn().mockResolvedValue([
       { id: 'job-1', title: 'Backend', status: 'open' },

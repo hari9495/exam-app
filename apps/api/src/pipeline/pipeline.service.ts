@@ -2,7 +2,6 @@ import { randomUUID } from 'crypto';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Job, PipelineEntry, PipelineFeedback } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService, StageCategory, STAGE_CATEGORIES } from '@exam-platform/shared';
-import { isValidStage } from './pipeline-stages';
 import { EntryExamResult, deriveEntryExamResults, averageRating } from './derive-entry-exam-results';
 import { AddEntryDto } from './dto/add-entry.dto';
 import { PatchEntryDto } from './dto/patch-entry.dto';
@@ -450,7 +449,6 @@ export class PipelineService {
       const entries = await tx.pipelineEntry.findMany({
         where: { jobId },
         select: {
-          stage: true,
           rejected: true,
           createdAt: true,
           status: { select: { stage: { select: { name: true } } } },
@@ -463,7 +461,7 @@ export class PipelineService {
         e.candidate?.name ?? '',
         e.candidate?.email ?? '',
         e.candidate?.phone ?? '',
-        e.status?.stage.name ?? e.stage,
+        e.status?.stage.name ?? '',
         e.rejected ? 'rejected' : 'active',
         e.createdAt.toISOString(),
       ]);
@@ -600,7 +598,7 @@ export class PipelineService {
 
       const entry = await tx.pipelineEntry.upsert({
         where: { jobId_candidateId: { jobId, candidateId } },
-        create: { organizationId: context.organizationId as string, jobId, candidateId, stage: 'applied', enteredVia: 'manual', statusId },
+        create: { organizationId: context.organizationId as string, jobId, candidateId, enteredVia: 'manual', statusId },
         update: {}, // stamp-if-absent: never touch stage/enteredVia/statusId on re-add
       });
       await this.audit.record(context, {
@@ -616,13 +614,8 @@ export class PipelineService {
 
   async patchEntry(context: TenantContext, actorUserId: string, entryId: string, dto: PatchEntryDto): Promise<PatchEntryResult> {
     let didHire = false;
-    // The comms-hook "event" key a template's triggerEvent is matched against. For a statusId
-    // move this is the target status's name -- for the default (seeded) pipeline that's still
-    // exactly the old flat stage name ('applied'/'screened'/.../'hired'), so existing templates
-    // keep matching unchanged; a custom pipeline's status names are whatever the org named them.
-    // ponytail: templates aren't yet redesigned around configurable stages/statuses -- Task 7+
-    // owns that if org-defined status names need their own trigger-event story.
-    let commsEvent: string | null = null;
+    // The stage a template's triggerStageId is matched against for the post-commit comms hook.
+    let commsStageId: string | null = null;
 
     const entry = await this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.pipelineEntry.findFirst({
@@ -632,7 +625,7 @@ export class PipelineService {
       if (!existing) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
       const previousCategory = existing.status?.stage.category;
 
-      let data: { statusId?: string; stage?: string; rejected: boolean; rejectedReason: string | null; rejectedAt: Date | null; archivedAt: Date | null };
+      let data: { statusId?: string; rejected: boolean; rejectedReason: string | null; rejectedAt: Date | null; archivedAt: Date | null };
       let action: string;
       if (dto.statusId !== undefined) {
         const resolved = await this.pipelines.resolveStatus(context, dto.statusId);
@@ -642,11 +635,6 @@ export class PipelineService {
         const category = resolved.stage.category;
         data = {
           statusId: dto.statusId,
-          // Keep the legacy `stage` column in sync so the still-live board/counts/CSV (Task 7
-          // migrates those readers) don't freeze on the create-time 'applied' value. Only valid
-          // for orgs on the seeded default pipeline, where a status name equals a legacy stage
-          // string; a custom pipeline's status names fall through to the entry's current stage.
-          stage: isValidStage(resolved.status.name) ? resolved.status.name : existing.stage,
           rejected: category === 'rejected',
           rejectedReason: category === 'rejected' ? (dto.reason ?? null) : null,
           rejectedAt: category === 'rejected' ? new Date() : null,
@@ -654,13 +642,14 @@ export class PipelineService {
         };
         action = 'entry.stage_changed';
         didHire = category === 'hired' && previousCategory !== 'hired';
-        commsEvent = resolved.status.name;
+        commsStageId = resolved.stage.id;
       } else if (dto.rejected === true) {
         // Back-compat: a caller sending only `rejected:true` (no statusId) still lands the entry
         // on the pipeline's first rejected-category status, so statusId and the rejected mirror
         // never disagree. Skips (leaves statusId untouched) if the job has no pipeline yet --
         // shouldn't happen post-migration, but keeps this branch safe rather than throwing.
         let rejectStatusId: string | undefined;
+        let rejectStageId: string | undefined;
         if (existing.job.pipelineId) {
           const rejectStage = await tx.pipelineStage.findFirst({
             where: { pipelineId: existing.job.pipelineId, category: 'rejected' },
@@ -668,10 +657,11 @@ export class PipelineService {
             include: { statuses: { orderBy: { position: 'asc' }, take: 1 } },
           });
           rejectStatusId = rejectStage?.statuses[0]?.id;
+          rejectStageId = rejectStage?.id;
         }
         // Edge case: a pipeline with no rejected-category stage (or one with no statuses on it)
-        // leaves rejectStatusId undefined -- statusId (and `stage`) stay whatever they already
-        // were while `rejected` still flips true, since the reject-mirror flag must not be lost.
+        // leaves rejectStatusId undefined -- statusId stays whatever it already was while
+        // `rejected` still flips true, since the reject-mirror flag must not be lost.
         data = {
           ...(rejectStatusId ? { statusId: rejectStatusId } : {}),
           rejected: true,
@@ -680,7 +670,7 @@ export class PipelineService {
           archivedAt: null,
         };
         action = 'entry.rejected';
-        commsEvent = 'rejected';
+        commsStageId = rejectStageId ?? null;
       } else if (dto.rejected === false) {
         data = { rejected: false, rejectedReason: null, rejectedAt: null, archivedAt: null };
         action = 'entry.unrejected';
@@ -719,11 +709,11 @@ export class PipelineService {
     }
 
     // Stage-move comms hook: runs AFTER the tx above has committed. Wrapped so a transient
-    // failure here (e.g. resolveForEvent hitting a starved pool) can never surface as an error
+    // failure here (e.g. resolveForStage hitting a starved pool) can never surface as an error
     // for a stage move that already persisted.
     try {
-      if (commsEvent) {
-        const tpl = await this.templates.resolveForEvent(context, commsEvent);
+      if (commsStageId) {
+        const tpl = await this.templates.resolveForStage(context, commsStageId);
         if (tpl?.triggerMode === 'auto') {
           // Fire-and-forget: the stage-move response must not block on email delivery.
           this.messages
@@ -795,7 +785,7 @@ export class PipelineService {
       for (const candidateId of candidateIds) {
         await tx.pipelineEntry.upsert({
           where: { jobId_candidateId: { jobId, candidateId } },
-          create: { organizationId: context.organizationId as string, jobId, candidateId, stage: 'applied', enteredVia: 'exam' },
+          create: { organizationId: context.organizationId as string, jobId, candidateId, enteredVia: 'exam' },
           update: {},
         });
       }
@@ -808,7 +798,7 @@ export class PipelineService {
   async upsertDriveEntry(tx: any, context: TenantContext, jobId: string, candidateId: string): Promise<void> {
     await tx.pipelineEntry.upsert({
       where: { jobId_candidateId: { jobId, candidateId } },
-      create: { organizationId: context.organizationId as string, jobId, candidateId, stage: 'applied', enteredVia: 'drive' },
+      create: { organizationId: context.organizationId as string, jobId, candidateId, enteredVia: 'drive' },
       update: {},
     });
   }

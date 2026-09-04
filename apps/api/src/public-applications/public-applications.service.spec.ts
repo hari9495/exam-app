@@ -174,7 +174,7 @@ describe('PublicApplicationsService', () => {
       expect(writeTx.pipelineEntry.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { jobId_candidateId: { jobId: 'job-1', candidateId: 'cand-1' } },
-          create: expect.objectContaining({ stage: 'applied', enteredVia: 'application' }),
+          create: expect.objectContaining({ enteredVia: 'application' }),
           update: {},
         }),
       );
@@ -253,7 +253,7 @@ describe('PublicApplicationsService', () => {
         fn({
           pipelineEntry: {
             findUnique: jest.fn().mockResolvedValue({
-              stage: 'interview',
+              status: { stage: { name: 'interview' } },
               rejected: false,
               createdAt: new Date('2026-01-01T00:00:00Z'),
               job: { title: 'Backend' },
@@ -291,7 +291,7 @@ describe('PublicApplicationsService', () => {
               findMany: jest.fn().mockResolvedValue([
                 {
                   applicationToken: 'st1',
-                  stage: 'interview',
+                  status: { stage: { name: 'interview' } },
                   rejected: false,
                   createdAt: new Date('2026-08-01T00:00:00.000Z'),
                   job: { title: 'Backend' },

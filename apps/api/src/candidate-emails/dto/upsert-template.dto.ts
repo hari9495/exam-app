@@ -1,12 +1,10 @@
 import { IsBoolean, IsIn, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
-import { PIPELINE_STAGES } from '../../pipeline/pipeline-stages';
-
-const TRIGGER_EVENTS = [...PIPELINE_STAGES, 'rejected'];
 
 export class UpsertTemplateDto {
   @IsOptional() @IsString() id?: string;
   @IsString() @MaxLength(200) name!: string;
-  @IsOptional() @ValidateIf((o) => o.triggerEvent !== null) @IsIn(TRIGGER_EVENTS) triggerEvent!: string | null;
+  // A PipelineStage id (org-defined, so no fixed IsIn set) or null for manual-only.
+  @IsOptional() @ValidateIf((o) => o.triggerStageId !== null) @IsString() triggerStageId!: string | null;
   @IsIn(['manual', 'prompt', 'auto']) triggerMode!: string;
   @IsString() @MaxLength(300) subject!: string;
   @IsString() @MaxLength(8000) body!: string;

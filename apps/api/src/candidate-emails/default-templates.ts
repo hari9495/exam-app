@@ -1,6 +1,9 @@
 export interface DefaultTemplate {
   key: string;
   name: string;
+  // A default-pipeline stage NAME (not a real per-org PipelineStage id -- these are code
+  // constants shared across every org). CandidateEmailTemplatesService resolves this against
+  // each org's default pipeline to line it up with saved rows, which key on triggerStageId.
   triggerEvent: string | null;
   triggerMode: 'manual' | 'prompt' | 'auto';
   subject: string;

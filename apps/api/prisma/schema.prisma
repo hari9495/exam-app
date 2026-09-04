@@ -897,7 +897,6 @@ model PipelineEntry {
   organizationId   String             @map("organization_id") @db.UniqueIdentifier
   jobId            String             @map("job_id") @db.UniqueIdentifier
   candidateId      String             @map("candidate_id") @db.UniqueIdentifier
-  stage            String             @default("applied")
   rejected         Boolean            @default(false)
   rejectedReason   String?            @map("rejected_reason")
   rejectedAt       DateTime?          @map("rejected_at")
@@ -967,8 +966,8 @@ model CandidateEmailTemplate {
   id             String           @id @default(uuid()) @db.UniqueIdentifier
   organizationId String           @map("organization_id") @db.UniqueIdentifier
   name           String
-  // one of PIPELINE_STAGES, or 'rejected', or null = manual-only
-  triggerEvent   String?          @map("trigger_event")
+  // a PipelineStage id, or null = manual-only
+  triggerStageId String?          @map("trigger_stage_id") @db.UniqueIdentifier
   // 'manual' | 'prompt' | 'auto'
   triggerMode    String           @map("trigger_mode")
   subject        String           @db.NVarChar(Max)
