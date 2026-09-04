@@ -215,6 +215,48 @@ describe('PublicApplicationsService', () => {
       expect(out).toEqual({ statusToken: 'existing-token', portalToken: 'ptok-1' });
     });
 
+    it('resolves statusId from the first ACTIVE-category stage (not merely stages[0]) when the job has a pipeline', async () => {
+      const jobWithPipeline = { ...openJob, pipelineId: 'pipe-1' };
+      const bootstrapTx = { job: { findUnique: jest.fn().mockResolvedValue(jobWithPipeline) } };
+      const writeTx = {
+        candidate: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          upsert: jest.fn().mockResolvedValue({ id: 'cand-1', portalToken: 'ptok-1' }),
+        },
+        candidateProfile: { upsert: jest.fn().mockResolvedValue({ id: 'prof-1' }) },
+        // Two stages, deliberately with 'rejected' FIRST and 'active' SECOND, to prove the code
+        // picks the first active-category stage's first status -- not stages[0] -- and not the
+        // rejected stage's status either.
+        pipeline: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'pipe-1',
+            stages: [
+              { category: 'rejected', statuses: [{ id: 'st-rej-1' }, { id: 'st-rej-2' }] },
+              { category: 'active', statuses: [{ id: 'st-act-1' }, { id: 'st-act-2' }] },
+            ],
+          }),
+        },
+        pipelineEntry: { upsert: jest.fn().mockResolvedValue({ id: 'en-1', applicationToken: 'tok-generated' }) },
+      };
+      tenantPrisma.forTenant
+        .mockImplementationOnce((_c, fn) => fn(bootstrapTx))
+        .mockImplementationOnce((_c, fn) => fn(writeTx));
+      blobStorage.upload.mockResolvedValue('candidates/org-1/some-uuid.pdf');
+      jobsService.enqueue.mockResolvedValue({ id: 'aijob-4' });
+
+      const pdf = Buffer.from('%PDF-1.7 hello').toString('base64');
+      await service.apply('valid-token', { name: 'A', email: 'a@x.com', resumeBase64: pdf });
+
+      expect(writeTx.pipeline.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'pipe-1' } }),
+      );
+      expect(writeTx.pipelineEntry.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ statusId: 'st-act-1' }),
+        }),
+      );
+    });
+
     it('does not let public input overwrite an existing candidate\'s stored name/phone', async () => {
       const bootstrapTx = { job: { findUnique: jest.fn().mockResolvedValue(openJob) } };
       const writeTx = {
