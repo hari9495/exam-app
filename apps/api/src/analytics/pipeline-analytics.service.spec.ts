@@ -11,7 +11,7 @@ function serviceWith(tx: { pipelineEntry: { findMany: jest.Mock }; job: { findMa
 describe('PipelineAnalyticsService.getHiring', () => {
   it('fetches the org-scoped createdAt-window cohort and returns computed analytics', async () => {
     const findMany = jest.fn().mockResolvedValue([
-      { status: { stage: { name: 'hired' } }, rejected: false, enteredVia: 'manual', createdAt: new Date('2026-08-01'), updatedAt: new Date('2026-08-04'), jobId: 'job-1' },
+      { status: { stage: { category: 'hired' } }, rejected: false, enteredVia: 'manual', createdAt: new Date('2026-08-01'), updatedAt: new Date('2026-08-04'), jobId: 'job-1' },
     ]);
     const jobFindMany = jest.fn().mockResolvedValue([{ id: 'job-1', title: 'Backend', status: 'open' }]);
     const { service } = serviceWith({ pipelineEntry: { findMany }, job: { findMany: jobFindMany } });
@@ -27,7 +27,7 @@ describe('PipelineAnalyticsService.getHiring', () => {
         createdAt: true,
         updatedAt: true,
         jobId: true,
-        status: { select: { stage: { select: { name: true } } } },
+        status: { select: { stage: { select: { category: true } } } },
       },
     }));
     expect(jobFindMany).toHaveBeenCalledWith({
@@ -40,8 +40,8 @@ describe('PipelineAnalyticsService.getHiring', () => {
 
   it('applies jobId to the filtered cohort while the jobs table stays org-wide for the window', async () => {
     const findMany = jest.fn().mockResolvedValue([
-      { status: { stage: { name: 'hired' } }, rejected: false, enteredVia: 'manual', createdAt: new Date('2026-08-01'), updatedAt: new Date('2026-08-04'), jobId: 'job-1' },
-      { status: { stage: { name: 'applied' } }, rejected: false, enteredVia: 'referral', createdAt: new Date('2026-08-02'), updatedAt: new Date('2026-08-02'), jobId: 'job-2' },
+      { status: { stage: { category: 'hired' } }, rejected: false, enteredVia: 'manual', createdAt: new Date('2026-08-01'), updatedAt: new Date('2026-08-04'), jobId: 'job-1' },
+      { status: { stage: { category: 'active' } }, rejected: false, enteredVia: 'referral', createdAt: new Date('2026-08-02'), updatedAt: new Date('2026-08-02'), jobId: 'job-2' },
     ]);
     const jobFindMany = jest.fn().mockResolvedValue([
       { id: 'job-1', title: 'Backend', status: 'open' },
@@ -77,5 +77,19 @@ describe('PipelineAnalyticsService.getHiring', () => {
     expect(out.sources).toEqual([]);
     expect(out.jobs).toEqual([]);
     expect(out.funnel.every((f) => f.reached === 0)).toBe(true);
+  });
+
+  it('an entry on a custom-named stage with a known category is still counted (falls back to active for a null status)', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      { status: { stage: { category: 'offer' } }, rejected: false, enteredVia: 'manual', createdAt: new Date('2026-08-01'), updatedAt: new Date('2026-08-04'), jobId: 'job-1' },
+      { status: null, rejected: false, enteredVia: 'manual', createdAt: new Date('2026-08-01'), updatedAt: new Date('2026-08-04'), jobId: 'job-1' },
+    ]);
+    const jobFindMany = jest.fn().mockResolvedValue([{ id: 'job-1', title: 'Backend', status: 'open' }]);
+    const { service } = serviceWith({ pipelineEntry: { findMany }, job: { findMany: jobFindMany } });
+    const out = await service.getHiring(context, { from: new Date('2026-08-01'), to: new Date('2026-08-31') });
+
+    expect(out.funnel.find((f) => f.stage === 'offer')!.reached).toBe(1);
+    // null status falls back to 'active' category, so it's still counted at the active step.
+    expect(out.funnel.find((f) => f.stage === 'active')!.reached).toBe(2);
   });
 });

@@ -1,20 +1,20 @@
 import { Injectable } from '@nestjs/common';
-import { TenantPrismaService, TenantContext } from '@exam-platform/shared';
+import { TenantPrismaService, TenantContext, StageCategory } from '@exam-platform/shared';
 import { computeHiringAnalytics, HiringAnalytics, EntryRow, JobMeta } from './pipeline-analytics';
 
-// stage is read via the status FK (the flat pipeline_entries.stage column is gone) -- name comes
-// from the status's stage, same as the CSV export/candidate-portal readers.
+// category is read via the status FK (the flat pipeline_entries.stage column is gone) -- the
+// funnel pivots on the stage's category so custom/renamed stages still count (Task 10).
 const ENTRY_SELECT = {
   rejected: true,
   enteredVia: true,
   createdAt: true,
   updatedAt: true,
   jobId: true,
-  status: { select: { stage: { select: { name: true } } } },
+  status: { select: { stage: { select: { category: true } } } },
 } as const;
 
 function toEntryRow(r: {
-  status: { stage: { name: string } } | null;
+  status: { stage: { category: string } } | null;
   rejected: boolean;
   enteredVia: string;
   createdAt: Date;
@@ -22,7 +22,7 @@ function toEntryRow(r: {
   jobId: string;
 }): EntryRow {
   return {
-    stage: r.status?.stage.name ?? '',
+    category: (r.status?.stage.category ?? 'active') as StageCategory,
     rejected: r.rejected,
     enteredVia: r.enteredVia,
     createdAt: r.createdAt,

@@ -1,7 +1,9 @@
-export const STAGE_ORDER = ['applied', 'screened', 'interview', 'offer', 'hired'] as const;
-export type Stage = (typeof STAGE_ORDER)[number];
+import type { StageCategory } from '@exam-platform/shared';
 
-export interface EntryRow { stage: string; rejected: boolean; enteredVia: string; createdAt: Date; updatedAt: Date; jobId: string; }
+// Funnel steps only -- rejected/archived are terminal outcomes, not funnel progress.
+export const CATEGORY_ORDER = ['active', 'offer', 'hired'] as const;
+
+export interface EntryRow { category: StageCategory; rejected: boolean; enteredVia: string; createdAt: Date; updatedAt: Date; jobId: string; }
 export interface JobMeta { title: string; status: string; }
 export interface HiringFunnelRow { stage: string; reached: number; conversionFromPrev: number | null; }
 export interface HiringTimeToHire { avgDays: number | null; medianDays: number | null; hiredCount: number; }
@@ -10,8 +12,8 @@ export interface HiringJobRow { jobId: string; title: string; status: string; en
 export interface HiringAnalytics { funnel: HiringFunnelRow[]; timeToHire: HiringTimeToHire; sources: HiringSourceRow[]; jobs: HiringJobRow[]; }
 
 const DAY_MS = 86_400_000;
-const isHired = (e: EntryRow) => e.stage === 'hired' && !e.rejected;
-const stageIndex = (s: string) => STAGE_ORDER.indexOf(s as Stage);
+const isHired = (e: EntryRow) => e.category === 'hired' && !e.rejected;
+const categoryRank = (c: StageCategory) => CATEGORY_ORDER.indexOf(c as (typeof CATEGORY_ORDER)[number]);
 const durationDays = (e: EntryRow) => (e.updatedAt.getTime() - e.createdAt.getTime()) / DAY_MS;
 
 function median(xs: number[]): number | null {
@@ -25,13 +27,13 @@ function avg(xs: number[]): number | null {
 }
 
 export function computeHiringAnalytics(entries: EntryRow[], jobMeta: Map<string, JobMeta>): HiringAnalytics {
-  // Funnel: reached[k] = count(stageIndex >= k) for k<4; reached[hired] = count(isHired)
-  const reached = STAGE_ORDER.map((_, k) =>
-    k === STAGE_ORDER.length - 1
+  // Funnel: reached[k] = count(categoryRank >= k) for active/offer; reached[hired] = count(isHired)
+  const reached = CATEGORY_ORDER.map((_, k) =>
+    k === CATEGORY_ORDER.length - 1
       ? entries.filter(isHired).length
-      : entries.filter((e) => stageIndex(e.stage) >= k).length,
+      : entries.filter((e) => categoryRank(e.category) >= k).length,
   );
-  const funnel: HiringFunnelRow[] = STAGE_ORDER.map((stage, k) => ({
+  const funnel: HiringFunnelRow[] = CATEGORY_ORDER.map((stage, k) => ({
     stage,
     reached: reached[k],
     conversionFromPrev: k === 0 ? null : reached[k - 1] === 0 ? null : reached[k] / reached[k - 1],
