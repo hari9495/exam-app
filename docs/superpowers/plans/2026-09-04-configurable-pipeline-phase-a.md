@@ -12,8 +12,9 @@
 
 ## Global Constraints
 
-- **NEVER `npm install` in a git worktree** — worktree `node_modules` are junctions into main; npm deletes through them and has filled both drives before. Use the existing repo deps. To run api tests use the project's jest setup from `apps/api`; to type-check web use `tsc -p apps/web/tsconfig.json --noEmit`.
-- **Multi-tenant RLS is mandatory** — every DB access goes through `TenantPrismaService.forTenant(context, tx => ...)`; every new table needs an RLS policy migration. Follow the split-migration idiom (tables file + RLS file) used by the approvals migration.
+- **NEVER `npm install` in a git worktree** — worktree `node_modules` are junctions into main; npm deletes through them and has filled both drives before. Use the existing repo deps.
+- **Exact commands** (verified against `apps/api/package.json`): run api tests with `cd apps/api && npx jest <path>` (the `test` script is bare `jest`); run a single test with `npx jest <path> -t "<name>"`. Regenerate the Prisma client with `cd apps/api && npx prisma generate` (Prisma 5.10, schema at the default `prisma/schema.prisma`). Type-check web with `npx tsc -p apps/web/tsconfig.json --noEmit` (filter to source errors; the repo has ~41 pre-existing `.next/` errors — ignore those, as the approvals tasks did).
+- **Multi-tenant RLS is mandatory** — every DB access goes through `TenantPrismaService.forTenant(context, tx => ...)`. RLS uses **one shared security policy** `dbo.TenantAccessPolicy` and the predicate function `dbo.fn_tenant_access_predicate(organization_id)` (both already exist). A new table is covered by `ALTER SECURITY POLICY dbo.TenantAccessPolicy ADD FILTER PREDICATE … ADD BLOCK PREDICATE … AFTER INSERT/UPDATE` in a **separate migration** from its `CREATE TABLE` (SQL Server can't `ALTER SECURITY POLICY ON dbo.<table>` in the same batch that creates the table). Exact idiom: see `apps/api/prisma/migrations/20260818090001_ats_pipeline_rls/migration.sql`.
 - **Stage `category` enum is fixed:** `active | offer | hired | rejected | archived` — copied verbatim, lives in `@exam-platform/shared`.
 - **Behavior preservation:** after migration an org that never touches pipeline config must see byte-identical board/reports/comms behavior. The seeded default pipeline's stages are `applied`(active) · `screened`(active) · `interview`(active) · `offer`(offer) · `hired`(hired) · `rejected`(rejected), each with one same-named status, in that `position` order.
 - **RBAC:** config endpoints require `@RequirePermissions('pipelines:configure')` (org_admin), mirroring `approvals:configure`. Entry moves keep `pipeline:manage`.
@@ -196,17 +197,20 @@ ALTER TABLE [jobs] ADD CONSTRAINT [jobs_pipeline_fk] FOREIGN KEY ([pipeline_id])
 ALTER TABLE [pipeline_entries] ADD CONSTRAINT [pipeline_entries_status_fk] FOREIGN KEY ([status_id]) REFERENCES [pipeline_statuses]([id]);
 ```
 
-- [ ] **Step 3: Write the RLS migration** `<ts>_configurable_pipeline_rls/migration.sql` — copy the exact RLS policy shape used by an existing org-scoped table (open the approvals RLS migration and mirror it) for `pipelines`, `pipeline_stages`, `pipeline_statuses`, each filtering on `organization_id = CAST(SESSION_CONTEXT(N'organizationId') AS UNIQUEIDENTIFIER)`. Example for one table (repeat for all three):
+- [ ] **Step 3: Write the RLS migration** `<ts>_configurable_pipeline_rls/migration.sql` — extend the existing shared policy (do NOT create a new policy or function). Verbatim shape (mirrors `20260818090001_ats_pipeline_rls`):
 
 ```sql
-ALTER TABLE [pipelines] ENABLE ROW LEVEL SECURITY;
-CREATE SECURITY POLICY [pipelines_rls]
-  ADD FILTER PREDICATE [dbo].[fn_tenant_filter]([organization_id]) ON [dbo].[pipelines],
-  ADD BLOCK PREDICATE [dbo].[fn_tenant_filter]([organization_id]) ON [dbo].[pipelines] AFTER INSERT
-  WITH (STATE = ON);
+ALTER SECURITY POLICY dbo.TenantAccessPolicy
+ADD FILTER PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.pipelines,
+ADD BLOCK PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.pipelines AFTER INSERT,
+ADD BLOCK PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.pipelines AFTER UPDATE,
+ADD FILTER PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.pipeline_stages,
+ADD BLOCK PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.pipeline_stages AFTER INSERT,
+ADD BLOCK PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.pipeline_stages AFTER UPDATE,
+ADD FILTER PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.pipeline_statuses,
+ADD BLOCK PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.pipeline_statuses AFTER INSERT,
+ADD BLOCK PREDICATE dbo.fn_tenant_access_predicate(organization_id) ON dbo.pipeline_statuses AFTER UPDATE;
 ```
-
-(Use whatever the repo's existing tenant predicate function is actually named — check an existing `*_rls` migration; do not invent `fn_tenant_filter` if the repo uses a different name.)
 
 - [ ] **Step 4: Regenerate the Prisma client** so the new models/fields are typed. Run the repo's prisma generate step (check `package.json` scripts, e.g. `npm run prisma:generate` or `npx prisma generate --schema apps/api/prisma/schema.prisma`). Expected: client types now include `pipeline`, `pipelineStage`, `pipelineStatus`.
 
@@ -311,7 +315,7 @@ JOIN [pipeline_statuses] su ON su.stage_id = st.id
 WHERE e.status_id IS NULL;
 ```
 
-(Confirm the organizations table name — check `schema.prisma` `@@map` for the org model — and use it verbatim.)
+(Organizations table confirmed as `[organizations]` — `@@map("organizations")` on the `Organization` model.)
 
 - [ ] **Step 6: Drop the legacy `stage` column** — append to the same migration: `ALTER TABLE [pipeline_entries] DROP COLUMN [stage];` Then remove `stage String @default("applied")` from `PipelineEntry` in `schema.prisma` and regenerate the client.
 
@@ -386,9 +390,10 @@ describe('PipelinesService guardrails', () => {
 ## Task 5: Pipelines controller + RBAC + `pipelines:configure` permission
 
 **Files:**
-- Create: `apps/api/src/pipeline/pipelines.controller.ts`
-- Test: `apps/api/src/pipeline/pipelines.controller.spec.ts`
-- Modify: wherever permission keys are registered/seeded (grep for `'approvals:configure'` — add `'pipelines:configure'` alongside it in the same place, incl. org_admin role mapping)
+- Create: `apps/api/src/pipeline/pipelines-config.controller.ts` (dedicated config controller, matching the approvals split — `approvals-config.controller.ts` is separate from the runtime `approvals.controller.ts`)
+- Test: `apps/api/src/pipeline/pipelines-config.controller.spec.ts`
+- Modify: `apps/api/prisma/seed.ts` — add `{ key: 'pipelines:configure', description: 'Configure hiring pipelines' }` to the exported `PERMISSIONS` array (next to `approvals:configure`, ~line 21) and add `'pipelines:configure'` to `ROLE_PERMISSIONS.org_admin` (~line 42)
+- Create: `apps/api/src/pipeline/pipelines-permission.spec.ts` (mirror `approvals-permission.spec.ts` — import `{ PERMISSIONS, ROLE_PERMISSIONS } from '../../prisma/seed'`)
 - Modify: `apps/api/src/pipeline/pipeline.module.ts` (add controller)
 
 **Interfaces:**
@@ -404,7 +409,7 @@ describe('PipelinesService guardrails', () => {
   - `PATCH /pipelines/statuses/:statusId` `{ name?, position? }`
   - `DELETE /pipelines/statuses/:statusId`
 
-- [ ] **Step 1: Write failing test** — assert the controller delegates and is decorated. Follow the approvals controller spec pattern (mock the service, call the handler, assert the service method was called with the tenant context + actor). Also assert `Reflect.getMetadata` for the permissions decorator on one route equals `['pipelines:configure']` (copy how the approvals controller spec asserts its guard, if it does).
+- [ ] **Step 1: Write failing tests** — (a) a `pipelines-permission.spec.ts` asserting `PERMISSIONS` contains `pipelines:configure` and `ROLE_PERMISSIONS.org_admin` includes it (mirror `approvals-permission.spec.ts` exactly); (b) a controller spec asserting each handler delegates to the service with the tenant context + actor (follow `approvals-config.controller.spec.ts`).
 
 ```ts
 it('POST /pipelines delegates to createPipeline', async () => {
@@ -648,4 +653,4 @@ it('resolveForStage returns the enabled template whose triggerStageId matches', 
 - **Spec coverage:** §3 tables → T2; §3.3 migration → T3; §4.3 board/counts/comms/event pipeline-aware → T7/T8; §5 API + RBAC → T4/T5/T6; §6 web → T9/T10/T11; behavior preservation → T3 + T12 step 5. Phase B (§ candidate globalStage, hooks, pool) intentionally excluded — separate plan.
 - **Back-compat:** `rejected` mirror maintained in T6; existing readers untouched. Legacy `stage` column dropped only after T3 maps data; flat constants removed only after all call sites migrate (T8 api, T9/T11 web).
 - **Deferred to Phase B:** `Candidate.globalStage`, `recomputeGlobalStage`, addEntry/comms/job-close hooks, auto-archive-on-hire, talent-pool filter + Re-engage, the `autoArchiveSiblingsOnHire` setting.
-- **Executor cautions:** confirm the real RLS predicate function name, the organizations table `@@map`, and the repo's prisma-generate + jest commands before running the DB tasks (do not `npm install` in a worktree).
+- **Env specifics (resolved 2026-09-04, in Global Constraints):** RLS = `dbo.TenantAccessPolicy` + `dbo.fn_tenant_access_predicate` (see `20260818090001_ats_pipeline_rls`); organizations table = `[organizations]`; tests = `cd apps/api && npx jest`; client = `npx prisma generate`; web = `tsc -p apps/web/tsconfig.json --noEmit`; permissions = `PERMISSIONS`/`ROLE_PERMISSIONS` in `apps/api/prisma/seed.ts`; config controller is a dedicated `*-config.controller.ts`. Do not `npm install` in a worktree.
