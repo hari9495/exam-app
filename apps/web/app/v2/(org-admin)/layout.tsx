@@ -1,36 +1,21 @@
 'use client';
 
 // v2 org-admin console shell. Mirrors app/v2/(recruiter)/layout.tsx (same AppShell, .v2 scope,
-// org theming, OverLimitBanner) but with the org-admin nav and role gate. Pages live under this
-// route group at /v2/settings/billing, /v2/settings/integrations, /v2/users, etc.
+// org theming, OverLimitBanner) but with a stricter org-admin-only role gate. Pages live under this
+// route group at /v2/settings/billing, /v2/settings/integrations, /v2/users, etc. The sidebar is
+// built by the shared buildStaffNav -- the SAME nav the (recruiter) group renders for org_admin --
+// so opening a settings page keeps the one standard sidebar instead of swapping to a settings sub-nav.
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { MotionConfig } from 'framer-motion';
-import { Users, History, TerminalSquare, ShieldCheck, CreditCard, Plug, Palette, KeyRound, GitPullRequestArrow, Kanban } from 'lucide-react';
 import { useAuth } from '../../../lib/auth-context';
 import { staffLandingPath } from '../../../lib/staff-landing';
+import { buildStaffNav } from '../../../lib/staff-nav';
 import { useOrgBranding } from '../../../lib/hooks/useBranding';
 import { useDocumentBranding } from '../../../lib/hooks/useDocumentBranding';
 import { useCurrentUser } from '../../../lib/hooks/useCurrentUser';
 import { AppShell } from '../../../components/ui-v2';
 import { OverLimitBanner } from '../../../components/billing/OverLimitBanner';
-
-// Org-admin surfaces rebuilt in v2 get a /v2 href; the rest stay on their old routes until ported.
-const ORG_ADMIN_NAV = [
-  { href: '/v2/settings/billing', label: 'Billing', icon: CreditCard },
-  { href: '/v2/settings/integrations', label: 'Integrations', icon: Plug },
-  { href: '/v2/settings/branding', label: 'Brand settings', icon: Palette },
-  { href: '/v2/settings/sso', label: 'Single sign-on', icon: KeyRound },
-  { href: '/v2/settings/approvals', label: 'Approvals', icon: GitPullRequestArrow },
-  // Page lives under app/v2/(org-admin)/settings/pipelines so it renders inside THIS settings
-  // layout (its sub-nav), matching approvals — the route group picks the layout even though it
-  // doesn't change the /v2/settings/pipelines URL.
-  { href: '/v2/settings/pipelines', label: 'Pipelines', icon: Kanban },
-  { href: '/v2/users', label: 'Staff users', icon: Users },
-  { href: '/v2/audit-log', label: 'Audit log', icon: History },
-  { href: '/v2/system-logs', label: 'System logs', icon: TerminalSquare },
-  { href: '/v2/data-rights', label: 'Candidate data rights', icon: ShieldCheck },
-];
 
 export default function OrgAdminV2Layout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -52,15 +37,10 @@ export default function OrgAdminV2Layout({ children }: { children: React.ReactNo
     ['--org-on-primary']: branding?.textColor || '#ffffff',
   } as React.CSSProperties;
 
-  // approvals:configure and pipelines:configure are both seeded only to org_admin, and
-  // actingSuperAdmin bypasses every permission check server-side (see PermissionsGuard) — so this
-  // is the same condition that already gates entry into this whole console, applied per-item to
-  // these two nav links (a plain recruiter/panel account never reaches this layout at all, but a
-  // recruiter *does* land in the sibling (recruiter) group, hence the pipelines page's own
-  // in-page guard too).
-  const canConfigureOrgSettings = role === 'org_admin' || actingSuperAdmin;
-  const GATED_HREFS = new Set(['/v2/settings/approvals', '/v2/settings/pipelines']);
-  const navItems = ORG_ADMIN_NAV.filter((item) => !GATED_HREFS.has(item.href) || canConfigureOrgSettings);
+  // Only org_admin / acting super_admin reach this layout (see the guard below), which is exactly
+  // who holds approvals:configure / pipelines:configure, so the settings items in the standard nav
+  // need no extra per-item gating here.
+  const navItems = buildStaffNav(role, actingSuperAdmin);
 
   async function handleLogout() {
     await logout();
