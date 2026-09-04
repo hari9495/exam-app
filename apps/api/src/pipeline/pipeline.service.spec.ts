@@ -757,25 +757,44 @@ describe('PipelineService', () => {
   });
 
   describe('patchEntry', () => {
-    it('statusId move (active category) clears reject fields, sets statusId, and audits entry.stage_changed', async () => {
-      const update = jest.fn().mockResolvedValue({ id: 'en1', statusId: 'st-int' });
+    it('statusId move (active category) clears reject fields, sets statusId, syncs the legacy stage column, and audits entry.stage_changed', async () => {
+      const update = jest.fn().mockResolvedValue({ id: 'en1', statusId: 'st-int', stage: 'interview' });
       const tx = {
         pipelineEntry: {
-          findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', job: { pipelineId: 'p1' }, status: null }),
+          findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', job: { pipelineId: 'p1' }, status: null, stage: 'applied' }),
           update,
         },
       };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
       pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-int', name: 'interview' }, stage: { pipelineId: 'p1', category: 'active' } });
 
-      await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-int' });
+      const { entry } = await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-int' });
 
       expect(pipelines.resolveStatus).toHaveBeenCalledWith(context, 'st-int');
+      // Guards the T6 critical fix: the legacy `stage` column (still read by the live
+      // board/counts/CSV) must move with the entry, not stay frozen at create-time 'applied'.
       expect(update).toHaveBeenCalledWith({
         where: { id: 'en1' },
-        data: { statusId: 'st-int', rejected: false, rejectedReason: null, rejectedAt: null, archivedAt: null },
+        data: { statusId: 'st-int', stage: 'interview', rejected: false, rejectedReason: null, rejectedAt: null, archivedAt: null },
       });
+      expect(entry.stage).toBe('interview');
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'entry.stage_changed', entityId: 'en1' }));
+    });
+
+    it('statusId move whose resolved status name is not a legacy stage falls back to the entry\'s existing stage', async () => {
+      const update = jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: 'en1', ...data }));
+      const tx = {
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', job: { pipelineId: 'p1' }, status: null, stage: 'applied' }),
+          update,
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-custom', name: 'Panel Review' }, stage: { pipelineId: 'p1', category: 'active' } });
+
+      const { entry } = await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-custom' });
+
+      expect(entry.stage).toBe('applied');
     });
 
     it('emits candidate.hired (subject/role/linkPath) when moved to a hired-category status', async () => {
@@ -855,6 +874,43 @@ describe('PipelineService', () => {
 
       await expect(service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-other' })).rejects.toThrow(/pipeline/i);
       expect(tx.pipelineEntry.update).not.toHaveBeenCalled();
+    });
+
+    it('statusId move to a rejected-category status sets the rejected mirror (via the statusId branch, not dto.rejected)', async () => {
+      const update = jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: 'en1', ...data }));
+      const tx = {
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', job: { pipelineId: 'p1' }, status: null, stage: 'applied' }),
+          update,
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-rej', name: 'Not a Fit' }, stage: { pipelineId: 'p1', category: 'rejected' } });
+
+      const { entry } = await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-rej' });
+
+      expect(entry.rejected).toBe(true);
+      expect(entry.rejectedAt).toBeInstanceOf(Date);
+      expect(entry.archivedAt).toBeNull();
+      // Confirms this went through the statusId ternary, not the legacy dto.rejected:true branch.
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'entry.stage_changed', entityId: 'en1' }));
+    });
+
+    it('statusId move to an archived-category status sets archivedAt', async () => {
+      const update = jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: 'en1', ...data }));
+      const tx = {
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', job: { pipelineId: 'p1' }, status: null, stage: 'applied' }),
+          update,
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-arch', name: 'Archived' }, stage: { pipelineId: 'p1', category: 'archived' } });
+
+      const { entry } = await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-arch' });
+
+      expect(entry.archivedAt).toBeInstanceOf(Date);
+      expect(entry.rejected).toBe(false);
     });
 
     it("rejected:true sets flag+reason+rejectedAt, moves to the pipeline's rejected status, and audits entry.rejected", async () => {

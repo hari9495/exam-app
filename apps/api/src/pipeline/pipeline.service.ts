@@ -522,7 +522,7 @@ export class PipelineService {
       if (!existing) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
       const previousCategory = existing.status?.stage.category;
 
-      let data: { statusId?: string; rejected: boolean; rejectedReason: string | null; rejectedAt: Date | null; archivedAt: Date | null };
+      let data: { statusId?: string; stage?: string; rejected: boolean; rejectedReason: string | null; rejectedAt: Date | null; archivedAt: Date | null };
       let action: string;
       if (dto.statusId !== undefined) {
         const resolved = await this.pipelines.resolveStatus(context, dto.statusId);
@@ -532,6 +532,11 @@ export class PipelineService {
         const category = resolved.stage.category;
         data = {
           statusId: dto.statusId,
+          // Keep the legacy `stage` column in sync so the still-live board/counts/CSV (Task 7
+          // migrates those readers) don't freeze on the create-time 'applied' value. Only valid
+          // for orgs on the seeded default pipeline, where a status name equals a legacy stage
+          // string; a custom pipeline's status names fall through to the entry's current stage.
+          stage: isValidStage(resolved.status.name) ? resolved.status.name : existing.stage,
           rejected: category === 'rejected',
           rejectedReason: category === 'rejected' ? (dto.reason ?? null) : null,
           rejectedAt: category === 'rejected' ? new Date() : null,
@@ -554,6 +559,9 @@ export class PipelineService {
           });
           rejectStatusId = rejectStage?.statuses[0]?.id;
         }
+        // Edge case: a pipeline with no rejected-category stage (or one with no statuses on it)
+        // leaves rejectStatusId undefined -- statusId (and `stage`) stay whatever they already
+        // were while `rejected` still flips true, since the reject-mirror flag must not be lost.
         data = {
           ...(rejectStatusId ? { statusId: rejectStatusId } : {}),
           rejected: true,
