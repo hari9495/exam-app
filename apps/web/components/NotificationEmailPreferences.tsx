@@ -1,7 +1,7 @@
 'use client';
 
 import { useNotificationPreferences, useUpdateNotificationPreference, type NotificationPreference } from '../lib/hooks/useNotificationPreferences';
-import { CollapsibleSection } from './ui';
+import { CollapsibleSection, Checkbox } from './ui';
 
 const GROUP_LABELS: Record<NotificationPreference['group'], string> = {
   mentions: 'Mentions',
@@ -14,17 +14,14 @@ function PreferenceRow({ pref }: { pref: NotificationPreference }) {
   const update = useUpdateNotificationPreference();
 
   return (
-    <label className="flex items-center gap-2.5 py-1 text-sm text-ink" style={{ cursor: update.isPending ? 'not-allowed' : 'pointer' }}>
-      <input
-        type="checkbox"
+    <div className="py-1">
+      <Checkbox
+        label={pref.label}
         checked={pref.emailEnabled}
         disabled={update.isPending}
         onChange={() => update.mutate({ type: pref.type, emailEnabled: !pref.emailEnabled })}
-        aria-label={pref.label}
-        style={{ width: 15, height: 15, accentColor: 'var(--color-primary, #0053e2)' }}
       />
-      {pref.label}
-    </label>
+    </div>
   );
 }
 
