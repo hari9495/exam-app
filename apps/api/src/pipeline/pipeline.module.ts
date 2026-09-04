@@ -4,6 +4,7 @@ import { JobsModule } from '../jobs/jobs.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ApprovalsModule } from '../approvals/approvals.module';
 import { PipelineController } from './pipeline.controller';
+import { PipelinesConfigController } from './pipelines-config.controller';
 import { PipelineService } from './pipeline.service';
 import { PipelinesService } from './pipelines.service';
 
@@ -12,7 +13,7 @@ import { PipelinesService } from './pipelines.service';
   // in-app @mention notifications created from candidate feedback; ApprovalsModule -> the
   // requisition gate (getChains/submit/isConfigurer/cancelForSubject).
   imports: [CandidateEmailsModule, JobsModule, NotificationsModule, ApprovalsModule],
-  controllers: [PipelineController],
+  controllers: [PipelineController, PipelinesConfigController],
   providers: [PipelineService, PipelinesService],
   exports: [PipelineService, PipelinesService],
 })
