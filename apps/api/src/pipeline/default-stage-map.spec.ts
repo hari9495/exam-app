@@ -12,4 +12,7 @@ describe('legacyStageToSeededStageKey', () => {
     expect(legacyStageToSeededStageKey('interview', true)).toBe('rejected');
     expect(legacyStageToSeededStageKey('applied', true)).toBe('rejected');
   });
+  it('falls back to applied for an unknown legacy stage value', () => {
+    expect(legacyStageToSeededStageKey('some_legacy_value', false)).toBe('applied');
+  });
 });

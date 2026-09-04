@@ -2,6 +2,13 @@
 -- existing pipeline_entries/jobs onto the new statusId/pipelineId columns.
 -- Idempotent: every INSERT/UPDATE is guarded so re-running this script is a no-op
 -- once an org/entry has already been migrated.
+--
+-- pipelines/pipeline_stages/pipeline_statuses/jobs/pipeline_entries all carry tenant
+-- FILTER + BLOCK PREDICATE security policies (dbo.fn_tenant_access_predicate). The
+-- migration connection has no session context, unlike app requests, so the
+-- cross-tenant INSERT/UPDATE statements below would be blocked -- bypass RLS the
+-- same way seed.ts and the audit_logs actor-relation migration do.
+EXEC sp_set_session_context @key=N'app_is_super_admin', @value=1;
 
 -- (a) one default pipeline per org lacking one
 INSERT INTO [pipelines] (id, organization_id, name, is_default, updated_at)
@@ -42,6 +49,8 @@ JOIN [pipeline_stages] st ON st.pipeline_id = p.id
                      ELSE 'applied' END
 JOIN [pipeline_statuses] su ON su.stage_id = st.id
 WHERE e.status_id IS NULL;
+
+EXEC sp_set_session_context @key=N'app_is_super_admin', @value=0;
 
 -- NOTE: the legacy [pipeline_entries].[stage] column is intentionally KEPT here.
 -- Dropping it is deferred to a later task, after API call sites that still read
