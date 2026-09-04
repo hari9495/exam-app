@@ -1,4 +1,6 @@
+import { BadRequestException } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
+import { NOTIFICATION_TYPES } from './notification-types';
 
 describe('NotificationsService', () => {
   let service: NotificationsService;
@@ -53,6 +55,42 @@ describe('NotificationsService', () => {
 
       expect(await service.unreadCount(context, 'user-2')).toEqual({ count: 3 });
       expect(count).toHaveBeenCalledWith({ where: { recipientUserId: 'user-2', readAt: null } });
+    });
+  });
+
+  describe('email preferences', () => {
+    let tx: { userNotificationPreference: { findMany: jest.Mock; upsert: jest.Mock; deleteMany: jest.Mock } };
+    const ctx = context;
+
+    beforeEach(() => {
+      tx = { userNotificationPreference: { findMany: jest.fn(), upsert: jest.fn(), deleteMany: jest.fn() } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+    });
+
+    it('getPreferences defaults every type to ON when no rows', async () => {
+      tx.userNotificationPreference.findMany.mockResolvedValue([]);
+      const prefs = await service.getPreferences(ctx, 'u1');
+      expect(prefs).toHaveLength(NOTIFICATION_TYPES.length);
+      expect(prefs.every((p) => p.emailEnabled)).toBe(true);
+    });
+
+    it('getPreferences reflects an opt-out row', async () => {
+      tx.userNotificationPreference.findMany.mockResolvedValue([{ type: 'assigned', emailEnabled: false }]);
+      const prefs = await service.getPreferences(ctx, 'u1');
+      expect(prefs.find((p) => p.type === 'assigned')?.emailEnabled).toBe(false);
+    });
+
+    it('setPreference(false) upserts, (true) deletes', async () => {
+      await service.setPreference(ctx, 'u1', 'assigned', false);
+      expect(tx.userNotificationPreference.upsert).toHaveBeenCalled();
+      await service.setPreference(ctx, 'u1', 'assigned', true);
+      expect(tx.userNotificationPreference.deleteMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ userId: 'u1', type: 'assigned' }) }),
+      );
+    });
+
+    it('setPreference rejects an unknown type', async () => {
+      await expect(service.setPreference(ctx, 'u1', 'bogus', false)).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 });

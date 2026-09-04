@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { TenantPrismaService, TenantContext } from '@exam-platform/shared';
+import { NOTIFICATION_TYPES, NOTIFICATION_TYPE_BY_KEY } from './notification-types';
 
 export interface NotificationView {
   id: string;
@@ -111,5 +112,37 @@ export class NotificationsService {
       tx.userNotification.updateMany({ where: { recipientUserId: userId, readAt: null }, data: { readAt: new Date() } }),
     );
     return { success: true };
+  }
+
+  // Full catalog with effective per-type email preference: stored row wins, missing row = ON.
+  async getPreferences(context: TenantContext, userId: string) {
+    const rows = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.userNotificationPreference.findMany({ where: { userId }, select: { type: true, emailEnabled: true } }),
+    );
+    const byType = new Map(rows.map((r) => [r.type, r.emailEnabled]));
+    return NOTIFICATION_TYPES.map((t) => ({ type: t.type, group: t.group, label: t.label, emailEnabled: byType.get(t.type) ?? true }));
+  }
+
+  // Sparse storage: ON is represented by absence of a row, so opting back in deletes it.
+  async setPreference(context: TenantContext, userId: string, type: string, emailEnabled: boolean): Promise<{ success: true }> {
+    if (!NOTIFICATION_TYPE_BY_KEY.has(type)) throw new BadRequestException('Unknown notification type');
+    await this.tenantPrisma.forTenant(context, async (tx) => {
+      if (emailEnabled) {
+        await tx.userNotificationPreference.deleteMany({ where: { userId, type } });
+      } else {
+        await tx.userNotificationPreference.upsert({
+          where: { userId_type: { userId, type } },
+          create: { organizationId: context.organizationId as string, userId, type, emailEnabled: false },
+          update: { emailEnabled: false },
+        });
+      }
+    });
+    return { success: true };
+  }
+
+  // tx-scoped: returns ONLY the user's opt-out rows; caller treats a missing type as ON.
+  async resolveEmailEnabledByType(tx: any, userId: string): Promise<Map<string, boolean>> {
+    const rows = await tx.userNotificationPreference.findMany({ where: { userId }, select: { type: true, emailEnabled: true } });
+    return new Map(rows.map((r: { type: string; emailEnabled: boolean }) => [r.type, r.emailEnabled]));
   }
 }
