@@ -4,6 +4,7 @@ import { CandidateEmail } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService, BlobStorageService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { renderTemplate, templateReferencesStatusLink, buildCandidateEmailHtml } from './candidate-email-render';
+import { recomputeGlobalStage } from '../candidates/recompute-global-stage';
 
 const LOGO_SIGN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
@@ -75,9 +76,11 @@ export class CandidateEmailsService {
       organizationId: orgId,
     });
 
-    // Phase 3 (short tx): log the outcome, whatever it was.
-    const created = await this.tenantPrisma.forTenant(context, async (tx) =>
-      tx.candidateEmail.create({
+    // Phase 3 (short tx): log the outcome, whatever it was, then recompute the candidate's
+    // global stage -- recomputeGlobalStage counts candidateEmail rows to decide "contacted",
+    // so it must run after the row above is created, in the same tx.
+    const created = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const row = await tx.candidateEmail.create({
         data: {
           organizationId: orgId,
           candidateId: entry.candidateId,
@@ -91,8 +94,10 @@ export class CandidateEmailsService {
           sentByUserId: actorUserId,
           errorDetail: result.success ? null : 'delivery failed',
         },
-      }),
-    );
+      });
+      await recomputeGlobalStage(tx, orgId, entry.candidateId);
+      return row;
+    });
     await this.audit.record(context, {
       actorUserId,
       action: result.success ? 'candidate_email.sent' : 'candidate_email.failed',

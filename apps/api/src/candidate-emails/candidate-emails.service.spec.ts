@@ -12,6 +12,7 @@ describe('CandidateEmailsService', () => {
     organization: Record<string, jest.Mock>;
     user: Record<string, jest.Mock>;
     candidateEmail: Record<string, jest.Mock>;
+    candidate: Record<string, jest.Mock>;
   };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
@@ -26,6 +27,9 @@ describe('CandidateEmailsService', () => {
           job: { title: 'BE' },
         }),
         update: jest.fn(),
+        // recomputeGlobalStage reads a candidate's live entries; default to none so an
+        // entry-less, now-contacted candidate resolves to in_review.
+        findMany: jest.fn().mockResolvedValue([]),
       },
       organization: {
         findUnique: jest.fn().mockResolvedValue({ name: 'Acme', logoPath: null }),
@@ -37,6 +41,12 @@ describe('CandidateEmailsService', () => {
         create: jest.fn().mockImplementation(({ data }: any) => Promise.resolve({ id: 'msg-1', ...data })),
         findFirst: jest.fn(),
         findMany: jest.fn().mockResolvedValue([]),
+        // recomputeGlobalStage counts sent emails after sendMessage's own create -- default to 1
+        // so the "no entries + contacted" -> in_review path is exercised by default.
+        count: jest.fn().mockResolvedValue(1),
+      },
+      candidate: {
+        update: jest.fn().mockResolvedValue({}),
       },
     };
     tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
@@ -163,6 +173,27 @@ describe('CandidateEmailsService', () => {
       expect(tx.candidateEmail.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ sentByUserId: 'user-1' }) }),
       );
+    });
+
+    it('recomputes the candidate global stage after logging the email, moving an entry-less new candidate to in_review', async () => {
+      email.send.mockResolvedValue({ success: true });
+
+      await service.sendMessage(context, 'user-1', 'entry-1', { subject: 's', body: 'b', source: 'manual' });
+
+      expect(tx.pipelineEntry.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ candidateId: 'c1', organizationId: 'org-1' }) }),
+      );
+      expect(tx.candidateEmail.count).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ candidateId: 'c1', organizationId: 'org-1' }) }),
+      );
+      expect(tx.candidate.update).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+        data: { globalStage: 'in_review' },
+      });
+      // Must run after the email row is recorded -- recompute counts candidateEmail rows.
+      const createOrder = tx.candidateEmail.create.mock.invocationCallOrder[0];
+      const countOrder = tx.candidateEmail.count.mock.invocationCallOrder[0];
+      expect(createOrder).toBeLessThan(countOrder);
     });
   });
 
