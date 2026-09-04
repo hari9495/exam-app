@@ -844,9 +844,52 @@ model Job {
   salaryMin          Int?            @map("salary_min")
   salaryMax          Int?            @map("salary_max")
   salaryCurrency     String?         @map("salary_currency") @db.NVarChar(10)
+  pipelineId         String?         @map("pipeline_id") @db.UniqueIdentifier
+  pipeline           Pipeline?       @relation(fields: [pipelineId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([organizationId, status])
   @@map("jobs")
+}
+
+model Pipeline {
+  id             String          @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String          @map("organization_id") @db.UniqueIdentifier
+  name           String          @db.NVarChar(200)
+  isDefault      Boolean         @default(false) @map("is_default")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  stages         PipelineStage[]
+  jobs           Job[]
+
+  @@index([organizationId])
+  @@map("pipelines")
+}
+
+model PipelineStage {
+  id             String           @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String           @map("organization_id") @db.UniqueIdentifier
+  pipelineId     String           @map("pipeline_id") @db.UniqueIdentifier
+  name           String           @db.NVarChar(200)
+  category       String           @db.NVarChar(20)
+  position       Int
+  pipeline       Pipeline         @relation(fields: [pipelineId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  statuses       PipelineStatus[]
+
+  @@index([pipelineId])
+  @@map("pipeline_stages")
+}
+
+model PipelineStatus {
+  id             String          @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String          @map("organization_id") @db.UniqueIdentifier
+  stageId        String          @map("stage_id") @db.UniqueIdentifier
+  name           String          @db.NVarChar(200)
+  position       Int
+  stage          PipelineStage   @relation(fields: [stageId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  entries        PipelineEntry[]
+
+  @@index([stageId])
+  @@map("pipeline_statuses")
 }
 
 model PipelineEntry {
@@ -863,8 +906,11 @@ model PipelineEntry {
   assignedUserId   String?            @map("assigned_user_id") @db.UniqueIdentifier
   createdAt        DateTime           @default(now()) @map("created_at")
   updatedAt        DateTime           @updatedAt @map("updated_at")
+  statusId         String?            @map("status_id") @db.UniqueIdentifier
+  archivedAt       DateTime?          @map("archived_at")
   job              Job                @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   candidate        Candidate          @relation(fields: [candidateId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  status           PipelineStatus?    @relation(fields: [statusId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   feedback         PipelineFeedback[]
   candidateEmails  CandidateEmail[]
   offers           Offer[]
