@@ -33,3 +33,4 @@ export * from './analytics/answer-key-change';
 export * from './billing/billing-core';
 export * from './approvals/approval-types';
 export * from './pipeline/pipeline-categories';
+export * from './pipeline/global-stage';
