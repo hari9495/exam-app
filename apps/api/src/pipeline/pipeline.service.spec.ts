@@ -2,6 +2,17 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { PipelineService } from './pipeline.service';
 import { computeCriteriaHash } from '../candidate-fit/candidate-fit.core';
 
+// addEntry/patchEntry now call recomputeGlobalStage(tx, ...) as their last tx write, which reads
+// tx.pipelineEntry.findMany + tx.candidateEmail.count and writes tx.candidate.update. Any test tx
+// that reaches that point needs these three -- default to an empty/no-op shape, letting a test's
+// own tx override any of them (defaults spread first, so an explicit mock always wins).
+function withRecomputeMocks(tx: any) {
+  tx.pipelineEntry = { findMany: jest.fn().mockResolvedValue([]), ...tx.pipelineEntry };
+  tx.candidateEmail = { count: jest.fn().mockResolvedValue(0), ...tx.candidateEmail };
+  tx.candidate = { update: jest.fn().mockResolvedValue({}), ...tx.candidate };
+  return tx;
+}
+
 describe('PipelineService', () => {
   let service: PipelineService;
   let tenantPrisma: { forTenant: jest.Mock };
@@ -110,7 +121,7 @@ describe('PipelineService', () => {
         candidate: { findFirst: jest.fn().mockResolvedValue({ id: 'c1', organizationId: 'org-1' }) },
         pipelineEntry: { upsert },
       };
-      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(withRecomputeMocks(tx)));
 
       await expect(service.addEntry(context, 'user-1', 'job-1', { candidateId: 'c1' })).resolves.toBeDefined();
       expect(upsert).toHaveBeenCalled();
@@ -672,7 +683,7 @@ describe('PipelineService', () => {
         candidate: { findFirst: jest.fn().mockResolvedValue({ id: 'c1', organizationId: 'org-1' }) },
         pipelineEntry: { upsert },
       };
-      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(withRecomputeMocks(tx)));
 
       const out = await service.addEntry(context, 'user-1', 'job-1', { candidateId: 'c1' });
 
@@ -716,7 +727,7 @@ describe('PipelineService', () => {
         candidate: { upsert: candidateUpsert },
         pipelineEntry: { upsert },
       };
-      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(withRecomputeMocks(tx)));
 
       await service.addEntry(context, 'user-1', 'job-1', {
         newCandidate: { name: 'Amy', email: 'amy@x.com', phone: '555' },
@@ -749,12 +760,34 @@ describe('PipelineService', () => {
         candidate: { findFirst: jest.fn().mockResolvedValue({ id: 'c1', organizationId: 'org-1' }) },
         pipelineEntry: { upsert },
       };
-      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(withRecomputeMocks(tx)));
 
       const entry = await service.addEntry(context, 'u1', 'job1', { candidateId: 'c1' });
 
       expect(entry.statusId).toBe('st-app');
       expect(upsert.mock.calls[0][0].create).toMatchObject({ statusId: 'st-app' });
+    });
+
+    it('recomputes the candidate global stage to engaged after creating the entry', async () => {
+      const upsert = jest.fn().mockResolvedValue({ id: 'en1', enteredVia: 'manual' });
+      const candidateUpdate = jest.fn().mockResolvedValue({});
+      const tx = {
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job1', status: 'open' }) },
+        candidate: { findFirst: jest.fn().mockResolvedValue({ id: 'c1', organizationId: 'org-1' }), update: candidateUpdate },
+        pipelineEntry: {
+          upsert,
+          findMany: jest.fn().mockResolvedValue([{ archivedAt: null, status: { stage: { category: 'active' } } }]),
+        },
+        candidateEmail: { count: jest.fn().mockResolvedValue(0) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.addEntry(context, 'u1', 'job1', { candidateId: 'c1', enteredVia: 'manual' } as any);
+
+      expect(candidateUpdate).toHaveBeenCalledWith(expect.objectContaining({
+        where: { id: 'c1' },
+        data: expect.objectContaining({ globalStage: 'engaged' }),
+      }));
     });
   });
 
@@ -842,7 +875,7 @@ describe('PipelineService', () => {
           update,
         },
       };
-      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(withRecomputeMocks(tx)));
       pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-int', name: 'interview' }, stage: { id: 'stage-int', pipelineId: 'p1', category: 'active' } });
 
       const { entry } = await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-int' });
@@ -866,7 +899,7 @@ describe('PipelineService', () => {
           findUnique: jest.fn().mockResolvedValue({ candidateId: 'cand-1', candidate: { name: 'Asha Rao' }, job: { title: 'Backend Engineer' } }),
         },
       };
-      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(withRecomputeMocks(tx)));
       pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-hired', name: 'hired' }, stage: { pipelineId: 'p1', category: 'hired' } });
 
       await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-hired' });
@@ -885,7 +918,7 @@ describe('PipelineService', () => {
           update: jest.fn().mockResolvedValue({ id: 'en1', statusId: 'st-int' }),
         },
       };
-      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(withRecomputeMocks(tx)));
       pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-int', name: 'interview' }, stage: { pipelineId: 'p1', category: 'active' } });
 
       await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-int' });
@@ -901,7 +934,7 @@ describe('PipelineService', () => {
           findUnique: jest.fn(),
         },
       };
-      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(withRecomputeMocks(tx)));
       pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-hired', name: 'hired' }, stage: { pipelineId: 'p1', category: 'hired' } });
 
       await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-hired' });
@@ -944,7 +977,7 @@ describe('PipelineService', () => {
           update,
         },
       };
-      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(withRecomputeMocks(tx)));
       pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-rej', name: 'Not a Fit' }, stage: { pipelineId: 'p1', category: 'rejected' } });
 
       const { entry } = await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-rej' });
@@ -964,7 +997,7 @@ describe('PipelineService', () => {
           update,
         },
       };
-      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(withRecomputeMocks(tx)));
       pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-arch', name: 'Archived' }, stage: { pipelineId: 'p1', category: 'archived' } });
 
       const { entry } = await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-arch' });
@@ -982,7 +1015,7 @@ describe('PipelineService', () => {
         },
         pipelineStage: { findFirst: jest.fn().mockResolvedValue({ id: 'stage-rej', statuses: [{ id: 'st-rej' }] }) },
       };
-      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(withRecomputeMocks(tx)));
 
       await service.patchEntry(context, 'user-1', 'en1', { rejected: true, reason: 'not a fit' });
 
@@ -1006,7 +1039,7 @@ describe('PipelineService', () => {
           update,
         },
       };
-      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(withRecomputeMocks(tx)));
 
       await service.patchEntry(context, 'user-1', 'en1', { rejected: false });
 
@@ -1042,7 +1075,7 @@ describe('PipelineService', () => {
         pipelineStage: { findFirst: jest.fn().mockResolvedValue({ id: 'stage-rejected', statuses: [{ id: 'st-rej' }] }) },
       };
       beforeEach(() => {
-        tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+        tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(withRecomputeMocks(tx)));
         pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-offer', name: 'offer' }, stage: { id: 'stage-offer', pipelineId: 'p1', category: 'offer' } });
       });
 
@@ -1097,6 +1130,30 @@ describe('PipelineService', () => {
         expect(result.entry).toEqual({ id: 'entry-1', statusId: 'st-offer' });
         expect(result.pendingMessage).toBeUndefined();
       });
+    });
+
+    it('recomputes the candidate global stage once after a status change', async () => {
+      const update = jest.fn().mockResolvedValue({ id: 'en1', statusId: 'st-int' });
+      const candidateUpdate = jest.fn().mockResolvedValue({});
+      const tx = {
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', candidateId: 'c1', job: { pipelineId: 'p1' }, status: null }),
+          update,
+          findMany: jest.fn().mockResolvedValue([{ archivedAt: null, status: { stage: { category: 'active' } } }]),
+        },
+        candidate: { update: candidateUpdate },
+        candidateEmail: { count: jest.fn().mockResolvedValue(0) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-int', name: 'interview' }, stage: { id: 'stage-int', pipelineId: 'p1', category: 'active' } });
+
+      await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-int' });
+
+      expect(candidateUpdate).toHaveBeenCalledTimes(1);
+      expect(candidateUpdate).toHaveBeenCalledWith(expect.objectContaining({
+        where: { id: 'c1' },
+        data: expect.objectContaining({ globalStage: 'engaged' }),
+      }));
     });
   });
 

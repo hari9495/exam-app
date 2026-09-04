@@ -13,6 +13,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { ApprovalsService, ApprovalSummary, SubmitResult } from '../approvals/approvals.service';
 import { computeCriteriaHash, validateRubricInput } from '../candidate-fit/candidate-fit.core';
 import { PipelinesService } from './pipelines.service';
+import { recomputeGlobalStage } from '../candidates/recompute-global-stage';
 
 export interface FeedbackRow {
   id: string;
@@ -608,6 +609,8 @@ export class PipelineService {
         entityId: entry.id,
         metadata: { jobId, candidateId },
       });
+      // Last write in the tx: a fresh entry always makes the candidate at least 'engaged'.
+      await recomputeGlobalStage(tx, context.organizationId as string, candidateId);
       return entry;
     });
   }
@@ -680,6 +683,9 @@ export class PipelineService {
 
       const updated = await tx.pipelineEntry.update({ where: { id: entryId }, data });
       await this.audit.record(context, { actorUserId, action, entityType: 'pipeline_entry', entityId: entryId, metadata: { ...dto } });
+      // Last write in the tx (Task 5's auto-archive-on-hire step, if any, runs before this) --
+      // one recompute covers the statusId branch and both rejected branches since they converge here.
+      await recomputeGlobalStage(tx, context.organizationId as string, existing.candidateId);
       return updated;
     });
 
