@@ -1289,6 +1289,48 @@ describe('OrganizationsService', () => {
     });
   });
 
+  describe('getPipelineSettings', () => {
+    it('returns the current auto-archive setting for the org', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ autoArchiveSiblingsOnHire: false });
+
+      const result = await service.getPipelineSettings({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result).toEqual({ autoArchiveSiblingsOnHire: false });
+      expect(prisma.organization.findUnique).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        select: { autoArchiveSiblingsOnHire: true },
+      });
+    });
+  });
+
+  describe('updatePipelineSettings', () => {
+    const context = { organizationId: 'org-1', isSuperAdmin: false };
+
+    it('round-trips the auto-archive setting and audits the change', async () => {
+      prisma.organization.update.mockResolvedValue({ autoArchiveSiblingsOnHire: false });
+
+      const result = await service.updatePipelineSettings(context, 'user-1', { autoArchiveSiblingsOnHire: false });
+
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { autoArchiveSiblingsOnHire: false },
+        select: { autoArchiveSiblingsOnHire: true },
+      });
+      expect(audit.record).toHaveBeenCalledWith(
+        context,
+        expect.objectContaining({ actorUserId: 'user-1', action: 'organization.pipeline_settings_updated' }),
+      );
+      expect(result).toEqual({ autoArchiveSiblingsOnHire: false });
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(
+        service.updatePipelineSettings({ organizationId: null, isSuperAdmin: true }, 'user-1', { autoArchiveSiblingsOnHire: true }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+  });
+
   describe('listWebhookDeliveries', () => {
     it('returns the most recent 50 deliveries for the org', async () => {
       prisma.webhookDelivery.findMany.mockResolvedValue([{ id: 'delivery-1', eventType: 'invitation.created', status: 'delivered', httpStatusCode: 200, createdAt: new Date() }]);

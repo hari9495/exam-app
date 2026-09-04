@@ -19,6 +19,7 @@ import { UpdateAiKeyDto } from './dto/update-ai-key.dto';
 import { UpdateWebhookUrlDto } from './dto/update-webhook-url.dto';
 import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
 import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update-organization.dto';
+import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
 
 export interface BrandingResponse {
   // The organisation's own display name. Consumers render this in place of the
@@ -84,6 +85,10 @@ export interface IntegrationsResponse {
   apiKeyCreatedAt: Date | null;
   webhookConfigured: boolean;
   webhookUrl: string | null;
+}
+
+export interface PipelineSettingsResponse {
+  autoArchiveSiblingsOnHire: boolean;
 }
 
 export interface SsoSettingsResponse {
@@ -676,6 +681,35 @@ export class OrganizationsService {
       samlIdpSsoUrl: org.samlIdpSsoUrl,
       samlIdpCertificate: org.samlIdpCertificate,
     };
+  }
+
+  async getPipelineSettings(context: TenantContext): Promise<PipelineSettingsResponse> {
+    const organizationId = this.requireOrganizationId(context);
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { autoArchiveSiblingsOnHire: true },
+    });
+    return { autoArchiveSiblingsOnHire: org?.autoArchiveSiblingsOnHire ?? true };
+  }
+
+  async updatePipelineSettings(
+    context: TenantContext,
+    actorUserId: string,
+    dto: UpdatePipelineSettingsDto,
+  ): Promise<PipelineSettingsResponse> {
+    const organizationId = this.requireOrganizationId(context);
+    const org = await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { ...(dto.autoArchiveSiblingsOnHire !== undefined && { autoArchiveSiblingsOnHire: dto.autoArchiveSiblingsOnHire }) },
+      select: { autoArchiveSiblingsOnHire: true },
+    });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'organization.pipeline_settings_updated',
+      entityType: 'organization',
+      entityId: organizationId,
+    });
+    return { autoArchiveSiblingsOnHire: org.autoArchiveSiblingsOnHire };
   }
 
   async generateWebhookSecret(context: TenantContext, actorUserId: string): Promise<{ webhookSecret: string }> {

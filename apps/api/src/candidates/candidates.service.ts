@@ -16,6 +16,7 @@ interface CandidateFilters {
   pageSize?: string;
   search?: string;
   status?: string;
+  globalStage?: string;
 }
 
 // A recruiter's erase-candidate click sits on this call, and one candidate's evidence blobs
@@ -171,6 +172,7 @@ export class CandidatesService {
       const where = {
         organizationId: context.organizationId as string,
         ...(filters.status ? { status: filters.status } : {}),
+        ...(filters.globalStage ? { globalStage: filters.globalStage } : {}),
         ...(filters.search ? { OR: [{ name: { contains: filters.search } }, { email: { contains: filters.search } }] } : {}),
       };
       const [candidates, total] = await Promise.all([

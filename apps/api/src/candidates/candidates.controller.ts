@@ -4,7 +4,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
-import { TenantContext } from '@exam-platform/shared';
+import { TenantContext, GLOBAL_STAGES, GlobalStage } from '@exam-platform/shared';
 import { CandidatesService } from './candidates.service';
 import { CreateCandidateDto } from './dto/create-candidate.dto';
 import { UpdateCandidateDto } from './dto/update-candidate.dto';
@@ -29,8 +29,12 @@ export class CandidatesController {
     @Query('pageSize') pageSize?: string,
     @Query('search') search?: string,
     @Query('status') status?: string,
+    @Query('globalStage') globalStage?: string,
   ) {
-    return this.candidatesService.list(tenant, { page, pageSize, search, status });
+    if (globalStage !== undefined && !GLOBAL_STAGES.includes(globalStage as GlobalStage)) {
+      throw new BadRequestException(`globalStage must be one of: ${GLOBAL_STAGES.join(', ')}`);
+    }
+    return this.candidatesService.list(tenant, { page, pageSize, search, status, globalStage });
   }
 
   @Patch(':id')

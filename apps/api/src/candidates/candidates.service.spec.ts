@@ -144,6 +144,33 @@ describe('CandidatesService', () => {
       const where = tx.candidate.findMany.mock.calls[0][0].where;
       expect(where).not.toHaveProperty('status');
     });
+
+    it('filters by globalStage when one is supplied', async () => {
+      const tx = {
+        candidate: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
+        invitation: { groupBy: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.list(context, { globalStage: 'available' });
+
+      expect(tx.candidate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ globalStage: 'available' }) }),
+      );
+    });
+
+    it('does not constrain globalStage when no filter is supplied', async () => {
+      const tx = {
+        candidate: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
+        invitation: { groupBy: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.list(context, {});
+
+      const where = tx.candidate.findMany.mock.calls[0][0].where;
+      expect(where).not.toHaveProperty('globalStage');
+    });
   });
 
   describe('update', () => {

@@ -15,6 +15,7 @@ import { UpdateAiKeyDto } from './dto/update-ai-key.dto';
 import { UpdateWebhookUrlDto } from './dto/update-webhook-url.dto';
 import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
 import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update-organization.dto';
+import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 
 @Controller('organizations')
@@ -100,6 +101,25 @@ export class OrganizationsController {
   @RequirePermissions('org:manage_settings')
   listWebhookDeliveries(@CurrentTenant() tenant: TenantContext) {
     return this.organizationsService.listWebhookDeliveries(tenant);
+  }
+
+  // Read/write of the org-wide auto-archive-on-hire toggle. Gated on 'pipelines:configure'
+  // (not 'org:manage_settings' like the routes around it) -- this is pipeline configuration,
+  // owned by the same org_admin-only permission as PipelinesConfigController.
+  @Get('pipeline-settings')
+  @RequirePermissions('pipelines:configure')
+  getPipelineSettings(@CurrentTenant() tenant: TenantContext) {
+    return this.organizationsService.getPipelineSettings(tenant);
+  }
+
+  @Patch('pipeline-settings')
+  @RequirePermissions('pipelines:configure')
+  updatePipelineSettings(
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentUserId() userId: string,
+    @Body() dto: UpdatePipelineSettingsDto,
+  ) {
+    return this.organizationsService.updatePipelineSettings(tenant, userId, dto);
   }
 
   @Get('sso')
