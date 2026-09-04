@@ -53,16 +53,16 @@ export function useMessageTemplates() {
 export interface UpsertTemplateInput {
   id?: string;
   name: string;
-  triggerEvent: string | null;
+  triggerStageId: string | null;
   triggerMode: 'manual' | 'prompt' | 'auto';
   subject: string;
   body: string;
   enabled?: boolean;
 }
 
-// No id -> POST (create/override-by-event); id present -> PATCH :id (update). Both are the same
-// upsert-by-triggerEvent server-side (see candidate-email-templates.controller.ts), so this just
-// picks the route the id implies.
+// No id -> POST (create/override-by-stage); id present -> PATCH :id (update). Both are the same
+// upsert-by-triggerStageId server-side (see candidate-email-templates.controller.ts), so this
+// just picks the route the id implies.
 export function useUpsertTemplate() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();

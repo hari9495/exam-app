@@ -8,12 +8,16 @@ import Link from 'next/link';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Plus, MoreHorizontal, ListFilter, Check, Trash2 } from 'lucide-react';
 import { useJobs, useCreateJob, useDeleteJob } from '../../../../lib/hooks/usePipeline';
+import { usePipelines } from '../../../../lib/hooks/usePipelines';
 import { useTeammates } from '../../../../lib/hooks/useUserDirectory';
-import { type JobListItem, type JobStatus, PIPELINE_STAGES } from '../../../../lib/types';
+import { type JobListItem, type JobStatus, type Pipeline, type StageCategory } from '../../../../lib/types';
 import { DataTable, DT_FEATURES, dt, SortHead, Pill, Dropdown, DropdownItem, Dialog, TextField, Combobox, Button } from '../../../../components/ui-v2';
 import { STATUS } from '../../../../components/ui-v2/viz';
 
 const STATUS_OPTS = [{ value: 'all', label: 'All statuses' }, { value: 'open', label: 'Open' }, { value: 'closed', label: 'Closed' }];
+// No shared STAGE_CATEGORIES export exists (see Task 10's report) -- this is the fallback
+// ordering for the jobs-list chip summary when a job's own pipeline isn't resolvable yet.
+const CATEGORY_ORDER: StageCategory[] = ['active', 'offer', 'hired', 'rejected', 'archived'];
 // draft/pending_approval only ever appear when the org's requisition gate is on (Task 3); the
 // list filter above stays open/closed-only since GET /jobs only supports filtering by those two.
 const STATUS_PILL: Record<JobStatus, { c: string; label: string }> = {
@@ -23,9 +27,19 @@ const STATUS_PILL: Record<JobStatus, { c: string; label: string }> = {
   closed: { c: 'var(--muted)', label: 'Closed' },
 };
 
-function stageSummary(stageCounts: JobListItem['stageCounts']): string {
-  const parts = PIPELINE_STAGES.map((stage) => ({ stage, count: stageCounts[stage] })).filter((e) => e.count > 0);
-  return parts.length === 0 ? 'No candidates yet' : parts.map((e) => `${e.count} ${e.stage}`).join(' · ');
+// Prefers the job's own pipeline stage names (byStageId) when its pipeline is resolvable from
+// the already-loaded usePipelines() list; falls back to the fixed StageCategory rollup
+// (byCategory) otherwise -- e.g. while pipelines are still loading, or a stale/removed pipelineId.
+function stageSummary(job: JobListItem, pipelines: Pipeline[] | undefined): string {
+  const pipeline = pipelines?.find((p) => p.id === job.pipelineId);
+  if (pipeline) {
+    const parts = pipeline.stages
+      .map((s) => ({ label: s.name, count: job.stageCounts.byStageId[s.id] ?? 0 }))
+      .filter((e) => e.count > 0);
+    if (parts.length > 0) return parts.map((e) => `${e.count} ${e.label}`).join(' · ');
+  }
+  const parts = CATEGORY_ORDER.map((c) => ({ label: c, count: job.stageCounts.byCategory[c] })).filter((e) => e.count > 0);
+  return parts.length === 0 ? 'No candidates yet' : parts.map((e) => `${e.count} ${e.label}`).join(' · ');
 }
 
 export default function V2JobsPage() {
@@ -40,6 +54,7 @@ export default function V2JobsPage() {
   const [salaryMin, setSalaryMin] = useState('');
   const [salaryMax, setSalaryMax] = useState('');
   const [salaryCurrency, setSalaryCurrency] = useState('');
+  const [pipelineId, setPipelineId] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<JobListItem | null>(null);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -47,14 +62,18 @@ export default function V2JobsPage() {
 
   const { data: jobs, isLoading, isError } = useJobs(statusFilter === 'all' ? undefined : (statusFilter as JobStatus));
   const { data: teammates } = useTeammates();
+  const { data: pipelines } = usePipelines();
   const managerOptions = [{ value: '', label: 'None' }, ...(teammates ?? []).map((t) => ({ value: t.id, label: t.name ?? t.email }))];
+  const pipelineOptions = (pipelines ?? []).map((p) => ({ value: p.id, label: p.isDefault ? `${p.name} (default)` : p.name }));
+  // Uncontrolled until the user picks one — defaults to the org's default pipeline once loaded.
+  const selectedPipelineId = pipelineId || pipelines?.find((p) => p.isDefault)?.id || '';
   const createJob = useCreateJob();
   const deleteJob = useDeleteJob();
   const q = search.trim().toLowerCase();
   const rows = q ? (jobs ?? []).filter((j) => j.title.toLowerCase().includes(q)) : (jobs ?? []);
 
   function resetForm() {
-    setTitle(''); setDescription(''); setDepartment(''); setHiringManagerId(''); setHeadcount(''); setSalaryMin(''); setSalaryMax(''); setSalaryCurrency('');
+    setTitle(''); setDescription(''); setDepartment(''); setHiringManagerId(''); setHeadcount(''); setSalaryMin(''); setSalaryMax(''); setSalaryCurrency(''); setPipelineId('');
   }
   function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -65,6 +84,7 @@ export default function V2JobsPage() {
       description: description.trim() || undefined,
       department: department.trim() || undefined,
       hiringManagerId: hiringManagerId || undefined,
+      pipelineId: selectedPipelineId || undefined,
       headcount: headcount.trim() ? Number(headcount) : undefined,
       salaryMin: salaryMin.trim() ? Number(salaryMin) : undefined,
       salaryMax: salaryMax.trim() ? Number(salaryMax) : undefined,
@@ -93,7 +113,7 @@ export default function V2JobsPage() {
       ),
       cell: ({ row }) => <Pill c={STATUS_PILL[row.original.status].c} label={STATUS_PILL[row.original.status].label} />,
     },
-    { id: 'pipeline', enableSorting: false, header: () => <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)' }}>Pipeline</span>, cell: ({ row }) => <span style={dt.muted}>{stageSummary(row.original.stageCounts)}</span> },
+    { id: 'pipeline', enableSorting: false, header: () => <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)' }}>Pipeline</span>, cell: ({ row }) => <span style={dt.muted}>{stageSummary(row.original, pipelines)}</span> },
     { accessorKey: 'createdAt', header: ({ column }) => <SortHead label="Created" sorted={column.getIsSorted()} onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')} />, cell: ({ row }) => <span style={dt.muted}>{new Date(row.original.createdAt).toLocaleDateString()}</span> },
     {
       id: 'actions', enableSorting: false, enableHiding: false, header: () => null,
@@ -135,6 +155,10 @@ export default function V2JobsPage() {
             <div>
               <label className="v2-label">Hiring manager (optional)</label>
               <Combobox options={managerOptions} value={hiringManagerId} onChange={setHiringManagerId} placeholder="None" width="100%" />
+            </div>
+            <div>
+              <label className="v2-label">Pipeline</label>
+              <Combobox options={pipelineOptions} value={selectedPipelineId} onChange={setPipelineId} placeholder="Default pipeline" width="100%" />
             </div>
             <TextField id="job-headcount" label="Headcount (optional)" type="number" value={headcount} onChange={setHeadcount} autoComplete="off" />
             <div style={{ display: 'flex', gap: 10 }}>

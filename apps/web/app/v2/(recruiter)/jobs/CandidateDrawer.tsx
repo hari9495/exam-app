@@ -23,7 +23,7 @@ import { useCandidateMessages, useResendMessage } from '../../../../lib/hooks/us
 import { useCandidateOffers, useWithdrawOffer, useSendOffer, useSubmitOffer, useCancelOffer } from '../../../../lib/hooks/useOffers';
 import { useApprovalGateStatus } from '../../../../lib/hooks/useApprovals';
 import { useCandidateInterviews, useCancelInterview } from '../../../../lib/hooks/useInterviews';
-import { BoardRow, EntryExamResult, CandidateProfile, Offer, OfferStatus, Interview, InterviewStatus } from '../../../../lib/types';
+import { BoardEntryRow, EntryExamResult, CandidateProfile, Offer, OfferStatus, Interview, InterviewStatus } from '../../../../lib/types';
 import { SendMessageModal } from './SendMessageModal';
 import { CreateOfferModal } from './CreateOfferModal';
 import { ScheduleInterviewModal } from './ScheduleInterviewModal';
@@ -413,7 +413,7 @@ function chipLabel(result: EntryExamResult): string {
 
 // Team-collab: assign this pipeline entry to a teammate. Logic verbatim from the old drawer
 // (useUserDirectory + useAssignEntry); v2-styled native select.
-function AssigneeControl({ row, jobId }: { row: BoardRow; jobId: string }) {
+function AssigneeControl({ row, jobId }: { row: BoardEntryRow; jobId: string }) {
   const { data } = useTeammates();
   const assign = useAssignEntry(row.entryId, jobId);
   const { toast } = useToast();
@@ -489,9 +489,9 @@ function StarPicker({ value, onChange }: { value: number; onChange: (value: numb
   );
 }
 
-// Candidate details + full exam results + feedback timeline/compose. Fed with the BoardRow the
-// caller already has from useJobPipeline — no separate candidate fetch needed.
-export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: BoardRow; onClose: () => void }) {
+// Candidate details + full exam results + feedback timeline/compose. Fed with the BoardEntryRow
+// the caller already has from useJobPipeline — no separate candidate fetch needed.
+export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: BoardEntryRow; onClose: () => void }) {
   const { data: feedback, isLoading } = useEntryFeedback(row.entryId);
   const addFeedback = useAddFeedback(row.entryId, jobId);
   const { toast } = useToast();

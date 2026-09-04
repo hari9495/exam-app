@@ -6,7 +6,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { MotionConfig } from 'framer-motion';
-import { Users, History, TerminalSquare, ShieldCheck, CreditCard, Plug, Palette, KeyRound, GitPullRequestArrow } from 'lucide-react';
+import { Users, History, TerminalSquare, ShieldCheck, CreditCard, Plug, Palette, KeyRound, GitPullRequestArrow, Kanban } from 'lucide-react';
 import { useAuth } from '../../../lib/auth-context';
 import { staffLandingPath } from '../../../lib/staff-landing';
 import { useOrgBranding } from '../../../lib/hooks/useBranding';
@@ -22,6 +22,10 @@ const ORG_ADMIN_NAV = [
   { href: '/v2/settings/branding', label: 'Brand settings', icon: Palette },
   { href: '/v2/settings/sso', label: 'Single sign-on', icon: KeyRound },
   { href: '/v2/settings/approvals', label: 'Approvals', icon: GitPullRequestArrow },
+  // Page itself lives under app/v2/(recruiter)/settings/pipelines (Task 10) with its own inline
+  // role guard — route groups don't affect the URL, so /v2/settings/pipelines is a normal sibling
+  // href here regardless of which group its page.tsx sits in.
+  { href: '/v2/settings/pipelines', label: 'Pipelines', icon: Kanban },
   { href: '/v2/users', label: 'Staff users', icon: Users },
   { href: '/v2/audit-log', label: 'Audit log', icon: History },
   { href: '/v2/system-logs', label: 'System logs', icon: TerminalSquare },
@@ -48,11 +52,15 @@ export default function OrgAdminV2Layout({ children }: { children: React.ReactNo
     ['--org-on-primary']: branding?.textColor || '#ffffff',
   } as React.CSSProperties;
 
-  // approvals:configure is seeded only to org_admin, and actingSuperAdmin bypasses every
-  // permission check server-side (see PermissionsGuard) — so this is the same condition
-  // that already gates entry into this whole console, applied per-item for this one nav link.
-  const canConfigureApprovals = role === 'org_admin' || actingSuperAdmin;
-  const navItems = ORG_ADMIN_NAV.filter((item) => item.href !== '/v2/settings/approvals' || canConfigureApprovals);
+  // approvals:configure and pipelines:configure are both seeded only to org_admin, and
+  // actingSuperAdmin bypasses every permission check server-side (see PermissionsGuard) — so this
+  // is the same condition that already gates entry into this whole console, applied per-item to
+  // these two nav links (a plain recruiter/panel account never reaches this layout at all, but a
+  // recruiter *does* land in the sibling (recruiter) group, hence the pipelines page's own
+  // in-page guard too).
+  const canConfigureOrgSettings = role === 'org_admin' || actingSuperAdmin;
+  const GATED_HREFS = new Set(['/v2/settings/approvals', '/v2/settings/pipelines']);
+  const navItems = ORG_ADMIN_NAV.filter((item) => !GATED_HREFS.has(item.href) || canConfigureOrgSettings);
 
   async function handleLogout() {
     await logout();

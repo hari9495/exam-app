@@ -5,8 +5,7 @@ import {
   JobListItem,
   JobDetail,
   JobStatus,
-  PipelineBoard,
-  PipelineStage,
+  BoardData,
   FeedbackRow,
   CandidateProfile,
   PatchEntryResult,
@@ -34,7 +33,7 @@ export function useJob(jobId: string) {
 
 export function useJobPipeline(jobId: string) {
   const { accessToken } = useAuth();
-  return useQuery<PipelineBoard>({
+  return useQuery<BoardData>({
     queryKey: ['jobs', jobId, 'pipeline'],
     queryFn: () => apiFetch(`/jobs/${jobId}/pipeline`, {}, accessToken ?? undefined),
     enabled: Boolean(accessToken && jobId),
@@ -52,6 +51,7 @@ export interface CreateJobInput {
   salaryMin?: number;
   salaryMax?: number;
   salaryCurrency?: string;
+  pipelineId?: string;
 }
 
 export function useCreateJob() {
@@ -103,13 +103,15 @@ export function useAddEntry(jobId: string) {
 }
 
 // Response shape changed from a bare PipelineEntry to { entry, pendingMessage? } -- see
-// PatchEntryResult in types.ts. Nothing here reads the resolved data today (PipelineBoard just
-// fires the mutation), but Task 7 wires pendingMessage into a prompt to send a message, so the
-// mutation is typed for that consumer now via result.entry / result.pendingMessage.
+// PatchEntryResult in types.ts. Task 7 wires pendingMessage into a prompt to send a message, so
+// the mutation is typed for that consumer via result.entry / result.pendingMessage. `stage` was
+// replaced by `statusId` (a PipelineStatus id) once the board moved off the flat 5-stage enum --
+// `rejected`/`reason` stay as a back-compat shortcut the API still accepts (PipelineBoard's
+// quick-reject button uses it instead of resolving a rejected-category statusId client-side).
 export function usePatchEntry(jobId: string) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
-  return useMutation<PatchEntryResult, Error, { entryId: string; stage?: PipelineStage; rejected?: boolean; reason?: string }>({
+  return useMutation<PatchEntryResult, Error, { entryId: string; statusId?: string; rejected?: boolean; reason?: string }>({
     mutationFn: ({ entryId, ...input }) =>
       apiFetch(`/entries/${entryId}`, { method: 'PATCH', body: JSON.stringify(input) }, accessToken ?? undefined) as Promise<PatchEntryResult>,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobs', jobId, 'pipeline'] }),

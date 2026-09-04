@@ -270,22 +270,13 @@ export interface WalkInGroup {
 }
 
 export type JobStatus = 'draft' | 'pending_approval' | 'open' | 'closed';
-export type PipelineStage = 'applied' | 'screened' | 'interview' | 'offer' | 'hired';
-
-export const PIPELINE_STAGES: PipelineStage[] = ['applied', 'screened', 'interview', 'offer', 'hired'];
-export const STAGE_LABEL: Record<PipelineStage, string> = {
-  applied: 'Applied',
-  screened: 'Screened',
-  interview: 'Interview',
-  offer: 'Offer',
-  hired: 'Hired',
-};
 
 // --- Configurable pipeline config types (Phase A, Task 9) ---
 // Mirrors apps/api/src/pipeline/pipelines.service.ts + apps/api's PipelineWithStages/Board.
-// Named distinctly from PipelineStage/BoardRow above (the flat-stage constants) to avoid a
-// duplicate-identifier clash -- those stay in place until Task 11 migrates the board/jobs/
-// message-templates pages off them.
+// The old flat PipelineStage union + PIPELINE_STAGES/STAGE_LABEL constants (and the BoardRow/
+// PipelineBoard types below them) were removed in Task 11 once every call site migrated to
+// pipeline-driven stages/statuses -- a few analytics fields below still carry a raw legacy
+// `string` where the API itself hasn't been migrated yet (see comments on each).
 export type StageCategory = 'active' | 'offer' | 'hired' | 'rejected' | 'archived';
 
 export interface PipelineStatus {
@@ -295,7 +286,8 @@ export interface PipelineStatus {
 }
 
 // The API's own type here is called `PipelineStage` (see pipelines.service.ts) -- renamed to
-// PipelineStageConfig on the web to coexist with the pre-existing flat-stage union type above.
+// PipelineStageConfig on the web since (pre-Task-11) that name was already taken by the old
+// flat-stage union type.
 export interface PipelineStageConfig {
   id: string;
   name: string;
@@ -311,9 +303,7 @@ export interface Pipeline {
   stages: PipelineStageConfig[];
 }
 
-// Mirrors apps/api/src/pipeline/pipeline.service.ts's (new, config-aware) BoardRow -- distinct
-// from the pre-existing BoardRow interface further down, which is keyed off the flat
-// PipelineStage union and backs the pre-migration board (Task 11 replaces it with BoardData).
+// Mirrors apps/api/src/pipeline/pipeline.service.ts's (config-aware) BoardRow.
 export interface BoardEntryRow {
   entryId: string;
   candidateId: string;
@@ -375,18 +365,31 @@ export interface ApplicationStatus {
   statusBucket: string;
 }
 
+// StageCounts mirrors apps/api/src/pipeline/pipeline.service.ts's StageCounts -- a job's
+// candidate counts rolled up two ways: byStageId (keyed by that job's own PipelineStageConfig
+// ids) and byCategory (keyed by the fixed StageCategory union, so a cross-pipeline summary like
+// the jobs list's stage chips doesn't need per-job stage-id lookups).
+export interface StageCounts {
+  byStageId: Record<string, number>;
+  byCategory: Record<StageCategory, number>;
+}
+
 export interface JobListItem {
   id: string;
   title: string;
   status: JobStatus;
   createdAt: string;
-  stageCounts: Record<PipelineStage, number> & { rejected: number };
+  pipelineId: string | null;
+  stageCounts: StageCounts;
   approval: ApprovalSummary | null;
 }
 
-// Mirrors apps/api/src/analytics/pipeline-analytics.ts HiringAnalytics exactly.
+// Mirrors apps/api/src/analytics/pipeline-analytics.ts HiringAnalytics exactly. That module
+// hasn't been migrated to configurable pipelines (Phase A) -- `stage` is still one of the 5
+// legacy fixed-stage strings ('applied'/'screened'/'interview'/'offer'/'hired'), just untyped as
+// a bare string now that the PipelineStage union it used to reference is gone.
 export interface HiringFunnelRow {
-  stage: PipelineStage;
+  stage: string;
   reached: number;
   conversionFromPrev: number | null;
 }
@@ -461,24 +464,6 @@ export interface EntryExamResult {
   score: number | null;
 }
 
-export interface BoardRow {
-  entryId: string;
-  candidateId: string;
-  candidateName: string;
-  candidateEmail: string;
-  stage: PipelineStage;
-  enteredVia: string;
-  rejectedReason: string | null;
-  examResults: EntryExamResult[];
-  avgRating: number | null;
-  feedbackCount: number;
-  fitScore: number | null;
-  fitStatus: string | null;
-  fitStale: boolean;
-  assignedUserId: string | null;
-  assigneeName: string | null;
-}
-
 export interface RubricDimension {
   label: string;
   weight: number;
@@ -497,11 +482,6 @@ export interface FitAssessment {
   stale: boolean;
 }
 
-export interface PipelineBoard {
-  stages: Record<PipelineStage, BoardRow[]>;
-  rejected: BoardRow[];
-}
-
 export interface FeedbackRow {
   id: string;
   authorUserId: string;
@@ -518,7 +498,10 @@ export interface PipelineEntry {
   id: string;
   jobId: string;
   candidateId: string;
-  stage: PipelineStage;
+  // Legacy flat-stage column, kept in sync server-side for back-compat -- see
+  // apps/api/src/pipeline/pipeline.service.ts's patchEntry. Nothing on the web reads it (the
+  // config-aware statusId/stageId live on BoardEntryRow instead), so it's untyped as a bare string.
+  stage: string;
   rejected: boolean;
   rejectedReason: string | null;
   rejectedAt: string | null;
@@ -558,13 +541,13 @@ export interface CandidateEmail {
   createdAt: string;
 }
 
-// GET /candidate-email-templates -- saved templates plus code defaults for triggerEvents with
+// GET /candidate-email-templates -- saved templates plus code defaults for triggerStageIds with
 // no saved override. Mirrors apps/api/src/candidate-emails/candidate-email-templates.service.ts
-// TemplateView.
+// TemplateView. triggerStageId is a PipelineStage id (org-defined) or null for manual-only.
 export interface CandidateEmailTemplate {
   id: string | null;
   name: string;
-  triggerEvent: string | null;
+  triggerStageId: string | null;
   triggerMode: 'manual' | 'prompt' | 'auto';
   subject: string;
   body: string;
