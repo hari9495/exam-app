@@ -22,9 +22,9 @@ const ORG_ADMIN_NAV = [
   { href: '/v2/settings/branding', label: 'Brand settings', icon: Palette },
   { href: '/v2/settings/sso', label: 'Single sign-on', icon: KeyRound },
   { href: '/v2/settings/approvals', label: 'Approvals', icon: GitPullRequestArrow },
-  // Page itself lives under app/v2/(recruiter)/settings/pipelines (Task 10) with its own inline
-  // role guard — route groups don't affect the URL, so /v2/settings/pipelines is a normal sibling
-  // href here regardless of which group its page.tsx sits in.
+  // Page lives under app/v2/(org-admin)/settings/pipelines so it renders inside THIS settings
+  // layout (its sub-nav), matching approvals — the route group picks the layout even though it
+  // doesn't change the /v2/settings/pipelines URL.
   { href: '/v2/settings/pipelines', label: 'Pipelines', icon: Kanban },
   { href: '/v2/users', label: 'Staff users', icon: Users },
   { href: '/v2/audit-log', label: 'Audit log', icon: History },
