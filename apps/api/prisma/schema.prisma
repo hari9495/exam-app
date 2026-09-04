@@ -613,6 +613,21 @@ model UserNotification {
   @@map("user_notifications")
 }
 
+// Per-user, per-notification-type preference for whether a staff notification is also emailed.
+model UserNotificationPreference {
+  id             String   @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String   @map("organization_id") @db.UniqueIdentifier
+  userId         String   @map("user_id") @db.UniqueIdentifier
+  type           String
+  emailEnabled   Boolean  @map("email_enabled")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, type])
+  @@index([organizationId])
+  @@map("user_notification_preferences")
+}
+
 model Attempt {
   id                            String              @id @default(uuid()) @db.UniqueIdentifier
   invitationId                  String              @unique @map("invitation_id") @db.UniqueIdentifier
