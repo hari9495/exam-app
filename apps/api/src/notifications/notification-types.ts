@@ -8,6 +8,7 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'approval.approved', group: 'approvals', label: 'Your submission was approved' },
   { type: 'approval.rejected', group: 'approvals', label: 'Your submission was rejected' },
   { type: 'approval.step_skipped', group: 'approvals', label: 'An approval step was skipped' },
+  { type: 'approval.cancelled', group: 'approvals', label: 'An approval request was cancelled' },
 ];
 
 export const NOTIFICATION_TYPE_BY_KEY = new Map(NOTIFICATION_TYPES.map((t) => [t.type, t]));
