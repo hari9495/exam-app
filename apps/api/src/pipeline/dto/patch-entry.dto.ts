@@ -1,8 +1,7 @@
-import { IsBoolean, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
-import { PIPELINE_STAGES } from '../pipeline-stages';
+import { IsBoolean, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
 export class PatchEntryDto {
-  @IsOptional() @IsIn(PIPELINE_STAGES as unknown as string[]) stage?: string;
+  @IsOptional() @IsUUID() statusId?: string;
   @IsOptional() @IsBoolean() rejected?: boolean;
   @IsOptional() @IsString() @MaxLength(500) reason?: string;
 }

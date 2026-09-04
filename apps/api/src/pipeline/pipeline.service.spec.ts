@@ -11,6 +11,7 @@ describe('PipelineService', () => {
   let integrationEvents: { emit: jest.Mock };
   let notifications: { createMentions: jest.Mock; notify: jest.Mock };
   let approvals: { getChains: jest.Mock; submit: jest.Mock; isConfigurer: jest.Mock; cancelForSubject: jest.Mock; getSummariesFor: jest.Mock };
+  let pipelines: { getDefaultPipeline: jest.Mock; resolveStatus: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
   const chains = (requisitionEnabled: boolean) => ({
@@ -32,7 +33,11 @@ describe('PipelineService', () => {
       cancelForSubject: jest.fn(),
       getSummariesFor: jest.fn().mockResolvedValue(new Map()),
     };
-    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, integrationEvents as any, notifications as any, approvals as any);
+    pipelines = {
+      getDefaultPipeline: jest.fn().mockResolvedValue({ id: 'pipeline-default' }),
+      resolveStatus: jest.fn(),
+    };
+    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, integrationEvents as any, notifications as any, approvals as any, pipelines as any);
   });
 
   it('createJob writes org-scoped and audits', async () => {
@@ -648,6 +653,32 @@ describe('PipelineService', () => {
         where: { jobId_candidateId: { jobId: 'job-1', candidateId: 'c-new' } },
       }));
     });
+
+    it("places a new candidate at the first active status of the job's pipeline", async () => {
+      const upsert = jest.fn().mockImplementation(({ create }) => Promise.resolve(create));
+      const tx = {
+        job: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'job1',
+            status: 'open',
+            pipeline: {
+              stages: [
+                { category: 'active', statuses: [{ id: 'st-app', position: 0 }, { id: 'st-screen', position: 1 }] },
+                { category: 'rejected', statuses: [{ id: 'st-rej', position: 0 }] },
+              ],
+            },
+          }),
+        },
+        candidate: { findFirst: jest.fn().mockResolvedValue({ id: 'c1', organizationId: 'org-1' }) },
+        pipelineEntry: { upsert },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      const entry = await service.addEntry(context, 'u1', 'job1', { candidateId: 'c1' });
+
+      expect(entry.statusId).toBe('st-app');
+      expect(upsert.mock.calls[0][0].create).toMatchObject({ statusId: 'st-app' });
+    });
   });
 
   describe('assignEntry', () => {
@@ -726,32 +757,40 @@ describe('PipelineService', () => {
   });
 
   describe('patchEntry', () => {
-    it('stage move clears reject fields and audits entry.stage_changed', async () => {
-      const update = jest.fn().mockResolvedValue({ id: 'en1', stage: 'interview' });
-      const tx = { pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1' }), update } };
+    it('statusId move (active category) clears reject fields, sets statusId, and audits entry.stage_changed', async () => {
+      const update = jest.fn().mockResolvedValue({ id: 'en1', statusId: 'st-int' });
+      const tx = {
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', job: { pipelineId: 'p1' }, status: null }),
+          update,
+        },
+      };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-int', name: 'interview' }, stage: { pipelineId: 'p1', category: 'active' } });
 
-      await service.patchEntry(context, 'user-1', 'en1', { stage: 'interview' });
+      await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-int' });
 
+      expect(pipelines.resolveStatus).toHaveBeenCalledWith(context, 'st-int');
       expect(update).toHaveBeenCalledWith({
         where: { id: 'en1' },
-        data: { stage: 'interview', rejected: false, rejectedReason: null, rejectedAt: null },
+        data: { statusId: 'st-int', rejected: false, rejectedReason: null, rejectedAt: null, archivedAt: null },
       });
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'entry.stage_changed', entityId: 'en1' }));
     });
 
-    it('emits candidate.hired (subject/role/linkPath) when moved to the hired stage', async () => {
-      const update = jest.fn().mockResolvedValue({ id: 'en1', stage: 'hired' });
+    it('emits candidate.hired (subject/role/linkPath) when moved to a hired-category status', async () => {
+      const update = jest.fn().mockResolvedValue({ id: 'en1', statusId: 'st-hired' });
       const tx = {
         pipelineEntry: {
-          findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1' }),
+          findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', job: { pipelineId: 'p1' }, status: { stage: { category: 'offer' } } }),
           update,
           findUnique: jest.fn().mockResolvedValue({ candidateId: 'cand-1', candidate: { name: 'Asha Rao' }, job: { title: 'Backend Engineer' } }),
         },
       };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-hired', name: 'hired' }, stage: { pipelineId: 'p1', category: 'hired' } });
 
-      await service.patchEntry(context, 'user-1', 'en1', { stage: 'hired' });
+      await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-hired' });
 
       expect(integrationEvents.emit).toHaveBeenCalledWith(
         'org-1',
@@ -760,66 +799,109 @@ describe('PipelineService', () => {
       );
     });
 
-    it('does not emit candidate.hired on a non-hired stage move', async () => {
-      const tx = { pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', stage: 'offer' }), update: jest.fn().mockResolvedValue({ id: 'en1', stage: 'interview' }) } };
+    it('does not emit candidate.hired on a non-hired status move', async () => {
+      const tx = {
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', job: { pipelineId: 'p1' }, status: { stage: { category: 'offer' } } }),
+          update: jest.fn().mockResolvedValue({ id: 'en1', statusId: 'st-int' }),
+        },
+      };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-int', name: 'interview' }, stage: { pipelineId: 'p1', category: 'active' } });
 
-      await service.patchEntry(context, 'user-1', 'en1', { stage: 'interview' });
+      await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-int' });
 
       expect(integrationEvents.emit).not.toHaveBeenCalled();
     });
 
-    it('does not re-emit candidate.hired when the entry was already hired (idempotent)', async () => {
+    it('does not re-emit candidate.hired when the entry is already in a hired-category status (idempotent)', async () => {
       const tx = {
         pipelineEntry: {
-          findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', stage: 'hired' }),
-          update: jest.fn().mockResolvedValue({ id: 'en1', stage: 'hired' }),
+          findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', job: { pipelineId: 'p1' }, status: { stage: { category: 'hired' } } }),
+          update: jest.fn().mockResolvedValue({ id: 'en1', statusId: 'st-hired' }),
           findUnique: jest.fn(),
         },
       };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-hired', name: 'hired' }, stage: { pipelineId: 'p1', category: 'hired' } });
 
-      await service.patchEntry(context, 'user-1', 'en1', { stage: 'hired' });
+      await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-hired' });
 
       expect(integrationEvents.emit).not.toHaveBeenCalled();
     });
 
-    it('rejects an invalid stage with BadRequestException', async () => {
-      const tx = { pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1' }), update: jest.fn() } };
+    it('rejects an unresolvable statusId with BadRequestException', async () => {
+      const tx = {
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', job: { pipelineId: 'p1' }, status: null }),
+          update: jest.fn(),
+        },
+      };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      pipelines.resolveStatus.mockResolvedValue(null);
 
-      await expect(service.patchEntry(context, 'user-1', 'en1', { stage: 'bogus' })).rejects.toThrow(BadRequestException);
+      await expect(service.patchEntry(context, 'user-1', 'en1', { statusId: 'bogus' })).rejects.toThrow(BadRequestException);
     });
 
-    it('rejected:true sets flag+reason+rejectedAt, leaves stage untouched, and audits entry.rejected', async () => {
+    it("rejects a status that does not belong to the job's pipeline", async () => {
+      const tx = {
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', job: { pipelineId: 'p1' }, status: null }),
+          update: jest.fn(),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-other', name: 'other' }, stage: { pipelineId: 'p2', category: 'active' } });
+
+      await expect(service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-other' })).rejects.toThrow(/pipeline/i);
+      expect(tx.pipelineEntry.update).not.toHaveBeenCalled();
+    });
+
+    it("rejected:true sets flag+reason+rejectedAt, moves to the pipeline's rejected status, and audits entry.rejected", async () => {
       const update = jest.fn().mockResolvedValue({ id: 'en1', rejected: true });
-      const tx = { pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1' }), update } };
+      const tx = {
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', job: { pipelineId: 'p1' }, status: null }),
+          update,
+        },
+        pipelineStage: { findFirst: jest.fn().mockResolvedValue({ id: 'stage-rej', statuses: [{ id: 'st-rej' }] }) },
+      };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
       await service.patchEntry(context, 'user-1', 'en1', { rejected: true, reason: 'not a fit' });
 
+      expect(tx.pipelineStage.findFirst).toHaveBeenCalledWith({
+        where: { pipelineId: 'p1', category: 'rejected' },
+        orderBy: { position: 'asc' },
+        include: { statuses: { orderBy: { position: 'asc' }, take: 1 } },
+      });
       expect(update).toHaveBeenCalledWith({
         where: { id: 'en1' },
-        data: { rejected: true, rejectedReason: 'not a fit', rejectedAt: expect.any(Date) },
+        data: { statusId: 'st-rej', rejected: true, rejectedReason: 'not a fit', rejectedAt: expect.any(Date), archivedAt: null },
       });
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'entry.rejected', entityId: 'en1' }));
     });
 
     it('rejected:false clears the reject fields and audits entry.unrejected', async () => {
       const update = jest.fn().mockResolvedValue({ id: 'en1', rejected: false });
-      const tx = { pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1' }), update } };
+      const tx = {
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', job: { pipelineId: 'p1' }, status: null }),
+          update,
+        },
+      };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
       await service.patchEntry(context, 'user-1', 'en1', { rejected: false });
 
       expect(update).toHaveBeenCalledWith({
         where: { id: 'en1' },
-        data: { rejected: false, rejectedReason: null, rejectedAt: null },
+        data: { rejected: false, rejectedReason: null, rejectedAt: null, archivedAt: null },
       });
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'entry.unrejected', entityId: 'en1' }));
     });
 
-    it('throws BadRequestException for a patch with neither stage nor rejected, and never calls update', async () => {
+    it('throws BadRequestException for a patch with neither statusId nor rejected, and never calls update', async () => {
       const update = jest.fn();
       const tx = { pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1' }), update } };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
@@ -832,20 +914,28 @@ describe('PipelineService', () => {
       const tx = { pipelineEntry: { findFirst: jest.fn().mockResolvedValue(null) } };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
-      await expect(service.patchEntry(context, 'user-1', 'missing', { stage: 'interview' })).rejects.toThrow(NotFoundException);
+      await expect(service.patchEntry(context, 'user-1', 'missing', { statusId: 'st-int' })).rejects.toThrow(NotFoundException);
     });
 
     describe('stage-move comms hook', () => {
-      const tx = { pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'entry-1', jobId: 'job-1' }), update: jest.fn().mockResolvedValue({ id: 'entry-1', stage: 'offer' }) } };
+      const tx = {
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'entry-1', jobId: 'job-1', job: { pipelineId: 'p1' }, status: null }),
+          update: jest.fn().mockResolvedValue({ id: 'entry-1', statusId: 'st-offer' }),
+        },
+        pipelineStage: { findFirst: jest.fn().mockResolvedValue(null) },
+      };
       beforeEach(() => {
         tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+        pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-offer', name: 'offer' }, stage: { pipelineId: 'p1', category: 'offer' } });
       });
 
       it('auto-sends when the target event resolves an auto template', async () => {
         templates.resolveForEvent.mockResolvedValue({ id: 't1', subject: 's', body: 'b', triggerMode: 'auto' });
 
-        const result = await service.patchEntry(context, 'user-1', 'entry-1', { stage: 'offer' });
+        const result = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
 
+        expect(templates.resolveForEvent).toHaveBeenCalledWith(context, 'offer');
         expect(messages.sendMessage).toHaveBeenCalledWith(context, null, 'entry-1', expect.objectContaining({ source: 'stage_auto', templateId: 't1', subject: 's', body: 'b' }));
         expect(result.pendingMessage).toBeUndefined();
       });
@@ -853,7 +943,7 @@ describe('PipelineService', () => {
       it('returns a pendingMessage (does not send) for a prompt template', async () => {
         templates.resolveForEvent.mockResolvedValue({ id: 't1', subject: 's', body: 'b', triggerMode: 'prompt' });
 
-        const r = await service.patchEntry(context, 'user-1', 'entry-1', { stage: 'interview' });
+        const r = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
 
         expect(r.pendingMessage).toMatchObject({ templateId: 't1', subject: 's', body: 'b' });
         expect(messages.sendMessage).not.toHaveBeenCalled();
@@ -870,13 +960,13 @@ describe('PipelineService', () => {
       it('does nothing when no template resolves', async () => {
         templates.resolveForEvent.mockResolvedValue(null);
 
-        const r = await service.patchEntry(context, 'user-1', 'entry-1', { stage: 'screened' });
+        const r = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
 
         expect(r.pendingMessage).toBeUndefined();
         expect(messages.sendMessage).not.toHaveBeenCalled();
       });
 
-      it('does not resolve a template (or send) when neither stage nor rejected:true is set', async () => {
+      it('does not resolve a template (or send) when neither statusId nor rejected:true is set', async () => {
         await service.patchEntry(context, 'user-1', 'entry-1', { rejected: false });
 
         expect(templates.resolveForEvent).not.toHaveBeenCalled();
@@ -886,9 +976,9 @@ describe('PipelineService', () => {
       it('still returns the moved entry when the post-commit comms resolution throws', async () => {
         templates.resolveForEvent.mockRejectedValue(new Error('pool exhausted'));
 
-        const result = await service.patchEntry(context, 'user-1', 'entry-1', { stage: 'offer' });
+        const result = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
 
-        expect(result.entry).toEqual({ id: 'entry-1', stage: 'offer' });
+        expect(result.entry).toEqual({ id: 'entry-1', statusId: 'st-offer' });
         expect(result.pendingMessage).toBeUndefined();
       });
     });

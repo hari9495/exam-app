@@ -13,6 +13,7 @@ import { IntegrationEventsService } from '../integrations/integration-events.ser
 import { NotificationsService } from '../notifications/notifications.service';
 import { ApprovalsService, ApprovalSummary, SubmitResult } from '../approvals/approvals.service';
 import { computeCriteriaHash, validateRubricInput } from '../candidate-fit/candidate-fit.core';
+import { PipelinesService } from './pipelines.service';
 
 export interface FeedbackRow {
   id: string;
@@ -88,6 +89,7 @@ export class PipelineService {
     private readonly integrationEvents: IntegrationEventsService,
     private readonly notifications: NotificationsService,
     private readonly approvals: ApprovalsService,
+    private readonly pipelines: PipelinesService,
   ) {}
 
   async createJob(
@@ -104,6 +106,7 @@ export class PipelineService {
       salaryMin?: number;
       salaryMax?: number;
       salaryCurrency?: string;
+      pipelineId?: string;
     },
   ): Promise<Job> {
     // Requisition gate: a job can't go live (status 'open') until its requisition is approved,
@@ -111,6 +114,7 @@ export class PipelineService {
     // keeps today's behavior of jobs opening immediately.
     const chains = await this.approvals.getChains(context);
     const status = chains.requisition.enabled ? 'draft' : 'open';
+    const pipelineId = await this.resolvePipelineId(context, dto.pipelineId);
 
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const created = await tx.job.create({
@@ -128,6 +132,7 @@ export class PipelineService {
           salaryCurrency: dto.salaryCurrency,
           createdById: actorUserId,
           status,
+          pipelineId,
         },
       });
       await this.audit.record(context, {
@@ -139,6 +144,20 @@ export class PipelineService {
       });
       return created;
     });
+  }
+
+  // Resolves the pipeline a new job should use: the caller's requested pipeline, but only if it
+  // actually belongs to this org -- a stale/foreign id falls back to the org default rather than
+  // 400ing, since picking a pipeline is a convenience, not something worth blocking job creation
+  // over.
+  private async resolvePipelineId(context: TenantContext, requestedId?: string): Promise<string> {
+    if (requestedId) {
+      const owned = await this.tenantPrisma.forTenant(context, (tx) =>
+        tx.pipeline.findFirst({ where: { id: requestedId, organizationId: context.organizationId as string }, select: { id: true } }),
+      );
+      if (owned) return owned.id;
+    }
+    return (await this.pipelines.getDefaultPipeline(context)).id;
   }
 
   async listJobs(context: TenantContext, status?: 'open' | 'closed'): Promise<JobWithCounts[]> {
@@ -430,7 +449,14 @@ export class PipelineService {
 
   async addEntry(context: TenantContext, actorUserId: string, jobId: string, dto: AddEntryDto): Promise<PipelineEntry> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
-      const job = await tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } });
+      const job = await tx.job.findFirst({
+        where: { id: jobId, organizationId: context.organizationId as string },
+        include: {
+          pipeline: {
+            include: { stages: { orderBy: { position: 'asc' }, include: { statuses: { orderBy: { position: 'asc' } } } } },
+          },
+        },
+      });
       if (!job) throw new NotFoundException(`Job ${jobId} not found`);
       if (job.status === 'draft' || job.status === 'pending_approval') throw new ConflictException('Requisition not approved');
 
@@ -455,10 +481,17 @@ export class PipelineService {
         throw new BadRequestException('candidateId or newCandidate is required');
       }
 
+      // New entries land on the job's pipeline's first active-category stage's first status (by
+      // position); falls back to the pipeline's first stage at all if none is category 'active',
+      // and to no statusId if the job has no pipeline (pre-migration edge case -- shouldn't
+      // happen post-seed, since every job gets pipelineId backfilled).
+      const activeStage = job.pipeline?.stages.find((s) => s.category === 'active') ?? job.pipeline?.stages[0];
+      const statusId = activeStage?.statuses[0]?.id;
+
       const entry = await tx.pipelineEntry.upsert({
         where: { jobId_candidateId: { jobId, candidateId } },
-        create: { organizationId: context.organizationId as string, jobId, candidateId, stage: 'applied', enteredVia: 'manual' },
-        update: {}, // stamp-if-absent: never touch stage/enteredVia on re-add
+        create: { organizationId: context.organizationId as string, jobId, candidateId, stage: 'applied', enteredVia: 'manual', statusId },
+        update: {}, // stamp-if-absent: never touch stage/enteredVia/statusId on re-add
       });
       await this.audit.record(context, {
         actorUserId,
@@ -472,26 +505,69 @@ export class PipelineService {
   }
 
   async patchEntry(context: TenantContext, actorUserId: string, entryId: string, dto: PatchEntryDto): Promise<PatchEntryResult> {
-    let previousStage: string | undefined;
-    const entry = await this.tenantPrisma.forTenant(context, async (tx) => {
-      const existing = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: context.organizationId as string } });
-      if (!existing) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
-      previousStage = existing.stage;
+    let didHire = false;
+    // The comms-hook "event" key a template's triggerEvent is matched against. For a statusId
+    // move this is the target status's name -- for the default (seeded) pipeline that's still
+    // exactly the old flat stage name ('applied'/'screened'/.../'hired'), so existing templates
+    // keep matching unchanged; a custom pipeline's status names are whatever the org named them.
+    // ponytail: templates aren't yet redesigned around configurable stages/statuses -- Task 7+
+    // owns that if org-defined status names need their own trigger-event story.
+    let commsEvent: string | null = null;
 
-      let data: { stage?: string; rejected: boolean; rejectedReason: string | null; rejectedAt: Date | null };
+    const entry = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const existing = await tx.pipelineEntry.findFirst({
+        where: { id: entryId, organizationId: context.organizationId as string },
+        include: { job: { select: { pipelineId: true } }, status: { include: { stage: true } } },
+      });
+      if (!existing) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
+      const previousCategory = existing.status?.stage.category;
+
+      let data: { statusId?: string; rejected: boolean; rejectedReason: string | null; rejectedAt: Date | null; archivedAt: Date | null };
       let action: string;
-      if (dto.stage !== undefined) {
-        if (!isValidStage(dto.stage)) throw new BadRequestException(`Invalid stage ${dto.stage}`);
-        data = { stage: dto.stage, rejected: false, rejectedReason: null, rejectedAt: null };
+      if (dto.statusId !== undefined) {
+        const resolved = await this.pipelines.resolveStatus(context, dto.statusId);
+        if (!resolved || resolved.stage.pipelineId !== existing.job.pipelineId) {
+          throw new BadRequestException('status does not belong to the job pipeline');
+        }
+        const category = resolved.stage.category;
+        data = {
+          statusId: dto.statusId,
+          rejected: category === 'rejected',
+          rejectedReason: category === 'rejected' ? (dto.reason ?? null) : null,
+          rejectedAt: category === 'rejected' ? new Date() : null,
+          archivedAt: category === 'archived' ? new Date() : null,
+        };
         action = 'entry.stage_changed';
+        didHire = category === 'hired' && previousCategory !== 'hired';
+        commsEvent = resolved.status.name;
       } else if (dto.rejected === true) {
-        data = { rejected: true, rejectedReason: dto.reason ?? null, rejectedAt: new Date() };
+        // Back-compat: a caller sending only `rejected:true` (no statusId) still lands the entry
+        // on the pipeline's first rejected-category status, so statusId and the rejected mirror
+        // never disagree. Skips (leaves statusId untouched) if the job has no pipeline yet --
+        // shouldn't happen post-migration, but keeps this branch safe rather than throwing.
+        let rejectStatusId: string | undefined;
+        if (existing.job.pipelineId) {
+          const rejectStage = await tx.pipelineStage.findFirst({
+            where: { pipelineId: existing.job.pipelineId, category: 'rejected' },
+            orderBy: { position: 'asc' },
+            include: { statuses: { orderBy: { position: 'asc' }, take: 1 } },
+          });
+          rejectStatusId = rejectStage?.statuses[0]?.id;
+        }
+        data = {
+          ...(rejectStatusId ? { statusId: rejectStatusId } : {}),
+          rejected: true,
+          rejectedReason: dto.reason ?? null,
+          rejectedAt: new Date(),
+          archivedAt: null,
+        };
         action = 'entry.rejected';
+        commsEvent = 'rejected';
       } else if (dto.rejected === false) {
-        data = { rejected: false, rejectedReason: null, rejectedAt: null };
+        data = { rejected: false, rejectedReason: null, rejectedAt: null, archivedAt: null };
         action = 'entry.unrejected';
       } else {
-        throw new BadRequestException('patchEntry requires a stage or a rejected flag');
+        throw new BadRequestException('patchEntry requires a statusId or a rejected flag');
       }
 
       const updated = await tx.pipelineEntry.update({ where: { id: entryId }, data });
@@ -502,8 +578,9 @@ export class PipelineService {
     // Fan the hire out to integrations (webhook/chat/Zapier -> the org's HRIS for onboarding).
     // Post-commit, in its own guard so it fires regardless of the comms branch below and can never
     // affect the stage move that already persisted. emit() is itself never-throw. Gated on the
-    // transition INTO hired (previousStage !== 'hired') so a re-save can't re-trigger onboarding.
-    if (dto.stage === 'hired' && previousStage !== 'hired') {
+    // transition INTO a hired-category status (didHire, computed from the previous status's
+    // category) so a re-save can't re-trigger onboarding.
+    if (didHire) {
       try {
         const info = await this.tenantPrisma.forTenant(context, (tx) =>
           tx.pipelineEntry.findUnique({
@@ -523,14 +600,12 @@ export class PipelineService {
       }
     }
 
-    // Stage-move comms hook: runs AFTER the tx above has committed. dto.stage takes priority
-    // over rejected (patchEntry only ever sets one or the other -- see the branch above).
-    // Wrapped so a transient failure here (e.g. resolveForEvent hitting a starved pool) can
-    // never surface as an error for a stage move that already persisted.
+    // Stage-move comms hook: runs AFTER the tx above has committed. Wrapped so a transient
+    // failure here (e.g. resolveForEvent hitting a starved pool) can never surface as an error
+    // for a stage move that already persisted.
     try {
-      const event = dto.stage ? dto.stage : dto.rejected === true ? 'rejected' : null;
-      if (event) {
-        const tpl = await this.templates.resolveForEvent(context, event);
+      if (commsEvent) {
+        const tpl = await this.templates.resolveForEvent(context, commsEvent);
         if (tpl?.triggerMode === 'auto') {
           // Fire-and-forget: the stage-move response must not block on email delivery.
           this.messages

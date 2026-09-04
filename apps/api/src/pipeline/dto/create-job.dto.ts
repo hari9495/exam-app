@@ -33,4 +33,7 @@ export class CreateJobDto {
 
   @IsOptional() @IsString()
   salaryCurrency?: string;
+
+  @IsOptional() @IsUUID()
+  pipelineId?: string;
 }
