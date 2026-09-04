@@ -5,6 +5,16 @@ import { PrismaService, TenantPrismaService, BlobStorageService } from '@exam-pl
 import { JobsService } from '../jobs/jobs.service';
 import { IntegrationEventsService } from '../integrations/integration-events.service';
 
+// apply() now calls recomputeGlobalStage(tx, ...) as its last write, which reads
+// tx.pipelineEntry.findMany + tx.candidateEmail.count and writes tx.candidate.update. Default to
+// an empty/no-op shape (spread first) so a test's own mock for any of these still wins.
+function withRecomputeMocks(tx: any) {
+  tx.pipelineEntry = { findMany: jest.fn().mockResolvedValue([]), ...tx.pipelineEntry };
+  tx.candidateEmail = { count: jest.fn().mockResolvedValue(0) };
+  tx.candidate = { update: jest.fn().mockResolvedValue({}), ...tx.candidate };
+  return tx;
+}
+
 describe('PublicApplicationsService', () => {
   let service: PublicApplicationsService;
   let prisma: { organization: { findUnique: jest.Mock; findMany: jest.Mock } };
@@ -128,14 +138,14 @@ describe('PublicApplicationsService', () => {
 
     it('stores résumé, upserts candidate/profile/entry, enqueues parse, returns token', async () => {
       const bootstrapTx = { job: { findUnique: jest.fn().mockResolvedValue(openJob) } };
-      const writeTx = {
+      const writeTx = withRecomputeMocks({
         candidate: {
           findUnique: jest.fn().mockResolvedValue(null),
           upsert: jest.fn().mockResolvedValue({ id: 'cand-1', portalToken: 'ptok-1' }),
         },
         candidateProfile: { upsert: jest.fn().mockResolvedValue({ id: 'prof-1' }) },
         pipelineEntry: { upsert: jest.fn().mockResolvedValue({ id: 'en-1', applicationToken: 'tok-generated' }) },
-      };
+      });
       tenantPrisma.forTenant
         .mockImplementationOnce((_c, fn) => fn(bootstrapTx))
         .mockImplementationOnce((_c, fn) => fn(writeTx));
@@ -191,6 +201,11 @@ describe('PublicApplicationsService', () => {
         'candidate.applied',
         expect.objectContaining({ subject: 'A', source: 'public', linkPath: '/candidates/cand-1' }),
       );
+      // A public application must recompute globalStage so the candidate isn't left stale.
+      expect(writeTx.candidate.update).toHaveBeenCalledWith(expect.objectContaining({
+        where: { id: 'cand-1' },
+        data: expect.objectContaining({ globalStage: expect.any(String) }),
+      }));
     });
 
     it('re-apply returns the existing token (upsert update: {} keeps the entry as-is)', async () => {
@@ -205,7 +220,7 @@ describe('PublicApplicationsService', () => {
       };
       tenantPrisma.forTenant
         .mockImplementationOnce((_c, fn) => fn(bootstrapTx))
-        .mockImplementationOnce((_c, fn) => fn(writeTx));
+        .mockImplementationOnce((_c, fn) => fn(withRecomputeMocks(writeTx)));
       blobStorage.upload.mockResolvedValue('candidates/org-1/new-upload.pdf');
       jobsService.enqueue.mockResolvedValue({ id: 'aijob-2' });
 
@@ -240,7 +255,7 @@ describe('PublicApplicationsService', () => {
       };
       tenantPrisma.forTenant
         .mockImplementationOnce((_c, fn) => fn(bootstrapTx))
-        .mockImplementationOnce((_c, fn) => fn(writeTx));
+        .mockImplementationOnce((_c, fn) => fn(withRecomputeMocks(writeTx)));
       blobStorage.upload.mockResolvedValue('candidates/org-1/some-uuid.pdf');
       jobsService.enqueue.mockResolvedValue({ id: 'aijob-4' });
 
@@ -269,7 +284,7 @@ describe('PublicApplicationsService', () => {
       };
       tenantPrisma.forTenant
         .mockImplementationOnce((_c, fn) => fn(bootstrapTx))
-        .mockImplementationOnce((_c, fn) => fn(writeTx));
+        .mockImplementationOnce((_c, fn) => fn(withRecomputeMocks(writeTx)));
       blobStorage.upload.mockResolvedValue('candidates/org-1/attacker-upload.pdf');
       jobsService.enqueue.mockResolvedValue({ id: 'aijob-3' });
 

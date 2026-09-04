@@ -38,7 +38,9 @@ export class PipelineAnalyticsService {
   async getHiring(context: TenantContext, filter: { from: Date; to: Date; jobId?: string }): Promise<HiringAnalytics> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const orgId = context.organizationId as string;
-      const orgWindowWhere = { organizationId: orgId, createdAt: { gte: filter.from, lte: filter.to } };
+      // archivedAt: null matches the board/counts filters (Task 6) -- an archived entry (e.g. a
+      // job-close sibling, or a stale duplicate) must not inflate the funnel/sources/jobs counts.
+      const orgWindowWhere = { organizationId: orgId, archivedAt: null, createdAt: { gte: filter.from, lte: filter.to } };
       const filteredWhere = filter.jobId ? { ...orgWindowWhere, jobId: filter.jobId } : orgWindowWhere;
 
       const jobRows = await tx.job.findMany({ where: { organizationId: orgId }, select: { id: true, title: true, status: true } });

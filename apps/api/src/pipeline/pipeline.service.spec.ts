@@ -1283,14 +1283,14 @@ describe('PipelineService', () => {
   describe('linkExam', () => {
     it('links and backfills already-invited candidates as enteredVia=exam', async () => {
       const upsert = jest.fn().mockResolvedValue({ id: 'en1' });
-      const tx = {
+      const tx = withRecomputeMocks({
         job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }) },
         // findMany backs syncEntriesForInvitations's own lookup of jobs linked to this exam --
         // reused by linkExam for the backfill, so it must resolve the job just upserted above.
         jobExam: { upsert: jest.fn().mockResolvedValue({ id: 'jx1' }), findMany: jest.fn().mockResolvedValue([{ jobId: 'job-1' }]) },
         invitation: { findMany: jest.fn().mockResolvedValue([{ candidateId: 'c1' }, { candidateId: 'c2' }]) },
         pipelineEntry: { upsert },
-      };
+      });
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
       const result = await service.linkExam(context, 'user-1', 'job-1', 'e1');
@@ -1308,6 +1308,8 @@ describe('PipelineService', () => {
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({
         actorUserId: 'user-1', action: 'job.exam_linked', entityType: 'job', entityId: 'job-1', metadata: { examId: 'e1' },
       }));
+      // Backfilled entries must recompute both affected candidates' globalStage.
+      expect(tx.candidate.update).toHaveBeenCalledTimes(2);
     });
 
     it('throws NotFoundException when the job is not in org', async () => {
@@ -1343,9 +1345,9 @@ describe('PipelineService', () => {
   });
 
   describe('syncEntriesForInvitations', () => {
-    it('upserts one entry per linked job x candidate', async () => {
+    it('upserts one entry per linked job x candidate, then recomputes the one distinct candidate', async () => {
       const upsert = jest.fn().mockResolvedValue({ id: 'en1' });
-      const tx = { jobExam: { findMany: jest.fn().mockResolvedValue([{ jobId: 'job-1' }, { jobId: 'job-2' }]) }, pipelineEntry: { upsert } };
+      const tx = withRecomputeMocks({ jobExam: { findMany: jest.fn().mockResolvedValue([{ jobId: 'job-1' }, { jobId: 'job-2' }]) }, pipelineEntry: { upsert } });
 
       await service.syncEntriesForInvitations(tx as any, context, 'e1', ['c1']);
 
@@ -1356,42 +1358,50 @@ describe('PipelineService', () => {
         create: { organizationId: 'org-1', jobId: 'job-1', candidateId: 'c1', enteredVia: 'exam' },
         update: {},
       });
+      // One candidate touched by both upserts above -- recomputed once, not twice.
+      expect(tx.candidate.update).toHaveBeenCalledTimes(1);
+      expect(tx.candidate.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'c1' } }));
     });
 
-    it('is a no-op when the exam is linked to no job', async () => {
+    it('is a no-op when the exam is linked to no job (no upsert, no recompute)', async () => {
       const upsert = jest.fn();
-      const tx = { jobExam: { findMany: jest.fn().mockResolvedValue([]) }, pipelineEntry: { upsert } };
+      const tx = withRecomputeMocks({ jobExam: { findMany: jest.fn().mockResolvedValue([]) }, pipelineEntry: { upsert } });
 
       await service.syncEntriesForInvitations(tx as any, context, 'e1', ['c1', 'c2']);
 
       expect(upsert).not.toHaveBeenCalled();
+      expect(tx.candidate.update).not.toHaveBeenCalled();
     });
 
-    it('upserts every job x candidate pair for multiple candidates', async () => {
+    it('upserts every job x candidate pair and recomputes each distinct candidate once', async () => {
       const upsert = jest.fn().mockResolvedValue({ id: 'en1' });
-      const tx = { jobExam: { findMany: jest.fn().mockResolvedValue([{ jobId: 'job-1' }]) }, pipelineEntry: { upsert } };
+      const tx = withRecomputeMocks({ jobExam: { findMany: jest.fn().mockResolvedValue([{ jobId: 'job-1' }]) }, pipelineEntry: { upsert } });
 
       await service.syncEntriesForInvitations(tx as any, context, 'e1', ['c1', 'c2']);
 
       expect(upsert).toHaveBeenCalledTimes(2);
+      expect(tx.candidate.update).toHaveBeenCalledTimes(2);
     });
   });
 
-  it('upsertDriveEntry upserts a drive entry stamp-if-absent using the caller tx', async () => {
+  it('upsertDriveEntry upserts a drive entry stamp-if-absent using the caller tx, then recomputes', async () => {
     const upsert = jest.fn().mockResolvedValue({ id: 'en-1' });
-    const tx = { pipelineEntry: { upsert } };
+    const tx = withRecomputeMocks({ pipelineEntry: { upsert } });
     await service.upsertDriveEntry(tx as any, context, 'job-1', 'cand-1');
     expect(upsert).toHaveBeenCalledWith({
       where: { jobId_candidateId: { jobId: 'job-1', candidateId: 'cand-1' } },
       create: { organizationId: 'org-1', jobId: 'job-1', candidateId: 'cand-1', enteredVia: 'drive' },
       update: {},
     });
+    expect(tx.candidate.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'cand-1' } }));
   });
 
   describe('deleteEntry', () => {
-    it('deletes the entry and audits entry.removed', async () => {
+    it('deletes the entry, audits entry.removed, and recomputes the freed candidate\'s globalStage after the delete', async () => {
       const del = jest.fn().mockResolvedValue({ id: 'en1' });
-      const tx = { pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1' }), delete: del } };
+      const tx = withRecomputeMocks({
+        pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', candidateId: 'cand-1' }), delete: del },
+      });
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
       const result = await service.deleteEntry(context, 'user-1', 'en1');
@@ -1399,6 +1409,11 @@ describe('PipelineService', () => {
       expect(result).toEqual({ success: true });
       expect(del).toHaveBeenCalledWith({ where: { id: 'en1' } });
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'entry.removed', entityId: 'en1' }));
+      expect(tx.candidate.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'cand-1' } }));
+      // Recompute must run AFTER the delete, so it sees the entry already gone.
+      const deleteOrder = del.mock.invocationCallOrder[0];
+      const recomputeOrder = (tx.candidate.update as jest.Mock).mock.invocationCallOrder[0];
+      expect(recomputeOrder).toBeGreaterThan(deleteOrder);
     });
 
     it('throws NotFoundException for an unknown entry', async () => {

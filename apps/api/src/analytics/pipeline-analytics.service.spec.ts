@@ -20,7 +20,7 @@ describe('PipelineAnalyticsService.getHiring', () => {
     const out = await service.getHiring(context, { from, to });
 
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { organizationId: 'org-1', createdAt: { gte: from, lte: to } },
+      where: { organizationId: 'org-1', archivedAt: null, createdAt: { gte: from, lte: to } },
       select: {
         rejected: true,
         enteredVia: true,
@@ -55,10 +55,10 @@ describe('PipelineAnalyticsService.getHiring', () => {
     // Two cohort fetches: filtered-by-job for funnel/timeToHire/sources, org-wide window for jobs table.
     expect(findMany).toHaveBeenCalledTimes(2);
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { organizationId: 'org-1', createdAt: { gte: from, lte: to }, jobId: 'job-1' },
+      where: { organizationId: 'org-1', archivedAt: null, createdAt: { gte: from, lte: to }, jobId: 'job-1' },
     }));
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { organizationId: 'org-1', createdAt: { gte: from, lte: to } },
+      where: { organizationId: 'org-1', archivedAt: null, createdAt: { gte: from, lte: to } },
     }));
 
     // funnel reflects only job-1's single hired entry.

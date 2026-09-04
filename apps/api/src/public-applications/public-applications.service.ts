@@ -7,6 +7,7 @@ import { expandedName } from '../walk-in/walk-in.service';
 import { applicationStatusBucket } from './application-status';
 import { validatePdfUpload } from './pdf-validation';
 import { ApplyDto } from './dto/apply.dto';
+import { recomputeGlobalStage } from '../candidates/recompute-global-stage';
 
 // Job-feed fields are wrapped in CDATA (the aggregator-standard for free-text). The only way to
 // break out of CDATA is the literal "]]>", so split it so it can never terminate the section early.
@@ -202,6 +203,8 @@ export class PublicApplicationsService {
         // though the profile above IS refreshed with the newly-uploaded résumé.
         update: {},
       });
+      // Last write in the tx: a public application always makes the candidate at least 'engaged'.
+      await recomputeGlobalStage(tx, job.organizationId, candidate.id);
       return { entry, candidateId: candidate.id, isNewCandidate, portalToken };
     });
 

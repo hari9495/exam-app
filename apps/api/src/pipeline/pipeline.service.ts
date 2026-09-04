@@ -824,6 +824,7 @@ export class PipelineService {
    */
   async syncEntriesForInvitations(tx: any, context: TenantContext, examId: string, candidateIds: string[]): Promise<void> {
     const links = await tx.jobExam.findMany({ where: { examId }, select: { jobId: true } });
+    if (!links.length) return; // no job linked -- nothing was (or could be) upserted, nothing to recompute
     for (const { jobId } of links) {
       for (const candidateId of candidateIds) {
         await tx.pipelineEntry.upsert({
@@ -832,6 +833,10 @@ export class PipelineService {
           update: {},
         });
       }
+    }
+    // Recompute once per distinct candidate (not once per job x candidate upsert above).
+    for (const candidateId of new Set(candidateIds)) {
+      await recomputeGlobalStage(tx, context.organizationId as string, candidateId);
     }
   }
 
@@ -844,6 +849,7 @@ export class PipelineService {
       create: { organizationId: context.organizationId as string, jobId, candidateId, enteredVia: 'drive' },
       update: {},
     });
+    await recomputeGlobalStage(tx, context.organizationId as string, candidateId);
   }
 
   async deleteEntry(context: TenantContext, actorUserId: string, entryId: string): Promise<{ success: true }> {
@@ -852,6 +858,9 @@ export class PipelineService {
       if (!existing) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
       await tx.pipelineEntry.delete({ where: { id: entryId } });
       await this.audit.record(context, { actorUserId, action: 'entry.removed', entityType: 'pipeline_entry', entityId: entryId });
+      // Last write in the tx: the deleted entry can no longer keep the candidate at its old stage
+      // (e.g. still 'engaged' after their only entry is gone).
+      await recomputeGlobalStage(tx, context.organizationId as string, existing.candidateId);
     });
     return { success: true };
   }
