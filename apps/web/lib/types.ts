@@ -281,6 +281,65 @@ export const STAGE_LABEL: Record<PipelineStage, string> = {
   hired: 'Hired',
 };
 
+// --- Configurable pipeline config types (Phase A, Task 9) ---
+// Mirrors apps/api/src/pipeline/pipelines.service.ts + apps/api's PipelineWithStages/Board.
+// Named distinctly from PipelineStage/BoardRow above (the flat-stage constants) to avoid a
+// duplicate-identifier clash -- those stay in place until Task 11 migrates the board/jobs/
+// message-templates pages off them.
+export type StageCategory = 'active' | 'offer' | 'hired' | 'rejected' | 'archived';
+
+export interface PipelineStatus {
+  id: string;
+  name: string;
+  position: number;
+}
+
+// The API's own type here is called `PipelineStage` (see pipelines.service.ts) -- renamed to
+// PipelineStageConfig on the web to coexist with the pre-existing flat-stage union type above.
+export interface PipelineStageConfig {
+  id: string;
+  name: string;
+  category: StageCategory;
+  position: number;
+  statuses: PipelineStatus[];
+}
+
+export interface Pipeline {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  stages: PipelineStageConfig[];
+}
+
+// Mirrors apps/api/src/pipeline/pipeline.service.ts's (new, config-aware) BoardRow -- distinct
+// from the pre-existing BoardRow interface further down, which is keyed off the flat
+// PipelineStage union and backs the pre-migration board (Task 11 replaces it with BoardData).
+export interface BoardEntryRow {
+  entryId: string;
+  candidateId: string;
+  candidateName: string;
+  candidateEmail: string;
+  statusId: string;
+  stageId: string;
+  category: StageCategory;
+  enteredVia: string;
+  rejectedReason: string | null;
+  examResults: EntryExamResult[];
+  avgRating: number | null;
+  feedbackCount: number;
+  fitScore: number | null;
+  fitStatus: string | null;
+  fitStale: boolean;
+  assignedUserId: string | null;
+  assigneeName: string | null;
+}
+
+// Mirrors apps/api/src/pipeline/pipeline.service.ts's Board -- the getBoard() response shape.
+export interface BoardData {
+  pipeline: { id: string; name: string; stages: PipelineStageConfig[] };
+  columns: Record<string, BoardEntryRow[]>;
+}
+
 // Public, unauthenticated candidate-facing shapes -- served by /public/jobs/:applyToken and
 // /public/applications/:statusToken, consumed by the apply/status pages via plain fetch.
 export interface PublicJob {
