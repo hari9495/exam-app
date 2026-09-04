@@ -1,6 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { TenantPrismaService, TenantContext } from '@exam-platform/shared';
 import { NOTIFICATION_TYPES, NOTIFICATION_TYPE_BY_KEY } from './notification-types';
+import { renderNotificationEmail } from './notification-email-render';
+import { EmailService } from '../email/email.service';
 
 export interface NotificationView {
   id: string;
@@ -24,10 +26,17 @@ export interface MentionTarget {
 
 @Injectable()
 export class NotificationsService {
-  constructor(private readonly tenantPrisma: TenantPrismaService) {}
+  private readonly logger = new Logger(NotificationsService.name);
+
+  constructor(
+    private readonly tenantPrisma: TenantPrismaService,
+    private readonly emailService: EmailService,
+  ) {}
 
   // Core: notify teammates of some event. Validated: only users that actually belong to the same
   // org, never the actor themselves (you don't get notified for your own action).
+  // Bell rows are created inside the tenant tx (must not be lost). Email is best-effort and runs
+  // AFTER the tx commits -- an SMTP failure must never roll back or block the bell notification.
   async notify(
     context: TenantContext,
     actorUserId: string,
@@ -37,11 +46,18 @@ export class NotificationsService {
   ): Promise<void> {
     const ids = [...new Set(recipientUserIds)].filter((id) => id && id !== actorUserId);
     if (ids.length === 0) return;
-    await this.tenantPrisma.forTenant(context, async (tx) => {
+
+    const { outbox, actorName } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const valid = await tx.user.findMany({
         where: { id: { in: ids }, organizationId: context.organizationId as string },
-        select: { id: true },
+        select: { id: true, email: true, name: true },
       });
+      const outbox: { to: string; prefMap: Map<string, boolean> }[] = [];
+      let actorName: string | null = null;
+      if (valid.length > 0) {
+        const actor = await tx.user.findUnique({ where: { id: actorUserId }, select: { name: true } });
+        actorName = actor?.name ?? null;
+      }
       for (const u of valid) {
         await tx.userNotification.create({
           data: {
@@ -55,8 +71,35 @@ export class NotificationsService {
             linkPath: target.linkPath,
           },
         });
+        if (u.email) {
+          const prefMap = await this.resolveEmailEnabledByType(tx, u.id);
+          outbox.push({ to: u.email, prefMap });
+        }
       }
+      return { outbox, actorName };
     });
+
+    if (outbox.length === 0) return;
+
+    // Best-effort, post-commit: never let an email failure surface out of notify().
+    try {
+      const appBaseUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
+      const typeDef = NOTIFICATION_TYPE_BY_KEY.get(type);
+      const sends = outbox
+        .filter((entry) => entry.prefMap.get(type) ?? true)
+        .map((entry) => {
+          const { subject, html } = renderNotificationEmail(typeDef, {
+            actorName,
+            contextText: target.contextText ?? null,
+            linkPath: target.linkPath,
+            appBaseUrl,
+          });
+          return this.emailService.send({ to: entry.to, subject, html, organizationId: context.organizationId as string });
+        });
+      await Promise.allSettled(sends);
+    } catch (error) {
+      this.logger.error('Failed to send notification email(s)', error as Error);
+    }
   }
 
   // @mentions in candidate feedback.
