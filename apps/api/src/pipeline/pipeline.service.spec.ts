@@ -651,6 +651,33 @@ describe('PipelineService', () => {
     expect(Object.values(board.columns).flat()).toHaveLength(0);
   });
 
+  it('getBoard omits archived entries from all columns', async () => {
+    const entries = [
+      { id: 'active-entry', candidateId: 'c1', enteredVia: 'manual', rejectedReason: null, archivedAt: null,
+        status: { id: 'status-applied', stage: { id: 'st-applied', category: 'active' } },
+        candidate: { name: 'Amy', email: 'amy@x.com', invitations: [] }, feedback: [] },
+      { id: 'archived-entry', candidateId: 'c2', enteredVia: 'manual', rejectedReason: null, archivedAt: new Date(),
+        status: { id: 'status-applied', stage: { id: 'st-applied', category: 'active' } },
+        candidate: { name: 'Bo', email: 'bo@x.com', invitations: [] }, feedback: [] },
+    ];
+    const tx = {
+      job: { findFirst: jest.fn().mockResolvedValue({ id: 'job1', pipeline: boardPipeline() }) },
+      jobExam: { findMany: jest.fn().mockResolvedValue([]) },
+      pipelineEntry: {
+        // Stands in for Prisma's real filtering: only excludes archived rows once the service
+        // actually asks for `archivedAt: null` in the where clause.
+        findMany: jest.fn(({ where }: any) => Promise.resolve(where.archivedAt === null ? entries.filter((e) => e.archivedAt === null) : entries)),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+    const board = await service.getBoard(context, 'job1');
+
+    const allRows = Object.values(board.columns).flat();
+    expect(allRows.map((r) => r.entryId)).not.toContain('archived-entry');
+    expect(allRows.map((r) => r.entryId)).toContain('active-entry');
+  });
+
   it('stageCountsFor rolls counts up by category across custom stage names', async () => {
     const pipeline = {
       stages: [
@@ -674,6 +701,7 @@ describe('PipelineService', () => {
 
     const { byStageId, byCategory } = await service.stageCountsFor(context, 'job1');
 
+    expect(tx.pipelineEntry.groupBy).toHaveBeenCalledWith({ by: ['statusId'], where: { jobId: 'job1', archivedAt: null }, _count: true });
     expect(byStageId).toEqual({ 'st-a': 3, 'st-h': 2, 'st-r': 2 });
     expect(byCategory.active).toBe(3);
     expect(byCategory.hired).toBe(2);
@@ -698,6 +726,9 @@ describe('PipelineService', () => {
 
     const jobs = await service.listJobs(context);
 
+    expect(tx.pipelineEntry.groupBy).toHaveBeenCalledWith({
+      by: ['jobId', 'statusId'], where: { organizationId: 'org-1', archivedAt: null }, _count: true,
+    });
     expect(jobs.find((j) => j.id === 'job-1')!.stageCounts).toEqual({
       byStageId: { 'st-applied': 3, 'st-interview': 0, 'st-rejected': 2 },
       byCategory: { active: 3, offer: 0, hired: 0, rejected: 2, archived: 0 },

@@ -223,7 +223,7 @@ export class PipelineService {
 
       const grouped = await tx.pipelineEntry.groupBy({
         by: ['jobId', 'statusId'],
-        where: { organizationId: context.organizationId as string },
+        where: { organizationId: context.organizationId as string, archivedAt: null },
         _count: true,
       });
       const countsByJob = new Map<string, Map<string, number>>();
@@ -260,7 +260,7 @@ export class PipelineService {
       const stages = job.pipeline?.stages ?? [];
       const statusToStage = buildStatusToStageMap(stages);
 
-      const grouped = await tx.pipelineEntry.groupBy({ by: ['statusId'], where: { jobId }, _count: true });
+      const grouped = await tx.pipelineEntry.groupBy({ by: ['statusId'], where: { jobId, archivedAt: null }, _count: true });
       const countsByStatusId = new Map<string, number>();
       for (const g of grouped) {
         if (!g.statusId) continue;
@@ -515,7 +515,7 @@ export class PipelineService {
       const links = await tx.jobExam.findMany({ where: { jobId }, select: { examId: true } });
       const linkedExamIds = links.map((l) => l.examId);
       const entries = await tx.pipelineEntry.findMany({
-        where: { jobId },
+        where: { jobId, archivedAt: null },
         include: {
           candidate: { include: { invitations: { include: { exam: { select: { title: true } }, attempt: { include: { result: true } } } } } },
           feedback: { select: { rating: true } },
