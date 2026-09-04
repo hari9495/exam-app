@@ -1,8 +1,8 @@
 import { randomUUID } from 'crypto';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Job, PipelineEntry, PipelineFeedback } from '@prisma/client';
-import { TenantPrismaService, TenantContext, AuditService } from '@exam-platform/shared';
-import { PIPELINE_STAGES, PipelineStage, isValidStage } from './pipeline-stages';
+import { TenantPrismaService, TenantContext, AuditService, StageCategory, STAGE_CATEGORIES } from '@exam-platform/shared';
+import { isValidStage } from './pipeline-stages';
 import { EntryExamResult, deriveEntryExamResults, averageRating } from './derive-entry-exam-results';
 import { AddEntryDto } from './dto/add-entry.dto';
 import { PatchEntryDto } from './dto/patch-entry.dto';
@@ -24,8 +24,13 @@ export interface FeedbackRow {
   createdAt: Date;
 }
 
+export interface StageCounts {
+  byStageId: Record<string, number>;
+  byCategory: Record<StageCategory, number>;
+}
+
 export interface JobWithCounts extends Job {
-  stageCounts: Record<PipelineStage, number> & { rejected: number };
+  stageCounts: StageCounts;
   approval: ApprovalSummary | null;
 }
 
@@ -34,7 +39,9 @@ export interface BoardRow {
   candidateId: string;
   candidateName: string;
   candidateEmail: string;
-  stage: PipelineStage;
+  statusId: string;
+  stageId: string;
+  category: StageCategory;
   enteredVia: string;
   rejectedReason: string | null;
   examResults: EntryExamResult[];
@@ -47,9 +54,17 @@ export interface BoardRow {
   fitStale: boolean;
 }
 
-export interface PipelineBoard {
-  stages: Record<PipelineStage, BoardRow[]>;
-  rejected: BoardRow[];
+export interface BoardStage {
+  id: string;
+  name: string;
+  category: StageCategory;
+  position: number;
+  statuses: { id: string; name: string; position: number }[];
+}
+
+export interface Board {
+  pipeline: { id: string; name: string; stages: BoardStage[] };
+  columns: Record<string, BoardRow[]>;
 }
 
 // RFC-4180 CSV field encode + spreadsheet formula-injection guard: a leading =/+/-/@ (or tab/CR)
@@ -61,9 +76,36 @@ function csvEscape(value: string): string {
   return s;
 }
 
-function emptyStageCounts(): Record<PipelineStage, number> & { rejected: number } {
-  const counts = Object.fromEntries(PIPELINE_STAGES.map((s) => [s, 0])) as Record<PipelineStage, number>;
-  return { ...counts, rejected: 0 };
+function emptyByCategory(): Record<StageCategory, number> {
+  return Object.fromEntries(STAGE_CATEGORIES.map((c) => [c, 0])) as Record<StageCategory, number>;
+}
+
+// Every stage/status shape below (Prisma rows, plain fixtures, etc.) only needs id/category/statuses
+// for counting purposes -- kept structural rather than importing Prisma's generated types here.
+type CountableStage = { id: string; category: string; statuses: { id: string }[] };
+
+function buildStatusToStageMap(stages: CountableStage[]): Map<string, { stageId: string; category: StageCategory }> {
+  const map = new Map<string, { stageId: string; category: StageCategory }>();
+  for (const s of stages) for (const st of s.statuses) map.set(st.id, { stageId: s.id, category: s.category as StageCategory });
+  return map;
+}
+
+// Rolls up per-status entry counts (statusId -> count) into per-stage and per-category totals,
+// using the job's pipeline stages to seed every stage at 0 (so an empty stage still shows up).
+function rollUpStageCounts(
+  stages: { id: string; category: string }[],
+  countsByStatusId: Map<string, number>,
+  statusToStage: Map<string, { stageId: string; category: StageCategory }>,
+): StageCounts {
+  const byStageId: Record<string, number> = Object.fromEntries(stages.map((s) => [s.id, 0]));
+  const byCategory = emptyByCategory();
+  for (const [statusId, n] of countsByStatusId) {
+    const info = statusToStage.get(statusId);
+    if (!info) continue;
+    byStageId[info.stageId] = (byStageId[info.stageId] ?? 0) + n;
+    byCategory[info.category] = (byCategory[info.category] ?? 0) + n;
+  }
+  return { byStageId, byCategory };
 }
 
 export interface PendingMessage {
@@ -166,25 +208,66 @@ export class PipelineService {
         where: { organizationId: context.organizationId as string, ...(status ? { status } : {}) },
         orderBy: { createdAt: 'desc' },
       });
+
+      // Batch-load every distinct pipeline the listed jobs use (usually just the org default) --
+      // one query for the whole list, not one per job.
+      const pipelineIds = [...new Set(jobs.map((j) => j.pipelineId).filter((id): id is string => Boolean(id)))];
+      const pipelines = pipelineIds.length
+        ? await tx.pipeline.findMany({
+            where: { id: { in: pipelineIds } },
+            include: { stages: { orderBy: { position: 'asc' }, include: { statuses: { orderBy: { position: 'asc' } } } } },
+          })
+        : [];
+      const stagesByPipelineId = new Map(pipelines.map((p: { id: string; stages: CountableStage[] }) => [p.id, p.stages]));
+      const statusToStage = buildStatusToStageMap(pipelines.flatMap((p: { stages: CountableStage[] }) => p.stages));
+
       const grouped = await tx.pipelineEntry.groupBy({
-        by: ['jobId', 'stage', 'rejected'],
+        by: ['jobId', 'statusId'],
         where: { organizationId: context.organizationId as string },
         _count: true,
       });
-      const countsByJob = new Map<string, Record<PipelineStage, number> & { rejected: number }>();
+      const countsByJob = new Map<string, Map<string, number>>();
       for (const g of grouped) {
-        if (!countsByJob.has(g.jobId)) countsByJob.set(g.jobId, emptyStageCounts());
-        const counts = countsByJob.get(g.jobId)!;
-        const n = g._count as unknown as number;
-        if (g.rejected) counts.rejected += n;
-        else if (isValidStage(g.stage)) counts[g.stage] += n;
+        if (!g.statusId) continue;
+        if (!countsByJob.has(g.jobId)) countsByJob.set(g.jobId, new Map());
+        countsByJob.get(g.jobId)!.set(g.statusId, g._count as unknown as number);
       }
-      return jobs.map((job) => ({ ...job, stageCounts: countsByJob.get(job.id) ?? emptyStageCounts() }));
+
+      return jobs.map((job) => ({
+        ...job,
+        stageCounts: rollUpStageCounts(
+          job.pipelineId ? (stagesByPipelineId.get(job.pipelineId) ?? []) : [],
+          countsByJob.get(job.id) ?? new Map(),
+          statusToStage,
+        ),
+      }));
     });
 
     // One batched call for the whole list, not one per job -- avoids N+1.
     const approvalByJobId = await this.approvals.getSummariesFor(context, 'job', jobs.map((j) => j.id));
     return jobs.map((job) => ({ ...job, approval: approvalByJobId.get(job.id) ?? null }));
+  }
+
+  // Single-job version of the counts rollup above (getJob's detail view, and standalone callers
+  // that only need one job's counts without paying for the whole list's batched queries).
+  async stageCountsFor(context: TenantContext, jobId: string): Promise<StageCounts> {
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const job = await tx.job.findFirst({
+        where: { id: jobId, organizationId: context.organizationId as string },
+        include: { pipeline: { include: { stages: { orderBy: { position: 'asc' }, include: { statuses: { orderBy: { position: 'asc' } } } } } } },
+      });
+      if (!job) throw new NotFoundException(`Job ${jobId} not found`);
+      const stages = job.pipeline?.stages ?? [];
+      const statusToStage = buildStatusToStageMap(stages);
+
+      const grouped = await tx.pipelineEntry.groupBy({ by: ['statusId'], where: { jobId }, _count: true });
+      const countsByStatusId = new Map<string, number>();
+      for (const g of grouped) {
+        if (!g.statusId) continue;
+        countsByStatusId.set(g.statusId, g._count as unknown as number);
+      }
+      return rollUpStageCounts(stages, countsByStatusId, statusToStage);
+    });
   }
 
   async getJob(context: TenantContext, jobId: string): Promise<Job & { linkedExams: { examId: string; title: string }[]; approval: ApprovalSummary | null }> {
@@ -366,7 +449,13 @@ export class PipelineService {
       if (!job) throw new NotFoundException(`Job ${jobId} not found`);
       const entries = await tx.pipelineEntry.findMany({
         where: { jobId },
-        select: { stage: true, rejected: true, createdAt: true, candidate: { select: { name: true, email: true, phone: true } } },
+        select: {
+          stage: true,
+          rejected: true,
+          createdAt: true,
+          status: { select: { stage: { select: { name: true } } } },
+          candidate: { select: { name: true, email: true, phone: true } },
+        },
         orderBy: { createdAt: 'asc' },
       });
       const header = ['Name', 'Email', 'Phone', 'Stage', 'Status', 'Applied At'];
@@ -374,7 +463,7 @@ export class PipelineService {
         e.candidate?.name ?? '',
         e.candidate?.email ?? '',
         e.candidate?.phone ?? '',
-        e.stage,
+        e.status?.stage.name ?? e.stage,
         e.rejected ? 'rejected' : 'active',
         e.createdAt.toISOString(),
       ]);
@@ -397,9 +486,12 @@ export class PipelineService {
     return { success: true };
   }
 
-  async getPipeline(context: TenantContext, jobId: string): Promise<PipelineBoard> {
+  async getBoard(context: TenantContext, jobId: string): Promise<Board> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
-      const job = await tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } });
+      const job = await tx.job.findFirst({
+        where: { id: jobId, organizationId: context.organizationId as string },
+        include: { pipeline: { include: { stages: { orderBy: { position: 'asc' }, include: { statuses: { orderBy: { position: 'asc' } } } } } } },
+      });
       if (!job) throw new NotFoundException(`Job ${jobId} not found`);
       const links = await tx.jobExam.findMany({ where: { jobId }, select: { examId: true } });
       const linkedExamIds = links.map((l) => l.examId);
@@ -409,6 +501,7 @@ export class PipelineService {
           candidate: { include: { invitations: { include: { exam: { select: { title: true } }, attempt: { include: { result: true } } } } } },
           feedback: { select: { rating: true } },
           fitAssessment: true,
+          status: { include: { stage: true } },
         },
       });
       const currentHash = computeCriteriaHash({
@@ -420,15 +513,19 @@ export class PipelineService {
         ? await tx.user.findMany({ where: { id: { in: assigneeIds } }, select: { id: true, name: true } })
         : [];
       const assigneeName = new Map(assignees.map((a: { id: string; name: string | null }) => [a.id, a.name]));
-      const stages = Object.fromEntries(PIPELINE_STAGES.map((s) => [s, [] as BoardRow[]])) as Record<PipelineStage, BoardRow[]>;
-      const rejected: BoardRow[] = [];
+
+      const stages = job.pipeline?.stages ?? [];
+      const columns: Record<string, BoardRow[]> = Object.fromEntries(stages.map((s: { id: string }) => [s.id, [] as BoardRow[]]));
       for (const e of entries) {
+        if (!e.status) continue; // no status resolved yet (pre-migration edge case) -- can't place on a dynamic column
         const row: BoardRow = {
           entryId: e.id,
           candidateId: e.candidateId,
           candidateName: e.candidate.name,
           candidateEmail: e.candidate.email,
-          stage: e.stage as PipelineStage,
+          statusId: e.status.id,
+          stageId: e.status.stage.id,
+          category: e.status.stage.category as StageCategory,
           enteredVia: e.enteredVia,
           rejectedReason: e.rejectedReason,
           examResults: deriveEntryExamResults(e.candidate.invitations as any, linkedExamIds),
@@ -440,10 +537,23 @@ export class PipelineService {
           assignedUserId: e.assignedUserId,
           assigneeName: e.assignedUserId ? (assigneeName.get(e.assignedUserId) ?? null) : null,
         };
-        if (e.rejected) rejected.push(row);
-        else if (isValidStage(e.stage)) stages[e.stage].push(row);
+        (columns[row.stageId] ??= []).push(row);
       }
-      return { stages, rejected };
+
+      return {
+        pipeline: {
+          id: job.pipeline?.id ?? '',
+          name: job.pipeline?.name ?? '',
+          stages: stages.map((s: { id: string; name: string; category: string; position: number; statuses: { id: string; name: string; position: number }[] }) => ({
+            id: s.id,
+            name: s.name,
+            category: s.category as StageCategory,
+            position: s.position,
+            statuses: s.statuses.map((st) => ({ id: st.id, name: st.name, position: st.position })),
+          })),
+        },
+        columns,
+      };
     });
   }
 

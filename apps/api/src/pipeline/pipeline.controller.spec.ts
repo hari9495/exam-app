@@ -26,7 +26,7 @@ describe('PipelineController', () => {
     getJob: jest.Mock;
     updateJob: jest.Mock;
     deleteJob: jest.Mock;
-    getPipeline: jest.Mock;
+    getBoard: jest.Mock;
     addEntry: jest.Mock;
     patchEntry: jest.Mock;
     deleteEntry: jest.Mock;
@@ -44,7 +44,7 @@ describe('PipelineController', () => {
       getJob: jest.fn().mockResolvedValue({ id: 'job-1' }),
       updateJob: jest.fn().mockResolvedValue({ id: 'job-1' }),
       deleteJob: jest.fn().mockResolvedValue({ success: true }),
-      getPipeline: jest.fn().mockResolvedValue({ stages: {}, rejected: [] }),
+      getBoard: jest.fn().mockResolvedValue({ pipeline: { id: 'p1', name: 'Default', stages: [] }, columns: {} }),
       addEntry: jest.fn().mockResolvedValue({ id: 'entry-1' }),
       patchEntry: jest.fn().mockResolvedValue({ id: 'entry-1' }),
       deleteEntry: jest.fn().mockResolvedValue({ success: true }),
@@ -94,7 +94,7 @@ describe('PipelineController', () => {
 
   it('getPipeline delegates to the service with the job id', async () => {
     await controller.getPipeline(tenant, 'job-1');
-    expect(service.getPipeline).toHaveBeenCalledWith(tenant, 'job-1');
+    expect(service.getBoard).toHaveBeenCalledWith(tenant, 'job-1');
   });
 
   it('addEntry delegates to the service with the actor, job id, and dto', async () => {

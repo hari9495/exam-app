@@ -462,34 +462,55 @@ describe('PipelineService', () => {
     expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'job.deleted', entityId: 'job-1' }));
   });
 
-  it('getPipeline groups by stage and buckets rejected with derived results', async () => {
+  // A 2-stage pipeline fixture reused across getBoard/counts tests: 'applied' (active) and
+  // 'interview'/'rejected'-category stages, each with one status whose id doubles as a stand-in
+  // for a custom org-chosen name (proves grouping goes through statusId/stageId, not stage-name
+  // string matching).
+  const boardPipeline = (id = 'p1') => ({
+    id,
+    name: 'Default',
+    stages: [
+      { id: 'st-applied', name: 'applied', category: 'active', position: 0, statuses: [{ id: 'status-applied', name: 'applied', position: 0 }] },
+      { id: 'st-interview', name: 'interview', category: 'active', position: 1, statuses: [{ id: 'status-interview', name: 'interview', position: 0 }] },
+      { id: 'st-rejected', name: 'rejected', category: 'rejected', position: 2, statuses: [{ id: 'status-rejected', name: 'rejected', position: 0 }] },
+    ],
+  });
+
+  it('getBoard groups entries by the job pipeline\'s stages', async () => {
     const tx = {
-      job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }) },
+      job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', pipeline: boardPipeline() }) },
       jobExam: { findMany: jest.fn().mockResolvedValue([{ examId: 'e1' }]) },
       pipelineEntry: {
         findMany: jest.fn().mockResolvedValue([
-          { id: 'en1', candidateId: 'c1', stage: 'applied', rejected: false, enteredVia: 'manual',
+          { id: 'en1', candidateId: 'c1', enteredVia: 'manual', rejectedReason: null,
+            status: { id: 'status-applied', stage: { id: 'st-applied', category: 'active' } },
             candidate: { name: 'Amy', email: 'amy@x.com',
               invitations: [{ examId: 'e1', exam: { title: 'Backend' }, attempt: { result: { passFail: 'pass', percentage: 82 } } }] },
             feedback: [{ rating: 4 }, { rating: null }] },
-          { id: 'en2', candidateId: 'c2', stage: 'interview', rejected: true, enteredVia: 'exam', rejectedReason: 'failed screen',
+          { id: 'en2', candidateId: 'c2', enteredVia: 'exam', rejectedReason: 'failed screen',
+            status: { id: 'status-rejected', stage: { id: 'st-rejected', category: 'rejected' } },
             candidate: { name: 'Bo', email: 'bo@x.com', invitations: [] }, feedback: [] },
         ]),
       },
     };
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
-    const board = await service.getPipeline(context, 'job-1');
-    expect(board.stages.applied).toHaveLength(1);
-    expect(board.stages.applied[0]).toMatchObject({ entryId: 'en1', avgRating: 4, feedbackCount: 2, examResults: [{ examId: 'e1', passFail: 'pass', score: 82 }] });
-    expect(board.stages.interview).toHaveLength(0); // rejected -> not in stage bucket
-    expect(board.rejected).toHaveLength(1);
-    expect(board.rejected[0].entryId).toBe('en2');
-    expect(board.rejected[0].rejectedReason).toBe('failed screen');
+
+    const board = await service.getBoard(context, 'job-1');
+
+    expect(board.pipeline.stages.map((s) => s.name)).toEqual(['applied', 'interview', 'rejected']);
+    expect(board.columns['st-applied'].map((r) => r.candidateId)).toContain('c1');
+    expect(board.columns['st-applied'][0]).toMatchObject({
+      entryId: 'en1', statusId: 'status-applied', stageId: 'st-applied', category: 'active',
+      avgRating: 4, feedbackCount: 2, examResults: [{ examId: 'e1', passFail: 'pass', score: 82 }],
+    });
+    expect(board.columns['st-interview']).toHaveLength(0);
+    expect(board.columns['st-rejected']).toHaveLength(1);
+    expect(board.columns['st-rejected'][0]).toMatchObject({ entryId: 'en2', category: 'rejected', rejectedReason: 'failed screen' });
   });
 
-  it('getPipeline includes fit fields per entry (score, status, stale)', async () => {
+  it('getBoard includes fit fields per entry (score, status, stale)', async () => {
     // Job's current criteria hash is computed from these fields (see computeCriteriaHash).
-    const job = { id: 'job-1', title: 'Backend Eng', description: 'desc', fitCriteria: 'crit', fitRubric: null };
+    const job = { id: 'job-1', title: 'Backend Eng', description: 'desc', fitCriteria: 'crit', fitRubric: null, pipeline: boardPipeline() };
     const currentHash = computeCriteriaHash({
       title: job.title, description: job.description, fitCriteria: job.fitCriteria, fitRubric: job.fitRubric,
     });
@@ -498,11 +519,13 @@ describe('PipelineService', () => {
       jobExam: { findMany: jest.fn().mockResolvedValue([]) },
       pipelineEntry: {
         findMany: jest.fn().mockResolvedValue([
-          { id: 'en1', candidateId: 'c1', stage: 'applied', rejected: false, enteredVia: 'manual',
+          { id: 'en1', candidateId: 'c1', enteredVia: 'manual', rejectedReason: null,
+            status: { id: 'status-applied', stage: { id: 'st-applied', category: 'active' } },
             candidate: { name: 'Amy', email: 'amy@x.com', invitations: [] },
             feedback: [],
             fitAssessment: { status: 'done', overallScore: 77, criteriaHash: 'H' } }, // stale: 'H' !== currentHash
-          { id: 'en2', candidateId: 'c2', stage: 'applied', rejected: false, enteredVia: 'manual',
+          { id: 'en2', candidateId: 'c2', enteredVia: 'manual', rejectedReason: null,
+            status: { id: 'status-applied', stage: { id: 'st-applied', category: 'active' } },
             candidate: { name: 'Bo', email: 'bo@x.com', invitations: [] },
             feedback: [],
             fitAssessment: null },
@@ -511,21 +534,21 @@ describe('PipelineService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
-    const board = await service.getPipeline(context, 'job-1');
+    const board = await service.getBoard(context, 'job-1');
 
-    const scored = board.stages.applied.find((r) => r.entryId === 'en1')!;
+    const scored = board.columns['st-applied'].find((r) => r.entryId === 'en1')!;
     expect(scored.fitScore).toBe(77);
     expect(scored.fitStatus).toBe('done');
     expect(scored.fitStale).toBe(true); // stored hash 'H' !== currentHash
 
-    const unscored = board.stages.applied.find((r) => r.entryId === 'en2')!;
+    const unscored = board.columns['st-applied'].find((r) => r.entryId === 'en2')!;
     expect(unscored.fitScore).toBeNull();
     expect(unscored.fitStatus).toBeNull();
     expect(unscored.fitStale).toBe(false);
   });
 
-  it('getPipeline marks fitStale false when the stored criteriaHash matches the current hash', async () => {
-    const job = { id: 'job-1', title: 'Backend Eng', description: 'desc', fitCriteria: 'crit', fitRubric: null };
+  it('getBoard marks fitStale false when the stored criteriaHash matches the current hash', async () => {
+    const job = { id: 'job-1', title: 'Backend Eng', description: 'desc', fitCriteria: 'crit', fitRubric: null, pipeline: boardPipeline() };
     const currentHash = computeCriteriaHash({
       title: job.title, description: job.description, fitCriteria: job.fitCriteria, fitRubric: job.fitRubric,
     });
@@ -534,7 +557,8 @@ describe('PipelineService', () => {
       jobExam: { findMany: jest.fn().mockResolvedValue([]) },
       pipelineEntry: {
         findMany: jest.fn().mockResolvedValue([
-          { id: 'en1', candidateId: 'c1', stage: 'applied', rejected: false, enteredVia: 'manual',
+          { id: 'en1', candidateId: 'c1', enteredVia: 'manual', rejectedReason: null,
+            status: { id: 'status-applied', stage: { id: 'st-applied', category: 'active' } },
             candidate: { name: 'Amy', email: 'amy@x.com', invitations: [] },
             feedback: [],
             fitAssessment: { status: 'done', overallScore: 90, criteriaHash: currentHash } },
@@ -543,18 +567,69 @@ describe('PipelineService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
-    const board = await service.getPipeline(context, 'job-1');
+    const board = await service.getBoard(context, 'job-1');
 
-    expect(board.stages.applied[0].fitStale).toBe(false);
+    expect(board.columns['st-applied'][0].fitStale).toBe(false);
   });
 
-  it('listJobs folds groupBy counts per job, keeping rejected out of its stage bucket', async () => {
+  it('getBoard skips entries with no resolved status (can\'t be placed on a dynamic column)', async () => {
     const tx = {
-      job: { findMany: jest.fn().mockResolvedValue([{ id: 'job-1' }, { id: 'job-2' }]) },
+      job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', pipeline: boardPipeline() }) },
+      jobExam: { findMany: jest.fn().mockResolvedValue([]) },
+      pipelineEntry: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'en1', candidateId: 'c1', enteredVia: 'manual', rejectedReason: null, status: null,
+            candidate: { name: 'Amy', email: 'amy@x.com', invitations: [] }, feedback: [] },
+        ]),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+    const board = await service.getBoard(context, 'job-1');
+
+    expect(Object.values(board.columns).flat()).toHaveLength(0);
+  });
+
+  it('stageCountsFor rolls counts up by category across custom stage names', async () => {
+    const pipeline = {
+      stages: [
+        { id: 'st-a', name: 'New', category: 'active', position: 0, statuses: [{ id: 'sa1' }] },
+        { id: 'st-h', name: 'Onboarded', category: 'hired', position: 1, statuses: [{ id: 'sh1' }, { id: 'sh2' }] },
+        { id: 'st-r', name: 'Passed', category: 'rejected', position: 2, statuses: [{ id: 'sr1' }] },
+      ],
+    };
+    const tx = {
+      job: { findFirst: jest.fn().mockResolvedValue({ id: 'job1', pipeline }) },
       pipelineEntry: {
         groupBy: jest.fn().mockResolvedValue([
-          { jobId: 'job-1', stage: 'applied', rejected: false, _count: 3 },
-          { jobId: 'job-1', stage: 'interview', rejected: true, _count: 2 },
+          { statusId: 'sa1', _count: 3 },
+          { statusId: 'sh1', _count: 1 },
+          { statusId: 'sh2', _count: 1 },
+          { statusId: 'sr1', _count: 2 },
+        ]),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+    const { byStageId, byCategory } = await service.stageCountsFor(context, 'job1');
+
+    expect(byStageId).toEqual({ 'st-a': 3, 'st-h': 2, 'st-r': 2 });
+    expect(byCategory.active).toBe(3);
+    expect(byCategory.hired).toBe(2);
+    expect(byCategory.rejected).toBe(2);
+    expect(byCategory.offer).toBe(0);
+    expect(byCategory.archived).toBe(0);
+  });
+
+  it('listJobs folds per-job status counts into byStageId/byCategory', async () => {
+    const pipeline = boardPipeline();
+    const tx = {
+      job: { findMany: jest.fn().mockResolvedValue([{ id: 'job-1', pipelineId: 'p1' }, { id: 'job-2', pipelineId: 'p1' }]) },
+      pipeline: { findMany: jest.fn().mockResolvedValue([pipeline]) },
+      pipelineEntry: {
+        groupBy: jest.fn().mockResolvedValue([
+          { jobId: 'job-1', statusId: 'status-applied', _count: 3 },
+          { jobId: 'job-1', statusId: 'status-rejected', _count: 2 },
         ]),
       },
     };
@@ -563,10 +638,12 @@ describe('PipelineService', () => {
     const jobs = await service.listJobs(context);
 
     expect(jobs.find((j) => j.id === 'job-1')!.stageCounts).toEqual({
-      applied: 3, screened: 0, interview: 0, offer: 0, hired: 0, rejected: 2,
+      byStageId: { 'st-applied': 3, 'st-interview': 0, 'st-rejected': 2 },
+      byCategory: { active: 3, offer: 0, hired: 0, rejected: 2, archived: 0 },
     });
     expect(jobs.find((j) => j.id === 'job-2')!.stageCounts).toEqual({
-      applied: 0, screened: 0, interview: 0, offer: 0, hired: 0, rejected: 0,
+      byStageId: { 'st-applied': 0, 'st-interview': 0, 'st-rejected': 0 },
+      byCategory: { active: 0, offer: 0, hired: 0, rejected: 0, archived: 0 },
     });
   });
 
