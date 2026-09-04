@@ -10,6 +10,10 @@ function withRecomputeMocks(tx: any) {
   tx.pipelineEntry = { findMany: jest.fn().mockResolvedValue([]), ...tx.pipelineEntry };
   tx.candidateEmail = { count: jest.fn().mockResolvedValue(0), ...tx.candidateEmail };
   tx.candidate = { update: jest.fn().mockResolvedValue({}), ...tx.candidate };
+  // patchEntry's hire path reads tx.organization.findFirst to check autoArchiveSiblingsOnHire --
+  // default it off (no-op) so pre-existing hire tests that don't care about this feature are
+  // unaffected; a test that does care overrides tx.organization itself.
+  tx.organization = { findFirst: jest.fn().mockResolvedValue({ autoArchiveSiblingsOnHire: false }), ...tx.organization };
   return tx;
 }
 
@@ -180,11 +184,57 @@ describe('PipelineService', () => {
 
     it('allows open -> closed', async () => {
       const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
-      const tx = { job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'open' }), update } };
+      const tx = {
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'open' }), update },
+        pipelineEntry: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
       await expect(service.updateJob(context, 'user-1', 'job-1', { status: 'closed' })).resolves.toBeDefined();
       expect(update).toHaveBeenCalledWith({ where: { id: 'job-1' }, data: expect.objectContaining({ status: 'closed', closedAt: expect.any(Date) }) });
+    });
+
+    it('closing a job archives its still-active, non-hired entries and frees those candidates', async () => {
+      const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
+      const findMany = jest.fn().mockResolvedValue([{ candidateId: 'cand-1' }, { candidateId: 'cand-2' }, { candidateId: 'cand-1' }]);
+      const updateMany = jest.fn().mockResolvedValue({ count: 3 });
+      const tx = {
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'open' }), update },
+        pipelineEntry: { findMany, updateMany },
+        candidateEmail: { count: jest.fn().mockResolvedValue(0) },
+        candidate: { update: jest.fn().mockResolvedValue({}) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.updateJob(context, 'user-1', 'job-1', { status: 'closed' });
+
+      expect(updateMany).toHaveBeenCalledWith({
+        where: expect.objectContaining({
+          jobId: 'job-1',
+          organizationId: 'org-1',
+          archivedAt: null,
+          status: { stage: { category: { not: 'hired' } } },
+        }),
+        data: { archivedAt: expect.any(Date) },
+      });
+      // Dedupe: cand-1 appears twice in the affected entries but is recomputed once.
+      expect(tx.candidate.update).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not archive/recompute anything when patching an already-closed job to closed again', async () => {
+      const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
+      const findMany = jest.fn();
+      const updateMany = jest.fn();
+      const tx = {
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'closed' }), update },
+        pipelineEntry: { findMany, updateMany },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.updateJob(context, 'user-1', 'job-1', { status: 'closed' });
+
+      expect(findMany).not.toHaveBeenCalled();
+      expect(updateMany).not.toHaveBeenCalled();
     });
   });
 
@@ -909,6 +959,48 @@ describe('PipelineService', () => {
         'candidate.hired',
         expect.objectContaining({ subject: 'Asha Rao', roleTitle: 'Backend Engineer', linkPath: '/candidates/cand-1' }),
       );
+    });
+
+    it("on hire, archives the candidate's other active entries when the org toggle is on", async () => {
+      const update = jest.fn().mockResolvedValue({ id: 'en1', statusId: 'st-hired' });
+      const tx = {
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'en1', candidateId: 'cand-1', jobId: 'job-1', job: { pipelineId: 'p1' }, status: { stage: { category: 'offer' } } }),
+          update,
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUnique: jest.fn().mockResolvedValue({ candidateId: 'cand-1', candidate: { name: 'Asha Rao' }, job: { title: 'Backend Engineer' } }),
+        },
+        organization: { findFirst: jest.fn().mockResolvedValue({ autoArchiveSiblingsOnHire: true }) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(withRecomputeMocks(tx)));
+      pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-hired', name: 'hired' }, stage: { pipelineId: 'p1', category: 'hired' } });
+
+      await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-hired' });
+
+      expect(tx.organization.findFirst).toHaveBeenCalledWith({ where: { id: 'org-1' }, select: { autoArchiveSiblingsOnHire: true } });
+      expect(tx.pipelineEntry.updateMany).toHaveBeenCalledWith({
+        where: { organizationId: 'org-1', candidateId: 'cand-1', archivedAt: null, id: { not: 'en1' } },
+        data: { archivedAt: expect.any(Date) },
+      });
+    });
+
+    it('does NOT archive siblings on hire when the org toggle is off', async () => {
+      const update = jest.fn().mockResolvedValue({ id: 'en1', statusId: 'st-hired' });
+      const tx = {
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'en1', candidateId: 'cand-1', jobId: 'job-1', job: { pipelineId: 'p1' }, status: { stage: { category: 'offer' } } }),
+          update,
+          updateMany: jest.fn(),
+          findUnique: jest.fn().mockResolvedValue({ candidateId: 'cand-1', candidate: { name: 'Asha Rao' }, job: { title: 'Backend Engineer' } }),
+        },
+        organization: { findFirst: jest.fn().mockResolvedValue({ autoArchiveSiblingsOnHire: false }) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(withRecomputeMocks(tx)));
+      pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-hired', name: 'hired' }, stage: { pipelineId: 'p1', category: 'hired' } });
+
+      await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-hired' });
+
+      expect(tx.pipelineEntry.updateMany).not.toHaveBeenCalled();
     });
 
     it('does not emit candidate.hired on a non-hired status move', async () => {

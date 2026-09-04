@@ -393,6 +393,26 @@ export class PipelineService {
         entityId: jobId,
         metadata: dto,
       });
+
+      // Job-close: free candidates whose only active entry was on this job back to "Available".
+      // Only on the transition INTO closed (job.status is the pre-update value) so a redundant
+      // close-on-an-already-closed job doesn't re-archive or re-recompute. Hired entries on this
+      // job are excluded so a candidate hired here stays 'hired' (hired beats archived).
+      if (dto.status === 'closed' && job.status !== 'closed') {
+        const activeFilter = {
+          jobId,
+          organizationId: context.organizationId as string,
+          archivedAt: null,
+          status: { stage: { category: { not: 'hired' } } },
+        };
+        const active = await tx.pipelineEntry.findMany({ where: activeFilter, select: { candidateId: true } });
+        await tx.pipelineEntry.updateMany({ where: activeFilter, data: { archivedAt: new Date() } });
+        const candidateIds = [...new Set(active.map((e) => e.candidateId))];
+        for (const candidateId of candidateIds) {
+          await recomputeGlobalStage(tx, context.organizationId as string, candidateId);
+        }
+      }
+
       return updated;
     });
   }
@@ -683,7 +703,24 @@ export class PipelineService {
 
       const updated = await tx.pipelineEntry.update({ where: { id: entryId }, data });
       await this.audit.record(context, { actorUserId, action, entityType: 'pipeline_entry', entityId: entryId, metadata: { ...dto } });
-      // Last write in the tx (Task 5's auto-archive-on-hire step, if any, runs before this) --
+
+      // Auto-archive siblings on hire (org toggle, defaults on): hiring a candidate for one job
+      // archives their other active entries. Must run before recompute below -- recompute still
+      // yields 'hired' for this candidate either way (hired beats archived).
+      if (didHire) {
+        const org = await tx.organization.findFirst({
+          where: { id: context.organizationId as string },
+          select: { autoArchiveSiblingsOnHire: true },
+        });
+        if (org?.autoArchiveSiblingsOnHire) {
+          await tx.pipelineEntry.updateMany({
+            where: { organizationId: context.organizationId as string, candidateId: existing.candidateId, archivedAt: null, id: { not: entryId } },
+            data: { archivedAt: new Date() },
+          });
+        }
+      }
+
+      // Last write in the tx --
       // one recompute covers the statusId branch and both rejected branches since they converge here.
       await recomputeGlobalStage(tx, context.organizationId as string, existing.candidateId);
       return updated;
