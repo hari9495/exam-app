@@ -50,10 +50,10 @@ function sortByFitScore(rows: BoardEntryRow[]): BoardEntryRow[] {
 // Flattens the pipeline's stages/statuses into one grouped option list, ordered by stage then
 // status position (both already ordered by the API) -- lets a card move to any status in any
 // stage from one dropdown, same reach the old flat 5-stage select had.
-function buildStatusOptions(stages: PipelineStageConfig[]): { stage: string; options: { value: string; label: string }[] }[] {
+function buildStatusOptions(stages: PipelineStageConfig[]): { id: string; name: string; options: { value: string; label: string }[] }[] {
   return [...stages]
     .sort((a, b) => a.position - b.position)
-    .map((stage) => ({ stage: stage.name, options: stage.statuses.map((status) => ({ value: status.id, label: status.name })) }));
+    .map((stage) => ({ id: stage.id, name: stage.name, options: stage.statuses.map((status) => ({ value: status.id, label: status.name })) }));
 }
 function RatingStars({ avgRating }: { avgRating: number | null }) {
   if (avgRating === null) return <span style={{ fontSize: 12, color: 'var(--muted)' }}>No ratings</span>;
@@ -64,7 +64,7 @@ function RatingStars({ avgRating }: { avgRating: number | null }) {
 interface PipelineCardProps {
   row: BoardEntryRow;
   canManage: boolean;
-  statusGroups: { stage: string; options: { value: string; label: string }[] }[];
+  statusGroups: { id: string; name: string; options: { value: string; label: string }[] }[];
   onOpen: (row: BoardEntryRow) => void;
   onStatusChange: (entryId: string, statusId: string) => void;
   onReject: (entryId: string) => void;
@@ -97,7 +97,7 @@ function PipelineCard({ row, canManage, statusGroups, onOpen, onStatusChange, on
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderTop: '1px solid var(--hair)', paddingTop: 8 }}>
           <select aria-label={`Status for ${row.candidateName}`} value={row.statusId} onChange={(e) => onStatusChange(row.entryId, e.target.value)} style={stageSelect}>
             {statusGroups.map((group) => (
-              <optgroup key={group.stage} label={group.stage}>
+              <optgroup key={group.id} label={group.name}>
                 {group.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </optgroup>
             ))}

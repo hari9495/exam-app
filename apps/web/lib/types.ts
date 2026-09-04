@@ -498,10 +498,6 @@ export interface PipelineEntry {
   id: string;
   jobId: string;
   candidateId: string;
-  // Legacy flat-stage column, kept in sync server-side for back-compat -- see
-  // apps/api/src/pipeline/pipeline.service.ts's patchEntry. Nothing on the web reads it (the
-  // config-aware statusId/stageId live on BoardEntryRow instead), so it's untyped as a bare string.
-  stage: string;
   rejected: boolean;
   rejectedReason: string | null;
   rejectedAt: string | null;
