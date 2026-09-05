@@ -4,12 +4,13 @@
 // Dialog + primitives. All hooks, state, handlers, validation, constants, the exported
 // zonedWallClockToUtcISO helper, SlotRow/newSlotRow/slotRowCounter, and mutation payloads are
 // verbatim (format only).
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Dialog, TextField, Combobox, Cb, Button, dt } from '../../../../components/ui-v2';
 import { useToast } from '../../../../components/ui';
 import { useCreateInterview, useSendInterview } from '../../../../lib/hooks/useInterviews';
 import { useUsers } from '../../../../lib/hooks/useUsers';
 import { useIntegrations } from '../../../../lib/hooks/useIntegrations';
+import { useCurrentUser } from '../../../../lib/hooks/useCurrentUser';
 
 interface ScheduleInterviewModalProps {
   entryId: string;
@@ -57,6 +58,7 @@ export function ScheduleInterviewModal({ entryId, candidateId, onClose }: Schedu
   const createInterview = useCreateInterview(entryId, candidateId);
   const sendInterview = useSendInterview(candidateId);
   const { data: users } = useUsers({ pageSize: 50 });
+  const { data: currentUser } = useCurrentUser();
   // Best-effort, same as CreateOfferModal: a plain recruiter gets a 403 on this org-admin
   // endpoint, so isSuccess just stays false and the banner quietly doesn't render.
   const { data: integrations, isSuccess: integrationsLoaded } = useIntegrations();
@@ -64,9 +66,30 @@ export function ScheduleInterviewModal({ entryId, candidateId, onClose }: Schedu
 
   const [slots, setSlots] = useState<SlotRow[]>([newSlotRow()]);
   const [panelistIds, setPanelistIds] = useState<string[]>([]);
-  const [timeZone, setTimeZone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+  const [timeZone, setTimeZoneState] = useState(
+    () => currentUser?.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+  );
+  // currentUser can arrive after mount (query still loading on first render); seed the default
+  // from it once it loads, but never clobber a zone the recruiter already picked by hand.
+  const zoneManuallyChanged = useRef(false);
+  const userZoneSeeded = useRef(Boolean(currentUser?.timeZone));
+  useEffect(() => {
+    if (!zoneManuallyChanged.current && !userZoneSeeded.current && currentUser?.timeZone) {
+      userZoneSeeded.current = true;
+      setTimeZoneState(currentUser.timeZone);
+    }
+  }, [currentUser?.timeZone]);
+  function setTimeZone(value: string) {
+    zoneManuallyChanged.current = true;
+    setTimeZoneState(value);
+  }
   const [location, setLocation] = useState('');
   const [recruiterNote, setRecruiterNote] = useState('');
+  // The curated list won't have every zone a user's profile can hold -- append it so the
+  // Combobox can still display (and keep) the seeded/selected value.
+  const timeZoneOptions = TIME_ZONE_OPTIONS.some((o) => o.value === timeZone)
+    ? TIME_ZONE_OPTIONS
+    : [...TIME_ZONE_OPTIONS, { value: timeZone, label: timeZone }];
 
   const staff = users?.data ?? [];
   const completeSlots = slots.filter((slot) => slot.start && slot.end);
@@ -175,7 +198,7 @@ export function ScheduleInterviewModal({ entryId, candidateId, onClose }: Schedu
 
         <div>
           <label className="v2-label">Time zone</label>
-          <Combobox width="100%" value={timeZone} onChange={setTimeZone} options={TIME_ZONE_OPTIONS} />
+          <Combobox width="100%" value={timeZone} onChange={setTimeZone} options={timeZoneOptions} />
         </div>
 
         <TextField id="interview-location" label="Location" value={location} onChange={setLocation} placeholder="e.g. Zoom link or office address" required />
