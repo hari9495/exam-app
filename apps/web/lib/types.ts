@@ -47,6 +47,9 @@ export interface StaffUser {
   // Only the /users/me endpoints return this -- the list endpoints deliberately omit it rather
   // than hand out raw private-container blob paths, so it is absent (not null) there.
   avatarUrl?: string | null;
+  // Only the /users/me endpoints return these (profile preferences).
+  timeZone?: string | null;
+  emailSignature?: string | null;
 }
 
 export interface DirectoryUser extends StaffUser {

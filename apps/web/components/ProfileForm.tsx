@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useId, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Eye, EyeOff } from 'lucide-react';
 import {
@@ -13,6 +13,10 @@ import {
 import { useSsoStatus } from '../lib/hooks/useSso';
 import { useAuth } from '../lib/auth-context';
 import { Button, Input, CollapsibleSection, RequiredFieldsNote, useToast } from './ui';
+
+// Computed once at module load, not per render -- Intl.supportedValuesOf('timeZone') returns the
+// full IANA database (400+ entries) and never changes for the life of the page.
+const TIMEZONE_OPTIONS = Intl.supportedValuesOf('timeZone');
 
 // One shared showPassword state drives all three password fields, so every field
 // gets its own toggle button rather than just the one a user happens to click --
@@ -140,6 +144,19 @@ export function ProfileForm() {
   const [name, setName] = useState('');
   const [nameError, setNameError] = useState<string | null>(null);
 
+  const [timeZone, setTimeZone] = useState('');
+  const [emailSignature, setEmailSignature] = useState('');
+  const [preferencesError, setPreferencesError] = useState<string | null>(null);
+  const timeZoneId = useId();
+  const signatureId = useId();
+  // Blank option maps to '' (saved as null, "use browser default"). The stored value is included
+  // even when it's not in the runtime's list, so an org that set a zone this browser doesn't
+  // recognize still shows it instead of silently blanking the field.
+  const timeZoneOptions = useMemo(
+    () => (timeZone && !TIMEZONE_OPTIONS.includes(timeZone) ? [timeZone, ...TIMEZONE_OPTIONS] : TIMEZONE_OPTIONS),
+    [timeZone],
+  );
+
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -150,6 +167,13 @@ export function ProfileForm() {
     if (user?.name) setName(user.name);
   }, [user]);
 
+  useEffect(() => {
+    if (user) {
+      setTimeZone(user.timeZone ?? '');
+      setEmailSignature(user.emailSignature ?? '');
+    }
+  }, [user]);
+
   function handleNameSubmit(e: React.FormEvent) {
     e.preventDefault();
     setNameError(null);
@@ -158,6 +182,20 @@ export function ProfileForm() {
       {
         onSuccess: () => toast('Name updated.'),
         onError: (err) => setNameError(err instanceof Error ? err.message : 'Failed to update name'),
+      },
+    );
+  }
+
+  function handlePreferencesSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setPreferencesError(null);
+    // Backend requires `name` on every PATCH, so resend the current value alongside the fields
+    // this form actually edits rather than splitting into a second required field here.
+    updateProfile.mutate(
+      { name, timeZone, emailSignature },
+      {
+        onSuccess: () => toast('Preferences updated.'),
+        onError: (err) => setPreferencesError(err instanceof Error ? err.message : 'Failed to update preferences'),
       },
     );
   }
@@ -210,6 +248,52 @@ export function ProfileForm() {
           {nameError && (
             <p role="alert" className="text-sm text-status-danger sm:col-span-2">
               {nameError}
+            </p>
+          )}
+          <form onSubmit={handlePreferencesSubmit} className="contents">
+            <div className="flex flex-col gap-1">
+              <label htmlFor={timeZoneId} className="font-body text-sm font-medium text-ink">
+                Timezone
+              </label>
+              <select
+                id={timeZoneId}
+                value={timeZone}
+                onChange={(e) => setTimeZone(e.target.value)}
+                disabled={!user}
+                className="w-full rounded-lg border border-rule bg-paper px-3 py-2.5 font-body text-sm text-ink focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
+              >
+                <option value="">Use browser default</option>
+                {timeZoneOptions.map((tz) => (
+                  <option key={tz} value={tz}>
+                    {tz}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1 sm:col-span-2">
+              <label htmlFor={signatureId} className="font-body text-sm font-medium text-ink">
+                Email signature
+              </label>
+              <textarea
+                id={signatureId}
+                value={emailSignature}
+                onChange={(e) => setEmailSignature(e.target.value)}
+                maxLength={2000}
+                rows={4}
+                disabled={!user}
+                placeholder="Appended to candidate emails you send manually"
+                className="w-full rounded-lg border border-rule bg-paper px-3 py-2.5 font-body text-sm text-ink focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <Button type="submit" disabled={!user}>
+                Save preferences
+              </Button>
+            </div>
+          </form>
+          {preferencesError && (
+            <p role="alert" className="text-sm text-status-danger sm:col-span-2">
+              {preferencesError}
             </p>
           )}
         </CollapsibleSection>
