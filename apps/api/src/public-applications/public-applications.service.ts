@@ -8,11 +8,22 @@ import { applicationStatusBucket } from './application-status';
 import { validatePdfUpload } from './pdf-validation';
 import { ApplyDto } from './dto/apply.dto';
 import { recomputeGlobalStage } from '../candidates/recompute-global-stage';
+import { upsertCustomFieldValues, CustomFieldDefinitionLite } from '../custom-fields/custom-field-values';
 
 // Job-feed fields are wrapped in CDATA (the aggregator-standard for free-text). The only way to
 // break out of CDATA is the literal "]]>", so split it so it can never terminate the section early.
 function xmlCdata(value: string): string {
   return `<![CDATA[${value.replace(/]]>/g, ']]]]><![CDATA[>')}]]>`;
+}
+
+function parseOptionsJson(optionsJson: string | null): string[] | null {
+  if (!optionsJson) return null;
+  try {
+    const arr = JSON.parse(optionsJson);
+    return Array.isArray(arr) ? arr : null;
+  } catch {
+    return null;
+  }
 }
 
 @Injectable()
@@ -65,6 +76,17 @@ export class PublicApplicationsService {
       where: { id: job.organizationId },
       select: { name: true, logoPath: true },
     });
+    // Apply-visible candidate custom fields, cross-tenant super-admin read (same LOOKUP_ORG
+    // pattern as resolveJob -- there is no org context until the applyToken resolves one).
+    const defs = await this.tenantPrisma.forTenant(
+      { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
+      (tx) =>
+        tx.customFieldDefinition.findMany({
+          where: { organizationId: job.organizationId, entityType: 'candidate', showOnApply: true, archivedAt: null },
+          orderBy: { position: 'asc' },
+          select: { id: true, key: true, label: true, fieldType: true, optionsJson: true, required: true },
+        }),
+    );
     return {
       jobTitle: job.title,
       jobDescription: job.description,
@@ -75,6 +97,14 @@ export class PublicApplicationsService {
       // Container is private -- unsigned logoPath 403s in <img src>. signIfOurs mints a
       // read-only SAS for blobs we own and passes anything else through untouched.
       orgLogo: org?.logoPath ? ((await this.blobStorage.signIfOurs(org.logoPath)) as string | null) : null,
+      customFields: defs.map((d) => ({
+        definitionId: d.id,
+        key: d.key,
+        label: d.label,
+        fieldType: d.fieldType,
+        options: parseOptionsJson(d.optionsJson),
+        required: d.required,
+      })),
     };
   }
 
@@ -154,6 +184,24 @@ export class PublicApplicationsService {
         create: { organizationId: job.organizationId, email: dto.email, name: dto.name, phone: dto.phone ?? null, portalToken: randomUUID() },
         update: nameUpdate ? { name: nameUpdate } : {},
       });
+      // Trust boundary: this is a public, unauthenticated endpoint. Re-derive the allowed field
+      // set from the DB instead of trusting the client's field list -- upsertCustomFieldValues
+      // rejects any input key that isn't in applyDefs, so a job-scoped, archived, or
+      // showOnApply:false definition id can never be written here. `?? {}` (not `dto.customFields
+      // === undefined` skip-if-absent, unlike the authenticated candidate create/update paths)
+      // ensures a required apply-visible field is still enforced when the client sends nothing.
+      const applyDefs = await tx.customFieldDefinition.findMany({
+        where: { organizationId: job.organizationId, entityType: 'candidate', showOnApply: true, archivedAt: null },
+        select: { id: true, key: true, label: true, fieldType: true, optionsJson: true, required: true },
+      });
+      await upsertCustomFieldValues(
+        tx,
+        job.organizationId,
+        'candidate',
+        candidate.id,
+        applyDefs as CustomFieldDefinitionLite[],
+        dto.customFields ?? {},
+      );
       // Existing candidates (pre-portal, or added via other paths) may lack a token; mint one so
       // every applicant gets a portal link.
       let portalToken = candidate.portalToken;
