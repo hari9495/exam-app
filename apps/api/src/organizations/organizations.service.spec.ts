@@ -12,9 +12,12 @@ jest.mock('openai', () => jest.fn().mockImplementation(() => ({ chat: { completi
 import { Test } from '@nestjs/testing';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { createHash } from 'crypto';
+import { validate } from 'class-validator';
+import { plainToInstance } from 'class-transformer';
 import { OrganizationsService } from './organizations.service';
 import { PrismaService, TenantPrismaService, AuditService, OrgSecretsCryptoService, BlobStorageService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
+import { UpdateBusinessHoursDto } from './dto/update-business-hours.dto';
 
 describe('OrganizationsService', () => {
   let service: OrganizationsService;
@@ -1352,5 +1355,155 @@ describe('OrganizationsService', () => {
       ).rejects.toThrow(BadRequestException);
       expect(prisma.webhookDelivery.findMany).not.toHaveBeenCalled();
     });
+  });
+
+  describe('getBusinessHours', () => {
+    it('returns the parsed businessHours + holidays for the org', async () => {
+      const businessHours = {
+        timeZone: 'America/New_York',
+        days: {
+          mon: { enabled: true, open: '09:00', close: '17:00' },
+          tue: { enabled: true, open: '09:00', close: '17:00' },
+          wed: { enabled: true, open: '09:00', close: '17:00' },
+          thu: { enabled: true, open: '09:00', close: '17:00' },
+          fri: { enabled: true, open: '09:00', close: '17:00' },
+          sat: { enabled: false, open: '09:00', close: '17:00' },
+          sun: { enabled: false, open: '09:00', close: '17:00' },
+        },
+      };
+      const holidays = [{ date: '2026-12-25', name: 'Christmas' }];
+      prisma.organization.findUnique.mockResolvedValue({
+        businessHoursJson: JSON.stringify(businessHours),
+        holidaysJson: JSON.stringify(holidays),
+      });
+
+      const result = await service.getBusinessHours({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result).toEqual({ businessHours, holidays });
+      expect(prisma.organization.findUnique).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        select: { businessHoursJson: true, holidaysJson: true },
+      });
+    });
+
+    it('returns businessHours:null and holidays:[] when the columns are unset', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ businessHoursJson: null, holidaysJson: null });
+
+      const result = await service.getBusinessHours({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result).toEqual({ businessHours: null, holidays: [] });
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(
+        service.getBusinessHours({ organizationId: null, isSuperAdmin: true }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('updateBusinessHours', () => {
+    const context = { organizationId: 'org-1', isSuperAdmin: false };
+    const businessHours = {
+      timeZone: 'UTC',
+      days: {
+        mon: { enabled: true, open: '09:00', close: '17:00' },
+        tue: { enabled: true, open: '09:00', close: '17:00' },
+        wed: { enabled: true, open: '09:00', close: '17:00' },
+        thu: { enabled: true, open: '09:00', close: '17:00' },
+        fri: { enabled: true, open: '09:00', close: '17:00' },
+        sat: { enabled: false, open: '09:00', close: '17:00' },
+        sun: { enabled: false, open: '09:00', close: '17:00' },
+      },
+    };
+    const holidays = [{ date: '2026-01-01', name: "New Year's Day" }];
+
+    it('persists both columns as JSON, audits, and round-trips the parsed value', async () => {
+      prisma.organization.update.mockResolvedValue({
+        businessHoursJson: JSON.stringify(businessHours),
+        holidaysJson: JSON.stringify(holidays),
+      });
+
+      const result = await service.updateBusinessHours(context, 'user-1', { businessHours, holidays });
+
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { businessHoursJson: JSON.stringify(businessHours), holidaysJson: JSON.stringify(holidays) },
+        select: { businessHoursJson: true, holidaysJson: true },
+      });
+      expect(audit.record).toHaveBeenCalledWith(
+        context,
+        expect.objectContaining({ actorUserId: 'user-1', action: 'organization.business_hours_updated' }),
+      );
+      expect(result).toEqual({ businessHours, holidays });
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(
+        service.updateBusinessHours({ organizationId: null, isSuperAdmin: true }, 'user-1', { businessHours, holidays }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('UpdateBusinessHoursDto validation', () => {
+  const validDays = {
+    mon: { enabled: true, open: '09:00', close: '17:00' },
+    tue: { enabled: true, open: '09:00', close: '17:00' },
+    wed: { enabled: true, open: '09:00', close: '17:00' },
+    thu: { enabled: true, open: '09:00', close: '17:00' },
+    fri: { enabled: true, open: '09:00', close: '17:00' },
+    sat: { enabled: false, open: '09:00', close: '17:00' },
+    sun: { enabled: false, open: '09:00', close: '17:00' },
+  };
+
+  it('accepts a well-formed payload', async () => {
+    const dto = plainToInstance(UpdateBusinessHoursDto, {
+      businessHours: { timeZone: 'UTC', days: validDays },
+      holidays: [{ date: '2026-12-25', name: 'Christmas' }],
+    });
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('rejects a day where open >= close', async () => {
+    const dto = plainToInstance(UpdateBusinessHoursDto, {
+      businessHours: { timeZone: 'UTC', days: { ...validDays, mon: { enabled: true, open: '17:00', close: '09:00' } } },
+      holidays: [],
+    });
+    expect(await validate(dto)).not.toHaveLength(0);
+  });
+
+  it('rejects a payload missing a weekday', async () => {
+    const { sun, ...missingSun } = validDays;
+    const dto = plainToInstance(UpdateBusinessHoursDto, {
+      businessHours: { timeZone: 'UTC', days: missingSun },
+      holidays: [],
+    });
+    expect(await validate(dto)).not.toHaveLength(0);
+  });
+
+  it('rejects an invalid IANA timeZone', async () => {
+    const dto = plainToInstance(UpdateBusinessHoursDto, {
+      businessHours: { timeZone: 'Not/AZone', days: validDays },
+      holidays: [],
+    });
+    expect(await validate(dto)).not.toHaveLength(0);
+  });
+
+  it('rejects a holiday with a malformed date', async () => {
+    const dto = plainToInstance(UpdateBusinessHoursDto, {
+      businessHours: { timeZone: 'UTC', days: validDays },
+      holidays: [{ date: '12/25/2026', name: 'Christmas' }],
+    });
+    expect(await validate(dto)).not.toHaveLength(0);
+  });
+
+  it('rejects more than 100 holidays', async () => {
+    const dto = plainToInstance(UpdateBusinessHoursDto, {
+      businessHours: { timeZone: 'UTC', days: validDays },
+      holidays: Array.from({ length: 101 }, (_, i) => ({ date: '2026-01-01', name: `Holiday ${i}` })),
+    });
+    expect(await validate(dto)).not.toHaveLength(0);
   });
 });
