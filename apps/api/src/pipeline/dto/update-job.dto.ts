@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Min, MaxLength, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Min, MaxLength, MinLength } from 'class-validator';
 import { EMPLOYMENT_TYPES } from './create-job.dto';
 
 export class UpdateJobDto {
@@ -43,4 +43,7 @@ export class UpdateJobDto {
 
   @IsOptional() @IsString()
   salaryCurrency?: string;
+
+  @IsOptional() @IsObject()
+  customFields?: Record<string, string | number | null>;
 }

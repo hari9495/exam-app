@@ -2,6 +2,15 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { PipelineService } from './pipeline.service';
 import { computeCriteriaHash } from '../candidate-fit/candidate-fit.core';
 
+// getJob always loads job custom-field defs+values (unconditionally, no dto to gate on); every
+// getJob test tx needs these two, defaulting to "no custom fields defined" so pre-existing tests
+// that don't care about this feature are unaffected.
+function withJobCustomFieldMocks(tx: any) {
+  tx.customFieldDefinition = { findMany: jest.fn().mockResolvedValue([]), ...tx.customFieldDefinition };
+  tx.customFieldValue = { findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn().mockResolvedValue({ count: 0 }), ...tx.customFieldValue };
+  return tx;
+}
+
 // addEntry/patchEntry now call recomputeGlobalStage(tx, ...) as their last tx write, which reads
 // tx.pipelineEntry.findMany + tx.candidateEmail.count and writes tx.candidate.update. Any test tx
 // that reaches that point needs these three -- default to an empty/no-op shape, letting a test's
@@ -64,6 +73,94 @@ describe('PipelineService', () => {
       data: expect.objectContaining({ organizationId: 'org-1', title: 'Backend Eng', description: undefined, createdById: 'user-1', status: 'open' }),
     });
     expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'job.created', entityId: 'job-1' }));
+  });
+
+  describe('job custom fields', () => {
+    const defs = [
+      { id: 'def-1', key: 'source', label: 'Source', fieldType: 'text', optionsJson: null, required: false },
+    ];
+
+    it('createJob persists customFields when provided and returns them serialized', async () => {
+      const create = jest.fn().mockResolvedValue({ id: 'job-1', title: 'Backend Eng' });
+      const findMany = jest.fn().mockResolvedValue(defs);
+      const upsert = jest.fn().mockResolvedValue({});
+      const valueRows = jest.fn().mockResolvedValue([{ definitionId: 'def-1', valueText: 'LinkedIn', valueNumber: null, valueDate: null }]);
+      const tx = {
+        job: { create },
+        customFieldDefinition: { findMany },
+        customFieldValue: { upsert, findMany: valueRows, deleteMany: jest.fn() },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      const out = await service.createJob(context, 'user-1', { title: 'Backend Eng', customFields: { 'def-1': 'LinkedIn' } } as any);
+
+      expect(findMany).toHaveBeenCalledWith({
+        where: { organizationId: 'org-1', entityType: 'job', archivedAt: null },
+        select: expect.any(Object),
+      });
+      expect(upsert).toHaveBeenCalledWith(expect.objectContaining({
+        create: expect.objectContaining({ organizationId: 'org-1', definitionId: 'def-1', entityType: 'job', entityId: 'job-1', valueText: 'LinkedIn' }),
+      }));
+      expect(out).toEqual({
+        id: 'job-1', title: 'Backend Eng',
+        customFields: [{ definitionId: 'def-1', key: 'source', label: 'Source', fieldType: 'text', value: 'LinkedIn' }],
+      });
+    });
+
+    it('createJob does not touch custom-field tables when customFields is omitted', async () => {
+      const create = jest.fn().mockResolvedValue({ id: 'job-1', title: 'Backend Eng' });
+      const findMany = jest.fn();
+      const tx = { job: { create }, customFieldDefinition: { findMany } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.createJob(context, 'user-1', { title: 'Backend Eng' });
+
+      expect(findMany).not.toHaveBeenCalled();
+    });
+
+    it('updateJob clears a custom field value (delete) when the field is sent empty', async () => {
+      const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
+      const findMany = jest.fn().mockResolvedValue(defs);
+      const deleteMany = jest.fn().mockResolvedValue({ count: 1 });
+      const tx = {
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', applyToken: null, publicApplyEnabled: false }), update },
+        customFieldDefinition: { findMany },
+        customFieldValue: { deleteMany, findMany: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.updateJob(context, 'user-1', 'job-1', { customFields: { 'def-1': null } } as any);
+
+      expect(deleteMany).toHaveBeenCalledWith({ where: { organizationId: 'org-1', definitionId: 'def-1', entityId: 'job-1' } });
+    });
+
+    it('updateJob leaves custom-field values untouched when customFields is omitted', async () => {
+      const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
+      const findMany = jest.fn();
+      const tx = {
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', applyToken: null, publicApplyEnabled: false }), update },
+        customFieldDefinition: { findMany },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.updateJob(context, 'user-1', 'job-1', { title: 'New Title' });
+
+      expect(findMany).not.toHaveBeenCalled();
+    });
+
+    it('getJob returns customFields serialized from stored values', async () => {
+      const tx = {
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }) },
+        jobExam: { findMany: jest.fn().mockResolvedValue([]) },
+        customFieldDefinition: { findMany: jest.fn().mockResolvedValue(defs) },
+        customFieldValue: { findMany: jest.fn().mockResolvedValue([{ definitionId: 'def-1', valueText: 'Referral', valueNumber: null, valueDate: null }]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      const job = await service.getJob(context, 'job-1');
+
+      expect(job.customFields).toEqual([{ definitionId: 'def-1', key: 'source', label: 'Source', fieldType: 'text', value: 'Referral' }]);
+    });
   });
 
   describe('requisition gating', () => {
@@ -359,12 +456,12 @@ describe('PipelineService', () => {
   });
 
   it('getJob surfaces publicApplyEnabled and applyToken from the row', async () => {
-    const tx = {
+    const tx = withJobCustomFieldMocks({
       job: {
         findFirst: jest.fn().mockResolvedValue({ id: 'job-1', publicApplyEnabled: true, applyToken: 'tok-abc' }),
       },
       jobExam: { findMany: jest.fn().mockResolvedValue([]) },
-    };
+    });
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
     const job = await service.getJob(context, 'job-1');
@@ -374,7 +471,7 @@ describe('PipelineService', () => {
   });
 
   describe('getJob approval summary', () => {
-    const tx = () => ({
+    const tx = () => withJobCustomFieldMocks({
       job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }) },
       jobExam: { findMany: jest.fn().mockResolvedValue([]) },
     });
@@ -513,7 +610,7 @@ describe('PipelineService', () => {
 
   it('deleteJob deletes and audits job.deleted', async () => {
     const del = jest.fn().mockResolvedValue({ id: 'job-1' });
-    const tx = { job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }), delete: del } };
+    const tx = withJobCustomFieldMocks({ job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }), delete: del } });
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
     const result = await service.deleteJob(context, 'user-1', 'job-1');
@@ -521,6 +618,22 @@ describe('PipelineService', () => {
     expect(result).toEqual({ success: true });
     expect(del).toHaveBeenCalledWith({ where: { id: 'job-1' } });
     expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'job.deleted', entityId: 'job-1' }));
+  });
+
+  it('deleteJob deletes the job\'s custom-field values before deleting the job', async () => {
+    const calls: string[] = [];
+    const del = jest.fn().mockImplementation(() => { calls.push('job.delete'); return Promise.resolve({ id: 'job-1' }); });
+    const deleteMany = jest.fn().mockImplementation(() => { calls.push('customFieldValue.deleteMany'); return Promise.resolve({ count: 2 }); });
+    const tx = {
+      job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }), delete: del },
+      customFieldValue: { deleteMany },
+    };
+    tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+    await service.deleteJob(context, 'user-1', 'job-1');
+
+    expect(deleteMany).toHaveBeenCalledWith({ where: { organizationId: 'org-1', entityType: 'job', entityId: 'job-1' } });
+    expect(calls).toEqual(['customFieldValue.deleteMany', 'job.delete']);
   });
 
   // A 2-stage pipeline fixture reused across getBoard/counts tests: 'applied' (active) and
