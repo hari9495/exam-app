@@ -1326,3 +1326,33 @@ export interface DashboardAnalytics {
   }[];
   questionDifficulty: { questionId: string; text: string; correctRate: number; answered: number }[];
 }
+
+// --- Custom fields (Task 8) ---
+// Mirrors apps/api/src/custom-fields/custom-fields-config.controller.ts's toResponse() --
+// the API parses optionsJson server-side so web only ever sees `options: string[] | null`.
+export interface CustomFieldDefinition {
+  id: string;
+  organizationId: string;
+  entityType: 'candidate' | 'job';
+  key: string;
+  label: string;
+  fieldType: 'text' | 'number' | 'date' | 'select';
+  options: string[] | null;
+  required: boolean;
+  showOnApply: boolean;
+  position: number;
+  archivedAt: string | null;
+  createdAt: string;
+}
+
+// One candidate/job's custom-field value, as returned alongside the entity by the read endpoints.
+export interface CustomFieldRead {
+  definitionId: string;
+  key: string;
+  label: string;
+  fieldType: string;
+  value: string | number | null;
+}
+
+// Keyed by definition id -- the shape POST/PATCH value-write endpoints accept.
+export type CustomFieldInputMap = Record<string, string | number | null>;
