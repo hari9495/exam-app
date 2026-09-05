@@ -20,6 +20,7 @@ export const PERMISSIONS = [
   { key: 'org:manage_billing', description: 'View organization billing, plan, and usage' },
   { key: 'approvals:configure', description: 'Configure approval chains and staff reporting managers' },
   { key: 'pipelines:configure', description: 'Configure hiring pipelines' },
+  { key: 'users:manage_groups', description: 'Create and manage user groups' },
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -42,6 +43,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'org:manage_billing',
     'approvals:configure',
     'pipelines:configure',
+    'users:manage_groups',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],
