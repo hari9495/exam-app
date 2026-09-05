@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { ScheduleInterviewModal } from './ScheduleInterviewModal';
 import { useCurrentUser } from '../../../../lib/hooks/useCurrentUser';
 import { useCreateInterview, useSendInterview } from '../../../../lib/hooks/useInterviews';
@@ -71,5 +71,30 @@ describe('ScheduleInterviewModal timezone default', () => {
     render(<ScheduleInterviewModal entryId="entry-1" candidateId="cand-1" onClose={() => {}} />);
 
     expect(screen.getByText('Asia/Tokyo')).toBeInTheDocument();
+  });
+
+  it('keeps a manually chosen timezone when the current-user timezone loads late with a different value', () => {
+    jest.spyOn(Intl, 'DateTimeFormat').mockImplementation(
+      () => ({ resolvedOptions: () => ({ timeZone: 'UTC' }) }) as unknown as Intl.DateTimeFormat,
+    );
+    // No stored timezone yet -- current-user query hasn't resolved, so it seeds from the browser.
+    mockUseCurrentUser.mockReturnValue({ data: { id: 'u1', timeZone: null } });
+
+    const { rerender } = render(<ScheduleInterviewModal entryId="entry-1" candidateId="cand-1" onClose={() => {}} />);
+
+    // Recruiter manually picks a zone via the Combobox.
+    fireEvent.click(screen.getByRole('button', { name: 'UTC' }));
+    fireEvent.click(screen.getByText('Eastern (America/New_York)'));
+    expect(screen.getByRole('button', { name: 'Eastern (America/New_York)' })).toBeInTheDocument();
+
+    // current-user query resolves late, with a *different* stored timezone.
+    mockUseCurrentUser.mockReturnValue({ data: { id: 'u1', timeZone: 'Asia/Kolkata' } });
+    rerender(<ScheduleInterviewModal entryId="entry-1" candidateId="cand-1" onClose={() => {}} />);
+
+    // The manual choice must survive -- the late user load must not clobber it.
+    expect(screen.getByRole('button', { name: 'Eastern (America/New_York)' })).toBeInTheDocument();
+    expect(screen.queryByText('India (Asia/Kolkata)')).not.toBeInTheDocument();
+
+    jest.restoreAllMocks();
   });
 });
