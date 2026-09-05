@@ -251,6 +251,9 @@ describe('ProfileForm', () => {
         const body = JSON.parse(patchCall[1].body);
         expect(body.timeZone).toBe('America/New_York');
         expect(body.emailSignature).toBe('Best,\nJane');
+        // Preferences are a standalone partial update -- `name` must not ride along (the
+        // backend no longer requires it on every PATCH; see UpdateProfileDto).
+        expect(body).not.toHaveProperty('name');
       });
     });
 
@@ -268,6 +271,14 @@ describe('ProfileForm', () => {
         expect(patchCall).toBeDefined();
         expect(JSON.parse(patchCall[1].body).timeZone).toBe('');
       });
+    });
+
+    it('renders and selects a stored timezone the runtime does not recognize', async () => {
+      renderProfileForm({ timeZone: 'Not/A/RealZone', emailSignature: null });
+      await screen.findByDisplayValue('Jane Recruiter');
+
+      await waitFor(() => expect(screen.getByLabelText('Timezone')).toHaveValue('Not/A/RealZone'));
+      expect(screen.getByRole('option', { name: 'Not/A/RealZone' })).toBeInTheDocument();
     });
   });
 });

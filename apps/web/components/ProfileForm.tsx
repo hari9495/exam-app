@@ -189,10 +189,8 @@ export function ProfileForm() {
   function handlePreferencesSubmit(e: React.FormEvent) {
     e.preventDefault();
     setPreferencesError(null);
-    // Backend requires `name` on every PATCH, so resend the current value alongside the fields
-    // this form actually edits rather than splitting into a second required field here.
     updateProfile.mutate(
-      { name, timeZone, emailSignature },
+      { timeZone, emailSignature },
       {
         onSuccess: () => toast('Preferences updated.'),
         onError: (err) => setPreferencesError(err instanceof Error ? err.message : 'Failed to update preferences'),

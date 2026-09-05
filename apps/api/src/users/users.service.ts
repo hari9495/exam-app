@@ -218,7 +218,7 @@ export class UsersService {
       tx.user.update({
         where: { id: userId },
         data: {
-          name: dto.name,
+          ...(dto.name !== undefined ? { name: dto.name } : {}),
           ...(dto.timeZone !== undefined ? { timeZone: dto.timeZone || null } : {}),
           ...(dto.emailSignature !== undefined ? { emailSignature: dto.emailSignature || null } : {}),
         },

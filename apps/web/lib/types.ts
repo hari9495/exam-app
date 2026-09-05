@@ -47,8 +47,12 @@ export interface StaffUser {
   // Only the /users/me endpoints return this -- the list endpoints deliberately omit it rather
   // than hand out raw private-container blob paths, so it is absent (not null) there.
   avatarUrl?: string | null;
-  // Only the /users/me endpoints return these (profile preferences).
+  // timeZone is actually returned by SAFE_USER_SELECT on every endpoint that returns a
+  // StaffUser-shaped payload (not just /users/me); typed optional here to match avatarUrl's
+  // convention above, which is a bit more conservative than the runtime guarantee.
   timeZone?: string | null;
+  // emailSignature, unlike timeZone, really is /users/me-exclusive -- see SafeUser's comment
+  // in apps/api/src/users/users.service.ts.
   emailSignature?: string | null;
 }
 

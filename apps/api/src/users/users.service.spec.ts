@@ -2,7 +2,10 @@ import { Test } from '@nestjs/testing';
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { UsersService } from './users.service';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
@@ -481,6 +484,60 @@ describe('UsersService', () => {
       // Response still reflects whatever was already stored, since the DB row is untouched.
       expect(result.timeZone).toBe('Asia/Kolkata');
       expect(result.emailSignature).toBe('Existing sig');
+    });
+
+    // Root-cause coverage for the review fix: a preferences-only PATCH (no `name` in the DTO at
+    // all, not just an empty one) must leave the stored name untouched -- `name` is guarded by
+    // the same `!== undefined` pattern as timeZone/emailSignature above.
+    it('a timeZone-only update does not touch name', async () => {
+      const tx = {
+        user: {
+          update: jest.fn().mockResolvedValue({
+            id: 'user-1',
+            email: 'a@b.com',
+            name: 'Existing Name',
+            organizationId: 'org-1',
+            role: 'recruiter',
+            status: 'active',
+            avatarPath: null,
+            timeZone: 'America/New_York',
+            emailSignature: null,
+            lastLoginAt: null,
+            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+
+      const result = await service.updateMe(ctx, 'user-1', { timeZone: 'America/New_York' });
+
+      const dataArg = tx.user.update.mock.calls[0][0].data;
+      expect(dataArg).toEqual({ timeZone: 'America/New_York' });
+      expect('name' in dataArg).toBe(false);
+      expect(result.name).toBe('Existing Name');
+    });
+  });
+
+  // DTO-level: the review fix that made updateMe's `name` a no-op-when-absent only works
+  // end-to-end if the DTO itself also stops requiring `name` on every PATCH -- otherwise
+  // Nest's ValidationPipe 400s a preferences-only body before it ever reaches the service.
+  describe('UpdateProfileDto validation', () => {
+    it('allows a body with no name at all (preferences-only PATCH)', async () => {
+      const dto = plainToInstance(UpdateProfileDto, { timeZone: 'America/New_York' });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('still rejects an empty-string name when one is sent', async () => {
+      const dto = plainToInstance(UpdateProfileDto, { name: '' });
+      const errors = await validate(dto);
+      expect(errors.some((e) => e.property === 'name')).toBe(true);
+    });
+
+    it('accepts a non-empty name when one is sent', async () => {
+      const dto = plainToInstance(UpdateProfileDto, { name: 'Jane' });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
     });
   });
 

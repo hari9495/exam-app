@@ -29,10 +29,13 @@ function IsIanaTimeZoneOrEmpty(validationOptions?: ValidationOptions) {
 }
 
 export class UpdateProfileDto {
+  // Optional so a preferences-only PATCH ({timeZone, emailSignature}) doesn't need to resend the
+  // current name just to pass validation -- but once sent, it still can't be blanked out.
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
   @MaxLength(200)
-  name!: string;
+  name?: string;
 
   @IsOptional()
   @IsString()
