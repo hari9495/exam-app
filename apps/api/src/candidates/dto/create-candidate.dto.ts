@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator';
 
 export class CreateCandidateDto {
   @IsEmail()
@@ -11,4 +11,8 @@ export class CreateCandidateDto {
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @IsOptional()
+  @IsObject()
+  customFields?: Record<string, string | number | null>;
 }
