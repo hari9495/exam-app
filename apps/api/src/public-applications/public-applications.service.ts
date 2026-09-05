@@ -7,6 +7,7 @@ import { expandedName } from '../walk-in/walk-in.service';
 import { applicationStatusBucket } from './application-status';
 import { validatePdfUpload } from './pdf-validation';
 import { ApplyDto } from './dto/apply.dto';
+import { UpdatePortalProfileDto } from './dto/update-portal-profile.dto';
 import { recomputeGlobalStage } from '../candidates/recompute-global-stage';
 
 // Job-feed fields are wrapped in CDATA (the aggregator-standard for free-text). The only way to
@@ -289,6 +290,24 @@ export class PublicApplicationsService {
           .map((o) => ({ token: o.offerToken, status: o.status, compensation: o.compensation, startDate: o.startDate.toISOString(), expiresAt: o.expiresAt.toISOString() })),
       })),
     };
+  }
+
+  // Self-edit of name/phone here is INTENTIONAL, unlike apply()'s anti-tamper skip above: the
+  // portal token IS the candidate's own secret, so a holder of it updating their own name/phone
+  // is the candidate acting on their own record, not an outsider tampering with someone else's.
+  async updatePortalProfile(portalToken: string, dto: UpdatePortalProfileDto) {
+    const hasName = dto.name !== undefined;
+    const hasPhone = dto.phone !== undefined;
+    if (!hasName && !hasPhone) throw new BadRequestException('Nothing to update');
+    if (hasName && !dto.name!.trim()) throw new BadRequestException('Name cannot be empty');
+    const candidate = await this.resolvePortalCandidate(portalToken);
+    await this.tenantPrisma.forTenant({ organizationId: candidate.organizationId, isSuperAdmin: true }, (tx) =>
+      tx.candidate.update({
+        where: { id: candidate.id },
+        data: { ...(hasName ? { name: dto.name!.trim() } : {}), ...(hasPhone ? { phone: dto.phone || null } : {}) },
+      }),
+    );
+    return this.getPortal(portalToken);
   }
 
   async getApplicationStatus(statusToken: string) {

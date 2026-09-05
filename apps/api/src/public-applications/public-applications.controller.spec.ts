@@ -2,7 +2,7 @@ import { PublicApplicationsController } from './public-applications.controller';
 
 describe('PublicApplicationsController', () => {
   function setup() {
-    const service = { getPublicJob: jest.fn(), apply: jest.fn(), getApplicationStatus: jest.fn(), getJobsFeed: jest.fn(), getPortal: jest.fn() };
+    const service = { getPublicJob: jest.fn(), apply: jest.fn(), getApplicationStatus: jest.fn(), getJobsFeed: jest.fn(), getPortal: jest.fn(), updatePortalProfile: jest.fn() };
     const controller = new PublicApplicationsController(service as any);
     return { service, controller };
   }
@@ -30,6 +30,13 @@ describe('PublicApplicationsController', () => {
     const { service, controller } = setup();
     controller.portal('portal-token-1');
     expect(service.getPortal).toHaveBeenCalledWith('portal-token-1');
+  });
+
+  it('updatePortalProfile delegates to service.updatePortalProfile with the portalToken and dto', () => {
+    const { service, controller } = setup();
+    const dto = { name: 'New Name', phone: '555-1111' };
+    controller.updatePortalProfile('portal-token-1', dto as any);
+    expect(service.updatePortalProfile).toHaveBeenCalledWith('portal-token-1', dto);
   });
 
   it('status delegates to service.getApplicationStatus with the statusToken', () => {

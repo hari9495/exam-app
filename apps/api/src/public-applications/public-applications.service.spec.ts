@@ -410,6 +410,48 @@ describe('PublicApplicationsService', () => {
     });
   });
 
+  describe('updatePortalProfile', () => {
+    it('updates only name/phone on the token\'s candidate (trims name, never touches email), then returns the getPortal payload', async () => {
+      const updateMock = jest.fn().mockResolvedValue({});
+      tenantPrisma.forTenant
+        .mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', erasedAt: null }) } }))
+        .mockImplementationOnce((_c, fn) => fn({ candidate: { update: updateMock } }))
+        .mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', erasedAt: null }) } }))
+        .mockImplementationOnce((_c, fn) =>
+          fn({
+            candidate: { findUnique: jest.fn().mockResolvedValue({ name: 'New Name', email: 'a@x.com', phone: '555-1111' }) },
+            pipelineEntry: { findMany: jest.fn().mockResolvedValue([]) },
+            candidateProfile: { findUnique: jest.fn().mockResolvedValue(null) },
+          }),
+        );
+      prisma.organization.findUnique.mockResolvedValue({ name: 'Acme' });
+
+      const out = await service.updatePortalProfile('ptok-1', { name: '  New Name  ', phone: '555-1111' });
+
+      expect(updateMock).toHaveBeenCalledWith({ where: { id: 'cand-1' }, data: { name: 'New Name', phone: '555-1111' } });
+      // never writes email
+      expect(Object.keys(updateMock.mock.calls[0][0].data)).toEqual(['name', 'phone']);
+      // returns the getPortal payload (proves it re-fetches rather than echoing the dto)
+      expect(out.candidateName).toBe('New Name');
+      expect(out.candidatePhone).toBe('555-1111');
+    });
+
+    it('rejects an empty body (neither field) with BadRequestException, before touching the DB', async () => {
+      await expect(service.updatePortalProfile('ptok-1', {})).rejects.toThrow(BadRequestException);
+      expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+    });
+
+    it('rejects a blank/whitespace name with BadRequestException', async () => {
+      await expect(service.updatePortalProfile('ptok-1', { name: '   ' })).rejects.toThrow(BadRequestException);
+      expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for an unknown/erased token', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue(null) } }));
+      await expect(service.updatePortalProfile('bad-tok', { name: 'X' })).rejects.toThrow(NotFoundException);
+    });
+  });
+
   describe('getJobsFeed', () => {
     it('emits an Indeed-style XML feed of open public-apply jobs, CDATA-wrapped, linking to apply pages', async () => {
       tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
