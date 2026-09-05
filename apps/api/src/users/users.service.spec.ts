@@ -353,6 +353,158 @@ describe('UsersService', () => {
     );
   });
 
+  describe('updateMe - timeZone and emailSignature', () => {
+    const ctx = { organizationId: 'org-1', isSuperAdmin: false };
+
+    it('persists and returns timeZone and emailSignature', async () => {
+      const tx = {
+        user: {
+          update: jest.fn().mockResolvedValue({
+            id: 'user-1',
+            email: 'a@b.com',
+            name: 'New Name',
+            organizationId: 'org-1',
+            role: 'recruiter',
+            status: 'active',
+            avatarPath: null,
+            timeZone: 'America/New_York',
+            emailSignature: 'Best, Jane',
+            lastLoginAt: null,
+            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+
+      const result = await service.updateMe(ctx, 'user-1', {
+        name: 'New Name',
+        timeZone: 'America/New_York',
+        emailSignature: 'Best, Jane',
+      });
+
+      expect(tx.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'user-1' },
+          data: { name: 'New Name', timeZone: 'America/New_York', emailSignature: 'Best, Jane' },
+        }),
+      );
+      expect(result.timeZone).toBe('America/New_York');
+      expect(result.emailSignature).toBe('Best, Jane');
+    });
+
+    it('normalizes an empty-string timeZone to null (clear)', async () => {
+      const tx = {
+        user: {
+          update: jest.fn().mockResolvedValue({
+            id: 'user-1',
+            email: 'a@b.com',
+            name: 'New Name',
+            organizationId: 'org-1',
+            role: 'recruiter',
+            status: 'active',
+            avatarPath: null,
+            timeZone: null,
+            emailSignature: null,
+            lastLoginAt: null,
+            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+
+      const result = await service.updateMe(ctx, 'user-1', { name: 'New Name', timeZone: '' });
+
+      expect(tx.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { name: 'New Name', timeZone: null } }),
+      );
+      expect(result.timeZone).toBeNull();
+    });
+
+    it('normalizes an empty-string emailSignature to null (clear)', async () => {
+      const tx = {
+        user: {
+          update: jest.fn().mockResolvedValue({
+            id: 'user-1',
+            email: 'a@b.com',
+            name: 'New Name',
+            organizationId: 'org-1',
+            role: 'recruiter',
+            status: 'active',
+            avatarPath: null,
+            timeZone: null,
+            emailSignature: null,
+            lastLoginAt: null,
+            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+
+      const result = await service.updateMe(ctx, 'user-1', { name: 'New Name', emailSignature: '' });
+
+      expect(tx.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { name: 'New Name', emailSignature: null } }),
+      );
+      expect(result.emailSignature).toBeNull();
+    });
+
+    // Partial update: sending only `name` must leave timeZone/emailSignature untouched in the
+    // Prisma write -- the two keys must be absent from `data`, not present-as-undefined (Prisma
+    // treats an explicit `undefined` value differently across versions; the safest contract is
+    // "key not present at all" when the DTO field itself was never sent).
+    it('a name-only update does not touch timeZone or emailSignature', async () => {
+      const tx = {
+        user: {
+          update: jest.fn().mockResolvedValue({
+            id: 'user-1',
+            email: 'a@b.com',
+            name: 'New Name',
+            organizationId: 'org-1',
+            role: 'recruiter',
+            status: 'active',
+            avatarPath: null,
+            timeZone: 'Asia/Kolkata',
+            emailSignature: 'Existing sig',
+            lastLoginAt: null,
+            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+
+      const result = await service.updateMe(ctx, 'user-1', { name: 'New Name' });
+
+      const dataArg = tx.user.update.mock.calls[0][0].data;
+      expect(dataArg).toEqual({ name: 'New Name' });
+      expect('timeZone' in dataArg).toBe(false);
+      expect('emailSignature' in dataArg).toBe(false);
+      // Response still reflects whatever was already stored, since the DB row is untouched.
+      expect(result.timeZone).toBe('Asia/Kolkata');
+      expect(result.emailSignature).toBe('Existing sig');
+    });
+  });
+
+  it('getMe returns timeZone and emailSignature', async () => {
+    tenantPrisma.forTenant.mockResolvedValue({
+      id: 'user-1',
+      email: 'a@b.com',
+      name: 'Jane Recruiter',
+      organizationId: 'org-1',
+      role: 'recruiter',
+      status: 'active',
+      avatarPath: null,
+      timeZone: 'Europe/London',
+      emailSignature: 'Regards, Jane',
+      lastLoginAt: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    const result = await service.getMe({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1');
+
+    expect(result.timeZone).toBe('Europe/London');
+    expect(result.emailSignature).toBe('Regards, Jane');
+  });
+
   it('changePassword rejects a wrong current password', async () => {
     const storedHash = await argon2.hash('correct-password');
     tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>

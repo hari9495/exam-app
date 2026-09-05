@@ -25,7 +25,9 @@ import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } fr
 // avatarPath is excluded alongside passwordHash, not because it is secret, but because it is a
 // raw path into a PRIVATE blob container: useless to a browser and not ours to hand out. The
 // "me" endpoints select it separately and return a signed avatarUrl instead (see ProfileUser).
-export type SafeUser = Omit<User, 'passwordHash' | 'avatarPath'>;
+// emailSignature is excluded here too: it can hold up to 2000 chars of free text and has no
+// business being in a staff-list row -- only the "me" endpoints need it (see ProfileUser).
+export type SafeUser = Omit<User, 'passwordHash' | 'avatarPath' | 'emailSignature'>;
 
 // The staff pickers advertise "Search staff by name or email", but this filter matched email
 // only, so typing a person's NAME silently returned nothing -- the audit-log actor picker looked
@@ -47,15 +49,16 @@ const SAFE_USER_SELECT = {
   managerId: true,
   lastLoginAt: true,
   createdAt: true,
+  timeZone: true,
 } as const;
 
-// Only the "me" endpoints select avatarPath, and they map it to a signed avatarUrl before
-// returning. Deliberately NOT in SAFE_USER_SELECT: the user-list endpoints would then leak raw
-// private-container blob paths, which are useless to a browser and are not ours to hand out.
-const PROFILE_USER_SELECT = { ...SAFE_USER_SELECT, avatarPath: true } as const;
+// Only the "me" endpoints select avatarPath/emailSignature. avatarPath is mapped to a signed
+// avatarUrl before returning; emailSignature can run up to 2000 chars and has no reason to ride
+// along on every staff-list row. Neither belongs in SAFE_USER_SELECT.
+const PROFILE_USER_SELECT = { ...SAFE_USER_SELECT, avatarPath: true, emailSignature: true } as const;
 
 /** What the "me" endpoints return: the safe user plus a ready-to-render avatar URL. */
-export type ProfileUser = SafeUser & { avatarUrl: string | null };
+export type ProfileUser = SafeUser & { avatarUrl: string | null; emailSignature: string | null };
 
 const ALLOWED_AVATAR_MIME_TYPES: Record<string, string> = {
   'image/png': '.png',
@@ -208,8 +211,19 @@ export class UsersService {
   }
 
   async updateMe(context: TenantContext, userId: string, dto: UpdateProfileDto): Promise<ProfileUser> {
+    // Partial update: timeZone/emailSignature are only written when the DTO field was actually
+    // sent, so a name-only save (the common case) never clobbers either with undefined/null. An
+    // empty string is the caller's explicit "clear" signal and is normalized to null.
     const user = await this.tenantPrisma.forTenant(context, (tx) =>
-      tx.user.update({ where: { id: userId }, data: { name: dto.name }, select: PROFILE_USER_SELECT }),
+      tx.user.update({
+        where: { id: userId },
+        data: {
+          name: dto.name,
+          ...(dto.timeZone !== undefined ? { timeZone: dto.timeZone || null } : {}),
+          ...(dto.emailSignature !== undefined ? { emailSignature: dto.emailSignature || null } : {}),
+        },
+        select: PROFILE_USER_SELECT,
+      }),
     );
     return this.toProfileResponse(user);
   }
@@ -220,7 +234,7 @@ export class UsersService {
    * were signed. signIfOurs passes a non-blob value (local dev, where storage is unconfigured)
    * through untouched. The path comes from our own row, never from client input.
    */
-  private async toProfileResponse(user: SafeUser & { avatarPath: string | null }): Promise<ProfileUser> {
+  private async toProfileResponse(user: SafeUser & { avatarPath: string | null; emailSignature: string | null }): Promise<ProfileUser> {
     const { avatarPath, ...safe } = user;
     return { ...safe, avatarUrl: ((await this.blobStorage.signIfOurs(avatarPath ?? null)) as string | null) ?? null };
   }
