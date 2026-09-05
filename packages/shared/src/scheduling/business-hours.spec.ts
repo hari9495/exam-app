@@ -65,11 +65,35 @@ describe('evaluateSlot', () => {
   });
 
   it('handles the Intl hour12:false midnight quirk (24:00 -> 00:00)', () => {
-    // Mon 2026-01-26 00:00 IST = Sun 2026-01-25 18:30 UTC.
-    expect(evaluateSlot('2026-01-25T18:30:00.000Z', businessHours, holidays)).toEqual({
-      outsideHours: true,
-      holiday: 'Republic Day',
-    });
+    // This Node/ICU build never actually emits hour '24' at midnight (verified:
+    // formatToParts returns '00'), so the quirk can't be reproduced with a real
+    // instant on this platform. Force it via the formatter so the test exercises
+    // the hour==='24'->'00' normalization branch regardless of the host ICU version.
+    const realFormatToParts = Intl.DateTimeFormat.prototype.formatToParts;
+    const spy = jest
+      .spyOn(Intl.DateTimeFormat.prototype, 'formatToParts')
+      .mockImplementation(function (this: Intl.DateTimeFormat, date?: Date | number) {
+        const parts = realFormatToParts.call(this, date);
+        return parts.map((p) => (p.type === 'hour' ? { ...p, value: '24' } : p));
+      });
+
+    // Business hours that INCLUDE midnight, so the quirk actually discriminates:
+    // without the hour==='24'->'00' normalization, timeStr stays '24:00', which
+    // string-compares >= close '06:00' -> outsideHours: true (wrong). With the
+    // normalization, '00:00' falls inside [00:00, 06:00) -> outsideHours: false (correct).
+    const midnightHours: BusinessHours = {
+      ...businessHours,
+      days: { ...businessHours.days, mon: { enabled: true, open: '00:00', close: '06:00' } },
+    };
+    try {
+      // Mon 2026-01-26 00:00 IST = Sun 2026-01-25 18:30 UTC.
+      expect(evaluateSlot('2026-01-25T18:30:00.000Z', midnightHours, [])).toEqual({
+        outsideHours: false,
+        holiday: null,
+      });
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('returns no warning when businessHours is null', () => {
