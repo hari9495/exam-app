@@ -430,7 +430,9 @@ export class PipelineService {
         action: 'job.updated',
         entityType: 'job',
         entityId: jobId,
-        metadata: dto,
+        // customFields holds free-text values keyed by definitionId -- log which fields changed,
+        // not their values.
+        metadata: { ...dto, ...(dto.customFields ? { customFields: Object.keys(dto.customFields) } : {}) },
       });
 
       // Job-close: free candidates whose only active entry was on this job back to "Available".

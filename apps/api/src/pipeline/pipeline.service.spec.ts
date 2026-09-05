@@ -134,6 +134,25 @@ describe('PipelineService', () => {
       expect(deleteMany).toHaveBeenCalledWith({ where: { organizationId: 'org-1', definitionId: 'def-1', entityId: 'job-1' } });
     });
 
+    it('updateJob audits customFields as key list, not values', async () => {
+      const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
+      const findMany = jest.fn().mockResolvedValue(defs);
+      const upsert = jest.fn().mockResolvedValue({});
+      const tx = {
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', applyToken: null, publicApplyEnabled: false }), update },
+        customFieldDefinition: { findMany },
+        customFieldValue: { upsert, findMany: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.updateJob(context, 'user-1', 'job-1', { title: 'New Title', customFields: { 'def-1': 'LinkedIn' } } as any);
+
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({
+        action: 'job.updated',
+        metadata: expect.objectContaining({ title: 'New Title', customFields: ['def-1'] }),
+      }));
+    });
+
     it('updateJob leaves custom-field values untouched when customFields is omitted', async () => {
       const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
       const findMany = jest.fn();
@@ -146,6 +165,11 @@ describe('PipelineService', () => {
       await service.updateJob(context, 'user-1', 'job-1', { title: 'New Title' });
 
       expect(findMany).not.toHaveBeenCalled();
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({
+        action: 'job.updated',
+        metadata: expect.objectContaining({ title: 'New Title' }),
+      }));
+      expect(audit.record.mock.calls[0][1].metadata).not.toHaveProperty('customFields');
     });
 
     it('getJob returns customFields serialized from stored values', async () => {

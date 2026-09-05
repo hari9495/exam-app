@@ -331,9 +331,7 @@ export interface BoardEntryRow {
   fitStale: boolean;
   assignedUserId: string | null;
   assigneeName: string | null;
-  // Not populated by GET /jobs/:id/pipeline today (pipeline.service.ts's BoardRow carries no
-  // custom-field values) -- CandidateDrawer renders CustomFieldsDisplay against this optimistically
-  // for forward-compat; it renders nothing until a future task threads values through the board query.
+  // Populated by GET /jobs/:id/pipeline; rendered read-only in CandidateDrawer.
   customFields?: CustomFieldRead[];
 }
 
