@@ -305,6 +305,24 @@ describe('CandidateEmailsService', () => {
       await expect(service.resend(context, 'user-1', 'msg-x')).rejects.toThrow(NotFoundException);
     });
 
+    it('does not double-append the signature when resending an already-signed message', async () => {
+      tx.candidateEmail.findFirst.mockResolvedValue({
+        id: 'msg-1',
+        pipelineEntryId: 'entry-1',
+        templateId: null,
+        subject: 'Old subject',
+        renderedBody: 'Old body\n\n--\nRita Recruiter\nAcme Inc',
+      });
+      tx.user.findUnique.mockResolvedValue({ name: 'Rita', emailSignature: 'Rita Recruiter\nAcme Inc' });
+      email.send.mockResolvedValue({ success: true });
+
+      const msg = await service.resend(context, 'user-1', 'msg-1');
+
+      const signatureOccurrences = (msg.renderedBody.match(/--\nRita Recruiter\nAcme Inc/g) ?? []).length;
+      expect(signatureOccurrences).toBe(1);
+      expect(msg.renderedBody).toBe('Old body\n\n--\nRita Recruiter\nAcme Inc');
+    });
+
     it('rejects with BadRequest when the message has no linked pipeline entry', async () => {
       tx.candidateEmail.findFirst.mockResolvedValue({
         id: 'msg-2',
