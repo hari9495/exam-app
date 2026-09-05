@@ -3,6 +3,7 @@ import { Throttle } from '@nestjs/throttler';
 import { PublicApplicationsService } from './public-applications.service';
 import { ApplyDto } from './dto/apply.dto';
 import { UpdatePortalProfileDto } from './dto/update-portal-profile.dto';
+import { UploadPortalResumeDto } from './dto/upload-portal-resume.dto';
 import { PublicApplicationsThrottlerGuard } from './public-applications.throttler.guard';
 import { STRICT_WALK_IN_THROTTLE } from '../rate-limit-tiers';
 
@@ -46,5 +47,10 @@ export class PublicApplicationsController {
   @Patch('portal/:portalToken/profile')
   updatePortalProfile(@Param('portalToken') portalToken: string, @Body() dto: UpdatePortalProfileDto) {
     return this.service.updatePortalProfile(portalToken, dto);
+  }
+
+  @Post('portal/:portalToken/resume')
+  uploadPortalResume(@Param('portalToken') portalToken: string, @Body() dto: UploadPortalResumeDto) {
+    return this.service.uploadPortalResume(portalToken, dto);
   }
 }

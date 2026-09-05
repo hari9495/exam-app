@@ -452,6 +452,123 @@ describe('PublicApplicationsService', () => {
     });
   });
 
+  describe('uploadPortalResume', () => {
+    it('rejects a non-PDF résumé with BadRequestException', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
+        fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', erasedAt: null }) } }),
+      );
+      const notPdf = Buffer.from('hello world').toString('base64');
+
+      await expect(service.uploadPortalResume('ptok-1', { resumeBase64: notPdf })).rejects.toThrow(
+        new BadRequestException('Résumé must be a PDF'),
+      );
+      expect(blobStorage.upload).not.toHaveBeenCalled();
+    });
+
+    it('rejects an oversized résumé with BadRequestException', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
+        fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', erasedAt: null }) } }),
+      );
+      const big = Buffer.concat([Buffer.from('%PDF-1.7'), Buffer.alloc(6 * 1024 * 1024)]);
+
+      await expect(
+        service.uploadPortalResume('ptok-1', { resumeBase64: big.toString('base64') }),
+      ).rejects.toThrow(new BadRequestException('Résumé exceeds 5 MB'));
+      expect(blobStorage.upload).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for an unknown/erased token', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue(null) } }));
+      await expect(service.uploadPortalResume('bad-tok', { resumeBase64: 'x' })).rejects.toThrow(NotFoundException);
+      expect(blobStorage.upload).not.toHaveBeenCalled();
+    });
+
+    it('uploads OUTSIDE the tx, upserts the profile with reset parse fields, and enqueues resume_parse for the most-recent application owner', async () => {
+      const callOrder: string[] = [];
+      blobStorage.upload.mockImplementation(async () => {
+        callOrder.push('upload');
+        return 'candidates/org-1/new.pdf';
+      });
+      const writeTx = {
+        candidateProfile: { upsert: jest.fn().mockImplementation(async () => { callOrder.push('upsert'); return {}; }) },
+        pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ job: { createdById: 'user-1' } }) },
+      };
+      const portalPayload = { candidateName: 'Asha' };
+      tenantPrisma.forTenant
+        .mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', erasedAt: null }) } })) // resolvePortalCandidate (for upload)
+        .mockImplementationOnce((_c, fn) => fn(writeTx)) // the write tx
+        .mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', erasedAt: null }) } })) // resolvePortalCandidate (inside getPortal)
+        .mockImplementationOnce((_c, fn) =>
+          fn({
+            candidate: { findUnique: jest.fn().mockResolvedValue({ name: 'Asha', email: 'a@x.com', phone: null }) },
+            pipelineEntry: { findMany: jest.fn().mockResolvedValue([]) },
+            candidateProfile: { findUnique: jest.fn().mockResolvedValue(null) },
+          }),
+        ); // getPortal's own read tx
+      prisma.organization.findUnique.mockResolvedValue({ name: 'Acme' });
+      jobsService.enqueue.mockResolvedValue({ id: 'aijob-5' });
+
+      const pdf = Buffer.from('%PDF-1.7 new résumé').toString('base64');
+      const out = await service.uploadPortalResume('ptok-1', { resumeBase64: pdf });
+
+      expect(blobStorage.upload).toHaveBeenCalledWith(
+        expect.stringMatching(/^candidates\/org-1\/.+\.pdf$/),
+        expect.any(Buffer),
+        'application/pdf',
+      );
+      expect(writeTx.candidateProfile.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { candidateId: 'cand-1' },
+          update: expect.objectContaining({
+            resumePath: 'candidates/org-1/new.pdf',
+            parseStatus: 'pending',
+            parsedSummary: null,
+            parsedSkills: null,
+            parsedTitle: null,
+            parsedYearsExperience: null,
+            parsedAt: null,
+          }),
+        }),
+      );
+      // Upload happens BEFORE the tenant tx opens (blob I/O must not hold the tx open).
+      expect(callOrder).toEqual(['upload', 'upsert']);
+      expect(jobsService.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: 'org-1' }),
+        'resume_parse',
+        expect.stringContaining('cand-1'),
+        'user-1',
+      );
+      // Returns the getPortal payload, not an echo of the dto.
+      expect(out.candidateName).toBe('Asha');
+    });
+
+    it('saves the résumé but skips the enqueue when there is no attributable owner (edge case)', async () => {
+      const writeTx = {
+        candidateProfile: { upsert: jest.fn().mockResolvedValue({}) },
+        pipelineEntry: { findFirst: jest.fn().mockResolvedValue(null) },
+      };
+      tenantPrisma.forTenant
+        .mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', erasedAt: null }) } }))
+        .mockImplementationOnce((_c, fn) => fn(writeTx))
+        .mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', erasedAt: null }) } }))
+        .mockImplementationOnce((_c, fn) =>
+          fn({
+            candidate: { findUnique: jest.fn().mockResolvedValue({ name: 'Asha', email: 'a@x.com', phone: null }) },
+            pipelineEntry: { findMany: jest.fn().mockResolvedValue([]) },
+            candidateProfile: { findUnique: jest.fn().mockResolvedValue(null) },
+          }),
+        );
+      prisma.organization.findUnique.mockResolvedValue({ name: 'Acme' });
+      blobStorage.upload.mockResolvedValue('candidates/org-1/new.pdf');
+
+      const pdf = Buffer.from('%PDF-1.7 no owner').toString('base64');
+      await service.uploadPortalResume('ptok-1', { resumeBase64: pdf });
+
+      expect(writeTx.candidateProfile.upsert).toHaveBeenCalled();
+      expect(jobsService.enqueue).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getJobsFeed', () => {
     it('emits an Indeed-style XML feed of open public-apply jobs, CDATA-wrapped, linking to apply pages', async () => {
       tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>

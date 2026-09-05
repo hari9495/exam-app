@@ -8,6 +8,7 @@ import { applicationStatusBucket } from './application-status';
 import { validatePdfUpload } from './pdf-validation';
 import { ApplyDto } from './dto/apply.dto';
 import { UpdatePortalProfileDto } from './dto/update-portal-profile.dto';
+import { UploadPortalResumeDto } from './dto/upload-portal-resume.dto';
 import { recomputeGlobalStage } from '../candidates/recompute-global-stage';
 
 // Job-feed fields are wrapped in CDATA (the aggregator-standard for free-text). The only way to
@@ -307,6 +308,41 @@ export class PublicApplicationsService {
         data: { ...(hasName ? { name: dto.name!.trim() } : {}), ...(hasPhone ? { phone: dto.phone || null } : {}) },
       }),
     );
+    return this.getPortal(portalToken);
+  }
+
+  // Résumé-replace self-service: mirrors apply()'s upload pipeline exactly (validate -> upload
+  // outside the tx -> upsert profile with reset parse fields), but attributes the re-parse AiJob
+  // to the recruiter who owns the candidate's most-recent application, since the portal has no
+  // acting user of its own.
+  async uploadPortalResume(portalToken: string, dto: UploadPortalResumeDto) {
+    const candidate = await this.resolvePortalCandidate(portalToken);
+    const buf = Buffer.from(dto.resumeBase64, 'base64');
+    const validated = validatePdfUpload(buf);
+    if (!validated.ok) {
+      throw new BadRequestException(validated.reason === 'too_large' ? 'Résumé exceeds 5 MB' : 'Résumé must be a PDF');
+    }
+    // Upload OUTSIDE the tenant tx (blob I/O in a tx holds it open on a network call).
+    const resumePath = await this.blobStorage.upload(`candidates/${candidate.organizationId}/${randomUUID()}.pdf`, buf, 'application/pdf');
+    const context = { organizationId: candidate.organizationId, isSuperAdmin: true };
+    const attributionUserId = await this.tenantPrisma.forTenant(context, async (tx) => {
+      await tx.candidateProfile.upsert({
+        where: { candidateId: candidate.id },
+        create: { organizationId: candidate.organizationId, candidateId: candidate.id, resumePath, parseStatus: 'pending' },
+        update: { resumePath, parseStatus: 'pending', parsedSummary: null, parsedSkills: null, parsedTitle: null, parsedYearsExperience: null, parsedAt: null },
+      });
+      const recent = await tx.pipelineEntry.findFirst({
+        where: { candidateId: candidate.id },
+        orderBy: { createdAt: 'desc' },
+        select: { job: { select: { createdById: true } } },
+      });
+      return recent?.job.createdById ?? null;
+    });
+    // A portal token only exists after an application, so attributionUserId is normally set; if
+    // somehow absent, save the résumé but skip the re-parse rather than fail the upload.
+    if (attributionUserId) {
+      await this.jobsService.enqueue(context, 'resume_parse', JSON.stringify({ candidateId: candidate.id }), attributionUserId);
+    }
     return this.getPortal(portalToken);
   }
 
