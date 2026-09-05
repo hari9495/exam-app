@@ -10,6 +10,8 @@ import { useToast } from '../../../../components/ui';
 import { useCreateInterview, useSendInterview } from '../../../../lib/hooks/useInterviews';
 import { useUsers } from '../../../../lib/hooks/useUsers';
 import { useIntegrations } from '../../../../lib/hooks/useIntegrations';
+import { useBusinessHours } from '../../../../lib/hooks/useBusinessHours';
+import { evaluateSlot } from '../../../../lib/business-hours-eval';
 
 interface ScheduleInterviewModalProps {
   entryId: string;
@@ -60,6 +62,12 @@ export function ScheduleInterviewModal({ entryId, candidateId, onClose }: Schedu
   // Best-effort, same as CreateOfferModal: a plain recruiter gets a 403 on this org-admin
   // endpoint, so isSuccess just stays false and the banner quietly doesn't render.
   const { data: integrations, isSuccess: integrationsLoaded } = useIntegrations();
+  // Non-blocking recruiter-facing hint only -- tolerate a null config or a failed fetch (e.g. a
+  // plain recruiter without org:manage_settings still gets a 200 here since GET is
+  // authenticated-only, but any other failure should just render no hints, not break the modal).
+  const { data: businessHoursData, isError: businessHoursErrored } = useBusinessHours();
+  const businessHours = businessHoursErrored ? null : businessHoursData?.businessHours ?? null;
+  const holidays = businessHoursErrored ? [] : businessHoursData?.holidays ?? [];
   const { toast } = useToast();
 
   const [slots, setSlots] = useState<SlotRow[]>([newSlotRow()]);
@@ -115,43 +123,58 @@ export function ScheduleInterviewModal({ entryId, candidateId, onClose }: Schedu
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <span className="v2-label" style={{ marginBottom: 0 }}>Proposed times</span>
-          {slots.map((slot, index) => (
-            <div key={slot.key} style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
-                <label htmlFor={`interview-slot-start-${slot.key}`} className="v2-label" style={{ fontSize: 11 }}>
-                  Start {index + 1}
-                </label>
-                <input
-                  id={`interview-slot-start-${slot.key}`}
-                  type="datetime-local"
-                  value={slot.start}
-                  onChange={(e) => updateSlot(slot.key, 'start', e.target.value)}
-                  style={input}
-                />
+          {slots.map((slot, index) => {
+            // Purely presentational: never disables Add/Send, never affects the submit payload.
+            const slotWarning = slot.start
+              ? evaluateSlot(zonedWallClockToUtcISO(slot.start, timeZone), businessHours, holidays)
+              : null;
+            return (
+            <div key={slot.key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+                  <label htmlFor={`interview-slot-start-${slot.key}`} className="v2-label" style={{ fontSize: 11 }}>
+                    Start {index + 1}
+                  </label>
+                  <input
+                    id={`interview-slot-start-${slot.key}`}
+                    type="datetime-local"
+                    value={slot.start}
+                    onChange={(e) => updateSlot(slot.key, 'start', e.target.value)}
+                    style={input}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+                  <label htmlFor={`interview-slot-end-${slot.key}`} className="v2-label" style={{ fontSize: 11 }}>
+                    End {index + 1}
+                  </label>
+                  <input
+                    id={`interview-slot-end-${slot.key}`}
+                    type="datetime-local"
+                    value={slot.end}
+                    onChange={(e) => updateSlot(slot.key, 'end', e.target.value)}
+                    style={input}
+                  />
+                </div>
+                {slots.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setSlots((current) => current.filter((s) => s.key !== slot.key))}
+                    style={{ background: 'none', border: 'none', fontSize: 12.5, fontWeight: 500, color: 'var(--danger)', cursor: 'pointer', paddingBottom: 9 }}
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
-                <label htmlFor={`interview-slot-end-${slot.key}`} className="v2-label" style={{ fontSize: 11 }}>
-                  End {index + 1}
-                </label>
-                <input
-                  id={`interview-slot-end-${slot.key}`}
-                  type="datetime-local"
-                  value={slot.end}
-                  onChange={(e) => updateSlot(slot.key, 'end', e.target.value)}
-                  style={input}
-                />
-              </div>
-              {slots.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => setSlots((current) => current.filter((s) => s.key !== slot.key))}
-                  style={{ background: 'none', border: 'none', fontSize: 12.5, fontWeight: 500, color: 'var(--danger)', cursor: 'pointer', paddingBottom: 9 }}
-                >
-                  Remove
-                </button>
+              {slotWarning && (slotWarning.outsideHours || slotWarning.holiday) && (
+                <p style={{ margin: 0, fontSize: 11.5, color: '#a16207' }}>
+                  {slotWarning.outsideHours && <span>Outside business hours</span>}
+                  {slotWarning.outsideHours && slotWarning.holiday && <span> &middot; </span>}
+                  {slotWarning.holiday && <span>On a holiday: {slotWarning.holiday}</span>}
+                </p>
               )}
             </div>
-          ))}
+            );
+          })}
           <div>
             <button type="button" onClick={() => setSlots((current) => [...current, newSlotRow()])} className="v2-hoverbtn" style={dt.toolBtn}>Add slot</button>
           </div>
