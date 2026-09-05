@@ -77,6 +77,7 @@ describe('UserGroupsService', () => {
           { organizationId: 'org-1', groupId: 'g1', userId: 'u2' },
         ],
       });
+      expect(audit.record).toHaveBeenCalledTimes(1);
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'user_group.created', entityId: 'g1' }));
       expect(result).toEqual({
         id: 'g1',
@@ -105,6 +106,32 @@ describe('UserGroupsService', () => {
 
       await expect(service.update(context, 'actor-1', 'g1', { name: 'Taken' } as any)).rejects.toThrow(BadRequestException);
       expect(tx.userGroup.update).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('updates the group, records audit once, and returns the hydrated group', async () => {
+      tx.userGroup.findFirst
+        .mockResolvedValueOnce({ id: 'g1' }) // existence check
+        .mockResolvedValueOnce(null); // clash check (no clash)
+      tx.userGroup.update.mockResolvedValue({ id: 'g1', name: 'Renamed', description: null });
+      tx.userGroupMember.findMany.mockResolvedValueOnce([{ groupId: 'g1', userId: 'u1' }]);
+      tx.user.findMany.mockResolvedValueOnce([{ id: 'u1', name: 'Alice', email: 'alice@x.com' }]);
+
+      const result = await service.update(context, 'actor-1', 'g1', { name: 'Renamed' } as any);
+
+      expect(tx.userGroup.update).toHaveBeenCalledWith({
+        where: { id: 'g1' },
+        data: { name: 'Renamed' },
+        select: { id: true, name: true, description: true },
+      });
+      expect(audit.record).toHaveBeenCalledTimes(1);
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'user_group.updated', entityId: 'g1' }));
+      expect(result).toEqual({
+        id: 'g1',
+        name: 'Renamed',
+        description: null,
+        members: [{ userId: 'u1', name: 'Alice', email: 'alice@x.com' }],
+      });
     });
   });
 
@@ -120,6 +147,7 @@ describe('UserGroupsService', () => {
       expect(memberDeleteOrder).toBeLessThan(groupDeleteOrder);
       expect(tx.userGroupMember.deleteMany).toHaveBeenCalledWith({ where: { organizationId: 'org-1', groupId: 'g1' } });
       expect(tx.userGroup.delete).toHaveBeenCalledWith({ where: { id: 'g1' } });
+      expect(audit.record).toHaveBeenCalledTimes(1);
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'user_group.deleted', entityId: 'g1' }));
       expect(result).toEqual({ id: 'g1' });
     });
@@ -155,7 +183,8 @@ describe('UserGroupsService', () => {
       expect(tx.userGroupMember.createMany).toHaveBeenCalledWith({
         data: [{ organizationId: 'org-1', groupId: 'g1', userId: 'u3' }],
       });
-      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'user_group.members_changed', entityId: 'g1' }));
+      expect(audit.record).toHaveBeenCalledTimes(1);
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'user_group.members_changed', entityId: 'g1', metadata: { count: 2 } }));
     });
 
     it('leaves unchanged members untouched: no add/remove calls when desired set matches current', async () => {

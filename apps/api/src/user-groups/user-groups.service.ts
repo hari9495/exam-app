@@ -47,19 +47,21 @@ export class UserGroupsService {
 
   async create(context: TenantContext, actorUserId: string, dto: CreateUserGroupDto): Promise<UserGroupWithMembers> {
     const orgId = context.organizationId as string;
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+    const { result, name } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const clash = await tx.userGroup.findFirst({ where: { organizationId: orgId, name: dto.name }, select: { id: true } });
       if (clash) throw new BadRequestException(`A group named "${dto.name}" already exists`);
       const group = await tx.userGroup.create({ data: { organizationId: orgId, name: dto.name, description: dto.description ?? null }, select: { id: true, name: true, description: true } });
       if (dto.memberUserIds?.length) await this.applyMembers(tx, orgId, group.id, dto.memberUserIds);
-      await this.audit.record(context, { actorUserId, action: 'user_group.created', entityType: 'user_group', entityId: group.id, metadata: { name: group.name } });
-      return (await this.hydrate(tx, orgId, [group]))[0];
+      const result = (await this.hydrate(tx, orgId, [group]))[0];
+      return { result, name: group.name };
     });
+    await this.audit.record(context, { actorUserId, action: 'user_group.created', entityType: 'user_group', entityId: result.id, metadata: { name } });
+    return result;
   }
 
   async update(context: TenantContext, actorUserId: string, id: string, dto: UpdateUserGroupDto): Promise<UserGroupWithMembers> {
     const orgId = context.organizationId as string;
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+    const result = await this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.userGroup.findFirst({ where: { id, organizationId: orgId }, select: { id: true } });
       if (!existing) throw new NotFoundException(`User group ${id} not found`);
       if (dto.name !== undefined) {
@@ -71,32 +73,36 @@ export class UserGroupsService {
         data: { ...(dto.name !== undefined ? { name: dto.name } : {}), ...(dto.description !== undefined ? { description: dto.description || null } : {}) },
         select: { id: true, name: true, description: true },
       });
-      await this.audit.record(context, { actorUserId, action: 'user_group.updated', entityType: 'user_group', entityId: id, metadata: {} });
       return (await this.hydrate(tx, orgId, [group]))[0];
     });
+    await this.audit.record(context, { actorUserId, action: 'user_group.updated', entityType: 'user_group', entityId: id, metadata: {} });
+    return result;
   }
 
   async remove(context: TenantContext, actorUserId: string, id: string): Promise<{ id: string }> {
     const orgId = context.organizationId as string;
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+    await this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.userGroup.findFirst({ where: { id, organizationId: orgId }, select: { id: true } });
       if (!existing) throw new NotFoundException(`User group ${id} not found`);
       await tx.userGroupMember.deleteMany({ where: { organizationId: orgId, groupId: id } });
       await tx.userGroup.delete({ where: { id } });
-      await this.audit.record(context, { actorUserId, action: 'user_group.deleted', entityType: 'user_group', entityId: id, metadata: {} });
       return { id };
     });
+    await this.audit.record(context, { actorUserId, action: 'user_group.deleted', entityType: 'user_group', entityId: id, metadata: {} });
+    return { id };
   }
 
   async setMembers(context: TenantContext, actorUserId: string, id: string, userIds: string[]): Promise<UserGroupWithMembers> {
     const orgId = context.organizationId as string;
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+    const { result, count } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const group = await tx.userGroup.findFirst({ where: { id, organizationId: orgId }, select: { id: true, name: true, description: true } });
       if (!group) throw new NotFoundException(`User group ${id} not found`);
       await this.applyMembers(tx, orgId, id, userIds);
-      await this.audit.record(context, { actorUserId, action: 'user_group.members_changed', entityType: 'user_group', entityId: id, metadata: { count: [...new Set(userIds)].length } });
-      return (await this.hydrate(tx, orgId, [group]))[0];
+      const result = (await this.hydrate(tx, orgId, [group]))[0];
+      return { result, count: [...new Set(userIds)].length };
     });
+    await this.audit.record(context, { actorUserId, action: 'user_group.members_changed', entityType: 'user_group', entityId: id, metadata: { count } });
+    return result;
   }
 
   // Validate + diff membership to the desired set.
