@@ -980,6 +980,41 @@ model PipelineFeedback {
   @@map("pipeline_feedback")
 }
 
+model CustomFieldDefinition {
+  id             String    @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  organizationId String    @map("organization_id") @db.UniqueIdentifier
+  entityType     String    @map("entity_type") @db.NVarChar(20)
+  key            String    @db.NVarChar(100)
+  label          String    @db.NVarChar(200)
+  fieldType      String    @map("field_type") @db.NVarChar(20)
+  optionsJson    String?   @map("options_json") @db.NVarChar(Max)
+  required       Boolean   @default(false)
+  showOnApply    Boolean   @default(false) @map("show_on_apply")
+  position       Int       @default(0)
+  archivedAt     DateTime? @map("archived_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  @@unique([organizationId, entityType, key])
+  @@index([organizationId, entityType])
+  @@map("custom_field_definitions")
+}
+
+model CustomFieldValue {
+  id             String    @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  organizationId String    @map("organization_id") @db.UniqueIdentifier
+  definitionId   String    @map("definition_id") @db.UniqueIdentifier
+  entityType     String    @map("entity_type") @db.NVarChar(20)
+  entityId       String    @map("entity_id") @db.UniqueIdentifier
+  valueText      String?   @map("value_text") @db.NVarChar(Max)
+  valueNumber    Float?    @map("value_number")
+  valueDate      DateTime? @map("value_date")
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  @@unique([organizationId, definitionId, entityId])
+  @@index([organizationId, entityType, entityId])
+  @@map("custom_field_values")
+}
+
 model CandidateEmailTemplate {
   id             String           @id @default(uuid()) @db.UniqueIdentifier
   organizationId String           @map("organization_id") @db.UniqueIdentifier
