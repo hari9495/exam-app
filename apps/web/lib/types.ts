@@ -214,6 +214,9 @@ export interface Candidate {
   createdAt: string;
   erasedAt: string | null;
   invitationCount?: number;
+  // Only the /candidates list endpoint populates this (CandidateListItem server-side) -- see
+  // candidates.service.ts. Absent (not empty-array) anywhere else Candidate is used as a shape.
+  customFields?: CustomFieldRead[];
 }
 
 export interface Invitation {
@@ -328,6 +331,10 @@ export interface BoardEntryRow {
   fitStale: boolean;
   assignedUserId: string | null;
   assigneeName: string | null;
+  // Not populated by GET /jobs/:id/pipeline today (pipeline.service.ts's BoardRow carries no
+  // custom-field values) -- CandidateDrawer renders CustomFieldsDisplay against this optimistically
+  // for forward-compat; it renders nothing until a future task threads values through the board query.
+  customFields?: CustomFieldRead[];
 }
 
 // Mirrors apps/api/src/pipeline/pipeline.service.ts's Board -- the getBoard() response shape.
@@ -338,6 +345,18 @@ export interface BoardData {
 
 // Public, unauthenticated candidate-facing shapes -- served by /public/jobs/:applyToken and
 // /public/applications/:statusToken, consumed by the apply/status pages via plain fetch.
+// The apply-visible subset of a candidate custom-field definition -- mirrors
+// PublicApplicationsService.getPublicJob's customFields mapping. Keyed by `definitionId` (not
+// `id`) since this is a public, unauthenticated trust boundary with no full CustomFieldDefinition.
+export interface PublicCustomFieldDef {
+  definitionId: string;
+  key: string;
+  label: string;
+  fieldType: 'text' | 'number' | 'date' | 'select';
+  options: string[] | null;
+  required: boolean;
+}
+
 export interface PublicJob {
   jobTitle: string;
   jobDescription: string | null;
@@ -346,6 +365,7 @@ export interface PublicJob {
   postedAt?: string;
   orgName: string;
   orgLogo: string | null;
+  customFields: PublicCustomFieldDef[];
 }
 
 export interface PortalApplication {
@@ -449,6 +469,7 @@ export interface JobDetail {
   salaryMax: number | null;
   salaryCurrency: string | null;
   approval: ApprovalSummary | null;
+  customFields: CustomFieldRead[];
 }
 
 export type CandidateParseStatus = 'pending' | 'parsing' | 'done' | 'failed' | 'unavailable';

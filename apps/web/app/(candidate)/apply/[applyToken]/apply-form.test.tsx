@@ -10,6 +10,7 @@ const JOB = {
   jobDescription: 'Build the pipeline.',
   orgName: 'Acme Corp',
   orgLogo: null,
+  customFields: [],
 };
 
 function mockFetch() {
@@ -93,6 +94,73 @@ describe('ApplyForm', () => {
     await userEvent.click(screen.getByRole('button', { name: /Submit application/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Enter a valid email address.');
+    expect((global.fetch as jest.Mock).mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
+  });
+
+  it('renders apply-visible custom fields and forwards them in the apply POST body', async () => {
+    global.fetch = jest.fn(async (url, options) => {
+      const urlString = String(url);
+      if (options?.method === 'POST' && urlString.endsWith('/public/jobs/tok-abc/apply')) {
+        return new Response(JSON.stringify({ statusToken: 'tok-1' }), { status: 200 });
+      }
+      if (urlString.endsWith('/public/jobs/tok-abc')) {
+        return new Response(
+          JSON.stringify({
+            ...JOB,
+            customFields: [{ definitionId: 'def-1', key: 'linkedin', label: 'LinkedIn URL', fieldType: 'text', options: null, required: true }],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 404 });
+    }) as unknown as typeof fetch;
+    render(<ApplyForm />);
+
+    expect(await screen.findByText('Senior Backend Engineer')).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText('Name'), 'Jane Candidate');
+    await userEvent.type(screen.getByLabelText('Email'), 'jane@example.com');
+    await userEvent.type(screen.getByLabelText(/LinkedIn URL/), 'https://linkedin.com/in/jane');
+    const file = new File([new Uint8Array([1, 2, 3])], 'cv.pdf', { type: 'application/pdf' });
+    await userEvent.upload(screen.getByLabelText(/Resume/), file);
+
+    await userEvent.click(screen.getByRole('button', { name: /Submit application/i }));
+
+    await screen.findByRole('link', { name: 'Track this application' });
+    const postCall = (global.fetch as jest.Mock).mock.calls.find(([, options]) => options?.method === 'POST');
+    const body = JSON.parse(postCall![1].body);
+    expect(body.customFields).toEqual({ 'def-1': 'https://linkedin.com/in/jane' });
+  });
+
+  it('blocks submission when a required apply-visible custom field is left blank', async () => {
+    global.fetch = jest.fn(async (url, options) => {
+      const urlString = String(url);
+      if (options?.method === 'POST' && urlString.endsWith('/public/jobs/tok-abc/apply')) {
+        return new Response(JSON.stringify({ statusToken: 'tok-1' }), { status: 200 });
+      }
+      if (urlString.endsWith('/public/jobs/tok-abc')) {
+        return new Response(
+          JSON.stringify({
+            ...JOB,
+            customFields: [{ definitionId: 'def-1', key: 'linkedin', label: 'LinkedIn URL', fieldType: 'text', options: null, required: true }],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 404 });
+    }) as unknown as typeof fetch;
+    render(<ApplyForm />);
+
+    expect(await screen.findByText('Senior Backend Engineer')).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText('Name'), 'Jane Candidate');
+    await userEvent.type(screen.getByLabelText('Email'), 'jane@example.com');
+    const file = new File([new Uint8Array([1, 2, 3])], 'cv.pdf', { type: 'application/pdf' });
+    await userEvent.upload(screen.getByLabelText(/Resume/), file);
+
+    await userEvent.click(screen.getByRole('button', { name: /Submit application/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('LinkedIn URL is required.');
     expect((global.fetch as jest.Mock).mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
   });
 

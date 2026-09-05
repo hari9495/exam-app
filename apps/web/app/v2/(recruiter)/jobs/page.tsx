@@ -10,8 +10,10 @@ import { Plus, MoreHorizontal, ListFilter, Check, Trash2 } from 'lucide-react';
 import { useJobs, useCreateJob, useDeleteJob } from '../../../../lib/hooks/usePipeline';
 import { usePipelines } from '../../../../lib/hooks/usePipelines';
 import { useTeammates } from '../../../../lib/hooks/useUserDirectory';
-import { type JobListItem, type JobStatus, type Pipeline, type StageCategory } from '../../../../lib/types';
+import { useCustomFields } from '../../../../lib/hooks/useCustomFields';
+import { type JobListItem, type JobStatus, type Pipeline, type StageCategory, type CustomFieldInputMap } from '../../../../lib/types';
 import { DataTable, DT_FEATURES, dt, SortHead, Pill, Dropdown, DropdownItem, Dialog, TextField, Combobox, Button } from '../../../../components/ui-v2';
+import { CustomFieldsInputs } from '../../../../components/CustomFieldsInputs';
 import { STATUS } from '../../../../components/ui-v2/viz';
 
 const STATUS_OPTS = [{ value: 'all', label: 'All statuses' }, { value: 'open', label: 'Open' }, { value: 'closed', label: 'Closed' }];
@@ -55,6 +57,7 @@ export default function V2JobsPage() {
   const [salaryMax, setSalaryMax] = useState('');
   const [salaryCurrency, setSalaryCurrency] = useState('');
   const [pipelineId, setPipelineId] = useState('');
+  const [customFields, setCustomFields] = useState<CustomFieldInputMap>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<JobListItem | null>(null);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -63,6 +66,7 @@ export default function V2JobsPage() {
   const { data: jobs, isLoading, isError } = useJobs(statusFilter === 'all' ? undefined : (statusFilter as JobStatus));
   const { data: teammates } = useTeammates();
   const { data: pipelines } = usePipelines();
+  const { data: jobFieldDefs } = useCustomFields('job');
   const managerOptions = [{ value: '', label: 'None' }, ...(teammates ?? []).map((t) => ({ value: t.id, label: t.name ?? t.email }))];
   const pipelineOptions = (pipelines ?? []).map((p) => ({ value: p.id, label: p.isDefault ? `${p.name} (default)` : p.name }));
   // Uncontrolled until the user picks one — defaults to the org's default pipeline once loaded.
@@ -73,7 +77,7 @@ export default function V2JobsPage() {
   const rows = q ? (jobs ?? []).filter((j) => j.title.toLowerCase().includes(q)) : (jobs ?? []);
 
   function resetForm() {
-    setTitle(''); setDescription(''); setDepartment(''); setHiringManagerId(''); setHeadcount(''); setSalaryMin(''); setSalaryMax(''); setSalaryCurrency(''); setPipelineId('');
+    setTitle(''); setDescription(''); setDepartment(''); setHiringManagerId(''); setHeadcount(''); setSalaryMin(''); setSalaryMax(''); setSalaryCurrency(''); setPipelineId(''); setCustomFields({});
   }
   function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -89,6 +93,7 @@ export default function V2JobsPage() {
       salaryMin: salaryMin.trim() ? Number(salaryMin) : undefined,
       salaryMax: salaryMax.trim() ? Number(salaryMax) : undefined,
       salaryCurrency: salaryCurrency.trim() || undefined,
+      customFields,
     }, {
       onSuccess: () => { setAddOpen(false); resetForm(); notify('success', 'Job created.'); },
       onError: (err) => setFormError(err instanceof Error ? err.message : 'Failed to create job.'),
@@ -166,6 +171,7 @@ export default function V2JobsPage() {
               <div style={{ flex: 1 }}><TextField id="job-salary-max" label="Salary max (optional)" type="number" value={salaryMax} onChange={setSalaryMax} autoComplete="off" /></div>
               <div style={{ width: 90 }}><TextField id="job-currency" label="Currency" value={salaryCurrency} onChange={setSalaryCurrency} placeholder="USD" autoComplete="off" /></div>
             </div>
+            <CustomFieldsInputs definitions={jobFieldDefs ?? []} values={customFields} onChange={setCustomFields} />
           </div>
           {formError && <p role="alert" style={{ marginTop: 12, fontSize: 12.5, color: 'var(--danger)' }}>{formError}</p>}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>

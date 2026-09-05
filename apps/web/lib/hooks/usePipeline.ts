@@ -11,6 +11,7 @@ import {
   PatchEntryResult,
   FitAssessment,
   RubricDimension,
+  CustomFieldInputMap,
 } from '../types';
 
 export function useJobs(status?: JobStatus) {
@@ -52,6 +53,7 @@ export interface CreateJobInput {
   salaryMax?: number;
   salaryCurrency?: string;
   pipelineId?: string;
+  customFields?: CustomFieldInputMap;
 }
 
 export function useCreateJob() {

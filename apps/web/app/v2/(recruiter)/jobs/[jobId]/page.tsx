@@ -17,6 +17,7 @@ import { useJob, useUpdateJob } from '../../../../../lib/hooks/usePipeline';
 import { useAuth } from '../../../../../lib/auth-context';
 import { JobDetail, JobStatus } from '../../../../../lib/types';
 import { dt, Pill, FormAlert } from '../../../../../components/ui-v2';
+import { CustomFieldsDisplay } from '../../../../../components/CustomFieldsInputs';
 import { STATUS } from '../../../../../components/ui-v2/viz';
 
 const backLink: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)', textDecoration: 'none' };
@@ -137,6 +138,11 @@ export default function V2JobPage() {
           {canManage && (
             <JobSection title="Fit criteria" description="Describe the ideal candidate and set an optional weighted scoring rubric.">
               <FitCriteriaEditor job={job} jobId={jobId} />
+            </JobSection>
+          )}
+          {job.customFields.length > 0 && (
+            <JobSection title="Custom fields" description="Org-defined fields for this role.">
+              <CustomFieldsDisplay fields={job.customFields} />
             </JobSection>
           )}
         </div>
