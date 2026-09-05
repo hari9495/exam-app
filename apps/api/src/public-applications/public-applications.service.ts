@@ -221,21 +221,32 @@ export class PublicApplicationsService {
     return { statusToken: entry.applicationToken!, portalToken };
   }
 
+  // Cross-tenant candidate-by-token resolution shared by the portal and its later self-service
+  // writes (later tasks reuse this). No org context exists yet until the token resolves one, so
+  // this bypasses RLS the same way resolveJob/resolveApply do.
+  private async resolvePortalCandidate(portalToken: string): Promise<{ id: string; organizationId: string }> {
+    const candidate = await this.tenantPrisma.forTenant(
+      { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
+      (tx) => tx.candidate.findUnique({ where: { portalToken }, select: { id: true, organizationId: true, erasedAt: true } }),
+    );
+    if (!candidate || candidate.erasedAt) throw new NotFoundException('Portal not found');
+    return { id: candidate.id, organizationId: candidate.organizationId };
+  }
+
   // The unified candidate portal: resolve the candidate by their magic-link token and aggregate
   // ALL their applications at the org (each with its interviews + offers), so they see everything
   // in one place. Read-only aggregation; actions happen on the existing per-artifact token pages.
   async getPortal(portalToken: string) {
-    const candidate = await this.tenantPrisma.forTenant(
-      { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
-      (tx) => tx.candidate.findUnique({ where: { portalToken }, select: { id: true, organizationId: true, name: true, email: true, erasedAt: true } }),
-    );
-    if (!candidate || candidate.erasedAt) throw new NotFoundException('Portal not found');
-    const org = await this.prisma.organization.findUnique({ where: { id: candidate.organizationId }, select: { name: true } });
-    const entries = await this.tenantPrisma.forTenant(
-      { organizationId: candidate.organizationId, isSuperAdmin: true },
-      (tx) =>
-        tx.pipelineEntry.findMany({
-          where: { candidateId: candidate.id },
+    const { id: candidateId, organizationId } = await this.resolvePortalCandidate(portalToken);
+    const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } });
+    // Now that the token has resolved a real org, look up the display fields + résumé state
+    // through normal org-scoped RLS (candidateId) rather than another LOOKUP_ORG bypass.
+    const { candidate, entries, profile } = await this.tenantPrisma.forTenant(
+      { organizationId, isSuperAdmin: true },
+      async (tx) => {
+        const candidate = await tx.candidate.findUnique({ where: { id: candidateId }, select: { name: true, email: true, phone: true } });
+        const entries = await tx.pipelineEntry.findMany({
+          where: { candidateId },
           orderBy: { createdAt: 'desc' },
           select: {
             applicationToken: true,
@@ -248,11 +259,16 @@ export class PublicApplicationsService {
             },
             offers: { select: { offerToken: true, status: true, compensation: true, startDate: true, expiresAt: true } },
           },
-        }),
+        });
+        const profile = await tx.candidateProfile.findUnique({ where: { candidateId }, select: { resumePath: true, parseStatus: true } });
+        return { candidate, entries, profile };
+      },
     );
     return {
-      candidateName: candidate.name,
-      candidateEmail: candidate.email,
+      candidateName: candidate?.name ?? '',
+      candidateEmail: candidate?.email ?? '',
+      candidatePhone: candidate?.phone ?? null,
+      resume: { hasResume: Boolean(profile?.resumePath), parseStatus: profile?.parseStatus ?? null },
       orgName: org?.name ?? '',
       applications: entries.map((e) => ({
         jobTitle: e.job.title,

@@ -341,9 +341,12 @@ describe('PublicApplicationsService', () => {
   describe('getPortal', () => {
     it("aggregates the candidate's applications with their interviews and offers", async () => {
       tenantPrisma.forTenant
-        .mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', name: 'Asha', email: 'a@x.com', erasedAt: null }) } }))
+        .mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', erasedAt: null }) } }))
         .mockImplementationOnce((_c, fn) =>
           fn({
+            candidate: {
+              findUnique: jest.fn().mockResolvedValue({ name: 'Asha', email: 'a@x.com', phone: '555-1234' }),
+            },
             pipelineEntry: {
               findMany: jest.fn().mockResolvedValue([
                 {
@@ -357,6 +360,9 @@ describe('PublicApplicationsService', () => {
                 },
               ]),
             },
+            candidateProfile: {
+              findUnique: jest.fn().mockResolvedValue({ resumePath: 'candidates/org-1/resume.pdf', parseStatus: 'parsed' }),
+            },
           }),
         );
       prisma.organization.findUnique.mockResolvedValue({ name: 'Acme' });
@@ -365,15 +371,42 @@ describe('PublicApplicationsService', () => {
 
       expect(out.candidateName).toBe('Asha');
       expect(out.orgName).toBe('Acme');
+      expect(out.candidatePhone).toBe('555-1234');
+      expect(out.resume).toEqual({ hasResume: true, parseStatus: 'parsed' });
       expect(out.applications).toHaveLength(1);
       expect(out.applications[0]).toMatchObject({ jobTitle: 'Backend', stage: 'interview', statusToken: 'st1' });
       expect(out.applications[0].interviews[0]).toMatchObject({ token: 'it1', confirmed: false });
       expect(out.applications[0].offers[0]).toMatchObject({ token: 'ot1', status: 'sent' });
     });
 
-    it('throws NotFound for an unknown/erased portal token', async () => {
+    it('returns candidatePhone: null and resume: hasResume false when the candidate has no phone/profile', async () => {
+      tenantPrisma.forTenant
+        .mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', erasedAt: null }) } }))
+        .mockImplementationOnce((_c, fn) =>
+          fn({
+            candidate: { findUnique: jest.fn().mockResolvedValue({ name: 'Asha', email: 'a@x.com', phone: null }) },
+            pipelineEntry: { findMany: jest.fn().mockResolvedValue([]) },
+            candidateProfile: { findUnique: jest.fn().mockResolvedValue(null) },
+          }),
+        );
+      prisma.organization.findUnique.mockResolvedValue({ name: 'Acme' });
+
+      const out = await service.getPortal('ptok-1');
+
+      expect(out.candidatePhone).toBeNull();
+      expect(out.resume).toEqual({ hasResume: false, parseStatus: null });
+    });
+
+    it('throws NotFound for an unknown portal token', async () => {
       tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue(null) } }));
       await expect(service.getPortal('bad')).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws NotFound for an erased candidate', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
+        fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', erasedAt: new Date('2026-01-01T00:00:00.000Z') }) } }),
+      );
+      await expect(service.getPortal('erased-tok')).rejects.toThrow(NotFoundException);
     });
   });
 
