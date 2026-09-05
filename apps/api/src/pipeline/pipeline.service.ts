@@ -58,6 +58,7 @@ export interface BoardRow {
   assignedUserId: string | null;
   assigneeName: string | null;
   fitStale: boolean;
+  customFields: CustomFieldRead[];
 }
 
 export interface BoardStage {
@@ -587,6 +588,28 @@ export class PipelineService {
         : [];
       const assigneeName = new Map(assignees.map((a: { id: string; name: string | null }) => [a.id, a.name]));
 
+      // One definitions query and one values query for the whole board -- not per candidate.
+      const candidateIds = [...new Set(entries.map((e) => e.candidateId))];
+      let customFieldDefs: CustomFieldDefinitionLite[] = [];
+      let customFieldValueRows: { entityId: string; definitionId: string; valueText: string | null; valueNumber: number | null; valueDate: Date | null }[] = [];
+      if (candidateIds.length > 0) {
+        [customFieldDefs, customFieldValueRows] = await Promise.all([
+          tx.customFieldDefinition.findMany({
+            where: { organizationId: context.organizationId as string, entityType: 'candidate', archivedAt: null },
+            select: { id: true, key: true, label: true, fieldType: true, optionsJson: true, required: true },
+          }) as Promise<CustomFieldDefinitionLite[]>,
+          tx.customFieldValue.findMany({
+            where: { organizationId: context.organizationId as string, entityType: 'candidate', entityId: { in: candidateIds } },
+          }),
+        ]);
+      }
+      const customFieldValuesByCandidate = new Map<string, typeof customFieldValueRows>();
+      for (const row of customFieldValueRows) {
+        const forCandidate = customFieldValuesByCandidate.get(row.entityId) ?? [];
+        forCandidate.push(row);
+        customFieldValuesByCandidate.set(row.entityId, forCandidate);
+      }
+
       const stages = job.pipeline?.stages ?? [];
       const columns: Record<string, BoardRow[]> = Object.fromEntries(stages.map((s: { id: string }) => [s.id, [] as BoardRow[]]));
       for (const e of entries) {
@@ -609,6 +632,7 @@ export class PipelineService {
           fitStale: e.fitAssessment?.status === 'done' && e.fitAssessment.criteriaHash !== currentHash,
           assignedUserId: e.assignedUserId,
           assigneeName: e.assignedUserId ? (assigneeName.get(e.assignedUserId) ?? null) : null,
+          customFields: serializeCustomFieldValues(customFieldValuesByCandidate.get(e.candidateId) ?? [], customFieldDefs),
         };
         (columns[row.stageId] ??= []).push(row);
       }

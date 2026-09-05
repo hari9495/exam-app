@@ -651,7 +651,7 @@ describe('PipelineService', () => {
   });
 
   it('getBoard groups entries by the job pipeline\'s stages', async () => {
-    const tx = {
+    const tx = withJobCustomFieldMocks({
       job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', pipeline: boardPipeline() }) },
       jobExam: { findMany: jest.fn().mockResolvedValue([{ examId: 'e1' }]) },
       pipelineEntry: {
@@ -666,7 +666,7 @@ describe('PipelineService', () => {
             candidate: { name: 'Bo', email: 'bo@x.com', invitations: [] }, feedback: [] },
         ]),
       },
-    };
+    });
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
     const board = await service.getBoard(context, 'job-1');
@@ -688,7 +688,7 @@ describe('PipelineService', () => {
     const currentHash = computeCriteriaHash({
       title: job.title, description: job.description, fitCriteria: job.fitCriteria, fitRubric: job.fitRubric,
     });
-    const tx = {
+    const tx = withJobCustomFieldMocks({
       job: { findFirst: jest.fn().mockResolvedValue(job) },
       jobExam: { findMany: jest.fn().mockResolvedValue([]) },
       pipelineEntry: {
@@ -705,7 +705,7 @@ describe('PipelineService', () => {
             fitAssessment: null },
         ]),
       },
-    };
+    });
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
     const board = await service.getBoard(context, 'job-1');
@@ -726,7 +726,7 @@ describe('PipelineService', () => {
     const currentHash = computeCriteriaHash({
       title: job.title, description: job.description, fitCriteria: job.fitCriteria, fitRubric: job.fitRubric,
     });
-    const tx = {
+    const tx = withJobCustomFieldMocks({
       job: { findFirst: jest.fn().mockResolvedValue(job) },
       jobExam: { findMany: jest.fn().mockResolvedValue([]) },
       pipelineEntry: {
@@ -738,7 +738,7 @@ describe('PipelineService', () => {
             fitAssessment: { status: 'done', overallScore: 90, criteriaHash: currentHash } },
         ]),
       },
-    };
+    });
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
     const board = await service.getBoard(context, 'job-1');
@@ -747,7 +747,7 @@ describe('PipelineService', () => {
   });
 
   it('getBoard skips entries with no resolved status (can\'t be placed on a dynamic column)', async () => {
-    const tx = {
+    const tx = withJobCustomFieldMocks({
       job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', pipeline: boardPipeline() }) },
       jobExam: { findMany: jest.fn().mockResolvedValue([]) },
       pipelineEntry: {
@@ -756,7 +756,7 @@ describe('PipelineService', () => {
             candidate: { name: 'Amy', email: 'amy@x.com', invitations: [] }, feedback: [] },
         ]),
       },
-    };
+    });
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
     const board = await service.getBoard(context, 'job-1');
@@ -773,7 +773,7 @@ describe('PipelineService', () => {
         status: { id: 'status-applied', stage: { id: 'st-applied', category: 'active' } },
         candidate: { name: 'Bo', email: 'bo@x.com', invitations: [] }, feedback: [] },
     ];
-    const tx = {
+    const tx = withJobCustomFieldMocks({
       job: { findFirst: jest.fn().mockResolvedValue({ id: 'job1', pipeline: boardPipeline() }) },
       jobExam: { findMany: jest.fn().mockResolvedValue([]) },
       pipelineEntry: {
@@ -781,7 +781,7 @@ describe('PipelineService', () => {
         // actually asks for `archivedAt: null` in the where clause.
         findMany: jest.fn(({ where }: any) => Promise.resolve(where.archivedAt === null ? entries.filter((e) => e.archivedAt === null) : entries)),
       },
-    };
+    });
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
     const board = await service.getBoard(context, 'job1');
@@ -789,6 +789,52 @@ describe('PipelineService', () => {
     const allRows = Object.values(board.columns).flat();
     expect(allRows.map((r) => r.entryId)).not.toContain('archived-entry');
     expect(allRows.map((r) => r.entryId)).toContain('active-entry');
+  });
+
+  it('getBoard attaches candidate customFields, batch-loaded (one defs query + one values query for the whole board)', async () => {
+    const defs = [
+      { id: 'def-1', key: 'source', label: 'Source', fieldType: 'text', optionsJson: null, required: false },
+    ];
+    const valueRows = [
+      { entityId: 'c1', definitionId: 'def-1', valueText: 'Referral', valueNumber: null, valueDate: null },
+      { entityId: 'c2', definitionId: 'def-1', valueText: 'LinkedIn', valueNumber: null, valueDate: null },
+    ];
+    const defsFindMany = jest.fn().mockResolvedValue(defs);
+    const valuesFindMany = jest.fn().mockResolvedValue(valueRows);
+    const tx = {
+      job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', pipeline: boardPipeline() }) },
+      jobExam: { findMany: jest.fn().mockResolvedValue([]) },
+      pipelineEntry: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'en1', candidateId: 'c1', enteredVia: 'manual', rejectedReason: null,
+            status: { id: 'status-applied', stage: { id: 'st-applied', category: 'active' } },
+            candidate: { name: 'Amy', email: 'amy@x.com', invitations: [] }, feedback: [] },
+          { id: 'en2', candidateId: 'c2', enteredVia: 'manual', rejectedReason: null,
+            status: { id: 'status-applied', stage: { id: 'st-applied', category: 'active' } },
+            candidate: { name: 'Bo', email: 'bo@x.com', invitations: [] }, feedback: [] },
+        ]),
+      },
+      customFieldDefinition: { findMany: defsFindMany },
+      customFieldValue: { findMany: valuesFindMany },
+    };
+    tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+    const board = await service.getBoard(context, 'job-1');
+
+    expect(defsFindMany).toHaveBeenCalledTimes(1);
+    expect(defsFindMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1', entityType: 'candidate', archivedAt: null },
+      select: { id: true, key: true, label: true, fieldType: true, optionsJson: true, required: true },
+    });
+    expect(valuesFindMany).toHaveBeenCalledTimes(1);
+    expect(valuesFindMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1', entityType: 'candidate', entityId: { in: ['c1', 'c2'] } },
+    });
+
+    const rowC1 = board.columns['st-applied'].find((r) => r.candidateId === 'c1')!;
+    const rowC2 = board.columns['st-applied'].find((r) => r.candidateId === 'c2')!;
+    expect(rowC1.customFields).toEqual([{ definitionId: 'def-1', key: 'source', label: 'Source', fieldType: 'text', value: 'Referral' }]);
+    expect(rowC2.customFields).toEqual([{ definitionId: 'def-1', key: 'source', label: 'Source', fieldType: 'text', value: 'LinkedIn' }]);
   });
 
   it('stageCountsFor rolls counts up by category across custom stage names', async () => {
