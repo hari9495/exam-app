@@ -91,6 +91,34 @@ describe('validateBlueprintRules', () => {
   it('rejects a checklist rule with an empty items array', () => {
     expect(() => validateBlueprintRules([{ id: 'r1', type: 'checklist', items: [] }])).toThrow(BadRequestException);
   });
+
+  it('rejects a feedback rule with a non-number minCount', () => {
+    expect(() => validateBlueprintRules([{ id: 'r1', type: 'feedback', minCount: '2' }])).toThrow(BadRequestException);
+  });
+
+  it('rejects a feedback rule with a non-number minAvgRating', () => {
+    expect(() => validateBlueprintRules([{ id: 'r1', type: 'feedback', minAvgRating: 'high' }])).toThrow(BadRequestException);
+  });
+
+  it('rejects an exam_passed rule with a non-string examId', () => {
+    expect(() => validateBlueprintRules([{ id: 'r1', type: 'exam_passed', examId: 123 }])).toThrow(BadRequestException);
+  });
+
+  it('rejects an exam_passed rule with a non-number minScore', () => {
+    expect(() => validateBlueprintRules([{ id: 'r1', type: 'exam_passed', minScore: '80' }])).toThrow(BadRequestException);
+  });
+
+  it('rejects a checklist rule whose item has a non-string id', () => {
+    expect(() =>
+      validateBlueprintRules([{ id: 'r1', type: 'checklist', items: [{ id: 1, label: 'Do thing' }] }]),
+    ).toThrow(BadRequestException);
+  });
+
+  it('rejects a checklist rule whose item has a non-string label', () => {
+    expect(() =>
+      validateBlueprintRules([{ id: 'r1', type: 'checklist', items: [{ id: 'i1', label: 42 }] }]),
+    ).toThrow(BadRequestException);
+  });
 });
 
 describe('evaluateBlueprint', () => {
@@ -300,5 +328,8 @@ describe('evaluateBlueprint', () => {
     };
     const result = evaluateBlueprint(rules, ctx);
     expect(result).toHaveLength(3);
+    expect(result).toContain('at least 3 feedback entries');
+    expect(result).toContain('the required exam passed');
+    expect(result).toContain('checklist: Verify ID');
   });
 });
