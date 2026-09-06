@@ -890,6 +890,7 @@ model PipelineStage {
   name           String           @db.NVarChar(200)
   category       String           @db.NVarChar(20)
   position       Int
+  rulesJson      String?          @map("rules_json") @db.NVarChar(Max)
   pipeline       Pipeline         @relation(fields: [pipelineId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   statuses       PipelineStatus[]
 
@@ -925,6 +926,7 @@ model PipelineEntry {
   updatedAt        DateTime           @updatedAt @map("updated_at")
   statusId         String?            @map("status_id") @db.UniqueIdentifier
   archivedAt       DateTime?          @map("archived_at")
+  blueprintChecklistJson String?      @map("blueprint_checklist_json") @db.NVarChar(Max)
   job              Job                @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   candidate        Candidate          @relation(fields: [candidateId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   status           PipelineStatus?    @relation(fields: [statusId], references: [id], onDelete: NoAction, onUpdate: NoAction)
