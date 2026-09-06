@@ -13,7 +13,9 @@ export function useCurrentUser() {
 }
 
 interface UpdateProfileInput {
-  name: string;
+  name?: string;
+  timeZone?: string;
+  emailSignature?: string;
 }
 
 export function useUpdateProfile() {

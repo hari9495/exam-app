@@ -11,7 +11,11 @@ jest.mock('../lib/hooks/useSso', () => ({
   useSsoStatus: () => ({ data: mockSsoStatus }),
 }));
 
-function renderProfileForm({ avatarUrl = null }: { avatarUrl?: string | null } = {}) {
+function renderProfileForm({
+  avatarUrl = null,
+  timeZone = null,
+  emailSignature = null,
+}: { avatarUrl?: string | null; timeZone?: string | null; emailSignature?: string | null } = {}) {
   const token = fakeJwt({ sub: 'u1', organizationId: 'org1', role: 'recruiter' });
   // Stateful on purpose: uploading and removing both invalidate ['currentUser'], so the
   // component re-reads GET /users/me afterwards. A fixed response would replay the ORIGINAL
@@ -43,6 +47,8 @@ function renderProfileForm({ avatarUrl = null }: { avatarUrl?: string | null } =
           name: 'Jane Recruiter',
           role: 'recruiter',
           avatarUrl: storedAvatarUrl,
+          timeZone,
+          emailSignature,
         }),
         { status: 200 },
       );
@@ -212,6 +218,67 @@ describe('ProfileForm', () => {
         ).toBe(true),
       );
       expect(await screen.findByText('JR')).toBeInTheDocument();
+    });
+  });
+
+  describe('timezone + signature', () => {
+    it('seeds the timezone select and signature textarea from the current user', async () => {
+      renderProfileForm({ timeZone: 'Asia/Kolkata', emailSignature: 'Thanks,\nJane' });
+      await screen.findByDisplayValue('Jane Recruiter');
+      await waitFor(() => expect(screen.getByLabelText('Timezone')).toHaveValue('Asia/Kolkata'));
+      expect(screen.getByLabelText('Email signature')).toHaveValue('Thanks,\nJane');
+    });
+
+    it('defaults the timezone select to "Use browser default" when timeZone is null', async () => {
+      renderProfileForm({ timeZone: null, emailSignature: null });
+      expect(await screen.findByLabelText('Timezone')).toHaveValue('');
+      expect(screen.getByLabelText('Email signature')).toHaveValue('');
+    });
+
+    it('saves the edited timezone and signature via PATCH /users/me', async () => {
+      renderProfileForm({ timeZone: 'Asia/Kolkata', emailSignature: '' });
+      await screen.findByDisplayValue('Jane Recruiter');
+
+      await userEvent.selectOptions(screen.getByLabelText('Timezone'), 'America/New_York');
+      await userEvent.type(screen.getByLabelText('Email signature'), 'Best,\nJane');
+      await userEvent.click(screen.getByRole('button', { name: 'Save preferences' }));
+
+      await waitFor(() => {
+        const patchCall = (global.fetch as jest.Mock).mock.calls.find(
+          ([url, options]) => String(url).endsWith('/users/me') && options?.method === 'PATCH',
+        );
+        expect(patchCall).toBeDefined();
+        const body = JSON.parse(patchCall[1].body);
+        expect(body.timeZone).toBe('America/New_York');
+        expect(body.emailSignature).toBe('Best,\nJane');
+        // Preferences are a standalone partial update -- `name` must not ride along (the
+        // backend no longer requires it on every PATCH; see UpdateProfileDto).
+        expect(body).not.toHaveProperty('name');
+      });
+    });
+
+    it('maps the blank "Use browser default" option back to an empty string', async () => {
+      renderProfileForm({ timeZone: 'Asia/Kolkata', emailSignature: null });
+      await screen.findByDisplayValue('Jane Recruiter');
+
+      await userEvent.selectOptions(screen.getByLabelText('Timezone'), 'Use browser default');
+      await userEvent.click(screen.getByRole('button', { name: 'Save preferences' }));
+
+      await waitFor(() => {
+        const patchCall = (global.fetch as jest.Mock).mock.calls.find(
+          ([url, options]) => String(url).endsWith('/users/me') && options?.method === 'PATCH',
+        );
+        expect(patchCall).toBeDefined();
+        expect(JSON.parse(patchCall[1].body).timeZone).toBe('');
+      });
+    });
+
+    it('renders and selects a stored timezone the runtime does not recognize', async () => {
+      renderProfileForm({ timeZone: 'Not/A/RealZone', emailSignature: null });
+      await screen.findByDisplayValue('Jane Recruiter');
+
+      await waitFor(() => expect(screen.getByLabelText('Timezone')).toHaveValue('Not/A/RealZone'));
+      expect(screen.getByRole('option', { name: 'Not/A/RealZone' })).toBeInTheDocument();
     });
   });
 });

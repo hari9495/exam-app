@@ -175,6 +175,72 @@ describe('CandidateEmailsService', () => {
       );
     });
 
+    it('appends the actor signature to the sent body and stored renderedBody', async () => {
+      tx.user.findUnique.mockResolvedValue({ name: 'Rita', emailSignature: 'Rita Recruiter\nAcme Inc' });
+      email.send.mockResolvedValue({ success: true });
+
+      const msg = await service.sendMessage(context, 'user-1', 'entry-1', {
+        subject: 's',
+        body: 'Hello there',
+        source: 'manual',
+      });
+
+      expect(msg.renderedBody).toBe('Hello there\n\n--\nRita Recruiter\nAcme Inc');
+      expect(email.send).toHaveBeenCalledWith(
+        expect.objectContaining({ html: expect.stringContaining('Rita Recruiter<br />Acme Inc') }),
+      );
+    });
+
+    it('leaves the body unchanged when the actor has no signature (null or empty)', async () => {
+      tx.user.findUnique.mockResolvedValue({ name: 'Rita', emailSignature: null });
+      email.send.mockResolvedValue({ success: true });
+
+      const msg = await service.sendMessage(context, 'user-1', 'entry-1', {
+        subject: 's',
+        body: 'Hello there',
+        source: 'manual',
+      });
+
+      expect(msg.renderedBody).toBe('Hello there');
+
+      tx.user.findUnique.mockResolvedValue({ name: 'Rita', emailSignature: '   ' });
+      const msg2 = await service.sendMessage(context, 'user-1', 'entry-1', {
+        subject: 's',
+        body: 'Hello there',
+        source: 'manual',
+      });
+      expect(msg2.renderedBody).toBe('Hello there');
+    });
+
+    it('does not append a signature for system sends (actorUserId null)', async () => {
+      email.send.mockResolvedValue({ success: true });
+
+      const msg = await service.sendMessage(context, null, 'entry-1', {
+        subject: 's',
+        body: 'Hello there',
+        source: 'stage_auto',
+      });
+
+      expect(msg.renderedBody).toBe('Hello there');
+      expect(tx.user.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('stores the signature raw (unescaped) in renderedBody but escapes it in the sent html', async () => {
+      tx.user.findUnique.mockResolvedValue({ name: 'Rita', emailSignature: 'Rita & Co <rita@acme.com>' });
+      email.send.mockResolvedValue({ success: true });
+
+      const msg = await service.sendMessage(context, 'user-1', 'entry-1', {
+        subject: 's',
+        body: 'Hello there',
+        source: 'manual',
+      });
+
+      expect(msg.renderedBody).toBe('Hello there\n\n--\nRita & Co <rita@acme.com>');
+      expect(email.send).toHaveBeenCalledWith(
+        expect.objectContaining({ html: expect.stringContaining('Rita &amp; Co &lt;rita@acme.com&gt;') }),
+      );
+    });
+
     it('recomputes the candidate global stage after logging the email, moving an entry-less new candidate to in_review', async () => {
       email.send.mockResolvedValue({ success: true });
 
@@ -237,6 +303,24 @@ describe('CandidateEmailsService', () => {
       tx.candidateEmail.findFirst.mockResolvedValue(null);
 
       await expect(service.resend(context, 'user-1', 'msg-x')).rejects.toThrow(NotFoundException);
+    });
+
+    it('does not double-append the signature when resending an already-signed message', async () => {
+      tx.candidateEmail.findFirst.mockResolvedValue({
+        id: 'msg-1',
+        pipelineEntryId: 'entry-1',
+        templateId: null,
+        subject: 'Old subject',
+        renderedBody: 'Old body\n\n--\nRita Recruiter\nAcme Inc',
+      });
+      tx.user.findUnique.mockResolvedValue({ name: 'Rita', emailSignature: 'Rita Recruiter\nAcme Inc' });
+      email.send.mockResolvedValue({ success: true });
+
+      const msg = await service.resend(context, 'user-1', 'msg-1');
+
+      const signatureOccurrences = (msg.renderedBody.match(/--\nRita Recruiter\nAcme Inc/g) ?? []).length;
+      expect(signatureOccurrences).toBe(1);
+      expect(msg.renderedBody).toBe('Old body\n\n--\nRita Recruiter\nAcme Inc');
     });
 
     it('rejects with BadRequest when the message has no linked pipeline entry', async () => {

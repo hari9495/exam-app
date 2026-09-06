@@ -29,7 +29,9 @@ export class CandidateEmailsService {
     actorUserId: string | null,
     entryId: string,
     input: SendMessageInput,
+    options?: { appendSignature?: boolean },
   ): Promise<CandidateEmail> {
+    const appendSignature = options?.appendSignature ?? true;
     const orgId = context.organizationId as string;
 
     // Phase 1 (short tx): org-scoped reads + the applicationToken mint. No network calls here --
@@ -49,12 +51,14 @@ export class CandidateEmailsService {
         await tx.pipelineEntry.update({ where: { id: entry.id }, data: { applicationToken } });
       }
       const org = await tx.organization.findUnique({ where: { id: orgId }, select: { name: true, logoPath: true } });
-      const actorName = actorUserId
-        ? ((await tx.user.findUnique({ where: { id: actorUserId }, select: { name: true } }))?.name ?? '')
-        : '';
-      return { entry, applicationToken, org, actorName };
+      const actorUser = actorUserId
+        ? await tx.user.findUnique({ where: { id: actorUserId }, select: { name: true, emailSignature: true } })
+        : null;
+      const actorName = actorUser?.name ?? '';
+      const actorSignature = actorUser?.emailSignature ?? null;
+      return { entry, applicationToken, org, actorName, actorSignature };
     });
-    const { entry, applicationToken, org, actorName } = prepared;
+    const { entry, applicationToken, org, actorName, actorSignature } = prepared;
 
     // Phase 2 (outside any tx): rendering + network calls (blob signing, SMTP send).
     const statusLink = applicationToken
@@ -67,8 +71,10 @@ export class CandidateEmailsService {
       recruiterName: actorName,
       statusLink,
     });
+    const signature = appendSignature && actorUserId ? (actorSignature ?? '').trim() : '';
+    const bodyWithSignature = signature ? `${rendered.body}\n\n--\n${signature}` : rendered.body;
     const logoUrl = org?.logoPath ? await this.blobStorage.signIfOurs(org.logoPath, LOGO_SIGN_TTL_MS) : null;
-    const html = buildCandidateEmailHtml({ logoUrl: logoUrl as string | null, orgName: org?.name ?? null, bodyText: rendered.body });
+    const html = buildCandidateEmailHtml({ logoUrl: logoUrl as string | null, orgName: org?.name ?? null, bodyText: bodyWithSignature });
     const result = await this.emailService.send({
       to: entry.candidate.email,
       subject: rendered.subject,
@@ -88,7 +94,7 @@ export class CandidateEmailsService {
           templateId: input.templateId ?? null,
           toEmail: entry.candidate.email,
           subject: rendered.subject,
-          renderedBody: rendered.body,
+          renderedBody: bodyWithSignature,
           status: result.success ? 'sent' : 'failed',
           source: input.source,
           sentByUserId: actorUserId,
@@ -128,11 +134,19 @@ export class CandidateEmailsService {
     if (existing.pipelineEntryId == null) {
       throw new BadRequestException('Cannot resend a message that is no longer linked to a pipeline entry');
     }
-    return this.sendMessage(context, actorUserId, existing.pipelineEntryId, {
-      templateId: existing.templateId,
-      subject: existing.subject,
-      body: existing.renderedBody,
-      source: 'manual',
-    });
+    return this.sendMessage(
+      context,
+      actorUserId,
+      existing.pipelineEntryId,
+      {
+        templateId: existing.templateId,
+        subject: existing.subject,
+        body: existing.renderedBody,
+        source: 'manual',
+      },
+      // existing.renderedBody is already the final, signed body from the original send --
+      // sendMessage must not append the signature again or a resend double-signs.
+      { appendSignature: false },
+    );
   }
 }

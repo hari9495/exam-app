@@ -2,7 +2,10 @@ import { Test } from '@nestjs/testing';
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { UsersService } from './users.service';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
@@ -351,6 +354,212 @@ describe('UsersService', () => {
       { organizationId: 'org-1', isSuperAdmin: false },
       expect.any(Function),
     );
+  });
+
+  describe('updateMe - timeZone and emailSignature', () => {
+    const ctx = { organizationId: 'org-1', isSuperAdmin: false };
+
+    it('persists and returns timeZone and emailSignature', async () => {
+      const tx = {
+        user: {
+          update: jest.fn().mockResolvedValue({
+            id: 'user-1',
+            email: 'a@b.com',
+            name: 'New Name',
+            organizationId: 'org-1',
+            role: 'recruiter',
+            status: 'active',
+            avatarPath: null,
+            timeZone: 'America/New_York',
+            emailSignature: 'Best, Jane',
+            lastLoginAt: null,
+            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+
+      const result = await service.updateMe(ctx, 'user-1', {
+        name: 'New Name',
+        timeZone: 'America/New_York',
+        emailSignature: 'Best, Jane',
+      });
+
+      expect(tx.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'user-1' },
+          data: { name: 'New Name', timeZone: 'America/New_York', emailSignature: 'Best, Jane' },
+        }),
+      );
+      expect(result.timeZone).toBe('America/New_York');
+      expect(result.emailSignature).toBe('Best, Jane');
+    });
+
+    it('normalizes an empty-string timeZone to null (clear)', async () => {
+      const tx = {
+        user: {
+          update: jest.fn().mockResolvedValue({
+            id: 'user-1',
+            email: 'a@b.com',
+            name: 'New Name',
+            organizationId: 'org-1',
+            role: 'recruiter',
+            status: 'active',
+            avatarPath: null,
+            timeZone: null,
+            emailSignature: null,
+            lastLoginAt: null,
+            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+
+      const result = await service.updateMe(ctx, 'user-1', { name: 'New Name', timeZone: '' });
+
+      expect(tx.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { name: 'New Name', timeZone: null } }),
+      );
+      expect(result.timeZone).toBeNull();
+    });
+
+    it('normalizes an empty-string emailSignature to null (clear)', async () => {
+      const tx = {
+        user: {
+          update: jest.fn().mockResolvedValue({
+            id: 'user-1',
+            email: 'a@b.com',
+            name: 'New Name',
+            organizationId: 'org-1',
+            role: 'recruiter',
+            status: 'active',
+            avatarPath: null,
+            timeZone: null,
+            emailSignature: null,
+            lastLoginAt: null,
+            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+
+      const result = await service.updateMe(ctx, 'user-1', { name: 'New Name', emailSignature: '' });
+
+      expect(tx.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { name: 'New Name', emailSignature: null } }),
+      );
+      expect(result.emailSignature).toBeNull();
+    });
+
+    // Partial update: sending only `name` must leave timeZone/emailSignature untouched in the
+    // Prisma write -- the two keys must be absent from `data`, not present-as-undefined (Prisma
+    // treats an explicit `undefined` value differently across versions; the safest contract is
+    // "key not present at all" when the DTO field itself was never sent).
+    it('a name-only update does not touch timeZone or emailSignature', async () => {
+      const tx = {
+        user: {
+          update: jest.fn().mockResolvedValue({
+            id: 'user-1',
+            email: 'a@b.com',
+            name: 'New Name',
+            organizationId: 'org-1',
+            role: 'recruiter',
+            status: 'active',
+            avatarPath: null,
+            timeZone: 'Asia/Kolkata',
+            emailSignature: 'Existing sig',
+            lastLoginAt: null,
+            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+
+      const result = await service.updateMe(ctx, 'user-1', { name: 'New Name' });
+
+      const dataArg = tx.user.update.mock.calls[0][0].data;
+      expect(dataArg).toEqual({ name: 'New Name' });
+      expect('timeZone' in dataArg).toBe(false);
+      expect('emailSignature' in dataArg).toBe(false);
+      // Response still reflects whatever was already stored, since the DB row is untouched.
+      expect(result.timeZone).toBe('Asia/Kolkata');
+      expect(result.emailSignature).toBe('Existing sig');
+    });
+
+    // Root-cause coverage for the review fix: a preferences-only PATCH (no `name` in the DTO at
+    // all, not just an empty one) must leave the stored name untouched -- `name` is guarded by
+    // the same `!== undefined` pattern as timeZone/emailSignature above.
+    it('a timeZone-only update does not touch name', async () => {
+      const tx = {
+        user: {
+          update: jest.fn().mockResolvedValue({
+            id: 'user-1',
+            email: 'a@b.com',
+            name: 'Existing Name',
+            organizationId: 'org-1',
+            role: 'recruiter',
+            status: 'active',
+            avatarPath: null,
+            timeZone: 'America/New_York',
+            emailSignature: null,
+            lastLoginAt: null,
+            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+
+      const result = await service.updateMe(ctx, 'user-1', { timeZone: 'America/New_York' });
+
+      const dataArg = tx.user.update.mock.calls[0][0].data;
+      expect(dataArg).toEqual({ timeZone: 'America/New_York' });
+      expect('name' in dataArg).toBe(false);
+      expect(result.name).toBe('Existing Name');
+    });
+  });
+
+  // DTO-level: the review fix that made updateMe's `name` a no-op-when-absent only works
+  // end-to-end if the DTO itself also stops requiring `name` on every PATCH -- otherwise
+  // Nest's ValidationPipe 400s a preferences-only body before it ever reaches the service.
+  describe('UpdateProfileDto validation', () => {
+    it('allows a body with no name at all (preferences-only PATCH)', async () => {
+      const dto = plainToInstance(UpdateProfileDto, { timeZone: 'America/New_York' });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('still rejects an empty-string name when one is sent', async () => {
+      const dto = plainToInstance(UpdateProfileDto, { name: '' });
+      const errors = await validate(dto);
+      expect(errors.some((e) => e.property === 'name')).toBe(true);
+    });
+
+    it('accepts a non-empty name when one is sent', async () => {
+      const dto = plainToInstance(UpdateProfileDto, { name: 'Jane' });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
+    });
+  });
+
+  it('getMe returns timeZone and emailSignature', async () => {
+    tenantPrisma.forTenant.mockResolvedValue({
+      id: 'user-1',
+      email: 'a@b.com',
+      name: 'Jane Recruiter',
+      organizationId: 'org-1',
+      role: 'recruiter',
+      status: 'active',
+      avatarPath: null,
+      timeZone: 'Europe/London',
+      emailSignature: 'Regards, Jane',
+      lastLoginAt: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    const result = await service.getMe({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1');
+
+    expect(result.timeZone).toBe('Europe/London');
+    expect(result.emailSignature).toBe('Regards, Jane');
   });
 
   it('changePassword rejects a wrong current password', async () => {
