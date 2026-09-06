@@ -20,6 +20,8 @@ import { UpdateWebhookUrlDto } from './dto/update-webhook-url.dto';
 import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
 import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update-organization.dto';
 import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
+import { UpdateBusinessHoursDto } from './dto/update-business-hours.dto';
+import { BusinessHours, Holiday } from '@exam-platform/shared';
 
 export interface BrandingResponse {
   // The organisation's own display name. Consumers render this in place of the
@@ -89,6 +91,11 @@ export interface IntegrationsResponse {
 
 export interface PipelineSettingsResponse {
   autoArchiveSiblingsOnHire: boolean;
+}
+
+export interface BusinessHoursResponse {
+  businessHours: BusinessHours | null;
+  holidays: Holiday[];
 }
 
 export interface SsoSettingsResponse {
@@ -710,6 +717,37 @@ export class OrganizationsService {
       entityId: organizationId,
     });
     return { autoArchiveSiblingsOnHire: org.autoArchiveSiblingsOnHire };
+  }
+
+  async getBusinessHours(context: TenantContext): Promise<BusinessHoursResponse> {
+    const organizationId = this.requireOrganizationId(context);
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { businessHoursJson: true, holidaysJson: true },
+    });
+    return {
+      businessHours: org?.businessHoursJson ? (JSON.parse(org.businessHoursJson) as BusinessHours) : null,
+      holidays: org?.holidaysJson ? (JSON.parse(org.holidaysJson) as Holiday[]) : [],
+    };
+  }
+
+  async updateBusinessHours(context: TenantContext, actorUserId: string, dto: UpdateBusinessHoursDto): Promise<BusinessHoursResponse> {
+    const organizationId = this.requireOrganizationId(context);
+    const org = await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { businessHoursJson: JSON.stringify(dto.businessHours), holidaysJson: JSON.stringify(dto.holidays) },
+      select: { businessHoursJson: true, holidaysJson: true },
+    });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'organization.business_hours_updated',
+      entityType: 'organization',
+      entityId: organizationId,
+    });
+    return {
+      businessHours: org.businessHoursJson ? (JSON.parse(org.businessHoursJson) as BusinessHours) : null,
+      holidays: org.holidaysJson ? (JSON.parse(org.holidaysJson) as Holiday[]) : [],
+    };
   }
 
   async generateWebhookSecret(context: TenantContext, actorUserId: string): Promise<{ webhookSecret: string }> {

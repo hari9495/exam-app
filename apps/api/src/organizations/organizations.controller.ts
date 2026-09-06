@@ -16,6 +16,7 @@ import { UpdateWebhookUrlDto } from './dto/update-webhook-url.dto';
 import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
 import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update-organization.dto';
 import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
+import { UpdateBusinessHoursDto } from './dto/update-business-hours.dto';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 
 @Controller('organizations')
@@ -120,6 +121,20 @@ export class OrganizationsController {
     @Body() dto: UpdatePipelineSettingsDto,
   ) {
     return this.organizationsService.updatePipelineSettings(tenant, userId, dto);
+  }
+
+  // Deliberately no @RequirePermissions, same precedent as getBranding above:
+  // the recruiter slot picker reads org business hours/holidays as any authenticated
+  // user. Mutation stays behind org:manage_settings like the other settings routes.
+  @Get('business-hours')
+  getBusinessHours(@CurrentTenant() tenant: TenantContext) {
+    return this.organizationsService.getBusinessHours(tenant);
+  }
+
+  @Patch('business-hours')
+  @RequirePermissions('org:manage_settings')
+  updateBusinessHours(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateBusinessHoursDto) {
+    return this.organizationsService.updateBusinessHours(tenant, userId, dto);
   }
 
   @Get('sso')

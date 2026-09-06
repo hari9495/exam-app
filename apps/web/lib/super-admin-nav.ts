@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, BookOpen, Users, BarChart3, History, ShieldCheck, Settings, Plug, KeyRound, TerminalSquare, QrCode, Briefcase, TrendingUp, Mail, FileSignature, CreditCard, CheckSquare, GitPullRequestArrow, Kanban } from 'lucide-react';
+import { LayoutDashboard, FileText, BookOpen, Users, BarChart3, History, ShieldCheck, Settings, Plug, KeyRound, TerminalSquare, QrCode, Briefcase, TrendingUp, Mail, FileSignature, CreditCard, CheckSquare, GitPullRequestArrow, Kanban, Clock } from 'lucide-react';
 
 // The COMPLETE union of org-scoped staff features. A super_admin acting into an org sees this exact
 // nav in EVERY staff shell (recruiter / org-admin / panel), so no feature is ever hidden by whichever
@@ -25,6 +25,7 @@ export const SUPER_ADMIN_FULL_NAV = [
   // pipelines:configure, so no per-item permission gating is needed here.
   { href: '/settings/approvals', label: 'Approval chains', icon: GitPullRequestArrow },
   { href: '/settings/pipelines', label: 'Pipelines', icon: Kanban },
+  { href: '/settings/business-hours', label: 'Business hours', icon: Clock },
   { href: '/walk-in-groups', label: 'Walk-in Groups', icon: QrCode },
   { href: '/jobs', label: 'Jobs', icon: Briefcase },
   { href: '/approvals', label: 'Approvals', icon: CheckSquare },

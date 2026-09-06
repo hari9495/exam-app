@@ -13,7 +13,7 @@ const V2_ROUTES = new Set([
   '/message-templates', '/offer-template',
   '/users', '/audit-log', '/system-logs', '/data-rights',
   '/settings/branding', '/settings/integrations', '/settings/sso', '/settings/billing',
-  '/settings/approvals', '/settings/pipelines',
+  '/settings/approvals', '/settings/pipelines', '/settings/business-hours',
 ]);
 
 // The ONE staff sidebar, identical in every org-scoped shell (the (recruiter) and (org-admin) route
