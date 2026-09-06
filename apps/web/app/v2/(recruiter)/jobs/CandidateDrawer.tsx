@@ -20,6 +20,7 @@ import {
 } from '../../../../lib/hooks/usePipeline';
 import { useTeammates } from '../../../../lib/hooks/useUserDirectory';
 import { useUserGroupDirectory } from '../../../../lib/hooks/useUserGroups';
+import { mentionRecipients } from '../../../../lib/mentionRecipients';
 import { useCandidateMessages, useResendMessage } from '../../../../lib/hooks/useCandidateMessages';
 import { useCandidateOffers, useWithdrawOffer, useSendOffer, useSubmitOffer, useCancelOffer } from '../../../../lib/hooks/useOffers';
 import { useApprovalGateStatus } from '../../../../lib/hooks/useApprovals';
@@ -460,37 +461,81 @@ function AssigneeControl({ row, jobId }: { row: BoardEntryRow; jobId: string }) 
   );
 }
 
-// Pick teammates to @mention/notify on this feedback. Chips over an inline @-autocomplete; their
-// ids go to mentionedUserIds. Backend validates + drops self. Logic verbatim from the old drawer.
+// Pick teammates and/or user groups to @mention/notify on this feedback. Chips over an inline
+// @-autocomplete; groups expand client-side to member ids (Task 7) — no API change, the
+// addFeedback path already validates + notifies each id and drops the actor. The emitted `value`
+// is the deduped union of individually-picked users and the members of selected groups
+// (mentionRecipients), recomputed on every toggle.
 function MentionPicker({ value, onChange }: { value: string[]; onChange: (ids: string[]) => void }) {
   const { data } = useTeammates();
+  const { data: groupData } = useUserGroupDirectory();
   const teammates = (data ?? []).filter((u) => u.status === 'active');
-  if (teammates.length === 0) return null;
-  const toggle = (id: string) => onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
+  const groups = groupData ?? [];
+  const [individualIds, setIndividualIds] = useState<string[]>([]);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    onChange(mentionRecipients(individualIds, selectedGroupIds, groups));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [individualIds, selectedGroupIds, groupData]);
+
+  if (teammates.length === 0 && groups.length === 0) return null;
+  const toggleUser = (id: string) => setIndividualIds((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
+  const toggleGroup = (id: string) => setSelectedGroupIds((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span style={{ fontSize: 12, fontWeight: 500, color: muted }}>Notify teammates</span>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        {teammates.map((u) => {
-          const on = value.includes(u.id);
-          return (
-            <button
-              key={u.id}
-              type="button"
-              onClick={() => toggle(u.id)}
-              aria-pressed={on}
-              style={{
-                borderRadius: 99, padding: '4px 10px', fontSize: 12, cursor: 'pointer',
-                border: `1px solid ${on ? 'var(--org-primary)' : 'var(--hair)'}`,
-                background: on ? 'color-mix(in srgb, var(--org-primary) 10%, transparent)' : 'var(--paper)',
-                color: on ? 'var(--org-primary)' : muted,
-              }}
-            >
-              @{u.name ?? u.email}
-            </button>
-          );
-        })}
-      </div>
+      {teammates.length > 0 && (
+        <>
+          <span style={{ fontSize: 12, fontWeight: 500, color: muted }}>Notify teammates</span>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {teammates.map((u) => {
+              const on = value.includes(u.id);
+              return (
+                <button
+                  key={u.id}
+                  type="button"
+                  onClick={() => toggleUser(u.id)}
+                  aria-pressed={on}
+                  style={{
+                    borderRadius: 99, padding: '4px 10px', fontSize: 12, cursor: 'pointer',
+                    border: `1px solid ${on ? 'var(--org-primary)' : 'var(--hair)'}`,
+                    background: on ? 'color-mix(in srgb, var(--org-primary) 10%, transparent)' : 'var(--paper)',
+                    color: on ? 'var(--org-primary)' : muted,
+                  }}
+                >
+                  @{u.name ?? u.email}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+      {groups.length > 0 && (
+        <>
+          <span style={{ fontSize: 12, fontWeight: 500, color: muted }}>Notify groups</span>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {groups.map((g) => {
+              const on = selectedGroupIds.includes(g.id);
+              return (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => toggleGroup(g.id)}
+                  aria-pressed={on}
+                  style={{
+                    borderRadius: 99, padding: '4px 10px', fontSize: 12, cursor: 'pointer',
+                    border: `1px solid ${on ? 'var(--org-primary)' : 'var(--hair)'}`,
+                    background: on ? 'color-mix(in srgb, var(--org-primary) 10%, transparent)' : 'var(--paper)',
+                    color: on ? 'var(--org-primary)' : muted,
+                  }}
+                >
+                  #{g.name}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -515,6 +560,9 @@ export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: B
   const [note, setNote] = useState('');
   const [rating, setRating] = useState(0);
   const [mentions, setMentions] = useState<string[]>([]);
+  // MentionPicker tracks its own individual-pick/selected-group state (Task 7); remount it via
+  // this key on submit so that state clears in lockstep with `mentions` resetting to [].
+  const [mentionPickerKey, setMentionPickerKey] = useState(0);
 
   const canSubmit = Boolean(note.trim() || rating > 0);
 
@@ -522,7 +570,7 @@ export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: B
     addFeedback.mutate(
       { note: note.trim() || undefined, rating: rating > 0 ? rating : undefined, mentionedUserIds: mentions.length ? mentions : undefined },
       {
-        onSuccess: () => { setNote(''); setRating(0); setMentions([]); },
+        onSuccess: () => { setNote(''); setRating(0); setMentions([]); setMentionPickerKey((k) => k + 1); },
         onError: (error) => toast(error instanceof Error ? error.message : 'Failed to add feedback.', 'error'),
       },
     );
@@ -586,7 +634,7 @@ export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: B
             <label htmlFor="feedback-note" className="v2-label" style={{ marginBottom: 0 }}>Add feedback</label>
             <textarea id="feedback-note" value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="Notes for the team…" style={{ ...textInput, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} />
             <StarPicker value={rating} onChange={setRating} />
-            <MentionPicker value={mentions} onChange={setMentions} />
+            <MentionPicker key={mentionPickerKey} value={mentions} onChange={setMentions} />
             <div>
               <Button onClick={handleSubmit} loading={addFeedback.isPending} disabled={!canSubmit}>Post feedback</Button>
             </div>
