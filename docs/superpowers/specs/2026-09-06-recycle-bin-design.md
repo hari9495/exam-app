@@ -7,22 +7,24 @@
 
 ## Goal
 
-Replace the hard-deletes on five entities with soft-delete, hide soft-deleted rows from all normal reads via a global Prisma query filter, expose a unified admin Recycle Bin (list / restore / delete-forever), and auto-purge soft-deleted rows after a fixed 30-day retention window.
+Replace the hard-deletes on four entities with soft-delete, hide soft-deleted rows from all normal reads via a global Prisma query filter, expose a unified admin Recycle Bin (list / restore / delete-forever), and auto-purge soft-deleted rows after a fixed 30-day retention window.
 
 ## Scope
 
-**In:** Soft-delete for **Candidate, Job, Question, Pipeline, WalkInGroup**; a global `$extends` read filter; a unified bin API + web page (admin-gated); a scheduled 30-day purge.
+**In:** Soft-delete for **Candidate, Job, Pipeline, WalkInGroup**; a global `$extends` read filter; a unified bin API + web page (admin-gated); a scheduled 30-day purge.
+
+**Questions excluded (ruling):** questions have NO hard-delete — only an `archived` status (deliberate: they're referenced by attempts/answers, so hard-deleting would orphan response history). Archive/unarchive already IS their safe reversible removal path; the recycle bin (which recovers hard-deletes) does not apply. Confirmed 2026-09-06: no `question.delete`, no `@Delete` route in questions.controller.
 
 **Out (deferred fast-follows):**
 - Org-configurable retention window (v1 is a fixed 30 days).
 - SQL Server filtered unique indexes (`WHERE deleted_at IS NULL`) to allow reusing a soft-deleted row's unique value before restore/purge (v1 accepts + documents the collision).
-- Soft-delete for any entity beyond the five (e.g. exams, offers) — not requested.
+- Soft-delete for any entity beyond the four (e.g. exams, offers) — not requested.
 - Child-row hiding: a soft-deleted parent is hidden; its child rows remain in place (untouched) so restore is intact. We do not separately hide children.
 
 ## Decisions (rulings baked in)
 
 1. **Soft-delete + global `$extends` filter** (not a snapshot table). Delete sets `deletedAt`; reads auto-filter; restore clears the flag with relations intact. **Validated by spike (2026-09-06):** a Prisma `$extends` query extension fires inside `TenantPrismaService.forTenant`'s interactive `$transaction` on the installed Prisma 5.22.0 (`firedInTx: true`), so the filter is airtight without per-call-site edits.
-2. **Five entities:** Candidate, Job, Question, Pipeline, WalkInGroup — the codebase's five top-level hard-deletes (`candidates.service.remove`, `pipeline.service` job delete, `pipelines.service` pipeline delete, `questions.service` question delete, `walk-in-groups.service` delete).
+2. **Four entities:** Candidate, Job, Pipeline, WalkInGroup — the codebase's four top-level hard-deletes (`candidates.service.remove`, `pipeline.service` job delete `~:559`, `pipelines.service` pipeline delete `~:97`, `walk-in-groups.service` delete `~:121`). Questions excluded (see Scope).
 3. **`findUnique`/`findUniqueOrThrow` → `findFirst`/`findFirstOrThrow`** inside the extension for soft-deletable models (a non-unique `deletedAt` filter is invalid on `findUnique`). Standard Prisma soft-delete pattern.
 4. **Unique-value collisions accepted in v1:** a soft-deleted row keeps its unique values; re-creating a row with the same value errors until the soft-deleted one is restored or purged. Documented; filtered unique indexes are the fast-follow.
 5. **Fixed 30-day retention**, hardcoded. Auto-purge is a scheduled job that runs the real hard-delete (original cascades).
@@ -33,17 +35,17 @@ Replace the hard-deletes on five entities with soft-delete, hide soft-deleted ro
 
 ### Schema (additive)
 
-Add to each of the five models:
+Add to each of the four models:
 ```prisma
 deletedAt       DateTime? @map("deleted_at")
 deletedByUserId String?   @map("deleted_by_user_id") @db.UniqueIdentifier
 ```
-Migration `20260906150000_recycle_bin_soft_delete` — five `ALTER TABLE ... ADD [deleted_at] DATETIME2 NULL, [deleted_by_user_id] UNIQUEIDENTIFIER NULL;` statements. All five tables already carry the tenant RLS policy → additive columns need **no paired `_rls`** migration.
+Migration `20260906150000_recycle_bin_soft_delete` — four `ALTER TABLE ... ADD [deleted_at] DATETIME2 NULL, [deleted_by_user_id] UNIQUEIDENTIFIER NULL;` statements. All four tables already carry the tenant RLS policy → additive columns need **no paired `_rls`** migration.
 
 ### Soft-delete registry + `$extends` filter (packages/shared)
 
-- `packages/shared/src/soft-delete/soft-delete.ts` — `SOFT_DELETE_MODELS: readonly Prisma.ModelName[]` = the five model names; a helper `isSoftDeleteModel(model)`.
-- `packages/shared/src/soft-delete/soft-delete.extension.ts` — a Prisma client extension (`Prisma.defineExtension`) whose `query` hooks, for the five models only:
+- `packages/shared/src/soft-delete/soft-delete.ts` — `SOFT_DELETE_MODELS: readonly Prisma.ModelName[]` = the four model names; a helper `isSoftDeleteModel(model)`.
+- `packages/shared/src/soft-delete/soft-delete.extension.ts` — a Prisma client extension (`Prisma.defineExtension`) whose `query` hooks, for the four models only:
   - `findFirst`, `findFirstOrThrow`, `findMany`, `count`, `aggregate`, `groupBy`: merge `deletedAt: null` into `args.where`.
   - `findUnique` → run as `findFirst` with `{ ...where, deletedAt: null }`; `findUniqueOrThrow` → `findFirstOrThrow` likewise.
   - `update`, `updateMany`: merge `deletedAt: null` into `args.where` (can't modify a soft-deleted row through normal paths).
@@ -60,25 +62,24 @@ Migration `20260906150000_recycle_bin_soft_delete` — five `ALTER TABLE ... ADD
 
 ### Delete methods → soft-delete
 
-Convert each of the five to set `deletedAt = new Date()`, `deletedByUserId = actorUserId` via `update` (not `delete`), preserving the surrounding guards and audit calls:
+Convert each of the four to set `deletedAt = new Date()`, `deletedByUserId = actorUserId` via `update` (not `delete`), preserving the surrounding guards and audit calls:
 - `candidates.service.remove` — keep the invitation-count ConflictException guard; replace `tx.candidate.delete` with the soft-delete update. Do **not** run the hard child-cascade.
 - `pipeline.service` job delete (~line 559) — soft-delete the job; do not cascade-delete entries (they stay, hidden with the job? entries are not in the registry — a job's entries remain visible unless the job is required; acceptable: the job is hidden from job lists; entries reference a hidden job. See Open-risk note).
 - `pipelines.service` pipeline delete (~line 97) — soft-delete.
-- `questions.service` question delete — soft-delete (distinct from the existing `archived` status, which stays as-is for its own workflow).
 - `walk-in-groups.service` delete (~line 121) — soft-delete.
 Audit actions unchanged (`*.deleted`), or add `deletedByUserId` capture.
 
 ### Bin API (admin)
 
 New `recycle-bin` module (controller + service), all gated `@RequirePermissions('org:manage_settings')`, all via `forTenantIncludingDeleted`:
-- `GET /recycle-bin` → `RecycleBinItem[]` = `{ entityType, id, label, deletedAt, deletedByUserId }` unioned across the five models where `deletedAt != null`, newest first. `label` is a per-entity human string (candidate name, job title, question stem/prompt truncated, pipeline name, walk-in-group name).
+- `GET /recycle-bin` → `RecycleBinItem[]` = `{ entityType, id, label, deletedAt, deletedByUserId }` unioned across the four models where `deletedAt != null`, newest first. `label` is a per-entity human string (candidate name, job title, pipeline name, walk-in-group name).
 - `POST /recycle-bin/:entityType/:id/restore` → set `deletedAt = null`, `deletedByUserId = null`; 404 if not a soft-deleted row of that type; surface a unique-collision error clearly if restore violates a constraint.
 - `DELETE /recycle-bin/:entityType/:id` → purge-now: run the real hard-delete for that entity (the original delete logic + cascades). 404 if not soft-deleted.
-`entityType` is validated against the five known types (reject others with 400).
+`entityType` is validated against the four known types (reject others with 400).
 
 ### Scheduled purge
 
-`recycle-bin-retention.service.ts` mirroring `system-events-retention.service` / `face-retention.service` (same scheduling mechanism, same tenant-iteration approach they use). On each run, for each org, hard-delete rows with `deletedAt < now - 30 days` across the five models (running each entity's real delete/cascade). `RETENTION_DAYS = 30` constant. Log a grep-able summary line per run.
+`recycle-bin-retention.service.ts` mirroring `system-events-retention.service` / `face-retention.service` (same scheduling mechanism, same tenant-iteration approach they use). On each run, for each org, hard-delete rows with `deletedAt < now - 30 days` across the four models (running each entity's real delete/cascade). `RETENTION_DAYS = 30` constant. Log a grep-able summary line per run.
 
 ### Web
 
@@ -89,7 +90,7 @@ New `recycle-bin` module (controller + service), all gated `@RequirePermissions(
 ## Data flow
 
 1. Admin deletes a candidate → guard passes → `deletedAt`/`deletedByUserId` set; row now hidden from every candidate read (filtered client).
-2. Admin opens Recycle Bin → `forTenantIncludingDeleted` lists the five models' soft-deleted rows.
+2. Admin opens Recycle Bin → `forTenantIncludingDeleted` lists the four models' soft-deleted rows.
 3. Restore → `deletedAt = null` → row reappears everywhere.
 4. 30 days later (no restore) → scheduled purge hard-deletes it (real cascade).
 5. Delete-forever → immediate hard-delete (same as purge, one row).
@@ -108,7 +109,7 @@ New `recycle-bin` module (controller + service), all gated `@RequirePermissions(
 ## Testing
 
 - **Shared:** the extension factory (unit, no DB) — asserts `deletedAt: null` merged into `where` for each intercepted op on registered models, `findUnique`→`findFirst` conversion, and pass-through for non-registered models. Registry contents.
-- **API (real-DB, reuse the tenant-isolation.e2e harness pattern):** soft-delete hides a row from normal reads; `forTenantIncludingDeleted` still sees it; restore un-hides; purge/delete-forever hard-removes; the candidate invitation guard still blocks; a unique-collision on re-create surfaces. Per-entity smoke for all five.
+- **API (real-DB, reuse the tenant-isolation.e2e harness pattern):** soft-delete hides a row from normal reads; `forTenantIncludingDeleted` still sees it; restore un-hides; purge/delete-forever hard-removes; the candidate invitation guard still blocks; a unique-collision on re-create surfaces. Per-entity smoke for all four.
 - **Retention service:** rows older than 30 days are purged, newer ones retained (mock the clock or seed `deletedAt`).
 - **Bin controller:** routes gated `org:manage_settings`; entityType validation; shapes.
 - **Web:** page lists grouped items, Restore/Delete-forever fire the mutations; nav present.
@@ -116,6 +117,6 @@ New `recycle-bin` module (controller + service), all gated `@RequirePermissions(
 
 ## Deploy notes
 
-- One additive migration (five columns, no `_rls`, no seed change). Ships with any api build; existing rows have `deletedAt = NULL` = visible = today's behavior.
+- One additive migration (eight columns — two per table across four tables — no `_rls`, no seed change). Ships with any api build; existing rows have `deletedAt = NULL` = visible = today's behavior.
 - The soft-delete filter changes delete semantics on deploy: deletes become recoverable. No data migration needed.
 - Web page needs any web build. No exam-day deploy.
