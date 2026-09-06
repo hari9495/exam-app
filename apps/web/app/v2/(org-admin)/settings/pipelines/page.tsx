@@ -18,8 +18,17 @@ import {
   useCreateStatus, useUpdateStatus, useDeleteStatus,
   useOrgPipelineSettings, useUpdateOrgPipelineSettings,
 } from '../../../../../lib/hooks/usePipelines';
-import type { Pipeline, PipelineStageConfig, PipelineStatus, StageCategory } from '../../../../../lib/types';
-import { Button, TextField, Combobox, Dialog, Tabs, dt } from '../../../../../components/ui-v2';
+import { useExams } from '../../../../../lib/hooks/useExams';
+import type { BlueprintRule, Pipeline, PipelineStageConfig, PipelineStatus, StageCategory } from '../../../../../lib/types';
+// Import each ui-v2 component from its own file rather than the barrel (components/ui-v2/index.ts)
+// -- the barrel re-exports DataTable, which imports the ESM-only @tanstack/react-table and blows
+// up under jest ("Cannot use import statement outside a module") the moment anything requires it,
+// even if this file never touches DataTable/dt itself.
+import { Button } from '../../../../../components/ui-v2/Button';
+import { TextField } from '../../../../../components/ui-v2/TextField';
+import { Combobox } from '../../../../../components/ui-v2/Combobox';
+import { Dialog } from '../../../../../components/ui-v2/Dialog';
+import { Tabs } from '../../../../../components/ui-v2/Tabs';
 import { STATUS } from '../../../../../components/ui-v2/viz';
 import { swapAdjacent } from './reorder';
 
@@ -29,6 +38,9 @@ const desc: React.CSSProperties = { fontSize: 13, color: muted, margin: '4px 0 0
 const row: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 10, padding: '12px 0', borderBottom: '1px solid var(--hair)' };
 const iconBtn: React.CSSProperties = { display: 'inline-grid', placeItems: 'center', width: 30, height: 30, borderRadius: 7, border: '1px solid var(--hair)', background: 'var(--paper)', color: 'var(--ink)', cursor: 'pointer' };
 const dangerIconBtn: React.CSSProperties = { ...iconBtn, color: 'var(--danger)', borderColor: 'color-mix(in srgb, var(--danger) 35%, var(--hair))' };
+// Copy of DataTable's dt.toolBtn -- kept as a literal (rather than importing `dt`) for the same
+// DataTable/react-table jest-ESM reason as the import block above.
+const toolBtnStyle: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, padding: '9px 14px', borderRadius: 9, border: '1px solid var(--org-primary)', background: 'var(--paper)', color: 'var(--org-primary)', cursor: 'pointer', boxShadow: '0 1px 2px rgba(11,18,32,.08)' };
 
 const CATEGORY_OPTIONS: { value: StageCategory; label: string }[] = [
   { value: 'active', label: 'Active' },
@@ -68,7 +80,7 @@ function NewPipelineDialog({ onClose, onCreated }: { onClose: () => void; onCrea
         <TextField id="pipeline-name" label="Name" value={name} onChange={setName} required autoComplete="off" />
         {error && <p role="alert" style={{ marginTop: 10, fontSize: 12.5, color: 'var(--danger)' }}>{error}</p>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
-          <button type="button" onClick={onClose} className="v2-hoverbtn" style={dt.toolBtn}>Cancel</button>
+          <button type="button" onClick={onClose} className="v2-hoverbtn" style={toolBtnStyle}>Cancel</button>
           <Button type="submit" loading={create.isPending}>Create</Button>
         </div>
       </form>
@@ -102,6 +114,106 @@ function StatusRow({ status, index, total, onMove, onRename, onDelete }: {
   );
 }
 
+function newRule(type: BlueprintRule['type']): BlueprintRule {
+  const id = crypto.randomUUID();
+  switch (type) {
+    case 'checklist': return { id, type, items: [] };
+    case 'exam_passed': return { id, type };
+    default: return { id, type: 'feedback' };
+  }
+}
+
+const ruleTypeLabel: Record<BlueprintRule['type'], string> = {
+  feedback: 'Feedback', exam_passed: 'Exam passed', checklist: 'Checklist',
+};
+
+// One rule's inputs, keyed by its discriminated `type`. examOptions is the org's published exams
+// (see StageCard) for the exam_passed picker -- a plain text input would also satisfy the brief,
+// but that list is one hook call away here, same as AdvanceToNextRoundModal's exam picker.
+function RuleEditor({ rule, examOptions, onChange, onRemove }: {
+  rule: BlueprintRule;
+  examOptions: { value: string; label: string }[];
+  onChange: (next: BlueprintRule) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div style={{ border: '1px solid var(--hair)', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink)' }}>{ruleTypeLabel[rule.type]}</span>
+        <button type="button" style={dangerIconBtn} onClick={onRemove} aria-label="Remove requirement"><Trash2 size={14} /></button>
+      </div>
+
+      {rule.type === 'feedback' && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
+          <div style={{ width: 150 }}>
+            <TextField
+              id={`rule-${rule.id}-min-count`} label="Min feedback count" type="number"
+              value={rule.minCount == null ? '' : String(rule.minCount)}
+              onChange={(v) => onChange({ ...rule, minCount: v === '' ? undefined : Number(v) })}
+            />
+          </div>
+          <div style={{ width: 150 }}>
+            <TextField
+              id={`rule-${rule.id}-min-avg`} label="Min avg rating" type="number"
+              value={rule.minAvgRating == null ? '' : String(rule.minAvgRating)}
+              onChange={(v) => onChange({ ...rule, minAvgRating: v === '' ? undefined : Number(v) })}
+            />
+          </div>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: 'var(--ink)', paddingBottom: 8 }}>
+            <input
+              type="checkbox" checked={!!rule.requireNote}
+              onChange={(e) => onChange({ ...rule, requireNote: e.target.checked })}
+              style={{ width: 14, height: 14, accentColor: 'var(--org-primary)' }}
+            />
+            Require note
+          </label>
+        </div>
+      )}
+
+      {rule.type === 'exam_passed' && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
+          <div>
+            <label className="v2-label">Exam</label>
+            <Combobox options={examOptions} value={rule.examId ?? ''} onChange={(v) => onChange({ ...rule, examId: v || undefined })} placeholder="Any exam" width={220} />
+          </div>
+          <div style={{ width: 130 }}>
+            <TextField
+              id={`rule-${rule.id}-min-score`} label="Min score %" type="number"
+              value={rule.minScore == null ? '' : String(rule.minScore)}
+              onChange={(v) => onChange({ ...rule, minScore: v === '' ? undefined : Number(v) })}
+            />
+          </div>
+        </div>
+      )}
+
+      {rule.type === 'checklist' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {rule.items.map((item, i) => (
+            <div key={item.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+              <div style={{ flex: 1 }}>
+                <TextField
+                  id={`rule-${rule.id}-item-${item.id}`} label={`Item ${i + 1}`} value={item.label}
+                  onChange={(v) => onChange({ ...rule, items: rule.items.map((it) => (it.id === item.id ? { ...it, label: v } : it)) })}
+                />
+              </div>
+              <button
+                type="button" style={dangerIconBtn} aria-label="Remove item"
+                onClick={() => onChange({ ...rule, items: rule.items.filter((it) => it.id !== item.id) })}
+              ><Trash2 size={14} /></button>
+            </div>
+          ))}
+          <button
+            type="button" className="v2-hoverbtn" style={{ ...toolBtnStyle, alignSelf: 'flex-start', padding: '5px 10px', fontSize: 12 }}
+            onClick={() => onChange({ ...rule, items: [...rule.items, { id: crypto.randomUUID(), label: '' }] })}
+          >
+            <Plus size={12} /> Add item
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StageCard({ stage, index, total, onMove, onRename, onCategoryChange, onDelete, notifyError }: {
   stage: PipelineStageConfig; index: number; total: number;
   onMove: (direction: 'up' | 'down') => void;
@@ -115,7 +227,37 @@ function StageCard({ stage, index, total, onMove, onRename, onCategoryChange, on
   const updateStatus = useUpdateStatus();
   const deleteStatus = useDeleteStatus();
   const createStatus = useCreateStatus();
+  const updateStage = useUpdateStage();
   const statuses = byPosition(stage.statuses);
+
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const [rules, setRules] = useState<BlueprintRule[]>(stage.rules ?? []);
+  const [rulesDirty, setRulesDirty] = useState(false);
+  useEffect(() => { setRules(stage.rules ?? []); setRulesDirty(false); }, [stage.rules]);
+
+  // exam_passed rules can reference a published exam -- reuses the picker pattern/cap from
+  // AdvanceToNextRoundModal (pageSize:100 is the server's max page size).
+  const { data: examsResponse } = useExams('published', { pageSize: 100 });
+  const examOptions = (examsResponse?.data ?? []).map((exam) => ({ value: exam.id, label: exam.title }));
+
+  function updateRule(ruleId: string, next: BlueprintRule) {
+    setRules((prev) => prev.map((r) => (r.id === ruleId ? next : r)));
+    setRulesDirty(true);
+  }
+  function removeRule(ruleId: string) {
+    setRules((prev) => prev.filter((r) => r.id !== ruleId));
+    setRulesDirty(true);
+  }
+  function addRule(type: BlueprintRule['type']) {
+    setRules((prev) => [...prev, newRule(type)]);
+    setRulesDirty(true);
+  }
+  function handleSaveRules() {
+    updateStage.mutate(
+      { stageId: stage.id, rules },
+      { onSuccess: () => setRulesDirty(false), onError: (err) => notifyError(err instanceof Error ? err.message : 'Failed to save requirements.') },
+    );
+  }
 
   function handleMoveStatus(sIndex: number, direction: 'up' | 'down') {
     const pair = swapAdjacent(statuses, sIndex, direction);
@@ -165,6 +307,47 @@ function StageCard({ stage, index, total, onMove, onRename, onCategoryChange, on
         >
           <Plus size={13} /> Add status
         </button>
+      </div>
+
+      <div style={{ marginTop: 14, borderTop: '1px solid var(--hair)', paddingTop: 12 }}>
+        <button
+          type="button" onClick={() => setRulesOpen((o) => !o)}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+        >
+          {rulesOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          Requirements{rules.length > 0 ? ` (${rules.length})` : ''}
+        </button>
+
+        {rulesOpen && (
+          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {rules.length === 0 && (
+              <p style={{ fontSize: 12.5, color: muted, margin: 0 }}>No requirements — candidates can advance from this stage freely.</p>
+            )}
+            {rules.map((rule) => (
+              <RuleEditor
+                key={rule.id} rule={rule} examOptions={examOptions}
+                onChange={(next) => updateRule(rule.id, next)}
+                onRemove={() => removeRule(rule.id)}
+              />
+            ))}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" className="v2-hoverbtn" style={{ ...toolBtnStyle, padding: '6px 12px', fontSize: 12.5 }} onClick={() => addRule('feedback')}>
+                <Plus size={13} /> Feedback
+              </button>
+              <button type="button" className="v2-hoverbtn" style={{ ...toolBtnStyle, padding: '6px 12px', fontSize: 12.5 }} onClick={() => addRule('exam_passed')}>
+                <Plus size={13} /> Exam passed
+              </button>
+              <button type="button" className="v2-hoverbtn" style={{ ...toolBtnStyle, padding: '6px 12px', fontSize: 12.5 }} onClick={() => addRule('checklist')}>
+                <Plus size={13} /> Checklist
+              </button>
+            </div>
+            {rulesDirty && (
+              <div>
+                <Button onClick={handleSaveRules} loading={updateStage.isPending}>Save requirements</Button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

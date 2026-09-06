@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom';
 import { TextEncoder, TextDecoder } from 'util';
+import { randomUUID } from 'crypto';
 
 // Polyfill for TextEncoder/TextDecoder -- Node's own runtime has these as
 // globals, but jest-environment-jsdom does not expose them inside the jsdom
@@ -10,6 +11,16 @@ if (typeof (globalThis as { TextEncoder?: unknown }).TextEncoder === 'undefined'
 }
 if (typeof (globalThis as { TextDecoder?: unknown }).TextDecoder === 'undefined') {
   (globalThis as unknown as { TextDecoder: unknown }).TextDecoder = TextDecoder;
+}
+
+// Polyfill for crypto.randomUUID -- like TextEncoder above, Node's runtime has this as a global
+// but jest-environment-jsdom's VM sandbox doesn't expose it. Client-side id generation
+// (e.g. the blueprint stage-rules editor) calls crypto.randomUUID() directly.
+if (typeof globalThis.crypto === 'undefined' || typeof globalThis.crypto.randomUUID !== 'function') {
+  Object.defineProperty(globalThis, 'crypto', {
+    value: { ...(globalThis as { crypto?: object }).crypto, randomUUID },
+    configurable: true,
+  });
 }
 
 // Polyfill for hasPointerCapture - needed for Radix UI components in jsdom

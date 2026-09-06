@@ -291,6 +291,14 @@ export interface PipelineStatus {
   position: number;
 }
 
+// Blueprint stage-advance requirements (Blueprint stage-rules feature). Mirrors the API's
+// BlueprintRule union (apps/api/src/pipeline/blueprint-rule.ts) -- inlined here since apps/web
+// can't import @exam-platform/shared VALUES at runtime (see GLOBAL_STAGES comment below).
+export type BlueprintRule =
+  | { id: string; type: 'feedback'; minCount?: number; minAvgRating?: number; requireNote?: boolean }
+  | { id: string; type: 'exam_passed'; examId?: string; minScore?: number }
+  | { id: string; type: 'checklist'; items: { id: string; label: string }[] };
+
 // The API's own type here is called `PipelineStage` (see pipelines.service.ts) -- renamed to
 // PipelineStageConfig on the web since (pre-Task-11) that name was already taken by the old
 // flat-stage union type.
@@ -300,6 +308,7 @@ export interface PipelineStageConfig {
   category: StageCategory;
   position: number;
   statuses: PipelineStatus[];
+  rules?: BlueprintRule[];
 }
 
 export interface Pipeline {
