@@ -337,6 +337,9 @@ export interface BoardEntryRow {
   fitStale: boolean;
   assignedUserId: string | null;
   assigneeName: string | null;
+  // Ticks against this pipeline's checklist rule items (BlueprintRule 'checklist'), keyed by item
+  // id. Mirrors apps/api's getBoard row -- see PATCH /entries/:id/checklist.
+  blueprintChecklist: Record<string, boolean>;
 }
 
 // Mirrors apps/api/src/pipeline/pipeline.service.ts's Board -- the getBoard() response shape.

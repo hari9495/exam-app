@@ -17,13 +17,15 @@ import {
   useCandidateResumeUrl,
   useFitAssessment,
   useScoreEntry,
+  useSetChecklistItem,
 } from '../../../../lib/hooks/usePipeline';
 import { useTeammates } from '../../../../lib/hooks/useUserDirectory';
 import { useCandidateMessages, useResendMessage } from '../../../../lib/hooks/useCandidateMessages';
 import { useCandidateOffers, useWithdrawOffer, useSendOffer, useSubmitOffer, useCancelOffer } from '../../../../lib/hooks/useOffers';
 import { useApprovalGateStatus } from '../../../../lib/hooks/useApprovals';
 import { useCandidateInterviews, useCancelInterview } from '../../../../lib/hooks/useInterviews';
-import { BoardEntryRow, EntryExamResult, CandidateProfile, Offer, OfferStatus, Interview, InterviewStatus } from '../../../../lib/types';
+import { BoardEntryRow, EntryExamResult, CandidateProfile, Offer, OfferStatus, Interview, InterviewStatus, PipelineStageConfig } from '../../../../lib/types';
+import { collectChecklistItems } from '../../../../lib/blueprintChecklist';
 import { SendMessageModal } from './SendMessageModal';
 import { CreateOfferModal } from './CreateOfferModal';
 import { ScheduleInterviewModal } from './ScheduleInterviewModal';
@@ -489,9 +491,45 @@ function StarPicker({ value, onChange }: { value: number; onChange: (value: numb
   );
 }
 
+// Blueprint stage-rules: ticks against the pipeline's checklist rule items (aggregated across
+// every stage that has one -- see collectChecklistItems). Renders nothing when the pipeline has
+// no checklist rules at all, so an org that never configured one sees the drawer unchanged.
+function ChecklistSection({ row, jobId, stages }: { row: BoardEntryRow; jobId: string; stages: PipelineStageConfig[] }) {
+  const items = collectChecklistItems(stages);
+  const setChecklistItem = useSetChecklistItem(row.entryId, jobId);
+  const { toast } = useToast();
+
+  if (items.length === 0) return null;
+
+  function handleToggle(itemId: string, done: boolean) {
+    setChecklistItem.mutate({ itemId, done }, { onError: () => toast('Failed to update checklist item.', 'error') });
+  }
+
+  return (
+    <div style={card}>
+      <h3 style={sectionH}>Checklist</h3>
+      <ul style={{ display: 'flex', flexDirection: 'column', gap: 8, listStyle: 'none', padding: 0, margin: 0 }}>
+        {items.map((item) => (
+          <li key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: ink, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={row.blueprintChecklist[item.id] === true}
+                disabled={setChecklistItem.isPending}
+                onChange={(e) => handleToggle(item.id, e.target.checked)}
+              />
+              {item.label} <span style={{ color: muted }}>· {item.stageName}</span>
+            </label>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 // Candidate details + full exam results + feedback timeline/compose. Fed with the BoardEntryRow
 // the caller already has from useJobPipeline — no separate candidate fetch needed.
-export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: BoardEntryRow; onClose: () => void }) {
+export function CandidateDrawer({ jobId, row, stages, onClose }: { jobId: string; row: BoardEntryRow; stages: PipelineStageConfig[]; onClose: () => void }) {
   const { data: feedback, isLoading } = useEntryFeedback(row.entryId);
   const addFeedback = useAddFeedback(row.entryId, jobId);
   const { toast } = useToast();
@@ -526,6 +564,8 @@ export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: B
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 16 }}>
         <div style={card}><CandidateProfileSection candidateId={row.candidateId} /></div>
+
+        <ChecklistSection row={row} jobId={jobId} stages={stages} />
 
         <div style={card}><FitSection entryId={row.entryId} jobId={jobId} /></div>
 

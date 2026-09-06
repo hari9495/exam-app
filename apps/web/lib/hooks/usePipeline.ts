@@ -118,6 +118,18 @@ export function usePatchEntry(jobId: string) {
   });
 }
 
+// PATCH /entries/:id/checklist -- ticks/unticks one BlueprintRule 'checklist' item (gated
+// pipeline:manage server-side). Mirrors usePatchEntry's invalidation.
+export function useSetChecklistItem(entryId: string, jobId: string) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId, done }: { itemId: string; done: boolean }) =>
+      apiFetch(`/entries/${entryId}/checklist`, { method: 'PATCH', body: JSON.stringify({ itemId, done }) }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobs', jobId, 'pipeline'] }),
+  });
+}
+
 export function useLinkExam(jobId: string) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
