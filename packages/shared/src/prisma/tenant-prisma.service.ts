@@ -137,20 +137,18 @@ export class TenantPrismaService {
   private async resetSessionContext(tx: Prisma.TransactionClient): Promise<void> {
     try {
       // Order matters: these are sequential awaits in one try, so a failure on
-      // the first short-circuits the second, leaving whichever one runs
-      // second still set on the pooled connection. RLS ORs "is super admin"
+      // the first short-circuits the rest, leaving whichever ones haven't run
+      // yet still set on the pooled connection. RLS ORs "is super admin"
       // with "org matches" -- a stray app_is_super_admin=1 bypasses RLS on
       // every tenant, while a stray app_current_org only scopes to one org.
       // Clear the more dangerous flag first so a partial failure never
-      // strands it. Same reasoning extends to the record-visibility bit: it
-      // gates a WHERE-clause row filter, not RLS itself, but is still
-      // cleared before the plain user id so a partial failure can't strand a
-      // governed filter alongside a leftover identity on the pooled
-      // connection.
-      await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = 0`;
-      await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_current_user', @value = NULL`;
+      // strands it. The record-visibility bit is strictly less dangerous to
+      // strand than either: it only gates a WHERE-clause row filter, not RLS
+      // itself, so it (and the plain user id after it) are cleared last.
       await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0`;
       await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_current_org', @value = NULL`;
+      await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = 0`;
+      await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_current_user', @value = NULL`;
     } catch (resetError) {
       const message = resetError instanceof Error ? resetError.message : String(resetError);
       this.logger.error(`TENANT_SESSION_CONTEXT_RESET_FAILED: pooled connection may retain tenant context -- ${message}`);

@@ -46,12 +46,14 @@ describe('TenantPrismaService', () => {
     // set org, set super-admin, set governed (no userId -> no app_current_user set),
     // reset governed, reset user, reset super-admin, reset org
     expect(executeRaw).toHaveBeenCalledTimes(UNGOVERNED_TOTAL_CALLS);
-    // Governed bit is cleared first (mirrors "clear the more dangerous flag
-    // first"), then the user id, then the pre-existing super-admin/org resets.
-    expect(resetSql(executeRaw, 3)).toBe("EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = 0");
-    expect(resetSql(executeRaw, 4)).toBe("EXEC sp_set_session_context @key = N'app_current_user', @value = NULL");
-    expect(resetSql(executeRaw, 5)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
-    expect(resetSql(executeRaw, 6)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
+    // Super-admin is cleared first (mirrors "clear the more dangerous flag
+    // first"), then org, then the record-visibility bit, then the user id --
+    // the record-visibility keys are strictly less dangerous to strand than
+    // super-admin/org, so they clear last.
+    expect(resetSql(executeRaw, 3)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
+    expect(resetSql(executeRaw, 4)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
+    expect(resetSql(executeRaw, 5)).toBe("EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = 0");
+    expect(resetSql(executeRaw, 6)).toBe("EXEC sp_set_session_context @key = N'app_current_user', @value = NULL");
   });
 
   it('still resets session context to null/0 when the callback throws a non-P2028 error', async () => {
@@ -66,10 +68,10 @@ describe('TenantPrismaService', () => {
     ).rejects.toThrow('boom');
 
     expect(executeRaw).toHaveBeenCalledTimes(UNGOVERNED_TOTAL_CALLS);
-    expect(resetSql(executeRaw, 3)).toBe("EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = 0");
-    expect(resetSql(executeRaw, 4)).toBe("EXEC sp_set_session_context @key = N'app_current_user', @value = NULL");
-    expect(resetSql(executeRaw, 5)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
-    expect(resetSql(executeRaw, 6)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
+    expect(resetSql(executeRaw, 3)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
+    expect(resetSql(executeRaw, 4)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
+    expect(resetSql(executeRaw, 5)).toBe("EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = 0");
+    expect(resetSql(executeRaw, 6)).toBe("EXEC sp_set_session_context @key = N'app_current_user', @value = NULL");
   });
 
   it('still resets session context when the callback throws an HttpException (business-logic 4xx/409)', async () => {
@@ -91,10 +93,10 @@ describe('TenantPrismaService', () => {
     expect(caught).toBe(conflict);
     expect((caught as HttpException).getStatus()).toBe(HttpStatus.CONFLICT);
     expect(executeRaw).toHaveBeenCalledTimes(UNGOVERNED_TOTAL_CALLS);
-    expect(resetSql(executeRaw, 3)).toBe("EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = 0");
-    expect(resetSql(executeRaw, 4)).toBe("EXEC sp_set_session_context @key = N'app_current_user', @value = NULL");
-    expect(resetSql(executeRaw, 5)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
-    expect(resetSql(executeRaw, 6)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
+    expect(resetSql(executeRaw, 3)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
+    expect(resetSql(executeRaw, 4)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
+    expect(resetSql(executeRaw, 5)).toBe("EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = 0");
+    expect(resetSql(executeRaw, 6)).toBe("EXEC sp_set_session_context @key = N'app_current_user', @value = NULL");
   });
 
   describe('record-visibility session context (app_current_user / app_record_visibility_governed)', () => {
@@ -115,8 +117,11 @@ describe('TenantPrismaService', () => {
       const governedSet = setCall(executeRaw, 3);
       expect(governedSet.sql).toBe("EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = ");
       expect(governedSet.value).toBe(1);
-      expect(resetSql(executeRaw, 4)).toBe("EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = 0");
-      expect(resetSql(executeRaw, 5)).toBe("EXEC sp_set_session_context @key = N'app_current_user', @value = NULL");
+      // Reset order: super-admin, org, then the record-visibility keys (governed, user) last.
+      expect(resetSql(executeRaw, 4)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
+      expect(resetSql(executeRaw, 5)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
+      expect(resetSql(executeRaw, 6)).toBe("EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = 0");
+      expect(resetSql(executeRaw, 7)).toBe("EXEC sp_set_session_context @key = N'app_current_user', @value = NULL");
     });
 
     it('sets app_record_visibility_governed=0 for a non-governed role (org_admin) even with a userId present', async () => {
@@ -141,7 +146,7 @@ describe('TenantPrismaService', () => {
       await service.forTenant(noUserContext, async () => 'ok');
 
       // org, super-admin, governed (set; no app_current_user set at all) +
-      // governed, user, super-admin, org (reset) = 7 total.
+      // super-admin, org, governed, user (reset) = 7 total.
       expect(executeRaw).toHaveBeenCalledTimes(UNGOVERNED_TOTAL_CALLS);
       const governedSet = setCall(executeRaw, 2);
       expect(governedSet.sql).toBe("EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = ");
@@ -225,8 +230,8 @@ describe('TenantPrismaService', () => {
   describe('when the session-context reset itself fails', () => {
     // Simulates the P2028-expiry hazard: the callback ran against a
     // transaction that's now dead, so the first reset $executeRaw call
-    // (app_record_visibility_governed, which now runs first) rejects and
-    // short-circuits the remaining three sequential reset awaits.
+    // (app_is_super_admin, which runs first) rejects and short-circuits the
+    // remaining three sequential reset awaits.
     function makeResetFailingTx() {
       const resetError = new Error('Transaction already closed');
       const executeRaw = jest
@@ -234,7 +239,7 @@ describe('TenantPrismaService', () => {
         .mockResolvedValueOnce(undefined) // set org
         .mockResolvedValueOnce(undefined) // set super-admin
         .mockResolvedValueOnce(undefined) // set governed (no userId in base `context` -> no app_current_user set)
-        .mockRejectedValueOnce(resetError); // reset governed (runs first, throws)
+        .mockRejectedValueOnce(resetError); // reset super-admin (runs first, throws)
       return { tx: { $executeRaw: executeRaw }, executeRaw, resetError };
     }
 
@@ -247,7 +252,7 @@ describe('TenantPrismaService', () => {
 
       // The caller must see the callback's own result -- not have it replaced
       // or masked by the reset failure. Only 4 calls: set org, set
-      // super-admin, set governed, reset governed (which throws and
+      // super-admin, set governed, reset super-admin (which throws and
       // short-circuits the remaining three reset statements).
       expect(result).toBe('ok');
       expect(executeRaw).toHaveBeenCalledTimes(4);
