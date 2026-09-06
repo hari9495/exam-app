@@ -7,6 +7,7 @@ class StepDto {
   @IsIn(APPROVER_TYPES) approverType!: string;
   @IsOptional() @IsArray() @IsUUID('all', { each: true }) approverUserIds?: string[];
   @IsOptional() @IsInt() @Min(1) managerLevel?: number;
+  @IsOptional() @IsUUID() groupId?: string;
 }
 
 export class UpsertChainDto {
