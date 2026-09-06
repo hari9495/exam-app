@@ -23,7 +23,11 @@ const card: React.CSSProperties = { background: 'var(--paper)', border: '1px sol
 const desc: React.CSSProperties = { fontSize: 13, color: muted, margin: '4px 0 0' };
 const iconBtn: React.CSSProperties = { display: 'inline-grid', placeItems: 'center', width: 30, height: 30, borderRadius: 7, border: '1px solid var(--hair)', background: 'var(--paper)', color: 'var(--ink)', cursor: 'pointer' };
 const dangerIconBtn: React.CSSProperties = { ...iconBtn, color: 'var(--danger)', borderColor: 'color-mix(in srgb, var(--danger) 35%, var(--hair))' };
-const toolBtn: React.CSSProperties = { fontSize: 12.5, fontWeight: 500, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--paper)', color: 'var(--ink)', cursor: 'pointer' };
+// Canonical secondary button (values match components/ui-v2/DataTable.tsx's `dt.toolBtn` exactly).
+// Not imported directly: `dt` is defined in DataTable.tsx, which pulls in @tanstack/react-table
+// (ESM-only) at module scope, so even a deep import of just `dt` would execute that import and
+// break under jest -- see this file's top-of-file note on avoiding the ui-v2 barrel.
+const secondaryBtn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, padding: '9px 14px', borderRadius: 9, border: '1px solid var(--org-primary)', background: 'var(--paper)', color: 'var(--org-primary)', cursor: 'pointer', boxShadow: '0 1px 2px rgba(11,18,32,.08)' };
 
 type Notice = { type: 'success' | 'error'; text: string } | null;
 
@@ -59,7 +63,7 @@ function NewGroupDialog({ onClose, notify }: { onClose: () => void; notify: (typ
         </div>
         {error && <p role="alert" style={{ marginTop: 10, fontSize: 12.5, color: 'var(--danger)' }}>{error}</p>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
-          <button type="button" onClick={onClose} className="v2-hoverbtn" style={toolBtn}>Cancel</button>
+          <button type="button" onClick={onClose} className="v2-hoverbtn" style={secondaryBtn}>Cancel</button>
           <Button type="submit" loading={create.isPending}>Create</Button>
         </div>
       </form>
@@ -108,7 +112,7 @@ function MembersDialog({ group, onClose, notify }: { group: UserGroup; onClose: 
         </div>
       )}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
-        <button type="button" onClick={onClose} className="v2-hoverbtn" style={toolBtn}>Cancel</button>
+        <button type="button" onClick={onClose} className="v2-hoverbtn" style={secondaryBtn}>Cancel</button>
         <Button onClick={handleSave} loading={setMembers.isPending}>Save</Button>
       </div>
     </Dialog>
@@ -143,7 +147,7 @@ function GroupRow({ group, notify }: { group: UserGroup; notify: (type: 'success
           <TextField id={`group-name-${group.id}`} label="Name" value={name} onChange={setName} />
         </div>
         <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
-          <button type="button" style={iconBtn} onClick={() => setEditingMembers(true)} aria-label={`Edit members of ${group.name}`}>
+          <button type="button" style={secondaryBtn} onClick={() => setEditingMembers(true)} aria-label={`Edit members of ${group.name}`}>
             Members
           </button>
           <button type="button" style={dangerIconBtn} onClick={handleDelete} aria-label={`Delete ${group.name}`}><Trash2 size={15} /></button>
