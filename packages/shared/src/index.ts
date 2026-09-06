@@ -35,3 +35,5 @@ export * from './approvals/approval-types';
 export * from './pipeline/pipeline-categories';
 export * from './pipeline/global-stage';
 export * from './scheduling/business-hours';
+export * from './soft-delete/soft-delete';
+export * from './soft-delete/soft-delete.extension';
