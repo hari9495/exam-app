@@ -1,5 +1,6 @@
-// Minimal stub for Task 2 (service layer). Task 3 adds class-validator decorators.
+import { IsOptional, IsString, IsNotEmpty, MaxLength } from 'class-validator';
+
 export class UpdateUserGroupDto {
-  name?: string;
-  description?: string;
+  @IsOptional() @IsString() @IsNotEmpty() @MaxLength(200) name?: string;
+  @IsOptional() @IsString() @MaxLength(1000) description?: string;
 }
