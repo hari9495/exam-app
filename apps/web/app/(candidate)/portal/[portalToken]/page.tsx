@@ -5,7 +5,145 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { API_BASE } from '../../../../lib/api-client';
 import { PortalView, PortalApplication } from '../../../../lib/types';
+import { CandidateButton } from '../../components/CandidateButton';
 import { TerminalCard } from '../../components/TerminalCard';
+
+const MAX_RESUME_BYTES = 5 * 1024 * 1024;
+
+// Backend expects raw base64 (Buffer.from(x, 'base64')) -- strip the
+// "data:application/pdf;base64," prefix FileReader's readAsDataURL adds. Mirrors
+// apply-form.tsx's helper of the same shape.
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] ?? '');
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read the file.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+const INPUT_CLASS =
+  'w-full rounded border border-candidate-border px-3 py-2 text-sm focus:border-candidate-primary focus:outline-none focus:ring-2 focus:ring-candidate-primary/20';
+
+function DetailsCard({ portal, portalToken, onUpdate }: { portal: PortalView; portalToken: string; onUpdate: (p: PortalView) => void }) {
+  const [name, setName] = useState(portal.candidateName);
+  const [phone, setPhone] = useState(portal.candidatePhone ?? '');
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setStatus('saving');
+    try {
+      const res = await fetch(`${API_BASE}/public/portal/${portalToken}/profile`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, phone }),
+      });
+      if (!res.ok) throw new Error('not ok');
+      onUpdate(await res.json());
+      setStatus('saved');
+    } catch {
+      setStatus('failed');
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-candidate-border bg-white p-4">
+      <h2 className="font-display text-base font-semibold text-candidate-text">Your details</h2>
+      <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+          <label htmlFor="portal-name" className="text-sm font-medium text-candidate-text">
+            Name
+          </label>
+          <input id="portal-name" value={name} onChange={(e) => setName(e.target.value)} className={INPUT_CLASS} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="portal-phone" className="text-sm font-medium text-candidate-text">
+            Phone
+          </label>
+          <input id="portal-phone" value={phone} onChange={(e) => setPhone(e.target.value)} className={INPUT_CLASS} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="portal-email" className="text-sm font-medium text-candidate-text">
+            Email
+          </label>
+          <input id="portal-email" value={portal.candidateEmail} disabled className={`${INPUT_CLASS} bg-candidate-bg text-candidate-text-secondary`} />
+        </div>
+        {status === 'saved' && <p className="text-xs text-candidate-primary">Saved.</p>}
+        {status === 'failed' && (
+          <p role="alert" className="text-xs text-candidate-danger">
+            Could not save. Please try again.
+          </p>
+        )}
+        <CandidateButton type="submit" disabled={status === 'saving'} className="self-start">
+          {status === 'saving' ? 'Saving…' : 'Save'}
+        </CandidateButton>
+      </form>
+    </div>
+  );
+}
+
+function ResumeCard({ portal, portalToken, onUpdate }: { portal: PortalView; portalToken: string; onUpdate: (p: PortalView) => void }) {
+  const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    e.target.value = '';
+    if (!file) return;
+    if (file.type !== 'application/pdf') {
+      setError('Only PDF files are accepted.');
+      return;
+    }
+    if (file.size > MAX_RESUME_BYTES) {
+      setError('File must be 5 MB or smaller.');
+      return;
+    }
+    setError(null);
+    setUploading(true);
+    try {
+      const resumeBase64 = await readFileAsBase64(file);
+      const res = await fetch(`${API_BASE}/public/portal/${portalToken}/resume`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resumeBase64 }),
+      });
+      if (!res.ok) throw new Error('not ok');
+      onUpdate(await res.json());
+    } catch {
+      setError('Upload failed. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-candidate-border bg-white p-4">
+      <h2 className="font-display text-base font-semibold text-candidate-text">Résumé</h2>
+      <p className="mt-1 text-sm text-candidate-text-secondary">
+        {portal.resume.hasResume ? `Résumé on file${portal.resume.parseStatus ? ` · ${portal.resume.parseStatus}` : ''}` : 'No résumé uploaded'}
+      </p>
+      <div className="mt-3 flex flex-col gap-1">
+        <label htmlFor="portal-resume" className="text-sm font-medium text-candidate-text">
+          {portal.resume.hasResume ? 'Replace résumé (PDF, max 5 MB)' : 'Upload résumé (PDF, max 5 MB)'}
+        </label>
+        <input
+          id="portal-resume"
+          type="file"
+          accept="application/pdf"
+          disabled={uploading}
+          onChange={handleFile}
+          className="text-sm text-candidate-text-secondary"
+        />
+        {error ? (
+          <p role="alert" className="text-xs text-candidate-danger">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 const STAGE_LABEL: Record<string, string> = {
   applied: 'Applied',
@@ -124,6 +262,8 @@ export default function PortalPage() {
         <h1 className="font-display text-2xl font-bold text-candidate-text">Your applications</h1>
         <p className="text-sm text-candidate-text-secondary">{portal.candidateName} · {portal.candidateEmail}</p>
       </div>
+      <DetailsCard portal={portal} portalToken={portalToken} onUpdate={setPortal} />
+      <ResumeCard portal={portal} portalToken={portalToken} onUpdate={setPortal} />
       {portal.applications.length === 0 ? (
         <p className="text-sm text-candidate-text-secondary">You have no applications yet.</p>
       ) : (

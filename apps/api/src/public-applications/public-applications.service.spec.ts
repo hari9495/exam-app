@@ -341,9 +341,12 @@ describe('PublicApplicationsService', () => {
   describe('getPortal', () => {
     it("aggregates the candidate's applications with their interviews and offers", async () => {
       tenantPrisma.forTenant
-        .mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', name: 'Asha', email: 'a@x.com', erasedAt: null }) } }))
+        .mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', erasedAt: null }) } }))
         .mockImplementationOnce((_c, fn) =>
           fn({
+            candidate: {
+              findUnique: jest.fn().mockResolvedValue({ name: 'Asha', email: 'a@x.com', phone: '555-1234' }),
+            },
             pipelineEntry: {
               findMany: jest.fn().mockResolvedValue([
                 {
@@ -357,6 +360,9 @@ describe('PublicApplicationsService', () => {
                 },
               ]),
             },
+            candidateProfile: {
+              findUnique: jest.fn().mockResolvedValue({ resumePath: 'candidates/org-1/resume.pdf', parseStatus: 'parsed' }),
+            },
           }),
         );
       prisma.organization.findUnique.mockResolvedValue({ name: 'Acme' });
@@ -365,15 +371,201 @@ describe('PublicApplicationsService', () => {
 
       expect(out.candidateName).toBe('Asha');
       expect(out.orgName).toBe('Acme');
+      expect(out.candidatePhone).toBe('555-1234');
+      expect(out.resume).toEqual({ hasResume: true, parseStatus: 'parsed' });
       expect(out.applications).toHaveLength(1);
       expect(out.applications[0]).toMatchObject({ jobTitle: 'Backend', stage: 'interview', statusToken: 'st1' });
       expect(out.applications[0].interviews[0]).toMatchObject({ token: 'it1', confirmed: false });
       expect(out.applications[0].offers[0]).toMatchObject({ token: 'ot1', status: 'sent' });
     });
 
-    it('throws NotFound for an unknown/erased portal token', async () => {
+    it('returns candidatePhone: null and resume: hasResume false when the candidate has no phone/profile', async () => {
+      tenantPrisma.forTenant
+        .mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', erasedAt: null }) } }))
+        .mockImplementationOnce((_c, fn) =>
+          fn({
+            candidate: { findUnique: jest.fn().mockResolvedValue({ name: 'Asha', email: 'a@x.com', phone: null }) },
+            pipelineEntry: { findMany: jest.fn().mockResolvedValue([]) },
+            candidateProfile: { findUnique: jest.fn().mockResolvedValue(null) },
+          }),
+        );
+      prisma.organization.findUnique.mockResolvedValue({ name: 'Acme' });
+
+      const out = await service.getPortal('ptok-1');
+
+      expect(out.candidatePhone).toBeNull();
+      expect(out.resume).toEqual({ hasResume: false, parseStatus: null });
+    });
+
+    it('throws NotFound for an unknown portal token', async () => {
       tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue(null) } }));
       await expect(service.getPortal('bad')).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws NotFound for an erased candidate', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
+        fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', erasedAt: new Date('2026-01-01T00:00:00.000Z') }) } }),
+      );
+      await expect(service.getPortal('erased-tok')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('updatePortalProfile', () => {
+    it('updates only name/phone on the token\'s candidate (trims name, never touches email), then returns the getPortal payload', async () => {
+      const updateMock = jest.fn().mockResolvedValue({});
+      tenantPrisma.forTenant
+        .mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', erasedAt: null }) } }))
+        .mockImplementationOnce((_c, fn) => fn({ candidate: { update: updateMock } }))
+        .mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', erasedAt: null }) } }))
+        .mockImplementationOnce((_c, fn) =>
+          fn({
+            candidate: { findUnique: jest.fn().mockResolvedValue({ name: 'New Name', email: 'a@x.com', phone: '555-1111' }) },
+            pipelineEntry: { findMany: jest.fn().mockResolvedValue([]) },
+            candidateProfile: { findUnique: jest.fn().mockResolvedValue(null) },
+          }),
+        );
+      prisma.organization.findUnique.mockResolvedValue({ name: 'Acme' });
+
+      const out = await service.updatePortalProfile('ptok-1', { name: '  New Name  ', phone: '555-1111' });
+
+      expect(updateMock).toHaveBeenCalledWith({ where: { id: 'cand-1' }, data: { name: 'New Name', phone: '555-1111' } });
+      // never writes email
+      expect(Object.keys(updateMock.mock.calls[0][0].data)).toEqual(['name', 'phone']);
+      // returns the getPortal payload (proves it re-fetches rather than echoing the dto)
+      expect(out.candidateName).toBe('New Name');
+      expect(out.candidatePhone).toBe('555-1111');
+    });
+
+    it('rejects an empty body (neither field) with BadRequestException, before touching the DB', async () => {
+      await expect(service.updatePortalProfile('ptok-1', {})).rejects.toThrow(BadRequestException);
+      expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+    });
+
+    it('rejects a blank/whitespace name with BadRequestException', async () => {
+      await expect(service.updatePortalProfile('ptok-1', { name: '   ' })).rejects.toThrow(BadRequestException);
+      expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for an unknown/erased token', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue(null) } }));
+      await expect(service.updatePortalProfile('bad-tok', { name: 'X' })).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('uploadPortalResume', () => {
+    it('rejects a non-PDF résumé with BadRequestException', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
+        fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', erasedAt: null }) } }),
+      );
+      const notPdf = Buffer.from('hello world').toString('base64');
+
+      await expect(service.uploadPortalResume('ptok-1', { resumeBase64: notPdf })).rejects.toThrow(
+        new BadRequestException('Résumé must be a PDF'),
+      );
+      expect(blobStorage.upload).not.toHaveBeenCalled();
+    });
+
+    it('rejects an oversized résumé with BadRequestException', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
+        fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', erasedAt: null }) } }),
+      );
+      const big = Buffer.concat([Buffer.from('%PDF-1.7'), Buffer.alloc(6 * 1024 * 1024)]);
+
+      await expect(
+        service.uploadPortalResume('ptok-1', { resumeBase64: big.toString('base64') }),
+      ).rejects.toThrow(new BadRequestException('Résumé exceeds 5 MB'));
+      expect(blobStorage.upload).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for an unknown/erased token', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue(null) } }));
+      await expect(service.uploadPortalResume('bad-tok', { resumeBase64: 'x' })).rejects.toThrow(NotFoundException);
+      expect(blobStorage.upload).not.toHaveBeenCalled();
+    });
+
+    it('uploads OUTSIDE the tx, upserts the profile with reset parse fields, and enqueues resume_parse for the most-recent application owner', async () => {
+      const callOrder: string[] = [];
+      blobStorage.upload.mockImplementation(async () => {
+        callOrder.push('upload');
+        return 'candidates/org-1/new.pdf';
+      });
+      const writeTx = {
+        candidateProfile: { upsert: jest.fn().mockImplementation(async () => { callOrder.push('upsert'); return {}; }) },
+        pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ job: { createdById: 'user-1' } }) },
+      };
+      const portalPayload = { candidateName: 'Asha' };
+      tenantPrisma.forTenant
+        .mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', erasedAt: null }) } })) // resolvePortalCandidate (for upload)
+        .mockImplementationOnce((_c, fn) => fn(writeTx)) // the write tx
+        .mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', erasedAt: null }) } })) // resolvePortalCandidate (inside getPortal)
+        .mockImplementationOnce((_c, fn) =>
+          fn({
+            candidate: { findUnique: jest.fn().mockResolvedValue({ name: 'Asha', email: 'a@x.com', phone: null }) },
+            pipelineEntry: { findMany: jest.fn().mockResolvedValue([]) },
+            candidateProfile: { findUnique: jest.fn().mockResolvedValue(null) },
+          }),
+        ); // getPortal's own read tx
+      prisma.organization.findUnique.mockResolvedValue({ name: 'Acme' });
+      jobsService.enqueue.mockResolvedValue({ id: 'aijob-5' });
+
+      const pdf = Buffer.from('%PDF-1.7 new résumé').toString('base64');
+      const out = await service.uploadPortalResume('ptok-1', { resumeBase64: pdf });
+
+      expect(blobStorage.upload).toHaveBeenCalledWith(
+        expect.stringMatching(/^candidates\/org-1\/.+\.pdf$/),
+        expect.any(Buffer),
+        'application/pdf',
+      );
+      expect(writeTx.candidateProfile.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { candidateId: 'cand-1' },
+          update: expect.objectContaining({
+            resumePath: 'candidates/org-1/new.pdf',
+            parseStatus: 'pending',
+            parsedSummary: null,
+            parsedSkills: null,
+            parsedTitle: null,
+            parsedYearsExperience: null,
+            parsedAt: null,
+          }),
+        }),
+      );
+      // Upload happens BEFORE the tenant tx opens (blob I/O must not hold the tx open).
+      expect(callOrder).toEqual(['upload', 'upsert']);
+      expect(jobsService.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: 'org-1' }),
+        'resume_parse',
+        expect.stringContaining('cand-1'),
+        'user-1',
+      );
+      // Returns the getPortal payload, not an echo of the dto.
+      expect(out.candidateName).toBe('Asha');
+    });
+
+    it('saves the résumé but skips the enqueue when there is no attributable owner (edge case)', async () => {
+      const writeTx = {
+        candidateProfile: { upsert: jest.fn().mockResolvedValue({}) },
+        pipelineEntry: { findFirst: jest.fn().mockResolvedValue(null) },
+      };
+      tenantPrisma.forTenant
+        .mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', erasedAt: null }) } }))
+        .mockImplementationOnce((_c, fn) => fn(writeTx))
+        .mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', erasedAt: null }) } }))
+        .mockImplementationOnce((_c, fn) =>
+          fn({
+            candidate: { findUnique: jest.fn().mockResolvedValue({ name: 'Asha', email: 'a@x.com', phone: null }) },
+            pipelineEntry: { findMany: jest.fn().mockResolvedValue([]) },
+            candidateProfile: { findUnique: jest.fn().mockResolvedValue(null) },
+          }),
+        );
+      prisma.organization.findUnique.mockResolvedValue({ name: 'Acme' });
+      blobStorage.upload.mockResolvedValue('candidates/org-1/new.pdf');
+
+      const pdf = Buffer.from('%PDF-1.7 no owner').toString('base64');
+      await service.uploadPortalResume('ptok-1', { resumeBase64: pdf });
+
+      expect(writeTx.candidateProfile.upsert).toHaveBeenCalled();
+      expect(jobsService.enqueue).not.toHaveBeenCalled();
     });
   });
 

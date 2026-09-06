@@ -361,6 +361,8 @@ export interface PortalApplication {
 export interface PortalView {
   candidateName: string;
   candidateEmail: string;
+  candidatePhone: string | null;
+  resume: { hasResume: boolean; parseStatus: string | null };
   orgName: string;
   applications: PortalApplication[];
 }

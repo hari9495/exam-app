@@ -7,6 +7,8 @@ import { expandedName } from '../walk-in/walk-in.service';
 import { applicationStatusBucket } from './application-status';
 import { validatePdfUpload } from './pdf-validation';
 import { ApplyDto } from './dto/apply.dto';
+import { UpdatePortalProfileDto } from './dto/update-portal-profile.dto';
+import { UploadPortalResumeDto } from './dto/upload-portal-resume.dto';
 import { recomputeGlobalStage } from '../candidates/recompute-global-stage';
 
 // Job-feed fields are wrapped in CDATA (the aggregator-standard for free-text). The only way to
@@ -221,21 +223,32 @@ export class PublicApplicationsService {
     return { statusToken: entry.applicationToken!, portalToken };
   }
 
+  // Cross-tenant candidate-by-token resolution shared by the portal and its later self-service
+  // writes (later tasks reuse this). No org context exists yet until the token resolves one, so
+  // this bypasses RLS the same way resolveJob/resolveApply do.
+  private async resolvePortalCandidate(portalToken: string): Promise<{ id: string; organizationId: string }> {
+    const candidate = await this.tenantPrisma.forTenant(
+      { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
+      (tx) => tx.candidate.findUnique({ where: { portalToken }, select: { id: true, organizationId: true, erasedAt: true } }),
+    );
+    if (!candidate || candidate.erasedAt) throw new NotFoundException('Portal not found');
+    return { id: candidate.id, organizationId: candidate.organizationId };
+  }
+
   // The unified candidate portal: resolve the candidate by their magic-link token and aggregate
   // ALL their applications at the org (each with its interviews + offers), so they see everything
   // in one place. Read-only aggregation; actions happen on the existing per-artifact token pages.
   async getPortal(portalToken: string) {
-    const candidate = await this.tenantPrisma.forTenant(
-      { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
-      (tx) => tx.candidate.findUnique({ where: { portalToken }, select: { id: true, organizationId: true, name: true, email: true, erasedAt: true } }),
-    );
-    if (!candidate || candidate.erasedAt) throw new NotFoundException('Portal not found');
-    const org = await this.prisma.organization.findUnique({ where: { id: candidate.organizationId }, select: { name: true } });
-    const entries = await this.tenantPrisma.forTenant(
-      { organizationId: candidate.organizationId, isSuperAdmin: true },
-      (tx) =>
-        tx.pipelineEntry.findMany({
-          where: { candidateId: candidate.id },
+    const { id: candidateId, organizationId } = await this.resolvePortalCandidate(portalToken);
+    const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } });
+    // Now that the token has resolved a real org, look up the display fields + résumé state
+    // through normal org-scoped RLS (candidateId) rather than another LOOKUP_ORG bypass.
+    const { candidate, entries, profile } = await this.tenantPrisma.forTenant(
+      { organizationId, isSuperAdmin: true },
+      async (tx) => {
+        const candidate = await tx.candidate.findUnique({ where: { id: candidateId }, select: { name: true, email: true, phone: true } });
+        const entries = await tx.pipelineEntry.findMany({
+          where: { candidateId },
           orderBy: { createdAt: 'desc' },
           select: {
             applicationToken: true,
@@ -248,11 +261,16 @@ export class PublicApplicationsService {
             },
             offers: { select: { offerToken: true, status: true, compensation: true, startDate: true, expiresAt: true } },
           },
-        }),
+        });
+        const profile = await tx.candidateProfile.findUnique({ where: { candidateId }, select: { resumePath: true, parseStatus: true } });
+        return { candidate, entries, profile };
+      },
     );
     return {
-      candidateName: candidate.name,
-      candidateEmail: candidate.email,
+      candidateName: candidate?.name ?? '',
+      candidateEmail: candidate?.email ?? '',
+      candidatePhone: candidate?.phone ?? null,
+      resume: { hasResume: Boolean(profile?.resumePath), parseStatus: profile?.parseStatus ?? null },
       orgName: org?.name ?? '',
       applications: entries.map((e) => ({
         jobTitle: e.job.title,
@@ -273,6 +291,59 @@ export class PublicApplicationsService {
           .map((o) => ({ token: o.offerToken, status: o.status, compensation: o.compensation, startDate: o.startDate.toISOString(), expiresAt: o.expiresAt.toISOString() })),
       })),
     };
+  }
+
+  // Self-edit of name/phone here is INTENTIONAL, unlike apply()'s anti-tamper skip above: the
+  // portal token IS the candidate's own secret, so a holder of it updating their own name/phone
+  // is the candidate acting on their own record, not an outsider tampering with someone else's.
+  async updatePortalProfile(portalToken: string, dto: UpdatePortalProfileDto) {
+    const hasName = dto.name !== undefined;
+    const hasPhone = dto.phone !== undefined;
+    if (!hasName && !hasPhone) throw new BadRequestException('Nothing to update');
+    if (hasName && !dto.name!.trim()) throw new BadRequestException('Name cannot be empty');
+    const candidate = await this.resolvePortalCandidate(portalToken);
+    await this.tenantPrisma.forTenant({ organizationId: candidate.organizationId, isSuperAdmin: true }, (tx) =>
+      tx.candidate.update({
+        where: { id: candidate.id },
+        data: { ...(hasName ? { name: dto.name!.trim() } : {}), ...(hasPhone ? { phone: dto.phone || null } : {}) },
+      }),
+    );
+    return this.getPortal(portalToken);
+  }
+
+  // Résumé-replace self-service: mirrors apply()'s upload pipeline exactly (validate -> upload
+  // outside the tx -> upsert profile with reset parse fields), but attributes the re-parse AiJob
+  // to the recruiter who owns the candidate's most-recent application, since the portal has no
+  // acting user of its own.
+  async uploadPortalResume(portalToken: string, dto: UploadPortalResumeDto) {
+    const candidate = await this.resolvePortalCandidate(portalToken);
+    const buf = Buffer.from(dto.resumeBase64, 'base64');
+    const validated = validatePdfUpload(buf);
+    if (!validated.ok) {
+      throw new BadRequestException(validated.reason === 'too_large' ? 'Résumé exceeds 5 MB' : 'Résumé must be a PDF');
+    }
+    // Upload OUTSIDE the tenant tx (blob I/O in a tx holds it open on a network call).
+    const resumePath = await this.blobStorage.upload(`candidates/${candidate.organizationId}/${randomUUID()}.pdf`, buf, 'application/pdf');
+    const context = { organizationId: candidate.organizationId, isSuperAdmin: true };
+    const attributionUserId = await this.tenantPrisma.forTenant(context, async (tx) => {
+      await tx.candidateProfile.upsert({
+        where: { candidateId: candidate.id },
+        create: { organizationId: candidate.organizationId, candidateId: candidate.id, resumePath, parseStatus: 'pending' },
+        update: { resumePath, parseStatus: 'pending', parsedSummary: null, parsedSkills: null, parsedTitle: null, parsedYearsExperience: null, parsedAt: null },
+      });
+      const recent = await tx.pipelineEntry.findFirst({
+        where: { candidateId: candidate.id },
+        orderBy: { createdAt: 'desc' },
+        select: { job: { select: { createdById: true } } },
+      });
+      return recent?.job.createdById ?? null;
+    });
+    // A portal token only exists after an application, so attributionUserId is normally set; if
+    // somehow absent, save the résumé but skip the re-parse rather than fail the upload.
+    if (attributionUserId) {
+      await this.jobsService.enqueue(context, 'resume_parse', JSON.stringify({ candidateId: candidate.id }), attributionUserId);
+    }
+    return this.getPortal(portalToken);
   }
 
   async getApplicationStatus(statusToken: string) {

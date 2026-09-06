@@ -32,6 +32,25 @@ Skip for our market: **Territory Management** (geo routing), **Zoho Mail Add-on*
 
 ---
 
+## Build status reconciliation (2026-09-05)
+
+Codebase-verified status of the consolidated top-25 adopt candidates (supersedes the older per-row "We have / Verdict" notes where they conflict). Many were built since the walkthrough.
+
+**BUILT (9):** #1 notification email channel · #4 audit log admin UI + login/session activity · #5 AI resume parsing (resume-parse.processor → AI extract → review in CandidateDrawer) · #6 configurable 2-level pipeline + multiple pipelines · #7 candidate global stage / "Available" talent pool · #11 status-change → email/notification triggers (CandidateEmailTemplate.triggerStageId/triggerMode) · #13 e-sign offers (click-to-accept via public token) · #15 AI summaries (resume parsedSummary + candidate-fit) · #17 candidate portal self-service (name/phone edit + résumé replace; branch feat/candidate-portal-self-service, NOT merged — multi-document store still deferred).
+
+**PARTIAL (7) — the near-done features (small gap each):**
+- #9 Templates — approval-email templates NOT built; multiple offer templates PARTIAL (single OfferTemplate, no name); org verified senders PARTIAL (single emailFromAddress); unsubscribe/opt-out NOT built.
+- #12 Recycle Bin — only per-entity archive/restore (PipelineEntry.archivedAt, question Drafts/Archived); no unified bin + retention window.
+- #14 Webforms/careers — embeddable apply webform BUILT (Job.applyToken, /apply/[applyToken]); themeable careers site NOT built (only an Indeed XML feed).
+- #21 GDPR — erase + export BUILT (Candidate.erasedAt, export/erase endpoints); consent capture on apply NOT built.
+- #22 Calendar — ICS export only; no 2-way sync / Meet-Teams links / self-booking page.
+- #23 Job boards — single global aggregator XML feed + per-job toggle; no multi-board catalog + per-board publish UI.
+- #25 Public API — public-api module + per-org API keys BUILT; per-key usage metering/reporting missing (throttling only).
+
+**NOT-BUILT (9):** #2 Business Hours + Holidays · #3 per-user locale/timezone + email signature · #8 custom fields on candidate/job · #10 User Groups · #16 SMS to candidates · #18 field-level perms / custom profiles / record-level visibility · #19 Blueprint guided stage transitions · #20 vendor/agency portal · #24 WhatsApp candidate messaging.
+
+---
+
 ## Setup → General
 <!-- ✓ validated live page-by-page 2026-09-04 (user-driven walkthrough of every sub-page + sub-tab) -->
 
