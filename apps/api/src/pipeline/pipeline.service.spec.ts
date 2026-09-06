@@ -652,6 +652,33 @@ describe('PipelineService', () => {
     expect(board.columns['st-applied'][0].fitStale).toBe(false);
   });
 
+  it('getBoard includes the parsed blueprintChecklist per entry (null json -> {})', async () => {
+    const tx = {
+      job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', pipeline: boardPipeline() }) },
+      jobExam: { findMany: jest.fn().mockResolvedValue([]) },
+      pipelineEntry: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'en1', candidateId: 'c1', enteredVia: 'manual', rejectedReason: null,
+            status: { id: 'status-applied', stage: { id: 'st-applied', category: 'active' } },
+            candidate: { name: 'Amy', email: 'amy@x.com', invitations: [] }, feedback: [],
+            blueprintChecklistJson: JSON.stringify({ 'sign-nda': true }) },
+          { id: 'en2', candidateId: 'c2', enteredVia: 'manual', rejectedReason: null,
+            status: { id: 'status-applied', stage: { id: 'st-applied', category: 'active' } },
+            candidate: { name: 'Bo', email: 'bo@x.com', invitations: [] }, feedback: [],
+            blueprintChecklistJson: null },
+        ]),
+      },
+    };
+    tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+    const board = await service.getBoard(context, 'job-1');
+
+    const row1 = board.columns['st-applied'].find((r) => r.entryId === 'en1')!;
+    const row2 = board.columns['st-applied'].find((r) => r.entryId === 'en2')!;
+    expect(row1.blueprintChecklist).toEqual({ 'sign-nda': true });
+    expect(row2.blueprintChecklist).toEqual({});
+  });
+
   it('getBoard skips entries with no resolved status (can\'t be placed on a dynamic column)', async () => {
     const tx = {
       job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', pipeline: boardPipeline() }) },
@@ -934,6 +961,64 @@ describe('PipelineService', () => {
 
       await expect(service.assignEntry(context, 'user-1', 'en1', 'outsider')).rejects.toThrow(BadRequestException);
       expect(tx.pipelineEntry.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('setChecklistItem', () => {
+    function checklistTx(blueprintChecklistJson: string | null, overrides: any = {}) {
+      return {
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'en1', blueprintChecklistJson }),
+          update: jest.fn().mockResolvedValue({ id: 'en1' }),
+        },
+        ...overrides,
+      };
+    }
+
+    it('merges {[itemId]:true} into the checklist, preserving existing ticks, persists, and audits after the tx', async () => {
+      const tx = checklistTx(JSON.stringify({ other: true }));
+      const order: string[] = [];
+      tenantPrisma.forTenant.mockImplementation(async (_c, fn) => {
+        const result = await fn(tx);
+        order.push('tx');
+        return result;
+      });
+      audit.record.mockImplementation(async () => { order.push('audit'); });
+
+      const out = await service.setChecklistItem(context, 'user-1', 'en1', 'sign-nda', true);
+
+      expect(out).toEqual({ success: true });
+      expect(tx.pipelineEntry.update).toHaveBeenCalledWith({
+        where: { id: 'en1' },
+        data: { blueprintChecklistJson: JSON.stringify({ other: true, 'sign-nda': true }) },
+      });
+      expect(audit.record).toHaveBeenCalledTimes(1);
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({
+        actorUserId: 'user-1', action: 'entry.checklist_changed', entityType: 'pipeline_entry', entityId: 'en1',
+        metadata: { itemId: 'sign-nda', done: true },
+      }));
+      expect(order).toEqual(['tx', 'audit']); // audit fires AFTER the tx resolves
+    });
+
+    it('done:false removes the key from the checklist', async () => {
+      const tx = checklistTx(JSON.stringify({ 'sign-nda': true, other: true }));
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.setChecklistItem(context, 'user-1', 'en1', 'sign-nda', false);
+
+      expect(tx.pipelineEntry.update).toHaveBeenCalledWith({
+        where: { id: 'en1' },
+        data: { blueprintChecklistJson: JSON.stringify({ other: true }) },
+      });
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ metadata: { itemId: 'sign-nda', done: false } }));
+    });
+
+    it('throws NotFoundException for a missing entry and never audits', async () => {
+      const tx = checklistTx(null, { pipelineEntry: { findFirst: jest.fn().mockResolvedValue(null), update: jest.fn() } });
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.setChecklistItem(context, 'user-1', 'missing', 'sign-nda', true)).rejects.toThrow(NotFoundException);
+      expect(audit.record).not.toHaveBeenCalled();
     });
   });
 

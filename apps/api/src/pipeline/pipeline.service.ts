@@ -53,6 +53,7 @@ export interface BoardRow {
   assignedUserId: string | null;
   assigneeName: string | null;
   fitStale: boolean;
+  blueprintChecklist: Record<string, boolean>;
 }
 
 export interface BoardStage {
@@ -557,6 +558,7 @@ export class PipelineService {
           fitStale: e.fitAssessment?.status === 'done' && e.fitAssessment.criteriaHash !== currentHash,
           assignedUserId: e.assignedUserId,
           assigneeName: e.assignedUserId ? (assigneeName.get(e.assignedUserId) ?? null) : null,
+          blueprintChecklist: parseChecklist(e.blueprintChecklistJson),
         };
         (columns[row.stageId] ??= []).push(row);
       }
@@ -970,6 +972,22 @@ export class PipelineService {
         this.logger.error(`assignment notification failed for entry ${entryId}`, e as Error);
       }
     }
+    return { success: true };
+  }
+
+  // Ticks (or unticks) one checklist item on the entry's blueprintChecklistJson blob, merging
+  // with whatever's already there (a stage's checklist rule only cares whether its own item ids
+  // are ticked true, so unrelated ticks from other stages'/rules' items are preserved verbatim).
+  async setChecklistItem(context: TenantContext, actorUserId: string, entryId: string, itemId: string, done: boolean): Promise<{ success: true }> {
+    const orgId = context.organizationId as string;
+    await this.tenantPrisma.forTenant(context, async (tx) => {
+      const entry = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: orgId }, select: { id: true, blueprintChecklistJson: true } });
+      if (!entry) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
+      const ticks = parseChecklist(entry.blueprintChecklistJson);
+      if (done) ticks[itemId] = true; else delete ticks[itemId];
+      await tx.pipelineEntry.update({ where: { id: entryId }, data: { blueprintChecklistJson: JSON.stringify(ticks) } });
+    });
+    await this.audit.record(context, { actorUserId, action: 'entry.checklist_changed', entityType: 'pipeline_entry', entityId: entryId, metadata: { itemId, done } });
     return { success: true };
   }
 
