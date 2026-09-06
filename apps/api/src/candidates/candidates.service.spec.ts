@@ -89,6 +89,55 @@ describe('CandidatesService', () => {
     expect(result.id).toBe('cand-1');
   });
 
+  describe('create with customFields', () => {
+    it('persists custom field values and includes them in the returned candidate', async () => {
+      const defs = [{ id: 'def-1', key: 'years_experience', label: 'Years Experience', fieldType: 'number', optionsJson: null, required: false }];
+      const tx = {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'a@test.com', name: 'Alice' }),
+        },
+        customFieldDefinition: { findMany: jest.fn().mockResolvedValue(defs) },
+        customFieldValue: {
+          upsert: jest.fn().mockResolvedValue({}),
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+          findMany: jest.fn().mockResolvedValue([{ definitionId: 'def-1', valueText: null, valueNumber: 5, valueDate: null }]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.create(context, { email: 'a@test.com', name: 'Alice', customFields: { 'def-1': 5 } });
+
+      expect(tx.customFieldValue.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({
+            organizationId: 'org-1', definitionId: 'def-1', entityType: 'candidate', entityId: 'cand-1', valueNumber: 5,
+          }),
+        }),
+      );
+      expect(result.customFields).toEqual([
+        { definitionId: 'def-1', key: 'years_experience', label: 'Years Experience', fieldType: 'number', value: 5 },
+      ]);
+    });
+
+    it('does not touch custom field values when customFields is omitted from a create', async () => {
+      const tx = {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'a@test.com', name: 'Alice' }),
+        },
+        customFieldDefinition: { findMany: jest.fn() },
+        customFieldValue: { upsert: jest.fn(), deleteMany: jest.fn(), findMany: jest.fn() },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.create(context, { email: 'a@test.com', name: 'Alice' });
+
+      expect(tx.customFieldDefinition.findMany).not.toHaveBeenCalled();
+      expect(result.customFields).toBeUndefined();
+    });
+  });
+
   describe('list invitation counts and status filter', () => {
     it('attaches an invitationCount to each row so the UI knows who is safe to delete', async () => {
       const tx = {
@@ -97,14 +146,44 @@ describe('CandidatesService', () => {
           count: jest.fn().mockResolvedValue(2),
         },
         invitation: { groupBy: jest.fn().mockResolvedValue([{ candidateId: 'cand-1', _count: { _all: 3 } }]) },
+        customFieldDefinition: { findMany: jest.fn().mockResolvedValue([]) },
+        customFieldValue: { findMany: jest.fn().mockResolvedValue([]) },
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
       const result = await service.list(context, {});
 
       expect(result.data).toEqual([
-        { id: 'cand-1', invitationCount: 3 },
-        { id: 'cand-2', invitationCount: 0 },
+        { id: 'cand-1', invitationCount: 3, customFields: [] },
+        { id: 'cand-2', invitationCount: 0, customFields: [] },
+      ]);
+    });
+
+    it('batches one definitions query and one values query for the whole page and attaches serialized customFields per candidate', async () => {
+      const defs = [{ id: 'def-1', key: 'years_experience', label: 'Years Experience', fieldType: 'number', optionsJson: null, required: false }];
+      const tx = {
+        candidate: {
+          findMany: jest.fn().mockResolvedValue([{ id: 'cand-1' }, { id: 'cand-2' }]),
+          count: jest.fn().mockResolvedValue(2),
+        },
+        invitation: { groupBy: jest.fn().mockResolvedValue([]) },
+        customFieldDefinition: { findMany: jest.fn().mockResolvedValue(defs) },
+        customFieldValue: {
+          findMany: jest.fn().mockResolvedValue([{ entityId: 'cand-1', definitionId: 'def-1', valueText: null, valueNumber: 7, valueDate: null }]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.list(context, {});
+
+      expect(tx.customFieldDefinition.findMany).toHaveBeenCalledTimes(1);
+      expect(tx.customFieldValue.findMany).toHaveBeenCalledTimes(1);
+      expect(tx.customFieldValue.findMany).toHaveBeenCalledWith({
+        where: { organizationId: 'org-1', entityType: 'candidate', entityId: { in: ['cand-1', 'cand-2'] } },
+      });
+      expect(result.data).toEqual([
+        { id: 'cand-1', invitationCount: 0, customFields: [{ definitionId: 'def-1', key: 'years_experience', label: 'Years Experience', fieldType: 'number', value: 7 }] },
+        { id: 'cand-2', invitationCount: 0, customFields: [{ definitionId: 'def-1', key: 'years_experience', label: 'Years Experience', fieldType: 'number', value: null }] },
       ]);
     });
 
@@ -274,6 +353,52 @@ describe('CandidatesService', () => {
 
       await expect(service.update(context, 'user-1', 'cand-1', { name: 'Alice' })).rejects.toThrow(NotFoundException);
     });
+
+    it('leaves custom field values untouched when customFields is omitted', async () => {
+      const tx = {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'a@test.com', erasedAt: null }),
+          update: jest.fn().mockResolvedValue({ id: 'cand-1', name: 'Alice B' }),
+        },
+        customFieldDefinition: { findMany: jest.fn() },
+        customFieldValue: { upsert: jest.fn(), deleteMany: jest.fn(), findMany: jest.fn() },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.update(context, 'user-1', 'cand-1', { name: 'Alice B' });
+
+      expect(tx.customFieldDefinition.findMany).not.toHaveBeenCalled();
+      expect(tx.customFieldValue.upsert).not.toHaveBeenCalled();
+      expect(tx.customFieldValue.deleteMany).not.toHaveBeenCalled();
+      expect(result).toEqual({ id: 'cand-1', name: 'Alice B' });
+    });
+
+    it('deletes the row for a custom field cleared to null', async () => {
+      const defs = [{ id: 'def-1', key: 'years_experience', label: 'Years Experience', fieldType: 'number', optionsJson: null, required: false }];
+      const tx = {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'a@test.com', erasedAt: null }),
+          update: jest.fn().mockResolvedValue({ id: 'cand-1' }),
+        },
+        customFieldDefinition: { findMany: jest.fn().mockResolvedValue(defs) },
+        customFieldValue: {
+          upsert: jest.fn(),
+          deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findMany: jest.fn().mockResolvedValue([]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.update(context, 'user-1', 'cand-1', { customFields: { 'def-1': null } });
+
+      expect(tx.customFieldValue.deleteMany).toHaveBeenCalledWith({
+        where: { organizationId: 'org-1', definitionId: 'def-1', entityId: 'cand-1' },
+      });
+      expect(tx.customFieldValue.upsert).not.toHaveBeenCalled();
+      expect(result.customFields).toEqual([
+        { definitionId: 'def-1', key: 'years_experience', label: 'Years Experience', fieldType: 'number', value: null },
+      ]);
+    });
   });
 
   describe('remove', () => {
@@ -332,6 +457,8 @@ describe('CandidatesService', () => {
         count: jest.fn().mockResolvedValue(1),
       },
       invitation: { groupBy: jest.fn().mockResolvedValue([]) },
+      customFieldDefinition: { findMany: jest.fn().mockResolvedValue([]) },
+      customFieldValue: { findMany: jest.fn().mockResolvedValue([]) },
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
@@ -349,6 +476,8 @@ describe('CandidatesService', () => {
         count: jest.fn().mockResolvedValue(1),
       },
       invitation: { groupBy: jest.fn().mockResolvedValue([]) },
+      customFieldDefinition: { findMany: jest.fn().mockResolvedValue([]) },
+      customFieldValue: { findMany: jest.fn().mockResolvedValue([]) },
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
@@ -797,6 +926,7 @@ describe('CandidatesService', () => {
           updateMany: jest.fn(),
         },
         candidateFitAssessment: { updateMany: jest.fn().mockResolvedValue({}) },
+        customFieldValue: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
         candidateEmail: { updateMany: jest.fn() },
         offer: {
           findMany: jest.fn().mockResolvedValue(overrides.offers ?? []),
@@ -1008,6 +1138,17 @@ describe('CandidatesService', () => {
       expect(tx.candidateFitAssessment.updateMany).toHaveBeenCalledWith({
         where: { candidateId: 'cand-1' },
         data: { summary: null, strengths: null, concerns: null, dimensionScores: null },
+      });
+    });
+
+    it("deletes the candidate's custom field value rows", async () => {
+      const tx = makeEraseTx();
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.erase(context, 'user-1', 'cand-1');
+
+      expect(tx.customFieldValue.deleteMany).toHaveBeenCalledWith({
+        where: { organizationId: 'org-1', entityType: 'candidate', entityId: 'cand-1' },
       });
     });
 

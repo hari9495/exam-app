@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { X } from 'lucide-react';
 import { Dialog, Button, Pill, ApprovalTimeline, dt } from '../../../../components/ui-v2';
+import { CustomFieldsDisplay } from '../../../../components/CustomFieldsInputs';
 import { STATUS, VIZ } from '../../../../components/ui-v2/viz';
 import { useToast } from '../../../../components/ui';
 import {
@@ -526,6 +527,13 @@ export function CandidateDrawer({ jobId, row, onClose }: { jobId: string; row: B
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 16 }}>
         <div style={card}><CandidateProfileSection candidateId={row.candidateId} /></div>
+
+        {row.customFields && row.customFields.length > 0 && (
+          <div style={card}>
+            <h3 style={sectionH}>Custom fields</h3>
+            <CustomFieldsDisplay fields={row.customFields} />
+          </div>
+        )}
 
         <div style={card}><FitSection entryId={row.entryId} jobId={jobId} /></div>
 

@@ -5,9 +5,10 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { API_BASE } from '../../../../lib/api-client';
 import { EMAIL_PATTERN } from '../../../../lib/candidateValidation';
-import { PublicJob } from '../../../../lib/types';
+import { CustomFieldInputMap, PublicJob } from '../../../../lib/types';
 import { CandidateButton } from '../../components/CandidateButton';
 import { TerminalCard } from '../../components/TerminalCard';
+import { CustomFieldsInputs } from '../../../../components/CustomFieldsInputs';
 
 const MAX_RESUME_BYTES = 5 * 1024 * 1024;
 
@@ -32,6 +33,7 @@ export default function ApplyForm() {
   const [phone, setPhone] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [customFields, setCustomFields] = useState<CustomFieldInputMap>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [statusToken, setStatusToken] = useState<string | null>(null);
@@ -57,6 +59,7 @@ export default function ApplyForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!job) return;
     if (!name.trim()) {
       setSubmitError('Enter your name.');
       return;
@@ -64,6 +67,18 @@ export default function ApplyForm() {
     if (!email.trim() || !EMAIL_PATTERN.test(email.trim())) {
       setSubmitError('Enter a valid email address.');
       return;
+    }
+    // Mirrors the server's requirement check (public-applications.service.ts) -- the server stays
+    // authoritative (a required apply-visible field is enforced there regardless), this just
+    // avoids a round trip for the common case.
+    for (const def of job.customFields) {
+      if (def.required) {
+        const v = customFields[def.definitionId];
+        if (v === undefined || v === null || v === '') {
+          setSubmitError(`${def.label} is required.`);
+          return;
+        }
+      }
     }
     if (!file) {
       setFileError('Attach your resume (PDF).');
@@ -85,7 +100,7 @@ export default function ApplyForm() {
       const res = await fetch(`${API_BASE}/public/jobs/${applyToken}/apply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, phone: phone.trim() || undefined, resumeBase64 }),
+        body: JSON.stringify({ name, email, phone: phone.trim() || undefined, resumeBase64, customFields }),
       });
       if (!res.ok) throw new Error('Submission failed. Please try again.');
       const data = await res.json();
@@ -188,6 +203,14 @@ export default function ApplyForm() {
               className="w-full rounded border border-candidate-border px-3 py-2 text-sm focus:border-candidate-primary focus:outline-none focus:ring-2 focus:ring-candidate-primary/20"
             />
           </div>
+
+          {job.customFields.length > 0 && (
+            <CustomFieldsInputs
+              definitions={job.customFields.map((f) => ({ id: f.definitionId, label: f.label, fieldType: f.fieldType, options: f.options, required: f.required }))}
+              values={customFields}
+              onChange={setCustomFields}
+            />
+          )}
 
           <div className="flex flex-col gap-1">
             <label htmlFor="apply-resume" className="text-sm font-medium text-candidate-text">

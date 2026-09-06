@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsOptional, IsString, IsUUID, Min, MaxLength, MinLength } from 'class-validator';
+import { IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Min, MaxLength, MinLength } from 'class-validator';
 
 // schema.org / Google-for-Jobs employmentType enum (the values a valid JobPosting accepts).
 export const EMPLOYMENT_TYPES = ['FULL_TIME', 'PART_TIME', 'CONTRACTOR', 'TEMPORARY', 'INTERN', 'VOLUNTEER', 'PER_DIEM', 'OTHER'] as const;
@@ -36,4 +36,7 @@ export class CreateJobDto {
 
   @IsOptional() @IsUUID()
   pipelineId?: string;
+
+  @IsOptional() @IsObject()
+  customFields?: Record<string, string | number | null>;
 }

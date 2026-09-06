@@ -88,12 +88,12 @@ export default function V2CandidatesPage() {
   }
   function handleAdd(v: CandidateFormValues) {
     setFormError(null);
-    createCandidate.mutate(v, { onSuccess: () => { setAddOpen(false); notify('success', 'Candidate added.'); }, onError: (e) => setFormError(e instanceof Error ? e.message : 'Failed to add candidate.') });
+    createCandidate.mutate({ name: v.name, email: v.email, phone: v.phone, customFields: v.customFields }, { onSuccess: () => { setAddOpen(false); notify('success', 'Candidate added.'); }, onError: (e) => setFormError(e instanceof Error ? e.message : 'Failed to add candidate.') });
   }
   function handleEditSubmit(v: CandidateFormValues) {
     if (!editing) return;
     setFormError(null);
-    updateCandidate.mutate({ id: editing.id, name: v.name, email: v.email, phone: v.phone }, { onSuccess: () => { setEditing(null); notify('success', 'Candidate updated.'); }, onError: (e) => setFormError(e instanceof Error ? e.message : 'Failed to update candidate.') });
+    updateCandidate.mutate({ id: editing.id, name: v.name, email: v.email, phone: v.phone, customFields: v.customFields }, { onSuccess: () => { setEditing(null); notify('success', 'Candidate updated.'); }, onError: (e) => setFormError(e instanceof Error ? e.message : 'Failed to update candidate.') });
   }
   function exportCsv() {
     const header = ['Name', 'Email', 'Phone', 'Status', 'Added'];
@@ -220,7 +220,7 @@ export default function V2CandidatesPage() {
 
       <BulkUploadInviteDialog open={bulkOpen} onClose={() => setBulkOpen(false)} />
       <CandidateFormDialog open={addOpen} mode="add" submitting={createCandidate.isPending} error={formError} onClose={() => setAddOpen(false)} onSubmit={handleAdd} />
-      <CandidateFormDialog open={!!editing} mode="edit" initial={editing ? { name: editing.name, email: editing.email, phone: editing.phone } : undefined} submitting={updateCandidate.isPending} error={formError} onClose={() => setEditing(null)} onSubmit={handleEditSubmit} />
+      <CandidateFormDialog open={!!editing} mode="edit" initial={editing ? { name: editing.name, email: editing.email, phone: editing.phone, customFields: editing.customFields } : undefined} submitting={updateCandidate.isPending} error={formError} onClose={() => setEditing(null)} onSubmit={handleEditSubmit} />
       <ReEngageModal
         candidate={reengaging} open={!!reengaging} onClose={() => setReengaging(null)}
         onSuccess={() => { refetch(); notify('success', 'Candidate re-engaged.'); }}

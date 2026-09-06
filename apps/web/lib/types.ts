@@ -239,6 +239,9 @@ export interface Candidate {
   createdAt: string;
   erasedAt: string | null;
   invitationCount?: number;
+  // Only the /candidates list endpoint populates this (CandidateListItem server-side) -- see
+  // candidates.service.ts. Absent (not empty-array) anywhere else Candidate is used as a shape.
+  customFields?: CustomFieldRead[];
 }
 
 export interface Invitation {
@@ -353,6 +356,8 @@ export interface BoardEntryRow {
   fitStale: boolean;
   assignedUserId: string | null;
   assigneeName: string | null;
+  // Populated by GET /jobs/:id/pipeline; rendered read-only in CandidateDrawer.
+  customFields?: CustomFieldRead[];
 }
 
 // Mirrors apps/api/src/pipeline/pipeline.service.ts's Board -- the getBoard() response shape.
@@ -363,6 +368,18 @@ export interface BoardData {
 
 // Public, unauthenticated candidate-facing shapes -- served by /public/jobs/:applyToken and
 // /public/applications/:statusToken, consumed by the apply/status pages via plain fetch.
+// The apply-visible subset of a candidate custom-field definition -- mirrors
+// PublicApplicationsService.getPublicJob's customFields mapping. Keyed by `definitionId` (not
+// `id`) since this is a public, unauthenticated trust boundary with no full CustomFieldDefinition.
+export interface PublicCustomFieldDef {
+  definitionId: string;
+  key: string;
+  label: string;
+  fieldType: 'text' | 'number' | 'date' | 'select';
+  options: string[] | null;
+  required: boolean;
+}
+
 export interface PublicJob {
   jobTitle: string;
   jobDescription: string | null;
@@ -371,6 +388,7 @@ export interface PublicJob {
   postedAt?: string;
   orgName: string;
   orgLogo: string | null;
+  customFields: PublicCustomFieldDef[];
 }
 
 export interface PortalApplication {
@@ -476,6 +494,7 @@ export interface JobDetail {
   salaryMax: number | null;
   salaryCurrency: string | null;
   approval: ApprovalSummary | null;
+  customFields: CustomFieldRead[];
 }
 
 export type CandidateParseStatus = 'pending' | 'parsing' | 'done' | 'failed' | 'unavailable';
@@ -1353,3 +1372,33 @@ export interface DashboardAnalytics {
   }[];
   questionDifficulty: { questionId: string; text: string; correctRate: number; answered: number }[];
 }
+
+// --- Custom fields (Task 8) ---
+// Mirrors apps/api/src/custom-fields/custom-fields-config.controller.ts's toResponse() --
+// the API parses optionsJson server-side so web only ever sees `options: string[] | null`.
+export interface CustomFieldDefinition {
+  id: string;
+  organizationId: string;
+  entityType: 'candidate' | 'job';
+  key: string;
+  label: string;
+  fieldType: 'text' | 'number' | 'date' | 'select';
+  options: string[] | null;
+  required: boolean;
+  showOnApply: boolean;
+  position: number;
+  archivedAt: string | null;
+  createdAt: string;
+}
+
+// One candidate/job's custom-field value, as returned alongside the entity by the read endpoints.
+export interface CustomFieldRead {
+  definitionId: string;
+  key: string;
+  label: string;
+  fieldType: string;
+  value: string | number | null;
+}
+
+// Keyed by definition id -- the shape POST/PATCH value-write endpoints accept.
+export type CustomFieldInputMap = Record<string, string | number | null>;

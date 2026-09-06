@@ -8,10 +8,15 @@ import { IntegrationEventsService } from '../integrations/integration-events.ser
 // apply() now calls recomputeGlobalStage(tx, ...) as its last write, which reads
 // tx.pipelineEntry.findMany + tx.candidateEmail.count and writes tx.candidate.update. Default to
 // an empty/no-op shape (spread first) so a test's own mock for any of these still wins.
+// It also re-derives the apply-visible custom field set (customFieldDefinition.findMany) and
+// upserts/deletes customFieldValue rows -- default to no apply-visible defs so tests that don't
+// care about custom fields don't need to stub them.
 function withRecomputeMocks(tx: any) {
   tx.pipelineEntry = { findMany: jest.fn().mockResolvedValue([]), ...tx.pipelineEntry };
   tx.candidateEmail = { count: jest.fn().mockResolvedValue(0) };
   tx.candidate = { update: jest.fn().mockResolvedValue({}), ...tx.candidate };
+  tx.customFieldDefinition = { findMany: jest.fn().mockResolvedValue([]), ...tx.customFieldDefinition };
+  tx.customFieldValue = { upsert: jest.fn().mockResolvedValue({}), deleteMany: jest.fn().mockResolvedValue({}), ...tx.customFieldValue };
   return tx;
 }
 
@@ -56,6 +61,13 @@ describe('PublicApplicationsService', () => {
     service = moduleRef.get(PublicApplicationsService);
   });
 
+  // getPublicJob makes a second forTenant call (after resolveJob's) to load apply-visible
+  // candidate custom field definitions. Default to empty so tests that don't care about
+  // customFields don't need to stub it themselves.
+  function mockNoCustomFieldDefs() {
+    tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ customFieldDefinition: { findMany: jest.fn().mockResolvedValue([]) } }));
+  }
+
   describe('getPublicJob', () => {
     it('throws NotFoundException when the job is missing', async () => {
       tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ job: { findUnique: jest.fn().mockResolvedValue(null) } }));
@@ -78,6 +90,7 @@ describe('PublicApplicationsService', () => {
 
     it('returns header fields with a signed logo URL for a valid job', async () => {
       tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ job: { findUnique: jest.fn().mockResolvedValue(openJob) } }));
+      mockNoCustomFieldDefs();
       prisma.organization.findUnique.mockResolvedValue({ name: 'Acme', logoPath: 'logos/acme.png' });
       blobStorage.signIfOurs.mockResolvedValue('logos/acme.png?sig=abc');
 
@@ -99,17 +112,61 @@ describe('PublicApplicationsService', () => {
         postedAt: '2026-08-01T00:00:00.000Z',
         orgName: 'Acme',
         orgLogo: 'logos/acme.png?sig=abc',
+        customFields: [],
       });
     });
 
     it('returns orgLogo: null and skips signing when the org has no logo', async () => {
       tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ job: { findUnique: jest.fn().mockResolvedValue(openJob) } }));
+      mockNoCustomFieldDefs();
       prisma.organization.findUnique.mockResolvedValue({ name: 'Acme', logoPath: null });
 
       const result = await service.getPublicJob('valid-token');
 
       expect(blobStorage.signIfOurs).not.toHaveBeenCalled();
       expect(result.orgLogo).toBeNull();
+    });
+
+    it('returns apply-visible candidate custom field definitions, mapped and ordered by position', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ job: { findUnique: jest.fn().mockResolvedValue(openJob) } }));
+      const findMany = jest.fn().mockResolvedValue([
+        { id: 'def-1', key: 'linkedin', label: 'LinkedIn', fieldType: 'text', optionsJson: null, required: false },
+        {
+          id: 'def-2',
+          key: 'source',
+          label: 'How did you hear about us?',
+          fieldType: 'select',
+          optionsJson: JSON.stringify(['Referral', 'Job board']),
+          required: true,
+        },
+      ]);
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ customFieldDefinition: { findMany } }));
+      prisma.organization.findUnique.mockResolvedValue({ name: 'Acme', logoPath: null });
+
+      const result = await service.getPublicJob('valid-token');
+
+      expect(tenantPrisma.forTenant).toHaveBeenNthCalledWith(
+        2,
+        { organizationId: '00000000-0000-0000-0000-000000000000', isSuperAdmin: true },
+        expect.any(Function),
+      );
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { organizationId: 'org-1', entityType: 'candidate', showOnApply: true, archivedAt: null },
+          orderBy: { position: 'asc' },
+        }),
+      );
+      expect(result.customFields).toEqual([
+        { definitionId: 'def-1', key: 'linkedin', label: 'LinkedIn', fieldType: 'text', options: null, required: false },
+        {
+          definitionId: 'def-2',
+          key: 'source',
+          label: 'How did you hear about us?',
+          fieldType: 'select',
+          options: ['Referral', 'Job board'],
+          required: true,
+        },
+      ]);
     });
   });
 
@@ -301,6 +358,96 @@ describe('PublicApplicationsService', () => {
       expect(writeTx.candidate.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: {} }));
       // Existing candidate re-applying is not a new applicant -- no candidate.applied event.
       expect(integrationEvents.emit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('apply — custom fields (trust boundary)', () => {
+    const linkedinDef = { id: 'def-linkedin', key: 'linkedin', label: 'LinkedIn', fieldType: 'text', optionsJson: null, required: false };
+    const requiredSourceDef = {
+      id: 'def-source',
+      key: 'source',
+      label: 'How did you hear about us?',
+      fieldType: 'text',
+      optionsJson: null,
+      required: true,
+    };
+
+    function buildWriteTx(applyVisibleDefs: unknown[]) {
+      return withRecomputeMocks({
+        candidate: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          upsert: jest.fn().mockResolvedValue({ id: 'cand-1', portalToken: 'ptok-1' }),
+        },
+        candidateProfile: { upsert: jest.fn().mockResolvedValue({ id: 'prof-1' }) },
+        pipelineEntry: { upsert: jest.fn().mockResolvedValue({ id: 'en-1', applicationToken: 'tok-1' }) },
+        customFieldDefinition: { findMany: jest.fn().mockResolvedValue(applyVisibleDefs) },
+      });
+    }
+
+    async function callApply(writeTx: any, customFields?: Record<string, string | number | null>) {
+      const bootstrapTx = { job: { findUnique: jest.fn().mockResolvedValue(openJob) } };
+      tenantPrisma.forTenant
+        .mockImplementationOnce((_c, fn) => fn(bootstrapTx))
+        .mockImplementationOnce((_c, fn) => fn(writeTx));
+      blobStorage.upload.mockResolvedValue('candidates/org-1/x.pdf');
+      jobsService.enqueue.mockResolvedValue({ id: 'aijob' });
+      const pdf = Buffer.from('%PDF-1.7 x').toString('base64');
+      return service.apply('valid-token', { name: 'A', email: 'a@x.com', resumeBase64: pdf, ...(customFields ? { customFields } : {}) });
+    }
+
+    it('re-derives the allowed set from the DB: loads apply-visible candidate defs (candidate + showOnApply + not-archived) inside the write tx', async () => {
+      const writeTx = buildWriteTx([linkedinDef]);
+      await callApply(writeTx, { 'def-linkedin': 'https://linkedin.com/in/a' });
+
+      expect(writeTx.customFieldDefinition.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { organizationId: 'org-1', entityType: 'candidate', showOnApply: true, archivedAt: null },
+        }),
+      );
+    });
+
+    it('persists a value for an apply-visible field on the created candidate', async () => {
+      const writeTx = buildWriteTx([linkedinDef]);
+      await callApply(writeTx, { 'def-linkedin': 'https://linkedin.com/in/a' });
+
+      expect(writeTx.customFieldValue.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({
+            organizationId: 'org-1',
+            definitionId: 'def-linkedin',
+            entityType: 'candidate',
+            entityId: 'cand-1',
+            valueText: 'https://linkedin.com/in/a',
+          }),
+        }),
+      );
+    });
+
+    it('rejects a value for a definition the server did not derive as apply-visible (job field / archived / showOnApply:false), even though the client-supplied id looks valid', async () => {
+      // The DB only returns linkedinDef as apply-visible; the client sends a value for a
+      // *different* id -- as it would for a job-scoped def, an archived def, or a
+      // showOnApply:false def, none of which the findMany above would ever return.
+      const writeTx = buildWriteTx([linkedinDef]);
+
+      await expect(callApply(writeTx, { 'def-job-scoped-or-archived': 'sneaky value' })).rejects.toThrow(BadRequestException);
+      expect(writeTx.customFieldValue.upsert).not.toHaveBeenCalled();
+      // Confirms nothing about this write reached the candidate-details step either.
+      expect(writeTx.candidateProfile.upsert).not.toHaveBeenCalled();
+    });
+
+    it('enforces required among apply-visible fields even when the client sends no customFields at all', async () => {
+      const writeTx = buildWriteTx([requiredSourceDef]);
+
+      await expect(callApply(writeTx, undefined)).rejects.toThrow(BadRequestException);
+      expect(writeTx.customFieldValue.upsert).not.toHaveBeenCalled();
+    });
+
+    it('does not throw and does not write anything when there are no apply-visible defs and the client omits customFields (existing flow stays intact)', async () => {
+      const writeTx = buildWriteTx([]);
+      const out = await callApply(writeTx, undefined);
+
+      expect(out.statusToken).toBe('tok-1');
+      expect(writeTx.customFieldValue.upsert).not.toHaveBeenCalled();
     });
   });
 

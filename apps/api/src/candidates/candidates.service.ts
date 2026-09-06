@@ -7,6 +7,12 @@ import { BlobStorageService, BlobDeleteOutcome } from '@exam-platform/shared';
 import { QuotaService } from '../billing/quota.service';
 import { CreateCandidateDto } from './dto/create-candidate.dto';
 import { UpdateCandidateDto } from './dto/update-candidate.dto';
+import {
+  upsertCustomFieldValues,
+  serializeCustomFieldValues,
+  CustomFieldDefinitionLite,
+  CustomFieldRead,
+} from '../custom-fields/custom-field-values';
 import { parseCandidateCsv } from './csv-parser';
 import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
 import { signProctoringEvidence } from '../common/sign-proctoring-evidence';
@@ -89,7 +95,18 @@ function chunkedLogLines(label: string, paths: string[]): string[] {
   return lines;
 }
 
-export type CandidateListItem = Candidate & { invitationCount: number };
+export type CandidateListItem = Candidate & { invitationCount: number; customFields: CustomFieldRead[] };
+
+// Selects exactly the columns upsertCustomFieldValues/serializeCustomFieldValues need --
+// shared by create, update and list so the definition query stays identical everywhere.
+const CANDIDATE_DEFINITION_SELECT = {
+  id: true,
+  key: true,
+  label: true,
+  fieldType: true,
+  optionsJson: true,
+  required: true,
+} as const;
 
 export interface BulkUploadResult {
   created: number;
@@ -145,22 +162,30 @@ export class CandidatesService {
     }
   }
 
-  async create(context: TenantContext, dto: CreateCandidateDto): Promise<Candidate> {
+  async create(context: TenantContext, dto: CreateCandidateDto): Promise<Candidate & { customFields?: CustomFieldRead[] }> {
     const candidate = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const organizationId = context.organizationId as string;
       const existing = await tx.candidate.findFirst({
-        where: { organizationId: context.organizationId as string, email: dto.email },
+        where: { organizationId, email: dto.email },
       });
       if (existing) {
         throw new ConflictException(`A candidate with email ${dto.email} already exists`);
       }
-      return tx.candidate.create({
-        data: {
-          organizationId: context.organizationId as string,
-          email: dto.email,
-          name: dto.name,
-          phone: dto.phone,
-        },
+      const created = await tx.candidate.create({
+        data: { organizationId, email: dto.email, name: dto.name, phone: dto.phone },
       });
+      if (dto.customFields === undefined) {
+        return created;
+      }
+      const defs = (await tx.customFieldDefinition.findMany({
+        where: { organizationId, entityType: 'candidate', archivedAt: null },
+        select: CANDIDATE_DEFINITION_SELECT,
+      })) as CustomFieldDefinitionLite[];
+      await upsertCustomFieldValues(tx, organizationId, 'candidate', created.id, defs, dto.customFields);
+      const rows = await tx.customFieldValue.findMany({
+        where: { organizationId, entityType: 'candidate', entityId: created.id },
+      });
+      return { ...created, customFields: serializeCustomFieldValues(rows, defs) };
     });
     await this.warnSoftCandidateLimit(context);
     return candidate;
@@ -183,24 +208,49 @@ export class CandidatesService {
       // The UI only offers Delete for candidates with no exam history, so the
       // count travels with the row rather than needing a per-card follow-up call.
       const candidateIds = candidates.map((candidate) => candidate.id);
-      const invitationGroups =
-        candidateIds.length > 0
-          ? await tx.invitation.groupBy({ by: ['candidateId'], where: { candidateId: { in: candidateIds } }, _count: { _all: true } })
-          : [];
+      let invitationGroups: { candidateId: string; _count: { _all: number } }[] = [];
+      let defs: CustomFieldDefinitionLite[] = [];
+      let valueRows: { entityId: string; definitionId: string; valueText: string | null; valueNumber: number | null; valueDate: Date | null }[] = [];
+      if (candidateIds.length > 0) {
+        // One definitions query and one values query for the whole page -- not per candidate.
+        [invitationGroups, defs, valueRows] = await Promise.all([
+          tx.invitation.groupBy({ by: ['candidateId'], where: { candidateId: { in: candidateIds } }, _count: { _all: true } }),
+          tx.customFieldDefinition.findMany({
+            where: { organizationId: context.organizationId as string, entityType: 'candidate', archivedAt: null },
+            select: CANDIDATE_DEFINITION_SELECT,
+          }) as Promise<CustomFieldDefinitionLite[]>,
+          tx.customFieldValue.findMany({
+            where: { organizationId: context.organizationId as string, entityType: 'candidate', entityId: { in: candidateIds } },
+          }),
+        ]);
+      }
       const countByCandidate = new Map(invitationGroups.map((group) => [group.candidateId, group._count._all]));
+      const valuesByCandidate = new Map<string, typeof valueRows>();
+      for (const row of valueRows) {
+        const forCandidate = valuesByCandidate.get(row.entityId) ?? [];
+        forCandidate.push(row);
+        valuesByCandidate.set(row.entityId, forCandidate);
+      }
 
       const data = candidates.map((candidate) => ({
         ...candidate,
         invitationCount: countByCandidate.get(candidate.id) ?? 0,
+        customFields: serializeCustomFieldValues(valuesByCandidate.get(candidate.id) ?? [], defs),
       }));
       return buildPaginatedResponse(data, total, page, pageSize);
     });
   }
 
-  async update(context: TenantContext, actorUserId: string, candidateId: string, dto: UpdateCandidateDto): Promise<Candidate> {
+  async update(
+    context: TenantContext,
+    actorUserId: string,
+    candidateId: string,
+    dto: UpdateCandidateDto,
+  ): Promise<Candidate & { customFields?: CustomFieldRead[] }> {
     const updated = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const organizationId = context.organizationId as string;
       const candidate = await tx.candidate.findFirst({
-        where: { id: candidateId, organizationId: context.organizationId as string },
+        where: { id: candidateId, organizationId },
       });
       if (!candidate) {
         throw new NotFoundException(`Candidate ${candidateId} not found`);
@@ -213,14 +263,14 @@ export class CandidatesService {
 
       if (dto.email && dto.email !== candidate.email) {
         const clash = await tx.candidate.findFirst({
-          where: { organizationId: context.organizationId as string, email: dto.email, id: { not: candidateId } },
+          where: { organizationId, email: dto.email, id: { not: candidateId } },
         });
         if (clash) {
           throw new ConflictException(`A candidate with email ${dto.email} already exists`);
         }
       }
 
-      return tx.candidate.update({
+      const updatedCandidate = await tx.candidate.update({
         where: { id: candidateId },
         data: {
           ...(dto.name !== undefined ? { name: dto.name } : {}),
@@ -229,6 +279,21 @@ export class CandidatesService {
           ...(dto.status !== undefined ? { status: dto.status } : {}),
         },
       });
+
+      // customFields is the COMPLETE set of active values -- omitted means "leave untouched",
+      // so definitions/values are loaded and touched only when the caller actually sent it.
+      if (dto.customFields === undefined) {
+        return updatedCandidate;
+      }
+      const defs = (await tx.customFieldDefinition.findMany({
+        where: { organizationId, entityType: 'candidate', archivedAt: null },
+        select: CANDIDATE_DEFINITION_SELECT,
+      })) as CustomFieldDefinitionLite[];
+      await upsertCustomFieldValues(tx, organizationId, 'candidate', candidateId, defs, dto.customFields);
+      const rows = await tx.customFieldValue.findMany({
+        where: { organizationId, entityType: 'candidate', entityId: candidateId },
+      });
+      return { ...updatedCandidate, customFields: serializeCustomFieldValues(rows, defs) };
     });
 
     await this.audit.record(context, {
@@ -542,6 +607,12 @@ export class CandidatesService {
       await tx.candidateFitAssessment.updateMany({
         where: { candidateId },
         data: { summary: null, strengths: null, concerns: null, dimensionScores: null },
+      });
+      // Custom-field VALUES are candidate-supplied PII with no cascade of their own (erase
+      // scrubs the candidate row in place, it never deletes it) -- delete them outright rather
+      // than redact, same as the other candidate-scoped rows below.
+      await tx.customFieldValue.deleteMany({
+        where: { organizationId: context.organizationId as string, entityType: 'candidate', entityId: candidateId },
       });
       await tx.candidateEmail.updateMany({
         where: { candidateId, organizationId: context.organizationId as string },

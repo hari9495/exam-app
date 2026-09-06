@@ -3,6 +3,12 @@ import { BadRequestException, ConflictException, Injectable, Logger, NotFoundExc
 import { Job, PipelineEntry, PipelineFeedback } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService, StageCategory, STAGE_CATEGORIES } from '@exam-platform/shared';
 import { EntryExamResult, deriveEntryExamResults, averageRating } from './derive-entry-exam-results';
+import {
+  upsertCustomFieldValues,
+  serializeCustomFieldValues,
+  CustomFieldDefinitionLite,
+  CustomFieldRead,
+} from '../custom-fields/custom-field-values';
 import { AddEntryDto } from './dto/add-entry.dto';
 import { PatchEntryDto } from './dto/patch-entry.dto';
 import { AddFeedbackDto } from './dto/add-feedback.dto';
@@ -52,6 +58,7 @@ export interface BoardRow {
   assignedUserId: string | null;
   assigneeName: string | null;
   fitStale: boolean;
+  customFields: CustomFieldRead[];
 }
 
 export interface BoardStage {
@@ -119,6 +126,17 @@ export interface PatchEntryResult {
   pendingMessage?: PendingMessage;
 }
 
+// Selects exactly the columns upsertCustomFieldValues/serializeCustomFieldValues need -- shared
+// by createJob/updateJob/getJob so the definition query stays identical everywhere.
+const JOB_DEFINITION_SELECT = {
+  id: true,
+  key: true,
+  label: true,
+  fieldType: true,
+  optionsJson: true,
+  required: true,
+} as const;
+
 @Injectable()
 export class PipelineService {
   private readonly logger = new Logger(PipelineService.name);
@@ -149,8 +167,9 @@ export class PipelineService {
       salaryMax?: number;
       salaryCurrency?: string;
       pipelineId?: string;
+      customFields?: Record<string, string | number | null>;
     },
-  ): Promise<Job> {
+  ): Promise<Job & { customFields?: CustomFieldRead[] }> {
     // Requisition gate: a job can't go live (status 'open') until its requisition is approved,
     // but only when the org has actually turned the gate on -- an org with no chain configured
     // keeps today's behavior of jobs opening immediately.
@@ -159,9 +178,10 @@ export class PipelineService {
     const pipelineId = await this.resolvePipelineId(context, dto.pipelineId);
 
     return this.tenantPrisma.forTenant(context, async (tx) => {
+      const organizationId = context.organizationId as string;
       const created = await tx.job.create({
         data: {
-          organizationId: context.organizationId as string,
+          organizationId,
           title: dto.title,
           description: dto.description,
           location: dto.location,
@@ -184,7 +204,18 @@ export class PipelineService {
         entityId: created.id,
         metadata: { title: dto.title },
       });
-      return created;
+      if (dto.customFields === undefined) {
+        return created;
+      }
+      const defs = (await tx.customFieldDefinition.findMany({
+        where: { organizationId, entityType: 'job', archivedAt: null },
+        select: JOB_DEFINITION_SELECT,
+      })) as CustomFieldDefinitionLite[];
+      await upsertCustomFieldValues(tx, organizationId, 'job', created.id, defs, dto.customFields);
+      const rows = await tx.customFieldValue.findMany({
+        where: { organizationId, entityType: 'job', entityId: created.id },
+      });
+      return { ...created, customFields: serializeCustomFieldValues(rows, defs) };
     });
   }
 
@@ -270,16 +301,22 @@ export class PipelineService {
     });
   }
 
-  async getJob(context: TenantContext, jobId: string): Promise<Job & { linkedExams: { examId: string; title: string }[]; approval: ApprovalSummary | null }> {
-    const { job, linkedExams } = await this.tenantPrisma.forTenant(context, async (tx) => {
-      const job = await tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } });
+  async getJob(context: TenantContext, jobId: string): Promise<Job & { linkedExams: { examId: string; title: string }[]; approval: ApprovalSummary | null; customFields: CustomFieldRead[] }> {
+    const { job, linkedExams, customFields } = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const organizationId = context.organizationId as string;
+      const job = await tx.job.findFirst({ where: { id: jobId, organizationId } });
       if (!job) throw new NotFoundException(`Job ${jobId} not found`);
       const links = await tx.jobExam.findMany({ where: { jobId }, include: { exam: { select: { title: true } } } });
       const linkedExams = links.map((l) => ({ examId: l.examId, title: l.exam.title }));
-      return { job, linkedExams };
+      const defs = (await tx.customFieldDefinition.findMany({
+        where: { organizationId, entityType: 'job', archivedAt: null },
+        select: JOB_DEFINITION_SELECT,
+      })) as CustomFieldDefinitionLite[];
+      const rows = await tx.customFieldValue.findMany({ where: { organizationId, entityType: 'job', entityId: jobId } });
+      return { job, linkedExams, customFields: serializeCustomFieldValues(rows, defs) };
     });
     const approval = (await this.approvals.getSummariesFor(context, 'job', [jobId])).get(jobId) ?? null;
-    return { ...job, linkedExams, approval };
+    return { ...job, linkedExams, customFields, approval };
   }
 
   async updateJob(
@@ -301,10 +338,12 @@ export class PipelineService {
       salaryMin?: number;
       salaryMax?: number;
       salaryCurrency?: string;
+      customFields?: Record<string, string | number | null>;
     },
-  ): Promise<Job> {
+  ): Promise<Job & { customFields?: CustomFieldRead[] }> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
-      const job = await tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } });
+      const organizationId = context.organizationId as string;
+      const job = await tx.job.findFirst({ where: { id: jobId, organizationId } });
       if (!job) throw new NotFoundException(`Job ${jobId} not found`);
 
       // Gate bypass guard: a requisition becomes 'open' only through the approvals engine
@@ -391,7 +430,9 @@ export class PipelineService {
         action: 'job.updated',
         entityType: 'job',
         entityId: jobId,
-        metadata: dto,
+        // customFields holds free-text values keyed by definitionId -- log which fields changed,
+        // not their values.
+        metadata: { ...dto, ...(dto.customFields ? { customFields: Object.keys(dto.customFields) } : {}) },
       });
 
       // Job-close: free candidates whose only active entry was on this job back to "Available".
@@ -413,7 +454,20 @@ export class PipelineService {
         }
       }
 
-      return updated;
+      // customFields is the COMPLETE set of active values -- omitted means "leave untouched",
+      // so definitions/values are loaded and touched only when the caller actually sent it.
+      if (dto.customFields === undefined) {
+        return updated;
+      }
+      const defs = (await tx.customFieldDefinition.findMany({
+        where: { organizationId, entityType: 'job', archivedAt: null },
+        select: JOB_DEFINITION_SELECT,
+      })) as CustomFieldDefinitionLite[];
+      await upsertCustomFieldValues(tx, organizationId, 'job', jobId, defs, dto.customFields);
+      const rows = await tx.customFieldValue.findMany({
+        where: { organizationId, entityType: 'job', entityId: jobId },
+      });
+      return { ...updated, customFields: serializeCustomFieldValues(rows, defs) };
     });
   }
 
@@ -494,6 +548,9 @@ export class PipelineService {
     await this.tenantPrisma.forTenant(context, async (tx) => {
       const job = await tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } });
       if (!job) throw new NotFoundException(`Job ${jobId} not found`);
+      await tx.customFieldValue.deleteMany({
+        where: { organizationId: context.organizationId as string, entityType: 'job', entityId: jobId },
+      });
       await tx.job.delete({ where: { id: jobId } });
       await this.audit.record(context, {
         actorUserId,
@@ -533,6 +590,28 @@ export class PipelineService {
         : [];
       const assigneeName = new Map(assignees.map((a: { id: string; name: string | null }) => [a.id, a.name]));
 
+      // One definitions query and one values query for the whole board -- not per candidate.
+      const candidateIds = [...new Set(entries.map((e) => e.candidateId))];
+      let customFieldDefs: CustomFieldDefinitionLite[] = [];
+      let customFieldValueRows: { entityId: string; definitionId: string; valueText: string | null; valueNumber: number | null; valueDate: Date | null }[] = [];
+      if (candidateIds.length > 0) {
+        [customFieldDefs, customFieldValueRows] = await Promise.all([
+          tx.customFieldDefinition.findMany({
+            where: { organizationId: context.organizationId as string, entityType: 'candidate', archivedAt: null },
+            select: { id: true, key: true, label: true, fieldType: true, optionsJson: true, required: true },
+          }) as Promise<CustomFieldDefinitionLite[]>,
+          tx.customFieldValue.findMany({
+            where: { organizationId: context.organizationId as string, entityType: 'candidate', entityId: { in: candidateIds } },
+          }),
+        ]);
+      }
+      const customFieldValuesByCandidate = new Map<string, typeof customFieldValueRows>();
+      for (const row of customFieldValueRows) {
+        const forCandidate = customFieldValuesByCandidate.get(row.entityId) ?? [];
+        forCandidate.push(row);
+        customFieldValuesByCandidate.set(row.entityId, forCandidate);
+      }
+
       const stages = job.pipeline?.stages ?? [];
       const columns: Record<string, BoardRow[]> = Object.fromEntries(stages.map((s: { id: string }) => [s.id, [] as BoardRow[]]));
       for (const e of entries) {
@@ -555,6 +634,7 @@ export class PipelineService {
           fitStale: e.fitAssessment?.status === 'done' && e.fitAssessment.criteriaHash !== currentHash,
           assignedUserId: e.assignedUserId,
           assigneeName: e.assignedUserId ? (assigneeName.get(e.assignedUserId) ?? null) : null,
+          customFields: serializeCustomFieldValues(customFieldValuesByCandidate.get(e.candidateId) ?? [], customFieldDefs),
         };
         (columns[row.stageId] ??= []).push(row);
       }

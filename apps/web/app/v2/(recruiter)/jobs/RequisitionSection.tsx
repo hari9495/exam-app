@@ -7,9 +7,18 @@
 import { useState } from 'react';
 import { useUpdateJob, useSubmitRequisition, useCancelRequisition } from '../../../../lib/hooks/usePipeline';
 import { useTeammates } from '../../../../lib/hooks/useUserDirectory';
-import { JobDetail } from '../../../../lib/types';
+import { useCustomFields } from '../../../../lib/hooks/useCustomFields';
+import { JobDetail, CustomFieldInputMap } from '../../../../lib/types';
 import { useToast } from '../../../../components/ui';
 import { TextField, Combobox, Button, ApprovalTimeline, dt } from '../../../../components/ui-v2';
+import { CustomFieldsInputs } from '../../../../components/CustomFieldsInputs';
+
+// definitionId -> value, seeded from the job's own CustomFieldRead[].
+function seedCustomFields(job: JobDetail): CustomFieldInputMap {
+  const map: CustomFieldInputMap = {};
+  for (const f of job.customFields ?? []) map[f.definitionId] = f.value;
+  return map;
+}
 
 export function RequisitionSection({ job, jobId }: { job: JobDetail; jobId: string }) {
   const updateJob = useUpdateJob(jobId);
@@ -17,6 +26,7 @@ export function RequisitionSection({ job, jobId }: { job: JobDetail; jobId: stri
   const cancelRequisition = useCancelRequisition();
   const { toast } = useToast();
   const { data: teammates } = useTeammates();
+  const { data: fieldDefs } = useCustomFields('job');
 
   const [department, setDepartment] = useState(job.department ?? '');
   const [hiringManagerId, setHiringManagerId] = useState(job.hiringManagerId ?? '');
@@ -24,6 +34,7 @@ export function RequisitionSection({ job, jobId }: { job: JobDetail; jobId: stri
   const [salaryMin, setSalaryMin] = useState(job.salaryMin != null ? String(job.salaryMin) : '');
   const [salaryMax, setSalaryMax] = useState(job.salaryMax != null ? String(job.salaryMax) : '');
   const [salaryCurrency, setSalaryCurrency] = useState(job.salaryCurrency ?? '');
+  const [customFields, setCustomFields] = useState<CustomFieldInputMap>(() => seedCustomFields(job));
 
   // Mirrors the API's field-locking guard (pipeline.service.ts updateJob): while pending
   // approval, requisition fields are locked until the request is cancelled.
@@ -38,6 +49,7 @@ export function RequisitionSection({ job, jobId }: { job: JobDetail; jobId: stri
       salaryMin: salaryMin.trim() ? Number(salaryMin) : undefined,
       salaryMax: salaryMax.trim() ? Number(salaryMax) : undefined,
       salaryCurrency: salaryCurrency.trim() || undefined,
+      customFields,
     }, {
       onSuccess: () => toast('Requisition details saved.'),
       onError: (error) => toast(error instanceof Error ? error.message : 'Failed to save requisition details.', 'error'),
@@ -82,6 +94,9 @@ export function RequisitionSection({ job, jobId }: { job: JobDetail; jobId: stri
         <TextField id="req-currency" label="Currency" value={salaryCurrency} onChange={setSalaryCurrency} placeholder="USD" autoComplete="off" />
         <TextField id="req-salary-min" label="Salary min" type="number" value={salaryMin} onChange={setSalaryMin} autoComplete="off" />
         <TextField id="req-salary-max" label="Salary max" type="number" value={salaryMax} onChange={setSalaryMax} autoComplete="off" />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 14, maxWidth: 640 }}>
+        <CustomFieldsInputs definitions={fieldDefs ?? []} values={customFields} onChange={setCustomFields} />
       </div>
       {locked && <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>Cancel the pending approval to edit these details.</p>}
       <div><Button onClick={handleSave} loading={updateJob.isPending} disabled={locked}>Save requisition details</Button></div>

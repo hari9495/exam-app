@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../api-client';
-import { Candidate, PaginatedResponse } from '../types';
+import { Candidate, CustomFieldInputMap, PaginatedResponse } from '../types';
 import { useAuth } from '../auth-context';
 
 interface UseCandidatesParams {
@@ -39,6 +39,7 @@ interface CreateCandidateInput {
   name: string;
   email: string;
   phone?: string;
+  customFields?: CustomFieldInputMap;
 }
 
 export function useCreateCandidate() {
@@ -56,6 +57,7 @@ export interface UpdateCandidateInput {
   email?: string;
   phone?: string;
   status?: 'active' | 'inactive';
+  customFields?: CustomFieldInputMap;
 }
 
 export function useUpdateCandidate() {
