@@ -155,6 +155,6 @@ export class PipelineController {
     @Param('id') id: string,
     @Body() dto: AssignEntryDto,
   ) {
-    return this.pipelineService.assignEntry(tenant, userId, id, dto.assigneeUserId);
+    return this.pipelineService.assignEntry(tenant, userId, id, { userId: dto.assigneeUserId ?? null, groupId: dto.assigneeGroupId ?? null });
   }
 }
