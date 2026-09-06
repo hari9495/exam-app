@@ -5,17 +5,11 @@ import { buildSoftDeleteQuery } from './soft-delete.extension';
 const fakeQuery = jest.fn(async (args: any) => ({ received: args }));
 
 describe('buildSoftDeleteQuery', () => {
-  const client = {
-    candidate: { findFirst: jest.fn(async (args: any) => ({ redirected: args })), findFirstOrThrow: jest.fn(async (args: any) => ({ redirected: args })) },
-  };
-
   beforeEach(() => {
     fakeQuery.mockClear();
-    client.candidate.findFirst.mockClear();
-    client.candidate.findFirstOrThrow.mockClear();
   });
 
-  const query = buildSoftDeleteQuery(client as any);
+  const query = buildSoftDeleteQuery();
 
   it('findMany merges deletedAt: null into where for a registered model', async () => {
     await query.findMany({ model: 'Candidate', operation: 'findMany', args: { where: { organizationId: 'o1' } }, query: fakeQuery });
@@ -57,27 +51,29 @@ describe('buildSoftDeleteQuery', () => {
     expect(fakeQuery).toHaveBeenCalledWith({ where: { organizationId: 'o1', deletedAt: null }, data: { name: 'x' } });
   });
 
-  it('findUnique on a registered model is redirected to findFirst on the model delegate, with deletedAt: null merged in', async () => {
+  // No redirect to findFirst: Prisma has allowed combining a unique field with additional
+  // non-unique filters in the same findUnique/findUniqueOrThrow `where` since 4.5 ("filter on
+  // non-unique fields") -- verified against a real DB in soft-delete-for-tenant.e2e-spec.ts. So
+  // findUnique just merges deletedAt: null and forwards to `query(args)`, exactly like every
+  // other hook above -- no separate client reference, so nothing that can escape a transaction.
+  it('findUnique on a registered model merges deletedAt: null into where and forwards to query(args) -- no redirect', async () => {
     const result = await query.findUnique({ model: 'Candidate', operation: 'findUnique', args: { where: { id: 'x' } }, query: fakeQuery });
-    expect(fakeQuery).not.toHaveBeenCalled();
-    expect(client.candidate.findFirst).toHaveBeenCalledWith({ where: { id: 'x', deletedAt: null } });
-    expect(result).toEqual({ redirected: { where: { id: 'x', deletedAt: null } } });
+    expect(fakeQuery).toHaveBeenCalledWith({ where: { id: 'x', deletedAt: null } });
+    expect(result).toEqual({ received: { where: { id: 'x', deletedAt: null } } });
   });
 
-  it('findUniqueOrThrow on a registered model is redirected to findFirstOrThrow on the model delegate, with deletedAt: null merged in', async () => {
+  it('findUniqueOrThrow on a registered model merges deletedAt: null into where and forwards to query(args) -- no redirect', async () => {
     await query.findUniqueOrThrow({ model: 'Candidate', operation: 'findUniqueOrThrow', args: { where: { id: 'x' } }, query: fakeQuery });
-    expect(fakeQuery).not.toHaveBeenCalled();
-    expect(client.candidate.findFirstOrThrow).toHaveBeenCalledWith({ where: { id: 'x', deletedAt: null } });
+    expect(fakeQuery).toHaveBeenCalledWith({ where: { id: 'x', deletedAt: null } });
   });
 
-  it('a non-registered model passes args through unchanged for every op, including findUnique (no redirect)', async () => {
+  it('a non-registered model passes args through unchanged for every op, including findUnique', async () => {
     await query.findMany({ model: 'Organization', operation: 'findMany', args: { where: { id: 'o1' } }, query: fakeQuery });
     expect(fakeQuery).toHaveBeenCalledWith({ where: { id: 'o1' } });
 
     fakeQuery.mockClear();
     await query.findUnique({ model: 'Organization', operation: 'findUnique', args: { where: { id: 'o1' } }, query: fakeQuery });
     expect(fakeQuery).toHaveBeenCalledWith({ where: { id: 'o1' } });
-    expect(client.candidate.findFirst).not.toHaveBeenCalled();
   });
 
   it('does not define hooks for create/delete/deleteMany/upsert -- they pass through untouched natively', () => {

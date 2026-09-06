@@ -1,7 +1,18 @@
 import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { softDeleteExtension } from '../soft-delete/soft-delete.extension';
 import { PrismaService } from './prisma.service';
 import { TenantContext } from './tenant-context';
+
+// A client extended with `softDeleteExtension` structurally gains the same model delegates and
+// `$executeRaw`/`$transaction` as the base `PrismaService` -- the extension only adds
+// `query.$allModels` hooks, it doesn't remove or retype anything -- but TypeScript doesn't know
+// that; `ReturnType<PrismaService['$extends']>` is a distinct (unnamed) type from
+// `Prisma.TransactionClient`. Only `$executeRaw` is needed for session-context set/reset, so
+// that's all the shared helper below asks for -- it's satisfied by both the filtered tx
+// (forTenant) and the raw tx (forTenantIncludingDeleted) without needing the boundary cast that
+// `fn(tx)` requires (see forTenant).
+type SessionContextClient = Pick<Prisma.TransactionClient, '$executeRaw'>;
 
 // Candidate-facing retry hint for a P2028 ("transaction unavailable") or
 // P2024 ("timed out fetching a new connection from the pool") rejection --
@@ -22,7 +33,26 @@ export const POOL_EXHAUSTED_RETRY_AFTER_SECONDS = 3;
 export class TenantPrismaService {
   private readonly logger = new Logger(TenantPrismaService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  // Built once (per-request would re-run $extends's setup for no reason): the soft-delete-filtered
+  // client `forTenant` runs its transactions through, so every recycle-bin-eligible model
+  // (Candidate/Job/Pipeline/WalkInGroup) reads as if deleted rows don't exist, everywhere
+  // forTenant is already used today -- no call site changes. `this.prisma` (raw, unfiltered)
+  // stays available for `withoutTenantScope` and the new `forTenantIncludingDeleted` bypass.
+  //
+  // Assigned in the constructor body, not as a field initializer: a field initializer here would
+  // run before the `prisma` parameter property is guaranteed assigned (both are "first thing in
+  // the constructor" territory) -- doing it explicitly after the parameter-property list avoids
+  // relying on that ordering.
+  //
+  // Typed `any`: `$extends`'s return type is itself generic over the extension passed in, and
+  // pinning it down here buys nothing -- every use of `filtered` is `.$transaction(...)`, whose
+  // callback's `tx` already gets cast to `Prisma.TransactionClient` at the one boundary that
+  // needs it (forTenant, below).
+  private readonly filtered: any;
+
+  constructor(private readonly prisma: PrismaService) {
+    this.filtered = this.prisma.$extends(softDeleteExtension);
+  }
 
   // `options` is for the rare caller whose unit of work is legitimately larger than Prisma's
   // 5s default -- a batch write whose inputs were already paid for before the transaction
@@ -34,11 +64,17 @@ export class TenantPrismaService {
     options?: { timeout?: number; maxWait?: number },
   ): Promise<T> {
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_current_org', @value = ${context.organizationId}`;
-        await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_is_super_admin', @value = ${context.isSuperAdmin ? 1 : 0}`;
+      return await this.filtered.$transaction(async (tx: any) => {
+        await this.setSessionContext(tx, context);
         try {
-          return await fn(tx);
+          // Boundary cast: `tx` here is the soft-delete-extended client's transaction type
+          // (`ReturnType<PrismaService['$extends']>`'s own `$transaction` callback param), not
+          // nominally `Prisma.TransactionClient`. At runtime it's a strict superset -- the
+          // extension only adds `query.$allModels` hooks, every model delegate and method
+          // `Prisma.TransactionClient` declares is still there -- so this cast is safe and is
+          // what keeps `forTenant`'s public signature (`fn: (tx: Prisma.TransactionClient) =>
+          // ...`) unchanged for its ~100 existing callers instead of retyping every call site.
+          return await fn(tx as unknown as Prisma.TransactionClient);
         } finally {
           // sp_set_session_context is scoped to the physical connection, not the
           // transaction, and is not undone by rollback. Prisma returns this
@@ -60,6 +96,37 @@ export class TenantPrismaService {
     } catch (error) {
       this.rethrowMappingPoolExhaustion(error);
     }
+  }
+
+  // Recycle-bin bypass: identical to forTenant (same tenant scoping via the same session
+  // set/reset, same options, same pool-exhaustion mapping) except it runs against the RAW,
+  // unfiltered client -- so a soft-deleted Candidate/Job/Pipeline/WalkInGroup row is visible
+  // here instead of being filtered out. For the recycle-bin list/restore/purge endpoints
+  // (Tasks 4-6) only -- everything else keeps using forTenant so deleted rows stay hidden.
+  async forTenantIncludingDeleted<T>(
+    context: TenantContext,
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+    options?: { timeout?: number; maxWait?: number },
+  ): Promise<T> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await this.setSessionContext(tx, context);
+        try {
+          return await fn(tx);
+        } finally {
+          await this.resetSessionContext(tx);
+        }
+      }, options);
+    } catch (error) {
+      this.rethrowMappingPoolExhaustion(error);
+    }
+  }
+
+  // Shared by forTenant and forTenantIncludingDeleted -- same keys, values, and ordering either
+  // way, so tenant scoping behaves identically regardless of which client is filtering reads.
+  private async setSessionContext(tx: SessionContextClient, context: TenantContext): Promise<void> {
+    await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_current_org', @value = ${context.organizationId}`;
+    await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_is_super_admin', @value = ${context.isSuperAdmin ? 1 : 0}`;
   }
 
   // For call sites whose isolation already comes from an ID chain resolved
@@ -116,8 +183,9 @@ export class TenantPrismaService {
     throw error;
   }
 
-  // Best-effort clear of the connection-scoped session context. Must never
-  // throw: it runs in forTenant's `finally`, and a throw there would
+  // Best-effort clear of the connection-scoped session context. Shared by forTenant and
+  // forTenantIncludingDeleted -- same keys, values, and ordering either way. Must never
+  // throw: it runs in both callers' `finally`, and a throw there would
   // overwrite fn(tx)'s own result/error (see the call site's comment).
   //
   // A failure here means the pooled connection may still carry
@@ -129,7 +197,7 @@ export class TenantPrismaService {
   // So this can only make the failure visible, not fix it: log a distinctly
   // grep-able line -- no connection string, org id, or candidate data -- so
   // it can be counted and alerted on.
-  private async resetSessionContext(tx: Prisma.TransactionClient): Promise<void> {
+  private async resetSessionContext(tx: SessionContextClient): Promise<void> {
     try {
       // Order matters: these are sequential awaits in one try, so a failure on
       // the first short-circuits the second, leaving whichever one runs
