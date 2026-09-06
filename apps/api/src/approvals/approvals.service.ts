@@ -133,8 +133,15 @@ export class ApprovalsService {
         approverType: s.approverType as ApproverType,
         approverUserIds: s.approverUserIds ? JSON.parse(s.approverUserIds) : [],
         managerLevel: s.managerLevel,
+        groupId: s.groupId,
       }));
-      const { resolved, skipped } = await resolveSteps(tx, { steps: stepInputs, submitterUserId, gate, subjectId });
+      const { resolved, skipped } = await resolveSteps(tx, {
+        steps: stepInputs,
+        submitterUserId,
+        gate,
+        subjectId,
+        organizationId: context.organizationId as string,
+      });
 
       for (const sk of skipped) {
         await this.audit.record(context, {
