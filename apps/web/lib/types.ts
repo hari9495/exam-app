@@ -53,6 +53,13 @@ export interface DirectoryUser extends StaffUser {
   organizationName: string | null;
 }
 
+// User Groups (Zoho-style tagging of staff for visibility/notification scoping). Inlined here
+// per apps/web's no-shared-VALUES-import rule; shapes mirror the API responses verbatim.
+export interface UserGroupMember { userId: string; name: string | null; email: string; }
+export interface UserGroup { id: string; name: string; description: string | null; members: UserGroupMember[]; }
+export interface UserGroupDirectoryEntry { id: string; name: string; memberIds: string[]; }
+export interface MyGroups { groupIds: string[]; coMemberUserIds: string[]; }
+
 export interface AuditLogEntry {
   id: string;
   action: string;

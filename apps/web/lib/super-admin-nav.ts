@@ -25,6 +25,7 @@ export const SUPER_ADMIN_FULL_NAV = [
   // pipelines:configure, so no per-item permission gating is needed here.
   { href: '/settings/approvals', label: 'Approval chains', icon: GitPullRequestArrow },
   { href: '/settings/pipelines', label: 'Pipelines', icon: Kanban },
+  { href: '/settings/user-groups', label: 'User Groups', icon: Users },
   { href: '/walk-in-groups', label: 'Walk-in Groups', icon: QrCode },
   { href: '/jobs', label: 'Jobs', icon: Briefcase },
   { href: '/approvals', label: 'Approvals', icon: CheckSquare },
