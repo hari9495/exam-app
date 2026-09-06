@@ -632,32 +632,37 @@ describe('PipelineService', () => {
     });
   });
 
-  it('deleteJob deletes and audits job.deleted', async () => {
-    const del = jest.fn().mockResolvedValue({ id: 'job-1' });
-    const tx = withJobCustomFieldMocks({ job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }), delete: del } });
+  it('deleteJob soft-deletes and audits job.deleted', async () => {
+    const update = jest.fn().mockResolvedValue({ id: 'job-1' });
+    const tx = withJobCustomFieldMocks({ job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }), update } });
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
     const result = await service.deleteJob(context, 'user-1', 'job-1');
 
     expect(result).toEqual({ success: true });
-    expect(del).toHaveBeenCalledWith({ where: { id: 'job-1' } });
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'job-1' },
+      data: { deletedAt: expect.any(Date), deletedByUserId: 'user-1' },
+    });
     expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'job.deleted', entityId: 'job-1' }));
   });
 
-  it('deleteJob deletes the job\'s custom-field values before deleting the job', async () => {
-    const calls: string[] = [];
-    const del = jest.fn().mockImplementation(() => { calls.push('job.delete'); return Promise.resolve({ id: 'job-1' }); });
-    const deleteMany = jest.fn().mockImplementation(() => { calls.push('customFieldValue.deleteMany'); return Promise.resolve({ count: 2 }); });
+  it('deleteJob leaves the job\'s custom-field values in place (kept for recycle-bin restore)', async () => {
+    const update = jest.fn().mockResolvedValue({ id: 'job-1' });
+    const deleteMany = jest.fn();
     const tx = {
-      job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }), delete: del },
+      job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }), update },
       customFieldValue: { deleteMany },
     };
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
     await service.deleteJob(context, 'user-1', 'job-1');
 
-    expect(deleteMany).toHaveBeenCalledWith({ where: { organizationId: 'org-1', entityType: 'job', entityId: 'job-1' } });
-    expect(calls).toEqual(['customFieldValue.deleteMany', 'job.delete']);
+    expect(deleteMany).not.toHaveBeenCalled();
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'job-1' },
+      data: { deletedAt: expect.any(Date), deletedByUserId: 'user-1' },
+    });
   });
 
   // A 2-stage pipeline fixture reused across getBoard/counts tests: 'applied' (active) and

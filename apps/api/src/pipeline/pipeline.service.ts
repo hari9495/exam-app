@@ -553,10 +553,12 @@ export class PipelineService {
     await this.tenantPrisma.forTenant(context, async (tx) => {
       const job = await tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } });
       if (!job) throw new NotFoundException(`Job ${jobId} not found`);
-      await tx.customFieldValue.deleteMany({
-        where: { organizationId: context.organizationId as string, entityType: 'job', entityId: jobId },
+      // Custom field values are kept (not hard-cascaded) -- the job row survives the soft-delete
+      // so a recycle-bin restore brings its custom fields back too.
+      await tx.job.update({
+        where: { id: jobId },
+        data: { deletedAt: new Date(), deletedByUserId: actorUserId },
       });
-      await tx.job.delete({ where: { id: jobId } });
       await this.audit.record(context, {
         actorUserId,
         action: 'job.deleted',

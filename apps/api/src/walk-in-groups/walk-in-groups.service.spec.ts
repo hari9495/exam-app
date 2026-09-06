@@ -121,11 +121,11 @@ describe('WalkInGroupsService', () => {
   });
 
   describe('remove', () => {
-    it('deletes an existing group that has no drives, same as before drives existed', async () => {
+    it('soft-deletes an existing group that has no drives, same as before drives existed', async () => {
       const tx = {
         walkInGroup: {
           findFirst: jest.fn().mockResolvedValue({ id: 'group-1', name: 'Group A' }),
-          delete: jest.fn().mockResolvedValue({ id: 'group-1' }),
+          update: jest.fn().mockResolvedValue({ id: 'group-1' }),
         },
         driveSession: { count: jest.fn().mockResolvedValue(0) },
       };
@@ -133,7 +133,10 @@ describe('WalkInGroupsService', () => {
 
       const result = await service.remove(context, 'user-1', 'group-1');
 
-      expect(tx.walkInGroup.delete).toHaveBeenCalledWith({ where: { id: 'group-1' } });
+      expect(tx.walkInGroup.update).toHaveBeenCalledWith({
+        where: { id: 'group-1' },
+        data: { deletedAt: expect.any(Date), deletedByUserId: 'user-1' },
+      });
       expect(result).toEqual({ success: true });
     });
 
@@ -148,14 +151,14 @@ describe('WalkInGroupsService', () => {
       const tx = {
         walkInGroup: {
           findFirst: jest.fn().mockResolvedValue({ id: 'group-1', name: 'Group A' }),
-          delete: jest.fn(),
+          update: jest.fn(),
         },
         driveSession: { count: jest.fn().mockResolvedValue(2) },
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
       await expect(service.remove(context, 'user-1', 'group-1')).rejects.toThrow(BadRequestException);
-      expect(tx.walkInGroup.delete).not.toHaveBeenCalled();
+      expect(tx.walkInGroup.update).not.toHaveBeenCalled();
     });
   });
 

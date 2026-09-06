@@ -402,16 +402,19 @@ describe('CandidatesService', () => {
   });
 
   describe('remove', () => {
-    it('deletes a candidate who has never been invited and records an audit entry', async () => {
+    it('soft-deletes a candidate who has never been invited and records an audit entry', async () => {
       const tx = {
-        candidate: { findFirst: jest.fn().mockResolvedValue({ id: 'cand-1' }), delete: jest.fn().mockResolvedValue({ id: 'cand-1' }) },
+        candidate: { findFirst: jest.fn().mockResolvedValue({ id: 'cand-1' }), update: jest.fn().mockResolvedValue({ id: 'cand-1' }) },
         invitation: { count: jest.fn().mockResolvedValue(0) },
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
       const result = await service.remove(context, 'user-1', 'cand-1');
 
-      expect(tx.candidate.delete).toHaveBeenCalledWith({ where: { id: 'cand-1' } });
+      expect(tx.candidate.update).toHaveBeenCalledWith({
+        where: { id: 'cand-1' },
+        data: { deletedAt: expect.any(Date), deletedByUserId: 'user-1' },
+      });
       expect(result).toEqual({ id: 'cand-1' });
       expect(audit.record).toHaveBeenCalledWith(context, {
         actorUserId: 'user-1',
@@ -423,13 +426,13 @@ describe('CandidatesService', () => {
 
     it('refuses to delete a candidate with invitations so results are never orphaned', async () => {
       const tx = {
-        candidate: { findFirst: jest.fn().mockResolvedValue({ id: 'cand-1' }), delete: jest.fn() },
+        candidate: { findFirst: jest.fn().mockResolvedValue({ id: 'cand-1' }), update: jest.fn() },
         invitation: { count: jest.fn().mockResolvedValue(2) },
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
       await expect(service.remove(context, 'user-1', 'cand-1')).rejects.toThrow(ConflictException);
-      expect(tx.candidate.delete).not.toHaveBeenCalled();
+      expect(tx.candidate.update).not.toHaveBeenCalled();
       expect(audit.record).not.toHaveBeenCalled();
     });
 
