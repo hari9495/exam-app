@@ -1208,6 +1208,137 @@ describe('PipelineService', () => {
       await expect(service.patchEntry(context, 'user-1', 'missing', { statusId: 'st-int' })).rejects.toThrow(NotFoundException);
     });
 
+    describe('blueprint stage rules gate', () => {
+      const rulesJson = JSON.stringify([{ id: 'r1', type: 'feedback', minCount: 1 }]);
+
+      it('blocks the move with BadRequestException naming the stage + unmet item, and never calls update', async () => {
+        const update = jest.fn();
+        const tx = {
+          pipelineEntry: {
+            findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', candidateId: 'cand-1', job: { pipelineId: 'p1' }, status: null, blueprintChecklistJson: null }),
+            update,
+          },
+          jobExam: { findMany: jest.fn().mockResolvedValue([]) },
+          pipelineFeedback: { findMany: jest.fn().mockResolvedValue([]) },
+          invitation: { findMany: jest.fn().mockResolvedValue([]) },
+        };
+        tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+        pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-int', name: 'interview' }, stage: { id: 'stage-int', pipelineId: 'p1', category: 'active', name: 'Interview', rulesJson } });
+
+        await expect(service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-int' })).rejects.toThrow(BadRequestException);
+        await expect(service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-int' })).rejects.toThrow(/Interview/);
+        expect(update).not.toHaveBeenCalled();
+      });
+
+      it('allows the move when rules are met (update called)', async () => {
+        const update = jest.fn().mockResolvedValue({ id: 'en1', statusId: 'st-int' });
+        const tx = {
+          pipelineEntry: {
+            findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', candidateId: 'cand-1', job: { pipelineId: 'p1' }, status: null, blueprintChecklistJson: null }),
+            update,
+          },
+          jobExam: { findMany: jest.fn().mockResolvedValue([]) },
+          pipelineFeedback: { findMany: jest.fn().mockResolvedValue([{ rating: 4, note: null }]) },
+          invitation: { findMany: jest.fn().mockResolvedValue([]) },
+        };
+        tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(withRecomputeMocks(tx)));
+        pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-int', name: 'interview' }, stage: { id: 'stage-int', pipelineId: 'p1', category: 'active', name: 'Interview', rulesJson } });
+
+        await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-int' });
+
+        expect(tx.jobExam.findMany).toHaveBeenCalledWith({ where: { jobId: 'job-1' }, select: { examId: true } });
+        expect(tx.pipelineFeedback.findMany).toHaveBeenCalledWith({ where: { entryId: 'en1', organizationId: 'org-1' }, select: { rating: true, note: true } });
+        expect(tx.invitation.findMany).toHaveBeenCalledWith({
+          where: { candidateId: 'cand-1' },
+          include: { exam: { select: { title: true } }, attempt: { include: { result: true } } },
+        });
+        expect(update).toHaveBeenCalled();
+      });
+
+      it('does not gate a same-stage status change, even with unmet rules', async () => {
+        const update = jest.fn().mockResolvedValue({ id: 'en1', statusId: 'st-int' });
+        const tx = {
+          pipelineEntry: {
+            findFirst: jest
+              .fn()
+              .mockResolvedValue({ id: 'en1', jobId: 'job-1', candidateId: 'cand-1', job: { pipelineId: 'p1' }, status: { stageId: 'stage-int', stage: { id: 'stage-int', category: 'active' } } }),
+            update,
+          },
+        };
+        tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(withRecomputeMocks(tx)));
+        pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-int', name: 'interview' }, stage: { id: 'stage-int', pipelineId: 'p1', category: 'active', name: 'Interview', rulesJson } });
+
+        await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-int' });
+
+        expect(update).toHaveBeenCalled();
+      });
+
+      it('does not gate a move into a rejected-category stage, even with unmet rules', async () => {
+        const update = jest.fn().mockResolvedValue({ id: 'en1', statusId: 'st-rej' });
+        const tx = {
+          pipelineEntry: {
+            findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', candidateId: 'cand-1', job: { pipelineId: 'p1' }, status: null }),
+            update,
+          },
+        };
+        tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(withRecomputeMocks(tx)));
+        pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-rej', name: 'Not a Fit' }, stage: { id: 'stage-rej', pipelineId: 'p1', category: 'rejected', name: 'Rejected', rulesJson } });
+
+        await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-rej' });
+
+        expect(update).toHaveBeenCalled();
+      });
+
+      it('does not gate a move into an archived-category stage, even with unmet rules', async () => {
+        const update = jest.fn().mockResolvedValue({ id: 'en1', statusId: 'st-arch' });
+        const tx = {
+          pipelineEntry: {
+            findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', candidateId: 'cand-1', job: { pipelineId: 'p1' }, status: null }),
+            update,
+          },
+        };
+        tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(withRecomputeMocks(tx)));
+        pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-arch', name: 'Archived' }, stage: { id: 'stage-arch', pipelineId: 'p1', category: 'archived', name: 'Archived', rulesJson } });
+
+        await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-arch' });
+
+        expect(update).toHaveBeenCalled();
+      });
+
+      it('does not gate a rejected:true (Branch B) reject', async () => {
+        const update = jest.fn().mockResolvedValue({ id: 'en1', rejected: true });
+        const tx = {
+          pipelineEntry: {
+            findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', candidateId: 'cand-1', job: { pipelineId: 'p1' }, status: null }),
+            update,
+          },
+          pipelineStage: { findFirst: jest.fn().mockResolvedValue({ id: 'stage-rej', statuses: [{ id: 'st-rej' }] }) },
+        };
+        tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(withRecomputeMocks(tx)));
+
+        await service.patchEntry(context, 'user-1', 'en1', { rejected: true, reason: 'not a fit' });
+
+        expect(update).toHaveBeenCalled();
+      });
+
+      it('a target stage with no rulesJson is unaffected (no extra queries)', async () => {
+        const update = jest.fn().mockResolvedValue({ id: 'en1', statusId: 'st-int' });
+        const tx = {
+          pipelineEntry: {
+            findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', candidateId: 'cand-1', job: { pipelineId: 'p1' }, status: null }),
+            update,
+          },
+        };
+        tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(withRecomputeMocks(tx)));
+        pipelines.resolveStatus.mockResolvedValue({ status: { id: 'st-int', name: 'interview' }, stage: { id: 'stage-int', pipelineId: 'p1', category: 'active', name: 'Interview', rulesJson: null } });
+
+        await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-int' });
+
+        expect(update).toHaveBeenCalled();
+        expect((tx as any).jobExam).toBeUndefined();
+      });
+    });
+
     describe('stage-move comms hook', () => {
       const tx = {
         pipelineEntry: {

@@ -14,7 +14,7 @@ import { ApprovalsService, ApprovalSummary, SubmitResult } from '../approvals/ap
 import { computeCriteriaHash, validateRubricInput } from '../candidate-fit/candidate-fit.core';
 import { PipelinesService } from './pipelines.service';
 import { recomputeGlobalStage } from '../candidates/recompute-global-stage';
-import { BlueprintRule, parseRules } from './blueprint-rules';
+import { BlueprintRule, parseRules, parseChecklist, evaluateBlueprint } from './blueprint-rules';
 
 export interface FeedbackRow {
   id: string;
@@ -669,6 +669,33 @@ export class PipelineService {
         action = 'entry.stage_changed';
         didHire = category === 'hired' && previousCategory !== 'hired';
         commsStageId = resolved.stage.id;
+
+        // Blueprint hard-gate: entering a non-terminal ruled stage requires its rules to be met.
+        // Terminal (rejected/archived) moves and same-stage status changes are never gated.
+        const targetStage = resolved.stage;
+        const currentStageId = existing.status?.stageId ?? existing.status?.stage?.id ?? null;
+        const isStageChange = targetStage.id !== currentStageId;
+        const isTerminalReject = category === 'rejected' || category === 'archived';
+        if (isStageChange && !isTerminalReject) {
+          const rules = parseRules(targetStage.rulesJson);
+          if (rules.length) {
+            const [linkExamRows, feedbackRows, invitations] = await Promise.all([
+              tx.jobExam.findMany({ where: { jobId: existing.jobId }, select: { examId: true } }),
+              tx.pipelineFeedback.findMany({ where: { entryId, organizationId: context.organizationId as string }, select: { rating: true, note: true } }),
+              tx.invitation.findMany({
+                where: { candidateId: existing.candidateId },
+                include: { exam: { select: { title: true } }, attempt: { include: { result: true } } },
+              }),
+            ]);
+            const examResults = deriveEntryExamResults(invitations as any, linkExamRows.map((l) => l.examId));
+            const unmet = evaluateBlueprint(rules, {
+              feedback: feedbackRows,
+              examResults: examResults.map((r) => ({ examId: r.examId, passFail: r.passFail, score: r.score })),
+              checklistTicks: parseChecklist(existing.blueprintChecklistJson),
+            });
+            if (unmet.length) throw new BadRequestException(`Cannot move to "${targetStage.name}": ${unmet.join('; ')}`);
+          }
+        }
       } else if (dto.rejected === true) {
         // Back-compat: a caller sending only `rejected:true` (no statusId) still lands the entry
         // on the pipeline's first rejected-category status, so statusId and the rejected mirror
