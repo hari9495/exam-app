@@ -292,7 +292,7 @@ export interface PipelineStatus {
 }
 
 // Blueprint stage-advance requirements (Blueprint stage-rules feature). Mirrors the API's
-// BlueprintRule union (apps/api/src/pipeline/blueprint-rule.ts) -- inlined here since apps/web
+// BlueprintRule union (apps/api/src/pipeline/blueprint-rules.ts) -- inlined here since apps/web
 // can't import @exam-platform/shared VALUES at runtime (see GLOBAL_STAGES comment below).
 export type BlueprintRule =
   | { id: string; type: 'feedback'; minCount?: number; minAvgRating?: number; requireNote?: boolean }

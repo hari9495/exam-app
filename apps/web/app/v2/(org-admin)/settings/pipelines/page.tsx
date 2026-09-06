@@ -117,7 +117,10 @@ function StatusRow({ status, index, total, onMove, onRename, onDelete }: {
 function newRule(type: BlueprintRule['type']): BlueprintRule {
   const id = crypto.randomUUID();
   switch (type) {
-    case 'checklist': return { id, type, items: [] };
+    // Seed one blank item -- an empty items array is rejected server-side
+    // (validateBlueprintRules: "checklist rule needs items"), so a freshly added rule must
+    // never save empty.
+    case 'checklist': return { id, type, items: [{ id: crypto.randomUUID(), label: '' }] };
     case 'exam_passed': return { id, type };
     default: return { id, type: 'feedback' };
   }
@@ -253,8 +256,16 @@ function StageCard({ stage, index, total, onMove, onRename, onCategoryChange, on
     setRulesDirty(true);
   }
   function handleSaveRules() {
+    // Drop blank-label checklist items before saving -- the server rejects a checklist rule
+    // with an empty items array ("checklist rule needs items"), so a rule left with zero
+    // non-blank items must block the save instead of round-tripping a guaranteed 400.
+    const cleaned = rules.map((r) => (r.type === 'checklist' ? { ...r, items: r.items.map((it) => ({ ...it, label: it.label.trim() })).filter((it) => it.label !== '') } : r));
+    if (cleaned.some((r) => r.type === 'checklist' && r.items.length === 0)) {
+      notifyError('Checklist requirements need at least one item.');
+      return;
+    }
     updateStage.mutate(
-      { stageId: stage.id, rules },
+      { stageId: stage.id, rules: cleaned },
       { onSuccess: () => setRulesDirty(false), onError: (err) => notifyError(err instanceof Error ? err.message : 'Failed to save requirements.') },
     );
   }
