@@ -2,6 +2,7 @@ import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from './prisma.service';
 import { TenantContext } from './tenant-context';
+import { isRecordVisibilityGoverned } from '../record-visibility/record-visibility';
 
 // Candidate-facing retry hint for a P2028 ("transaction unavailable") or
 // P2024 ("timed out fetching a new connection from the pool") rejection --
@@ -37,6 +38,10 @@ export class TenantPrismaService {
       return await this.prisma.$transaction(async (tx) => {
         await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_current_org', @value = ${context.organizationId}`;
         await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_is_super_admin', @value = ${context.isSuperAdmin ? 1 : 0}`;
+        if (context.userId) {
+          await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_current_user', @value = ${context.userId}`;
+        }
+        await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = ${isRecordVisibilityGoverned(context.role) ? 1 : 0}`;
         try {
           return await fn(tx);
         } finally {
@@ -137,7 +142,13 @@ export class TenantPrismaService {
       // with "org matches" -- a stray app_is_super_admin=1 bypasses RLS on
       // every tenant, while a stray app_current_org only scopes to one org.
       // Clear the more dangerous flag first so a partial failure never
-      // strands it.
+      // strands it. Same reasoning extends to the record-visibility bit: it
+      // gates a WHERE-clause row filter, not RLS itself, but is still
+      // cleared before the plain user id so a partial failure can't strand a
+      // governed filter alongside a leftover identity on the pooled
+      // connection.
+      await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = 0`;
+      await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_current_user', @value = NULL`;
       await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0`;
       await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_current_org', @value = NULL`;
     } catch (resetError) {
