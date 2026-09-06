@@ -188,8 +188,8 @@ export function useAssignEntry(entryId: string, jobId: string) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (assigneeUserId: string | null) =>
-      apiFetch(`/entries/${entryId}/assignment`, { method: 'PATCH', body: JSON.stringify({ assigneeUserId }) }, accessToken ?? undefined),
+    mutationFn: (target: { assigneeUserId?: string | null; assigneeGroupId?: string | null }) =>
+      apiFetch(`/entries/${entryId}/assignment`, { method: 'PATCH', body: JSON.stringify(target) }, accessToken ?? undefined),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobs', jobId, 'pipeline'] }),
   });
 }

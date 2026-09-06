@@ -19,6 +19,7 @@ import {
   useScoreEntry,
 } from '../../../../lib/hooks/usePipeline';
 import { useTeammates } from '../../../../lib/hooks/useUserDirectory';
+import { useUserGroupDirectory } from '../../../../lib/hooks/useUserGroups';
 import { useCandidateMessages, useResendMessage } from '../../../../lib/hooks/useCandidateMessages';
 import { useCandidateOffers, useWithdrawOffer, useSendOffer, useSubmitOffer, useCancelOffer } from '../../../../lib/hooks/useOffers';
 import { useApprovalGateStatus } from '../../../../lib/hooks/useApprovals';
@@ -411,18 +412,26 @@ function chipLabel(result: EntryExamResult): string {
   return `${result.examTitle} · ${label}${result.score !== null ? ` ${result.score}%` : ''}`;
 }
 
-// Team-collab: assign this pipeline entry to a teammate. Logic verbatim from the old drawer
-// (useUserDirectory + useAssignEntry); v2-styled native select.
+// Team-collab: assign this pipeline entry to a teammate or a user group. Logic verbatim from the
+// old drawer (useUserDirectory + useAssignEntry) plus user-groups (Task 6); v2-styled native
+// select. Option values are encoded `user:<id>` / `group:<id>` to disambiguate on change.
 function AssigneeControl({ row, jobId }: { row: BoardEntryRow; jobId: string }) {
   const { data } = useTeammates();
+  const { data: groups } = useUserGroupDirectory();
   const assign = useAssignEntry(row.entryId, jobId);
   const { toast } = useToast();
-  const [assignee, setAssignee] = useState(row.assignedUserId ?? '');
+  const initial = row.assignedGroupId ? `group:${row.assignedGroupId}` : row.assignedUserId ? `user:${row.assignedUserId}` : '';
+  const [assignee, setAssignee] = useState(initial);
   const teammates = (data ?? []).filter((u) => u.status === 'active');
 
   function onChange(value: string) {
     setAssignee(value);
-    assign.mutate(value || null, { onError: () => toast('Failed to update assignee.', 'error') });
+    const target = value.startsWith('group:')
+      ? { assigneeUserId: null, assigneeGroupId: value.slice('group:'.length) }
+      : value.startsWith('user:')
+        ? { assigneeUserId: value.slice('user:'.length), assigneeGroupId: null }
+        : { assigneeUserId: null, assigneeGroupId: null };
+    assign.mutate(target, { onError: () => toast('Failed to update assignee.', 'error') });
   }
 
   return (
@@ -435,10 +444,18 @@ function AssigneeControl({ row, jobId }: { row: BoardEntryRow; jobId: string }) 
         style={{ padding: '6px 9px', fontSize: 13, borderRadius: 8, border: '1px solid color-mix(in srgb, var(--ink) 15%, var(--hair))', background: 'var(--paper)', color: ink, outline: 'none' }}
       >
         <option value="">Unassigned</option>
-        {teammates.map((u) => (
-          <option key={u.id} value={u.id}>{u.name ?? u.email}</option>
-        ))}
+        <optgroup label="Users">
+          {teammates.map((u) => (
+            <option key={u.id} value={`user:${u.id}`}>{u.name ?? u.email}</option>
+          ))}
+        </optgroup>
+        <optgroup label="Groups">
+          {(groups ?? []).map((g) => (
+            <option key={g.id} value={`group:${g.id}`}>{g.name}</option>
+          ))}
+        </optgroup>
       </select>
+      {row.assignedGroupName && <span style={{ fontSize: 11.5, color: muted }}>({row.assignedGroupName})</span>}
     </label>
   );
 }

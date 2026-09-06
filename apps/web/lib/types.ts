@@ -335,6 +335,8 @@ export interface BoardEntryRow {
   fitStale: boolean;
   assignedUserId: string | null;
   assigneeName: string | null;
+  assignedGroupId: string | null;
+  assignedGroupName: string | null;
 }
 
 // Mirrors apps/api/src/pipeline/pipeline.service.ts's Board -- the getBoard() response shape.
