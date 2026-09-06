@@ -15,6 +15,8 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useJobPipeline, usePatchEntry, useScoreJob } from '../../../../lib/hooks/usePipeline';
+import { useMyGroups } from '../../../../lib/hooks/useUserGroups';
+import { isInMyTeam } from '../../../../lib/boardFilters';
 import { BoardEntryRow, EntryExamResult, PatchEntryResult, PipelineStageConfig } from '../../../../lib/types';
 import { useAuth } from '../../../../lib/auth-context';
 import { useCurrentUser } from '../../../../lib/hooks/useCurrentUser';
@@ -114,12 +116,16 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
   const { role } = useAuth();
   const canManage = role !== 'panel';
   const { data: currentUser } = useCurrentUser();
+  const { data: myGroups } = useMyGroups();
   const patchEntry = usePatchEntry(jobId);
   const scoreJob = useScoreJob(jobId);
   const { toast } = useToast();
   const [sortByFit, setSortByFit] = useState(false);
   const [mineOnly, setMineOnly] = useState(false);
-  const visible = (rows: BoardEntryRow[]) => (mineOnly ? rows.filter((r) => r.assignedUserId === currentUser?.id) : rows);
+  const [teamOnly, setTeamOnly] = useState(false);
+  // teamOnly takes precedence when both are checked -- it's the superset (includes "mine").
+  const visible = (rows: BoardEntryRow[]) =>
+    teamOnly ? rows.filter((r) => isInMyTeam(r, currentUser?.id, myGroups)) : mineOnly ? rows.filter((r) => r.assignedUserId === currentUser?.id) : rows;
   const [openRow, setOpenRow] = useState<BoardEntryRow | null>(null);
   const [composeFor, setComposeFor] = useState<{ entryId: string; candidateId: string; candidateName: string; initial: SendMessageInitial } | null>(null);
 
@@ -152,6 +158,7 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--muted)', cursor: 'pointer' }}><Cb checked={sortByFit} onChange={setSortByFit} /> Sort by fit</label>
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--muted)', cursor: 'pointer' }}><Cb checked={mineOnly} onChange={setMineOnly} /> My candidates</label>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--muted)', cursor: 'pointer' }}><Cb checked={teamOnly} onChange={setTeamOnly} /> My team's candidates</label>
         </div>
         <button type="button" onClick={() => scoreJob.mutate()} disabled={scoreJob.isPending} className="v2-hoverbtn" style={{ ...dt.toolBtn, opacity: scoreJob.isPending ? 0.5 : 1 }}>{scoreJob.isPending ? 'Scoring…' : 'Score candidates'}</button>
       </div>

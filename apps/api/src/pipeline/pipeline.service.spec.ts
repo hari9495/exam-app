@@ -770,6 +770,27 @@ describe('PipelineService', () => {
     expect(board.columns['st-applied'][0].fitStale).toBe(false);
   });
 
+  it('getBoard resolves assignedGroupId to assignedGroupName in one batched query', async () => {
+    const tx = withJobCustomFieldMocks({
+      job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', pipeline: boardPipeline() }) },
+      jobExam: { findMany: jest.fn().mockResolvedValue([]) },
+      pipelineEntry: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'en1', candidateId: 'c1', enteredVia: 'manual', rejectedReason: null, assignedGroupId: 'group-1',
+            status: { id: 'status-applied', stage: { id: 'st-applied', category: 'active' } },
+            candidate: { name: 'Amy', email: 'amy@x.com', invitations: [] }, feedback: [] },
+        ]),
+      },
+      userGroup: { findMany: jest.fn().mockResolvedValue([{ id: 'group-1', name: 'Hiring Panel' }]) },
+    });
+    tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+    const board = await service.getBoard(context, 'job-1');
+
+    expect(tx.userGroup.findMany).toHaveBeenCalledWith({ where: { id: { in: ['group-1'] } }, select: { id: true, name: true } });
+    expect(board.columns['st-applied'][0]).toMatchObject({ assignedGroupId: 'group-1', assignedGroupName: 'Hiring Panel' });
+  });
+
   it('getBoard skips entries with no resolved status (can\'t be placed on a dynamic column)', async () => {
     const tx = withJobCustomFieldMocks({
       job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', pipeline: boardPipeline() }) },
@@ -1063,6 +1084,8 @@ describe('PipelineService', () => {
           update: jest.fn().mockResolvedValue({ id: 'en1' }),
         },
         user: { findFirst: jest.fn().mockResolvedValue({ id: 'user-2' }) },
+        userGroup: { findFirst: jest.fn().mockResolvedValue({ id: 'group-1' }) },
+        userGroupMember: { findMany: jest.fn().mockResolvedValue([{ userId: 'user-2' }, { userId: 'user-3' }]) },
         ...overrides,
       };
     }
@@ -1071,10 +1094,10 @@ describe('PipelineService', () => {
       const tx = assignTx();
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
-      const out = await service.assignEntry(context, 'user-1', 'en1', 'user-2');
+      const out = await service.assignEntry(context, 'user-1', 'en1', { userId: 'user-2' });
 
       expect(out).toEqual({ success: true });
-      expect(tx.pipelineEntry.update).toHaveBeenCalledWith({ where: { id: 'en1' }, data: { assignedUserId: 'user-2' } });
+      expect(tx.pipelineEntry.update).toHaveBeenCalledWith({ where: { id: 'en1' }, data: { assignedUserId: 'user-2', assignedGroupId: null } });
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'entry.assigned', entityId: 'en1' }));
       expect(notifications.notify).toHaveBeenCalledWith(
         context, 'user-1', ['user-2'], 'assigned',
@@ -1082,13 +1105,13 @@ describe('PipelineService', () => {
       );
     });
 
-    it('unassigns (null) without notifying anyone', async () => {
+    it('unassigns (both null) without notifying anyone', async () => {
       const tx = assignTx();
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
-      await service.assignEntry(context, 'user-1', 'en1', null);
+      await service.assignEntry(context, 'user-1', 'en1', {});
 
-      expect(tx.pipelineEntry.update).toHaveBeenCalledWith({ where: { id: 'en1' }, data: { assignedUserId: null } });
+      expect(tx.pipelineEntry.update).toHaveBeenCalledWith({ where: { id: 'en1' }, data: { assignedUserId: null, assignedGroupId: null } });
       expect(notifications.notify).not.toHaveBeenCalled();
     });
 
@@ -1096,8 +1119,49 @@ describe('PipelineService', () => {
       const tx = assignTx({ user: { findFirst: jest.fn().mockResolvedValue(null) } });
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
-      await expect(service.assignEntry(context, 'user-1', 'en1', 'outsider')).rejects.toThrow(BadRequestException);
+      await expect(service.assignEntry(context, 'user-1', 'en1', { userId: 'outsider' })).rejects.toThrow(BadRequestException);
       expect(tx.pipelineEntry.update).not.toHaveBeenCalled();
+    });
+
+    it('sets the assignee group, clears the user, and notifies every group member', async () => {
+      const tx = assignTx();
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      const out = await service.assignEntry(context, 'user-1', 'en1', { groupId: 'group-1' });
+
+      expect(out).toEqual({ success: true });
+      expect(tx.userGroup.findFirst).toHaveBeenCalledWith({ where: { id: 'group-1', organizationId: 'org-1' }, select: { id: true } });
+      expect(tx.userGroupMember.findMany).toHaveBeenCalledWith({ where: { organizationId: 'org-1', groupId: 'group-1' }, select: { userId: true } });
+      expect(tx.pipelineEntry.update).toHaveBeenCalledWith({ where: { id: 'en1' }, data: { assignedUserId: null, assignedGroupId: 'group-1' } });
+      expect(notifications.notify).toHaveBeenCalledWith(
+        context, 'user-1', ['user-2', 'user-3'], 'assigned',
+        expect.objectContaining({ entityType: 'pipeline_entry', entityId: 'en1', contextText: 'Asha Rao', linkPath: '/candidates/cand-1' }),
+      );
+    });
+
+    it('assigning a user clears any existing group and vice versa (write both fields together)', async () => {
+      const tx = assignTx();
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.assignEntry(context, 'user-1', 'en1', { userId: 'user-2' });
+      expect(tx.pipelineEntry.update).toHaveBeenLastCalledWith({ where: { id: 'en1' }, data: { assignedUserId: 'user-2', assignedGroupId: null } });
+    });
+
+    it('rejects when both a user and a group are given (XOR)', async () => {
+      const tx = assignTx();
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.assignEntry(context, 'user-1', 'en1', { userId: 'user-2', groupId: 'group-1' })).rejects.toThrow(BadRequestException);
+      expect(tx.pipelineEntry.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects a group from another org (not found in tenant scope)', async () => {
+      const tx = assignTx({ userGroup: { findFirst: jest.fn().mockResolvedValue(null) } });
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.assignEntry(context, 'user-1', 'en1', { groupId: 'other-org-group' })).rejects.toThrow(BadRequestException);
+      expect(tx.pipelineEntry.update).not.toHaveBeenCalled();
+      expect(notifications.notify).not.toHaveBeenCalled();
     });
   });
 

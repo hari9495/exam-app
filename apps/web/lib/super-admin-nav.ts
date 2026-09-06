@@ -27,6 +27,7 @@ export const SUPER_ADMIN_FULL_NAV = [
   { href: '/settings/pipelines', label: 'Pipelines', icon: Kanban },
   { href: '/settings/business-hours', label: 'Business hours', icon: Clock },
   { href: '/settings/custom-fields', label: 'Custom Fields', icon: SlidersHorizontal },
+  { href: '/settings/user-groups', label: 'User Groups', icon: Users },
   { href: '/walk-in-groups', label: 'Walk-in Groups', icon: QrCode },
   { href: '/jobs', label: 'Jobs', icon: Briefcase },
   { href: '/approvals', label: 'Approvals', icon: CheckSquare },

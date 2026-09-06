@@ -925,6 +925,7 @@ model PipelineEntry {
   enteredVia       String             @map("entered_via")
   applicationToken String?            @unique @map("application_token")
   assignedUserId   String?            @map("assigned_user_id") @db.UniqueIdentifier
+  assignedGroupId  String?            @map("assigned_group_id") @db.UniqueIdentifier
   createdAt        DateTime           @default(now()) @map("created_at")
   updatedAt        DateTime           @updatedAt @map("updated_at")
   statusId         String?            @map("status_id") @db.UniqueIdentifier
@@ -1221,4 +1222,28 @@ model JobExam {
   @@unique([jobId, examId])
   @@index([examId])
   @@map("job_exams")
+}
+
+model UserGroup {
+  id             String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  organizationId String   @map("organization_id") @db.UniqueIdentifier
+  name           String   @db.NVarChar(200)
+  description    String?  @db.NVarChar(1000)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("user_groups")
+}
+
+model UserGroupMember {
+  id             String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  organizationId String   @map("organization_id") @db.UniqueIdentifier
+  groupId        String   @map("group_id") @db.UniqueIdentifier
+  userId         String   @map("user_id") @db.UniqueIdentifier
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([groupId, userId])
+  @@index([organizationId, userId])
+  @@map("user_group_members")
 }

@@ -57,6 +57,8 @@ export interface BoardRow {
   fitStatus: string | null;
   assignedUserId: string | null;
   assigneeName: string | null;
+  assignedGroupId: string | null;
+  assignedGroupName: string | null;
   fitStale: boolean;
   customFields: CustomFieldRead[];
 }
@@ -589,6 +591,11 @@ export class PipelineService {
         ? await tx.user.findMany({ where: { id: { in: assigneeIds } }, select: { id: true, name: true } })
         : [];
       const assigneeName = new Map(assignees.map((a: { id: string; name: string | null }) => [a.id, a.name]));
+      const groupIds = [...new Set(entries.map((e) => e.assignedGroupId).filter((id): id is string => Boolean(id)))];
+      const groups = groupIds.length
+        ? await tx.userGroup.findMany({ where: { id: { in: groupIds } }, select: { id: true, name: true } })
+        : [];
+      const groupName = new Map(groups.map((g: { id: string; name: string }) => [g.id, g.name]));
 
       // One definitions query and one values query for the whole board -- not per candidate.
       const candidateIds = [...new Set(entries.map((e) => e.candidateId))];
@@ -635,6 +642,8 @@ export class PipelineService {
           assignedUserId: e.assignedUserId,
           assigneeName: e.assignedUserId ? (assigneeName.get(e.assignedUserId) ?? null) : null,
           customFields: serializeCustomFieldValues(customFieldValuesByCandidate.get(e.candidateId) ?? [], customFieldDefs),
+          assignedGroupId: e.assignedGroupId,
+          assignedGroupName: e.assignedGroupId ? (groupName.get(e.assignedGroupId) ?? null) : null,
         };
         (columns[row.stageId] ??= []).push(row);
       }
@@ -983,34 +992,46 @@ export class PipelineService {
     return created;
   }
 
-  // Assign (or unassign, with null) a candidate to a teammate. Notifies the new assignee.
-  async assignEntry(context: TenantContext, actorUserId: string, entryId: string, assigneeUserId: string | null): Promise<{ success: true }> {
+  // Assign (or unassign, with both null) a candidate to a teammate OR a group (XOR). Notifies the
+  // new assignee (a user, or every member of the group).
+  async assignEntry(context: TenantContext, actorUserId: string, entryId: string, target: { userId?: string | null; groupId?: string | null }): Promise<{ success: true }> {
     const orgId = context.organizationId as string;
-    const { candidateId, candidateName } = await this.tenantPrisma.forTenant(context, async (tx) => {
+    const userId = target.userId ?? null;
+    const groupId = target.groupId ?? null;
+    if (userId && groupId) throw new BadRequestException('Assign to a user or a group, not both');
+
+    const { candidateId, candidateName, memberIds } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const entry = await tx.pipelineEntry.findFirst({
         where: { id: entryId, organizationId: orgId },
         select: { id: true, candidateId: true, candidate: { select: { name: true } } },
       });
       if (!entry) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
-      if (assigneeUserId) {
-        const user = await tx.user.findFirst({ where: { id: assigneeUserId, organizationId: orgId }, select: { id: true } });
+      let members: string[] = [];
+      if (userId) {
+        const user = await tx.user.findFirst({ where: { id: userId, organizationId: orgId }, select: { id: true } });
         if (!user) throw new BadRequestException('Assignee is not a member of this organization');
+      } else if (groupId) {
+        const group = await tx.userGroup.findFirst({ where: { id: groupId, organizationId: orgId }, select: { id: true } });
+        if (!group) throw new BadRequestException('Group is not part of this organization');
+        const rows = await tx.userGroupMember.findMany({ where: { organizationId: orgId, groupId }, select: { userId: true } });
+        members = rows.map((r: { userId: string }) => r.userId);
       }
-      await tx.pipelineEntry.update({ where: { id: entryId }, data: { assignedUserId: assigneeUserId } });
+      await tx.pipelineEntry.update({ where: { id: entryId }, data: { assignedUserId: userId, assignedGroupId: groupId } });
       await this.audit.record(context, {
         actorUserId,
         action: 'entry.assigned',
         entityType: 'pipeline_entry',
         entityId: entryId,
-        metadata: { assignedUserId: assigneeUserId },
+        metadata: { assignedUserId: userId, assignedGroupId: groupId },
       });
-      return { candidateId: entry.candidateId, candidateName: entry.candidate?.name ?? null };
+      return { candidateId: entry.candidateId, candidateName: entry.candidate?.name ?? null, memberIds: members };
     });
 
-    // Notify the new assignee (post-commit; notify drops the actor, so self-assign is silent).
-    if (assigneeUserId) {
+    // Notify the new assignee(s) (post-commit; notify drops the actor, so self-assign is silent).
+    const recipients = userId ? [userId] : memberIds;
+    if (recipients.length) {
       try {
-        await this.notifications.notify(context, actorUserId, [assigneeUserId], 'assigned', {
+        await this.notifications.notify(context, actorUserId, recipients, 'assigned', {
           entityType: 'pipeline_entry',
           entityId: entryId,
           contextText: candidateName,

@@ -23,6 +23,7 @@ import { LeadsModule } from './leads/leads.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { StaticUploadsModule } from './organizations/static-uploads.module';
 import { UsersModule } from './users/users.module';
+import { UserGroupsModule } from './user-groups/user-groups.module';
 import { QuestionsModule } from './questions/questions.module';
 import { ExamsModule } from './exams/exams.module';
 import { CandidatesModule } from './candidates/candidates.module';
@@ -82,6 +83,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     LeadsModule,
     OrganizationsModule,
     UsersModule,
+    UserGroupsModule,
     QuestionsModule,
     ExamsModule,
     CandidatesModule,
