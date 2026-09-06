@@ -4,6 +4,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
+import { CurrentUserRole } from '../auth/current-user-role.decorator';
 import { TenantContext, GLOBAL_STAGES, GlobalStage } from '@exam-platform/shared';
 import { CandidatesService } from './candidates.service';
 import { CreateCandidateDto } from './dto/create-candidate.dto';
@@ -25,6 +26,7 @@ export class CandidatesController {
   @RequirePermissions('candidate:manage')
   list(
     @CurrentTenant() tenant: TenantContext,
+    @CurrentUserRole() role: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('search') search?: string,
@@ -34,7 +36,7 @@ export class CandidatesController {
     if (globalStage !== undefined && !GLOBAL_STAGES.includes(globalStage as GlobalStage)) {
       throw new BadRequestException(`globalStage must be one of: ${GLOBAL_STAGES.join(', ')}`);
     }
-    return this.candidatesService.list(tenant, { page, pageSize, search, status, globalStage });
+    return this.candidatesService.list(tenant, { page, pageSize, search, status, globalStage }, role);
   }
 
   @Patch(':id')
@@ -56,11 +58,11 @@ export class CandidatesController {
 
   @Get('lookup')
   @RequirePermissions('candidate:data_rights')
-  lookupByEmail(@CurrentTenant() tenant: TenantContext, @Query('email') email?: string) {
+  lookupByEmail(@CurrentTenant() tenant: TenantContext, @CurrentUserRole() role: string, @Query('email') email?: string) {
     if (!email) {
       throw new BadRequestException('email query parameter is required');
     }
-    return this.candidatesService.lookupByEmail(tenant, email);
+    return this.candidatesService.lookupByEmail(tenant, email, role);
   }
 
   @Post('bulk')
@@ -71,8 +73,13 @@ export class CandidatesController {
 
   @Get(':id/export')
   @RequirePermissions('candidate:data_rights')
-  exportData(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
-    return this.candidatesService.exportData(tenant, userId, id);
+  exportData(
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentUserId() userId: string,
+    @CurrentUserRole() role: string,
+    @Param('id') id: string,
+  ) {
+    return this.candidatesService.exportData(tenant, userId, id, role);
   }
 
   @Get(':id/profile')

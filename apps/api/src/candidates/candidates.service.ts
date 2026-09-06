@@ -5,6 +5,8 @@ import { TenantContext } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { BlobStorageService, BlobDeleteOutcome } from '@exam-platform/shared';
 import { QuotaService } from '../billing/quota.service';
+import { FieldPermissionsService } from '../field-permissions/field-permissions.service';
+import { redactFields, redactMany } from '../field-permissions/redact';
 import { CreateCandidateDto } from './dto/create-candidate.dto';
 import { UpdateCandidateDto } from './dto/update-candidate.dto';
 import {
@@ -95,7 +97,15 @@ function chunkedLogLines(label: string, paths: string[]): string[] {
   return lines;
 }
 
-export type CandidateListItem = Candidate & { invitationCount: number; customFields: CustomFieldRead[] };
+export type CandidateListItem = Omit<Candidate, 'email'> & {
+  email: string | null;
+  invitationCount: number;
+  customFields: CustomFieldRead[];
+};
+
+// Governed fields (email/phone) can come back nulled by field-level permission redaction, so the
+// shape returned to a caller with fields hidden is not the plain Prisma `Candidate` any more.
+export type RedactedCandidate = Omit<Candidate, 'email' | 'phone'> & { email: string | null; phone: string | null };
 
 // Selects exactly the columns upsertCustomFieldValues/serializeCustomFieldValues need --
 // shared by create, update and list so the definition query stays identical everywhere.
@@ -115,7 +125,7 @@ export interface BulkUploadResult {
 }
 
 export interface CandidateDataExport {
-  candidate: { id: string; email: string; name: string; phone: string | null; createdAt: Date };
+  candidate: { id: string; email: string | null; name: string; phone: string | null; createdAt: Date };
   invitations: {
     id: string; examTitle: string; status: string; invitedAt: Date; expiresAt: Date; revokedAt: Date | null;
   }[];
@@ -148,6 +158,7 @@ export class CandidatesService {
     private readonly audit: AuditService,
     private readonly blobStorage: BlobStorageService,
     private readonly quota: QuotaService,
+    private readonly fieldPerms: FieldPermissionsService,
   ) {}
 
   // Soft limit: never blocks the create -- warns + emails admins once per threshold/period.
@@ -191,9 +202,9 @@ export class CandidatesService {
     return candidate;
   }
 
-  async list(context: TenantContext, filters: CandidateFilters): Promise<PaginatedResponse<CandidateListItem>> {
+  async list(context: TenantContext, filters: CandidateFilters, role: string): Promise<PaginatedResponse<CandidateListItem>> {
     const { page, pageSize, skip, take } = resolvePaginationParams(filters.page, filters.pageSize);
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+    const result = await this.tenantPrisma.forTenant(context, async (tx) => {
       const where = {
         organizationId: context.organizationId as string,
         ...(filters.status ? { status: filters.status } : {}),
@@ -239,6 +250,10 @@ export class CandidatesService {
       }));
       return buildPaginatedResponse(data, total, page, pageSize);
     });
+
+    const hidden = await this.fieldPerms.getHiddenFields(context, role, 'candidate');
+    result.data = redactMany(result.data, hidden);
+    return result;
   }
 
   async update(
@@ -336,7 +351,7 @@ export class CandidatesService {
     return { id: candidateId };
   }
 
-  async lookupByEmail(context: TenantContext, email: string): Promise<Candidate> {
+  async lookupByEmail(context: TenantContext, email: string, role: string): Promise<RedactedCandidate> {
     const candidate = await this.tenantPrisma.forTenant(context, (tx) =>
       tx.candidate.findFirst({
         where: { organizationId: context.organizationId as string, email },
@@ -345,7 +360,8 @@ export class CandidatesService {
     if (!candidate) {
       throw new NotFoundException(`No candidate found with email ${email}`);
     }
-    return candidate;
+    const hidden = await this.fieldPerms.getHiddenFields(context, role, 'candidate');
+    return redactFields(candidate, hidden);
   }
 
   async bulkUpload(context: TenantContext, csvContent: string): Promise<BulkUploadResult> {
@@ -406,7 +422,7 @@ export class CandidatesService {
     return { url: url as string };
   }
 
-  async exportData(context: TenantContext, actorUserId: string, candidateId: string): Promise<CandidateDataExport> {
+  async exportData(context: TenantContext, actorUserId: string, candidateId: string, role: string): Promise<CandidateDataExport> {
     const exportPayload = await this.tenantPrisma.forTenant(context, async (tx) => {
       const candidate = await tx.candidate.findFirst({
         where: { id: candidateId, organizationId: context.organizationId as string },
@@ -506,6 +522,8 @@ export class CandidatesService {
       entityId: candidateId,
     });
 
+    const hidden = await this.fieldPerms.getHiddenFields(context, role, 'candidate');
+    exportPayload.candidate = redactFields(exportPayload.candidate, hidden);
     return exportPayload;
   }
 

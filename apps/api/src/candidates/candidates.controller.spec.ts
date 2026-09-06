@@ -48,15 +48,17 @@ describe('CandidatesController', () => {
 
   describe('list globalStage filter', () => {
     it('passes a valid globalStage through to the service', async () => {
-      await controller.list(tenant, undefined, undefined, undefined, undefined, 'available');
-      expect(service.list).toHaveBeenCalledWith(tenant, {
-        page: undefined, pageSize: undefined, search: undefined, status: undefined, globalStage: 'available',
-      });
+      await controller.list(tenant, 'org_admin', undefined, undefined, undefined, undefined, 'available');
+      expect(service.list).toHaveBeenCalledWith(
+        tenant,
+        { page: undefined, pageSize: undefined, search: undefined, status: undefined, globalStage: 'available' },
+        'org_admin',
+      );
     });
 
     it('rejects a globalStage that is not one of GLOBAL_STAGES', () => {
       expect(() =>
-        controller.list(tenant, undefined, undefined, undefined, undefined, 'not-a-stage'),
+        controller.list(tenant, 'org_admin', undefined, undefined, undefined, undefined, 'not-a-stage'),
       ).toThrow(BadRequestException);
       expect(service.list).not.toHaveBeenCalled();
     });
