@@ -3,12 +3,14 @@ import { CryptoModule, StorageModule } from '@exam-platform/shared';
 import { OrganizationsController } from './organizations.controller';
 import { OrganizationsPublicController } from './organizations-public.controller';
 import { OrganizationsService } from './organizations.service';
+import { RecordVisibilityConfigController } from './record-visibility-config.controller';
+import { RecordVisibilityService } from './record-visibility.service';
 import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [EmailModule, CryptoModule, StorageModule],
-  controllers: [OrganizationsController, OrganizationsPublicController],
-  providers: [OrganizationsService],
+  controllers: [OrganizationsController, OrganizationsPublicController, RecordVisibilityConfigController],
+  providers: [OrganizationsService, RecordVisibilityService],
   exports: [OrganizationsService],
 })
 export class OrganizationsModule {}
