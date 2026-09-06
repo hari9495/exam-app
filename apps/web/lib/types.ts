@@ -82,7 +82,7 @@ export interface AuditLogEntry {
 }
 
 export interface CandidateDataExport {
-  candidate: { id: string; email: string; name: string; phone: string | null; createdAt: string };
+  candidate: { id: string; email: string | null; name: string; phone: string | null; createdAt: string };
   invitations: { id: string; examTitle: string; status: string; invitedAt: string; expiresAt: string; revokedAt: string | null }[];
   attempts: {
     id: string;
@@ -236,9 +236,19 @@ export interface Holiday {
   name: string;
 }
 
+// Kept in sync by hand with @exam-platform/shared's field-permissions/field-permissions.ts (same
+// runtime-import restriction as GLOBAL_STAGES/Weekday above).
+export const GOVERNABLE_ROLES = ['recruiter', 'panel'] as const;
+export const GOVERNED_FIELDS = {
+  candidate: ['email', 'phone'],
+  job: ['salaryMin', 'salaryMax', 'salaryCurrency', 'headcount'],
+} as const;
+export type FieldEntity = keyof typeof GOVERNED_FIELDS;
+export type FieldPermissionConfig = Partial<Record<FieldEntity, Record<string, string[]>>>;
+
 export interface Candidate {
   id: string;
-  email: string;
+  email: string | null;
   name: string;
   phone: string | null;
   status: CandidateStatus;
@@ -358,7 +368,7 @@ export interface BoardEntryRow {
   entryId: string;
   candidateId: string;
   candidateName: string;
-  candidateEmail: string;
+  candidateEmail: string | null;
   statusId: string;
   stageId: string;
   category: StageCategory;

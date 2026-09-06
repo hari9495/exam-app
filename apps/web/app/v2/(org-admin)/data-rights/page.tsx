@@ -199,7 +199,7 @@ export default function V2DataRightsPage() {
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
               <div style={{ width: 44, height: 44, borderRadius: '50%', flexShrink: 0, display: 'grid', placeItems: 'center', background: 'color-mix(in srgb, var(--org-primary) 12%, var(--surface))', color: 'var(--org-primary)', fontFamily: 'var(--font-disp)', fontWeight: 600, fontSize: 17, textTransform: 'uppercase' }}>
-                {(candidate.name || candidate.email).trim().charAt(0)}
+                {(candidate.name || candidate.email || '').trim().charAt(0)}
               </div>
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -260,7 +260,7 @@ export default function V2DataRightsPage() {
           </p>
         </div>
         <div style={{ marginBottom: 16 }}>
-          <TextField id="dr-confirm" label="Type the candidate's email to confirm" value={confirmEmail} onChange={setConfirmEmail} placeholder={candidate?.email} autoComplete="off" />
+          <TextField id="dr-confirm" label="Type the candidate's email to confirm" value={confirmEmail} onChange={setConfirmEmail} placeholder={candidate?.email ?? undefined} autoComplete="off" />
         </div>
         {error && <p role="alert" style={{ marginBottom: 16, fontSize: 13, color: 'var(--danger)' }}>{error}</p>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>

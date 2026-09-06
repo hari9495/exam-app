@@ -37,7 +37,7 @@ const STATUS_FILTER_OPTIONS = [{ value: 'all', label: 'All statuses' }, ...Array
 
 function matchesSearch(row: Invitation, query: string): boolean {
   if (!query) return true;
-  return row.candidate.name.toLowerCase().includes(query) || row.candidate.email.toLowerCase().includes(query);
+  return row.candidate.name.toLowerCase().includes(query) || (row.candidate.email ?? '').toLowerCase().includes(query);
 }
 
 const smallNum: React.CSSProperties = { width: 60, textAlign: 'right', padding: '5px 8px', fontSize: 13, borderRadius: 6, border: '1px solid color-mix(in srgb, var(--ink) 15%, var(--hair))', background: 'var(--paper)', color: 'var(--ink)', outline: 'none' };

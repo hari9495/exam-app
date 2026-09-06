@@ -97,7 +97,7 @@ export default function V2CandidatesPage() {
   }
   function exportCsv() {
     const header = ['Name', 'Email', 'Phone', 'Status', 'Added'];
-    const lines = rows.map((c) => [c.name, c.email, c.phone ?? '', c.status, new Date(c.createdAt).toLocaleDateString()].map(csvCell).join(','));
+    const lines = rows.map((c) => [c.name, c.email ?? '', c.phone ?? '', c.status, new Date(c.createdAt).toLocaleDateString()].map(csvCell).join(','));
     const url = URL.createObjectURL(new Blob([[header.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' }));
     const a = document.createElement('a'); a.href = url; a.download = 'candidates.csv'; a.click(); URL.revokeObjectURL(url);
   }
@@ -220,7 +220,7 @@ export default function V2CandidatesPage() {
 
       <BulkUploadInviteDialog open={bulkOpen} onClose={() => setBulkOpen(false)} />
       <CandidateFormDialog open={addOpen} mode="add" submitting={createCandidate.isPending} error={formError} onClose={() => setAddOpen(false)} onSubmit={handleAdd} />
-      <CandidateFormDialog open={!!editing} mode="edit" initial={editing ? { name: editing.name, email: editing.email, phone: editing.phone, customFields: editing.customFields } : undefined} submitting={updateCandidate.isPending} error={formError} onClose={() => setEditing(null)} onSubmit={handleEditSubmit} />
+      <CandidateFormDialog open={!!editing} mode="edit" initial={editing ? { name: editing.name, email: editing.email ?? '', phone: editing.phone, customFields: editing.customFields } : undefined} submitting={updateCandidate.isPending} error={formError} onClose={() => setEditing(null)} onSubmit={handleEditSubmit} />
       <ReEngageModal
         candidate={reengaging} open={!!reengaging} onClose={() => setReengaging(null)}
         onSuccess={() => { refetch(); notify('success', 'Candidate re-engaged.'); }}
