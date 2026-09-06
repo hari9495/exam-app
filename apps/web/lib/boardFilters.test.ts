@@ -22,6 +22,7 @@ function row(overrides: Partial<BoardEntryRow>): BoardEntryRow {
     assigneeName: null,
     assignedGroupId: null,
     assignedGroupName: null,
+    blueprintChecklist: {},
     ...overrides,
   };
 }

@@ -326,6 +326,14 @@ export interface PipelineStatus {
   position: number;
 }
 
+// Blueprint stage-advance requirements (Blueprint stage-rules feature). Mirrors the API's
+// BlueprintRule union (apps/api/src/pipeline/blueprint-rules.ts) -- inlined here since apps/web
+// can't import @exam-platform/shared VALUES at runtime (see GLOBAL_STAGES comment below).
+export type BlueprintRule =
+  | { id: string; type: 'feedback'; minCount?: number; minAvgRating?: number; requireNote?: boolean }
+  | { id: string; type: 'exam_passed'; examId?: string; minScore?: number }
+  | { id: string; type: 'checklist'; items: { id: string; label: string }[] };
+
 // The API's own type here is called `PipelineStage` (see pipelines.service.ts) -- renamed to
 // PipelineStageConfig on the web since (pre-Task-11) that name was already taken by the old
 // flat-stage union type.
@@ -335,6 +343,7 @@ export interface PipelineStageConfig {
   category: StageCategory;
   position: number;
   statuses: PipelineStatus[];
+  rules?: BlueprintRule[];
 }
 
 export interface Pipeline {
@@ -367,6 +376,9 @@ export interface BoardEntryRow {
   customFields?: CustomFieldRead[];
   assignedGroupId: string | null;
   assignedGroupName: string | null;
+  // Ticks against this pipeline's checklist rule items (BlueprintRule 'checklist'), keyed by item
+  // id. Mirrors apps/api's getBoard row -- see PATCH /entries/:id/checklist.
+  blueprintChecklist: Record<string, boolean>;
 }
 
 // Mirrors apps/api/src/pipeline/pipeline.service.ts's Board -- the getBoard() response shape.

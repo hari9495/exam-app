@@ -20,6 +20,7 @@ import { ApprovalsService, ApprovalSummary, SubmitResult } from '../approvals/ap
 import { computeCriteriaHash, validateRubricInput } from '../candidate-fit/candidate-fit.core';
 import { PipelinesService } from './pipelines.service';
 import { recomputeGlobalStage } from '../candidates/recompute-global-stage';
+import { BlueprintRule, parseRules, parseChecklist, evaluateBlueprint } from './blueprint-rules';
 
 export interface FeedbackRow {
   id: string;
@@ -61,6 +62,7 @@ export interface BoardRow {
   assignedGroupName: string | null;
   fitStale: boolean;
   customFields: CustomFieldRead[];
+  blueprintChecklist: Record<string, boolean>;
 }
 
 export interface BoardStage {
@@ -69,6 +71,7 @@ export interface BoardStage {
   category: StageCategory;
   position: number;
   statuses: { id: string; name: string; position: number }[];
+  rules: BlueprintRule[];
 }
 
 export interface Board {
@@ -644,6 +647,7 @@ export class PipelineService {
           customFields: serializeCustomFieldValues(customFieldValuesByCandidate.get(e.candidateId) ?? [], customFieldDefs),
           assignedGroupId: e.assignedGroupId,
           assignedGroupName: e.assignedGroupId ? (groupName.get(e.assignedGroupId) ?? null) : null,
+          blueprintChecklist: parseChecklist(e.blueprintChecklistJson),
         };
         (columns[row.stageId] ??= []).push(row);
       }
@@ -652,12 +656,13 @@ export class PipelineService {
         pipeline: {
           id: job.pipeline?.id ?? '',
           name: job.pipeline?.name ?? '',
-          stages: stages.map((s: { id: string; name: string; category: string; position: number; statuses: { id: string; name: string; position: number }[] }) => ({
+          stages: stages.map((s: { id: string; name: string; category: string; position: number; rulesJson?: string | null; statuses: { id: string; name: string; position: number }[] }) => ({
             id: s.id,
             name: s.name,
             category: s.category as StageCategory,
             position: s.position,
             statuses: s.statuses.map((st) => ({ id: st.id, name: st.name, position: st.position })),
+            rules: parseRules(s.rulesJson),
           })),
         },
         columns,
@@ -755,6 +760,33 @@ export class PipelineService {
         action = 'entry.stage_changed';
         didHire = category === 'hired' && previousCategory !== 'hired';
         commsStageId = resolved.stage.id;
+
+        // Blueprint hard-gate: entering a non-terminal ruled stage requires its rules to be met.
+        // Terminal (rejected/archived) moves and same-stage status changes are never gated.
+        const targetStage = resolved.stage;
+        const currentStageId = existing.status?.stageId ?? existing.status?.stage?.id ?? null;
+        const isStageChange = targetStage.id !== currentStageId;
+        const isTerminalReject = category === 'rejected' || category === 'archived';
+        if (isStageChange && !isTerminalReject) {
+          const rules = parseRules(targetStage.rulesJson);
+          if (rules.length) {
+            const [linkExamRows, feedbackRows, invitations] = await Promise.all([
+              tx.jobExam.findMany({ where: { jobId: existing.jobId }, select: { examId: true } }),
+              tx.pipelineFeedback.findMany({ where: { entryId, organizationId: context.organizationId as string }, select: { rating: true, note: true } }),
+              tx.invitation.findMany({
+                where: { candidateId: existing.candidateId },
+                include: { exam: { select: { title: true } }, attempt: { include: { result: true } } },
+              }),
+            ]);
+            const examResults = deriveEntryExamResults(invitations as any, linkExamRows.map((l) => l.examId));
+            const unmet = evaluateBlueprint(rules, {
+              feedback: feedbackRows,
+              examResults: examResults.map((r) => ({ examId: r.examId, passFail: r.passFail, score: r.score })),
+              checklistTicks: parseChecklist(existing.blueprintChecklistJson),
+            });
+            if (unmet.length) throw new BadRequestException(`Cannot move to "${targetStage.name}": ${unmet.join('; ')}`);
+          }
+        }
       } else if (dto.rejected === true) {
         // Back-compat: a caller sending only `rejected:true` (no statusId) still lands the entry
         // on the pipeline's first rejected-category status, so statusId and the rejected mirror
@@ -1041,6 +1073,22 @@ export class PipelineService {
         this.logger.error(`assignment notification failed for entry ${entryId}`, e as Error);
       }
     }
+    return { success: true };
+  }
+
+  // Ticks (or unticks) one checklist item on the entry's blueprintChecklistJson blob, merging
+  // with whatever's already there (a stage's checklist rule only cares whether its own item ids
+  // are ticked true, so unrelated ticks from other stages'/rules' items are preserved verbatim).
+  async setChecklistItem(context: TenantContext, actorUserId: string, entryId: string, itemId: string, done: boolean): Promise<{ success: true }> {
+    const orgId = context.organizationId as string;
+    await this.tenantPrisma.forTenant(context, async (tx) => {
+      const entry = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: orgId }, select: { id: true, blueprintChecklistJson: true } });
+      if (!entry) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
+      const ticks = parseChecklist(entry.blueprintChecklistJson);
+      if (done) ticks[itemId] = true; else delete ticks[itemId];
+      await tx.pipelineEntry.update({ where: { id: entryId }, data: { blueprintChecklistJson: JSON.stringify(ticks) } });
+    });
+    await this.audit.record(context, { actorUserId, action: 'entry.checklist_changed', entityType: 'pipeline_entry', entityId: entryId, metadata: { itemId, done } });
     return { success: true };
   }
 

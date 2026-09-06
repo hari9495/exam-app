@@ -13,6 +13,7 @@ import { PatchEntryDto } from './dto/patch-entry.dto';
 import { LinkExamDto } from './dto/link-exam.dto';
 import { AddFeedbackDto } from './dto/add-feedback.dto';
 import { AssignEntryDto } from './dto/assign-entry.dto';
+import { SetChecklistItemDto } from './dto/set-checklist-item.dto';
 
 @Controller()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -156,5 +157,16 @@ export class PipelineController {
     @Body() dto: AssignEntryDto,
   ) {
     return this.pipelineService.assignEntry(tenant, userId, id, { userId: dto.assigneeUserId ?? null, groupId: dto.assigneeGroupId ?? null });
+  }
+
+  @Patch('entries/:id/checklist')
+  @RequirePermissions('pipeline:manage')
+  setChecklistItem(
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentUserId() userId: string,
+    @Param('id') id: string,
+    @Body() dto: SetChecklistItemDto,
+  ) {
+    return this.pipelineService.setChecklistItem(tenant, userId, id, dto.itemId, dto.done);
   }
 }

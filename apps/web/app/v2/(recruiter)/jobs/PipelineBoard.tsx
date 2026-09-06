@@ -184,7 +184,7 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
         </div>
       </div>
 
-      {openRow && <CandidateDrawer jobId={jobId} row={openRow} onClose={() => setOpenRow(null)} />}
+      {openRow && <CandidateDrawer jobId={jobId} row={openRow} stages={board.pipeline.stages} onClose={() => setOpenRow(null)} />}
       {composeFor && <SendMessageModal entryId={composeFor.entryId} candidateId={composeFor.candidateId} candidateName={composeFor.candidateName} initial={composeFor.initial} onClose={() => setComposeFor(null)} />}
     </div>
   );

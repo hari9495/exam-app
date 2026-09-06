@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../api-client';
 import { useAuth } from '../auth-context';
-import type { Pipeline, PipelineStageConfig, PipelineStatus, StageCategory } from '../types';
+import type { BlueprintRule, Pipeline, PipelineStageConfig, PipelineStatus, StageCategory } from '../types';
 
 // Web data layer for the Task 5 pipeline-config endpoints (org_admin-only, gated behind
 // pipelines:configure). Follows useApprovals.ts's fetch-wrapper/invalidation conventions --
@@ -61,6 +61,7 @@ export interface UpdateStageInput {
   name?: string;
   category?: StageCategory;
   position?: number;
+  rules?: BlueprintRule[];
 }
 
 export function useUpdateStage() {
