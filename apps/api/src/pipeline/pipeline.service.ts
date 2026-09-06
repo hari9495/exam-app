@@ -695,7 +695,10 @@ export class PipelineService {
             name: dto.newCandidate.name,
             phone: dto.newCandidate.phone,
           },
-          update: { name: dto.newCandidate.name, phone: dto.newCandidate.phone },
+          // upsert's `update` branch is unfiltered by the soft-delete `$extends`, so it can match
+          // a soft-deleted row via the org+email unique. Clearing deletedAt/deletedByUserId here
+          // resurrects it instead of silently re-attaching a new entry to a hidden candidate.
+          update: { name: dto.newCandidate.name, phone: dto.newCandidate.phone, deletedAt: null, deletedByUserId: null },
         });
         candidateId = candidate.id;
       } else if (dto.candidateId) {

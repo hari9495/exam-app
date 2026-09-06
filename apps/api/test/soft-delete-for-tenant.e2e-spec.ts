@@ -96,4 +96,47 @@ describe('TenantPrismaService soft-delete filtering (real DB)', () => {
     expect(result?.id).toBe(deletedCandidateId);
     expect(result?.deletedAt).not.toBeNull();
   });
+
+  // Fix round: candidate.upsert (public apply + pipeline addEntry "new candidate" paths) is
+  // native Prisma, unfiltered by the $extends soft-delete hook -- so its `where` unique
+  // (organizationId_email) still matches a soft-deleted row even though the preceding
+  // `findUnique` reported "not found". Before the fix, the `update` branch never touched
+  // deletedAt, so the row silently gained new activity while staying hidden. The fix adds
+  // `deletedAt: null, deletedByUserId: null` to both call sites' `update` payload. This
+  // reproduces the exact mechanism against the real DB: an upsert with that payload against a
+  // soft-deleted row must (a) match the existing row (not create a new one), (b) clear
+  // deletedAt, and (c) land its new data where a normal forTenant read can see it.
+  it('upsert fix: an update payload with deletedAt/deletedByUserId: null resurrects a soft-deleted candidate matched via the org+email unique', async () => {
+    const email = `resurrect-${randomUUID()}@candidate.test`;
+
+    const created = await tenantPrisma.forTenant(context(), (tx) =>
+      tx.candidate.create({ data: { organizationId: orgId, email, name: 'Before Resurrect' } }),
+    );
+
+    await tenantPrisma.forTenantIncludingDeleted(context(), (tx) =>
+      tx.candidate.update({ where: { id: created.id }, data: { deletedAt: new Date() } }),
+    );
+
+    // Sanity: soft-deleted, same as the fixture candidate above.
+    expect(await tenantPrisma.forTenant(context(), (tx) => tx.candidate.findUnique({ where: { id: created.id } }))).toBeNull();
+
+    // The fixed upsert shape (mirrors public-applications.service.ts and pipeline.service.ts).
+    const resurrected = await tenantPrisma.forTenant(context(), (tx) =>
+      tx.candidate.upsert({
+        where: { organizationId_email: { organizationId: orgId, email } },
+        create: { organizationId: orgId, email, name: 'Should Not Be Created' },
+        update: { name: 'New Application Attached', deletedAt: null, deletedByUserId: null },
+      }),
+    );
+
+    expect(resurrected.id).toBe(created.id); // matched the existing (soft-deleted) row, not a fresh create
+    expect(resurrected.deletedAt).toBeNull();
+
+    const visibleAfter = await tenantPrisma.forTenant(context(), (tx) => tx.candidate.findUnique({ where: { id: created.id } }));
+    expect(visibleAfter).not.toBeNull();
+    expect(visibleAfter?.deletedAt).toBeNull();
+    expect(visibleAfter?.name).toBe('New Application Attached');
+
+    await tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => tx.candidate.deleteMany({ where: { id: created.id } }));
+  });
 });

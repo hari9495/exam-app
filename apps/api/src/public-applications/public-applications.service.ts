@@ -184,7 +184,11 @@ export class PublicApplicationsService {
       const candidate = await tx.candidate.upsert({
         where: { organizationId_email: { organizationId: job.organizationId, email: dto.email } },
         create: { organizationId: job.organizationId, email: dto.email, name: dto.name, phone: dto.phone ?? null, portalToken: randomUUID() },
-        update: nameUpdate ? { name: nameUpdate } : {},
+        // Un-hard-code: upsert's `update` branch is unfiltered by the soft-delete `$extends`
+        // (unlike findUnique above), so it can match a soft-deleted row via the org+email unique.
+        // Clearing deletedAt/deletedByUserId here resurrects it instead of silently re-attaching
+        // new activity to a still-hidden candidate. No-op for a live candidate (already null).
+        update: { ...(nameUpdate ? { name: nameUpdate } : {}), deletedAt: null, deletedByUserId: null },
       });
       // Trust boundary: this is a public, unauthenticated endpoint. Re-derive the allowed field
       // set from the DB instead of trusting the client's field list -- upsertCustomFieldValues

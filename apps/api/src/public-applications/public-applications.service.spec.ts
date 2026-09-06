@@ -354,8 +354,11 @@ describe('PublicApplicationsService', () => {
       });
 
       // stored name is two words already -- expandedName's guard means no exception applies,
-      // so the update must leave name/phone untouched entirely (not even set to the submitted values).
-      expect(writeTx.candidate.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: {} }));
+      // so the update must leave name/phone untouched entirely (not even set to the submitted values) --
+      // it still always clears deletedAt/deletedByUserId to resurrect a soft-deleted match.
+      expect(writeTx.candidate.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ update: { deletedAt: null, deletedByUserId: null } }),
+      );
       // Existing candidate re-applying is not a new applicant -- no candidate.applied event.
       expect(integrationEvents.emit).not.toHaveBeenCalled();
     });

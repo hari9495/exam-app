@@ -1072,6 +1072,10 @@ describe('PipelineService', () => {
       expect(candidateUpsert).toHaveBeenCalledWith(expect.objectContaining({
         where: { organizationId_email: { organizationId: 'org-1', email: 'amy@x.com' } },
         create: expect.objectContaining({ organizationId: 'org-1', email: 'amy@x.com', name: 'Amy', phone: '555' }),
+        // Fix round: upsert's update branch is unfiltered by the soft-delete extension, so it can
+        // match a soft-deleted row via the org+email unique -- clearing deletedAt/deletedByUserId
+        // resurrects it instead of silently attaching this new entry to a hidden candidate.
+        update: { name: 'Amy', phone: '555', deletedAt: null, deletedByUserId: null },
       }));
       expect(upsert).toHaveBeenCalledWith(expect.objectContaining({
         where: { jobId_candidateId: { jobId: 'job-1', candidateId: 'c-new' } },
