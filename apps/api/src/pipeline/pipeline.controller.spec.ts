@@ -72,13 +72,13 @@ describe('PipelineController', () => {
   });
 
   it('listJobs delegates to the service with the status filter', async () => {
-    await controller.listJobs(tenant, 'open');
-    expect(service.listJobs).toHaveBeenCalledWith(tenant, 'open');
+    await controller.listJobs(tenant, 'org_admin', 'open');
+    expect(service.listJobs).toHaveBeenCalledWith(tenant, 'open', 'org_admin');
   });
 
   it('getJob delegates to the service with the job id', async () => {
-    await controller.getJob(tenant, 'job-1');
-    expect(service.getJob).toHaveBeenCalledWith(tenant, 'job-1');
+    await controller.getJob(tenant, 'org_admin', 'job-1');
+    expect(service.getJob).toHaveBeenCalledWith(tenant, 'job-1', 'org_admin');
   });
 
   it('updateJob delegates to the service with the actor, job id, and dto', async () => {
@@ -93,8 +93,8 @@ describe('PipelineController', () => {
   });
 
   it('getPipeline delegates to the service with the job id', async () => {
-    await controller.getPipeline(tenant, 'job-1');
-    expect(service.getBoard).toHaveBeenCalledWith(tenant, 'job-1');
+    await controller.getPipeline(tenant, 'org_admin', 'job-1');
+    expect(service.getBoard).toHaveBeenCalledWith(tenant, 'job-1', 'org_admin');
   });
 
   it('addEntry delegates to the service with the actor, job id, and dto', async () => {

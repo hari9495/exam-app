@@ -21,6 +21,8 @@ import { computeCriteriaHash, validateRubricInput } from '../candidate-fit/candi
 import { PipelinesService } from './pipelines.service';
 import { recomputeGlobalStage } from '../candidates/recompute-global-stage';
 import { BlueprintRule, parseRules, parseChecklist, evaluateBlueprint } from './blueprint-rules';
+import { FieldPermissionsService } from '../field-permissions/field-permissions.service';
+import { redactFields, redactMany } from '../field-permissions/redact';
 
 export interface FeedbackRow {
   id: string;
@@ -45,7 +47,7 @@ export interface BoardRow {
   entryId: string;
   candidateId: string;
   candidateName: string;
-  candidateEmail: string;
+  candidateEmail: string | null;
   statusId: string;
   stageId: string;
   category: StageCategory;
@@ -155,6 +157,7 @@ export class PipelineService {
     private readonly notifications: NotificationsService,
     private readonly approvals: ApprovalsService,
     private readonly pipelines: PipelinesService,
+    private readonly fieldPerms: FieldPermissionsService,
   ) {}
 
   async createJob(
@@ -238,7 +241,7 @@ export class PipelineService {
     return (await this.pipelines.getDefaultPipeline(context)).id;
   }
 
-  async listJobs(context: TenantContext, status?: 'open' | 'closed'): Promise<JobWithCounts[]> {
+  async listJobs(context: TenantContext, status: 'open' | 'closed' | undefined, role: string): Promise<JobWithCounts[]> {
     const jobs = await this.tenantPrisma.forTenant(context, async (tx) => {
       const jobs = await tx.job.findMany({
         where: { organizationId: context.organizationId as string, ...(status ? { status } : {}) },
@@ -281,7 +284,9 @@ export class PipelineService {
 
     // One batched call for the whole list, not one per job -- avoids N+1.
     const approvalByJobId = await this.approvals.getSummariesFor(context, 'job', jobs.map((j) => j.id));
-    return jobs.map((job) => ({ ...job, approval: approvalByJobId.get(job.id) ?? null }));
+    const result = jobs.map((job) => ({ ...job, approval: approvalByJobId.get(job.id) ?? null }));
+    const hiddenJ = await this.fieldPerms.getHiddenFields(context, role, 'job');
+    return redactMany(result, hiddenJ);
   }
 
   // Single-job version of the counts rollup above (getJob's detail view, and standalone callers
@@ -306,7 +311,7 @@ export class PipelineService {
     });
   }
 
-  async getJob(context: TenantContext, jobId: string): Promise<Job & { linkedExams: { examId: string; title: string }[]; approval: ApprovalSummary | null; customFields: CustomFieldRead[] }> {
+  async getJob(context: TenantContext, jobId: string, role: string): Promise<Job & { linkedExams: { examId: string; title: string }[]; approval: ApprovalSummary | null; customFields: CustomFieldRead[] }> {
     const { job, linkedExams, customFields } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const organizationId = context.organizationId as string;
       const job = await tx.job.findFirst({ where: { id: jobId, organizationId } });
@@ -321,7 +326,8 @@ export class PipelineService {
       return { job, linkedExams, customFields: serializeCustomFieldValues(rows, defs) };
     });
     const approval = (await this.approvals.getSummariesFor(context, 'job', [jobId])).get(jobId) ?? null;
-    return { ...job, linkedExams, customFields, approval };
+    const hiddenJ = await this.fieldPerms.getHiddenFields(context, role, 'job');
+    return redactFields({ ...job, linkedExams, customFields, approval }, hiddenJ);
   }
 
   async updateJob(
@@ -522,10 +528,11 @@ export class PipelineService {
 
   // Candidate/pipeline CSV export for ATS/HRIS interchange. Formula-injection-safe (candidate
   // name/email/phone come from the public apply form).
-  async exportJobCandidatesCsv(context: TenantContext, jobId: string): Promise<string> {
+  async exportJobCandidatesCsv(context: TenantContext, jobId: string, role: string): Promise<string> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const job = await tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } });
       if (!job) throw new NotFoundException(`Job ${jobId} not found`);
+      const hiddenC = await this.fieldPerms.getHiddenFields(context, role, 'candidate');
       const entries = await tx.pipelineEntry.findMany({
         where: { jobId },
         select: {
@@ -539,8 +546,8 @@ export class PipelineService {
       const header = ['Name', 'Email', 'Phone', 'Stage', 'Status', 'Applied At'];
       const rows = entries.map((e) => [
         e.candidate?.name ?? '',
-        e.candidate?.email ?? '',
-        e.candidate?.phone ?? '',
+        hiddenC.has('email') ? '' : (e.candidate?.email ?? ''),
+        hiddenC.has('phone') ? '' : (e.candidate?.phone ?? ''),
         e.status?.stage.name ?? '',
         e.rejected ? 'rejected' : 'active',
         e.createdAt.toISOString(),
@@ -567,13 +574,14 @@ export class PipelineService {
     return { success: true };
   }
 
-  async getBoard(context: TenantContext, jobId: string): Promise<Board> {
+  async getBoard(context: TenantContext, jobId: string, role: string): Promise<Board> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const job = await tx.job.findFirst({
         where: { id: jobId, organizationId: context.organizationId as string },
         include: { pipeline: { include: { stages: { orderBy: { position: 'asc' }, include: { statuses: { orderBy: { position: 'asc' } } } } } } },
       });
       if (!job) throw new NotFoundException(`Job ${jobId} not found`);
+      const hiddenC = await this.fieldPerms.getHiddenFields(context, role, 'candidate');
       const links = await tx.jobExam.findMany({ where: { jobId }, select: { examId: true } });
       const linkedExamIds = links.map((l) => l.examId);
       const entries = await tx.pipelineEntry.findMany({
@@ -650,6 +658,10 @@ export class PipelineService {
           blueprintChecklist: parseChecklist(e.blueprintChecklistJson),
         };
         (columns[row.stageId] ??= []).push(row);
+      }
+
+      for (const stageId of Object.keys(columns)) {
+        columns[stageId] = redactMany(columns[stageId], hiddenC, { email: 'candidateEmail' });
       }
 
       return {
