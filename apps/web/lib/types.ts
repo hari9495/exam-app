@@ -804,13 +804,14 @@ export interface Plan {
 }
 
 export type ApprovalGate = 'requisition' | 'offer';
-export type ApproverType = 'users' | 'reporting_manager' | 'hiring_manager';
+export type ApproverType = 'users' | 'reporting_manager' | 'hiring_manager' | 'group';
 export interface ApprovalChainStep {
   position: number;
   name: string;
   approverType: ApproverType;
   approverUserIds: string[];
   managerLevel: number | null;
+  groupId: string | null;
 }
 export interface ApprovalChain {
   gate: ApprovalGate;

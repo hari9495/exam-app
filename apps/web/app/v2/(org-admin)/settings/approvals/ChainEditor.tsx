@@ -8,14 +8,16 @@ import { ChevronUp, ChevronDown, Trash2, Plus } from 'lucide-react';
 import { Combobox, type ComboOption } from '../../../../../components/ui-v2/Combobox';
 import { TextField } from '../../../../../components/ui-v2/TextField';
 import { useTeammates } from '../../../../../lib/hooks/useUserDirectory';
+import { useUserGroupDirectory } from '../../../../../lib/hooks/useUserGroups';
 
-export type ApproverType = 'users' | 'reporting_manager' | 'hiring_manager';
+export type ApproverType = 'users' | 'reporting_manager' | 'hiring_manager' | 'group';
 
 export type EditorStep = {
   name: string;
   approverType: ApproverType;
   approverUserIds: string[];
   managerLevel: number | null;
+  groupId?: string;
 };
 
 export type ChainAction =
@@ -50,6 +52,7 @@ const APPROVER_TYPE_OPTIONS: ComboOption[] = [
   { value: 'users', label: 'Users' },
   { value: 'reporting_manager', label: 'Reporting manager' },
   { value: 'hiring_manager', label: 'Hiring manager' },
+  { value: 'group', label: 'Group' },
 ];
 
 const MANAGER_LEVEL_OPTIONS: ComboOption[] = [
@@ -64,6 +67,8 @@ const iconBtn: React.CSSProperties = { display: 'inline-grid', placeItems: 'cent
 export function ChainEditor({ steps, dispatch }: { steps: EditorStep[]; dispatch: (action: ChainAction) => void }) {
   const { data: teammateData } = useTeammates();
   const teammates = (teammateData ?? []).filter((u) => u.status === 'active');
+  const { data: groupData } = useUserGroupDirectory();
+  const groupOptions: ComboOption[] = (groupData ?? []).map((g) => ({ value: g.id, label: g.name }));
 
   return (
     <div>
@@ -131,6 +136,20 @@ export function ChainEditor({ steps, dispatch }: { steps: EditorStep[]; dispatch
                 onChange={(v) => dispatch({ type: 'edit', index, patch: { managerLevel: Number(v) } })}
                 width={170}
               />
+            </div>
+          ) : step.approverType === 'group' ? (
+            <div>
+              <label className="v2-label">Group</label>
+              {groupOptions.length === 0 ? (
+                <p style={{ fontSize: 12.5, color: muted, margin: 0 }}>No groups found.</p>
+              ) : (
+                <Combobox
+                  options={groupOptions}
+                  value={step.groupId ?? ''}
+                  onChange={(v) => dispatch({ type: 'edit', index, patch: { groupId: v } })}
+                  width={200}
+                />
+              )}
             </div>
           ) : null}
 
