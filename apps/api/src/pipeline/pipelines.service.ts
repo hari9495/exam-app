@@ -4,8 +4,18 @@ import { TenantContext, TenantPrismaService, AuditService, STAGE_CATEGORIES, Sta
 import { CreatePipelineDto } from './dto/create-pipeline.dto';
 import { UpdateStageDto } from './dto/update-stage.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
+import { BlueprintRule, parseRules, validateBlueprintRules } from './blueprint-rules';
 
 export type PipelineWithStages = Pipeline & { stages: (PipelineStage & { statuses: PipelineStatus[] })[] };
+
+// Config-API stage response shape: rulesJson (raw, internal) is replaced with parsed `rules` --
+// never send the raw JSON string to clients.
+type StageResponse<T extends { rulesJson?: string | null }> = Omit<T, 'rulesJson'> & { rules: BlueprintRule[] };
+
+function toStageResponse<T extends { rulesJson?: string | null }>(stage: T): StageResponse<T> {
+  const { rulesJson, ...rest } = stage;
+  return { ...rest, rules: parseRules(rulesJson) } as StageResponse<T>;
+}
 
 // Not brief-requested dto files (Task 5 owns request validation) -- plain shapes for the
 // service's own create methods, where all fields are mandatory (unlike the *update* dtos).
@@ -29,10 +39,11 @@ export class PipelinesService {
     private readonly audit: AuditService,
   ) {}
 
-  async listPipelines(context: TenantContext): Promise<PipelineWithStages[]> {
-    return this.tenantPrisma.forTenant(context, (tx) =>
+  async listPipelines(context: TenantContext) {
+    const pipelines = (await this.tenantPrisma.forTenant(context, (tx) =>
       tx.pipeline.findMany({ where: { organizationId: context.organizationId as string }, include: STAGE_INCLUDE }),
-    ) as Promise<PipelineWithStages[]>;
+    )) as PipelineWithStages[];
+    return pipelines.map((p) => ({ ...p, stages: p.stages.map(toStageResponse) }));
   }
 
   async getDefaultPipeline(context: TenantContext): Promise<PipelineWithStages> {
@@ -120,10 +131,11 @@ export class PipelinesService {
     });
   }
 
-  async updateStage(context: TenantContext, actorUserId: string, stageId: string, dto: UpdateStageDto): Promise<PipelineStage> {
+  async updateStage(context: TenantContext, actorUserId: string, stageId: string, dto: UpdateStageDto) {
     if (dto.category !== undefined) this.assertValidCategory(dto.category);
+    const rulesJson = dto.rules !== undefined ? JSON.stringify(validateBlueprintRules(dto.rules)) : undefined;
 
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+    const updated = await this.tenantPrisma.forTenant(context, async (tx) => {
       const organizationId = context.organizationId as string;
       const existing = await tx.pipelineStage.findFirst({ where: { id: stageId, organizationId } });
       if (!existing) throw new NotFoundException('Stage not found');
@@ -134,6 +146,7 @@ export class PipelinesService {
           ...(dto.name !== undefined ? { name: dto.name } : {}),
           ...(dto.category !== undefined ? { category: dto.category } : {}),
           ...(dto.position !== undefined ? { position: dto.position } : {}),
+          ...(rulesJson !== undefined ? { rulesJson } : {}),
         },
       });
 
@@ -146,6 +159,8 @@ export class PipelinesService {
 
       return updated;
     });
+
+    return toStageResponse(updated as PipelineStage);
   }
 
   async deleteStage(context: TenantContext, actorUserId: string, stageId: string): Promise<void> {

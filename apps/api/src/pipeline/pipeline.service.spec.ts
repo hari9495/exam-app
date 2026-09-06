@@ -569,6 +569,25 @@ describe('PipelineService', () => {
     expect(board.columns['st-rejected'][0]).toMatchObject({ entryId: 'en2', category: 'rejected', rejectedReason: 'failed screen' });
   });
 
+  it('getBoard includes parsed rules per stage (null rulesJson -> rules: []) and never raw rulesJson', async () => {
+    const rules = [{ id: 'r1', type: 'exam_passed', minScore: 70 }];
+    const pipeline = boardPipeline();
+    (pipeline.stages[0] as any).rulesJson = JSON.stringify(rules);
+    (pipeline.stages[1] as any).rulesJson = null;
+    const tx = {
+      job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', pipeline }) },
+      jobExam: { findMany: jest.fn().mockResolvedValue([]) },
+      pipelineEntry: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+    const board = await service.getBoard(context, 'job-1');
+
+    expect(board.pipeline.stages[0].rules).toEqual(rules);
+    expect(board.pipeline.stages[1].rules).toEqual([]);
+    expect(board.pipeline.stages[0]).not.toHaveProperty('rulesJson');
+  });
+
   it('getBoard includes fit fields per entry (score, status, stale)', async () => {
     // Job's current criteria hash is computed from these fields (see computeCriteriaHash).
     const job = { id: 'job-1', title: 'Backend Eng', description: 'desc', fitCriteria: 'crit', fitRubric: null, pipeline: boardPipeline() };

@@ -14,6 +14,7 @@ import { ApprovalsService, ApprovalSummary, SubmitResult } from '../approvals/ap
 import { computeCriteriaHash, validateRubricInput } from '../candidate-fit/candidate-fit.core';
 import { PipelinesService } from './pipelines.service';
 import { recomputeGlobalStage } from '../candidates/recompute-global-stage';
+import { BlueprintRule, parseRules } from './blueprint-rules';
 
 export interface FeedbackRow {
   id: string;
@@ -60,6 +61,7 @@ export interface BoardStage {
   category: StageCategory;
   position: number;
   statuses: { id: string; name: string; position: number }[];
+  rules: BlueprintRule[];
 }
 
 export interface Board {
@@ -563,12 +565,13 @@ export class PipelineService {
         pipeline: {
           id: job.pipeline?.id ?? '',
           name: job.pipeline?.name ?? '',
-          stages: stages.map((s: { id: string; name: string; category: string; position: number; statuses: { id: string; name: string; position: number }[] }) => ({
+          stages: stages.map((s: { id: string; name: string; category: string; position: number; rulesJson?: string | null; statuses: { id: string; name: string; position: number }[] }) => ({
             id: s.id,
             name: s.name,
             category: s.category as StageCategory,
             position: s.position,
             statuses: s.statuses.map((st) => ({ id: st.id, name: st.name, position: st.position })),
+            rules: parseRules(s.rulesJson),
           })),
         },
         columns,

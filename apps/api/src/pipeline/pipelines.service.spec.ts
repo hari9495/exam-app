@@ -6,7 +6,7 @@ describe('PipelinesService guardrails', () => {
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
   let tx: {
-    pipeline: { findFirst: jest.Mock; create: jest.Mock; delete: jest.Mock };
+    pipeline: { findFirst: jest.Mock; findMany: jest.Mock; create: jest.Mock; delete: jest.Mock };
     pipelineStage: { findFirst: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock; delete: jest.Mock };
     pipelineStatus: { findFirst: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock; delete: jest.Mock };
     pipelineEntry: { count: jest.Mock };
@@ -15,7 +15,7 @@ describe('PipelinesService guardrails', () => {
 
   beforeEach(() => {
     tx = {
-      pipeline: { findFirst: jest.fn(), create: jest.fn(), delete: jest.fn() },
+      pipeline: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), delete: jest.fn() },
       pipelineStage: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
       pipelineStatus: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
       pipelineEntry: { count: jest.fn() },
@@ -72,6 +72,47 @@ describe('PipelinesService guardrails', () => {
   it('rejects an invalid category on updateStage', async () => {
     await expect(service.updateStage(context, 'u1', 's1', { category: 'bogus' as any })).rejects.toThrow(BadRequestException);
     expect(tx.pipelineStage.update).not.toHaveBeenCalled();
+  });
+
+  it('updateStage persists valid rules as serialized rulesJson and returns parsed rules (rulesJson omitted)', async () => {
+    const rules = [{ id: 'r1', type: 'feedback', minCount: 2 }];
+    tx.pipelineStage.findFirst.mockResolvedValue({ id: 's1', organizationId: 'org-1' });
+    tx.pipelineStage.update.mockResolvedValue({ id: 's1', name: 'X', rulesJson: JSON.stringify(rules) });
+
+    const result = await service.updateStage(context, 'u1', 's1', { rules } as any);
+
+    expect(tx.pipelineStage.update).toHaveBeenCalledWith({
+      where: { id: 's1' },
+      data: { rulesJson: JSON.stringify(rules) },
+    });
+    expect(result).toEqual({ id: 's1', name: 'X', rules });
+    expect(result).not.toHaveProperty('rulesJson');
+  });
+
+  it('updateStage rejects an invalid rule shape without touching the DB', async () => {
+    await expect(service.updateStage(context, 'u1', 's1', { rules: [{ type: 'bogus' }] } as any)).rejects.toThrow(BadRequestException);
+    expect(tx.pipelineStage.update).not.toHaveBeenCalled();
+  });
+
+  it('listPipelines maps rulesJson to parsed rules per stage (null rulesJson -> rules: [])', async () => {
+    const rules = [{ id: 'r1', type: 'checklist', items: [{ id: 'i1', label: 'Signed NDA' }] }];
+    tx.pipeline.findMany.mockResolvedValue([
+      {
+        id: 'p1',
+        name: 'Default',
+        stages: [
+          { id: 's1', name: 'Applied', rulesJson: null, statuses: [] },
+          { id: 's2', name: 'Interview', rulesJson: JSON.stringify(rules), statuses: [] },
+        ],
+      },
+    ]);
+
+    const result = await service.listPipelines(context);
+
+    expect(result[0].stages[0]).toEqual({ id: 's1', name: 'Applied', statuses: [], rules: [] });
+    expect(result[0].stages[0]).not.toHaveProperty('rulesJson');
+    expect(result[0].stages[1]).toEqual({ id: 's2', name: 'Interview', statuses: [], rules });
+    expect(result[0].stages[1]).not.toHaveProperty('rulesJson');
   });
 
   it('refuses to delete a status that still has entries', async () => {
