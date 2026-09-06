@@ -52,6 +52,7 @@ import { IntegrationsModule } from './integrations/integrations.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ApprovalsModule } from './approvals/approvals.module';
 import { CustomFieldsModule } from './custom-fields/custom-fields.module';
+import { RecycleBinModule } from './recycle-bin/recycle-bin.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
 import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
 import { SentryShutdownFlush } from './sentry-shutdown.provider';
@@ -110,6 +111,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     NotificationsModule,
     ApprovalsModule,
     CustomFieldsModule,
+    RecycleBinModule,
   ],
   controllers: [HealthController],
   providers: [
