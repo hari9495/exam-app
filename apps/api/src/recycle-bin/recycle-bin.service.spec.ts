@@ -109,6 +109,17 @@ describe('RecycleBinService', () => {
       await expect(service.purge(context, 'walk-in-group', 'missing')).rejects.toThrow(NotFoundException);
     });
 
+    // Real-world trigger: `Job.pipelineId -> Pipeline` and `CandidateEmail.candidateId -> Candidate`
+    // are `onDelete: NoAction` FKs, so purging a Pipeline still referenced by a Job (or a Candidate
+    // with any CandidateEmail row) throws P2003 -- must surface as a clean 409, never a raw 500,
+    // and we never auto-cascade the hard-delete.
+    it('maps P2003 (foreign-key constraint violation) to ConflictException', async () => {
+      const tx = { pipeline: { delete: jest.fn().mockRejectedValue(knownRequestError('P2003')) } };
+      tenantPrisma.forTenantIncludingDeleted.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.purge(context, 'pipeline', 'p1')).rejects.toThrow(ConflictException);
+    });
+
     it('rejects an unknown entityType with BadRequestException without touching the client', async () => {
       await expect(service.purge(context, 'widget' as any, 'x1')).rejects.toThrow(BadRequestException);
       expect(tenantPrisma.forTenantIncludingDeleted).not.toHaveBeenCalled();

@@ -100,11 +100,20 @@ export class RecycleBinService {
   // 409 per the brief; this is defensive/forward-compatible -- against today's schema the
   // organizationId+name/email indexes are plain (non-partial), so a live row can never occupy the
   // same key a soft-deleted row already holds (see recycle-bin.e2e-spec.ts), but map it correctly
-  // regardless in case that changes.
+  // regardless in case that changes. P2003 (foreign-key constraint violation) is what `purge`'s
+  // hard-delete throws when the row is still referenced by an `onDelete: NoAction` FK (e.g. a
+  // Pipeline still referenced by a Job, or a Candidate with CandidateEmail rows) -> 409; we never
+  // auto-cascade a hard-delete, so surface a clean conflict telling the admin to restore or clear
+  // the referencing records first.
   private mapPrismaError(error: unknown, entityType: EntityType): Error {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === 'P2025') return new NotFoundException(`No soft-deleted ${entityType} with id matching this request`);
       if (error.code === 'P2002') return new ConflictException(`Restoring this ${entityType} would collide with an existing record`);
+      if (error.code === 'P2003') {
+        return new ConflictException(
+          `Cannot permanently delete this ${entityType} — it is still referenced by related records. Restore it, or remove those records first.`,
+        );
+      }
     }
     return error as Error;
   }
