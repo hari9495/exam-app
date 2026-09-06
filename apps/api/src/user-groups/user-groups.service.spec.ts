@@ -9,6 +9,7 @@ describe('UserGroupsService', () => {
     userGroup: { findMany: jest.Mock; findFirst: jest.Mock; create: jest.Mock; update: jest.Mock; delete: jest.Mock };
     userGroupMember: { findMany: jest.Mock; createMany: jest.Mock; deleteMany: jest.Mock };
     user: { findMany: jest.Mock };
+    pipelineEntry: { updateMany: jest.Mock };
   };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
@@ -17,6 +18,7 @@ describe('UserGroupsService', () => {
       userGroup: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
       userGroupMember: { findMany: jest.fn(), createMany: jest.fn(), deleteMany: jest.fn() },
       user: { findMany: jest.fn() },
+      pipelineEntry: { updateMany: jest.fn() },
     };
     tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
@@ -152,11 +154,24 @@ describe('UserGroupsService', () => {
       expect(result).toEqual({ id: 'g1' });
     });
 
+    it('clears assignedGroupId on pipeline entries still assigned to the deleted group', async () => {
+      tx.userGroup.findFirst.mockResolvedValue({ id: 'g1' });
+      tx.userGroup.delete.mockResolvedValue({ id: 'g1' });
+
+      await service.remove(context, 'actor-1', 'g1');
+
+      expect(tx.pipelineEntry.updateMany).toHaveBeenCalledWith({
+        where: { organizationId: 'org-1', assignedGroupId: 'g1' },
+        data: { assignedGroupId: null },
+      });
+    });
+
     it('throws NotFoundException for a missing group and skips deletes', async () => {
       tx.userGroup.findFirst.mockResolvedValue(null);
 
       await expect(service.remove(context, 'actor-1', 'missing')).rejects.toThrow(NotFoundException);
       expect(tx.userGroupMember.deleteMany).not.toHaveBeenCalled();
+      expect(tx.pipelineEntry.updateMany).not.toHaveBeenCalled();
       expect(tx.userGroup.delete).not.toHaveBeenCalled();
     });
   });

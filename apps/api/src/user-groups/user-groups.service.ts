@@ -85,6 +85,7 @@ export class UserGroupsService {
       const existing = await tx.userGroup.findFirst({ where: { id, organizationId: orgId }, select: { id: true } });
       if (!existing) throw new NotFoundException(`User group ${id} not found`);
       await tx.userGroupMember.deleteMany({ where: { organizationId: orgId, groupId: id } });
+      await tx.pipelineEntry.updateMany({ where: { organizationId: orgId, assignedGroupId: id }, data: { assignedGroupId: null } });
       await tx.userGroup.delete({ where: { id } });
       return { id };
     });
