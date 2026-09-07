@@ -1204,7 +1204,7 @@ model InterviewPanelist {
 model OfferTemplate {
   id             String   @id @default(uuid()) @db.UniqueIdentifier
   organizationId String   @map("organization_id") @db.UniqueIdentifier
-  name           String   @default("Offer letter") @db.NVarChar(200)
+  name           String   @default("Default offer letter") @db.NVarChar(200)
   isDefault      Boolean  @default(false) @map("is_default")
   subject        String   @db.NVarChar(Max)
   body           String   @db.NVarChar(Max)
