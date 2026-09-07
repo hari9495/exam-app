@@ -59,6 +59,7 @@ model Organization {
   businessHoursJson      String?           @map("business_hours_json") @db.NVarChar(Max)
   holidaysJson           String?           @map("holidays_json") @db.NVarChar(Max)
   fieldPermissionsJson   String?           @map("field_permissions_json") @db.NVarChar(Max)
+  recordVisibilityEnabled Boolean          @default(false) @map("record_visibility_enabled")
   planId                 String            @map("plan_id") @db.UniqueIdentifier
   plan                   Plan              @relation(fields: [planId], references: [id])
   billingStatus          String            @default("active") @map("billing_status")

@@ -36,3 +36,4 @@ export * from './pipeline/pipeline-categories';
 export * from './pipeline/global-stage';
 export * from './scheduling/business-hours';
 export * from './field-permissions/field-permissions';
+export * from './record-visibility/record-visibility';
