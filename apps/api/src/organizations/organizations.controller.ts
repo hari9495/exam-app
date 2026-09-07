@@ -8,6 +8,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
 import { OrganizationsService } from './organizations.service';
+import { ApiUsageService } from '../api-usage/api-usage.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateBrandingColorsDto } from './dto/update-branding-colors.dto';
 import { UpdateSmtpSettingsDto } from './dto/update-smtp-settings.dto';
@@ -18,12 +19,16 @@ import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update
 import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
 import { UpdateBusinessHoursDto } from './dto/update-business-hours.dto';
 import { UpdateApplyConsentDto } from './dto/update-apply-consent.dto';
+import { ApiUsageQueryDto } from './dto/api-usage-query.dto';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 
 @Controller('organizations')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class OrganizationsController {
-  constructor(private readonly organizationsService: OrganizationsService) {}
+  constructor(
+    private readonly organizationsService: OrganizationsService,
+    private readonly apiUsage: ApiUsageService,
+  ) {}
 
   @Post()
   @RequirePermissions('platform:manage_organizations')
@@ -61,6 +66,12 @@ export class OrganizationsController {
   @RequirePermissions('org:manage_settings')
   getIntegrations(@CurrentTenant() tenant: TenantContext) {
     return this.organizationsService.getIntegrations(tenant);
+  }
+
+  @Get('api-usage')
+  @RequirePermissions('org:manage_settings')
+  getApiUsage(@CurrentTenant() tenant: TenantContext, @Query() query: ApiUsageQueryDto) {
+    return this.apiUsage.report(tenant, query.window ?? 30);
   }
 
   @Patch('integrations/smtp')

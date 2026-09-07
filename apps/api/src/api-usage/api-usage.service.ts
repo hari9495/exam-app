@@ -3,6 +3,13 @@ import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
 
 export type ApiUsageKind = 'request' | 'throttled';
 
+export interface ApiUsageReport {
+  window: number;
+  totals: { requests: number; throttled: number };
+  byEndpoint: { endpoint: string; requests: number; throttled: number }[];
+  byDay: { day: string; requests: number; throttled: number }[];
+}
+
 // UTC-midnight of the given instant, as a Date -- the @db.Date column stores date-only,
 // so the time component is irrelevant, but normalizing keeps the unique key stable within a day.
 export function utcDay(now: Date): Date {
@@ -39,5 +46,35 @@ export class ApiUsageService {
       const detail = err instanceof Error ? err.message : String(err);
       this.logger.warn(`api-usage: failed to record ${kind} for ${endpoint}: ${detail}`);
     }
+  }
+
+  // window is validated to 30 | 90 at the controller; inclusive of today (gte today-(window-1)).
+  async report(context: TenantContext, window: number, now = new Date()): Promise<ApiUsageReport> {
+    const since = utcDay(new Date(now.getTime() - (window - 1) * 24 * 60 * 60 * 1000));
+    const rows = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.apiUsageDaily.findMany({ where: { day: { gte: since } }, orderBy: [{ day: 'asc' }, { endpoint: 'asc' }] }),
+    );
+    const totals = { requests: 0, throttled: 0 };
+    const byEndpoint = new Map<string, { endpoint: string; requests: number; throttled: number }>();
+    const byDay = new Map<string, { day: string; requests: number; throttled: number }>();
+    for (const r of rows) {
+      totals.requests += r.requestCount;
+      totals.throttled += r.throttledCount;
+      const e = byEndpoint.get(r.endpoint) ?? { endpoint: r.endpoint, requests: 0, throttled: 0 };
+      e.requests += r.requestCount;
+      e.throttled += r.throttledCount;
+      byEndpoint.set(r.endpoint, e);
+      const key = r.day.toISOString().slice(0, 10);
+      const d = byDay.get(key) ?? { day: key, requests: 0, throttled: 0 };
+      d.requests += r.requestCount;
+      d.throttled += r.throttledCount;
+      byDay.set(key, d);
+    }
+    return {
+      window,
+      totals,
+      byEndpoint: [...byEndpoint.values()].sort((a, b) => b.requests - a.requests),
+      byDay: [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day)),
+    };
   }
 }

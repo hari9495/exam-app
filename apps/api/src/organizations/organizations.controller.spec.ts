@@ -5,6 +5,7 @@ import { OrganizationsService } from './organizations.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { PERMISSIONS_KEY } from '../rbac/permissions.decorator';
+import { ApiUsageService } from '../api-usage/api-usage.service';
 
 class MockGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
@@ -34,7 +35,10 @@ describe('OrganizationsController pipeline settings', () => {
     };
     const moduleRef = await Test.createTestingModule({
       controllers: [OrganizationsController],
-      providers: [{ provide: OrganizationsService, useValue: service }],
+      providers: [
+        { provide: OrganizationsService, useValue: service },
+        { provide: ApiUsageService, useValue: {} },
+      ],
     })
       .overrideGuard(JwtAuthGuard)
       .useClass(MockGuard)
@@ -93,6 +97,45 @@ describe('OrganizationsController pipeline settings', () => {
   });
 });
 
+describe('OrganizationsController api-usage', () => {
+  let controller: OrganizationsController;
+  let apiUsage: { report: jest.Mock };
+  const tenant = { organizationId: 'org-1', isSuperAdmin: false } as any;
+
+  beforeEach(async () => {
+    apiUsage = { report: jest.fn().mockResolvedValue({ window: 30, totals: { requests: 0, throttled: 0 }, byEndpoint: [], byDay: [] }) };
+    const moduleRef = await Test.createTestingModule({
+      controllers: [OrganizationsController],
+      providers: [
+        { provide: OrganizationsService, useValue: {} },
+        { provide: ApiUsageService, useValue: apiUsage },
+      ],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useClass(MockGuard)
+      .overrideGuard(PermissionsGuard)
+      .useClass(MockGuard)
+      .compile();
+    controller = moduleRef.get(OrganizationsController);
+  });
+
+  it('GET /organizations/api-usage delegates to ApiUsageService.report with default window 30', async () => {
+    const result = await controller.getApiUsage(tenant, {});
+    expect(apiUsage.report).toHaveBeenCalledWith(tenant, 30);
+    expect(result).toEqual({ window: 30, totals: { requests: 0, throttled: 0 }, byEndpoint: [], byDay: [] });
+  });
+
+  it('GET /organizations/api-usage passes an explicit window through', async () => {
+    await controller.getApiUsage(tenant, { window: 90 });
+    expect(apiUsage.report).toHaveBeenCalledWith(tenant, 90);
+  });
+
+  it('gates the api-usage getter behind org:manage_settings', () => {
+    const permissions = Reflect.getMetadata(PERMISSIONS_KEY, OrganizationsController.prototype.getApiUsage);
+    expect(permissions).toEqual(['org:manage_settings']);
+  });
+});
+
 describe('OrganizationsController apply-consent', () => {
   let controller: OrganizationsController;
   let service: { getApplyConsent: jest.Mock; setApplyConsent: jest.Mock };
@@ -105,7 +148,10 @@ describe('OrganizationsController apply-consent', () => {
     };
     const moduleRef = await Test.createTestingModule({
       controllers: [OrganizationsController],
-      providers: [{ provide: OrganizationsService, useValue: service }],
+      providers: [
+        { provide: OrganizationsService, useValue: service },
+        { provide: ApiUsageService, useValue: {} },
+      ],
     })
       .overrideGuard(JwtAuthGuard)
       .useClass(MockGuard)
