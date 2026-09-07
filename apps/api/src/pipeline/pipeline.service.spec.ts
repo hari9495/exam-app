@@ -36,6 +36,7 @@ describe('PipelineService', () => {
   let notifications: { createMentions: jest.Mock; notify: jest.Mock };
   let approvals: { getChains: jest.Mock; submit: jest.Mock; isConfigurer: jest.Mock; cancelForSubject: jest.Mock; getSummariesFor: jest.Mock };
   let pipelines: { getDefaultPipeline: jest.Mock; resolveStatus: jest.Mock };
+  let fieldPerms: { getHiddenFields: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
   const chains = (requisitionEnabled: boolean) => ({
@@ -61,7 +62,10 @@ describe('PipelineService', () => {
       getDefaultPipeline: jest.fn().mockResolvedValue({ id: 'pipeline-default' }),
       resolveStatus: jest.fn(),
     };
-    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, integrationEvents as any, notifications as any, approvals as any, pipelines as any);
+    // Empty set by default (matches getHiddenFields' own contract for an ungoverned/admin role) --
+    // pre-existing tests below pass role 'org_admin' and don't care about redaction.
+    fieldPerms = { getHiddenFields: jest.fn().mockResolvedValue(new Set()) };
+    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, integrationEvents as any, notifications as any, approvals as any, pipelines as any, fieldPerms as any);
   });
 
   it('createJob writes org-scoped and audits', async () => {
@@ -181,7 +185,7 @@ describe('PipelineService', () => {
       };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
-      const job = await service.getJob(context, 'job-1');
+      const job = await service.getJob(context, 'job-1', 'org_admin');
 
       expect(job.customFields).toEqual([{ definitionId: 'def-1', key: 'source', label: 'Source', fieldType: 'text', value: 'Referral' }]);
     });
@@ -476,7 +480,7 @@ describe('PipelineService', () => {
   it('getJob throws NotFoundException when not in org', async () => {
     const tx = { job: { findFirst: jest.fn().mockResolvedValue(null) } };
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
-    await expect(service.getJob(context, 'missing-job')).rejects.toThrow(NotFoundException);
+    await expect(service.getJob(context, 'missing-job', 'org_admin')).rejects.toThrow(NotFoundException);
   });
 
   it('getJob surfaces publicApplyEnabled and applyToken from the row', async () => {
@@ -488,7 +492,7 @@ describe('PipelineService', () => {
     });
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
-    const job = await service.getJob(context, 'job-1');
+    const job = await service.getJob(context, 'job-1', 'org_admin');
 
     expect(job.publicApplyEnabled).toBe(true);
     expect(job.applyToken).toBe('tok-abc');
@@ -504,7 +508,7 @@ describe('PipelineService', () => {
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx()));
       approvals.getSummariesFor.mockResolvedValue(new Map());
 
-      const job = await service.getJob(context, 'job-1');
+      const job = await service.getJob(context, 'job-1', 'org_admin');
 
       expect(approvals.getSummariesFor).toHaveBeenCalledWith(context, 'job', ['job-1']);
       expect(job.approval).toBeNull();
@@ -515,7 +519,7 @@ describe('PipelineService', () => {
       const summary = { status: 'pending_approval', currentStep: 1, steps: [{ name: 'Step 1', state: 'approved' as const }] };
       approvals.getSummariesFor.mockResolvedValue(new Map([['job-1', summary]]));
 
-      const job = await service.getJob(context, 'job-1');
+      const job = await service.getJob(context, 'job-1', 'org_admin');
 
       expect(job.approval).toEqual(summary);
     });
@@ -693,7 +697,7 @@ describe('PipelineService', () => {
     });
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
-    const board = await service.getBoard(context, 'job-1');
+    const board = await service.getBoard(context, 'job-1', 'org_admin');
 
     expect(board.pipeline.stages.map((s) => s.name)).toEqual(['applied', 'interview', 'rejected']);
     expect(board.columns['st-applied'].map((r) => r.candidateId)).toContain('c1');
@@ -718,7 +722,7 @@ describe('PipelineService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
-    const board = await service.getBoard(context, 'job-1');
+    const board = await service.getBoard(context, 'job-1', 'org_admin');
 
     expect(board.pipeline.stages[0].rules).toEqual(rules);
     expect(board.pipeline.stages[1].rules).toEqual([]);
@@ -751,7 +755,7 @@ describe('PipelineService', () => {
     });
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
-    const board = await service.getBoard(context, 'job-1');
+    const board = await service.getBoard(context, 'job-1', 'org_admin');
 
     const scored = board.columns['st-applied'].find((r) => r.entryId === 'en1')!;
     expect(scored.fitScore).toBe(77);
@@ -784,7 +788,7 @@ describe('PipelineService', () => {
     });
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
-    const board = await service.getBoard(context, 'job-1');
+    const board = await service.getBoard(context, 'job-1', 'org_admin');
 
     expect(board.columns['st-applied'][0].fitStale).toBe(false);
   });
@@ -804,7 +808,7 @@ describe('PipelineService', () => {
     });
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
-    const board = await service.getBoard(context, 'job-1');
+    const board = await service.getBoard(context, 'job-1', 'org_admin');
 
     expect(tx.userGroup.findMany).toHaveBeenCalledWith({ where: { id: { in: ['group-1'] } }, select: { id: true, name: true } });
     expect(board.columns['st-applied'][0]).toMatchObject({ assignedGroupId: 'group-1', assignedGroupName: 'Hiring Panel' });
@@ -829,7 +833,7 @@ describe('PipelineService', () => {
     });
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
-    const board = await service.getBoard(context, 'job-1');
+    const board = await service.getBoard(context, 'job-1', 'org_admin');
 
     const row1 = board.columns['st-applied'].find((r) => r.entryId === 'en1')!;
     const row2 = board.columns['st-applied'].find((r) => r.entryId === 'en2')!;
@@ -850,7 +854,7 @@ describe('PipelineService', () => {
     });
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
-    const board = await service.getBoard(context, 'job-1');
+    const board = await service.getBoard(context, 'job-1', 'org_admin');
 
     expect(Object.values(board.columns).flat()).toHaveLength(0);
   });
@@ -875,7 +879,7 @@ describe('PipelineService', () => {
     });
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
-    const board = await service.getBoard(context, 'job1');
+    const board = await service.getBoard(context, 'job1', 'org_admin');
 
     const allRows = Object.values(board.columns).flat();
     expect(allRows.map((r) => r.entryId)).not.toContain('archived-entry');
@@ -910,7 +914,7 @@ describe('PipelineService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
-    const board = await service.getBoard(context, 'job-1');
+    const board = await service.getBoard(context, 'job-1', 'org_admin');
 
     expect(defsFindMany).toHaveBeenCalledTimes(1);
     expect(defsFindMany).toHaveBeenCalledWith({
@@ -974,7 +978,7 @@ describe('PipelineService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
-    const jobs = await service.listJobs(context);
+    const jobs = await service.listJobs(context, undefined, 'org_admin');
 
     expect(tx.pipelineEntry.groupBy).toHaveBeenCalledWith({
       by: ['jobId', 'statusId'], where: { organizationId: 'org-1', archivedAt: null }, _count: true,
@@ -998,7 +1002,7 @@ describe('PipelineService', () => {
     const summary = { status: 'pending_approval', currentStep: 0, steps: [] };
     approvals.getSummariesFor.mockResolvedValue(new Map([['job-1', summary]]));
 
-    const jobs = await service.listJobs(context);
+    const jobs = await service.listJobs(context, undefined, 'org_admin');
 
     expect(approvals.getSummariesFor).toHaveBeenCalledTimes(1);
     expect(approvals.getSummariesFor).toHaveBeenCalledWith(context, 'job', ['job-1', 'job-2']);
@@ -1282,7 +1286,7 @@ describe('PipelineService', () => {
       };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
-      const csv = await service.exportJobCandidatesCsv(context, 'job-1');
+      const csv = await service.exportJobCandidatesCsv(context, 'job-1', 'org_admin');
       const lines = csv.trim().split('\r\n');
 
       expect(lines[0]).toBe('Name,Email,Phone,Stage,Status,Applied At');
@@ -1294,7 +1298,7 @@ describe('PipelineService', () => {
 
     it('throws NotFound for a job outside the org', async () => {
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn({ job: { findFirst: jest.fn().mockResolvedValue(null) } }));
-      await expect(service.exportJobCandidatesCsv(context, 'nope')).rejects.toThrow(NotFoundException);
+      await expect(service.exportJobCandidatesCsv(context, 'nope', 'org_admin')).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -2014,6 +2018,153 @@ describe('PipelineService', () => {
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
       await expect(service.listFeedback(context, 'missing')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('field-level permissions', () => {
+    it('getBoard nulls candidateEmail on every row for a role the org has hidden candidate email from', async () => {
+      const tx = withJobCustomFieldMocks({
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', pipeline: boardPipeline() }) },
+        jobExam: { findMany: jest.fn().mockResolvedValue([]) },
+        pipelineEntry: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'en1', candidateId: 'c1', enteredVia: 'manual', rejectedReason: null,
+              status: { id: 'status-applied', stage: { id: 'st-applied', category: 'active' } },
+              candidate: { name: 'Amy', email: 'amy@x.com', invitations: [] }, feedback: [] },
+          ]),
+        },
+      });
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      fieldPerms.getHiddenFields.mockResolvedValue(new Set(['email']));
+
+      const board = await service.getBoard(context, 'job-1', 'panel');
+
+      expect(fieldPerms.getHiddenFields).toHaveBeenCalledWith(context, 'panel', 'candidate');
+      expect(board.columns['st-applied'][0].candidateEmail).toBeNull();
+      expect(board.columns['st-applied'][0].candidateName).toBe('Amy'); // untouched -- only the governed field is redacted
+    });
+
+    it('getBoard leaves candidateEmail untouched for a role with no hidden fields (e.g. admin)', async () => {
+      const tx = withJobCustomFieldMocks({
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', pipeline: boardPipeline() }) },
+        jobExam: { findMany: jest.fn().mockResolvedValue([]) },
+        pipelineEntry: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'en1', candidateId: 'c1', enteredVia: 'manual', rejectedReason: null,
+              status: { id: 'status-applied', stage: { id: 'st-applied', category: 'active' } },
+              candidate: { name: 'Amy', email: 'amy@x.com', invitations: [] }, feedback: [] },
+          ]),
+        },
+      });
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      fieldPerms.getHiddenFields.mockResolvedValue(new Set());
+
+      const board = await service.getBoard(context, 'job-1', 'org_admin');
+
+      expect(board.columns['st-applied'][0].candidateEmail).toBe('amy@x.com');
+    });
+
+    it('listJobs nulls salary/headcount for a role the org has hidden job fields from', async () => {
+      const tx = {
+        job: { findMany: jest.fn().mockResolvedValue([{ id: 'job-1', salaryMin: 80000, salaryMax: 120000, salaryCurrency: 'USD', headcount: 2 }]) },
+        pipelineEntry: { groupBy: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      fieldPerms.getHiddenFields.mockResolvedValue(new Set(['salaryMin', 'salaryMax', 'salaryCurrency', 'headcount']));
+
+      const jobs = await service.listJobs(context, undefined, 'panel');
+
+      expect(fieldPerms.getHiddenFields).toHaveBeenCalledWith(context, 'panel', 'job');
+      expect(jobs[0]).toEqual(expect.objectContaining({
+        salaryMin: null, salaryMax: null, salaryCurrency: null, headcount: null,
+      }));
+    });
+
+    it('listJobs leaves salary/headcount untouched for a role with no hidden fields', async () => {
+      const tx = {
+        job: { findMany: jest.fn().mockResolvedValue([{ id: 'job-1', salaryMin: 80000, salaryMax: 120000, salaryCurrency: 'USD', headcount: 2 }]) },
+        pipelineEntry: { groupBy: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      fieldPerms.getHiddenFields.mockResolvedValue(new Set());
+
+      const jobs = await service.listJobs(context, undefined, 'org_admin');
+
+      expect(jobs[0]).toEqual(expect.objectContaining({
+        salaryMin: 80000, salaryMax: 120000, salaryCurrency: 'USD', headcount: 2,
+      }));
+    });
+
+    it('getJob nulls salary/headcount for a role the org has hidden job fields from', async () => {
+      const tx = {
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', salaryMin: 80000, salaryMax: 120000, salaryCurrency: 'USD', headcount: 2 }) },
+        jobExam: { findMany: jest.fn().mockResolvedValue([]) },
+        customFieldDefinition: { findMany: jest.fn().mockResolvedValue([]) },
+        customFieldValue: { findMany: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      fieldPerms.getHiddenFields.mockResolvedValue(new Set(['salaryMin', 'salaryMax', 'salaryCurrency', 'headcount']));
+
+      const job = await service.getJob(context, 'job-1', 'panel');
+
+      expect(fieldPerms.getHiddenFields).toHaveBeenCalledWith(context, 'panel', 'job');
+      expect(job).toEqual(expect.objectContaining({
+        salaryMin: null, salaryMax: null, salaryCurrency: null, headcount: null,
+      }));
+    });
+
+    it('getJob leaves salary/headcount untouched for a role with no hidden fields', async () => {
+      const tx = {
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', salaryMin: 80000, salaryMax: 120000, salaryCurrency: 'USD', headcount: 2 }) },
+        jobExam: { findMany: jest.fn().mockResolvedValue([]) },
+        customFieldDefinition: { findMany: jest.fn().mockResolvedValue([]) },
+        customFieldValue: { findMany: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      fieldPerms.getHiddenFields.mockResolvedValue(new Set());
+
+      const job = await service.getJob(context, 'job-1', 'org_admin');
+
+      expect(job).toEqual(expect.objectContaining({
+        salaryMin: 80000, salaryMax: 120000, salaryCurrency: 'USD', headcount: 2,
+      }));
+    });
+
+    it('exportJobCandidatesCsv blanks the Email/Phone cells for a role the org has hidden them from', async () => {
+      const tx = {
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }) },
+        pipelineEntry: {
+          findMany: jest.fn().mockResolvedValue([
+            { status: { stage: { name: 'hired' } }, rejected: false, createdAt: new Date('2026-08-01T00:00:00.000Z'), candidate: { name: 'Asha Rao', email: 'asha@example.com', phone: '555-1111' } },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      fieldPerms.getHiddenFields.mockResolvedValue(new Set(['email', 'phone']));
+
+      const csv = await service.exportJobCandidatesCsv(context, 'job-1', 'panel');
+
+      expect(fieldPerms.getHiddenFields).toHaveBeenCalledWith(context, 'panel', 'candidate');
+      const lines = csv.trim().split('\r\n');
+      expect(lines[1]).toBe('Asha Rao,,,hired,active,2026-08-01T00:00:00.000Z');
+    });
+
+    it('exportJobCandidatesCsv leaves Email/Phone cells untouched for a role with no hidden fields', async () => {
+      const tx = {
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }) },
+        pipelineEntry: {
+          findMany: jest.fn().mockResolvedValue([
+            { status: { stage: { name: 'hired' } }, rejected: false, createdAt: new Date('2026-08-01T00:00:00.000Z'), candidate: { name: 'Asha Rao', email: 'asha@example.com', phone: '555-1111' } },
+          ]),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+      fieldPerms.getHiddenFields.mockResolvedValue(new Set());
+
+      const csv = await service.exportJobCandidatesCsv(context, 'job-1', 'org_admin');
+
+      const lines = csv.trim().split('\r\n');
+      expect(lines[1]).toBe('Asha Rao,asha@example.com,555-1111,hired,active,2026-08-01T00:00:00.000Z');
     });
   });
 });

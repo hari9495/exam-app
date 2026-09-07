@@ -58,6 +58,7 @@ model Organization {
   autoArchiveSiblingsOnHire Boolean        @default(true) @map("auto_archive_siblings_on_hire")
   businessHoursJson      String?           @map("business_hours_json") @db.NVarChar(Max)
   holidaysJson           String?           @map("holidays_json") @db.NVarChar(Max)
+  fieldPermissionsJson   String?           @map("field_permissions_json") @db.NVarChar(Max)
   planId                 String            @map("plan_id") @db.UniqueIdentifier
   plan                   Plan              @relation(fields: [planId], references: [id])
   billingStatus          String            @default("active") @map("billing_status")

@@ -4,6 +4,7 @@ import { BlobServiceClient, ContainerClient, StorageSharedKeyCredential } from '
 import { CandidatesService } from './candidates.service';
 import { TenantPrismaService, AuditService, BlobStorageService } from '@exam-platform/shared';
 import { QuotaService } from '../billing/quota.service';
+import { FieldPermissionsService } from '../field-permissions/field-permissions.service';
 
 // Only BlobServiceClient.fromConnectionString is faked below (real-BlobStorageService nested
 // describe) -- ContainerClient/StorageSharedKeyCredential stay the real SDK classes, same
@@ -19,6 +20,7 @@ describe('CandidatesService', () => {
   let audit: { record: jest.Mock };
   let blobStorage: { deleteByUrl: jest.Mock; signIfOurs: jest.Mock };
   let quota: { checkSoftLimit: jest.Mock };
+  let fieldPerms: { getHiddenFields: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
@@ -31,6 +33,10 @@ describe('CandidatesService', () => {
       signIfOurs: jest.fn(async (value) => value),
     };
     quota = { checkSoftLimit: jest.fn().mockResolvedValue({ warn: false, threshold: null, used: 0, limit: 0 }) };
+    // Empty set by default (matches getHiddenFields' own contract for an ungoverned/admin role)
+    // so every pre-existing test below -- none of which cares about redaction -- sees unredacted
+    // output unless a test overrides this mock.
+    fieldPerms = { getHiddenFields: jest.fn().mockResolvedValue(new Set()) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         CandidatesService,
@@ -38,6 +44,7 @@ describe('CandidatesService', () => {
         { provide: AuditService, useValue: audit },
         { provide: BlobStorageService, useValue: blobStorage },
         { provide: QuotaService, useValue: quota },
+        { provide: FieldPermissionsService, useValue: fieldPerms },
       ],
     }).compile();
     service = moduleRef.get(CandidatesService);
@@ -151,7 +158,7 @@ describe('CandidatesService', () => {
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      const result = await service.list(context, {});
+      const result = await service.list(context, {}, 'org_admin');
 
       expect(result.data).toEqual([
         { id: 'cand-1', invitationCount: 3, customFields: [] },
@@ -174,7 +181,7 @@ describe('CandidatesService', () => {
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      const result = await service.list(context, {});
+      const result = await service.list(context, {}, 'org_admin');
 
       expect(tx.customFieldDefinition.findMany).toHaveBeenCalledTimes(1);
       expect(tx.customFieldValue.findMany).toHaveBeenCalledTimes(1);
@@ -194,7 +201,7 @@ describe('CandidatesService', () => {
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      await service.list(context, {});
+      await service.list(context, {}, 'org_admin');
 
       expect(tx.invitation.groupBy).not.toHaveBeenCalled();
     });
@@ -206,7 +213,7 @@ describe('CandidatesService', () => {
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      await service.list(context, { status: 'active' });
+      await service.list(context, { status: 'active' }, 'org_admin');
 
       expect(tx.candidate.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ status: 'active' }) }));
     });
@@ -218,7 +225,7 @@ describe('CandidatesService', () => {
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      await service.list(context, {});
+      await service.list(context, {}, 'org_admin');
 
       const where = tx.candidate.findMany.mock.calls[0][0].where;
       expect(where).not.toHaveProperty('status');
@@ -231,7 +238,7 @@ describe('CandidatesService', () => {
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      await service.list(context, { globalStage: 'available' });
+      await service.list(context, { globalStage: 'available' }, 'org_admin');
 
       expect(tx.candidate.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: expect.objectContaining({ globalStage: 'available' }) }),
@@ -245,7 +252,7 @@ describe('CandidatesService', () => {
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      await service.list(context, {});
+      await service.list(context, {}, 'org_admin');
 
       const where = tx.candidate.findMany.mock.calls[0][0].where;
       expect(where).not.toHaveProperty('globalStage');
@@ -462,7 +469,7 @@ describe('CandidatesService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    const result = await service.list(context, {});
+    const result = await service.list(context, {}, 'org_admin');
 
     expect(result.data).toHaveLength(1);
     expect(result.total).toBe(1);
@@ -481,7 +488,7 @@ describe('CandidatesService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-    const result = await service.list(context, { page: '1', pageSize: '10', search: 'alice' });
+    const result = await service.list(context, { page: '1', pageSize: '10', search: 'alice' }, 'org_admin');
 
     expect(tx.candidate.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -598,7 +605,7 @@ describe('CandidatesService', () => {
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      const result = await service.exportData(context, 'user-1', 'cand-1');
+      const result = await service.exportData(context, 'user-1', 'cand-1', 'org_admin');
 
       expect(result.candidate).toEqual({
         id: 'cand-1', email: 'a@test.com', name: 'Alice', phone: '555-1234', createdAt: new Date('2026-01-01'),
@@ -639,7 +646,7 @@ describe('CandidatesService', () => {
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      const result = await service.exportData(context, 'user-1', 'cand-1');
+      const result = await service.exportData(context, 'user-1', 'cand-1', 'org_admin');
 
       expect(result.invitations).toHaveLength(1);
       expect(result.attempts).toEqual([]);
@@ -649,7 +656,7 @@ describe('CandidatesService', () => {
       const tx = { candidate: { findFirst: jest.fn().mockResolvedValue(null) } };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      await expect(service.exportData(context, 'user-1', 'cand-x')).rejects.toThrow(NotFoundException);
+      await expect(service.exportData(context, 'user-1', 'cand-x', 'org_admin')).rejects.toThrow(NotFoundException);
       expect(audit.record).not.toHaveBeenCalled();
     });
 
@@ -680,7 +687,7 @@ describe('CandidatesService', () => {
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
       blobStorage.signIfOurs.mockImplementation(async (value: string) => `${value}?sig=signed`);
 
-      const result = await service.exportData(context, 'user-1', 'cand-1');
+      const result = await service.exportData(context, 'user-1', 'cand-1', 'org_admin');
 
       expect(blobStorage.signIfOurs).toHaveBeenCalledWith('https://blob.test/container/webcam-snapshots/a.jpg');
       expect(result.attempts[0].proctoringEvents[0].metadata).toEqual({
@@ -692,7 +699,7 @@ describe('CandidatesService', () => {
       const tx = exportTxWithProctoringEvent(JSON.stringify({ snapshot: 'data:image/jpeg;base64,AAAA' }));
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      const result = await service.exportData(context, 'user-1', 'cand-1');
+      const result = await service.exportData(context, 'user-1', 'cand-1', 'org_admin');
 
       expect(result.attempts[0].proctoringEvents[0].metadata).toEqual({ snapshot: 'data:image/jpeg;base64,AAAA' });
     });
@@ -731,7 +738,7 @@ describe('CandidatesService', () => {
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
       blobStorage.signIfOurs.mockImplementation(async (value: string) => `${value}?sig=signed`);
 
-      const result = await service.exportData(context, 'user-1', 'cand-1');
+      const result = await service.exportData(context, 'user-1', 'cand-1', 'org_admin');
 
       // The query has to ASK for it -- otherwise the mapping above only works because this mock
       // volunteered the relation.
@@ -751,7 +758,7 @@ describe('CandidatesService', () => {
       });
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      const result = await service.exportData(context, 'user-1', 'cand-1');
+      const result = await service.exportData(context, 'user-1', 'cand-1', 'org_admin');
 
       expect(result.attempts[0].faceEnrolment).toEqual({
         status: 'not_verified', capturedAt: null, consentAt: null, referenceImageUrl: null,
@@ -762,7 +769,7 @@ describe('CandidatesService', () => {
       const tx = exportTxWithFaceEnrolment(null);
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      const result = await service.exportData(context, 'user-1', 'cand-1');
+      const result = await service.exportData(context, 'user-1', 'cand-1', 'org_admin');
 
       expect(result.attempts[0].faceEnrolment).toBeNull();
     });
@@ -780,7 +787,7 @@ describe('CandidatesService', () => {
         process.env.AZURE_STORAGE_CONNECTION_STRING = 'UseDevelopmentStorage=true';
         process.env.AZURE_STORAGE_CONTAINER = 'container';
         const realBlobStorage = new BlobStorageService();
-        realService = new CandidatesService(tenantPrisma as never, audit as never, realBlobStorage, quota as never);
+        realService = new CandidatesService(tenantPrisma as never, audit as never, realBlobStorage, quota as never, fieldPerms as never);
       });
 
       afterEach(() => {
@@ -792,7 +799,7 @@ describe('CandidatesService', () => {
         const tx = exportTxWithProctoringEvent(JSON.stringify({ snapshot: `${CONTAINER_URL}/webcam-snapshots/a.jpg` }));
         tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-        const result = await realService.exportData(context, 'user-1', 'cand-1');
+        const result = await realService.exportData(context, 'user-1', 'cand-1', 'org_admin');
         const { snapshot } = result.attempts[0].proctoringEvents[0].metadata as { snapshot: string };
 
         expect(snapshot.startsWith(`${CONTAINER_URL}/webcam-snapshots/a.jpg?`)).toBe(true);
@@ -1431,6 +1438,129 @@ describe('CandidatesService', () => {
 
       await expect(service.erase(context, 'user-1', 'cand-1')).resolves.toBeDefined();
       expect(deleteMany).toHaveBeenCalled();
+    });
+  });
+
+  describe('field-level permissions (email/phone redaction)', () => {
+    it('nulls email and phone on every list row for a role the org has hidden them from', async () => {
+      const tx = {
+        candidate: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'cand-1', email: 'a@test.com', phone: '555-1111' },
+            { id: 'cand-2', email: 'b@test.com', phone: '555-2222' },
+          ]),
+          count: jest.fn().mockResolvedValue(2),
+        },
+        invitation: { groupBy: jest.fn().mockResolvedValue([]) },
+        customFieldDefinition: { findMany: jest.fn().mockResolvedValue([]) },
+        customFieldValue: { findMany: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      fieldPerms.getHiddenFields.mockResolvedValue(new Set(['email', 'phone']));
+
+      const result = await service.list(context, {}, 'panel');
+
+      expect(fieldPerms.getHiddenFields).toHaveBeenCalledWith(context, 'panel', 'candidate');
+      expect(result.data).toEqual([
+        { id: 'cand-1', email: null, phone: null, invitationCount: 0, customFields: [] },
+        { id: 'cand-2', email: null, phone: null, invitationCount: 0, customFields: [] },
+      ]);
+    });
+
+    it('leaves list rows untouched for a role with no hidden fields (e.g. org_admin)', async () => {
+      const tx = {
+        candidate: {
+          findMany: jest.fn().mockResolvedValue([{ id: 'cand-1', email: 'a@test.com', phone: '555-1111' }]),
+          count: jest.fn().mockResolvedValue(1),
+        },
+        invitation: { groupBy: jest.fn().mockResolvedValue([]) },
+        customFieldDefinition: { findMany: jest.fn().mockResolvedValue([]) },
+        customFieldValue: { findMany: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      fieldPerms.getHiddenFields.mockResolvedValue(new Set());
+
+      const result = await service.list(context, {}, 'org_admin');
+
+      expect(result.data).toEqual([
+        { id: 'cand-1', email: 'a@test.com', phone: '555-1111', invitationCount: 0, customFields: [] },
+      ]);
+    });
+
+    it('nulls email and phone on a lookupByEmail result for a role the org has hidden them from', async () => {
+      const tx = {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'a@test.com', phone: '555-1111', name: 'Alice' }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      fieldPerms.getHiddenFields.mockResolvedValue(new Set(['email', 'phone']));
+
+      const result = await service.lookupByEmail(context, 'a@test.com', 'panel');
+
+      expect(fieldPerms.getHiddenFields).toHaveBeenCalledWith(context, 'panel', 'candidate');
+      expect(result).toEqual({ id: 'cand-1', email: null, phone: null, name: 'Alice' });
+    });
+
+    it('leaves a lookupByEmail result untouched for a role with no hidden fields', async () => {
+      const tx = {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'a@test.com', phone: '555-1111', name: 'Alice' }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      fieldPerms.getHiddenFields.mockResolvedValue(new Set());
+
+      const result = await service.lookupByEmail(context, 'a@test.com', 'org_admin');
+
+      expect(result).toEqual({ id: 'cand-1', email: 'a@test.com', phone: '555-1111', name: 'Alice' });
+    });
+
+    it('still throws NotFoundException for a missing candidate without consulting field permissions', async () => {
+      const tx = { candidate: { findFirst: jest.fn().mockResolvedValue(null) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.lookupByEmail(context, 'nope@test.com', 'panel')).rejects.toThrow(NotFoundException);
+      expect(fieldPerms.getHiddenFields).not.toHaveBeenCalled();
+    });
+
+    it("nulls email and phone on exportData().candidate for a role the org has hidden them from", async () => {
+      const tx = {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'cand-1', email: 'a@test.com', name: 'Alice', phone: '555-1234', createdAt: new Date('2026-01-01'),
+          }),
+        },
+        invitation: { findMany: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      fieldPerms.getHiddenFields.mockResolvedValue(new Set(['email', 'phone']));
+
+      const result = await service.exportData(context, 'user-1', 'cand-1', 'panel');
+
+      expect(fieldPerms.getHiddenFields).toHaveBeenCalledWith(context, 'panel', 'candidate');
+      expect(result.candidate).toEqual({
+        id: 'cand-1', email: null, name: 'Alice', phone: null, createdAt: new Date('2026-01-01'),
+      });
+    });
+
+    it('leaves exportData().candidate untouched for a role with no hidden fields', async () => {
+      const tx = {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'cand-1', email: 'a@test.com', name: 'Alice', phone: '555-1234', createdAt: new Date('2026-01-01'),
+          }),
+        },
+        invitation: { findMany: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      fieldPerms.getHiddenFields.mockResolvedValue(new Set());
+
+      const result = await service.exportData(context, 'user-1', 'cand-1', 'org_admin');
+
+      expect(result.candidate).toEqual({
+        id: 'cand-1', email: 'a@test.com', name: 'Alice', phone: '555-1234', createdAt: new Date('2026-01-01'),
+      });
     });
   });
 });

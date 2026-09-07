@@ -4,6 +4,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
+import { CurrentUserRole } from '../auth/current-user-role.decorator';
 import { TenantContext } from '@exam-platform/shared';
 import { PipelineService, PatchEntryResult } from './pipeline.service';
 import { CreateJobDto } from './dto/create-job.dto';
@@ -28,14 +29,14 @@ export class PipelineController {
 
   @Get('jobs')
   @RequirePermissions('results:view')
-  listJobs(@CurrentTenant() tenant: TenantContext, @Query('status') status?: 'open' | 'closed') {
-    return this.pipelineService.listJobs(tenant, status);
+  listJobs(@CurrentTenant() tenant: TenantContext, @CurrentUserRole() role: string, @Query('status') status?: 'open' | 'closed') {
+    return this.pipelineService.listJobs(tenant, status, role);
   }
 
   @Get('jobs/:id')
   @RequirePermissions('results:view')
-  getJob(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
-    return this.pipelineService.getJob(tenant, id);
+  getJob(@CurrentTenant() tenant: TenantContext, @CurrentUserRole() role: string, @Param('id') id: string) {
+    return this.pipelineService.getJob(tenant, id, role);
   }
 
   @Patch('jobs/:id')
@@ -69,16 +70,16 @@ export class PipelineController {
 
   @Get('jobs/:id/pipeline')
   @RequirePermissions('results:view')
-  getPipeline(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
-    return this.pipelineService.getBoard(tenant, id);
+  getPipeline(@CurrentTenant() tenant: TenantContext, @CurrentUserRole() role: string, @Param('id') id: string) {
+    return this.pipelineService.getBoard(tenant, id, role);
   }
 
   @Get('jobs/:id/candidates.csv')
   @RequirePermissions('results:view')
   @Header('Content-Type', 'text/csv; charset=utf-8')
   @Header('Content-Disposition', 'attachment; filename="candidates.csv"')
-  exportCandidatesCsv(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
-    return this.pipelineService.exportJobCandidatesCsv(tenant, id);
+  exportCandidatesCsv(@CurrentTenant() tenant: TenantContext, @CurrentUserRole() role: string, @Param('id') id: string) {
+    return this.pipelineService.exportJobCandidatesCsv(tenant, id, role);
   }
 
   @Post('jobs/:id/entries')
