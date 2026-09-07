@@ -27,6 +27,7 @@ import type { WebhookDeliveryRow, ConnectedAppRow } from '../../../../../lib/typ
 import { Mail, Sparkles, KeyRound, Webhook, Plug } from 'lucide-react';
 import { Button, TextField, PasswordField, Combobox, Dialog, DataTable, DT_FEATURES, dt, Cb, SortHead, Pill } from '../../../../../components/ui-v2';
 import { STATUS } from '../../../../../components/ui-v2/viz';
+import { ApiUsageCard } from './ApiUsageCard';
 
 // Section-sidebar layout (21st.dev "Settings Card with Sidebar" #25323, retoned Azure): a left
 // icon-nav swaps the right panel so each integration gets its own focused space.
@@ -382,6 +383,7 @@ export default function V2IntegrationsSettingsPage() {
         </section>
 
         )}
+        {active === 'api' && integrations?.apiKeyConfigured && <ApiUsageCard />}
         {active === 'webhooks' && (
         <section style={card}>
           <h2 style={sectionTitle}>Webhooks</h2>
