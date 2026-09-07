@@ -102,8 +102,14 @@ describe('OrgSenderAddressesController', () => {
   describe('permissions metadata', () => {
     const reflector = new Reflector();
 
-    it('every route requires org:manage_settings', () => {
-      expect(reflector.get(PERMISSIONS_KEY, OrgSenderAddressesController.prototype.list)).toEqual(['org:manage_settings']);
+    // GET is gated on pipeline:manage (recruiters use the compose picker; org_admin holds
+    // pipeline:manage too, per seed.ts's ROLE_PERMISSIONS). The mutation routes stay
+    // org:manage_settings-only.
+    it('GET requires pipeline:manage', () => {
+      expect(reflector.get(PERMISSIONS_KEY, OrgSenderAddressesController.prototype.list)).toEqual(['pipeline:manage']);
+    });
+
+    it('mutation routes require org:manage_settings', () => {
       expect(reflector.get(PERMISSIONS_KEY, OrgSenderAddressesController.prototype.create)).toEqual(['org:manage_settings']);
       expect(reflector.get(PERMISSIONS_KEY, OrgSenderAddressesController.prototype.update)).toEqual(['org:manage_settings']);
       expect(reflector.get(PERMISSIONS_KEY, OrgSenderAddressesController.prototype.remove)).toEqual(['org:manage_settings']);

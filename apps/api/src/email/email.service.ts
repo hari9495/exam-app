@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
 import { buildSmtpTransportOptions } from './smtp-transport';
 import type { Transporter } from 'nodemailer';
-import { PrismaService, OrgSecretsCryptoService } from '@exam-platform/shared';
+import { PrismaService, OrgSecretsCryptoService, TenantPrismaService } from '@exam-platform/shared';
 
 export interface SendEmailInput {
   to: string;
@@ -69,6 +69,7 @@ export class EmailService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cryptoService: OrgSecretsCryptoService,
+    private readonly tenantPrisma: TenantPrismaService,
   ) {}
 
   async send(input: SendEmailInput): Promise<SendEmailResult> {
@@ -141,10 +142,20 @@ export class EmailService {
         // mailbox, not the platform's -- an org that authenticates as X must send as X or
         // Office365 rejects it with 550 5.7.60 SendAsDenied -- and "From address" is optional
         // in the UI, so most orgs will not have set one.
-        const defaultSender = await this.prisma.orgSenderAddress.findFirst({
-          where: { organizationId, isDefault: true },
-          select: { address: true },
-        });
+        //
+        // org_sender_addresses is under tenant RLS -- unlike the `organization.findUnique`
+        // above, this MUST go through a tenant-scoped forTenant() so app_current_org is set on
+        // the session, or the RLS predicate returns zero rows for every org and the default
+        // sender silently never applies (fails "safe" to org.emailFromAddress). send() commonly
+        // runs post-commit, outside any caller transaction, so a fresh forTenant read here --
+        // its own connection + session context -- is correct; only this lookup needs the tx,
+        // not the whole send.
+        const defaultSender = await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
+          tx.orgSenderAddress.findFirst({
+            where: { organizationId, isDefault: true },
+            select: { address: true },
+          }),
+        );
         return {
           transporter,
           fromAddress:

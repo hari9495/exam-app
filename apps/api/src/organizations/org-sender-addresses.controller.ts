@@ -14,8 +14,11 @@ import { UpdateSenderAddressDto } from './dto/update-sender-address.dto';
 export class OrgSenderAddressesController {
   constructor(private readonly senders: OrgSenderAddressesService) {}
 
+  // Recruiters (pipeline:manage) use this list to pick a sender in the compose picker; they
+  // don't hold org:manage_settings. org_admin holds pipeline:manage too (see seed.ts), so
+  // admins still pass. Mutations below stay org:manage_settings-gated (admin-only).
   @Get()
-  @RequirePermissions('org:manage_settings')
+  @RequirePermissions('pipeline:manage')
   list(@CurrentTenant() tenant: TenantContext) {
     return this.senders.list(tenant);
   }

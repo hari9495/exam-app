@@ -3,8 +3,10 @@ import { apiFetch } from '../api-client';
 import { useAuth } from '../auth-context';
 import type { OrgSenderAddress } from '../types';
 
-// Web data layer for the org-sender-addresses endpoints (org-admin CRUD gated behind
-// org:manage_settings). Mirrors useUserGroups.ts's fetch-wrapper/invalidation conventions.
+// Web data layer for the org-sender-addresses endpoints. List is gated pipeline:manage (so the
+// compose picker works for recruiters, not just org admins); create/update/delete stay
+// org:manage_settings (admin-only). Mirrors useUserGroups.ts's fetch-wrapper/invalidation
+// conventions.
 
 export function useOrgSenderAddresses() {
   const { accessToken } = useAuth();

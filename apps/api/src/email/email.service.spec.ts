@@ -16,6 +16,7 @@ describe('EmailService', () => {
   let service: EmailService;
   let prisma: { organization: { findUnique: jest.Mock }; orgSenderAddress: { findFirst: jest.Mock } };
   let cryptoService: { decrypt: jest.Mock };
+  let tenantPrisma: { forTenant: jest.Mock };
 
   // resolvePlatformFrom() reads SMTP_FROM_ADDRESS || SMTP_USER || the .test fallback, and
   // ConfigModule loads apps/api/.env into process.env before the suite runs. A developer with
@@ -51,7 +52,11 @@ describe('EmailService', () => {
     });
     prisma = { organization: { findUnique: jest.fn() }, orgSenderAddress: { findFirst: jest.fn().mockResolvedValue(null) } };
     cryptoService = { decrypt: jest.fn() };
-    service = new EmailService(prisma as never, cryptoService as never);
+    // forTenant is exercised here only as "runs the callback against a tx" -- the real
+    // RLS-scoping behavior (setting app_current_org so the query actually sees rows) can only
+    // be caught by a real-DB test; see email-sender-rls.e2e-spec.ts.
+    tenantPrisma = { forTenant: jest.fn((_context, fn) => fn(prisma)) };
+    service = new EmailService(prisma as never, cryptoService as never, tenantPrisma as never);
     delete process.env.SMTP_HOST;
     delete process.env.SMTP_USER;
     delete process.env.SMTP_FROM_ADDRESS;
@@ -293,6 +298,15 @@ describe('EmailService', () => {
 
     await service.send({ to: 'a@b.com', subject: 's', html: '<p>h</p>', organizationId: 'org-1' });
 
+    // org_sender_addresses is RLS-protected -- the read must go through forTenant (which sets
+    // app_current_org on the session) rather than the raw prisma client, or it silently returns
+    // zero rows in production. A mock can't reproduce the RLS failure itself (see
+    // email-sender-rls.e2e-spec.ts for that), but it CAN catch a regression back to the raw
+    // client.
+    expect(tenantPrisma.forTenant).toHaveBeenCalledWith(
+      { organizationId: 'org-1', isSuperAdmin: false },
+      expect.any(Function),
+    );
     expect(prisma.orgSenderAddress.findFirst).toHaveBeenCalledWith({
       where: { organizationId: 'org-1', isDefault: true },
       select: { address: true },

@@ -3,7 +3,7 @@ import { join } from 'path';
 
 // ponytail: a repo-wide grep-as-a-test, not a real lint rule. Upgrade to an eslint
 // rule if this model list churns often enough to be a maintenance burden.
-const RLS_MODELS = ['user', 'auditLog', 'question', 'exam', 'candidate', 'tag', 'aiJob', 'aiCreditUsage'];
+const RLS_MODELS = ['user', 'auditLog', 'question', 'exam', 'candidate', 'tag', 'aiJob', 'aiCreditUsage', 'orgSenderAddress'];
 const RAW_ACCESS = new RegExp(`this\\.prisma\\.(${RLS_MODELS.join('|')})\\.`);
 const ROOTS = ['apps/api/src', 'packages/shared/src'].map((p) => join(__dirname, '..', '..', '..', p));
 
