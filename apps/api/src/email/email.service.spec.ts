@@ -14,7 +14,7 @@ import { PrismaService, OrgSecretsCryptoService } from '@exam-platform/shared';
 
 describe('EmailService', () => {
   let service: EmailService;
-  let prisma: { organization: { findUnique: jest.Mock } };
+  let prisma: { organization: { findUnique: jest.Mock }; orgSenderAddress: { findFirst: jest.Mock } };
   let cryptoService: { decrypt: jest.Mock };
 
   // resolvePlatformFrom() reads SMTP_FROM_ADDRESS || SMTP_USER || the .test fallback, and
@@ -49,7 +49,7 @@ describe('EmailService', () => {
       pass: 'ethereal-pass',
       smtp: { host: 'smtp.ethereal.email', port: 587, secure: false },
     });
-    prisma = { organization: { findUnique: jest.fn() } };
+    prisma = { organization: { findUnique: jest.fn() }, orgSenderAddress: { findFirst: jest.fn().mockResolvedValue(null) } };
     cryptoService = { decrypt: jest.fn() };
     service = new EmailService(prisma as never, cryptoService as never);
     delete process.env.SMTP_HOST;
@@ -254,4 +254,98 @@ describe('EmailService', () => {
         expect.objectContaining({ from: 'org-mailbox@customer.test' }),
       );
     });
+
+  // Zoho #9 slice 3: per-send From override + org default OrgSenderAddress. Precedence is
+  // input.fromAddress > default OrgSenderAddress > org.emailFromAddress > org.smtpUser >
+  // platformFromAddress(), and the no-senders/no-override case must stay byte-for-byte the
+  // chain covered by the pre-existing tests above.
+  describe('From precedence: per-send override + org default sender', () => {
+  const orgSmtpFixture = {
+    smtpHost: 'smtp.customer.test',
+    smtpPort: 587,
+    smtpUser: 'org-mailbox@customer.test',
+    smtpPasswordEncrypted: 'encrypted-blob',
+    emailFromAddress: 'configured@customer.test',
+  };
+
+  beforeEach(() => {
+    cryptoService.decrypt.mockReturnValue('customer-smtp-password');
+  });
+
+  it('(a) input.fromAddress wins over the default sender, emailFromAddress, and smtpUser', async () => {
+    prisma.organization.findUnique.mockResolvedValue(orgSmtpFixture);
+    prisma.orgSenderAddress.findFirst.mockResolvedValue({ address: 'default-sender@customer.test' });
+
+    await service.send({
+      to: 'a@b.com',
+      subject: 's',
+      html: '<p>h</p>',
+      organizationId: 'org-1',
+      fromAddress: 'override@customer.test',
+    });
+
+    expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({ from: 'override@customer.test' }));
+  });
+
+  it('(b) falls back to the org default OrgSenderAddress when no override is given', async () => {
+    prisma.organization.findUnique.mockResolvedValue(orgSmtpFixture);
+    prisma.orgSenderAddress.findFirst.mockResolvedValue({ address: 'default-sender@customer.test' });
+
+    await service.send({ to: 'a@b.com', subject: 's', html: '<p>h</p>', organizationId: 'org-1' });
+
+    expect(prisma.orgSenderAddress.findFirst).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1', isDefault: true },
+      select: { address: true },
+    });
+    expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({ from: 'default-sender@customer.test' }));
+  });
+
+  it('(c) falls back to org.emailFromAddress when there is no override and no sender rows', async () => {
+    prisma.organization.findUnique.mockResolvedValue(orgSmtpFixture);
+    prisma.orgSenderAddress.findFirst.mockResolvedValue(null);
+
+    await service.send({ to: 'a@b.com', subject: 's', html: '<p>h</p>', organizationId: 'org-1' });
+
+    expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({ from: 'configured@customer.test' }));
+  });
+
+  it('(d) falls back to org.smtpUser when there is no override, no sender rows, and no emailFromAddress', async () => {
+    prisma.organization.findUnique.mockResolvedValue({ ...orgSmtpFixture, emailFromAddress: null });
+    prisma.orgSenderAddress.findFirst.mockResolvedValue(null);
+
+    await service.send({ to: 'a@b.com', subject: 's', html: '<p>h</p>', organizationId: 'org-1' });
+
+    expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({ from: 'org-mailbox@customer.test' }));
+  });
+
+  it('(e) never looks up a sender when there is no org SMTP -- the platform branch is unchanged', async () => {
+    process.env.ALLOW_UNDELIVERABLE_EMAIL = 'true';
+    try {
+      await service.send({ to: 'a@b.com', subject: 's', html: '<p>h</p>' });
+
+      expect(prisma.orgSenderAddress.findFirst).not.toHaveBeenCalled();
+      expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({ from: 'no-reply@exam-platform.test' }));
+    } finally {
+      delete process.env.ALLOW_UNDELIVERABLE_EMAIL;
+    }
+  });
+
+  it('reuses the cached org transporter (keyed by organizationId only) even when a later send supplies a different override', async () => {
+    prisma.organization.findUnique.mockResolvedValue(orgSmtpFixture);
+    prisma.orgSenderAddress.findFirst.mockResolvedValue(null);
+
+    await service.send({ to: 'a@b.com', subject: 's1', html: '<p>h</p>', organizationId: 'org-1' });
+    await service.send({
+      to: 'c@d.com',
+      subject: 's2',
+      html: '<p>h</p>',
+      organizationId: 'org-1',
+      fromAddress: 'override@customer.test',
+    });
+
+    expect(mockCreateTransport).toHaveBeenCalledTimes(1);
+    expect(mockSendMail).toHaveBeenNthCalledWith(1, expect.objectContaining({ from: 'configured@customer.test' }));
+    expect(mockSendMail).toHaveBeenNthCalledWith(2, expect.objectContaining({ from: 'override@customer.test' }));
+  });
+  });
 });
