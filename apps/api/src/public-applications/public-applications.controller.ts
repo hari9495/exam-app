@@ -4,6 +4,7 @@ import { PublicApplicationsService } from './public-applications.service';
 import { ApplyDto } from './dto/apply.dto';
 import { UpdatePortalProfileDto } from './dto/update-portal-profile.dto';
 import { UploadPortalResumeDto } from './dto/upload-portal-resume.dto';
+import { UnsubscribeDto } from './dto/unsubscribe.dto';
 import { PublicApplicationsThrottlerGuard } from './public-applications.throttler.guard';
 import { STRICT_WALK_IN_THROTTLE } from '../rate-limit-tiers';
 
@@ -37,6 +38,16 @@ export class PublicApplicationsController {
   @Get('applications/:statusToken')
   status(@Param('statusToken') statusToken: string) {
     return this.service.getApplicationStatus(statusToken);
+  }
+
+  @Get('unsubscribe/:token')
+  getUnsubscribe(@Param('token') token: string) {
+    return this.service.getUnsubscribe(token);
+  }
+
+  @Post('unsubscribe/:token')
+  setUnsubscribe(@Param('token') token: string, @Body() dto: UnsubscribeDto) {
+    return this.service.setUnsubscribe(token, dto.optedOut);
   }
 
   @Get('portal/:portalToken')

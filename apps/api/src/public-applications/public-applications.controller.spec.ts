@@ -2,7 +2,7 @@ import { PublicApplicationsController } from './public-applications.controller';
 
 describe('PublicApplicationsController', () => {
   function setup() {
-    const service = { getPublicJob: jest.fn(), apply: jest.fn(), getApplicationStatus: jest.fn(), getJobsFeed: jest.fn(), getPortal: jest.fn(), updatePortalProfile: jest.fn(), uploadPortalResume: jest.fn() };
+    const service = { getPublicJob: jest.fn(), apply: jest.fn(), getApplicationStatus: jest.fn(), getJobsFeed: jest.fn(), getPortal: jest.fn(), updatePortalProfile: jest.fn(), uploadPortalResume: jest.fn(), getUnsubscribe: jest.fn(), setUnsubscribe: jest.fn() };
     const controller = new PublicApplicationsController(service as any);
     return { service, controller };
   }
@@ -50,5 +50,17 @@ describe('PublicApplicationsController', () => {
     const { service, controller } = setup();
     controller.status('status-token-1');
     expect(service.getApplicationStatus).toHaveBeenCalledWith('status-token-1');
+  });
+
+  it('getUnsubscribe delegates to service.getUnsubscribe with the token', () => {
+    const { service, controller } = setup();
+    controller.getUnsubscribe('unsub-token-1');
+    expect(service.getUnsubscribe).toHaveBeenCalledWith('unsub-token-1');
+  });
+
+  it('setUnsubscribe delegates to service.setUnsubscribe with the token and dto.optedOut', () => {
+    const { service, controller } = setup();
+    controller.setUnsubscribe('unsub-token-1', { optedOut: true } as any);
+    expect(service.setUnsubscribe).toHaveBeenCalledWith('unsub-token-1', true);
   });
 });

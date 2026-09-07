@@ -764,4 +764,73 @@ describe('PublicApplicationsService', () => {
       expect(xml).not.toContain(']]><script>'); // the terminator must have been split
     });
   });
+
+  describe('getUnsubscribe', () => {
+    it('resolves by unsubscribeToken via the LOOKUP_ORG/isSuperAdmin bypass and returns optedOut + orgName', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
+        fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', emailOptedOutAt: null }) } }),
+      );
+      prisma.organization.findUnique.mockResolvedValue({ name: 'Acme' });
+
+      const result = await service.getUnsubscribe('unsub-token-1');
+
+      expect(tenantPrisma.forTenant).toHaveBeenCalledWith(
+        { organizationId: '00000000-0000-0000-0000-000000000000', isSuperAdmin: true },
+        expect.any(Function),
+      );
+      expect(prisma.organization.findUnique).toHaveBeenCalledWith({ where: { id: 'org-1' }, select: { name: true } });
+      expect(result).toEqual({ optedOut: false, orgName: 'Acme' });
+    });
+
+    it('reports optedOut: true when emailOptedOutAt is set', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
+        fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', emailOptedOutAt: new Date('2026-01-01T00:00:00.000Z') }) } }),
+      );
+      prisma.organization.findUnique.mockResolvedValue({ name: 'Acme' });
+
+      const result = await service.getUnsubscribe('unsub-token-1');
+
+      expect(result).toEqual({ optedOut: true, orgName: 'Acme' });
+    });
+
+    it('throws NotFoundException for an unknown token', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue(null) } }));
+      await expect(service.getUnsubscribe('bad-token')).rejects.toThrow(NotFoundException);
+      expect(prisma.organization.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('setUnsubscribe', () => {
+    it('sets emailOptedOutAt to a Date when optedOut: true', async () => {
+      const update = jest.fn().mockResolvedValue({});
+      tenantPrisma.forTenant
+        .mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', emailOptedOutAt: null }) } }))
+        .mockImplementationOnce((_c, fn) => fn({ candidate: { update } }));
+
+      const result = await service.setUnsubscribe('unsub-token-1', true);
+
+      expect(update).toHaveBeenCalledWith({ where: { id: 'cand-1' }, data: { emailOptedOutAt: expect.any(Date) } });
+      expect(result).toEqual({ optedOut: true });
+    });
+
+    it('clears emailOptedOutAt (sets null) when optedOut: false', async () => {
+      const update = jest.fn().mockResolvedValue({});
+      tenantPrisma.forTenant
+        .mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', emailOptedOutAt: new Date() }) } }))
+        .mockImplementationOnce((_c, fn) => fn({ candidate: { update } }));
+
+      const result = await service.setUnsubscribe('unsub-token-1', false);
+
+      expect(update).toHaveBeenCalledWith({ where: { id: 'cand-1' }, data: { emailOptedOutAt: null } });
+      expect(result).toEqual({ optedOut: false });
+    });
+
+    it('throws NotFoundException for an unknown token and never writes', async () => {
+      const update = jest.fn();
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ candidate: { findUnique: jest.fn().mockResolvedValue(null) } }));
+
+      await expect(service.setUnsubscribe('bad-token', true)).rejects.toThrow(NotFoundException);
+      expect(update).not.toHaveBeenCalled();
+    });
+  });
 });

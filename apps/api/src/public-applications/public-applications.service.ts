@@ -394,6 +394,34 @@ export class PublicApplicationsService {
     return this.getPortal(portalToken);
   }
 
+  // Cross-tenant candidate-by-unsubscribeToken resolution, same LOOKUP_ORG/isSuperAdmin bypass
+  // as resolvePortalCandidate -- there is no org context until the token resolves one, and the
+  // token itself IS the authorization for an unauthenticated visitor.
+  private async resolveByUnsubscribeToken(token: string): Promise<{ id: string; organizationId: string; emailOptedOutAt: Date | null }> {
+    const candidate = await this.tenantPrisma.forTenant(
+      { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
+      (tx) => tx.candidate.findUnique({ where: { unsubscribeToken: token }, select: { id: true, organizationId: true, emailOptedOutAt: true } }),
+    );
+    if (!candidate) throw new NotFoundException('Unsubscribe link not found');
+    return candidate;
+  }
+
+  // Minimal data only: opted-out state + org name for display, no other candidate PII.
+  async getUnsubscribe(token: string): Promise<{ optedOut: boolean; orgName: string }> {
+    const candidate = await this.resolveByUnsubscribeToken(token);
+    const org = await this.prisma.organization.findUnique({ where: { id: candidate.organizationId }, select: { name: true } });
+    return { optedOut: Boolean(candidate.emailOptedOutAt), orgName: org?.name ?? '' };
+  }
+
+  // Idempotent, reversible: re-posting the same optedOut value is a no-op write.
+  async setUnsubscribe(token: string, optedOut: boolean): Promise<{ optedOut: boolean }> {
+    const candidate = await this.resolveByUnsubscribeToken(token);
+    await this.tenantPrisma.forTenant({ organizationId: candidate.organizationId, isSuperAdmin: true }, (tx) =>
+      tx.candidate.update({ where: { id: candidate.id }, data: { emailOptedOutAt: optedOut ? new Date() : null } }),
+    );
+    return { optedOut };
+  }
+
   async getApplicationStatus(statusToken: string) {
     const row = await this.tenantPrisma.forTenant(
       { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
