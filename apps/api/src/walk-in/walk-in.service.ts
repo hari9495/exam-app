@@ -6,6 +6,7 @@ import { EmailService } from '../email/email.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { buildAssessmentEmailHtml, generateToken, resolveInvitationExpiry, EMAIL_LOGO_SAS_TTL_MS } from '../invitations/invitations.service';
 import { RegisterWalkInDto } from './dto/register-walk-in.dto';
+import { resolveConsentStamp } from '../common/consent-check';
 
 /**
  * Decides whether a walk-in registration may replace a stored candidate name, returning the new
@@ -62,7 +63,9 @@ export class WalkInService {
     private readonly pipeline: PipelineService,
   ) {}
 
-  private async resolveOrg(orgSlug: string): Promise<{ id: string }> {
+  private async resolveOrg(
+    orgSlug: string,
+  ): Promise<{ id: string; applyConsentText: string | null; applyConsentVersion: number }> {
     const org = await this.prisma.organization.findUnique({ where: { slug: orgSlug } });
     if (!org) {
       throw new NotFoundException(`Organization "${orgSlug}" not found`);
@@ -74,10 +77,13 @@ export class WalkInService {
   // link/QR) -- walkInListed is deliberately NOT checked in that branch, since being placed
   // in a named group is itself the recruiter's explicit choice to expose the exam there,
   // independent of whether it's also in the org-wide default picker.
-  async listExams(orgSlug: string, groupId?: string): Promise<WalkInExamOption[]> {
+  async listExams(
+    orgSlug: string,
+    groupId?: string,
+  ): Promise<{ exams: WalkInExamOption[]; applyConsentText: string | null; applyConsentVersion: number }> {
     const org = await this.resolveOrg(orgSlug);
     const context = { organizationId: org.id, isSuperAdmin: true };
-    return this.tenantPrisma.forTenant(context, (tx) =>
+    const exams = await this.tenantPrisma.forTenant(context, (tx) =>
       tx.exam.findMany({
         where: {
           organizationId: org.id,
@@ -89,10 +95,14 @@ export class WalkInService {
         orderBy: { title: 'asc' },
       }),
     );
+    return { exams, applyConsentText: org.applyConsentText ?? null, applyConsentVersion: org.applyConsentVersion ?? 1 };
   }
 
   async register(orgSlug: string, dto: RegisterWalkInDto): Promise<{ token: string }> {
     const org = await this.resolveOrg(orgSlug);
+    // Thrown before the tenant tx opens (and thus before any candidate write) when this org
+    // requires consent and the registrant didn't accept it.
+    const consentStamp = resolveConsentStamp(org.applyConsentText, org.applyConsentVersion, dto.consentAccepted);
     const context = { organizationId: org.id, isSuperAdmin: true };
 
     const { invitation, exam, candidate, isNewCandidate } = await this.tenantPrisma.forTenant(context, async (tx) => {
@@ -115,7 +125,10 @@ export class WalkInService {
 
       const candidate = await tx.candidate.upsert({
         where: { organizationId_email: { organizationId: org.id, email: dto.email } },
-        create: { organizationId: org.id, email: dto.email, name: dto.name, phone: dto.phone },
+        // consentStamp rides both branches: a new candidate is stamped on create, a returning one
+        // on update, matching the "stamp new AND returning" consent rule. When consent is not
+        // configured, resolveConsentStamp returned {} so this is a no-op on both branches.
+        create: { organizationId: org.id, email: dto.email, name: dto.name, phone: dto.phone, ...consentStamp },
         // Mirrors PublicApplicationsService.apply / PipelineService.addEntry: upsert's `update`
         // branch is unfiltered by the soft-delete `$extends` (unlike the findFirst above), so it
         // can match a soft-deleted row via the org+email unique. Without this, a RETURNING
@@ -125,7 +138,7 @@ export class WalkInService {
         // no-op for a live candidate (already null). Name is NOT blanket-overwritten here (unlike
         // addEntry, which is recruiter-authenticated) -- only the narrow expandedName exception
         // above applies, same as public apply.
-        update: { ...(expanded ? { name: expanded } : {}), deletedAt: null, deletedByUserId: null },
+        update: { ...(expanded ? { name: expanded } : {}), deletedAt: null, deletedByUserId: null, ...consentStamp },
       });
 
       // Drive-sourced ATS entry: if this exam's walk-in group is linked to a job, the registrant

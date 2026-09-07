@@ -34,6 +34,7 @@ export default function ApplyForm() {
   const [file, setFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [customFields, setCustomFields] = useState<CustomFieldInputMap>({});
+  const [consentAccepted, setConsentAccepted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [statusToken, setStatusToken] = useState<string | null>(null);
@@ -92,6 +93,11 @@ export default function ApplyForm() {
       setFileError('File must be 5 MB or smaller.');
       return;
     }
+    const requiresConsent = Boolean(job.applyConsentText && job.applyConsentText.trim());
+    if (requiresConsent && !consentAccepted) {
+      setSubmitError('You must accept the consent statement to apply.');
+      return;
+    }
     setFileError(null);
     setSubmitError(null);
     setSubmitting(true);
@@ -100,7 +106,14 @@ export default function ApplyForm() {
       const res = await fetch(`${API_BASE}/public/jobs/${applyToken}/apply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, phone: phone.trim() || undefined, resumeBase64, customFields }),
+        body: JSON.stringify({
+          name,
+          email,
+          phone: phone.trim() || undefined,
+          resumeBase64,
+          customFields,
+          ...(requiresConsent ? { consentAccepted } : {}),
+        }),
       });
       if (!res.ok) throw new Error('Submission failed. Please try again.');
       const data = await res.json();
@@ -230,7 +243,26 @@ export default function ApplyForm() {
             {fileError ? <p className="text-xs text-candidate-danger">{fileError}</p> : null}
           </div>
 
-          <CandidateButton type="submit" disabled={submitting} className="w-full">
+          {job.applyConsentText && job.applyConsentText.trim() ? (
+            <div className="flex flex-col gap-2">
+              <p className="whitespace-pre-wrap text-xs text-candidate-text-secondary">{job.applyConsentText}</p>
+              <label className="flex items-start gap-2 text-sm text-candidate-text">
+                <input
+                  type="checkbox"
+                  checked={consentAccepted}
+                  onChange={(e) => setConsentAccepted(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border border-candidate-border"
+                />
+                I have read and agree to the above.
+              </label>
+            </div>
+          ) : null}
+
+          <CandidateButton
+            type="submit"
+            disabled={submitting || (Boolean(job.applyConsentText?.trim()) && !consentAccepted)}
+            className="w-full"
+          >
             {submitting ? 'Submitting…' : 'Submit application'}
           </CandidateButton>
         </form>

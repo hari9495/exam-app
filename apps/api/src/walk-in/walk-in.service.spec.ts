@@ -64,7 +64,11 @@ describe('WalkInService', () => {
       expect(tx.exam.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { organizationId: 'org-1', status: 'published', walkInEnabled: true } }),
       );
-      expect(result).toEqual([{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }]);
+      expect(result).toEqual({
+        exams: [{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }],
+        applyConsentText: null,
+        applyConsentVersion: 1,
+      });
     });
 
     it('scopes to a single group when a groupId is given, on top of the usual filters', async () => {
@@ -79,6 +83,17 @@ describe('WalkInService', () => {
           where: { organizationId: 'org-1', status: 'published', walkInEnabled: true, walkInGroupId: 'group-1' },
         }),
       );
+    });
+
+    it('exposes the org’s configured apply-consent text and version', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org', applyConsentText: 'I agree to X', applyConsentVersion: 4 });
+      const tx = { exam: { findMany: jest.fn().mockResolvedValue([]) } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.listExams('demo-org');
+
+      expect(result.applyConsentText).toBe('I agree to X');
+      expect(result.applyConsentVersion).toBe(4);
     });
   });
 
@@ -539,6 +554,111 @@ describe('WalkInService', () => {
       );
       expect(tx.candidate.update).not.toHaveBeenCalled();
       expect(result).toEqual({ token: 'fresh-token' });
+    });
+
+    describe('register — consent', () => {
+      it('stamps a NEW candidate with consentedAt/version when the org requires consent and it is accepted', async () => {
+        prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org', applyConsentText: 'I agree to X', applyConsentVersion: 5 });
+        const tx = {
+          exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published', walkInEnabled: true, schedulingEnabled: false, availabilityWindowEnd: null }) },
+          candidate: {
+            findFirst: jest.fn().mockResolvedValue(null),
+            upsert: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
+          },
+          invitation: {
+            findFirst: jest.fn().mockResolvedValue(null),
+            create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'raw-token' }),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+        await service.register('demo-org', { ...dto, consentAccepted: true });
+
+        expect(tx.candidate.upsert).toHaveBeenCalledWith(
+          expect.objectContaining({ create: expect.objectContaining({ consentedAt: expect.any(Date), consentVersion: 5 }) }),
+        );
+      });
+
+      it('stamps a RETURNING candidate with consentedAt/version when the org requires consent and it is accepted', async () => {
+        prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org', applyConsentText: 'I agree to X', applyConsentVersion: 5 });
+        const tx = {
+          exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published', walkInEnabled: true, schedulingEnabled: false, availabilityWindowEnd: null }) },
+          candidate: {
+            // Stored name is already two words -- expandedName won't fire, isolating the assertion to consent alone.
+            findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice Anderson' }),
+            upsert: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice Anderson' }),
+          },
+          invitation: {
+            findFirst: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'existing-token' }),
+            create: jest.fn(),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+        await service.register('demo-org', { ...dto, consentAccepted: true });
+
+        expect(tx.candidate.upsert).toHaveBeenCalledWith(
+          expect.objectContaining({ update: expect.objectContaining({ consentedAt: expect.any(Date), consentVersion: 5 }) }),
+        );
+      });
+
+      it('rejects with BadRequest and writes nothing when the org requires consent and consentAccepted is missing', async () => {
+        prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org', applyConsentText: 'I agree to X', applyConsentVersion: 1 });
+
+        await expect(service.register('demo-org', dto)).rejects.toThrow('Consent is required to apply');
+        expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+      });
+
+      it('rejects with BadRequest when the org requires consent and consentAccepted is explicitly false', async () => {
+        prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org', applyConsentText: 'I agree to X', applyConsentVersion: 1 });
+
+        await expect(service.register('demo-org', { ...dto, consentAccepted: false })).rejects.toThrow('Consent is required to apply');
+        expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+      });
+
+      it('does not stamp and does not require consent when applyConsentText is null (not configured)', async () => {
+        prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org', applyConsentText: null, applyConsentVersion: 1 });
+        const tx = {
+          exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published', walkInEnabled: true, schedulingEnabled: false, availabilityWindowEnd: null }) },
+          candidate: {
+            findFirst: jest.fn().mockResolvedValue(null),
+            upsert: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
+          },
+          invitation: {
+            findFirst: jest.fn().mockResolvedValue(null),
+            create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'raw-token' }),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+        const result = await service.register('demo-org', dto);
+
+        expect(result).toEqual({ token: 'raw-token' });
+        expect(tx.candidate.upsert.mock.calls[0][0].create.consentedAt).toBeUndefined();
+        expect(tx.candidate.upsert.mock.calls[0][0].update.consentedAt).toBeUndefined();
+      });
+
+      it('does not stamp and does not require consent when applyConsentText is whitespace-only', async () => {
+        prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org', applyConsentText: '   ', applyConsentVersion: 2 });
+        const tx = {
+          exam: { findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published', walkInEnabled: true, schedulingEnabled: false, availabilityWindowEnd: null }) },
+          candidate: {
+            findFirst: jest.fn().mockResolvedValue(null),
+            upsert: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
+          },
+          invitation: {
+            findFirst: jest.fn().mockResolvedValue(null),
+            create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'raw-token' }),
+          },
+        };
+        tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+        const result = await service.register('demo-org', dto);
+
+        expect(result).toEqual({ token: 'raw-token' });
+        expect(tx.candidate.upsert.mock.calls[0][0].create.consentedAt).toBeUndefined();
+        expect(tx.candidate.upsert.mock.calls[0][0].update.consentedAt).toBeUndefined();
+      });
     });
 
     describe('drive-sourced pipeline entry', () => {

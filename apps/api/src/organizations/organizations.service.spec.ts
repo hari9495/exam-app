@@ -1445,6 +1445,108 @@ describe('OrganizationsService', () => {
       expect(prisma.organization.update).not.toHaveBeenCalled();
     });
   });
+
+  describe('getApplyConsent', () => {
+    it('returns the stored text + version', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ applyConsentText: 'I agree', applyConsentVersion: 3 });
+
+      const result = await service.getApplyConsent({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result).toEqual({ text: 'I agree', version: 3 });
+      expect(prisma.organization.findUnique).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        select: { applyConsentText: true, applyConsentVersion: true },
+      });
+    });
+
+    it('defaults to text:null, version:1 when unset', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ applyConsentText: null, applyConsentVersion: 1 });
+
+      const result = await service.getApplyConsent({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result).toEqual({ text: null, version: 1 });
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(
+        service.getApplyConsent({ organizationId: null, isSuperAdmin: true }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('setApplyConsent', () => {
+    const context = { organizationId: 'org-1', isSuperAdmin: false };
+
+    it('bumps the version and audits when the normalized text differs from the stored value', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ applyConsentText: 'Old text' });
+      prisma.organization.update.mockResolvedValue({ applyConsentText: 'New text', applyConsentVersion: 2 });
+
+      const result = await service.setApplyConsent(context, 'user-1', { text: 'New text' });
+
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { applyConsentText: 'New text', applyConsentVersion: { increment: 1 } },
+        select: { applyConsentText: true, applyConsentVersion: true },
+      });
+      expect(audit.record).toHaveBeenCalledWith(
+        context,
+        expect.objectContaining({ actorUserId: 'user-1', action: 'organization.apply_consent_updated' }),
+      );
+      expect(result).toEqual({ text: 'New text', version: 2 });
+    });
+
+    it('does NOT bump the version or audit when the normalized text is unchanged', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ applyConsentText: 'Same text' });
+      prisma.organization.update.mockResolvedValue({ applyConsentText: 'Same text', applyConsentVersion: 1 });
+
+      const result = await service.setApplyConsent(context, 'user-1', { text: 'Same text' });
+
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { applyConsentText: 'Same text' },
+        select: { applyConsentText: true, applyConsentVersion: true },
+      });
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(result).toEqual({ text: 'Same text', version: 1 });
+    });
+
+    it('normalizes empty/whitespace-only text to null before comparing/storing', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ applyConsentText: 'Old text' });
+      prisma.organization.update.mockResolvedValue({ applyConsentText: null, applyConsentVersion: 2 });
+
+      const result = await service.setApplyConsent(context, 'user-1', { text: '   ' });
+
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { applyConsentText: null, applyConsentVersion: { increment: 1 } },
+        select: { applyConsentText: true, applyConsentVersion: true },
+      });
+      expect(result).toEqual({ text: null, version: 2 });
+    });
+
+    it('does not bump the version when clearing text that was already null/unset', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ applyConsentText: null });
+      prisma.organization.update.mockResolvedValue({ applyConsentText: null, applyConsentVersion: 1 });
+
+      const result = await service.setApplyConsent(context, 'user-1', { text: undefined });
+
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { applyConsentText: null },
+        select: { applyConsentText: true, applyConsentVersion: true },
+      });
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(result).toEqual({ text: null, version: 1 });
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(
+        service.setApplyConsent({ organizationId: null, isSuperAdmin: true }, 'user-1', { text: 'x' }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe('UpdateBusinessHoursDto validation', () => {

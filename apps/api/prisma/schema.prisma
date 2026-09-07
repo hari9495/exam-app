@@ -66,6 +66,8 @@ model Organization {
   stripeCustomerId       String?           @map("stripe_customer_id")
   stripeSubscriptionId   String?           @map("stripe_subscription_id")
   createdAt              DateTime          @default(now()) @map("created_at")
+  applyConsentText       String?           @map("apply_consent_text") @db.NVarChar(Max)
+  applyConsentVersion    Int               @default(1) @map("apply_consent_version")
   users                  User[]
   auditLogs              AuditLog[]
   webhookDeliveries      WebhookDelivery[]
@@ -528,6 +530,8 @@ model Candidate {
   erasedAt        DateTime?         @map("erased_at")
   deletedAt       DateTime?         @map("deleted_at")
   deletedByUserId String?           @map("deleted_by_user_id") @db.UniqueIdentifier
+  consentedAt     DateTime?         @map("consented_at")
+  consentVersion  Int?              @map("consent_version")
   invitations     Invitation[]
   pipelineEntries PipelineEntry[]
   profile         CandidateProfile?

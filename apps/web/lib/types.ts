@@ -311,6 +311,14 @@ export interface WalkInExamOption {
   walkInListed: boolean;
 }
 
+// GET /public/walk-in/:orgSlug/exams -- wraps the exam list with the org's apply-consent
+// config (Zoho #21) so the walk-in page can render the same consent checkbox as /apply.
+export interface WalkInExamsResponse {
+  exams: WalkInExamOption[];
+  applyConsentText: string | null;
+  applyConsentVersion: number;
+}
+
 export interface WalkInGroupExamSummary {
   id: string;
   title: string;
@@ -423,6 +431,11 @@ export interface PublicJob {
   postedAt?: string;
   orgName: string;
   orgLogo: string | null;
+  // Zoho #21 candidate consent capture -- non-empty text means the org requires a consent
+  // checkbox before this candidate can apply. Optional so an unmocked/older test fixture
+  // (no field at all) is treated identically to "not configured".
+  applyConsentText?: string | null;
+  applyConsentVersion?: number;
   customFields: PublicCustomFieldDef[];
 }
 

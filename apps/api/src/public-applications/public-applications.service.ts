@@ -11,6 +11,7 @@ import { UpdatePortalProfileDto } from './dto/update-portal-profile.dto';
 import { UploadPortalResumeDto } from './dto/upload-portal-resume.dto';
 import { recomputeGlobalStage } from '../candidates/recompute-global-stage';
 import { upsertCustomFieldValues, CustomFieldDefinitionLite } from '../custom-fields/custom-field-values';
+import { resolveConsentStamp } from '../common/consent-check';
 
 // Job-feed fields are wrapped in CDATA (the aggregator-standard for free-text). The only way to
 // break out of CDATA is the literal "]]>", so split it so it can never terminate the section early.
@@ -76,7 +77,7 @@ export class PublicApplicationsService {
     const job = await this.resolveJob(applyToken);
     const org = await this.prisma.organization.findUnique({
       where: { id: job.organizationId },
-      select: { name: true, logoPath: true },
+      select: { name: true, logoPath: true, applyConsentText: true, applyConsentVersion: true },
     });
     // Apply-visible candidate custom fields, cross-tenant super-admin read (same LOOKUP_ORG
     // pattern as resolveJob -- there is no org context until the applyToken resolves one).
@@ -99,6 +100,8 @@ export class PublicApplicationsService {
       // Container is private -- unsigned logoPath 403s in <img src>. signIfOurs mints a
       // read-only SAS for blobs we own and passes anything else through untouched.
       orgLogo: org?.logoPath ? ((await this.blobStorage.signIfOurs(org.logoPath)) as string | null) : null,
+      applyConsentText: org?.applyConsentText ?? null,
+      applyConsentVersion: org?.applyConsentVersion ?? 1,
       customFields: defs.map((d) => ({
         definitionId: d.id,
         key: d.key,
@@ -156,6 +159,15 @@ export class PublicApplicationsService {
   async apply(applyToken: string, dto: ApplyDto): Promise<{ statusToken: string; portalToken: string }> {
     const job = await this.resolveJob(applyToken);
 
+    // Cheap read via the already-known organizationId (not the tenant-scoped tx -- there is no
+    // candidate write yet to gate). Throws BadRequestException before any blob/DB write when
+    // this org requires consent and the applicant didn't accept it.
+    const org = await this.prisma.organization.findUnique({
+      where: { id: job.organizationId },
+      select: { applyConsentText: true, applyConsentVersion: true },
+    });
+    const consentStamp = resolveConsentStamp(org?.applyConsentText, org?.applyConsentVersion ?? 1, dto.consentAccepted);
+
     const buf = Buffer.from(dto.resumeBase64, 'base64');
     const validated = validatePdfUpload(buf);
     if (!validated.ok) {
@@ -183,12 +195,14 @@ export class PublicApplicationsService {
       const nameUpdate = existingCandidate ? expandedName(existingCandidate.name, dto.name) : null;
       const candidate = await tx.candidate.upsert({
         where: { organizationId_email: { organizationId: job.organizationId, email: dto.email } },
-        create: { organizationId: job.organizationId, email: dto.email, name: dto.name, phone: dto.phone ?? null, portalToken: randomUUID() },
+        // consentStamp rides both branches (stamp new AND returning candidate per the consent
+        // rule); {} when consent is not configured, so it's a no-op then.
+        create: { organizationId: job.organizationId, email: dto.email, name: dto.name, phone: dto.phone ?? null, portalToken: randomUUID(), ...consentStamp },
         // Un-hard-code: upsert's `update` branch is unfiltered by the soft-delete `$extends`
         // (unlike findUnique above), so it can match a soft-deleted row via the org+email unique.
         // Clearing deletedAt/deletedByUserId here resurrects it instead of silently re-attaching
         // new activity to a still-hidden candidate. No-op for a live candidate (already null).
-        update: { ...(nameUpdate ? { name: nameUpdate } : {}), deletedAt: null, deletedByUserId: null },
+        update: { ...(nameUpdate ? { name: nameUpdate } : {}), deletedAt: null, deletedByUserId: null, ...consentStamp },
       });
       // Trust boundary: this is a public, unauthenticated endpoint. Re-derive the allowed field
       // set from the DB instead of trusting the client's field list -- upsertCustomFieldValues

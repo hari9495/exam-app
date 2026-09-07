@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -17,6 +17,7 @@ import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
 import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update-organization.dto';
 import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
 import { UpdateBusinessHoursDto } from './dto/update-business-hours.dto';
+import { UpdateApplyConsentDto } from './dto/update-apply-consent.dto';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 
 @Controller('organizations')
@@ -135,6 +136,18 @@ export class OrganizationsController {
   @RequirePermissions('org:manage_settings')
   updateBusinessHours(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateBusinessHoursDto) {
     return this.organizationsService.updateBusinessHours(tenant, userId, dto);
+  }
+
+  @Get('apply-consent')
+  @RequirePermissions('org:manage_settings')
+  getApplyConsent(@CurrentTenant() tenant: TenantContext) {
+    return this.organizationsService.getApplyConsent(tenant);
+  }
+
+  @Put('apply-consent')
+  @RequirePermissions('org:manage_settings')
+  updateApplyConsent(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateApplyConsentDto) {
+    return this.organizationsService.setApplyConsent(tenant, userId, dto);
   }
 
   @Get('sso')

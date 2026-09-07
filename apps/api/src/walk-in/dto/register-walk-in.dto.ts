@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class RegisterWalkInDto {
   @IsString()
@@ -15,4 +15,8 @@ export class RegisterWalkInDto {
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  consentAccepted?: boolean;
 }

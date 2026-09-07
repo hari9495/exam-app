@@ -11,6 +11,12 @@ jest.mock('next/navigation', () => ({
 }));
 jest.mock('../../../lib/hooks/useWalkIn', () => ({ useWalkInExams: jest.fn(), useWalkInRegister: jest.fn() }));
 
+// GET /public/walk-in/:orgSlug/exams now returns { exams, applyConsentText, applyConsentVersion }
+// (Task 2, Zoho #21) instead of a bare array -- every mock below wraps its exam list accordingly.
+function examsData(exams: unknown[], consent: { applyConsentText?: string | null; applyConsentVersion?: number } = {}) {
+  return { exams, applyConsentText: consent.applyConsentText ?? null, applyConsentVersion: consent.applyConsentVersion ?? 1 };
+}
+
 describe('WalkInPage', () => {
   beforeEach(() => {
     mockSearchParams = new URLSearchParams();
@@ -18,7 +24,7 @@ describe('WalkInPage', () => {
   });
 
   it('shows the no-exams message and no form when zero exams are open for walk-in', () => {
-    (useWalkInExams as jest.Mock).mockReturnValue({ data: [], isLoading: false, isError: false });
+    (useWalkInExams as jest.Mock).mockReturnValue({ data: examsData([]), isLoading: false, isError: false });
 
     render(<WalkInPage />);
 
@@ -36,7 +42,7 @@ describe('WalkInPage', () => {
 
   it('shows the form without an exam picker when exactly one exam is open', () => {
     (useWalkInExams as jest.Mock).mockReturnValue({
-      data: [{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }],
+      data: examsData([{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }]),
       isLoading: false,
       isError: false,
     });
@@ -51,7 +57,7 @@ describe('WalkInPage', () => {
     const mutate = jest.fn();
     (useWalkInRegister as jest.Mock).mockReturnValue({ mutate, isPending: false });
     (useWalkInExams as jest.Mock).mockReturnValue({
-      data: [{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }],
+      data: examsData([{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }]),
       isLoading: false,
       isError: false,
     });
@@ -78,7 +84,7 @@ describe('WalkInPage', () => {
     const mutate = jest.fn();
     (useWalkInRegister as jest.Mock).mockReturnValue({ mutate, isPending: false });
     (useWalkInExams as jest.Mock).mockReturnValue({
-      data: [{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }],
+      data: examsData([{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }]),
       isLoading: false,
       isError: false,
     });
@@ -95,7 +101,7 @@ describe('WalkInPage', () => {
 
   it('strips non-digit characters from Phone as they are typed, and caps it at 10 digits', async () => {
     (useWalkInExams as jest.Mock).mockReturnValue({
-      data: [{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }],
+      data: examsData([{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }]),
       isLoading: false,
       isError: false,
     });
@@ -109,7 +115,7 @@ describe('WalkInPage', () => {
 
   it('validates Email and Phone on blur, before the candidate ever reaches the submit button', async () => {
     (useWalkInExams as jest.Mock).mockReturnValue({
-      data: [{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }],
+      data: examsData([{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }]),
       isLoading: false,
       isError: false,
     });
@@ -128,7 +134,7 @@ describe('WalkInPage', () => {
     const mutate = jest.fn();
     (useWalkInRegister as jest.Mock).mockReturnValue({ mutate, isPending: false });
     (useWalkInExams as jest.Mock).mockReturnValue({
-      data: [{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }],
+      data: examsData([{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }]),
       isLoading: false,
       isError: false,
     });
@@ -148,7 +154,7 @@ describe('WalkInPage', () => {
     const mutate = jest.fn();
     (useWalkInRegister as jest.Mock).mockReturnValue({ mutate, isPending: false });
     (useWalkInExams as jest.Mock).mockReturnValue({
-      data: [{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }],
+      data: examsData([{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }]),
       isLoading: false,
       isError: false,
     });
@@ -164,7 +170,7 @@ describe('WalkInPage', () => {
 
   it('clears a field error as soon as the candidate starts fixing it', async () => {
     (useWalkInExams as jest.Mock).mockReturnValue({
-      data: [{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }],
+      data: examsData([{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }]),
       isLoading: false,
       isError: false,
     });
@@ -181,10 +187,10 @@ describe('WalkInPage', () => {
 
   it('shows the form with an exam picker listing every exam when two or more are open', async () => {
     (useWalkInExams as jest.Mock).mockReturnValue({
-      data: [
+      data: examsData([
         { id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true },
         { id: 'exam-2', title: 'Frontend Round', durationMinutes: 45, walkInListed: true },
-      ],
+      ]),
       isLoading: false,
       isError: false,
     });
@@ -202,10 +208,10 @@ describe('WalkInPage', () => {
   it('skips the exam picker when a shared link/QR code names one of the open exams via ?exam=', () => {
     mockSearchParams = new URLSearchParams('exam=exam-2');
     (useWalkInExams as jest.Mock).mockReturnValue({
-      data: [
+      data: examsData([
         { id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true },
         { id: 'exam-2', title: 'Frontend Round', durationMinutes: 45, walkInListed: true },
-      ],
+      ]),
       isLoading: false,
       isError: false,
     });
@@ -219,10 +225,10 @@ describe('WalkInPage', () => {
   it('still shows the picker when ?exam= names an exam that is not actually open for walk-in', () => {
     mockSearchParams = new URLSearchParams('exam=not-a-real-exam');
     (useWalkInExams as jest.Mock).mockReturnValue({
-      data: [
+      data: examsData([
         { id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true },
         { id: 'exam-2', title: 'Frontend Round', durationMinutes: 45, walkInListed: true },
-      ],
+      ]),
       isLoading: false,
       isError: false,
     });
@@ -234,11 +240,11 @@ describe('WalkInPage', () => {
 
   it('excludes a walkInListed=false exam from the shared picker', async () => {
     (useWalkInExams as jest.Mock).mockReturnValue({
-      data: [
+      data: examsData([
         { id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true },
         { id: 'exam-2', title: 'Frontend Round', durationMinutes: 45, walkInListed: true },
         { id: 'exam-3', title: 'Internal Only', durationMinutes: 30, walkInListed: false },
-      ],
+      ]),
       isLoading: false,
       isError: false,
     });
@@ -256,10 +262,10 @@ describe('WalkInPage', () => {
   it('still resolves and submits a walkInListed=false exam via its own ?exam= link', () => {
     mockSearchParams = new URLSearchParams('exam=exam-3');
     (useWalkInExams as jest.Mock).mockReturnValue({
-      data: [
+      data: examsData([
         { id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true },
         { id: 'exam-3', title: 'Internal Only', durationMinutes: 30, walkInListed: false },
-      ],
+      ]),
       isLoading: false,
       isError: false,
     });
@@ -272,10 +278,10 @@ describe('WalkInPage', () => {
 
   it('auto-selects the sole listed exam even when an unlisted exam is also open, skipping the picker', () => {
     (useWalkInExams as jest.Mock).mockReturnValue({
-      data: [
+      data: examsData([
         { id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true },
         { id: 'exam-3', title: 'Internal Only', durationMinutes: 30, walkInListed: false },
-      ],
+      ]),
       isLoading: false,
       isError: false,
     });
@@ -288,7 +294,7 @@ describe('WalkInPage', () => {
 
   it('shows the no-exams message when every open exam is unlisted and there is no ?exam= link', () => {
     (useWalkInExams as jest.Mock).mockReturnValue({
-      data: [{ id: 'exam-3', title: 'Internal Only', durationMinutes: 30, walkInListed: false }],
+      data: examsData([{ id: 'exam-3', title: 'Internal Only', durationMinutes: 30, walkInListed: false }]),
       isLoading: false,
       isError: false,
     });
@@ -301,7 +307,7 @@ describe('WalkInPage', () => {
 
   it('passes the ?group= id through to useWalkInExams', () => {
     mockSearchParams = new URLSearchParams('group=group-1');
-    (useWalkInExams as jest.Mock).mockReturnValue({ data: [], isLoading: false, isError: false });
+    (useWalkInExams as jest.Mock).mockReturnValue({ data: examsData([]), isLoading: false, isError: false });
 
     render(<WalkInPage />);
 
@@ -311,10 +317,10 @@ describe('WalkInPage', () => {
   it('shows every exam the server returns for a ?group= link, ignoring walkInListed entirely', async () => {
     mockSearchParams = new URLSearchParams('group=group-1');
     (useWalkInExams as jest.Mock).mockReturnValue({
-      data: [
+      data: examsData([
         { id: 'exam-1', title: 'ServiceNow Fresher Drive', durationMinutes: 60, walkInListed: false },
         { id: 'exam-2', title: 'Salesforce Fresher Drive', durationMinutes: 60, walkInListed: false },
-      ],
+      ]),
       isLoading: false,
       isError: false,
     });
@@ -331,7 +337,7 @@ describe('WalkInPage', () => {
   it('auto-selects a group of exactly one exam without a picker', () => {
     mockSearchParams = new URLSearchParams('group=group-1');
     (useWalkInExams as jest.Mock).mockReturnValue({
-      data: [{ id: 'exam-1', title: 'Solo Group Exam', durationMinutes: 60, walkInListed: false }],
+      data: examsData([{ id: 'exam-1', title: 'Solo Group Exam', durationMinutes: 60, walkInListed: false }]),
       isLoading: false,
       isError: false,
     });
@@ -340,5 +346,49 @@ describe('WalkInPage', () => {
 
     expect(screen.getByLabelText('First Name')).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Exam' })).not.toBeInTheDocument();
+  });
+
+  // --- Zoho #21 candidate consent capture ---
+
+  it('renders no consent checkbox when the org has not configured apply-consent text', () => {
+    (useWalkInExams as jest.Mock).mockReturnValue({
+      data: examsData([{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }]),
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<WalkInPage />);
+
+    expect(screen.queryByText('I have read and agree to the above.')).not.toBeInTheDocument();
+  });
+
+  it('requires the consent checkbox and blocks submission until checked, then sends consentAccepted', async () => {
+    const mutate = jest.fn();
+    (useWalkInRegister as jest.Mock).mockReturnValue({ mutate, isPending: false });
+    (useWalkInExams as jest.Mock).mockReturnValue({
+      data: examsData(
+        [{ id: 'exam-1', title: 'Backend Round', durationMinutes: 60, walkInListed: true }],
+        { applyConsentText: 'We will process your data per our privacy policy.' },
+      ),
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<WalkInPage />);
+
+    expect(screen.getByText('We will process your data per our privacy policy.')).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText('First Name'), 'Priya');
+    await userEvent.type(screen.getByLabelText('Last Name'), 'Sharma');
+    await userEvent.type(screen.getByLabelText('Email'), 'priya@example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Email me my exam link' }));
+
+    expect(screen.getByText('You must accept to continue.')).toBeInTheDocument();
+    expect(mutate).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'I have read and agree to the above.' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Email me my exam link' }));
+
+    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ consentAccepted: true }), expect.anything());
   });
 });
