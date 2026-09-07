@@ -47,7 +47,7 @@ describe('V2ApprovalEmailsSettingsPage', () => {
 
     render(<V2ApprovalEmailsSettingsPage />);
 
-    for (const token of ['{{actorName}}', '{{subjectLabel}}', '{{contextText}}', '{{link}}']) {
+    for (const token of ['{{actorName}}', '{{subjectLabel}}', '{{link}}']) {
       expect(screen.getAllByText(token).length).toBeGreaterThan(0);
     }
   });

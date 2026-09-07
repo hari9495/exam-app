@@ -26,7 +26,7 @@ const desc: React.CSSProperties = { fontSize: 13, color: muted, margin: '4px 0 0
 const input: React.CSSProperties = { boxSizing: 'border-box', width: '100%', padding: '7px 10px', fontSize: 13, borderRadius: 8, border: '1px solid color-mix(in srgb, var(--ink) 15%, var(--hair))', background: 'var(--paper)', color: 'var(--ink)', outline: 'none' };
 const textarea: React.CSSProperties = { ...input, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 };
 
-const VARIABLES = ['{{actorName}}', '{{subjectLabel}}', '{{contextText}}', '{{link}}'];
+const VARIABLES = ['{{actorName}}', '{{subjectLabel}}', '{{link}}'];
 
 type Notice = { type: 'success' | 'error'; text: string } | null;
 
