@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { TenantPrismaService, TenantContext } from '@exam-platform/shared';
+import { TenantPrismaService, TenantContext, isApprovalEmailEventType, renderTemplateString } from '@exam-platform/shared';
 import { NOTIFICATION_TYPES, NOTIFICATION_TYPE_BY_KEY } from './notification-types';
-import { renderNotificationEmail } from './notification-email-render';
+import { renderNotificationEmail, escapeHtml, buildNotificationEmailFooter } from './notification-email-render';
 import { EmailService } from '../email/email.service';
 
 export interface NotificationView {
@@ -22,6 +22,9 @@ export interface MentionTarget {
   entityId: string;
   contextText?: string | null;
   linkPath: string;
+  /** Human label for the subject/body of an org-configured approval email template, e.g. the
+   *  requisition or offer's display name. Unused outside the approval-template render branch. */
+  subjectLabel?: string;
 }
 
 @Injectable()
@@ -47,7 +50,7 @@ export class NotificationsService {
     const ids = [...new Set(recipientUserIds)].filter((id) => id && id !== actorUserId);
     if (ids.length === 0) return;
 
-    const { outbox, actorName } = await this.tenantPrisma.forTenant(context, async (tx) => {
+    const { outbox, actorName, approvalTemplate } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const valid = await tx.user.findMany({
         where: { id: { in: ids }, organizationId: context.organizationId as string },
         select: { id: true, email: true, name: true },
@@ -58,6 +61,12 @@ export class NotificationsService {
         const actor = await tx.user.findUnique({ where: { id: actorUserId }, select: { name: true } });
         actorName = actor?.name ?? null;
       }
+      // Gated to approval event types only -- no extra query for mentions/assignments/etc.
+      const approvalTemplate = isApprovalEmailEventType(type)
+        ? await tx.approvalEmailTemplate.findFirst({
+            where: { organizationId: context.organizationId as string, eventType: type },
+          })
+        : null;
       for (const u of valid) {
         await tx.userNotification.create({
           data: {
@@ -76,7 +85,7 @@ export class NotificationsService {
           outbox.push({ to: u.email, prefMap });
         }
       }
-      return { outbox, actorName };
+      return { outbox, actorName, approvalTemplate };
     });
 
     if (outbox.length === 0) return;
@@ -88,18 +97,49 @@ export class NotificationsService {
       const sends = outbox
         .filter((entry) => entry.prefMap.get(type) ?? true)
         .map((entry) => {
-          const { subject, html } = renderNotificationEmail(typeDef, {
-            actorName,
-            contextText: target.contextText ?? null,
-            linkPath: target.linkPath,
-            appBaseUrl,
-          });
+          // Behavior-preserving fallback: no template, disabled template, or a non-approval type
+          // all fall straight through to the existing generic render -- byte-for-byte unchanged.
+          const { subject, html } = approvalTemplate?.enabled
+            ? this.renderApprovalTemplateEmail(approvalTemplate, actorName, target, appBaseUrl)
+            : renderNotificationEmail(typeDef, {
+                actorName,
+                contextText: target.contextText ?? null,
+                linkPath: target.linkPath,
+                appBaseUrl,
+              });
           return this.emailService.send({ to: entry.to, subject, html, organizationId: context.organizationId as string });
         });
       await Promise.allSettled(sends);
     } catch (error) {
       this.logger.error('Failed to send notification email(s)', error as Error);
     }
+  }
+
+  // Renders an org-configured approval email template: plain-text subject (no escaping needed --
+  // never inserted into HTML), HTML body built from the same shell + footer as the generic
+  // renderNotificationEmail, with every substituted value HTML-escaped before substitution so a
+  // hostile actor name / contextText can't inject markup into an admin-authored template.
+  private renderApprovalTemplateEmail(
+    approvalTemplate: { subject: string; body: string },
+    actorName: string | null,
+    target: MentionTarget,
+    appBaseUrl: string,
+  ): { subject: string; html: string } {
+    const vars = {
+      actorName: actorName ?? 'Someone',
+      subjectLabel: target.subjectLabel ?? '',
+      contextText: target.contextText ?? '',
+      link: `${appBaseUrl}${target.linkPath}`,
+    };
+    const subject = renderTemplateString(approvalTemplate.subject, vars);
+    const escapedVars = {
+      actorName: escapeHtml(vars.actorName),
+      subjectLabel: escapeHtml(vars.subjectLabel),
+      contextText: escapeHtml(vars.contextText),
+      link: escapeHtml(vars.link),
+    };
+    const html = `<div>${renderTemplateString(approvalTemplate.body, escapedVars)}</div>` + buildNotificationEmailFooter(appBaseUrl);
+    return { subject, html };
   }
 
   // @mentions in candidate feedback.
