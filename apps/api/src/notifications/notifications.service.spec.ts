@@ -53,6 +53,7 @@ describe('NotificationsService', () => {
       user: { findMany: jest.Mock; findUnique: jest.Mock };
       userNotification: { create: jest.Mock };
       userNotificationPreference: { findMany: jest.Mock };
+      approvalEmailTemplate: { findFirst: jest.Mock };
     };
 
     beforeEach(() => {
@@ -60,6 +61,7 @@ describe('NotificationsService', () => {
         user: { findMany: jest.fn(), findUnique: jest.fn().mockResolvedValue({ name: 'U One' }) },
         userNotification: { create: jest.fn() },
         userNotificationPreference: { findMany: jest.fn() },
+        approvalEmailTemplate: { findFirst: jest.fn().mockResolvedValue(null) },
       };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
     });
@@ -102,6 +104,82 @@ describe('NotificationsService', () => {
       // actor-only recipient list is filtered before the tx even opens
       expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
       expect(email.send).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('notify: approval-template render branch', () => {
+    let tx: {
+      user: { findMany: jest.Mock; findUnique: jest.Mock };
+      userNotification: { create: jest.Mock };
+      userNotificationPreference: { findMany: jest.Mock };
+      approvalEmailTemplate: { findFirst: jest.Mock };
+    };
+    // Hostile actorName exercises the HTML-escape path; contextText/subjectLabel are plain.
+    const approvalTarget = {
+      entityType: 'requisition',
+      entityId: 'req1',
+      contextText: 'Senior Engineer req',
+      linkPath: '/requisitions/req1',
+      subjectLabel: 'REQ-1042',
+    };
+
+    beforeEach(() => {
+      tx = {
+        user: { findMany: jest.fn().mockResolvedValue([{ id: 'u2', email: 'u2@x.test', name: 'U Two' }]), findUnique: jest.fn().mockResolvedValue({ name: '<b>Actor</b>' }) },
+        userNotification: { create: jest.fn() },
+        userNotificationPreference: { findMany: jest.fn().mockResolvedValue([]) },
+        approvalEmailTemplate: { findFirst: jest.fn() },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+    });
+
+    it('renders the org template when enabled: vars substituted, subject plain text, body HTML-escaped', async () => {
+      tx.approvalEmailTemplate.findFirst.mockResolvedValue({
+        subject: '[{{subjectLabel}}] Action needed from {{actorName}}',
+        body: '<p>{{actorName}} requests approval for {{subjectLabel}}: {{contextText}}</p><p><a href="{{link}}">Review</a></p>',
+        enabled: true,
+      });
+
+      await service.notify(context, 'u1', ['u2'], 'approval.requested', approvalTarget);
+
+      expect(tx.approvalEmailTemplate.findFirst).toHaveBeenCalledWith({
+        where: { organizationId: 'org-1', eventType: 'approval.requested' },
+      });
+      const [[sendArg]] = email.send.mock.calls;
+      // subject is plain text -- NOT escaped
+      expect(sendArg.subject).toBe('[REQ-1042] Action needed from <b>Actor</b>');
+      // body substitution is HTML-escaped
+      expect(sendArg.html).toContain('&lt;b&gt;Actor&lt;/b&gt; requests approval for REQ-1042: Senior Engineer req');
+      expect(sendArg.html).not.toContain('<b>Actor</b>');
+      expect(sendArg.html).toContain('http://localhost:3000/requisitions/req1');
+      expect(sendArg.html).toContain('Manage your notification emails'); // shared shell/footer reused
+    });
+
+    it('falls back to the generic render (fallback path/output unchanged) when no template exists for the event', async () => {
+      tx.approvalEmailTemplate.findFirst.mockResolvedValue(null);
+
+      await service.notify(context, 'u1', ['u2'], 'approval.requested', approvalTarget);
+
+      const [[sendArg]] = email.send.mock.calls;
+      expect(sendArg.subject).toBe('<b>Actor</b> — A request needs your approval');
+      expect(sendArg.html).toContain('Senior Engineer req');
+    });
+
+    it('falls back to the generic render when the org template is disabled', async () => {
+      tx.approvalEmailTemplate.findFirst.mockResolvedValue({ subject: 'x {{actorName}}', body: 'y', enabled: false });
+
+      await service.notify(context, 'u1', ['u2'], 'approval.requested', approvalTarget);
+
+      const [[sendArg]] = email.send.mock.calls;
+      expect(sendArg.subject).toBe('<b>Actor</b> — A request needs your approval');
+    });
+
+    it('never queries the template for a non-approval type, and uses the generic render', async () => {
+      await service.notify(context, 'u1', ['u2'], 'mention', approvalTarget);
+
+      expect(tx.approvalEmailTemplate.findFirst).not.toHaveBeenCalled();
+      const [[sendArg]] = email.send.mock.calls;
+      expect(sendArg.subject).toBe('<b>Actor</b> — You are @mentioned in feedback');
     });
   });
 

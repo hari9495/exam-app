@@ -85,6 +85,7 @@ interface DecideTxOutcome {
   requestId: string;
   submittedByUserId: string;
   nextStepApproverIds?: string[];
+  subjectLabel?: string;
 }
 
 // Everything the tx callback needs to hand back to the post-commit notification step.
@@ -96,6 +97,7 @@ interface SubmitTxOutcome {
   subjectType: 'job' | 'offer';
   resolvedFirstStep?: ResolvedStep;
   skipped: { position: number; reason: string }[];
+  subjectLabel?: string;
 }
 
 @Injectable()
@@ -183,11 +185,14 @@ export class ApprovalsService {
         entityId: subjectId,
       });
 
+      const subjectLabel = await this.resolveNotifySubjectLabel(tx, context.organizationId as string, subjectType, subjectId);
+
       return {
         result: { status: 'pending_approval', requestId: request.id },
         subjectType,
         resolvedFirstStep: resolved[0],
         skipped,
+        subjectLabel,
       };
     });
 
@@ -198,7 +203,7 @@ export class ApprovalsService {
           submitterUserId,
           outcome.resolvedFirstStep.approverUserIds,
           APPROVAL_NOTIFICATION_TYPES.requested,
-          { entityType: outcome.subjectType, entityId: subjectId, linkPath: `/v2/approvals` },
+          { entityType: outcome.subjectType, entityId: subjectId, linkPath: `/v2/approvals`, subjectLabel: outcome.subjectLabel },
         );
       } catch (e) {
         this.logger.error(`approval request notification failed for ${subjectType} ${subjectId}`, e as Error);
@@ -247,6 +252,8 @@ export class ApprovalsService {
         data: { requestId, stepPosition: req.currentStepPosition, approverUserId: actorUserId, decision, note: note ?? null },
       });
 
+      const subjectLabel = await this.resolveNotifySubjectLabel(tx, context.organizationId as string, req.subjectType, req.subjectId);
+
       const isLast = req.currentStepPosition >= steps.length - 1;
 
       if (decision === 'rejected') {
@@ -264,6 +271,7 @@ export class ApprovalsService {
           result: { requestStatus: 'rejected', subjectResolved: true, subjectType: req.subjectType, subjectId: req.subjectId, gate: req.gate as ApprovalGate },
           requestId,
           submittedByUserId: req.submittedByUserId,
+          subjectLabel,
         };
       }
 
@@ -282,6 +290,7 @@ export class ApprovalsService {
           result: { requestStatus: 'approved', subjectResolved: true, subjectType: req.subjectType, subjectId: req.subjectId, gate: req.gate as ApprovalGate },
           requestId,
           submittedByUserId: req.submittedByUserId,
+          subjectLabel,
         };
       }
 
@@ -295,6 +304,7 @@ export class ApprovalsService {
         requestId,
         submittedByUserId: req.submittedByUserId,
         nextStepApproverIds: steps[req.currentStepPosition + 1].approverUserIds,
+        subjectLabel,
       };
     });
 
@@ -310,7 +320,12 @@ export class ApprovalsService {
     }
 
     try {
-      const target = { entityType: outcome.result.subjectType, entityId: outcome.result.subjectId, linkPath: `/v2/approvals` };
+      const target = {
+        entityType: outcome.result.subjectType,
+        entityId: outcome.result.subjectId,
+        linkPath: `/v2/approvals`,
+        subjectLabel: outcome.subjectLabel,
+      };
       if (outcome.result.requestStatus === 'pending_approval' && outcome.nextStepApproverIds) {
         await this.notifications.notify(context, actorUserId, outcome.nextStepApproverIds, APPROVAL_NOTIFICATION_TYPES.requested, target);
       } else if (outcome.result.requestStatus === 'approved') {
@@ -390,6 +405,27 @@ export class ApprovalsService {
     }
 
     return labels;
+  }
+
+  // Single-subject label for a notify() target (submit/decide/cancel) -- job title, or the
+  // offer's candidate name via its bare candidateId column (same shape getRequestDetail already
+  // resolves for its `subject` payload). Deliberately un-prefixed and un-batched, unlike
+  // resolveSubjectLabels above: that one is a page of RequestSummary rows for the UI list
+  // ("Offer — <name>"); this is one row's plain name for {{subjectLabel}} template substitution.
+  private async resolveNotifySubjectLabel(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    subjectType: string,
+    subjectId: string,
+  ): Promise<string | undefined> {
+    if (subjectType === 'job') {
+      const job = await tx.job.findFirst({ where: { id: subjectId, organizationId }, select: { title: true } });
+      return job?.title;
+    }
+    const offer = await tx.offer.findFirst({ where: { id: subjectId, organizationId }, select: { candidateId: true } });
+    if (!offer) return undefined;
+    const candidate = await tx.candidate.findFirst({ where: { id: offer.candidateId }, select: { name: true } });
+    return candidate?.name;
   }
 
   private toRequestSummary(r: {
@@ -492,10 +528,12 @@ export class ApprovalsService {
 
       const steps: ResolvedStep[] = JSON.parse(req.chainSnapshotJson);
       const currentStepApproverIds = steps[req.currentStepPosition]?.approverUserIds ?? [];
+      const subjectLabel = await this.resolveNotifySubjectLabel(tx, context.organizationId as string, req.subjectType, req.subjectId);
 
       return {
         result: { subjectType: req.subjectType, subjectId: req.subjectId, gate: req.gate as ApprovalGate },
         currentStepApproverIds,
+        subjectLabel,
       };
     });
 
@@ -516,7 +554,7 @@ export class ApprovalsService {
         actorUserId,
         outcome.currentStepApproverIds,
         APPROVAL_NOTIFICATION_TYPES.cancelled,
-        { entityType: outcome.result.subjectType, entityId: outcome.result.subjectId, linkPath: `/v2/approvals` },
+        { entityType: outcome.result.subjectType, entityId: outcome.result.subjectId, linkPath: `/v2/approvals`, subjectLabel: outcome.subjectLabel },
       );
     } catch (e) {
       this.logger.error(`approval cancellation notification failed for request ${requestId}`, e as Error);
