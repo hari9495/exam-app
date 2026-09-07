@@ -518,6 +518,8 @@ model Candidate {
   status          String            @default("active")
   globalStage     String            @default("new") @map("global_stage")
   portalToken     String?           @unique @map("portal_token")
+  unsubscribeToken String?          @unique @map("unsubscribe_token")
+  emailOptedOutAt  DateTime?        @map("email_opted_out_at")
   createdAt       DateTime          @default(now()) @map("created_at")
   erasedAt        DateTime?         @map("erased_at")
   invitations     Invitation[]
