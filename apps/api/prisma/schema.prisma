@@ -1226,6 +1226,21 @@ model JobExam {
   @@map("job_exams")
 }
 
+model ApprovalEmailTemplate {
+  id             String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  organizationId String   @map("organization_id") @db.UniqueIdentifier
+  eventType      String   @map("event_type") @db.NVarChar(50)
+  subject        String   @db.NVarChar(Max)
+  body           String   @db.NVarChar(Max)
+  enabled        Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([organizationId, eventType])
+  @@index([organizationId])
+  @@map("approval_email_templates")
+}
+
 model UserGroup {
   id             String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
   organizationId String   @map("organization_id") @db.UniqueIdentifier
