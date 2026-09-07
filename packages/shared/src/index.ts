@@ -37,3 +37,5 @@ export * from './pipeline/global-stage';
 export * from './scheduling/business-hours';
 export * from './field-permissions/field-permissions';
 export * from './record-visibility/record-visibility';
+export * from './soft-delete/soft-delete';
+export * from './soft-delete/soft-delete.extension';

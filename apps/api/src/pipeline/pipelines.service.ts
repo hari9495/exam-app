@@ -94,7 +94,10 @@ export class PipelinesService {
       if (!pipeline) throw new NotFoundException('Pipeline not found');
       if (pipeline.isDefault) throw new BadRequestException('Cannot delete the default pipeline');
 
-      await tx.pipeline.delete({ where: { id: pipelineId } });
+      await tx.pipeline.update({
+        where: { id: pipelineId },
+        data: { deletedAt: new Date(), deletedByUserId: actorUserId },
+      });
 
       await this.audit.record(context, {
         actorUserId,

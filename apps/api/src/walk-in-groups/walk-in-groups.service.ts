@@ -118,7 +118,9 @@ export class WalkInGroupsService {
     }
     // onDelete: SetNull on Exam.walkInGroupId -- member exams simply become ungrouped,
     // still walk-in-enabled, still reachable via their own exam-specific link.
-    await this.tenantPrisma.forTenant(context, (tx) => tx.walkInGroup.delete({ where: { id } }));
+    await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.walkInGroup.update({ where: { id }, data: { deletedAt: new Date(), deletedByUserId: actorUserId } }),
+    );
     await this.audit.record(context, {
       actorUserId,
       action: 'walk_in_group.deleted',

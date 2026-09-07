@@ -338,7 +338,10 @@ export class CandidatesService {
           `Candidate ${candidateId} has ${invitationCount} invitation(s) and cannot be deleted -- mark them inactive instead`,
         );
       }
-      await tx.candidate.delete({ where: { id: candidateId } });
+      await tx.candidate.update({
+        where: { id: candidateId },
+        data: { deletedAt: new Date(), deletedByUserId: actorUserId },
+      });
     });
 
     await this.audit.record(context, {

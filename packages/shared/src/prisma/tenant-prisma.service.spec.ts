@@ -6,9 +6,20 @@ import { PrismaService } from './prisma.service';
 describe('TenantPrismaService', () => {
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
+  // `TenantPrismaService`'s constructor now calls `this.prisma.$extends(softDeleteExtension)`
+  // to build the filtered client `forTenant` transacts through -- so every fake `prisma` needs a
+  // `$extends` that hands back a filtered stand-in with its OWN `$transaction` spy. That's what
+  // lets these tests both keep asserting on `forTenant`'s tx behavior (via `filteredTransaction`,
+  // wired to the same `transactionImpl` every existing test already expects) and prove the
+  // routing split: `forTenant` must go through the extended/filtered `$transaction`,
+  // `forTenantIncludingDeleted` through the raw one -- never the other.
   function makeService(transactionImpl: (cb: (tx: any) => Promise<any>) => Promise<any>) {
-    const prisma = { $transaction: jest.fn(transactionImpl) } as unknown as PrismaService;
-    return new TenantPrismaService(prisma);
+    const filteredTransaction = jest.fn(transactionImpl);
+    const rawTransaction = jest.fn(transactionImpl);
+    const extends_ = jest.fn(() => ({ $transaction: filteredTransaction }));
+    const prisma = { $transaction: rawTransaction, $extends: extends_ } as unknown as PrismaService;
+    const service = new TenantPrismaService(prisma);
+    return { service, filteredTransaction, rawTransaction, extends: extends_ };
   }
 
   // $executeRaw is a tagged-template call: jest records each invocation as
@@ -38,7 +49,7 @@ describe('TenantPrismaService', () => {
   it('returns the callback result and resets session context to null/0 on success', async () => {
     const executeRaw = jest.fn().mockResolvedValue(undefined);
     const tx = { $executeRaw: executeRaw };
-    const service = makeService((cb) => cb(tx));
+    const { service, filteredTransaction, rawTransaction } = makeService((cb) => cb(tx));
 
     const result = await service.forTenant(context, async () => 'ok');
 
@@ -54,12 +65,17 @@ describe('TenantPrismaService', () => {
     expect(resetSql(executeRaw, 4)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
     expect(resetSql(executeRaw, 5)).toBe("EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = 0");
     expect(resetSql(executeRaw, 6)).toBe("EXEC sp_set_session_context @key = N'app_current_user', @value = NULL");
+    // Routing: forTenant must run through the soft-delete-filtered client's $transaction, never
+    // the raw one -- that's the whole point of the recycle-bin fix (the redirect must land on the
+    // tx-scoped client, and this is the tx forTenant is supposed to open in the first place).
+    expect(filteredTransaction).toHaveBeenCalledTimes(1);
+    expect(rawTransaction).not.toHaveBeenCalled();
   });
 
   it('still resets session context to null/0 when the callback throws a non-P2028 error', async () => {
     const executeRaw = jest.fn().mockResolvedValue(undefined);
     const tx = { $executeRaw: executeRaw };
-    const service = makeService((cb) => cb(tx));
+    const { service } = makeService((cb) => cb(tx));
 
     await expect(
       service.forTenant(context, async () => {
@@ -77,7 +93,7 @@ describe('TenantPrismaService', () => {
   it('still resets session context when the callback throws an HttpException (business-logic 4xx/409)', async () => {
     const executeRaw = jest.fn().mockResolvedValue(undefined);
     const tx = { $executeRaw: executeRaw };
-    const service = makeService((cb) => cb(tx));
+    const { service } = makeService((cb) => cb(tx));
     const conflict = new HttpException('Attempt already submitted', HttpStatus.CONFLICT);
 
     let caught: unknown;
@@ -103,7 +119,7 @@ describe('TenantPrismaService', () => {
     it('sets app_current_user and app_record_visibility_governed=1 for a governed role (recruiter), and resets both', async () => {
       const executeRaw = jest.fn().mockResolvedValue(undefined);
       const tx = { $executeRaw: executeRaw };
-      const service = makeService((cb) => cb(tx));
+      const { service } = makeService((cb) => cb(tx));
       const governedContext = { organizationId: 'org-1', isSuperAdmin: false, userId: 'U1', role: 'recruiter' };
 
       const result = await service.forTenant(governedContext, async () => 'ok');
@@ -127,7 +143,7 @@ describe('TenantPrismaService', () => {
     it('sets app_record_visibility_governed=0 for a non-governed role (org_admin) even with a userId present', async () => {
       const executeRaw = jest.fn().mockResolvedValue(undefined);
       const tx = { $executeRaw: executeRaw };
-      const service = makeService((cb) => cb(tx));
+      const { service } = makeService((cb) => cb(tx));
       const adminContext = { organizationId: 'org-1', isSuperAdmin: true, userId: 'U2', role: 'org_admin' };
 
       await service.forTenant(adminContext, async () => 'ok');
@@ -140,7 +156,7 @@ describe('TenantPrismaService', () => {
     it('skips the app_current_user SET when the context has no userId', async () => {
       const executeRaw = jest.fn().mockResolvedValue(undefined);
       const tx = { $executeRaw: executeRaw };
-      const service = makeService((cb) => cb(tx));
+      const { service } = makeService((cb) => cb(tx));
       const noUserContext = { organizationId: 'org-1', isSuperAdmin: false, role: 'recruiter' };
 
       await service.forTenant(noUserContext, async () => 'ok');
@@ -163,7 +179,7 @@ describe('TenantPrismaService', () => {
       code: 'P2028',
       clientVersion: '5.10.0',
     });
-    const service = makeService(() => Promise.reject(p2028));
+    const { service } = makeService(() => Promise.reject(p2028));
     const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
 
     let caught: unknown;
@@ -192,7 +208,7 @@ describe('TenantPrismaService', () => {
       code: 'P2024',
       clientVersion: '5.10.0',
     });
-    const service = makeService(() => Promise.reject(p2024));
+    const { service } = makeService(() => Promise.reject(p2024));
     const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
 
     let caught: unknown;
@@ -215,14 +231,14 @@ describe('TenantPrismaService', () => {
       code: 'P2002',
       clientVersion: '5.10.0',
     });
-    const service = makeService(() => Promise.reject(p2002));
+    const { service } = makeService(() => Promise.reject(p2002));
 
     await expect(service.forTenant(context, async () => 'unreachable')).rejects.toBe(p2002);
   });
 
   it('propagates a non-Prisma error unchanged', async () => {
     const genericError = new Error('connection refused');
-    const service = makeService(() => Promise.reject(genericError));
+    const { service } = makeService(() => Promise.reject(genericError));
 
     await expect(service.forTenant(context, async () => 'unreachable')).rejects.toBe(genericError);
   });
@@ -245,7 +261,7 @@ describe('TenantPrismaService', () => {
 
     it('still returns the callback result when the reset throws, and logs the failure', async () => {
       const { tx, executeRaw } = makeResetFailingTx();
-      const service = makeService((cb) => cb(tx));
+      const { service } = makeService((cb) => cb(tx));
       const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
       const result = await service.forTenant(context, async () => 'ok');
@@ -264,7 +280,7 @@ describe('TenantPrismaService', () => {
 
     it('still surfaces the callback error (not the reset error) when both throw, and logs the reset failure', async () => {
       const { tx, executeRaw } = makeResetFailingTx();
-      const service = makeService((cb) => cb(tx));
+      const { service } = makeService((cb) => cb(tx));
       const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
       const callbackError = new Error('callback boom');
 
@@ -286,6 +302,75 @@ describe('TenantPrismaService', () => {
     });
   });
 
+  describe('forTenantIncludingDeleted', () => {
+    it('sets and resets session context identically to forTenant, and returns the callback result', async () => {
+      const executeRaw = jest.fn().mockResolvedValue(undefined);
+      const tx = { $executeRaw: executeRaw };
+      const { service } = makeService((cb) => cb(tx));
+
+      const result = await service.forTenantIncludingDeleted(context, async () => 'ok');
+
+      expect(result).toBe('ok');
+      expect(executeRaw).toHaveBeenCalledTimes(UNGOVERNED_TOTAL_CALLS);
+      expect(resetSql(executeRaw, 3)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
+      expect(resetSql(executeRaw, 4)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
+      expect(resetSql(executeRaw, 5)).toBe("EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = 0");
+      expect(resetSql(executeRaw, 6)).toBe("EXEC sp_set_session_context @key = N'app_current_user', @value = NULL");
+    });
+
+    // Routing: forTenantIncludingDeleted must run through the RAW client's $transaction, never
+    // the filtered one -- that's what makes soft-deleted rows visible to it.
+    it('routes through the raw client, not the soft-delete-filtered one', async () => {
+      const executeRaw = jest.fn().mockResolvedValue(undefined);
+      const tx = { $executeRaw: executeRaw };
+      const { service, filteredTransaction, rawTransaction } = makeService((cb) => cb(tx));
+
+      await service.forTenantIncludingDeleted(context, async () => 'ok');
+
+      expect(rawTransaction).toHaveBeenCalledTimes(1);
+      expect(filteredTransaction).not.toHaveBeenCalled();
+    });
+
+    it('still resets session context when the callback throws', async () => {
+      const executeRaw = jest.fn().mockResolvedValue(undefined);
+      const tx = { $executeRaw: executeRaw };
+      const { service } = makeService((cb) => cb(tx));
+
+      await expect(
+        service.forTenantIncludingDeleted(context, async () => {
+          throw new Error('boom');
+        }),
+      ).rejects.toThrow('boom');
+
+      expect(executeRaw).toHaveBeenCalledTimes(UNGOVERNED_TOTAL_CALLS);
+      expect(resetSql(executeRaw, 3)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
+      expect(resetSql(executeRaw, 4)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
+      expect(resetSql(executeRaw, 5)).toBe("EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = 0");
+      expect(resetSql(executeRaw, 6)).toBe("EXEC sp_set_session_context @key = N'app_current_user', @value = NULL");
+    });
+
+    it('maps a P2028 rejection to the same 503 as forTenant', async () => {
+      const p2028 = new Prisma.PrismaClientKnownRequestError('Unable to start a transaction in the given time', {
+        code: 'P2028',
+        clientVersion: '5.10.0',
+      });
+      const { service } = makeService(() => Promise.reject(p2028));
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      let caught: unknown;
+      try {
+        await service.forTenantIncludingDeleted(context, async () => 'unreachable');
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toBeInstanceOf(HttpException);
+      expect((caught as HttpException).getStatus()).toBe(HttpStatus.SERVICE_UNAVAILABLE);
+      expect((caught as HttpException).getResponse()).toEqual(POOL_EXHAUSTED_RESPONSE);
+      warnSpy.mockRestore();
+    });
+  });
+
   // ADO #6809: webcamSnapshot's two queries moved off forTenant onto the plain client (isolation
   // comes from an ID chain already resolved through the candidate's own invitationId, not from
   // organizationId/RLS, and neither query needs multi-statement atomicity). withoutTenantScope
@@ -297,7 +382,7 @@ describe('TenantPrismaService', () => {
   describe('withoutTenantScope', () => {
     function makePlainService() {
       const transaction = jest.fn();
-      const prisma = { $transaction: transaction } as unknown as PrismaService;
+      const prisma = { $transaction: transaction, $extends: jest.fn(() => ({ $transaction: jest.fn() })) } as unknown as PrismaService;
       return { service: new TenantPrismaService(prisma), prisma, transaction };
     }
 

@@ -362,6 +362,8 @@ model WalkInGroup {
   name           String
   createdAt      DateTime       @default(now()) @map("created_at")
   jobId          String?        @map("job_id") @db.UniqueIdentifier
+  deletedAt      DateTime?      @map("deleted_at")
+  deletedByUserId String?       @map("deleted_by_user_id") @db.UniqueIdentifier
   job            Job?           @relation(fields: [jobId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   exams          Exam[]
   driveSessions  DriveSession[]
@@ -522,6 +524,8 @@ model Candidate {
   portalToken     String?           @unique @map("portal_token")
   createdAt       DateTime          @default(now()) @map("created_at")
   erasedAt        DateTime?         @map("erased_at")
+  deletedAt       DateTime?         @map("deleted_at")
+  deletedByUserId String?           @map("deleted_by_user_id") @db.UniqueIdentifier
   invitations     Invitation[]
   pipelineEntries PipelineEntry[]
   profile         CandidateProfile?
@@ -870,6 +874,8 @@ model Job {
   salaryCurrency     String?         @map("salary_currency") @db.NVarChar(10)
   pipelineId         String?         @map("pipeline_id") @db.UniqueIdentifier
   pipeline           Pipeline?       @relation(fields: [pipelineId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  deletedAt          DateTime?       @map("deleted_at")
+  deletedByUserId    String?         @map("deleted_by_user_id") @db.UniqueIdentifier
 
   @@index([organizationId, status])
   @@map("jobs")
@@ -882,6 +888,8 @@ model Pipeline {
   isDefault      Boolean         @default(false) @map("is_default")
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
+  deletedAt      DateTime?       @map("deleted_at")
+  deletedByUserId String?        @map("deleted_by_user_id") @db.UniqueIdentifier
   stages         PipelineStage[]
   jobs           Job[]
 

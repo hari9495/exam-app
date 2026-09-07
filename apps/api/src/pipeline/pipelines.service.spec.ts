@@ -6,7 +6,7 @@ describe('PipelinesService guardrails', () => {
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
   let tx: {
-    pipeline: { findFirst: jest.Mock; findMany: jest.Mock; create: jest.Mock; delete: jest.Mock };
+    pipeline: { findFirst: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock; delete: jest.Mock };
     pipelineStage: { findFirst: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock; delete: jest.Mock };
     pipelineStatus: { findFirst: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock; delete: jest.Mock };
     pipelineEntry: { count: jest.Mock };
@@ -15,7 +15,7 @@ describe('PipelinesService guardrails', () => {
 
   beforeEach(() => {
     tx = {
-      pipeline: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), delete: jest.fn() },
+      pipeline: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
       pipelineStage: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
       pipelineStatus: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
       pipelineEntry: { count: jest.fn() },
@@ -29,7 +29,20 @@ describe('PipelinesService guardrails', () => {
     tx.pipeline.findFirst.mockResolvedValue({ id: 'p1', organizationId: 'org-1', isDefault: true });
 
     await expect(service.deletePipeline(context, 'u1', 'p1')).rejects.toThrow(/default/i);
-    expect(tx.pipeline.delete).not.toHaveBeenCalled();
+    expect(tx.pipeline.update).not.toHaveBeenCalled();
+  });
+
+  it('soft-deletes a non-default pipeline and audits pipeline.deleted', async () => {
+    tx.pipeline.findFirst.mockResolvedValue({ id: 'p1', organizationId: 'org-1', isDefault: false });
+    tx.pipeline.update.mockResolvedValue({ id: 'p1' });
+
+    await service.deletePipeline(context, 'user-1', 'p1');
+
+    expect(tx.pipeline.update).toHaveBeenCalledWith({
+      where: { id: 'p1' },
+      data: { deletedAt: expect.any(Date), deletedByUserId: 'user-1' },
+    });
+    expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'pipeline.deleted', entityId: 'p1' }));
   });
 
   it('refuses to delete a stage that still has entries', async () => {
