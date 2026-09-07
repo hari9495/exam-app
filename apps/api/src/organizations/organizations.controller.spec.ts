@@ -92,3 +92,49 @@ describe('OrganizationsController pipeline settings', () => {
     expect(permissions).toEqual(['org:manage_settings']);
   });
 });
+
+describe('OrganizationsController apply-consent', () => {
+  let controller: OrganizationsController;
+  let service: { getApplyConsent: jest.Mock; setApplyConsent: jest.Mock };
+  const tenant = { organizationId: 'org-1', isSuperAdmin: false } as any;
+
+  beforeEach(async () => {
+    service = {
+      getApplyConsent: jest.fn().mockResolvedValue({ text: null, version: 1 }),
+      setApplyConsent: jest.fn().mockResolvedValue({ text: 'I agree', version: 2 }),
+    };
+    const moduleRef = await Test.createTestingModule({
+      controllers: [OrganizationsController],
+      providers: [{ provide: OrganizationsService, useValue: service }],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useClass(MockGuard)
+      .overrideGuard(PermissionsGuard)
+      .useClass(MockGuard)
+      .compile();
+    controller = moduleRef.get(OrganizationsController);
+  });
+
+  it('GET /organizations/apply-consent delegates to getApplyConsent', async () => {
+    const result = await controller.getApplyConsent(tenant);
+    expect(service.getApplyConsent).toHaveBeenCalledWith(tenant);
+    expect(result).toEqual({ text: null, version: 1 });
+  });
+
+  it('PUT /organizations/apply-consent delegates to setApplyConsent', async () => {
+    const dto = { text: 'I agree' };
+    const result = await controller.updateApplyConsent(tenant, 'user-1', dto);
+    expect(service.setApplyConsent).toHaveBeenCalledWith(tenant, 'user-1', dto);
+    expect(result).toEqual({ text: 'I agree', version: 2 });
+  });
+
+  it('gates the getter behind org:manage_settings', () => {
+    const permissions = Reflect.getMetadata(PERMISSIONS_KEY, OrganizationsController.prototype.getApplyConsent);
+    expect(permissions).toEqual(['org:manage_settings']);
+  });
+
+  it('gates the setter behind org:manage_settings', () => {
+    const permissions = Reflect.getMetadata(PERMISSIONS_KEY, OrganizationsController.prototype.updateApplyConsent);
+    expect(permissions).toEqual(['org:manage_settings']);
+  });
+});

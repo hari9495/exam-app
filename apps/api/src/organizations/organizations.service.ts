@@ -21,6 +21,7 @@ import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
 import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update-organization.dto';
 import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
 import { UpdateBusinessHoursDto } from './dto/update-business-hours.dto';
+import { UpdateApplyConsentDto } from './dto/update-apply-consent.dto';
 import { BusinessHours, Holiday } from '@exam-platform/shared';
 
 export interface BrandingResponse {
@@ -96,6 +97,11 @@ export interface PipelineSettingsResponse {
 export interface BusinessHoursResponse {
   businessHours: BusinessHours | null;
   holidays: Holiday[];
+}
+
+export interface ApplyConsentResponse {
+  text: string | null;
+  version: number;
 }
 
 export interface SsoSettingsResponse {
@@ -748,6 +754,46 @@ export class OrganizationsService {
       businessHours: org.businessHoursJson ? (JSON.parse(org.businessHoursJson) as BusinessHours) : null,
       holidays: org.holidaysJson ? (JSON.parse(org.holidaysJson) as Holiday[]) : [],
     };
+  }
+
+  async getApplyConsent(context: TenantContext): Promise<ApplyConsentResponse> {
+    const organizationId = this.requireOrganizationId(context);
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { applyConsentText: true, applyConsentVersion: true },
+    });
+    return { text: org?.applyConsentText ?? null, version: org?.applyConsentVersion ?? 1 };
+  }
+
+  async setApplyConsent(context: TenantContext, actorUserId: string, dto: UpdateApplyConsentDto): Promise<ApplyConsentResponse> {
+    const organizationId = this.requireOrganizationId(context);
+    // Empty/whitespace-only = feature off, same convention as the public apply-side
+    // helper (resolveConsentStamp in common/consent-check.ts) that treats a blank
+    // applyConsentText as "not configured".
+    const normalized = dto.text?.trim() ? dto.text.trim() : null;
+
+    const existing = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { applyConsentText: true },
+    });
+    const changed = (existing?.applyConsentText ?? null) !== normalized;
+
+    const org = await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { applyConsentText: normalized, ...(changed && { applyConsentVersion: { increment: 1 } }) },
+      select: { applyConsentText: true, applyConsentVersion: true },
+    });
+
+    if (changed) {
+      await this.audit.record(context, {
+        actorUserId,
+        action: 'organization.apply_consent_updated',
+        entityType: 'organization',
+        entityId: organizationId,
+      });
+    }
+
+    return { text: org.applyConsentText, version: org.applyConsentVersion };
   }
 
   async generateWebhookSecret(context: TenantContext, actorUserId: string): Promise<{ webhookSecret: string }> {
