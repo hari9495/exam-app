@@ -1,8 +1,9 @@
-import { PrismaService, OrgSecretsCryptoService } from '@exam-platform/shared';
+import { PrismaService, OrgSecretsCryptoService, TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
 
 async function main() {
-  const emailService = new EmailService(new PrismaService(), new OrgSecretsCryptoService());
+  const prisma = new PrismaService();
+  const emailService = new EmailService(prisma, new OrgSecretsCryptoService(), new TenantPrismaService(prisma));
   const result = await emailService.send({
     to: 'test-recipient@example.com',
     subject: 'Phase 1c manual verification',

@@ -13,6 +13,7 @@ export interface SendMessageInput {
   subject: string;
   body: string;
   source: 'manual' | 'stage_prompt' | 'stage_auto';
+  senderAddressId?: string;
 }
 
 @Injectable()
@@ -56,9 +57,17 @@ export class CandidateEmailsService {
         : null;
       const actorName = actorUser?.name ?? '';
       const actorSignature = actorUser?.emailSignature ?? null;
-      return { entry, applicationToken, org, actorName, actorSignature };
+      let fromAddress: string | undefined;
+      if (input.senderAddressId) {
+        const sender = await tx.orgSenderAddress.findFirst({
+          where: { id: input.senderAddressId, organizationId: orgId },
+        });
+        if (!sender) throw new NotFoundException(`Sender address ${input.senderAddressId} not found`);
+        fromAddress = sender.address;
+      }
+      return { entry, applicationToken, org, actorName, actorSignature, fromAddress };
     });
-    const { entry, applicationToken, org, actorName, actorSignature } = prepared;
+    const { entry, applicationToken, org, actorName, actorSignature, fromAddress } = prepared;
 
     // Phase 2 (outside any tx): rendering + network calls (blob signing, SMTP send).
     const statusLink = applicationToken
@@ -80,6 +89,7 @@ export class CandidateEmailsService {
       subject: rendered.subject,
       html,
       organizationId: orgId,
+      ...(fromAddress ? { fromAddress } : {}),
     });
 
     // Phase 3 (short tx): log the outcome, whatever it was, then recompute the candidate's

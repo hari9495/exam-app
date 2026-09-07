@@ -16,6 +16,10 @@ export interface SendMessageInput {
   templateId?: string | null;
   subject: string;
   body: string;
+  /** Optional org-configured From override for this one send (Zoho #9 slice 3). Omitted -> server
+   *  falls back to the org's default sender / emailFromAddress, unchanged from before this field
+   *  existed. */
+  senderAddressId?: string;
 }
 
 // candidateId is needed (beyond entryId) purely to invalidate the right ['candidate-messages', X]

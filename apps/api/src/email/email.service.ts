@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
 import { buildSmtpTransportOptions } from './smtp-transport';
 import type { Transporter } from 'nodemailer';
-import { PrismaService, OrgSecretsCryptoService } from '@exam-platform/shared';
+import { PrismaService, OrgSecretsCryptoService, TenantPrismaService } from '@exam-platform/shared';
 
 export interface SendEmailInput {
   to: string;
@@ -10,6 +10,8 @@ export interface SendEmailInput {
   html: string;
   organizationId?: string;
   attachments?: { filename: string; content: Buffer }[];
+  /** Per-send From override (e.g. a caller-selected OrgSenderAddress). Wins over every other From source. */
+  fromAddress?: string;
 }
 
 export interface SendEmailResult {
@@ -67,11 +69,15 @@ export class EmailService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cryptoService: OrgSecretsCryptoService,
+    private readonly tenantPrisma: TenantPrismaService,
   ) {}
 
   async send(input: SendEmailInput): Promise<SendEmailResult> {
     try {
-      const { transporter, fromAddress, deliverable } = await this.resolveTransporter(input.organizationId);
+      const { transporter, fromAddress, deliverable } = await this.resolveTransporter(
+        input.organizationId,
+        input.fromAddress,
+      );
 
       // Refuse rather than send. Two reasons, and the second is the stronger one:
       //   1. Reporting success for mail nobody can read makes every caller believe it worked.
@@ -110,6 +116,7 @@ export class EmailService {
 
   private async resolveTransporter(
     organizationId: string | undefined,
+    fromAddressOverride?: string,
   ): Promise<{ transporter: Transporter; fromAddress: string; deliverable: boolean }> {
     if (organizationId) {
       const org = await this.prisma.organization.findUnique({
@@ -130,13 +137,29 @@ export class EmailService {
             deliverable: true,
           }),
         );
-        // Fall back to the ORG's own mailbox, not the platform's. An org that
-        // authenticates as X must send as X or Office365 rejects it with
-        // 550 5.7.60 SendAsDenied -- and "From address" is optional in the UI,
-        // so most orgs will not have set one.
+        // The org's configured default sender (Settings > Sender Addresses), used only when
+        // the caller didn't ask for a specific From. Falls back further to the ORG's own
+        // mailbox, not the platform's -- an org that authenticates as X must send as X or
+        // Office365 rejects it with 550 5.7.60 SendAsDenied -- and "From address" is optional
+        // in the UI, so most orgs will not have set one.
+        //
+        // org_sender_addresses is under tenant RLS -- unlike the `organization.findUnique`
+        // above, this MUST go through a tenant-scoped forTenant() so app_current_org is set on
+        // the session, or the RLS predicate returns zero rows for every org and the default
+        // sender silently never applies (fails "safe" to org.emailFromAddress). send() commonly
+        // runs post-commit, outside any caller transaction, so a fresh forTenant read here --
+        // its own connection + session context -- is correct; only this lookup needs the tx,
+        // not the whole send.
+        const defaultSender = await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
+          tx.orgSenderAddress.findFirst({
+            where: { organizationId, isDefault: true },
+            select: { address: true },
+          }),
+        );
         return {
           transporter,
-          fromAddress: org.emailFromAddress ?? org.smtpUser ?? platformFromAddress(),
+          fromAddress:
+            fromAddressOverride ?? defaultSender?.address ?? org.emailFromAddress ?? org.smtpUser ?? platformFromAddress(),
           deliverable: true,
         };
       }

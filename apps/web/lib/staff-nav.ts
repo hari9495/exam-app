@@ -17,6 +17,7 @@ const V2_ROUTES = new Set([
   '/settings/record-visibility',
   '/settings/recycle-bin',
   '/settings/approval-emails',
+  '/settings/sender-addresses',
 ]);
 
 // The ONE staff sidebar, identical in every org-scoped shell (the (recruiter) and (org-admin) route

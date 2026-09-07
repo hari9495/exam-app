@@ -67,6 +67,10 @@ export interface UserGroup { id: string; name: string; description: string | nul
 export interface UserGroupDirectoryEntry { id: string; name: string; memberIds: string[]; }
 export interface MyGroups { groupIds: string[]; coMemberUserIds: string[]; }
 
+// Org Sender Addresses (Zoho-style configurable From addresses). Shapes mirror the
+// org-sender-addresses API responses verbatim (see apps/api/src/organizations/org-sender-addresses.service.ts).
+export interface OrgSenderAddress { id: string; label: string; address: string; isDefault: boolean; }
+
 export interface AuditLogEntry {
   id: string;
   action: string;
