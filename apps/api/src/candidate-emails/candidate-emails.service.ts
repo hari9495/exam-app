@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { CandidateEmail } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService, BlobStorageService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
@@ -18,6 +18,8 @@ export interface SendMessageInput {
 
 @Injectable()
 export class CandidateEmailsService {
+  private readonly logger = new Logger(CandidateEmailsService.name);
+
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly emailService: EmailService,
@@ -31,13 +33,14 @@ export class CandidateEmailsService {
     entryId: string,
     input: SendMessageInput,
     options?: { appendSignature?: boolean },
-  ): Promise<CandidateEmail> {
+  ): Promise<CandidateEmail | null> {
     const appendSignature = options?.appendSignature ?? true;
     const orgId = context.organizationId as string;
 
-    // Phase 1 (short tx): org-scoped reads + the applicationToken mint. No network calls here --
-    // forTenant uses Prisma's default 5s interactive-transaction timeout, and SMTP can take longer
-    // than that on a cold start (see sendEmail below, which runs outside any tx).
+    // Phase 1 (short tx): org-scoped reads + the applicationToken/unsubscribeToken mints. No
+    // network calls here -- forTenant uses Prisma's default 5s interactive-transaction timeout,
+    // and SMTP can take longer than that on a cold start (see sendEmail below, which runs outside
+    // any tx).
     const prepared = await this.tenantPrisma.forTenant(context, async (tx) => {
       const entry = await tx.pipelineEntry.findFirst({
         where: { id: entryId, organizationId: orgId },
@@ -45,6 +48,24 @@ export class CandidateEmailsService {
       });
       if (!entry) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
       if (entry.candidate.erasedAt) throw new BadRequestException('Candidate has been erased');
+
+      if (entry.candidate.emailOptedOutAt) {
+        if (input.source === 'manual') {
+          throw new ConflictException('This candidate has unsubscribed from emails');
+        }
+        // stage_prompt/stage_auto sends are pipeline-driven, not recruiter-initiated -- skip
+        // silently rather than blocking a stage transition.
+        this.logger.log(
+          `candidate-emails: skipping ${input.source} send to opted-out candidate ${entry.candidateId} (entry ${entry.id})`,
+        );
+        return { skipped: true as const };
+      }
+
+      let unsubscribeToken = entry.candidate.unsubscribeToken;
+      if (!unsubscribeToken) {
+        unsubscribeToken = randomUUID();
+        await tx.candidate.update({ where: { id: entry.candidateId }, data: { unsubscribeToken } });
+      }
 
       let applicationToken = entry.applicationToken;
       if (!applicationToken && templateReferencesStatusLink(input.subject, input.body)) {
@@ -65,14 +86,16 @@ export class CandidateEmailsService {
         if (!sender) throw new NotFoundException(`Sender address ${input.senderAddressId} not found`);
         fromAddress = sender.address;
       }
-      return { entry, applicationToken, org, actorName, actorSignature, fromAddress };
+      return { skipped: false as const, entry, applicationToken, org, actorName, actorSignature, unsubscribeToken, fromAddress };
     });
-    const { entry, applicationToken, org, actorName, actorSignature, fromAddress } = prepared;
+    if (prepared.skipped) return null;
+    const { entry, applicationToken, org, actorName, actorSignature, unsubscribeToken, fromAddress } = prepared;
 
     // Phase 2 (outside any tx): rendering + network calls (blob signing, SMTP send).
     const statusLink = applicationToken
       ? `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/application/${applicationToken}`
       : '';
+    const unsubscribeUrl = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/unsubscribe/${unsubscribeToken}`;
     const rendered = renderTemplate(input.subject, input.body, {
       candidateName: entry.candidate.name,
       jobTitle: entry.job.title,
@@ -83,7 +106,12 @@ export class CandidateEmailsService {
     const signature = appendSignature && actorUserId ? (actorSignature ?? '').trim() : '';
     const bodyWithSignature = signature ? `${rendered.body}\n\n--\n${signature}` : rendered.body;
     const logoUrl = org?.logoPath ? await this.blobStorage.signIfOurs(org.logoPath, LOGO_SIGN_TTL_MS) : null;
-    const html = buildCandidateEmailHtml({ logoUrl: logoUrl as string | null, orgName: org?.name ?? null, bodyText: bodyWithSignature });
+    const html = buildCandidateEmailHtml({
+      logoUrl: logoUrl as string | null,
+      orgName: org?.name ?? null,
+      bodyText: bodyWithSignature,
+      unsubscribeUrl,
+    });
     const result = await this.emailService.send({
       to: entry.candidate.email,
       subject: rendered.subject,
@@ -133,7 +161,7 @@ export class CandidateEmailsService {
     );
   }
 
-  async resend(context: TenantContext, actorUserId: string | null, messageId: string): Promise<CandidateEmail> {
+  async resend(context: TenantContext, actorUserId: string | null, messageId: string): Promise<CandidateEmail | null> {
     const existing = await this.tenantPrisma.forTenant(context, async (tx) => {
       const row = await tx.candidateEmail.findFirst({
         where: { id: messageId, organizationId: context.organizationId as string },

@@ -23,12 +23,21 @@ function escapeHtml(s: string): string {
 
 /** Branded shell generalized from buildAssessmentEmailHtml (invitations.service.ts).
  *  bodyText is the already-rendered plain-text message; newlines become <br />. */
-export function buildCandidateEmailHtml(opts: { logoUrl: string | null; orgName: string | null; bodyText: string }): string {
+export function buildCandidateEmailHtml(opts: {
+  logoUrl: string | null;
+  orgName: string | null;
+  bodyText: string;
+  unsubscribeUrl?: string | null;
+}): string {
   const logoHtml = opts.logoUrl ? `<p><img src="${opts.logoUrl}" alt="Organization logo" height="40" /></p>` : '';
   const bodyHtml = escapeHtml(opts.bodyText).replace(/\r?\n/g, '<br />');
+  const unsubscribeHtml = opts.unsubscribeUrl
+    ? `<p style="color:#666;font-size:12px;">To stop receiving these emails, <a href="${escapeHtml(opts.unsubscribeUrl)}">unsubscribe</a>.</p>`
+    : '';
   return (
     `${logoHtml}<div>${bodyHtml}</div>` +
     `<p>Best regards,<br/>${opts.orgName ?? 'The Hiring Team'}</p>` +
-    `<p style="color:#666666;font-size:12px;">This message was sent from an unmonitored address - please do not reply to it.</p>`
+    `<p style="color:#666666;font-size:12px;">This message was sent from an unmonitored address - please do not reply to it.</p>` +
+    unsubscribeHtml
   );
 }

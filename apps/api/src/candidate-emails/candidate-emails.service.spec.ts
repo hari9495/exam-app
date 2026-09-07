@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { CandidateEmailsService } from './candidate-emails.service';
 
 describe('CandidateEmailsService', () => {
@@ -24,7 +24,7 @@ describe('CandidateEmailsService', () => {
           id: 'entry-1',
           candidateId: 'c1',
           applicationToken: 'tok-1',
-          candidate: { name: 'Asha', email: 'asha@x.com', erasedAt: null },
+          candidate: { name: 'Asha', email: 'asha@x.com', erasedAt: null, emailOptedOutAt: null, unsubscribeToken: 'existing-token' },
           job: { title: 'BE' },
         }),
         update: jest.fn(),
@@ -183,11 +183,11 @@ describe('CandidateEmailsService', () => {
       tx.user.findUnique.mockResolvedValue({ name: 'Rita', emailSignature: 'Rita Recruiter\nAcme Inc' });
       email.send.mockResolvedValue({ success: true });
 
-      const msg = await service.sendMessage(context, 'user-1', 'entry-1', {
+      const msg = (await service.sendMessage(context, 'user-1', 'entry-1', {
         subject: 's',
         body: 'Hello there',
         source: 'manual',
-      });
+      }))!;
 
       expect(msg.renderedBody).toBe('Hello there\n\n--\nRita Recruiter\nAcme Inc');
       expect(email.send).toHaveBeenCalledWith(
@@ -199,31 +199,31 @@ describe('CandidateEmailsService', () => {
       tx.user.findUnique.mockResolvedValue({ name: 'Rita', emailSignature: null });
       email.send.mockResolvedValue({ success: true });
 
-      const msg = await service.sendMessage(context, 'user-1', 'entry-1', {
+      const msg = (await service.sendMessage(context, 'user-1', 'entry-1', {
         subject: 's',
         body: 'Hello there',
         source: 'manual',
-      });
+      }))!;
 
       expect(msg.renderedBody).toBe('Hello there');
 
       tx.user.findUnique.mockResolvedValue({ name: 'Rita', emailSignature: '   ' });
-      const msg2 = await service.sendMessage(context, 'user-1', 'entry-1', {
+      const msg2 = (await service.sendMessage(context, 'user-1', 'entry-1', {
         subject: 's',
         body: 'Hello there',
         source: 'manual',
-      });
+      }))!;
       expect(msg2.renderedBody).toBe('Hello there');
     });
 
     it('does not append a signature for system sends (actorUserId null)', async () => {
       email.send.mockResolvedValue({ success: true });
 
-      const msg = await service.sendMessage(context, null, 'entry-1', {
+      const msg = (await service.sendMessage(context, null, 'entry-1', {
         subject: 's',
         body: 'Hello there',
         source: 'stage_auto',
-      });
+      }))!;
 
       expect(msg.renderedBody).toBe('Hello there');
       expect(tx.user.findUnique).not.toHaveBeenCalled();
@@ -233,11 +233,11 @@ describe('CandidateEmailsService', () => {
       tx.user.findUnique.mockResolvedValue({ name: 'Rita', emailSignature: 'Rita & Co <rita@acme.com>' });
       email.send.mockResolvedValue({ success: true });
 
-      const msg = await service.sendMessage(context, 'user-1', 'entry-1', {
+      const msg = (await service.sendMessage(context, 'user-1', 'entry-1', {
         subject: 's',
         body: 'Hello there',
         source: 'manual',
-      });
+      }))!;
 
       expect(msg.renderedBody).toBe('Hello there\n\n--\nRita & Co <rita@acme.com>');
       expect(email.send).toHaveBeenCalledWith(
@@ -305,6 +305,80 @@ describe('CandidateEmailsService', () => {
       expect(tx.orgSenderAddress.findFirst).not.toHaveBeenCalled();
       expect(email.send).toHaveBeenCalledWith(expect.not.objectContaining({ fromAddress: expect.anything() }));
     });
+
+    it('throws ConflictException for an opted-out candidate on a manual send, with no send and no row', async () => {
+      tx.pipelineEntry.findFirst.mockResolvedValue({
+        id: 'entry-1',
+        candidateId: 'c1',
+        applicationToken: 'tok-1',
+        candidate: { name: 'Asha', email: 'asha@x.com', erasedAt: null, emailOptedOutAt: new Date(), unsubscribeToken: 'existing-token' },
+        job: { title: 'BE' },
+      });
+
+      await expect(
+        service.sendMessage(context, 'user-1', 'entry-1', { subject: 's', body: 'b', source: 'manual' }),
+      ).rejects.toThrow(ConflictException);
+      expect(email.send).not.toHaveBeenCalled();
+      expect(tx.candidateEmail.create).not.toHaveBeenCalled();
+    });
+
+    it.each(['stage_prompt', 'stage_auto'] as const)(
+      'skips (no throw, no send, no row) a %s send to an opted-out candidate, and logs it',
+      async (source) => {
+        tx.pipelineEntry.findFirst.mockResolvedValue({
+          id: 'entry-1',
+          candidateId: 'c1',
+          applicationToken: 'tok-1',
+          candidate: { name: 'Asha', email: 'asha@x.com', erasedAt: null, emailOptedOutAt: new Date(), unsubscribeToken: 'existing-token' },
+          job: { title: 'BE' },
+        });
+        const logSpy = jest.spyOn((service as any).logger, 'log').mockImplementation(() => undefined);
+
+        const result = await service.sendMessage(context, null, 'entry-1', { subject: 's', body: 'b', source });
+
+        expect(result).toBeNull();
+        expect(email.send).not.toHaveBeenCalled();
+        expect(tx.candidateEmail.create).not.toHaveBeenCalled();
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('opted-out candidate c1'));
+      },
+    );
+
+    it('mints an unsubscribeToken when the candidate has none, and the sent html footer links to it', async () => {
+      tx.pipelineEntry.findFirst.mockResolvedValue({
+        id: 'entry-1',
+        candidateId: 'c1',
+        applicationToken: 'tok-1',
+        candidate: { name: 'Asha', email: 'asha@x.com', erasedAt: null, emailOptedOutAt: null, unsubscribeToken: null },
+        job: { title: 'BE' },
+      });
+      email.send.mockResolvedValue({ success: true });
+
+      await service.sendMessage(context, 'user-1', 'entry-1', { subject: 's', body: 'b', source: 'manual' });
+
+      expect(tx.candidate.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'c1' }, data: { unsubscribeToken: expect.any(String) } }),
+      );
+      const mintedToken = tx.candidate.update.mock.calls.find((c: any) => 'unsubscribeToken' in c[0].data)?.[0].data
+        .unsubscribeToken;
+      expect(email.send).toHaveBeenCalledWith(
+        expect.objectContaining({ html: expect.stringContaining(`/unsubscribe/${mintedToken}`) }),
+      );
+      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ html: expect.stringContaining('unsubscribe</a>') }));
+    });
+
+    it('reuses an existing unsubscribeToken instead of minting a new one', async () => {
+      // default beforeEach candidate already has unsubscribeToken: 'existing-token'
+      email.send.mockResolvedValue({ success: true });
+
+      await service.sendMessage(context, 'user-1', 'entry-1', { subject: 's', body: 'b', source: 'manual' });
+
+      expect(tx.candidate.update).not.toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ unsubscribeToken: expect.any(String) }) }),
+      );
+      expect(email.send).toHaveBeenCalledWith(
+        expect.objectContaining({ html: expect.stringContaining('/unsubscribe/existing-token') }),
+      );
+    });
   });
 
   describe('listMessages', () => {
@@ -360,7 +434,7 @@ describe('CandidateEmailsService', () => {
       tx.user.findUnique.mockResolvedValue({ name: 'Rita', emailSignature: 'Rita Recruiter\nAcme Inc' });
       email.send.mockResolvedValue({ success: true });
 
-      const msg = await service.resend(context, 'user-1', 'msg-1');
+      const msg = (await service.resend(context, 'user-1', 'msg-1'))!;
 
       const signatureOccurrences = (msg.renderedBody.match(/--\nRita Recruiter\nAcme Inc/g) ?? []).length;
       expect(signatureOccurrences).toBe(1);
@@ -378,6 +452,27 @@ describe('CandidateEmailsService', () => {
 
       await expect(service.resend(context, 'user-1', 'msg-2')).rejects.toThrow(BadRequestException);
       expect(email.send).not.toHaveBeenCalled();
+    });
+
+    it('blocks a resend to an opted-out candidate with the same ConflictException as a manual send', async () => {
+      tx.candidateEmail.findFirst.mockResolvedValue({
+        id: 'msg-1',
+        pipelineEntryId: 'entry-1',
+        templateId: null,
+        subject: 'Old subject',
+        renderedBody: 'Old body',
+      });
+      tx.pipelineEntry.findFirst.mockResolvedValue({
+        id: 'entry-1',
+        candidateId: 'c1',
+        applicationToken: 'tok-1',
+        candidate: { name: 'Asha', email: 'asha@x.com', erasedAt: null, emailOptedOutAt: new Date(), unsubscribeToken: 'existing-token' },
+        job: { title: 'BE' },
+      });
+
+      await expect(service.resend(context, 'user-1', 'msg-1')).rejects.toThrow(ConflictException);
+      expect(email.send).not.toHaveBeenCalled();
+      expect(tx.candidateEmail.create).not.toHaveBeenCalled();
     });
   });
 });
