@@ -11,6 +11,19 @@ export const APPROVAL_NOTIFICATION_TYPES = {
   cancelled: 'approval.cancelled',
 } as const;
 
+export const APPROVAL_EMAIL_EVENT_TYPES = [
+  APPROVAL_NOTIFICATION_TYPES.requested,
+  APPROVAL_NOTIFICATION_TYPES.approved,
+  APPROVAL_NOTIFICATION_TYPES.rejected,
+  APPROVAL_NOTIFICATION_TYPES.cancelled,
+] as const;
+
+export type ApprovalEmailEventType = (typeof APPROVAL_EMAIL_EVENT_TYPES)[number];
+
+export function isApprovalEmailEventType(type: string): type is ApprovalEmailEventType {
+  return !!type && (APPROVAL_EMAIL_EVENT_TYPES as readonly string[]).includes(type);
+}
+
 export interface ResolvedStep {
   position: number;
   name: string;
