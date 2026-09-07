@@ -44,4 +44,17 @@ describe('buildCandidateEmailHtml', () => {
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(html).toContain('&amp;');
   });
+  it('omits the unsubscribe footer when unsubscribeUrl is absent (existing callers unchanged)', () => {
+    const html = buildCandidateEmailHtml({ logoUrl: null, orgName: 'Acme', bodyText: 'Hi' });
+    expect(html).not.toContain('unsubscribe');
+  });
+  it('appends an unsubscribe footer with an escaped link when unsubscribeUrl is given', () => {
+    const html = buildCandidateEmailHtml({
+      logoUrl: null,
+      orgName: 'Acme',
+      bodyText: 'Hi',
+      unsubscribeUrl: 'https://x/unsubscribe/tok-1?a=1&b=2',
+    });
+    expect(html).toContain('To stop receiving these emails, <a href="https://x/unsubscribe/tok-1?a=1&amp;b=2">unsubscribe</a>.');
+  });
 });
