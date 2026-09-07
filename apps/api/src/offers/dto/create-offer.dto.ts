@@ -6,4 +6,5 @@ export class CreateOfferDto {
   @IsDateString() expiresAt!: string;
   @IsOptional() @IsString() subject?: string;
   @IsOptional() @IsString() body?: string;
+  @IsOptional() @IsString() templateId?: string;
 }

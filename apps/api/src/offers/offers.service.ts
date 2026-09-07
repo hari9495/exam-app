@@ -32,13 +32,15 @@ export class OffersService {
   ) {}
 
   async createOffer(context: TenantContext, actorUserId: string, entryId: string, dto: CreateOfferDto): Promise<Offer> {
-    // Template lookup opens its own forTenant read (see OfferTemplatesService.getWithDefault),
+    // Template lookup opens its own forTenant read (see OfferTemplatesService.getDefault/getById),
     // so it runs before -- not nested inside -- the entry-check/create transaction below, and
     // only when the caller didn't supply both subject and body.
     let letterSubject = dto.subject;
     let letterBody = dto.body;
     if (!letterSubject || !letterBody) {
-      const template = await this.offerTemplates.getWithDefault(context);
+      const template = dto.templateId
+        ? await this.offerTemplates.getById(context, dto.templateId)
+        : await this.offerTemplates.getDefault(context);
       letterSubject = letterSubject ?? template.subject;
       letterBody = letterBody ?? template.body;
     }
