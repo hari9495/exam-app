@@ -4,7 +4,7 @@ import { OffersService } from './offers.service';
 describe('OffersService', () => {
   let service: OffersService;
   let tenantPrisma: { forTenant: jest.Mock };
-  let offerTemplates: { getWithDefault: jest.Mock };
+  let offerTemplates: { getDefault: jest.Mock; getById: jest.Mock };
   let email: { send: jest.Mock };
   let blobStorage: { upload: jest.Mock; signIfOurs: jest.Mock };
   let audit: { record: jest.Mock };
@@ -45,7 +45,8 @@ describe('OffersService', () => {
     };
     tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
     offerTemplates = {
-      getWithDefault: jest.fn().mockResolvedValue({ id: null, subject: 'Default subject', body: 'Default body' }),
+      getDefault: jest.fn().mockResolvedValue({ id: null, subject: 'Default subject', body: 'Default body' }),
+      getById: jest.fn().mockResolvedValue({ id: 'tmpl-1', subject: 'Named subject', body: 'Named body' }),
     };
     email = { send: jest.fn() };
     blobStorage = {
@@ -101,12 +102,13 @@ describe('OffersService', () => {
       );
     });
 
-    it('resolves letterSubject/letterBody from the org template when dto omits subject/body', async () => {
+    it('resolves letterSubject/letterBody from the org default template when dto omits subject/body/templateId', async () => {
       tx.offer.create.mockResolvedValue({ id: 'offer-1' });
 
       await service.createOffer(context, 'user-1', 'entry-1', dto as any);
 
-      expect(offerTemplates.getWithDefault).toHaveBeenCalledWith(context);
+      expect(offerTemplates.getDefault).toHaveBeenCalledWith(context);
+      expect(offerTemplates.getById).not.toHaveBeenCalled();
       expect(tx.offer.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ letterSubject: 'Default subject', letterBody: 'Default body' }),
       });
@@ -117,9 +119,33 @@ describe('OffersService', () => {
 
       await service.createOffer(context, 'user-1', 'entry-1', { ...dto, subject: 'Custom subject', body: 'Custom body' } as any);
 
-      expect(offerTemplates.getWithDefault).not.toHaveBeenCalled();
+      expect(offerTemplates.getDefault).not.toHaveBeenCalled();
+      expect(offerTemplates.getById).not.toHaveBeenCalled();
       expect(tx.offer.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ letterSubject: 'Custom subject', letterBody: 'Custom body' }),
+      });
+    });
+
+    it('resolves letterSubject/letterBody from the named template when dto has templateId', async () => {
+      tx.offer.create.mockResolvedValue({ id: 'offer-1' });
+
+      await service.createOffer(context, 'user-1', 'entry-1', { ...dto, templateId: 'tmpl-1' } as any);
+
+      expect(offerTemplates.getById).toHaveBeenCalledWith(context, 'tmpl-1');
+      expect(offerTemplates.getDefault).not.toHaveBeenCalled();
+      expect(tx.offer.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ letterSubject: 'Named subject', letterBody: 'Named body' }),
+      });
+    });
+
+    it('an explicit subject still wins over the named template (precedence preserved)', async () => {
+      tx.offer.create.mockResolvedValue({ id: 'offer-1' });
+
+      await service.createOffer(context, 'user-1', 'entry-1', { ...dto, templateId: 'tmpl-1', subject: 'Custom subject' } as any);
+
+      expect(offerTemplates.getById).toHaveBeenCalledWith(context, 'tmpl-1');
+      expect(tx.offer.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ letterSubject: 'Custom subject', letterBody: 'Named body' }),
       });
     });
 

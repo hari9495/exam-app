@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react';
 import { Dialog, TextField, Button, dt } from '../../../../components/ui-v2';
 import { useToast } from '../../../../components/ui';
-import { useCreateOffer, useSendOffer, useSubmitOffer, useOfferTemplate, usePreviewOfferPdf } from '../../../../lib/hooks/useOffers';
+import { useCreateOffer, useSendOffer, useSubmitOffer, useOfferTemplates, usePreviewOfferPdf } from '../../../../lib/hooks/useOffers';
 import { useIntegrations } from '../../../../lib/hooks/useIntegrations';
 import { useApprovalGateStatus } from '../../../../lib/hooks/useApprovals';
 
@@ -29,7 +29,8 @@ const input: React.CSSProperties = {
 };
 
 export function CreateOfferModal({ entryId, candidateId, onClose }: CreateOfferModalProps) {
-  const { data: template } = useOfferTemplate();
+  const { data: templates } = useOfferTemplates();
+  const defaultTemplate = templates?.find((t) => t.isDefault) ?? templates?.[0];
   const createOffer = useCreateOffer(entryId, candidateId);
   const sendOffer = useSendOffer(candidateId);
   const submitOffer = useSubmitOffer();
@@ -49,15 +50,26 @@ export function CreateOfferModal({ entryId, candidateId, onClose }: CreateOfferM
   const [expiresAt, setExpiresAt] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
+  // Which saved template to seed the offer from -- defaults to the org's default template, but
+  // stays additive: an empty selection (no templates saved yet) sends templateId: undefined and
+  // the server falls back to getDefault(), i.e. today's behaviour.
+  const [templateId, setTemplateId] = useState('');
   // The draft Offer, once created -- reused across Preview/Send clicks so a second click doesn't
   // create a duplicate Offer row.
   const [offerId, setOfferId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!template) return;
-    setSubject((current) => current || template.subject);
-    setBody((current) => current || template.body);
-  }, [template]);
+    if (!defaultTemplate?.id) return;
+    setTemplateId((current) => current || defaultTemplate.id!);
+    setSubject((current) => current || defaultTemplate.subject);
+    setBody((current) => current || defaultTemplate.body);
+  }, [defaultTemplate]);
+
+  function handleTemplateChange(id: string) {
+    setTemplateId(id);
+    const picked = templates?.find((t) => t.id === id);
+    if (picked) { setSubject(picked.subject); setBody(picked.body); }
+  }
 
   const canSubmit = Boolean(compensation.trim() && startDate && expiresAt);
 
@@ -69,6 +81,7 @@ export function CreateOfferModal({ entryId, candidateId, onClose }: CreateOfferM
       expiresAt: new Date(expiresAt).toISOString(),
       subject: subject.trim() || undefined,
       body: body.trim() || undefined,
+      templateId: templateId || undefined,
     });
     setOfferId(created.id);
     return created.id;
@@ -126,6 +139,16 @@ export function CreateOfferModal({ entryId, candidateId, onClose }: CreateOfferM
             <input id="offer-expires-at" type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} required style={input} />
           </div>
         </div>
+        {templates && templates.length > 0 && (
+          <div>
+            <label htmlFor="offer-template" className="v2-label">Template</label>
+            <select id="offer-template" value={templateId} onChange={(e) => handleTemplateChange(e.target.value)} style={input}>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id ?? ''}>{t.name}{t.isDefault ? ' (default)' : ''}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <TextField id="offer-subject" label="Subject" value={subject} onChange={setSubject} />
         <div>
           <label htmlFor="offer-body" className="v2-label">Letter body</label>

@@ -1,11 +1,13 @@
 import { CanActivate, ExecutionContext, StreamableFile, UnauthorizedException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { Reflector } from '@nestjs/core';
 import request from 'supertest';
 import { OffersController } from './offers.controller';
 import { OffersService } from './offers.service';
 import { OfferTemplatesService } from './offer-templates.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
+import { PERMISSIONS_KEY } from '../rbac/permissions.decorator';
 
 class MockGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
@@ -22,7 +24,7 @@ class RejectingGuard implements CanActivate {
 describe('OffersController', () => {
   let controller: OffersController;
   let offers: { createOffer: jest.Mock; listForEntry: jest.Mock; listForCandidate: jest.Mock; previewPdf: jest.Mock };
-  let offerTemplates: { getWithDefault: jest.Mock; upsert: jest.Mock };
+  let offerTemplates: { list: jest.Mock; getDefault: jest.Mock; create: jest.Mock; update: jest.Mock; remove: jest.Mock };
   const tenant = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
   beforeEach(async () => {
@@ -33,8 +35,11 @@ describe('OffersController', () => {
       previewPdf: jest.fn().mockResolvedValue(Buffer.from('pdf-bytes')),
     };
     offerTemplates = {
-      getWithDefault: jest.fn().mockResolvedValue({ id: null, subject: 'S', body: 'B' }),
-      upsert: jest.fn().mockResolvedValue({ id: 't1', subject: 'S', body: 'B' }),
+      list: jest.fn().mockResolvedValue([{ id: 't1', subject: 'S', body: 'B' }]),
+      getDefault: jest.fn().mockResolvedValue({ id: null, subject: 'S', body: 'B' }),
+      create: jest.fn().mockResolvedValue({ id: 't1', subject: 'S', body: 'B' }),
+      update: jest.fn().mockResolvedValue({ id: 't1', subject: 'S2', body: 'B2' }),
+      remove: jest.fn().mockResolvedValue({ success: true }),
     };
     const moduleRef = await Test.createTestingModule({
       controllers: [OffersController],
@@ -76,15 +81,46 @@ describe('OffersController', () => {
     expect(result).toBeInstanceOf(StreamableFile);
   });
 
-  it('getTemplate delegates to OfferTemplatesService.getWithDefault', async () => {
-    await controller.getTemplate(tenant);
-    expect(offerTemplates.getWithDefault).toHaveBeenCalledWith(tenant);
+  it('createOffer with a templateId passes it through to the service', async () => {
+    const dto = { compensation: '100k', startDate: '2026-09-01', expiresAt: '2026-09-15', templateId: 'tmpl-1' };
+    await controller.createOffer(tenant, 'user-1', 'entry-1', dto as any);
+    expect(offers.createOffer).toHaveBeenCalledWith(tenant, 'user-1', 'entry-1', dto);
   });
 
-  it('upsertTemplate delegates to OfferTemplatesService.upsert with the actor and dto', async () => {
-    const dto = { subject: 'S', body: 'B' };
-    await controller.upsertTemplate(tenant, 'user-1', dto as any);
-    expect(offerTemplates.upsert).toHaveBeenCalledWith(tenant, 'user-1', dto);
+  it('listTemplates delegates to OfferTemplatesService.list', async () => {
+    await controller.listTemplates(tenant);
+    expect(offerTemplates.list).toHaveBeenCalledWith(tenant);
+  });
+
+  it('getDefaultTemplate delegates to OfferTemplatesService.getDefault', async () => {
+    await controller.getDefaultTemplate(tenant);
+    expect(offerTemplates.getDefault).toHaveBeenCalledWith(tenant);
+  });
+
+  it('createTemplate delegates to OfferTemplatesService.create with the actor and dto', async () => {
+    const dto = { name: 'Standard', subject: 'S', body: 'B' };
+    await controller.createTemplate(tenant, 'user-1', dto as any);
+    expect(offerTemplates.create).toHaveBeenCalledWith(tenant, 'user-1', dto);
+  });
+
+  it('updateTemplate delegates to OfferTemplatesService.update with the actor, id, and dto', async () => {
+    const dto = { subject: 'S2' };
+    await controller.updateTemplate(tenant, 'user-1', 't1', dto as any);
+    expect(offerTemplates.update).toHaveBeenCalledWith(tenant, 'user-1', 't1', dto);
+  });
+
+  it('removeTemplate delegates to OfferTemplatesService.remove with the actor and id', async () => {
+    await controller.removeTemplate(tenant, 'user-1', 't1');
+    expect(offerTemplates.remove).toHaveBeenCalledWith(tenant, 'user-1', 't1');
+  });
+
+  it('every offer-template route carries the same pipeline:manage permission as the other offer routes', () => {
+    const reflector = new Reflector();
+    expect(reflector.get(PERMISSIONS_KEY, OffersController.prototype.listTemplates)).toEqual(['pipeline:manage']);
+    expect(reflector.get(PERMISSIONS_KEY, OffersController.prototype.getDefaultTemplate)).toEqual(['pipeline:manage']);
+    expect(reflector.get(PERMISSIONS_KEY, OffersController.prototype.createTemplate)).toEqual(['pipeline:manage']);
+    expect(reflector.get(PERMISSIONS_KEY, OffersController.prototype.updateTemplate)).toEqual(['pipeline:manage']);
+    expect(reflector.get(PERMISSIONS_KEY, OffersController.prototype.removeTemplate)).toEqual(['pipeline:manage']);
   });
 
   // Routes must be mounted behind JwtAuthGuard, not simply absent -- an unauthenticated

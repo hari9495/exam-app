@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Res, StreamableFile, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Res, StreamableFile, UseGuards } from '@nestjs/common';
 import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
@@ -9,7 +9,8 @@ import { TenantContext } from '@exam-platform/shared';
 import { OffersService } from './offers.service';
 import { OfferTemplatesService } from './offer-templates.service';
 import { CreateOfferDto } from './dto/create-offer.dto';
-import { UpsertOfferTemplateDto } from './dto/upsert-offer-template.dto';
+import { CreateOfferTemplateDto } from './dto/create-offer-template.dto';
+import { UpdateOfferTemplateDto } from './dto/update-offer-template.dto';
 
 @Controller()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -78,19 +79,42 @@ export class OffersController {
     return this.offers.cancelOfferApproval(tenant, userId, id);
   }
 
-  @Get('offer-template')
+  @Get('offer-template/default')
   @RequirePermissions('pipeline:manage')
-  getTemplate(@CurrentTenant() tenant: TenantContext) {
-    return this.offerTemplates.getWithDefault(tenant);
+  getDefaultTemplate(@CurrentTenant() tenant: TenantContext) {
+    return this.offerTemplates.getDefault(tenant);
   }
 
-  @Put('offer-template')
+  @Get('offer-template')
   @RequirePermissions('pipeline:manage')
-  upsertTemplate(
+  listTemplates(@CurrentTenant() tenant: TenantContext) {
+    return this.offerTemplates.list(tenant);
+  }
+
+  @Post('offer-template')
+  @RequirePermissions('pipeline:manage')
+  createTemplate(
     @CurrentTenant() tenant: TenantContext,
     @CurrentUserId() userId: string,
-    @Body() dto: UpsertOfferTemplateDto,
+    @Body() dto: CreateOfferTemplateDto,
   ) {
-    return this.offerTemplates.upsert(tenant, userId, dto);
+    return this.offerTemplates.create(tenant, userId, dto);
+  }
+
+  @Patch('offer-template/:id')
+  @RequirePermissions('pipeline:manage')
+  updateTemplate(
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentUserId() userId: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateOfferTemplateDto,
+  ) {
+    return this.offerTemplates.update(tenant, userId, id, dto);
+  }
+
+  @Delete('offer-template/:id')
+  @RequirePermissions('pipeline:manage')
+  removeTemplate(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.offerTemplates.remove(tenant, userId, id);
   }
 }
